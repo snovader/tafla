@@ -375,8 +375,20 @@ class TableWriter:
         if type(alignment) is not int or alignment not in ALIGNMENTS:
             raise alignment_error(alignment)
 
-        self.__pad(len(self.__data), alignment)
-        self.__set_offset(index)
+        # Padded and its offset written inline too, as __pad() and
+        # __set_offset() do, since every nested table and vector item calls
+        # it: the calls made writing the vector of 100 tables 3% slower
+        data = self.__data
+        table = self.__table
+        padding = (table - len(data)) % alignment
+        if padding:
+            data += _ZEROS[padding]
+        try:
+            self.__length.pack_into(
+                data, self.__slots + index * self.__size, len(data) - table
+            )
+        except _PACK_ERRORS as error:
+            raise self.__slot_error(len(data) - table, error) from error
 
     def set_vector(self, index: int, count: int) -> int:
         """Writes the offset and count of a vector of ``count`` tables, whose
