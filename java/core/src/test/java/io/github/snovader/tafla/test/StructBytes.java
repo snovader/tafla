@@ -39,6 +39,15 @@ final class StructBytes {
     }
 
     /**
+     * Writes a struct of scalars of the types at {@code offset} in {@code bytes}, as a generated
+     * struct's {@code write()} does
+     */
+    static void write(List<ScalarType> types, List<Long> values, byte[] bytes, int offset) {
+        var struct = pack(types, List.of(values));
+        System.arraycopy(struct, 0, bytes, offset, struct.length);
+    }
+
+    /**
      * {@return the struct of scalars of the types at {@code position}, read from the view of its
      * bytes}
      */

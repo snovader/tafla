@@ -251,7 +251,7 @@ final class Descriptions {
     }
 
     /** {@return arrays of structs of one to a few scalars of any types, empty too} */
-    private static Arbitrary<FieldDescription> structArrays() {
+    static Arbitrary<FieldDescription> structArrays() {
         var types = Arbitraries.of(ScalarType.class).list().ofMinSize(1).ofMaxSize(MAX_STRUCT_SCALARS);
         return types.flatMap(Descriptions::structArraysOf);
     }

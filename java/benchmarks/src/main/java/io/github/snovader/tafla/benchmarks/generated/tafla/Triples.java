@@ -21,12 +21,7 @@ public final class Triples {
         sizer.addStructArray(fields.items().length, Triple.SIZE, Triple.ALIGNMENT);
 
         var writer = sizer.writer();
-        writer.setStructArray(
-            0,
-            Triple.serializeArray(fields.items()),
-            Triple.SIZE,
-            Triple.ALIGNMENT
-        );
+        writer.setStructs(0, fields.items(), Triple.SIZE, Triple.ALIGNMENT, Triple::write);
 
         return writer.bytes();
     }
