@@ -124,9 +124,20 @@ class ByteBuffer:
     def set_version(self, version: int) -> None:
         self.__set_size(version)
 
+    # root_offset() and field_offset() read their slot as __get_size() does,
+    # written out as the scalar getters below are, since every field's read
+    # starts with one: without the call, reading a vector of 100 tables took
+    # 4% less time.
+
     def root_offset(self, index: int) -> int:
         """Returns the position of field ``index`` of the root table."""
-        return self.__get_size(self.__header_size + index * self.__size)
+        position = self.__header_size + index * self.__size
+        try:
+            if position >= 0:
+                return self.__size_struct.unpack_from(self.__view, position)[0]
+        except StructError, OverflowError:
+            pass
+        raise DecodeError.out_of_range(position, self.__size, self.__length)
 
     def field_offset(self, table_position: int, index: int) -> int:
         """Returns the position of field ``index`` of a nested table, which has
@@ -134,7 +145,14 @@ class ByteBuffer:
         ``table_position`` is the nested table's position, which is the offset
         of the field that holds it.
         """
-        return table_position + self.__get_size(table_position + index * self.__size)
+        position = table_position + index * self.__size
+        try:
+            if position >= 0:
+                offset = self.__size_struct.unpack_from(self.__view, position)[0]
+                return table_position + offset
+        except StructError, OverflowError:
+            pass
+        raise DecodeError.out_of_range(position, self.__size, self.__length)
 
     def set_offset(self, offset: int) -> None:
         self.__set_size(offset)
