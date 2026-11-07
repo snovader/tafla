@@ -2,6 +2,7 @@ from collections.abc import Buffer, Iterable
 from struct import Struct, error as StructError
 from typing import Literal, overload
 
+from . import structs
 from .byte_buffer import struct_count
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
@@ -14,19 +15,15 @@ from .layout import (
     alignment_error,
     header_length,
 )
-from .structs import (
-    float32,
-    float64,
-    int8,
-    int16,
-    int32,
-    int64,
-    uint8,
-    uint16,
-    uint32,
-    uint64,
-)
 from .types import ElementSize, OffsetSize, TypeCode
+
+# The scalars' Structs, assigned rather than imported, as in byte_buffer.py,
+# so that their methods' calls specialize
+int8, uint8 = structs.int8, structs.uint8
+int16, uint16 = structs.int16, structs.uint16
+int32, uint32 = structs.int32, structs.uint32
+int64, uint64 = structs.int64, structs.uint64
+float32, float64 = structs.float32, structs.float64
 
 # The unsigned integer of each offset size, which offsets, lengths, counts,
 # item ends and header slots are written as

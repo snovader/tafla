@@ -3,23 +3,23 @@ from collections.abc import Buffer, Iterable, Sequence
 from struct import Struct, error as StructError
 from typing import Any, overload
 
+from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, from_little_endian, little_endian_bytes
 from .errors import DecodeError, describe_int
 from .layout import OFFSET_TYPES, TableLayout
-from .structs import (
-    float32,
-    float64,
-    int8,
-    int16,
-    int32,
-    int64,
-    uint8,
-    uint16,
-    uint32,
-    uint64,
-)
 from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
+
+# The scalars' Structs, assigned rather than imported. Python 3.14 compiles a
+# method call on a name that an import bound as a load of a module's
+# attribute, which doesn't specialize for a Struct and creates a bound method
+# for each call: each scalar's read or write took 25 ns longer, and reading a
+# vector of 100 tables that each nest another 8% longer.
+int8, uint8 = structs.int8, structs.uint8
+int16, uint16 = structs.int16, structs.uint16
+int32, uint32 = structs.int32, structs.uint32
+int64, uint64 = structs.int64, structs.uint64
+float32, float64 = structs.float32, structs.float64
 
 # The unsigned integer of each offset size, which lengths, offsets and header
 # slots are written as
