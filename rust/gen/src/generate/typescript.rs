@@ -740,9 +740,11 @@ impl Generator<'_> {
             self.annotation("number"),
             self.annotation(table)
         ));
+        // The count that the constructor checked, rather than reading and
+        // checking it for each item, as getVectorOffset() would
         let offset = call(
-            "this.#buffer.getVectorOffset",
-            vec![text("this.#position"), text("index")],
+            "this.#buffer.getVectorItemOffset",
+            vec![text("this.#position"), text("this.#length"), text("index")],
         );
         writer.statement(
             &STYLE,

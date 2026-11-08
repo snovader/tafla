@@ -1,7 +1,13 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { DecodeError } from 'tafla';
-import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
+import {
+    BYTE_OFFSETS,
+    CORRUPTIONS,
+    corruptionOf,
+    SLICES,
+    sliceOf
+} from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
@@ -12,6 +18,7 @@ import {
     describeItemList,
     describePoint,
     ITEM_LIST_FIELDS,
+    type ItemList,
     POINT_FIELDS,
     readDocument,
     readItem,
@@ -154,6 +161,23 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 expectValuesOrDecodeError(() => readPoint(new shapes.Point(bytes)));
                 expectValuesOrDecodeError(() => readDocument(new shapes.Document(bytes)));
                 expectValuesOrDecodeError(() => readItemList(new shapes.ItemList(bytes)));
+            }
+        );
+
+        it.prop([ITEM_LIST_FIELDS, CORRUPTIONS, BYTE_OFFSETS])(
+            'should read each Item of a corrupted ItemList through its view as values or throw DecodeError, within its bytes',
+            (fields, corruption, byteOffset) => {
+                const bytes = shapes.ItemList.serialize(fields);
+                const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
+
+                expectViewReadsWithin(bytes => new shapes.ItemList(bytes), corrupted, byteOffset);
+            }
+        );
+
+        it.prop([fc.uint8Array({ maxLength: 64 }), BYTE_OFFSETS])(
+            'should read each Item of arbitrary bytes through an ItemList view as values or throw DecodeError, within the bytes',
+            (bytes, byteOffset) => {
+                expectViewReadsWithin(bytes => new shapes.ItemList(bytes), bytes, byteOffset);
             }
         );
     });
@@ -311,3 +335,46 @@ describe.each(SHAPES)('%s', (_, shapes) => {
         );
     });
 });
+
+/**
+ * Expects each Item of an ItemList's view, read with `get(i)` from slices of
+ * two buffers that hold different bytes around the ItemList, to be the same
+ * fields or DecodeErrors, which a read outside the bytes would make differ
+ */
+function expectViewReadsWithin(
+    read: (bytes: Uint8Array) => ItemList,
+    bytes: Uint8Array,
+    byteOffset: number
+): void {
+    expect(readItemsView(read(sliceOf(bytes, { byteOffset, fill: 0x00 })))).toStrictEqual(
+        readItemsView(read(sliceOf(bytes, { byteOffset, fill: 0xff })))
+    );
+}
+
+/**
+ * Reads each Item of an ItemList through its view, one `get(i)` at a time,
+ * and returns its fields or the DecodeError that reading it threw, or the
+ * DecodeError of the view itself
+ */
+function readItemsView(itemList: ItemList): unknown[] {
+    let view: ReturnType<ItemList['itemsView']>;
+    try {
+        view = itemList.itemsView();
+    } catch (error) {
+        expect(error).toBeInstanceOf(DecodeError);
+        return [error];
+    }
+
+    const items: unknown[] = [];
+    for (let i = 0; i < view.length(); i++) {
+        try {
+            items.push(readItem(view.get(i)));
+        } catch (error) {
+            // Neither a RangeError, which DecodeError extends, nor any other error
+            expect(error).toBeInstanceOf(DecodeError);
+            items.push(error);
+        }
+    }
+
+    return items;
+}

@@ -276,6 +276,10 @@ const GETTERS = {
     getVectorOffset: (buffer, position) => {
         const length = buffer.getVectorLength(position);
         return length === 0 ? null : buffer.getVectorOffset(position, length - 1);
+    },
+    getVectorItemOffset: (buffer, position) => {
+        const length = buffer.getVectorLength(position);
+        return length === 0 ? null : buffer.getVectorItemOffset(position, length, length - 1);
     }
 } satisfies Record<string, (buffer: ByteBuffer, position: number) => unknown>;
 

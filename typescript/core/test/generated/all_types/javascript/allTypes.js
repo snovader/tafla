@@ -654,7 +654,11 @@ export class TreeVector {
     get(index) {
         return new Tree(
             this.#buffer,
-            this.#buffer.getVectorOffset(this.#position, index)
+            this.#buffer.getVectorItemOffset(
+                this.#position,
+                this.#length,
+                index
+            )
         );
     }
 }
