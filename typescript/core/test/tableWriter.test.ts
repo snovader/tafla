@@ -211,11 +211,31 @@ describe('tables longer than the offsets address', () => {
                 const layout = TableLayout.create({ sized, offsetType });
                 const fields = Math.floor(max / OFFSET_SIZES[offsetType]) - (sized ? 1 : 0);
 
+                const error = `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`;
+
                 expect(() => new TableSizer(fields, layout)).not.toThrow();
-                expect(() => new TableSizer(fields + 1, layout)).toThrow(
-                    `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`
+                expect(() => new TableSizer(fields + 1, layout)).toThrow(error);
+                expect(() => new TableWriter(new Uint8Array(max), fields, layout)).not.toThrow();
+                expect(() => new TableWriter(new Uint8Array(max), fields + 1, layout)).toThrow(
+                    error
                 );
             }
+        }
+    );
+
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject bytes longer than %s offsets address before writing the header',
+        offsetType => {
+            const max = MAX_VALUES[offsetType];
+            const layout = TableLayout.create({ sized: true, offsetType });
+            const bytes = new Uint8Array(max + 1).fill(99);
+            const lengthSlot = bytes.subarray(0, OFFSET_SIZES[offsetType]);
+
+            expect(() => new TableWriter(new Uint8Array(max), 0, layout)).not.toThrow();
+            expect(() => new TableWriter(bytes, 0, layout)).toThrow(
+                new RangeError(`A table of ${max + 1} bytes is too long for ${offsetType} offsets`)
+            );
+            expect(lengthSlot).toStrictEqual(new Uint8Array(lengthSlot.length).fill(99));
         }
     );
 });
@@ -229,8 +249,11 @@ describe('versions', () => {
         ['a version too large for its slot', versioned, 256, RangeError],
         ['a version that is not an integer', versioned, 1.5, RangeError]
     ])('should reject %s, as TableBuilder does', (_, layout, version, error) => {
+        const bytes = new Uint8Array(1);
+
         expect(() => new TableBuilder(0, layout as never, version as never)).toThrow(error);
         expect(() => new TableSizer(0, layout as never, version as never)).toThrow(error);
+        expect(() => new TableWriter(bytes, 0, layout as never, version as never)).toThrow(error);
     });
 });
 
@@ -246,6 +269,7 @@ describe('counts and sizes', () => {
 
             expect(() => new TableBuilder(fields)).toThrow(error);
             expect(() => new TableSizer(fields)).toThrow(error);
+            expect(() => new TableWriter(new Uint8Array(0), fields)).toThrow(error);
         }
     );
 
