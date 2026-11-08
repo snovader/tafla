@@ -67,11 +67,8 @@ describe('DecodeError', () => {
     });
 });
 
-/**
- * A table with a field of each kind that has a getter, in a resizable buffer
- * with room around it, and the getters that read its fields
- */
-function resizableTable(): [ArrayBuffer, ByteBuffer, Record<string, () => unknown>] {
+/** A table with a field of each kind that has a getter */
+const TABLE = (() => {
     const builder = new TableBuilder(6);
     builder.setUint32(7);
     builder.setFloat64Array([1.5, 2.5]);
@@ -79,17 +76,18 @@ function resizableTable(): [ArrayBuffer, ByteBuffer, Record<string, () => unknow
     builder.setStruct(Uint8Array.of(1, 2, 3, 4));
     builder.setStructArray(Uint8Array.of(1, 2, 3, 4), 2, 2);
     builder.setVector([Uint8Array.of(5), Uint8Array.of(6, 7)]);
-    const table = builder.bytes();
 
-    const buffer = new ArrayBuffer(8 + table.length + 8, { maxByteLength: 1024 });
-    const bytes = new Uint8Array(buffer, 8, table.length);
-    bytes.set(table);
+    return builder.bytes();
+})();
 
-    const reader = new ByteBuffer(bytes);
+/** The getters that read each field of {@link TABLE} through `reader` */
+function gettersOf(reader: ByteBuffer): Record<string, () => unknown> {
+    const table = new ByteBuffer(TABLE);
     const [scalar, array, string, struct, structArray, vector] = [0, 1, 2, 3, 4, 5].map(index =>
-        reader.rootOffset(index)
+        table.rootOffset(index)
     );
-    const getters: Record<string, () => unknown> = {
+
+    return {
         'rootOffset()': () => reader.rootOffset(0),
         'getUint32()': () => reader.getUint32(scalar),
         'getFloat64()': () => reader.getFloat64(array),
@@ -105,33 +103,117 @@ function resizableTable(): [ArrayBuffer, ByteBuffer, Record<string, () => unknow
         'getVectorOffsets()': () => reader.getVectorOffsets(vector),
         'getVector()': () => reader.getVector(vector)
     };
+}
 
-    return [buffer, reader, getters];
+const GETTERS = Object.keys(gettersOf(new ByteBuffer(TABLE)));
+const EXPECTED = gettersOf(new ByteBuffer(TABLE));
+
+/**
+ * Bytes of a resizable buffer: a slice of fixed length, or one made without
+ * a length, which tracks the buffer's
+ */
+type Slice = 'fixed-length' | 'length-tracking';
+
+/**
+ * The getters of {@link TABLE} in a resizable buffer with room around it,
+ * read through a slice of that kind, which starts 8 bytes in
+ */
+function resizableTable(slice: Slice): [ArrayBuffer, Record<string, () => unknown>] {
+    const buffer = new ArrayBuffer(8 + TABLE.length + 8, { maxByteLength: 1024 });
+    new Uint8Array(buffer, 8, TABLE.length).set(TABLE);
+    const bytes =
+        slice === 'fixed-length'
+            ? new Uint8Array(buffer, 8, TABLE.length)
+            : new Uint8Array(buffer, 8);
+
+    return [buffer, gettersOf(new ByteBuffer(bytes))];
+}
+
+/**
+ * Expects each getter to return what it reads from the whole table, or to
+ * throw DecodeError, through a slice that held `held` bytes of it
+ */
+function expectReadsOrDecodeErrors(getters: Record<string, () => unknown>, held: number): void {
+    for (const getter of GETTERS) {
+        const message = `${getter} with ${held} bytes`;
+        let value: unknown;
+        try {
+            value = getters[getter]();
+        } catch (error) {
+            expect(error, message).toBeInstanceOf(DecodeError);
+            continue;
+        }
+
+        expect(value, message).toStrictEqual(EXPECTED[getter]());
+    }
 }
 
 describe('bytes lost after the reader was made', () => {
-    const GETTERS = Object.keys(resizableTable()[2]);
+    const CASES = (['fixed-length', 'length-tracking'] as const).flatMap(slice =>
+        GETTERS.map(getter => [getter, slice] as const)
+    );
 
-    it.each(GETTERS)('should read the table with %s before its buffer changes', getter => {
-        const [, , getters] = resizableTable();
+    it.each(CASES)(
+        'should read the table with %s through a %s slice before its buffer changes',
+        (getter, slice) => {
+            const [, getters] = resizableTable(slice);
 
-        expect(getters[getter]).not.toThrow();
-    });
+            expect(getters[getter]()).toStrictEqual(EXPECTED[getter]());
+        }
+    );
 
-    it.each(GETTERS)(
-        'should throw DecodeError from %s once the buffer has shrunk below the table',
-        getter => {
-            const [buffer, , getters] = resizableTable();
+    it.each(CASES)(
+        'should read the table with %s through a %s slice once its buffer grows',
+        (getter, slice) => {
+            const [buffer, getters] = resizableTable(slice);
+            buffer.resize(buffer.byteLength + 64);
+
+            expect(getters[getter]()).toStrictEqual(EXPECTED[getter]());
+        }
+    );
+
+    it.each(CASES)(
+        'should throw DecodeError from %s through a %s slice once the buffer has shrunk below the table',
+        (getter, slice) => {
+            const [buffer, getters] = resizableTable(slice);
             buffer.resize(12);
 
             expect(getters[getter]).toThrow(DecodeError);
         }
     );
 
-    it.each(GETTERS)('should throw DecodeError from %s once the buffer is detached', getter => {
-        const [buffer, , getters] = resizableTable();
-        buffer.transfer();
+    it.each(CASES)(
+        'should throw DecodeError from %s through a %s slice once the buffer is detached',
+        (getter, slice) => {
+            const [buffer, getters] = resizableTable(slice);
+            buffer.transfer();
 
-        expect(getters[getter]).toThrow(DecodeError);
+            expect(getters[getter]).toThrow(DecodeError);
+        }
+    );
+
+    // A length-tracking slice follows its buffer, so these hold for every
+    // length that the slice had when the reader was made, or has now
+    it('should read what a length-tracking slice holds, or throw DecodeError, once it grows to hold the table', () => {
+        for (let held = 0; held < TABLE.length; held++) {
+            const buffer = new ArrayBuffer(8 + held, { maxByteLength: 1024 });
+            const bytes = new Uint8Array(buffer, 8);
+            bytes.set(TABLE.subarray(0, held));
+            const getters = gettersOf(new ByteBuffer(bytes));
+
+            buffer.resize(8 + TABLE.length);
+            bytes.set(TABLE);
+
+            expectReadsOrDecodeErrors(getters, held);
+        }
+    });
+
+    it('should read what a length-tracking slice holds, or throw DecodeError, once it shrinks within the table', () => {
+        for (let held = 0; held < TABLE.length; held++) {
+            const [buffer, getters] = resizableTable('length-tracking');
+            buffer.resize(8 + held);
+
+            expectReadsOrDecodeErrors(getters, held);
+        }
     });
 });

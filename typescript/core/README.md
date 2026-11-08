@@ -164,6 +164,11 @@ Validation is always on:
   if it would leave them. Strings must be valid UTF-8. A truncated or
   corrupted buffer therefore throws rather than returning values from outside
   it.
+- Once the bytes' `ArrayBuffer` is detached, or a resizable one has shrunk
+  below bytes of fixed length, every read throws a `DecodeError`. Bytes made
+  over a resizable buffer without a length track its length instead, so once
+  the buffer is resized, a read returns what they then hold or throws a
+  `DecodeError`.
 - `DecodeError` extends `RangeError`. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
   `TypeError` from decoding as its `cause`.

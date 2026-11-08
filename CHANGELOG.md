@@ -60,6 +60,10 @@ repository's first commits, for code built from its source before the release.
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every
   schema it can't read or write rather than stopping at the first.
+- TypeScript's `ByteBuffer` checks each read against its bytes' length at
+  the time of the read, so bytes made over a resizable buffer without a
+  length follow the buffer as it's resized. A read past them still throws a
+  `DecodeError`.
 
 ### Removed
 
