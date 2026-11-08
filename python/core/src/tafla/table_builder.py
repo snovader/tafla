@@ -1,5 +1,5 @@
 from collections.abc import Buffer, Callable, Iterable, Sequence
-from typing import Any, Literal, cast, overload
+from typing import Any, Literal, overload
 
 from .byte_buffer import ByteBuffer, byte_view
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
@@ -15,6 +15,11 @@ type _Write = Callable[..., object]
 _SET_STRUCT_ARRAY = TableWriter.set_struct_array
 _SET_TABLE = TableWriter.set_table
 _SET_VECTOR = TableWriter.set_vector
+
+# The writer's constructor for arguments that the builder's own constructor
+# checked, bound once: called through this name, it took 244 ns, and through
+# the class 265 ns
+_checked_writer = TableWriter._checked
 
 
 class TableBuilder:
@@ -423,15 +428,7 @@ class TableBuilder:
         """
         self.__assert_complete()
 
-        # The constructor's overload for the layout, whose version the
-        # builder's own constructor checked against it
-        fields, layout, version = self.__fields, self.__layout, self.__version
-        if version is None:
-            writer = TableWriter(fields, cast("TableLayout[Literal[False]]", layout))
-        else:
-            writer = TableWriter(
-                fields, cast("TableLayout[Literal[True]]", layout), version
-            )
+        writer = _checked_writer(self.__fields, self.__layout, self.__version)
         self.__write_fields(writer)
         data = writer.bytes()
 
