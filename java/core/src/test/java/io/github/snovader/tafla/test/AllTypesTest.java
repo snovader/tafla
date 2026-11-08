@@ -213,6 +213,23 @@ public class AllTypesTest {
     }
 
     @Property
+    void arrays_read_back_every_element_through_their_views(@ForAll("arrays") Arrays.Fields fields) {
+        var bytes = Arrays.serialize(fields);
+
+        assertEquals(describeArrays(fields), describeArrays(readArraysViews(new Arrays(bytes))));
+    }
+
+    @Property
+    void corrupted_arrays_read_through_their_views_as_values_or_throw_DecodeException(
+        @ForAll("arrays") Arrays.Fields fields,
+        @ForAll("corruptions") Corruption corruption
+    ) {
+        var bytes = corruption.applyTo(Arrays.serialize(fields));
+
+        assertValuesOrDecodeException(() -> readArraysViews(new Arrays(bytes)));
+    }
+
+    @Property
     void a_corrupted_nested_message_reads_through_its_views_as_values_or_throws_DecodeException(
         @ForAll("nesteds") Nested.Fields fields,
         @ForAll("corruptions") Corruption corruption,
@@ -241,6 +258,7 @@ public class AllTypesTest {
     ) {
         assertValuesOrDecodeException(() -> readNestedViews(new Nested(bytes), order));
         assertValuesOrDecodeException(() -> readStructsViews(new Structs(bytes), order));
+        assertValuesOrDecodeException(() -> readArraysViews(new Arrays(bytes)));
     }
 
     @Property

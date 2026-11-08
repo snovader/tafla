@@ -22,8 +22,9 @@ import java.util.Arrays;
  * <p>The generated code writes from records of each table's fields and of the structs, which
  * {@code serialize()} creates from the workloads' inputs in each call, as the protobuf codec
  * creates its messages. Reading creates the workloads' records from the generated readers' values,
- * after the generated readers create the structs' own. Its getters of arrays return copies, so
- * summing a column copies it first.</p>
+ * after the generated readers create the structs' own. Its getters of arrays return copies, so it
+ * sums a column through the column's view, {@code aView()}, which reads the elements in place, as
+ * the other languages' generated getters return them.</p>
  */
 public final class TaflaGenCodec {
     private TaflaGenCodec() {}
@@ -72,11 +73,11 @@ public final class TaflaGenCodec {
 
         @Override
         public double sumA(byte[] bytes) {
-            var a = new Document(bytes).columns().a();
+            var a = new Document(bytes).columns().aView();
 
             double sum = 0;
-            for (var value : a) {
-                sum += value;
+            for (int i = 0, length = a.remaining(); i < length; i++) {
+                sum += a.get(i);
             }
 
             return sum;

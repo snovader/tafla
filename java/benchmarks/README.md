@@ -91,8 +91,10 @@ comparison uses its counterpart:
   `io.github.snovader.tafla.benchmarks.generated.tafla`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then
   writes every field, nested tables included, into an array of that length
-  with a `TableWriter`. Its readers read each field with a getter, and its
-  getters of arrays return copies, so summing a column copies it first. It
+  with a `TableWriter`. Its readers read each field with a getter. Its
+  getters of arrays return copies, so it sums a column through the column's
+  view, `aView()`, which reads the elements in place, as the other
+  languages' generated getters return them. It
   takes the workloads' records, as the other codecs do, so it creates the
   generated `Fields` records, and the `Triple` and `Sample` records, from them
   in each call, as the protobuf codec builds its messages, and creates the

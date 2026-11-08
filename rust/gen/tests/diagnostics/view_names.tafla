@@ -1,12 +1,13 @@
 /// Fields named after the views of vectors and arrays of structs, which the
-/// generated code reads them lazily with
+/// generated code reads them lazily with, and of arrays of scalars, which
+/// Java reads them in place with
 message Views {
     items: [Item];
     items_view: uint8;
     // `a1View` in camelCase, as `a_1_view` is
     a_1: [Point];
     a1_view: uint8;
-    // An array of scalars has no view
+    // Java views an array of scalars in place
     values: [float32];
     values_view: uint8;
 }

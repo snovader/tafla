@@ -110,7 +110,7 @@ final class AllTypesTables {
         return new Path.Fields(path.start(), path.points());
     }
 
-    // Reading the vectors and arrays of structs through their views instead
+    // Reading the vectors, arrays of structs and arrays of scalars through their views instead
 
     /** Ways to read a view's items: by index from the last, and in order through its iterator */
     enum ViewOrder {
@@ -162,6 +162,74 @@ final class AllTypesTables {
             order.read(structs.segmentsView()).toArray(Segment[]::new),
             new Path.Fields(path.start(), order.read(path.pointsView()).toArray(Point[]::new))
         );
+    }
+
+    /**
+     * Reads every array through its view, element by element, with unsigned elements widened from
+     * their bits as the getters widen them
+     */
+    static Arrays.Fields readArraysViews(Arrays arrays) {
+        var int8 = arrays.int8View();
+        var int8s = new byte[int8.remaining()];
+        for (int i = 0; i < int8s.length; i++) {
+            int8s[i] = int8.get(i);
+        }
+
+        var uint8 = arrays.uint8View();
+        var uint8s = new short[uint8.remaining()];
+        for (int i = 0; i < uint8s.length; i++) {
+            uint8s[i] = (short) Byte.toUnsignedInt(uint8.get(i));
+        }
+
+        var int16 = arrays.int16View();
+        var int16s = new short[int16.remaining()];
+        for (int i = 0; i < int16s.length; i++) {
+            int16s[i] = int16.get(i);
+        }
+
+        var uint16 = arrays.uint16View();
+        var uint16s = new int[uint16.remaining()];
+        for (int i = 0; i < uint16s.length; i++) {
+            uint16s[i] = Short.toUnsignedInt(uint16.get(i));
+        }
+
+        var int32 = arrays.int32View();
+        var int32s = new int[int32.remaining()];
+        for (int i = 0; i < int32s.length; i++) {
+            int32s[i] = int32.get(i);
+        }
+
+        var uint32 = arrays.uint32View();
+        var uint32s = new long[uint32.remaining()];
+        for (int i = 0; i < uint32s.length; i++) {
+            uint32s[i] = Integer.toUnsignedLong(uint32.get(i));
+        }
+
+        var int64 = arrays.int64View();
+        var int64s = new long[int64.remaining()];
+        for (int i = 0; i < int64s.length; i++) {
+            int64s[i] = int64.get(i);
+        }
+
+        var uint64 = arrays.uint64View();
+        var uint64s = new long[uint64.remaining()];
+        for (int i = 0; i < uint64s.length; i++) {
+            uint64s[i] = uint64.get(i);
+        }
+
+        var float32 = arrays.float32View();
+        var float32s = new float[float32.remaining()];
+        for (int i = 0; i < float32s.length; i++) {
+            float32s[i] = float32.get(i);
+        }
+
+        var float64 = arrays.float64View();
+        var float64s = new double[float64.remaining()];
+        for (int i = 0; i < float64s.length; i++) {
+            float64s[i] = float64.get(i);
+        }
+
+        return new Arrays.Fields(int8s, uint8s, int16s, uint16s, int32s, uint32s, int64s, uint64s, float32s, float64s);
     }
 
     private static Keywords.Fields readKeywords(Keywords keywords) {

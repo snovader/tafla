@@ -10,7 +10,7 @@ use super::java_package::KEYWORDS;
 use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
-use crate::model::{Definition, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
@@ -885,33 +885,87 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         writer.close("}");
 
         if let Some(view) = view_type(field.field_type, schema) {
-            let mut docs = schema_docs(&field.docs);
-            if !docs.is_empty() {
-                docs.push(String::new());
-            }
-            docs.push(format!(
-                "Views the items of `{}()`, reading each one when it's asked for",
-                identifier(&field.name)
-            ));
-
-            writer.blank();
-            writer.lines(&javadoc(&docs));
-            writer.open(format!(
-                "public {view} {}View() {{",
-                camel_case(&field.name)
-            ));
-            writer.line(format!("return new {view}(buffer, {offset});"));
-            writer.close("}");
+            view_getter(writer, field, &view, &offset);
         }
     }
 }
 
-/// The view of a vector or an array of structs, which their view getters
-/// return
+/// Writes the getter of a field's view, `<field>View()`, beside its getter
+fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: &str) {
+    let getter = identifier(&field.name);
+    let (description, value) = match field.field_type {
+        FieldType::Array(scalar) => {
+            let elements =
+                format!("Views the elements of `{getter}()` in place, read-only, without");
+            let description = match signed_type(scalar) {
+                Some(signed) => vec![
+                    elements,
+                    format!("copying them, as `{signed}`s with the same bits"),
+                ],
+                None => vec![format!("{elements} copying them")],
+            };
+            let value = format!("buffer.get{}ArrayView({offset})", method_name(scalar));
+            (description, value)
+        }
+        _ => (
+            vec![format!(
+                "Views the items of `{getter}()`, reading each one when it's asked for"
+            )],
+            format!("new {view}(buffer, {offset})"),
+        ),
+    };
+
+    let mut docs = schema_docs(&field.docs);
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.extend(description);
+
+    writer.blank();
+    writer.lines(&javadoc(&docs));
+    writer.open(format!(
+        "public {view} {}View() {{",
+        camel_case(&field.name)
+    ));
+    writer.line(format!("return {value};"));
+    writer.close("}");
+}
+
+/// The view that a field's view getter returns: a vector's or an array of
+/// structs', which reads each item when it's asked for, or the runtime's
+/// read-only view of an array of scalars, which the getter copies
 fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
     match field_type {
         FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
         FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
+        // Qualified, so that a schema can declare its own `FloatBuffer`, and
+        // since `ByteBuffer` is tafla's
+        FieldType::Array(scalar) => Some(format!("java.nio.{}", nio_buffer(scalar))),
+        _ => None,
+    }
+}
+
+/// The JDK's buffer that views an array of scalars, of the signed type of
+/// their size
+const fn nio_buffer(scalar: Scalar) -> &'static str {
+    match scalar {
+        Scalar::Bool | Scalar::Int8 | Scalar::Uint8 => "ByteBuffer",
+        Scalar::Int16 | Scalar::Uint16 => "ShortBuffer",
+        Scalar::Int32 | Scalar::Uint32 => "IntBuffer",
+        Scalar::Int64 | Scalar::Uint64 => "LongBuffer",
+        Scalar::Float32 => "FloatBuffer",
+        Scalar::Float64 => "DoubleBuffer",
+    }
+}
+
+/// The signed type of an unsigned scalar's size, which a view holds its
+/// elements in, with the same bits, as the runtime's view getters do
+const fn signed_type(scalar: Scalar) -> Option<&'static str> {
+    match scalar {
+        Scalar::Uint8 => Some("byte"),
+        Scalar::Uint16 => Some("short"),
+        Scalar::Uint32 => Some("int"),
+        Scalar::Uint64 => Some("long"),
         _ => None,
     }
 }

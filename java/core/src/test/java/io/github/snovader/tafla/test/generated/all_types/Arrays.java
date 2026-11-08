@@ -48,40 +48,102 @@ public final class Arrays {
         return buffer.getInt8Array(buffer.rootOffset(0));
     }
 
+    /** Views the elements of {@code int8()} in place, read-only, without copying them */
+    public java.nio.ByteBuffer int8View() {
+        return buffer.getInt8ArrayView(buffer.rootOffset(0));
+    }
+
     public short[] uint8() {
         return buffer.getUint8Array(buffer.rootOffset(1));
+    }
+
+    /**
+     * Views the elements of {@code uint8()} in place, read-only, without
+     * copying them, as {@code byte}s with the same bits
+     */
+    public java.nio.ByteBuffer uint8View() {
+        return buffer.getUint8ArrayView(buffer.rootOffset(1));
     }
 
     public short[] int16() {
         return buffer.getInt16Array(buffer.rootOffset(2));
     }
 
+    /** Views the elements of {@code int16()} in place, read-only, without copying them */
+    public java.nio.ShortBuffer int16View() {
+        return buffer.getInt16ArrayView(buffer.rootOffset(2));
+    }
+
     public int[] uint16() {
         return buffer.getUint16Array(buffer.rootOffset(3));
+    }
+
+    /**
+     * Views the elements of {@code uint16()} in place, read-only, without
+     * copying them, as {@code short}s with the same bits
+     */
+    public java.nio.ShortBuffer uint16View() {
+        return buffer.getUint16ArrayView(buffer.rootOffset(3));
     }
 
     public int[] int32() {
         return buffer.getInt32Array(buffer.rootOffset(4));
     }
 
+    /** Views the elements of {@code int32()} in place, read-only, without copying them */
+    public java.nio.IntBuffer int32View() {
+        return buffer.getInt32ArrayView(buffer.rootOffset(4));
+    }
+
     public long[] uint32() {
         return buffer.getUint32Array(buffer.rootOffset(5));
+    }
+
+    /**
+     * Views the elements of {@code uint32()} in place, read-only, without
+     * copying them, as {@code int}s with the same bits
+     */
+    public java.nio.IntBuffer uint32View() {
+        return buffer.getUint32ArrayView(buffer.rootOffset(5));
     }
 
     public long[] int64() {
         return buffer.getInt64Array(buffer.rootOffset(6));
     }
 
+    /** Views the elements of {@code int64()} in place, read-only, without copying them */
+    public java.nio.LongBuffer int64View() {
+        return buffer.getInt64ArrayView(buffer.rootOffset(6));
+    }
+
     public long[] uint64() {
         return buffer.getUint64Array(buffer.rootOffset(7));
+    }
+
+    /**
+     * Views the elements of {@code uint64()} in place, read-only, without
+     * copying them, as {@code long}s with the same bits
+     */
+    public java.nio.LongBuffer uint64View() {
+        return buffer.getUint64ArrayView(buffer.rootOffset(7));
     }
 
     public float[] float32() {
         return buffer.getFloat32Array(buffer.rootOffset(8));
     }
 
+    /** Views the elements of {@code float32()} in place, read-only, without copying them */
+    public java.nio.FloatBuffer float32View() {
+        return buffer.getFloat32ArrayView(buffer.rootOffset(8));
+    }
+
     public double[] float64() {
         return buffer.getFloat64Array(buffer.rootOffset(9));
+    }
+
+    /** Views the elements of {@code float64()} in place, read-only, without copying them */
+    public java.nio.DoubleBuffer float64View() {
+        return buffer.getFloat64ArrayView(buffer.rootOffset(9));
     }
 
     /** The fields of an {@code Arrays}, to write */
