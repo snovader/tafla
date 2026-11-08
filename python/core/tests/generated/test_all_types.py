@@ -4,6 +4,7 @@ writes and reads tables with tafla."""
 import unittest
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError, fields, replace
+from typing import NamedTuple
 
 from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists, one_of
@@ -23,6 +24,7 @@ from tests.generated.all_types.all_types import (
     Scalars,
     ScalarsFields,
     Segment,
+    SegmentFields,
     Structs,
     StructsFields,
 )
@@ -539,6 +541,37 @@ class TestStructs(unittest.TestCase):
     # and read_array() reads them back, but not a part of one more
 
     @SETTINGS
+    @given(structs_fields)
+    def test_writes_arrays_of_structs_from_any_objects_of_their_fields(
+        self, fields: StructsFields
+    ) -> None:
+        """An array of structs reads its items' attributes, which the struct's
+        protocol of fields types, so objects of the caller's own write the
+        bytes that the structs write"""
+        documented = [
+            _DocumentedTuple(item.one, item.two, item.undocumented)
+            for item in fields["documented"]
+        ]
+        segments = [_segment_tuple(item) for item in fields["segments"]]
+
+        self.assertEqual(
+            bytes(
+                Structs.serialize(
+                    packed=fields["packed"],
+                    documented=documented,
+                    segment=fields["segment"],
+                    segments=segments,
+                    path=fields["path"],
+                )
+            ),
+            bytes(Structs.serialize(**fields)),
+        )
+        self.assertEqual(
+            Segment.serialize_array(segments),
+            Segment.serialize_array(fields["segments"]),
+        )
+
+    @SETTINGS
     @given(
         lists(packed_structs, max_size=8), binary(min_size=1, max_size=Packed.SIZE - 1)
     )
@@ -597,6 +630,29 @@ class TestStructs(unittest.TestCase):
         assert_same_structs(self, Point.read_array(data), items, describe_point)
         with self.assertRaises(DecodeError):
             Point.read_array(data + partial)
+
+
+class _PointTuple(NamedTuple):
+    x: float
+    y: float
+
+
+class _SegmentTuple(NamedTuple):
+    start: _PointTuple
+    end: _PointTuple
+
+
+class _DocumentedTuple(NamedTuple):
+    one: int
+    two: int
+    undocumented: int
+
+
+def _segment_tuple(segment: SegmentFields) -> _SegmentTuple:
+    return _SegmentTuple(
+        _PointTuple(segment.start.x, segment.start.y),
+        _PointTuple(segment.end.x, segment.end.y),
+    )
 
 
 if __name__ == "__main__":

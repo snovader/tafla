@@ -7,7 +7,6 @@ from tafla_benchmarks.generated.tafla.workloads import (
     ItemList,
     Record,
     Sample,
-    Triple,
     Triples,
 )
 from tafla_benchmarks.workloads import (
@@ -83,9 +82,9 @@ def deserialize_list(data: Buffer) -> ListInput:
 
 
 def serialize_structs(input: ListInput) -> memoryview:
-    triples = [Triple(item.value, item.first, item.second) for item in input.items]
-
-    return Triples.serialize(items=triples)
+    """Writes the items themselves, whose attributes are a ``Triple``'s
+    fields, as ``TripleFields`` types them"""
+    return Triples.serialize(items=input.items)
 
 
 def deserialize_structs(data: Buffer) -> ListInput:
@@ -116,8 +115,10 @@ TAFLA_GEN = Codec(
 appends each message's fields to a ``TableWriter`` in one call, rather than
 nesting ``TableBuilder`` instances, and reads them with the generated getters.
 
-The generated code writes from a ``TypedDict`` of each table's fields and frozen
-dataclasses of the structs, which ``serialize()`` creates from the workloads'
-inputs in each call, as the protobuf codec creates its messages. Reading
-creates the workloads' dataclasses from the generated readers' values, after
-the generated readers create the structs' own."""
+The generated code writes from a ``TypedDict`` of each table's fields, and a
+frozen dataclass of the fixed-size record, which ``serialize()`` creates from
+the workloads' inputs in each call, as the protobuf codec creates its
+messages. The array of structs is written from the workload's own items, which
+the struct's protocol of fields types. Reading creates the workloads'
+dataclasses from the generated readers' values, after the generated readers
+create the structs' own."""

@@ -45,6 +45,10 @@ repository's first commits, for code built from its source before the release.
   `getVectorLength()` (`get_vector_length()` in Python) read, so that a
   reader of several items reads and checks the count once. Generated views
   of vectors in Java, TypeScript, JavaScript and Python call it.
+- Generated Python declares `<Struct>Fields` beside each struct, a protocol
+  of its fields, which an array of the struct is written from, so that any
+  objects with those attributes write it, rather than only the struct's
+  dataclass.
 
 ### Changed
 
