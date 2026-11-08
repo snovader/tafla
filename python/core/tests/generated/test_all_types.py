@@ -2,6 +2,8 @@
 writes and reads tables with tafla."""
 
 import unittest
+from collections.abc import Callable
+from dataclasses import FrozenInstanceError, fields, replace
 
 from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists, one_of
@@ -70,7 +72,7 @@ from tests.generated.expectations import (
     assert_same_table,
     assert_values_or_decode_error,
 )
-from tests.tables import build_table
+from tests.tables import Description, build_table
 
 
 class TestRoundTrip(unittest.TestCase):
@@ -422,6 +424,35 @@ class TestStructs(unittest.TestCase):
         for name, size, alignment, expected_size, expected_alignment in cases:
             with self.subTest(name):
                 self.assertEqual((size, alignment), (expected_size, expected_alignment))
+
+    @SETTINGS
+    @given(packed_structs, segment_structs)
+    def test_constructs_structs_by_keyword_as_frozen_dataclasses_of_their_fields(
+        self, packed: Packed, segment: Segment
+    ) -> None:
+        """A struct takes its fields by keyword as by position, hashes and
+        matches by them, copies with ``replace()``, and is frozen"""
+        with self.subTest("Packed"):
+            self.assert_frozen_dataclass_of_its_fields(packed, describe_packed)
+        with self.subTest("Segment"):
+            self.assert_frozen_dataclass_of_its_fields(segment, describe_segment)
+
+    def assert_frozen_dataclass_of_its_fields[Struct: (Packed, Segment)](
+        self, struct: Struct, describe: Callable[[Struct], list[Description]]
+    ) -> None:
+        """Compares the structs by their fields' bits rather than with ``==``,
+        which a dataclass applies to each field, so that NaN differs from
+        itself"""
+        values = {field.name: getattr(struct, field.name) for field in fields(struct)}
+        rebuilt = type(struct)(**values)
+
+        assert_same_structs(
+            self, [rebuilt, replace(struct)], [struct, struct], describe
+        )
+        self.assertEqual(hash(rebuilt), hash(struct))
+        self.assertEqual(type(struct).__match_args__, tuple(values))
+        with self.assertRaises(FrozenInstanceError):
+            setattr(struct, next(iter(values)), None)
 
     @SETTINGS
     @given(segment_structs)

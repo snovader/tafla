@@ -30,15 +30,19 @@ struct Frame {
 }
 ";
 
-fn generate(target: &str) -> String {
+fn generate(target: &str, schema: &str) -> String {
     let target = Target::from_name(target).unwrap();
-    let files = compile("members.tafla", SCHEMA, target, &Options::default()).unwrap();
+    let files = compile("members.tafla", schema, target, &Options::default()).unwrap();
 
     files.into_iter().map(|file| file.contents).collect()
 }
 
 fn assert_declares(target: &str, declarations: &[&str]) {
-    let code = generate(target);
+    assert_generates(target, SCHEMA, declarations);
+}
+
+fn assert_generates(target: &str, schema: &str, declarations: &[&str]) {
+    let code = generate(target, schema);
     for declaration in declarations {
         assert!(
             code.contains(declaration),
@@ -98,6 +102,40 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
             "    def then(self) -> int:",
             "    def version_of(cls, data: Buffer) -> int:",
             "    def version_of_(self) -> int:",
+        ],
+    );
+}
+
+/// Python's structs set their slots through setters at module level, whose
+/// names no field, declaration or other struct's setter takes, and their
+/// `__init__()` names the instance `_self` when a field takes `self`
+#[test]
+fn python_structs_set_their_slots_through_names_that_nothing_else_takes() {
+    let schema = "\
+struct Frame {
+    serialize: uint8;
+    frame_self: uint8;
+}
+
+struct FrameSelf {
+    self: uint8;
+    frame: Frame;
+}
+";
+    assert_generates(
+        "python",
+        schema,
+        &[
+            "    def __init__(self, serialize_: int, frame_self: int) -> None:",
+            "        _Frame_serialize_(self, serialize_)\n",
+            "        _Frame_frame_self(self, frame_self)\n",
+            "_Frame_serialize_ = Frame.__dict__[\"serialize_\"].__set__\n",
+            "_Frame_frame_self = Frame.__dict__[\"frame_self\"].__set__\n",
+            "    def __init__(_self, self: int, frame: Frame) -> None:",
+            "        _FrameSelf_self(_self, self)\n",
+            "        _FrameSelf_frame(_self, frame)\n",
+            "_FrameSelf_self = FrameSelf.__dict__[\"self\"].__set__\n",
+            "_FrameSelf_frame = FrameSelf.__dict__[\"frame\"].__set__\n",
         ],
     );
 }
