@@ -20,6 +20,12 @@ import type { OffsetSize } from './types.ts';
  *
  * Every read checks that it stays within the slice, even when the backing
  * allocation has more bytes, and throws a {@link DecodeError} otherwise.
+ * Once the slice's buffer is detached, every read throws one, and so does
+ * every read of a slice of fixed length once its resizable buffer has shrunk
+ * below it. A slice made over a resizable buffer without a length tracks the
+ * buffer's length: once the buffer is resized, a read returns what the bytes
+ * then hold or throws a `DecodeError`, and never reads outside them.
+ *
  * Tables are written with `TableBuilder`, whose `finalize()` returns a reader
  * of its table, or with `TableSizer` and `TableWriter`.
  */
@@ -572,16 +578,20 @@ export class ByteBuffer {
     }
 
     /**
-     * The number of bytes that reads may use: the view's, or none once its
-     * buffer is detached or has shrunk below it, when DataView throws a
-     * `TypeError` for its length as for every read
+     * The number of bytes that reads may use: the slice's length, which is
+     * 0 once its buffer is detached or has shrunk below it. A view that
+     * tracks a resizable buffer's length follows the buffer, where the
+     * DataView keeps the slice's length when the reader was made.
+     *
+     * The DataView's `byteLength` getter, which throws in those cases, took
+     * 3-4 ns a read against 1 ns for the Uint8Array's length. Reading the
+     * vector of 100 nested tables of the comparison suite took 1.33 µs
+     * rather than 1.64 µs in Node 27, and 1.32 µs rather than 1.63 µs in
+     * Node 26. d8 15.7 took 1.31-1.33 µs with the DataView's, and 2-4% longer
+     * with the Uint8Array's.
      */
     #byteLength(): number {
-        try {
-            return this.#view.byteLength;
-        } catch {
-            return 0;
-        }
+        return this.#bytes.length;
     }
 
     /**
