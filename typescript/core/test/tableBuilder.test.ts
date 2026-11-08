@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { TableBuilder, TableLayout } from 'tafla';
+import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
@@ -47,6 +47,48 @@ it('should write values as they are when finalizing', () => {
 
     const buffer = builder.finalize();
     expect(buffer.getFloat32Array(buffer.rootOffset(0))).toStrictEqual(new Float32Array([3, 2]));
+});
+
+describe('arrays whose length changes before finalizing', () => {
+    // A float64[] of 3 after the header at 8: its count at 8, 4 bytes of
+    // padding and its elements at 16, and then a uint8 at 40
+    function builderOf(values: ArrayLike<number>): TableBuilder {
+        const builder = new TableBuilder(2);
+        builder.setFloat64Array(values);
+        builder.setUint8(7);
+        return builder;
+    }
+
+    const EXPECTED = builderOf([1, 2, 3]).bytes();
+
+    it.each([
+        ['grew', [1, 2, 3, 4], "The fields need 48 bytes, more than the table's 41"],
+        ['shrank', [1, 2], "The fields wrote 33 of the table's 41 bytes"]
+    ])(
+        'should throw RangeError for an array that %s, and finalize once it is restored',
+        (_, changed, message) => {
+            const values = [1, 2, 3];
+            const builder = builderOf(values);
+
+            values.splice(0, values.length, ...changed);
+            expect(() => builder.bytes()).toThrow(new RangeError(message));
+            expect(() => builder.finalize()).toThrow(new RangeError(message));
+
+            values.splice(0, values.length, 1, 2, 3);
+            expect(builder.bytes()).toStrictEqual(EXPECTED);
+        }
+    );
+
+    it('should throw the TypeError of copying a typed array whose buffer was transferred', () => {
+        const values = new Float64Array([1, 2, 3]);
+        const builder = builderOf(values);
+
+        values.buffer.transfer();
+        expect(() => builder.finalize()).toThrow(TypeError);
+        // It's still unfinalized, so a field past its last is a RangeError
+        // rather than a finalized table's TypeError
+        expect(() => builder.setUint8(1)).toThrow(RangeError);
+    });
 });
 
 describe('arrays of structs', () => {
@@ -134,6 +176,24 @@ describe('tables nested from their builders', () => {
         }
     );
 
+    // A builder that was finalized, or whose layout has a header or another
+    // offset type than its parent's, is copied as a table nested as bytes is
+    it.prop([tables(), fc.nat({ max: 7 })])(
+        'should write a builder that was finalized, or of any layout, as the bytes that it writes',
+        (table, length) => {
+            const bytes = buildTable(table).bytes();
+            const finalized = buildTable(table);
+            finalized.finalize();
+
+            const expected = parentOf(() => bytes, length);
+            expect(parentOf(() => buildTable(table), length)).toStrictEqual(expected);
+            expect(parentOf(() => finalized, length)).toStrictEqual(expected);
+
+            const buffer = new ByteBuffer(expected);
+            expect(buffer.getVector(buffer.rootOffset(2))).toStrictEqual([bytes, bytes]);
+        }
+    );
+
     it('should reject a builder with fields left to set, and leave the table as it was', () => {
         const nested = new TableBuilder(2);
         nested.setUint8(1);
@@ -188,6 +248,20 @@ describe('tables nested from their builders', () => {
         expect(read).toStrictEqual(new Float32Array([3, 2]));
     });
 });
+
+/**
+ * A table of a uint8[] of `length` zeros, which starts the next field at any
+ * offset from an alignment of 8, and then the table that `nested` returns,
+ * nested with `setTable()` at an alignment of 8 and twice in a vector
+ */
+function parentOf(nested: () => TableBuilder | Uint8Array, length: number): Uint8Array {
+    const parent = new TableBuilder(3);
+    parent.setUint8Array(new Uint8Array(length));
+    parent.setTable(nested(), 8);
+    parent.setVector([nested(), nested()]);
+
+    return parent.bytes();
+}
 
 /**
  * Returns the table with every nested table passed the other way: a builder

@@ -42,9 +42,9 @@ a value that doesn't lie within it, without writing any of it.
 `TableSizer` and `TableWriter` write a table whose fields are known before
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
-same fields, in the same order, into bytes of that length, without recording
-them first as `TableBuilder` does. Both pad arrays and nested tables as
-`TableBuilder` does, so they write the same bytes.
+same fields, in the same order, into bytes of that length. `TableBuilder`
+records its fields and counts their length as they're set, and then writes
+them through a `TableWriter` too, so the two write the same bytes.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:
@@ -115,27 +115,30 @@ byte; its README describes them. This package writes them, and
 - **Nest builders rather than bytes.** `setTable()` and `setVector()` write
   a `TableBuilder` straight into its parent when the parent is finalized, so
   the outermost table allocates and writes all the bytes once. A table nested
-  as bytes was built into a buffer of its own and is copied. In Node, a
-  vector of 100 tables that each nest another took 12 µs to build from
-  builders and 49 µs from bytes, and a table nesting 100,000 rows of three
-  columns took 30 µs and 77 µs.
+  as bytes was built into a buffer of its own and is copied, as is a builder
+  that was finalized already or whose layout has a header or another offset
+  type. In Node, a vector of 100 tables that each nest another took 12 µs to
+  build from builders and 49 µs from bytes, and a table nesting 100,000 rows
+  of three columns took 30 µs and 77 µs.
 - **Write records of fixed size as arrays of structs.** An array of 100
   structs of three float32s took about 1 µs to write and 1,208 bytes, against
   13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of
   two of them, since it's one field of bytes rather than 200 builders.
 - **Generated code writes tables directly.** `TableSizer` and `TableWriter`
   write each field once, where `TableBuilder` records it and every nested
-  builder first. In Node 26, the generated code wrote a vector of 100 nested
-  tables of scalars in 4.1 µs rather than 13.8 µs, 100 tables of a string
-  and an array in 11 µs rather than 33 µs, and a table of two float64s, an
-  int64 and a string in 0.16 µs rather than 0.47 µs. `TableWriter` writes
-  scalars as bytes, since V8 keeps a `Uint8Array` of up to 64 bytes on its
-  heap until a `DataView` or `subarray()` asks for its `ArrayBuffer`, which
-  took 140 ns.
+  builder first, and then writes them through a `TableWriter`. In Node 27,
+  the generated code wrote a vector of 100 nested tables of scalars in
+  4–6 µs rather than 13 µs, since it creates no builders, and a table of two
+  float64s, an int64 and a string in 0.16 µs rather than 0.18 µs.
+  `TableWriter` writes scalars as bytes, since V8 keeps a `Uint8Array` of up
+  to 64 bytes on its heap until a `DataView` or `subarray()` asks for its
+  `ArrayBuffer`, which took 140 ns.
 - **Small tables cost about the allocation of their bytes.** A table of two
-  float64s, a string and an int64 took 0.33 µs in Node, of which about 0.2 µs
-  was allocating its bytes and their `DataView`. A nested builder allocates
-  neither, so the vector of 100 nested tables took 12 µs against 7–13 µs in
+  float64s, a string and an int64 took 0.18–0.20 µs from `bytes()` in
+  Node 27, and 0.34 µs from `finalize()`, whose `ByteBuffer` asks for the
+  bytes' `ArrayBuffer` for its `DataView`. Call `bytes()` for a table that you send
+  or store rather than read. A nested builder allocates neither, so the
+  vector of 100 nested tables took 12 µs against 7–13 µs in
   flatbuffers, protobufjs and msgpackr, and tafla read it 2–3 times as fast
   as they did.
 
@@ -179,7 +182,10 @@ Using the API wrongly throws other errors, whatever the bytes:
   created with, or a version that doesn't fit. A field that would make the
   table too long for its offset type throws a `RangeError` from its setter
   and isn't added. A version missing from or given for a layout, or a field
-  set after `finalize()`, throws a `TypeError`.
+  set after `finalize()`, throws a `TypeError`. `finalize()` and `bytes()`
+  throw a `RangeError`, and leave the builder unfinalized, when arrays have
+  changed length since they were set so that the fields no longer fit the
+  table or fill it.
 - `TableSizer` throws as `TableBuilder`'s constructor does for its header and
   version, and its `byteLength()` and `writer()` throw a `RangeError` for a
   table too long for its offset type. A `TableWriter` throws a `RangeError`

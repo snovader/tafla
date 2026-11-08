@@ -34,8 +34,9 @@ import type { OffsetSize, ElementSize } from './types.ts';
  * allocation has more bytes, and throws a {@link DecodeError} otherwise.
  * Writes past the slice throw a `RangeError` and write nothing. Lengths,
  * offsets and versions are written like DataView's setters, which wrap a value
- * too large for the layout's `offsetType`; `TableBuilder` rejects those before
- * it writes a table.
+ * too large for the layout's `offsetType`. Tables are written with
+ * `TableBuilder`, or `TableSizer` and `TableWriter`, which reject a table long
+ * enough to need one before writing it.
  */
 export class ByteBuffer {
     readonly #bytes: Uint8Array;

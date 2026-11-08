@@ -34,7 +34,7 @@ import type { OffsetSize, ElementSize } from './types.ts';
  * string itself. A nested table is added with `addTable()`, and a vector
  * with `addVector()`, and the fields of each such table then follow between
  * `startTable()` and `endTable()`. The sizer pads arrays and nested tables
- * as `TableBuilder` does, so a writer that takes the same fields in the same
+ * as the writer pads them, so a writer that takes the same fields in the same
  * order writes each where the sizer counted it.
  */
 export class TableSizer {
@@ -98,20 +98,12 @@ export class TableSizer {
      * @throws {RangeError} If the table is too long for its offset type.
      */
     writer(): TableWriter {
-        const bytes = new Uint8Array(this.byteLength());
-
-        return this.#version === undefined
-            ? new TableWriter(
-                  bytes,
-                  this.#fields,
-                  this.#layout as TableLayout<false>
-              )
-            : new TableWriter(
-                  bytes,
-                  this.#fields,
-                  this.#layout as TableLayout<true>,
-                  this.#version
-              );
+        return newTableWriter(
+            new Uint8Array(this.byteLength()),
+            this.#fields,
+            this.#layout,
+            this.#version
+        );
     }
 
     /**
@@ -288,18 +280,32 @@ export class TableSizer {
 }
 
 /**
+ * Writes a table that was written already, from its bytes as they are, in
+ * place of the fields that `startTable()` and `endTable()` would enclose:
+ * after its parent's `setTable()`, or as a vector item before its
+ * `setItemEnd()`. `TableBuilder` copies the tables that it can't write in
+ * place with it: tables nested as bytes, builders that were written already,
+ * and builders whose layout has a header or another offset type. Generated
+ * code writes every nested table in place, so it's internal to the package,
+ * and `TableWriter` assigns it in its static block, which can reach its
+ * private fields.
+ *
+ * @throws {RangeError} If the bytes don't fit, without writing any of them.
+ */
+export let copyTable: (writer: TableWriter, table: Uint8Array) => void;
+
+/**
  * Writes a table forward into bytes of exactly its length, which a
- * {@link TableSizer} counted, without recording its fields first as
- * `TableBuilder` does. Its writer comes from `TableSizer.writer()`, and takes
- * the fields that the sizer added, in the same order, each with its index in
- * its table.
+ * {@link TableSizer} counted. Its writer comes from `TableSizer.writer()`, and
+ * takes the fields that the sizer added, in the same order, each with its
+ * index in its table.
  *
  * Each field's offset is written as the writer reaches the field. A nested
  * table follows its parent's `setTable()`, between `startTable()` and
  * `endTable()`; the items of a vector follow its `setVector()` the same way,
- * each followed by `setItemEnd()`, which writes where it ends. Arrays and
- * nested tables are padded as `TableBuilder` pads them, so the two write the
- * same bytes for the same fields.
+ * each followed by `setItemEnd()`, which writes where it ends. `TableBuilder`
+ * writes through a writer too, once it has recorded its fields and counted
+ * their length, so the two write the same bytes for the same fields.
  *
  * It's the target of the code that tafla-gen generates, whose calls follow
  * from the schema, so it doesn't check them again: fields are set in index
@@ -343,6 +349,10 @@ export class TableWriter {
     #table = 0;
     /** The position of that table's first offset, after the root's header */
     #slots: number;
+
+    static {
+        copyTable = (writer, table) => writer.#copyTable(table);
+    }
 
     /**
      * Writes the header of a table of `fields` fields into `bytes`, which
@@ -694,6 +704,14 @@ export class TableWriter {
         );
     }
 
+    /** {@link copyTable}'s write, which only this class's fields can reach */
+    #copyTable(table: Uint8Array): void {
+        assertFits(this.#bytes, this.#position + table.length);
+
+        this.#bytes.set(table, this.#position);
+        this.#position += table.length;
+    }
+
     /**
      * Where an array's elements go, after the padding that aligns them and
      * its count, once its count and its elements fit. It writes nothing, so
@@ -772,6 +790,23 @@ export class TableWriter {
             }
         }
     }
+}
+
+/**
+ * A writer of a table of `fields` fields into `bytes`, through the
+ * constructor's overload for the layout: with `version` when it's versioned.
+ * `TableSizer` and `TableBuilder` hold a layout of either kind, and the
+ * version that their own constructors checked against it.
+ */
+export function newTableWriter(
+    bytes: Uint8Array,
+    fields: number,
+    layout: TableLayout,
+    version: number | undefined
+): TableWriter {
+    return version === undefined
+        ? new TableWriter(bytes, fields, layout as TableLayout<false>)
+        : new TableWriter(bytes, fields, layout as TableLayout<true>, version);
 }
 
 // A scalar is set little-endian in the scratch, whatever the host's byte

@@ -1,6 +1,6 @@
 import { describe, expect, inject, test } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
+import { ByteBuffer, DecodeError, type OffsetSize, TableBuilder, TableLayout } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { LAYOUTS, MAX_VALUES, SLICES, sliceOf } from './conformance/arbitraries.ts';
 import type { LayoutDescription } from './conformance/description.ts';
@@ -282,6 +282,39 @@ describe('arrays that grow after they are counted', () => {
     );
 });
 
+// TableBuilder writes through a TableWriter, so the conformance suite no
+// longer checks the values that these setters write
+describe('values that the setters write', () => {
+    it.prop([LAYOUTS, fc.array(fc.oneof(WRITES, LENGTH_PREFIXED_WRITES), { maxLength: 8 })])(
+        'should write each value after the previous one, little-endian, as DataView writes it',
+        (layout, writes) => {
+            const offsetSize = OFFSET_SIZES[layout.offsetType];
+            const expected = writes.flatMap(write => Array.from(bytesWritten(write, offsetSize)));
+            // Bytes that aren't zero, so that padding shows
+            const buffer = new ByteBuffer(
+                new Uint8Array(expected.length).fill(0xa5),
+                layoutOf(layout)
+            );
+
+            for (const { setter, value } of writes) {
+                (buffer[setter] as (value: unknown) => void).call(buffer, value);
+            }
+
+            expect(buffer.bytes()).toStrictEqual(Uint8Array.from(expected));
+        }
+    );
+
+    it('should write the count of an array of structs, and then their bytes', () => {
+        const buffer = new ByteBuffer(
+            new Uint8Array(6),
+            TableLayout.create({ offsetType: 'uint16' })
+        );
+        buffer.setStructArray(Uint8Array.of(1, 2, 3, 4), 2);
+
+        expect(buffer.bytes()).toStrictEqual(Uint8Array.of(2, 0, 1, 2, 3, 4));
+    });
+});
+
 function setArray(buffer: ByteBuffer, setter: Write['setter'], values: ArrayLike<unknown>): void {
     (buffer[setter] as (values: ArrayLike<unknown>) => void).call(buffer, values);
 }
@@ -357,4 +390,80 @@ function byteLengthOf({ setter, value }: Write, offsetSize: number): number {
         default:
             throw new Error(`No byte length for ${setter}()`);
     }
+}
+
+/** The DataView setter that writes each scalar setter's and array setter's elements */
+const DATA_VIEW_SETTERS: Readonly<Record<string, (view: DataView, value: never) => void>> = {
+    setInt8: (view, value: number) => view.setInt8(0, value),
+    setUint8: (view, value: number) => view.setUint8(0, value),
+    setInt16: (view, value: number) => view.setInt16(0, value, true),
+    setUint16: (view, value: number) => view.setUint16(0, value, true),
+    setInt32: (view, value: number) => view.setInt32(0, value, true),
+    setUint32: (view, value: number) => view.setUint32(0, value, true),
+    setInt64: (view, value: bigint) => view.setBigInt64(0, value, true),
+    setUint64: (view, value: bigint) => view.setBigUint64(0, value, true),
+    setFloat32: (view, value: number) => view.setFloat32(0, value, true),
+    setFloat64: (view, value: number) => view.setFloat64(0, value, true)
+};
+
+/** The scalar setter of each array setter's elements */
+const ELEMENT_SETTERS: Readonly<Record<string, string>> = {
+    setInt8Array: 'setInt8',
+    setUint8Array: 'setUint8',
+    setInt16Array: 'setInt16',
+    setUint16Array: 'setUint16',
+    setInt32Array: 'setInt32',
+    setUint32Array: 'setUint32',
+    setInt64Array: 'setInt64',
+    setUint64Array: 'setUint64',
+    setFloat32Array: 'setFloat32',
+    setFloat64Array: 'setFloat64'
+};
+
+/**
+ * The bytes that a write writes, little-endian, with lengths and counts of
+ * `offsetSize`, as DataView writes each value
+ */
+function bytesWritten(write: Write, offsetSize: OffsetSize): Uint8Array {
+    const bytes = new Uint8Array(byteLengthOf(write, offsetSize));
+    const at = (position: number): DataView => new DataView(bytes.buffer, position);
+    const unsigned = (position: number, value: number): void =>
+        DATA_VIEW_SETTERS[`setUint${8 * offsetSize}`](at(position), value as never);
+    const { setter, value } = write;
+
+    if (setter in DATA_VIEW_SETTERS) {
+        DATA_VIEW_SETTERS[setter](at(0), value as never);
+    } else if (setter in ELEMENT_SETTERS) {
+        const values = Array.from(value as ArrayLike<number | bigint>);
+        const size = ELEMENT_SIZES[setter];
+
+        unsigned(0, values.length);
+        for (const [index, element] of values.entries()) {
+            DATA_VIEW_SETTERS[ELEMENT_SETTERS[setter]](
+                at(offsetSize + index * size),
+                element as never
+            );
+        }
+    } else if (setter === 'setSize' || setter === 'setVersion' || setter === 'setOffset') {
+        unsigned(0, value as number);
+    } else if (setter === 'setBytes') {
+        bytes.set(value as Uint8Array);
+    } else if (setter === 'setString') {
+        unsigned(0, (value as Uint8Array).length);
+        bytes.set(value as Uint8Array, offsetSize);
+    } else if (setter === 'setVector') {
+        // Its count, the end of each item from the vector's start, and then
+        // the items
+        const items = value as Uint8Array[];
+        let end = (items.length + 1) * offsetSize;
+        unsigned(0, items.length);
+        for (const [index, item] of items.entries()) {
+            bytes.set(item, end);
+            end += item.length;
+            unsigned((index + 1) * offsetSize, end);
+        }
+    }
+    // setPadding() writes zeros, as the new bytes hold
+
+    return bytes;
 }
