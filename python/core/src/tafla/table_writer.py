@@ -1,6 +1,6 @@
 import builtins
 from collections.abc import Buffer, Iterable
-from struct import Struct, error as StructError
+from struct import error as StructError
 from typing import Literal, Self, overload
 
 from . import structs
@@ -16,6 +16,7 @@ from .layout import (
     alignment_error,
     header_length,
 )
+from .structs import OFFSET_STRUCTS
 from .types import ElementSize, OffsetSize, TypeCode
 
 # The scalars' Structs, assigned rather than imported, as in byte_buffer.py,
@@ -25,14 +26,6 @@ int16, uint16 = structs.int16, structs.uint16
 int32, uint32 = structs.int32, structs.uint32
 int64, uint64 = structs.int64, structs.uint64
 float32, float64 = structs.float32, structs.float64
-
-# The unsigned integer of each offset size, which offsets, lengths, counts,
-# item ends and header slots are written as
-_LENGTHS: dict[OffsetSize, Struct] = {
-    SIZEOF_8: uint8,
-    SIZEOF_16: uint16,
-    SIZEOF_32: uint32,
-}
 
 # Zeros by their number: those that pad a field to its alignment, and those
 # that hold the offsets of a nested table of up to 16 fields until they're
@@ -124,7 +117,7 @@ class TableWriter:
 
         # The offset size, the width of offsets, lengths and header slots
         self.__size = size
-        self.__length = _LENGTHS[size]
+        self.__length = OFFSET_STRUCTS[size]
         self.__max_length = MAX_LENGTHS[size]
         self.__sized = layout.sized()
         self.__header_size = layout.header_size()
@@ -153,7 +146,7 @@ class TableWriter:
         data = bytearray(header_size + fields * size)
 
         writer.__size = size
-        writer.__length = _LENGTHS[size]
+        writer.__length = OFFSET_STRUCTS[size]
         writer.__max_length = MAX_LENGTHS[size]
         writer.__sized = sized
         writer.__header_size = header_size

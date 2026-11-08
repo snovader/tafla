@@ -1,6 +1,6 @@
 from array import array
 from collections.abc import Buffer
-from struct import Struct, error as StructError
+from struct import error as StructError
 from typing import Any, overload
 
 from . import structs
@@ -8,6 +8,7 @@ from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import from_little_endian
 from .errors import DecodeError, describe_int
 from .layout import TableLayout
+from .structs import OFFSET_STRUCTS
 from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
 
 # The scalars' Structs, assigned rather than imported. Python 3.14 compiles a
@@ -21,14 +22,8 @@ int32, uint32 = structs.int32, structs.uint32
 int64, uint64 = structs.int64, structs.uint64
 float32, float64 = structs.float32, structs.float64
 
-# The unsigned integer of each offset size, which lengths, offsets and header
-# slots are read as
-_SIZES: dict[OffsetSize, Struct] = {
-    SIZEOF_8: uint8,
-    SIZEOF_16: uint16,
-    SIZEOF_32: uint32,
-}
-# Their array type codes, which the ends of a vector's items are read as
+# The array type codes of the offset sizes' unsigned integers, which the ends
+# of a vector's items are read as
 _SIZE_CODES: dict[OffsetSize, IntTypeCode] = {
     SIZEOF_8: "B",
     SIZEOF_16: "H",
@@ -91,7 +86,7 @@ class ByteBuffer:
         self.__layout = layout
         # The offset size, the width of offsets, lengths and header slots
         self.__size = size = layout.offset_size()
-        self.__size_struct = _SIZES[size]
+        self.__size_struct = OFFSET_STRUCTS[size]
         # The byte length of the header slots before the root's field offsets
         self.__header_size = layout.header_size()
 
