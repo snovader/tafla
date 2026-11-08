@@ -51,11 +51,11 @@ class ByteBuffer:
     given as bytes, must be C-contiguous, and one that isn't raises
     ``TypeError``. A write that doesn't fit in the bytes raises ``ValueError`` and
     writes nothing. So does an array, string or vector whose count, length or
-    item ends are too large for the layout's ``offset_type``, which
-    ``TableBuilder`` rejects before it writes a table. A scalar, offset or
-    version that doesn't fit its slot raises ``ValueError`` and leaves the
-    position where it was, but CPython's struct zeroes the slot before it
-    checks the value.
+    item ends are too large for the layout's ``offset_type``. Tables are
+    written with ``TableBuilder`` or ``TableWriter``, which reject a table
+    that long. A scalar, offset or version that doesn't fit its slot raises
+    ``ValueError`` and leaves the position where it was, but CPython's struct
+    zeroes the slot before it checks the value.
     """
 
     __slots__ = [
@@ -479,8 +479,6 @@ class ByteBuffer:
     def set_bytes(self, bytes: Buffer) -> None:
         """Writes ``bytes`` as they are, without a length prefix, such as a
         struct."""
-        # Checked and written inline, since TableBuilder writes every table
-        # nested as bytes with it
         source = byte_view(bytes)
         end = self.__position + len(source)
         if end > self.__length:
