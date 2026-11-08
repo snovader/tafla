@@ -190,7 +190,10 @@ since a call there costs more than the bytes' growth. For the same reason,
 it writes a table's leading fields of fixed size, whose offsets depend on no
 value, and a string after them, in one call that packs them with a `struct`,
 from a `FixedFields` that describes them: a nested table of only those fields
-is written whole, in its parent's call or in one of its own. Each nested table has an
+is written whole, in its parent's call or in one of its own. A table of only
+those fields also has `fields()`, which reads them all at once into the
+`TypedDict` that it's written from, or through its getters when its offsets
+aren't the ones that its writer writes. Each nested table has an
 `ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
 and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of

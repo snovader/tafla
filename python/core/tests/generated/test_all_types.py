@@ -4,6 +4,7 @@ writes and reads tables with tafla."""
 import unittest
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError, fields, replace
+from functools import partial
 from typing import NamedTuple
 
 from hypothesis import example, given
@@ -15,6 +16,8 @@ from tests.generated.all_types.all_types import (
     Arrays,
     ArraysFields,
     Documented,
+    Keywords,
+    KeywordsFields,
     Nested,
     NestedFields,
     Packed,
@@ -73,6 +76,7 @@ from tests.generated.expectations import (
     assert_same_structs,
     assert_same_table,
     assert_values_or_decode_error,
+    fields_or_decode_error,
 )
 from tests.tables import Description, build_table
 
@@ -632,6 +636,52 @@ class TestStructs(unittest.TestCase):
             Point.read_array(data + partial)
 
 
+class TestFields(unittest.TestCase):
+    # fields() reads a fixed-layout table's fields at once, or through the
+    # getters for bytes that its writer didn't write
+
+    @SETTINGS
+    @given(scalars_fields, reserved_fields)
+    def test_reads_scalars_and_keywords_fields_as_their_getters_and_writes_them_back(
+        self, scalars: ScalarsFields, reserved: ReservedFields
+    ) -> None:
+        scalars_data = Scalars.serialize(**scalars)
+        written = Scalars(scalars_data)
+        keywords = Reserved(Reserved.serialize(**reserved)).keywords()
+
+        self.assertEqual(
+            fields_or_decode_error(written.fields),
+            fields_or_decode_error(partial(read_scalars, written)),
+        )
+        self.assertEqual(
+            bytes(Scalars.serialize(**written.fields())), bytes(scalars_data)
+        )
+        self.assertEqual(
+            fields_or_decode_error(keywords.fields),
+            fields_or_decode_error(lambda: read_reserved_keywords(keywords)),
+        )
+
+    @SETTINGS
+    @given(scalars_fields, reserved_fields, corruptions)
+    def test_reads_corrupted_scalars_and_keywords_fields_as_their_getters_do(
+        self,
+        scalars: ScalarsFields,
+        reserved: ReservedFields,
+        corruption: Truncation | Overwrite,
+    ) -> None:
+        written = Scalars(corruption.apply(bytes(Scalars.serialize(**scalars))))
+        corrupted = Reserved(corruption.apply(bytes(Reserved.serialize(**reserved))))
+
+        self.assertEqual(
+            fields_or_decode_error(written.fields),
+            fields_or_decode_error(partial(read_scalars, written)),
+        )
+        self.assertEqual(
+            fields_or_decode_error(lambda: corrupted.keywords().fields()),
+            fields_or_decode_error(lambda: read_reserved(corrupted)["keywords"]),
+        )
+
+
 class _PointTuple(NamedTuple):
     x: float
     y: float
@@ -646,6 +696,18 @@ class _DocumentedTuple(NamedTuple):
     one: int
     two: int
     undocumented: int
+
+
+def read_reserved_keywords(keywords: Keywords) -> KeywordsFields:
+    """A table of keywords' fields, as read_reserved() reads them"""
+    return {
+        "class_": keywords.class_(),
+        "default": keywords.default(),
+        "in_": keywords.in_(),
+        "match_": keywords.match_(),
+        "self": keywords.self(),
+        "type_": keywords.type_(),
+    }
 
 
 def _segment_tuple(segment: SegmentFields) -> _SegmentTuple:

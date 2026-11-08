@@ -79,6 +79,41 @@ class Scalars:
     def bool_(self) -> bool:
         return self._buffer.get_uint8(self._buffer.root_offset(10)) != 0
 
+    def fields(self) -> ScalarsFields:
+        """Reads every field at once, as ``serialize()`` takes them, in one call
+        when the table's offsets are those that its writer writes, and otherwise
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {
+                "int8": self.int8(),
+                "uint8": self.uint8(),
+                "int16": self.int16(),
+                "uint16": self.uint16(),
+                "int32": self.int32(),
+                "uint32": self.uint32(),
+                "int64": self.int64(),
+                "uint64": self.uint64(),
+                "float32": self.float32(),
+                "float64": self.float64(),
+                "bool_": self.bool_(),
+            }
+
+        return {
+            "int8": values[0],
+            "uint8": values[1],
+            "int16": values[2],
+            "uint16": values[3],
+            "int32": values[4],
+            "uint32": values[5],
+            "int64": values[6],
+            "uint64": values[7],
+            "float32": values[8],
+            "float64": values[9],
+            "bool_": values[10],
+        }
+
 
 class ScalarsFields(TypedDict):
     """The fields of a ``Scalars``, to write"""
@@ -448,6 +483,31 @@ class Keywords:
 
     def type_(self) -> str:
         return self._buffer.get_string(self._buffer.field_offset(self._position, 5))
+
+    def fields(self) -> KeywordsFields:
+        """Reads every field at once, as ``write()`` takes them, in one call
+        when the table's offsets are those that its writer writes, and otherwise
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return {
+                "class_": self.class_(),
+                "default": self.default(),
+                "in_": self.in_(),
+                "match_": self.match_(),
+                "self": self.self(),
+                "type_": self.type_(),
+            }
+
+        return {
+            "class_": values[0],
+            "default": values[1],
+            "in_": values[2],
+            "match_": values[3],
+            "self": values[4],
+            "type_": values[5],
+        }
 
 
 class KeywordsFields(TypedDict):

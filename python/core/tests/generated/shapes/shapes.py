@@ -43,6 +43,17 @@ class Point:
     def name(self) -> str:
         return self._buffer.get_string(self._buffer.root_offset(3))
 
+    def fields(self) -> PointFields:
+        """Reads every field at once, as ``serialize()`` takes them, in one call
+        when the table's offsets are those that its writer writes, and otherwise
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"x": self.x(), "y": self.y(), "id": self.id(), "name": self.name()}
+
+        return {"x": values[0], "y": values[1], "id": values[2], "name": values[3]}
+
 
 class PointFields(TypedDict):
     """The fields of a ``Point``, to write"""
@@ -246,6 +257,17 @@ class Item:
     def pair(self) -> Pair:
         return Pair(self._buffer, self._buffer.field_offset(self._position, 1))
 
+    def fields(self) -> ItemFields:
+        """Reads every field at once, as ``write()`` takes them, in one call
+        when the table's offsets are those that its writer writes, and otherwise
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return {"value": self.value(), "pair": self.pair().fields()}
+
+        return {"value": values[0], "pair": {"first": values[1], "second": values[2]}}
+
 
 class ItemFields(TypedDict):
     """The fields of an ``Item``, to write"""
@@ -325,6 +347,17 @@ class Pair:
 
     def second(self) -> float:
         return self._buffer.get_float32(self._buffer.field_offset(self._position, 1))
+
+    def fields(self) -> PairFields:
+        """Reads every field at once, as ``write()`` takes them, in one call
+        when the table's offsets are those that its writer writes, and otherwise
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return {"first": self.first(), "second": self.second()}
+
+        return {"first": values[0], "second": values[1]}
 
 
 class PairFields(TypedDict):

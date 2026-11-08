@@ -2,7 +2,8 @@
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`. A table's leading
 //! fields of fixed size, and a string after them, are written in one call,
-//! from the runtime's `FixedFields`.
+//! from the runtime's `FixedFields`, and a table of only those fields is read
+//! at once by `fields()` too.
 
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
@@ -29,12 +30,13 @@ const KEYWORDS: [&str; 38] = [
 ];
 
 /// Names that a field's getter or attribute would shadow, which names get a
-/// `_` after too: the classes' own methods, the parameter of `serialize()`
-/// beside its keyword arguments, and the built-in types that getters return,
-/// which their annotations find in the class
-const MEMBERS: [&str; 13] = [
+/// `_` after too: the classes' own methods, such as `fields()`, the
+/// parameter of `serialize()` beside its keyword arguments, and the built-in
+/// types that getters return, which their annotations find in the class
+const MEMBERS: [&str; 14] = [
     "bool",
     "cls",
+    "fields",
     "float",
     "int",
     "list",
@@ -297,6 +299,9 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     serialize(writer, schema, definition, layout, fixed);
 
     getters(writer, schema, definition, true);
+    if fixed > 0 && fixed == definition.fields.len() {
+        fields_reader(writer, schema, definition, true);
+    }
     writer.dedent();
 }
 
@@ -451,6 +456,9 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     writer.dedent();
 
     getters(writer, schema, definition, false);
+    if fixed > 0 && fixed == definition.fields.len() {
+        fields_reader(writer, schema, definition, false);
+    }
     writer.dedent();
 }
 
@@ -1249,6 +1257,136 @@ fn push_fixed_values(
                 unreachable!("only fields of fixed size and a string are packed")
             }
         }
+    }
+}
+
+/// The `fields()` of a message or table whose fields its `FixedFields`
+/// describes whole, which reads them at once into the `TypedDict` that it's
+/// written from, or through the getters when its offsets aren't those that
+/// the runtime expects, so that its values and errors are the getters'
+fn fields_reader(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
+    let name = &definition.name;
+    let (position, written_by) = if is_root {
+        ("0", "serialize()")
+    } else {
+        ("self._position", "write()")
+    };
+
+    writer.blank();
+    writer.open(format!("def fields(self) -> {name}Fields:"));
+    docstring(
+        writer,
+        &[
+            format!("Reads every field at once, as `{written_by}` takes them, in one call"),
+            "when the table's offsets are those that its writer writes, and otherwise".to_owned(),
+            "through the getters, which raise `DecodeError` for bytes they can't read.".to_owned(),
+        ],
+    );
+    writer.line(format!(
+        "values = self._buffer.get_fields({position}, self._FIXED_FIELDS)"
+    ));
+    writer.open("if values is None:");
+    dict_statement(
+        writer,
+        "return ",
+        &getter_values(schema, definition, "self"),
+    );
+    writer.dedent();
+    writer.blank();
+    dict_statement(
+        writer,
+        "return ",
+        &unpacked_values(schema, definition, &mut 0),
+    );
+    writer.dedent();
+}
+
+/// A value of a `TypedDict` of fields that `fields()` returns: an
+/// expression, or a nested table's fields
+enum DictValue {
+    Text(String),
+    Dict(Vec<(String, DictValue)>),
+}
+
+impl DictValue {
+    fn flat(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
+            Self::Dict(entries) => {
+                let entries: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| format!("\"{key}\": {}", value.flat()))
+                    .collect();
+                format!("{{{}}}", entries.join(", "))
+            }
+        }
+    }
+}
+
+/// The fields of a table as its getters read them, a nested table's by its
+/// own `fields()`
+fn getter_values(schema: &Schema, definition: &Definition, reader: &str) -> DictValue {
+    let entries = definition
+        .fields
+        .iter()
+        .map(|field| {
+            let getter = format!("{reader}.{}()", identifier(&field.name));
+            let value = match field.field_type {
+                FieldType::Table(index) if schema.definition(index).fields.is_empty() => {
+                    DictValue::Dict(Vec::new())
+                }
+                FieldType::Table(_) => DictValue::Text(format!("{getter}.fields()")),
+                _ => DictValue::Text(getter),
+            };
+            (identifier(&field.name), value)
+        })
+        .collect();
+    DictValue::Dict(entries)
+}
+
+/// The fields of a table as `ByteBuffer.get_fields()` returns them in
+/// `values`, from `next` on, a nested table's in place of it and a struct's
+/// as its bytes
+fn unpacked_values(schema: &Schema, definition: &Definition, next: &mut usize) -> DictValue {
+    let entries = definition
+        .fields
+        .iter()
+        .map(|field| {
+            let value = match field.field_type {
+                FieldType::Table(index) => unpacked_values(schema, schema.definition(index), next),
+                FieldType::Struct(index) => {
+                    let structure = &schema.definition(index).name;
+                    *next += 1;
+                    DictValue::Text(format!("{structure}.read(values[{}])", *next - 1))
+                }
+                _ => {
+                    *next += 1;
+                    DictValue::Text(format!("values[{}]", *next - 1))
+                }
+            };
+            (identifier(&field.name), value)
+        })
+        .collect();
+    DictValue::Dict(entries)
+}
+
+/// Writes `prefix` + a dict + `suffix`, broken over lines as Ruff breaks it,
+/// an entry on each line, when it doesn't fit
+fn dict_statement(writer: &mut CodeWriter, prefix: &str, value: &DictValue) {
+    dict_lines(writer, prefix, value, "");
+}
+
+fn dict_lines(writer: &mut CodeWriter, prefix: &str, value: &DictValue, suffix: &str) {
+    let line = format!("{prefix}{}{suffix}", value.flat());
+    match value {
+        DictValue::Dict(entries) if !entries.is_empty() && !writer.fits(&STYLE, &line) => {
+            writer.open(format!("{prefix}{{"));
+            for (key, value) in entries {
+                dict_lines(writer, &format!("\"{key}\": "), value, ",");
+            }
+            writer.close(format!("}}{suffix}"));
+        }
+        _ => writer.line(line),
     }
 }
 
