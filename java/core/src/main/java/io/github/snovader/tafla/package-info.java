@@ -140,8 +140,9 @@
  *
  * <ul>
  *   <li>{@code ByteBuffer} throws an {@link IllegalArgumentException} for a struct size below 1,
- *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} an
- *     {@link IndexOutOfBoundsException} for an item outside the vector.</li>
+ *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} and
+ *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
+ *     vector, or the count it's given.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
  *     it was created with, for writing before every field is set, and for a field set after
  *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given
