@@ -13,9 +13,6 @@ import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
  * nothing, as `DataView`'s setters throw.
  */
 export class StructWriter {
-    // A DataView of its own rather than a ByteBuffer's setters, which made
-    // bundlers keep all of ByteBuffer, its readers included: StructWriter
-    // alone took 2.8 KB minified and gzipped with esbuild, and takes 0.3 KB
     readonly #bytes: Uint8Array;
     readonly #view: DataView;
 

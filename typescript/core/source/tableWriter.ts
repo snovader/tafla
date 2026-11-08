@@ -1,5 +1,5 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
-import { assertStructSize, structCount } from './byteBuffer.ts';
+import { assertStructSize } from './byteBuffer.ts';
 import {
     setFloat32Elements,
     setFloat64Elements,
@@ -876,4 +876,21 @@ function tooLong(bytes: Uint8Array, end: number): RangeError {
     return new RangeError(
         `The fields need ${end} bytes, more than the table's ${bytes.length}`
     );
+}
+
+/**
+ * The number of structs of `size` bytes in `byteLength` bytes
+ *
+ * @throws {RangeError} If `size` isn't a positive integer, or the bytes
+ * aren't a whole number of structs.
+ */
+export function structCount(byteLength: number, size: number): number {
+    assertStructSize(size);
+    if (byteLength % size !== 0) {
+        throw new RangeError(
+            `${byteLength} bytes aren't a whole number of ${size}-byte structs`
+        );
+    }
+
+    return byteLength / size;
 }

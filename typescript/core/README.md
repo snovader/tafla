@@ -176,8 +176,6 @@ Using the API wrongly throws other errors, whatever the bytes:
 - `TableLayout.create()` throws a `RangeError` for an offset type other than
   `'uint8'`, `'uint16'` and `'uint32'`, and a `TypeError` for an option other
   than `sized`, `versioned` and `offsetType`.
-- Writes past the end of a `ByteBuffer` throw a `RangeError` and write
-  nothing.
 - `TableBuilder` throws a `RangeError` for more or fewer fields than it was
   created with, or a version that doesn't fit. A field that would make the
   table too long for its offset type throws a `RangeError` from its setter
