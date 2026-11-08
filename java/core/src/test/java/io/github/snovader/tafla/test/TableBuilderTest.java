@@ -131,6 +131,81 @@ public class TableBuilderTest {
         return Descriptions.headerlessTables();
     }
 
+    @Property
+    void a_table_nested_as_a_fresh_builder_a_written_builder_or_its_bytes_writes_the_same_parent(
+        @ForAll("anyTables") TableDescription table,
+        @ForAll @IntRange(max = 7) int before
+    ) {
+        var bytes = Tables.build(table).bytes();
+        // Of the table's offset type when the parent fits in it, so that a builder without a header
+        // is written in place, and otherwise of uint32 offsets
+        var offsetType = table.layout().offsetType();
+        if (longestParent(offsetType, before, bytes.length) > offsetType.maxValue()) {
+            offsetType = OffsetType.UINT32;
+        }
+        var layout = TableLayout.builder().offsetType(offsetType).build();
+
+        // A fresh builder is written in place unless its layout has a header or another offset
+        // type, and a written one is copied
+        var fresh = parentOf(Tables.build(table), before, layout);
+        var written = Tables.build(table);
+        written.bytes();
+        var fromWritten = parentOf(written, before, layout);
+        var fromBytes = parentOf(bytes, before, layout);
+
+        assertArrayEquals(fromBytes, fresh);
+        assertArrayEquals(fromBytes, fromWritten);
+
+        var buffer = new ByteBuffer(fromBytes, layout);
+        var nested = buffer.rootOffset(1);
+        assertEquals(0, nested % 8);
+        assertArrayEquals(bytes, Arrays.copyOfRange(fromBytes, nested, nested + bytes.length));
+        assertArrayEquals(new byte[][] {bytes, bytes}, buffer.getVector(buffer.rootOffset(2)));
+    }
+
+    @Provide
+    Arbitrary<TableDescription> anyTables() {
+        return Arbitraries.oneOf(Descriptions.tables(), Descriptions.nestingTables());
+    }
+
+    /**
+     * {@return a parent of {@code before} bytes in a {@code uint8[]}, the table at alignment 8,
+     * and a vector of the table twice}
+     */
+    private static byte[] parentOf(TableBuilder table, int before, TableLayout layout) {
+        var parent = parentBefore(before, layout);
+        parent.setTable(table, Long.BYTES);
+        parent.setVector(List.of(table, table));
+
+        return parent.bytes();
+    }
+
+    private static byte[] parentOf(byte[] table, int before, TableLayout layout) {
+        var parent = parentBefore(before, layout);
+        parent.setTable(table, Long.BYTES);
+        parent.setVector(new byte[][] {table, table});
+
+        return parent.bytes();
+    }
+
+    private static TableBuilder parentBefore(int before, TableLayout layout) {
+        var parent = new TableBuilder(3, layout);
+        parent.setUint8Array(new short[before]);
+
+        return parent;
+    }
+
+    /** {@return the most bytes that a parent of offsets of {@code offsetType} takes} */
+    private static long longestParent(OffsetType offsetType, int before, int length) {
+        long width = offsetType.size();
+        var offsets = 3 * width;
+        var array = width + before;
+        var table = (Long.BYTES - 1) + (long) length;
+        var vector = 3 * width + 2L * length;
+
+        return offsets + array + table + vector;
+    }
+
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void a_version_is_written_up_to_the_largest_that_its_slot_holds_and_rejected_beyond(
         @ForAll OffsetType offsetType

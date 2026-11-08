@@ -6,27 +6,32 @@ import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 import org.junit.jupiter.api.function.*;
 
+import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.nio.charset.*;
 import java.util.*;
 import java.util.function.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * {@link TableSizer} and {@link TableWriter} write the bytes that {@link TableBuilder} builds from
- * the same fields, and fail where it fails. They write nested tables in place, so the descriptions
- * that they write have every nested table and vector item from its builder, without a header, and
- * with the root's offset type, as {@link Tables#nestedInPlace} makes them.
+ * {@link TableSizer} counts each table as {@link TableBuilder} counts it, padding included, and
+ * {@link TableWriter} writes the same bytes from the test's calls as from the builder's, which
+ * writes its tables with a {@code TableWriter} too. They fail where the builder fails. They write
+ * nested tables in place, so the descriptions that they write have every nested table and vector
+ * item from its builder, without a header, and with the root's offset type, as
+ * {@link Tables#nestedInPlace} makes them.
  */
 public class TableWriterTest {
     @Property
-    void a_table_sized_and_written_from_any_description_holds_the_bytes_that_TableBuilder_builds(
+    void a_table_sized_and_written_from_any_description_is_as_long_as_TableBuilder_counts_it_and_holds_the_same_bytes(
         @ForAll("inPlaceTables") TableDescription table
     ) {
         assertArrayEquals(Tables.build(table).bytes(), Tables.write(table));
     }
 
     @Example
-    void a_struct_array_a_nested_table_and_a_vector_are_padded_as_TableBuilder_pads_them() {
+    void a_struct_array_a_nested_table_and_a_vector_are_padded_as_TableBuilder_counts_their_padding() {
         // A uint8 leaves the uint32[] 3 bytes short of its alignment, the array leaves the structs
         // 2 bytes short of theirs, and the structs leave the nested table of float64s 6 bytes short
         var layout = new LayoutDescription(true, true, OffsetType.UINT16);
@@ -75,16 +80,42 @@ public class TableWriterTest {
     }
 
     @Property
-    void any_string_is_written_as_TableBuilder_writes_it_with_each_lone_surrogate_as_U_FFFD(
+    void any_string_is_written_as_the_JDKs_encoder_encodes_it_with_each_lone_surrogate_as_U_FFFD(
         @ForAll("utf16Strings") String string
-    ) {
+    ) throws CharacterCodingException {
         var table = new TableDescription(
             LayoutDescription.headerless(OffsetType.UINT32),
             OptionalLong.empty(),
             List.of(new StringField(string))
         );
 
-        assertArrayEquals(Tables.build(table).bytes(), Tables.write(table), string::toString);
+        // The field's offset, after the one offset, and then the string's length and bytes
+        var utf8 = utf8(string);
+        var expected = java.nio.ByteBuffer.allocate(2 * Integer.BYTES + utf8.length)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(Integer.BYTES)
+            .putInt(utf8.length)
+            .put(utf8)
+            .array();
+
+        assertArrayEquals(expected, Tables.write(table), string::toString);
+        assertArrayEquals(expected, Tables.build(table).bytes(), string::toString);
+    }
+
+    /**
+     * {@return the string's UTF-8 bytes from the JDK's encoder}, which replaces each lone surrogate
+     * with U+FFFD, as TypeScript's {@code TextEncoder} does, rather than with {@code '?'}, as
+     * {@link String#getBytes} does
+     */
+    private static byte[] utf8(String string) throws CharacterCodingException {
+        var encoder = StandardCharsets.UTF_8.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPLACE)
+            .replaceWith("\uFFFD".getBytes(StandardCharsets.UTF_8));
+        var encoded = encoder.encode(CharBuffer.wrap(string));
+
+        var bytes = new byte[encoded.remaining()];
+        encoded.get(bytes);
+        return bytes;
     }
 
     @Property

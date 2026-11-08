@@ -69,10 +69,6 @@ public final class ByteBuffer {
         return sized ? getUnsigned(0) : bytes.length;
     }
 
-    void setSize(int size) {
-        setUnsigned(size);
-    }
-
     /**
      * Returns the version that the table's header carries after its length. It's as wide as the
      * header's other slots, and read unsigned.
@@ -85,10 +81,6 @@ public final class ByteBuffer {
         }
 
         return getUnsigned(sized ? offsetSize : 0);
-    }
-
-    void setVersion(long version) {
-        setUnsigned(version);
     }
 
     /**
@@ -727,11 +719,6 @@ public final class ByteBuffer {
         }
 
         return (int) (position + start);
-    }
-
-    /** Writes a length or count as wide as the table's offsets */
-    void setLength(int length) {
-        setCount(length);
     }
 
     /**

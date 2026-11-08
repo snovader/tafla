@@ -107,6 +107,155 @@ public class ByteBufferTest {
         };
     }
 
+    // The write setters, which write fixed-size records, as the README and the benchmarks do.
+    // TableBuilder writes through TableWriter, so these are their only writes.
+
+    @Property
+    void each_setter_writes_its_value_little_endian_after_the_previous_one(
+        @ForAll OffsetType offsetType,
+        @ForAll @Size(max = 8) List<@From("writes") Write> writes
+    ) {
+        // Every count, offset and length of the writes fits in a uint8
+        var expected = java.nio.ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN);
+        for (var write : writes) {
+            write.put(expected, offsetType.size());
+        }
+
+        // Bytes that start as 0xa5, so that padding and anything past the writes show, and one more
+        var length = expected.position();
+        var bytes = new byte[length + 1];
+        Arrays.fill(bytes, (byte) 0xa5);
+        var buffer = new ByteBuffer(bytes, TableLayout.builder().offsetType(offsetType).build());
+        for (var write : writes) {
+            write.apply(buffer);
+        }
+
+        var expectedBytes = Arrays.copyOf(expected.array(), length + 1);
+        expectedBytes[length] = (byte) 0xa5;
+        assertArrayEquals(expectedBytes, bytes, writes::toString);
+    }
+
+    @Provide
+    Arbitrary<Write> writes() {
+        var items = Arbitraries.bytes().array(byte[].class).ofMaxSize(8).list().ofMaxSize(3);
+
+        return Arbitraries.oneOf(
+            Descriptions.values().map(Value::new),
+            Arbitraries.integers().between(0, 7).map(Padding::new),
+            Arbitraries.longs().between(0, 0xff).map(Offset::new),
+            items.map(VectorOfBytes::new)
+        );
+    }
+
+    /** A call of one of {@link ByteBuffer}'s write setters */
+    private sealed interface Write {
+        void apply(ByteBuffer buffer);
+
+        /** Puts the bytes that the call writes, with counts, offsets and ends of {@code width} bytes */
+        void put(java.nio.ByteBuffer expected, int width);
+    }
+
+    /** A scalar, array, string, struct or array of structs, written with its type's setter */
+    private record Value(FieldDescription field) implements Write {
+        @Override
+        public void apply(ByteBuffer buffer) {
+            write(buffer, field);
+        }
+
+        @Override
+        public void put(java.nio.ByteBuffer expected, int width) {
+            switch (field) {
+                case ScalarField scalar -> scalar.type().put(expected, scalar.value());
+                case ArrayField array -> {
+                    putUnsigned(expected, array.values().length, width);
+                    for (var value : array.values()) {
+                        array.type().put(expected, value);
+                    }
+                }
+                case StringField string -> {
+                    var utf8 = string.value().getBytes(StandardCharsets.UTF_8);
+                    putUnsigned(expected, utf8.length, width);
+                    expected.put(utf8);
+                }
+                case StructField struct -> putStruct(expected, struct.types(), struct.values());
+                case StructArrayField array -> {
+                    putUnsigned(expected, array.items().size(), width);
+                    for (var item : array.items()) {
+                        putStruct(expected, array.fields(), item);
+                    }
+                }
+                default -> throw new IllegalArgumentException("Not a value: " + field);
+            }
+        }
+
+        private static void putStruct(java.nio.ByteBuffer expected, List<ScalarType> types, List<Long> values) {
+            for (int i = 0; i < types.size(); i++) {
+                types.get(i).put(expected, values.get(i));
+            }
+        }
+    }
+
+    private record Padding(int length) implements Write {
+        @Override
+        public void apply(ByteBuffer buffer) {
+            buffer.setPadding(length);
+        }
+
+        @Override
+        public void put(java.nio.ByteBuffer expected, int width) {
+            expected.put(new byte[length]);
+        }
+    }
+
+    private record Offset(long offset) implements Write {
+        @Override
+        public void apply(ByteBuffer buffer) {
+            buffer.setOffset((int) offset);
+        }
+
+        @Override
+        public void put(java.nio.ByteBuffer expected, int width) {
+            putUnsigned(expected, offset, width);
+        }
+    }
+
+    private record VectorOfBytes(List<byte[]> items) implements Write {
+        @Override
+        public void apply(ByteBuffer buffer) {
+            buffer.setVector(items.toArray(byte[][]::new));
+        }
+
+        @Override
+        public void put(java.nio.ByteBuffer expected, int width) {
+            putUnsigned(expected, items.size(), width);
+
+            // Each end counts from the count
+            long end = (items.size() + 1L) * width;
+            for (var item : items) {
+                end += item.length;
+                putUnsigned(expected, end, width);
+            }
+
+            for (var item : items) {
+                expected.put(item);
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "VectorOfBytes" + items.stream().map(Arrays::toString).toList();
+        }
+    }
+
+    /** Puts an unsigned count, offset or end of {@code width} bytes */
+    private static void putUnsigned(java.nio.ByteBuffer expected, long value, int width) {
+        switch (width) {
+            case Byte.BYTES -> expected.put((byte) value);
+            case Short.BYTES -> expected.putShort((short) value);
+            default -> expected.putInt((int) value);
+        }
+    }
+
     @Provide
     Arbitrary<FieldDescription> values() {
         return Descriptions.values();
