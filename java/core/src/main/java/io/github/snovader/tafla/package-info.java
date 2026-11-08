@@ -85,8 +85,8 @@
  *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
  *     27,028-element {@code float32} array with {@code getFloat32()} took 23 µs, against 27 µs
- *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar
- *     getters are the slower way.</li>
+ *     with {@code getFloat32Array()}, which copies it first. In Python, the scalar getters are the
+ *     slower way.</li>
  *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
  *     {@code TableBuilder} straight into its parent when the parent is written, so the outermost
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
