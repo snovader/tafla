@@ -10,6 +10,7 @@ import {
     readUint16,
     readUint32,
     readUint64,
+    StructWriter,
     TableBuilder,
     TableLayout,
     TableSizer,
@@ -617,63 +618,63 @@ function packStructs(
     types: readonly ScalarType[],
     items: readonly JsonNumber[][]
 ): Uint8Array {
-    const buffer = new ByteBuffer(
+    const writer = new StructWriter(
         new Uint8Array(items.length * structSize(types))
     );
     for (const values of items) {
         for (const [index, type] of types.entries()) {
-            setScalar(buffer, type, values[index]);
+            setScalar(writer, type, values[index]);
         }
     }
 
-    return buffer.bytes();
+    return writer.bytes();
 }
 
-/** Writes a scalar at the buffer's position */
+/** Writes a scalar after the writer's previous one */
 function setScalar(
-    buffer: ByteBuffer,
+    writer: StructWriter,
     type: ScalarType,
     value: JsonNumber
 ): void {
     switch (type) {
         case 'int8':
-            buffer.setInt8(fromJsonNumber(value));
+            writer.setInt8(fromJsonNumber(value));
             break;
 
         case 'uint8':
-            buffer.setUint8(fromJsonNumber(value));
+            writer.setUint8(fromJsonNumber(value));
             break;
 
         case 'int16':
-            buffer.setInt16(fromJsonNumber(value));
+            writer.setInt16(fromJsonNumber(value));
             break;
 
         case 'uint16':
-            buffer.setUint16(fromJsonNumber(value));
+            writer.setUint16(fromJsonNumber(value));
             break;
 
         case 'int32':
-            buffer.setInt32(fromJsonNumber(value));
+            writer.setInt32(fromJsonNumber(value));
             break;
 
         case 'uint32':
-            buffer.setUint32(fromJsonNumber(value));
+            writer.setUint32(fromJsonNumber(value));
             break;
 
         case 'int64':
-            buffer.setInt64(BigInt(value));
+            writer.setInt64(BigInt(value));
             break;
 
         case 'uint64':
-            buffer.setUint64(BigInt(value));
+            writer.setUint64(BigInt(value));
             break;
 
         case 'float32':
-            buffer.setFloat32(fromJsonNumber(value));
+            writer.setFloat32(fromJsonNumber(value));
             break;
 
         case 'float64':
-            buffer.setFloat64(fromJsonNumber(value));
+            writer.setFloat64(fromJsonNumber(value));
             break;
     }
 }

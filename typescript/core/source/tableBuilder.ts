@@ -1,4 +1,4 @@
-import { ByteBuffer, structCount } from './byteBuffer.ts';
+import { ByteBuffer } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { utf8Length } from './encoding.ts';
 import {
@@ -8,7 +8,12 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
-import { copyTable, newTableWriter, type TableWriter } from './tableWriter.ts';
+import {
+    copyTable,
+    newTableWriter,
+    structCount,
+    type TableWriter
+} from './tableWriter.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
@@ -124,8 +129,8 @@ export class TableBuilder {
     }
 
     /**
-     * Writes the table, once, and returns a buffer of its bytes; later calls
-     * return the same buffer.
+     * Writes the table, once, and returns a `ByteBuffer` that reads it; later
+     * calls return the same buffer.
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * the fields no longer fit the table or fill it.
