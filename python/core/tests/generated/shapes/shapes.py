@@ -332,7 +332,7 @@ class PairFields(TypedDict):
     second: float
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Sample:
     """A fixed-size sample, such as a stream sends one per frame"""
 
@@ -345,6 +345,12 @@ class Sample:
     key: int
     a: float
     b: float
+
+    def __init__(self, key: int, a: float, b: float) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Sample_key(self, key)
+        _Sample_a(self, a)
+        _Sample_b(self, b)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -417,3 +423,8 @@ class Sample:
             raise ValueError("Sample's values don't fit its fields") from cause
 
         return data
+
+
+_Sample_key = Sample.__dict__["key"].__set__
+_Sample_a = Sample.__dict__["a"].__set__
+_Sample_b = Sample.__dict__["b"].__set__

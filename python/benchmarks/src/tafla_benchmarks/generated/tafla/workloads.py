@@ -367,7 +367,7 @@ class TriplesFields(TypedDict):
     items: Sequence[Triple]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Triple:
     """An item's three float32s, 12 bytes aligned to 4 in an array"""
 
@@ -380,6 +380,12 @@ class Triple:
     value: float
     first: float
     second: float
+
+    def __init__(self, value: float, first: float, second: float) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Triple_value(self, value)
+        _Triple_first(self, first)
+        _Triple_second(self, second)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -454,6 +460,11 @@ class Triple:
         return data
 
 
+_Triple_value = Triple.__dict__["value"].__set__
+_Triple_first = Triple.__dict__["first"].__set__
+_Triple_second = Triple.__dict__["second"].__set__
+
+
 class TripleArray:
     """An array of ``Triple``s, which reads each struct when it's asked for"""
 
@@ -487,7 +498,7 @@ class TripleArray:
             yield Triple(values[0], values[1], values[2])
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Sample:
     """A fixed-size record of a uint32 and two float32s"""
 
@@ -500,6 +511,12 @@ class Sample:
     key: int
     a: float
     b: float
+
+    def __init__(self, key: int, a: float, b: float) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Sample_key(self, key)
+        _Sample_a(self, a)
+        _Sample_b(self, b)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -572,3 +589,8 @@ class Sample:
             raise ValueError("Sample's values don't fit its fields") from cause
 
         return data
+
+
+_Sample_key = Sample.__dict__["key"].__set__
+_Sample_a = Sample.__dict__["a"].__set__
+_Sample_b = Sample.__dict__["b"].__set__

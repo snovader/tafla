@@ -615,7 +615,7 @@ class PathFields(TypedDict):
     points: Sequence[Point]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Segment:
     """Two points, whose scalars lie in the segment's place"""
 
@@ -627,6 +627,11 @@ class Segment:
 
     start: Point
     end: Point
+
+    def __init__(self, start: Point, end: Point) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Segment_start(self, start)
+        _Segment_end(self, end)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -708,6 +713,10 @@ class Segment:
         return data
 
 
+_Segment_start = Segment.__dict__["start"].__set__
+_Segment_end = Segment.__dict__["end"].__set__
+
+
 class SegmentArray:
     """An array of ``Segment``s, which reads each struct when it's asked for"""
 
@@ -741,7 +750,7 @@ class SegmentArray:
             yield Segment(Point(values[0], values[1]), Point(values[2], values[3]))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Point:
     SIZE: ClassVar[int] = 8
     """The byte length of a ``Point``"""
@@ -751,6 +760,11 @@ class Point:
 
     x: float
     y: float
+
+    def __init__(self, x: float, y: float) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Point_x(self, x)
+        _Point_y(self, y)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -824,6 +838,10 @@ class Point:
         return data
 
 
+_Point_x = Point.__dict__["x"].__set__
+_Point_y = Point.__dict__["y"].__set__
+
+
 class PointArray:
     """An array of ``Point``s, which reads each struct when it's asked for"""
 
@@ -857,7 +875,7 @@ class PointArray:
             yield Point(values[0], values[1])
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class Packed:
     """A struct of every scalar type and a bool, at fixed offsets without
     padding
@@ -880,6 +898,33 @@ class Packed:
     float32: float
     float64: float
     bool_: bool
+
+    def __init__(
+        self,
+        int8: int,
+        uint8: int,
+        int16: int,
+        uint16: int,
+        int32: int,
+        uint32: int,
+        int64: int,
+        uint64: int,
+        float32: float,
+        float64: float,
+        bool_: bool,
+    ) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Packed_int8(self, int8)
+        _Packed_uint8(self, uint8)
+        _Packed_int16(self, int16)
+        _Packed_uint16(self, uint16)
+        _Packed_int32(self, int32)
+        _Packed_uint32(self, uint32)
+        _Packed_int64(self, int64)
+        _Packed_uint64(self, uint64)
+        _Packed_float32(self, float32)
+        _Packed_float64(self, float64)
+        _Packed_bool_(self, bool_)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -1004,7 +1049,20 @@ class Packed:
         return data
 
 
-@dataclass(frozen=True, slots=True)
+_Packed_int8 = Packed.__dict__["int8"].__set__
+_Packed_uint8 = Packed.__dict__["uint8"].__set__
+_Packed_int16 = Packed.__dict__["int16"].__set__
+_Packed_uint16 = Packed.__dict__["uint16"].__set__
+_Packed_int32 = Packed.__dict__["int32"].__set__
+_Packed_uint32 = Packed.__dict__["uint32"].__set__
+_Packed_int64 = Packed.__dict__["int64"].__set__
+_Packed_uint64 = Packed.__dict__["uint64"].__set__
+_Packed_float32 = Packed.__dict__["float32"].__set__
+_Packed_float64 = Packed.__dict__["float64"].__set__
+_Packed_bool_ = Packed.__dict__["bool_"].__set__
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class Documented:
     """Documentation of several lines.
 
@@ -1031,6 +1089,12 @@ class Documented:
     of two lines
     """
     undocumented: int
+
+    def __init__(self, one: int, two: int, undocumented: int) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Documented_one(self, one)
+        _Documented_two(self, two)
+        _Documented_undocumented(self, undocumented)
 
     @classmethod
     def read(cls, data: Buffer, offset: int = 0) -> Self:
@@ -1103,6 +1167,11 @@ class Documented:
             raise ValueError("Documented's values don't fit its fields") from cause
 
         return data
+
+
+_Documented_one = Documented.__dict__["one"].__set__
+_Documented_two = Documented.__dict__["two"].__set__
+_Documented_undocumented = Documented.__dict__["undocumented"].__set__
 
 
 class DocumentedArray:

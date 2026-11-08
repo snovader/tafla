@@ -413,7 +413,10 @@ Peak bytes per call, as `tafla_benchmarks.allocation` traces them:
   24.2 µs and `Triples.serialize()` of them 8.7 µs, and `Triples.items()`
   took 32.4 µs and creating the `ItemInput`s from them 6.3 µs. For the vector,
   creating the items' dicts took 11.7 µs and `ItemList.serialize()` of them
-  118.8 µs.
+  118.8 µs. Since that run, the generated structs set their fields through
+  their slots rather than through the frozen dataclass's own `__init__()`:
+  in an A/B run, creating the 100 `Triple`s took 15.6 µs rather than 24.1 µs,
+  and the codec wrote the array 25% faster and read it 23% faster.
 - The generated readers read the record's and the documents' fields 10% to
   11% slower than `ByteBuffer`'s getters called in place, and sum the column
   within 5% of them. They create an object for each table they read, which
