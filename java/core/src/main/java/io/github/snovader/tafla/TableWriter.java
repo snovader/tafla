@@ -283,6 +283,42 @@ public final class TableWriter {
     }
 
     /**
+     * Writes an array of structs of {@code size} bytes each straight into the table, each with
+     * {@code write}, after their count, padded so that they start at a multiple of
+     * {@code alignment} from the start of the table. It writes the bytes that
+     * {@link #setStructArray} writes from the structs' bytes one after another, without collecting
+     * them first. The generated code passes each struct's own {@code write(byte[], int)}:
+     *
+     * {@snippet :
+     * writer.setStructs(0, fields.points(), Point.SIZE, Point.ALIGNMENT, Point::write);
+     * }
+     *
+     * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
+     * @param write writes a struct's {@code size} bytes at an offset in the table's bytes
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     * @throws IndexOutOfBoundsException from {@code write}, if a struct ends past the bytes
+     */
+    public <T> void setStructs(int index, T[] structs, int size, int alignment, StructWrite<? super T> write) {
+        startArray(index, structs.length, alignment);
+
+        // The sizer counted the structs' room, and the array's bounds keep every write within it
+        for (int i = 0; i < structs.length; i++) {
+            write.write(structs[i], bytes, position + i * size);
+        }
+        position += structs.length * size;
+    }
+
+    /**
+     * Writes a struct of {@link #setStructs}, such as a generated struct's
+     * {@code write(byte[], int)}
+     */
+    @FunctionalInterface
+    public interface StructWrite<T> {
+        /** Writes {@code struct}'s scalars at {@code offset} in {@code bytes}, little-endian */
+        void write(T struct, byte[] bytes, int offset);
+    }
+
+    /**
      * Writes the offset of a nested table, padded to start at a multiple of {@code alignment},
      * whose fields then follow between {@link #startTable} and {@link #endTable}
      *

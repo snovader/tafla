@@ -393,17 +393,9 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         .into_iter()
         .map(struct_code)
         .collect();
-    let is_flat = definition
-        .fields
-        .iter()
-        .all(|field| matches!(field.field_type, FieldType::Scalar(_)));
     // The struct's values as its Struct unpacks them, a struct within it as
     // a struct of its own
-    let construction = if is_flat {
-        call("cls", vec![text("*values")])
-    } else {
-        construction(schema, definition, "cls", &mut 0)
-    };
+    let construction = construction(schema, definition, "cls", &mut 0);
     // The runtime builds the error, which formats an offset of any size
     let does_not_fit = call(
         "DecodeError.out_of_range",
@@ -500,16 +492,23 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         ],
     );
     writer.open("try:");
-    let comprehension = format!(
-        "return [{} for values in cls._STRUCT.iter_unpack(data)]",
+    // As Ruff breaks it: on one line, or the brackets' contents on a line of
+    // their own, or the construction and the loop on lines of their own
+    let element = format!(
+        "{} for values in cls._STRUCT.iter_unpack(data)",
         construction.flat()
     );
-    if STYLE.indent.len() * 3 + comprehension.len() <= STYLE.width {
+    let comprehension = format!("return [{element}]");
+    if writer.fits(&STYLE, &comprehension) {
         writer.line(comprehension);
     } else {
         writer.open("return [");
-        writer.statement(&STYLE, "", &construction, "");
-        writer.line("for values in cls._STRUCT.iter_unpack(data)");
+        if writer.fits(&STYLE, &element) {
+            writer.line(element);
+        } else {
+            writer.statement(&STYLE, "", &construction, "");
+            writer.line("for values in cls._STRUCT.iter_unpack(data)");
+        }
         writer.close("]");
     }
     writer.dedent();
@@ -565,12 +564,16 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
         ],
     );
-    writer.line("data = bytearray(len(items) * cls.SIZE)");
-    let mut arguments = vec![text("data"), text("index * cls.SIZE")];
+    // The size and the method in locals, rather than looked up on the class
+    // for each struct, which took 13% longer
+    writer.line("size = cls.SIZE");
+    writer.line("pack_into = cls._STRUCT.pack_into");
+    writer.line("data = bytearray(len(items) * size)");
+    let mut arguments = vec![text("data"), text("index * size")];
     push_values(schema, definition, "item", &mut arguments);
     writer.open("try:");
     writer.open("for index, item in enumerate(items):");
-    writer.statement(&STYLE, "", &call("cls._STRUCT.pack_into", arguments), "");
+    writer.statement(&STYLE, "", &call("pack_into", arguments), "");
     writer.dedent();
     writer.dedent();
     writer.open("except (error, OverflowError) as cause:");
@@ -724,15 +727,7 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
 
     // The structs' values as their Struct unpacks them, as read_array()
     // reads them
-    let is_flat = definition
-        .fields
-        .iter()
-        .all(|field| matches!(field.field_type, FieldType::Scalar(_)));
-    let construction = if is_flat {
-        call(structure.clone(), vec![text("*values")])
-    } else {
-        construction(schema, definition, structure, &mut 0)
-    };
+    let construction = construction(schema, definition, structure, &mut 0);
     writer.open(format!("def __iter__(self) -> Iterator[{structure}]:"));
     docstring(writer, &["Reads the structs one after another".to_owned()]);
     writer.open(format!(
@@ -753,7 +748,10 @@ fn view_length(writer: &mut CodeWriter) {
 }
 
 /// The call that makes a struct of the values that its `Struct` unpacks, from
-/// `values[*index]` on, which it moves past them
+/// `values[*index]` on, which it moves past them. Each is a positional
+/// argument, even in a struct of scalars alone: Python 3.14 specializes such a
+/// call to enter the class's `__init__` directly, but not `cls(*values)`, with
+/// which reading 100 structs of three scalars took 5% longer.
 fn construction(
     schema: &Schema,
     definition: &Definition,

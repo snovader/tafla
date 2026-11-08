@@ -138,6 +138,23 @@ it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 })])(
     }
 );
 
+it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 }), SLICES])(
+    'should write within a slice of a larger buffer, and throw RangeError for a scalar past it without writing any of it',
+    (pairs, slice) => {
+        const fields = pairs.map(([first]) => first);
+        const fits = fields.slice(0, -1);
+        const bytes = sliceOf(new Uint8Array(sizeOf(fields) - 1), slice);
+        const writer = new StructWriter(bytes);
+
+        writeStruct(writer, fits);
+        const before = new Uint8Array(bytes.buffer.slice(0));
+
+        expect(() => writeStruct(writer, fields.slice(-1))).toThrow(RangeError);
+        expect(new Uint8Array(bytes.buffer)).toStrictEqual(before);
+        expect(writer.bytes().subarray(0, sizeOf(fits))).toStrictEqual(littleEndian(fits));
+    }
+);
+
 function writeStruct(writer: StructWriter, fields: Field[]): void {
     for (const { setter, value } of fields) {
         (writer[setter] as (value: number | bigint) => void).call(writer, value);

@@ -9,9 +9,9 @@ OFFSET_SIZES: dict[OffsetType, OffsetSize] = {
     "uint32": 4,
 }
 
-# The offset type of each offset size, which errors name. ByteBuffer and
-# TableWriter look it up when they raise, since storing the offset type made
-# their constructors 22 ns, or 6%, slower; TableBuilder keeps its layout.
+# The offset type of each offset size, which errors name. TableWriter looks it
+# up when it raises, since storing the offset type made its constructor 22 ns,
+# or 6%, slower; TableBuilder and ByteBuffer keep their layout.
 OFFSET_TYPES: dict[OffsetSize, OffsetType] = {
     size: offset_type for offset_type, size in OFFSET_SIZES.items()
 }

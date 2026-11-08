@@ -434,7 +434,8 @@ them, which the `allocation` binary counts:
 - The array of structs takes 153 ns against 142 ns. The codec collects the
   generated structs from the workload's items, the generated code writes them
   into a `Vec`, and the writer copies that into the table: 3,608 bytes against
-  2,456.
+  2,456. The generated code has since written the structs straight into the
+  table, with `TableWriter::set_structs()`, in 2,408 bytes.
 - tafla-gen reads the record's and the documents' fields 9% to 37% faster
   than the hand-written reads, and sums the column in about the same time.
   Its getter of the vector collects the items' readers into a `Vec` of 2,400

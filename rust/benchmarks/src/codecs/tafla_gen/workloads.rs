@@ -577,12 +577,7 @@ impl TriplesFields<'_> {
         sizer.add_struct_array(self.items.len(), Triple::SIZE, Triple::ALIGNMENT);
 
         let mut writer = sizer.writer()?;
-        writer.set_struct_array(
-            0,
-            &Triple::array_to_bytes(self.items),
-            Triple::SIZE,
-            Triple::ALIGNMENT,
-        );
+        writer.set_structs(0, self.items, Triple::to_bytes, Triple::ALIGNMENT);
 
         writer.into_bytes()
     }

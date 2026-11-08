@@ -128,6 +128,11 @@ final class Tables {
         return writer.bytes();
     }
 
+    /** Writes the table's fields with the writer, each with its index, which may be followed by more */
+    static void writeFields(TableWriter writer, TableDescription table) {
+        writeFields(writer, table.fields(), IntUnaryOperator.identity());
+    }
+
     /**
      * {@return the description with every table nested in it made one that a {@link TableWriter}
      * writes in place}: from its builder, without a header, and with the root's offset type

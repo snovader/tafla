@@ -689,12 +689,14 @@ class Segment:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(
+                pack_into(
                     data,
-                    index * cls.SIZE,
+                    index * size,
                     item.start.x,
                     item.start.y,
                     item.end.x,
@@ -771,7 +773,7 @@ class Point:
                 "Point can't read a buffer that isn't C-contiguous"
             ) from cause
 
-        return cls(*values)
+        return cls(values[0], values[1])
 
     @classmethod
     def read_array(cls, data: Buffer) -> list[Self]:
@@ -781,7 +783,9 @@ class Point:
         ``TypeError`` if it isn't C-contiguous.
         """
         try:
-            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+            return [
+                cls(values[0], values[1]) for values in cls._STRUCT.iter_unpack(data)
+            ]
         except error as cause:
             raise DecodeError(
                 f"Points don't fit in {memoryview(data).nbytes} bytes"
@@ -808,10 +812,12 @@ class Point:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(data, index * cls.SIZE, item.x, item.y)
+                pack_into(data, index * size, item.x, item.y)
         except (error, OverflowError) as cause:
             raise ValueError("Point's values don't fit its fields") from cause
 
@@ -848,7 +854,7 @@ class PointArray:
     def __iter__(self) -> Iterator[Point]:
         """Reads the structs one after another"""
         for values in Point._STRUCT.iter_unpack(self._data):
-            yield Point(*values)
+            yield Point(values[0], values[1])
 
 
 @dataclass(frozen=True, slots=True)
@@ -896,7 +902,19 @@ class Packed:
                 "Packed can't read a buffer that isn't C-contiguous"
             ) from cause
 
-        return cls(*values)
+        return cls(
+            values[0],
+            values[1],
+            values[2],
+            values[3],
+            values[4],
+            values[5],
+            values[6],
+            values[7],
+            values[8],
+            values[9],
+            values[10],
+        )
 
     @classmethod
     def read_array(cls, data: Buffer) -> list[Self]:
@@ -906,7 +924,22 @@ class Packed:
         ``TypeError`` if it isn't C-contiguous.
         """
         try:
-            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+            return [
+                cls(
+                    values[0],
+                    values[1],
+                    values[2],
+                    values[3],
+                    values[4],
+                    values[5],
+                    values[6],
+                    values[7],
+                    values[8],
+                    values[9],
+                    values[10],
+                )
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
         except error as cause:
             raise DecodeError(
                 f"Packeds don't fit in {memoryview(data).nbytes} bytes"
@@ -945,12 +978,14 @@ class Packed:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(
+                pack_into(
                     data,
-                    index * cls.SIZE,
+                    index * size,
                     item.int8,
                     item.uint8,
                     item.int16,
@@ -1018,7 +1053,7 @@ class Documented:
                 "Documented can't read a buffer that isn't C-contiguous"
             ) from cause
 
-        return cls(*values)
+        return cls(values[0], values[1], values[2])
 
     @classmethod
     def read_array(cls, data: Buffer) -> list[Self]:
@@ -1028,7 +1063,10 @@ class Documented:
         ``TypeError`` if it isn't C-contiguous.
         """
         try:
-            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+            return [
+                cls(values[0], values[1], values[2])
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
         except error as cause:
             raise DecodeError(
                 f"Documenteds don't fit in {memoryview(data).nbytes} bytes"
@@ -1055,12 +1093,12 @@ class Documented:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(
-                    data, index * cls.SIZE, item.one, item.two, item.undocumented
-                )
+                pack_into(data, index * size, item.one, item.two, item.undocumented)
         except (error, OverflowError) as cause:
             raise ValueError("Documented's values don't fit its fields") from cause
 
@@ -1097,4 +1135,4 @@ class DocumentedArray:
     def __iter__(self) -> Iterator[Documented]:
         """Reads the structs one after another"""
         for values in Documented._STRUCT.iter_unpack(self._data):
-            yield Documented(*values)
+            yield Documented(values[0], values[1], values[2])

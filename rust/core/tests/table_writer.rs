@@ -123,6 +123,24 @@ proptest! {
         }
     }
 
+    /// `set_structs()` writes the bytes that `set_struct_array()` writes from
+    /// all the structs' bytes, wherever the array starts, and fails as it
+    /// fails for a table too long for its offsets
+    #[test]
+    fn test_writes_structs_from_their_conversion_as_from_all_their_bytes(
+        offset_type in select(OFFSET_TYPES.to_vec()),
+        before in 0..8_usize,
+        alignment in select(ALIGNMENTS.to_vec()),
+        triples in vec(any::<[u8; 3]>(), 0..24),
+        octets in vec(any::<[u8; 8]>(), 0..40),
+    ) {
+        let (from_structs, from_bytes) = write_structs(offset_type, before, &triples, alignment);
+        prop_assert_eq!(from_structs, from_bytes);
+
+        let (from_structs, from_bytes) = write_structs(offset_type, before, &octets, alignment);
+        prop_assert_eq!(from_structs, from_bytes);
+    }
+
     /// Calls in any order, with any indices, counts and items, write a table
     /// or fail with an error, and never write past its length
     #[test]
@@ -149,6 +167,40 @@ proptest! {
 }
 
 const SHORT_OFFSET_TYPES: [OffsetType; 2] = [OffsetType::Uint8, OffsetType::Uint16];
+
+const OFFSET_TYPES: [OffsetType; 3] = [OffsetType::Uint8, OffsetType::Uint16, OffsetType::Uint32];
+
+const ALIGNMENTS: [Alignment; 4] = [
+    Alignment::One,
+    Alignment::Two,
+    Alignment::Four,
+    Alignment::Eight,
+];
+
+/// Writes a table of an array of `before` bytes and an array of `structs`,
+/// with `set_structs()` and with `set_struct_array()`
+fn write_structs<const N: usize>(
+    offset_type: OffsetType,
+    before: usize,
+    structs: &[[u8; N]],
+    alignment: Alignment,
+) -> (Result<Vec<u8>, BuildError>, Result<Vec<u8>, BuildError>) {
+    let write = |set: &dyn Fn(&mut TableWriter)| {
+        let mut sizer = TableSizer::new(2, TableLayout::DEFAULT.with_offset_type(offset_type))?;
+        sizer.add_u8_array(before);
+        sizer.add_struct_array(structs.len(), N, alignment);
+
+        let mut writer = sizer.writer()?;
+        writer.set_u8_array(0, &vec![7; before]);
+        set(&mut writer);
+        writer.into_bytes()
+    };
+
+    (
+        write(&|writer| writer.set_structs(1, structs, |bytes| bytes, alignment)),
+        write(&|writer| writer.set_struct_array(1, structs.as_flattened(), N, alignment)),
+    )
+}
 
 /// Tables of the layouts that `layouts` generates whose nested tables a
 /// `TableWriter` writes in place
@@ -223,6 +275,10 @@ enum Call {
         length: usize,
         size: usize,
     },
+    Structs {
+        index: usize,
+        count: usize,
+    },
     Table {
         index: usize,
         alignment: Alignment,
@@ -259,6 +315,7 @@ fn call() -> impl Strategy<Value = Call> {
             length,
             size
         }),
+        (small(), 0..8_usize).prop_map(|(index, count)| Call::Structs { index, count }),
         (small(), alignments).prop_map(|(index, alignment)| Call::Table { index, alignment }),
         small().prop_map(|fields| Call::StartTable { fields }),
         Just(Call::EndTable),
@@ -283,6 +340,9 @@ impl Call {
                 length,
                 size,
             } => writer.set_struct_array(index, &vec![1; length], size, Alignment::Two),
+            Self::Structs { index, count } => {
+                writer.set_structs(index, &vec![-1; count], i16::to_le_bytes, Alignment::Two);
+            }
             Self::Table { index, alignment } => writer.set_table(index, alignment),
             Self::StartTable { fields } => parents.push(writer.start_table(fields)),
             Self::EndTable => {
@@ -568,6 +628,20 @@ fn test_sizes_and_writes_a_struct_of_0_bytes_as_table_builder_builds_it() {
     builder.set_struct(&[][..]).unwrap();
     builder.set_u8(7).unwrap();
     assert_eq!(writer.into_bytes(), builder.to_bytes());
+}
+
+#[test]
+fn test_fails_for_structs_of_0_bytes_as_for_their_bytes() {
+    let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
+    sizer.add_struct_array(2, 2, Alignment::One);
+    let mut from_structs = sizer.writer().unwrap();
+    from_structs.set_structs(0, &[(), ()], |()| [], Alignment::One);
+    let mut from_bytes = sizer.writer().unwrap();
+    from_bytes.set_struct_array(0, &[], 0, Alignment::One);
+
+    let error = BuildError::NotWholeStructs { length: 0, size: 0 };
+    assert_eq!(from_structs.into_bytes(), Err(error));
+    assert_eq!(from_bytes.into_bytes(), Err(error));
 }
 
 #[test]

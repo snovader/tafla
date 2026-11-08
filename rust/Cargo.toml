@@ -13,9 +13,11 @@ codegen-units = 1
 lto = true
 
 # The generator's WebAssembly module, which hosts download and load, so it's
-# built for size, and it aborts on a panic rather than unwinding
+# built for size, and it aborts on a panic rather than unwinding. "z" made it
+# 262,640 bytes rather than "s"'s 313,683, and 86,639 rather than 99,969
+# gzipped; a compile took 0.28 ms rather than 0.22 ms in Node.
 [profile.wasm]
 inherits = "release"
-opt-level = "s"
+opt-level = "z"
 panic = "abort"
 strip = true

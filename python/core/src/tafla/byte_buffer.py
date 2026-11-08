@@ -7,7 +7,7 @@ from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, from_little_endian, little_endian_bytes
 from .errors import DecodeError, describe_int
-from .layout import OFFSET_TYPES, TableLayout
+from .layout import MAX_LENGTHS, TableLayout
 from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
 
 # The scalars' Structs, assigned rather than imported. Python 3.14 compiles a
@@ -56,13 +56,11 @@ class ByteBuffer:
 
     __slots__ = [
         "__header_size",
+        "__layout",
         "__length",
-        "__max_size",
         "__position",
         "__size",
         "__size_struct",
-        "__sized",
-        "__versioned",
         "__view",
     ]
 
@@ -87,13 +85,13 @@ class ByteBuffer:
         self.__view = view if view.format == "B" and view.ndim == 1 else view.cast("B")
         self.__length = len(self.__view)
 
-        self.__sized = layout.sized()
-        self.__versioned = layout.versioned()
+        # The layout itself, rather than copies of what only the header's reads
+        # and the writes use, which took a quarter of the constructor's time:
+        # 0.32 µs rather than 0.24 µs
+        self.__layout = layout
         # The offset size, the width of offsets, lengths and header slots
-        self.__size = layout.offset_size()
-        self.__size_struct = _SIZES[self.__size]
-        # The largest count, length or item end that a slot holds
-        self.__max_size = (1 << 8 * self.__size) - 1
+        self.__size = size = layout.offset_size()
+        self.__size_struct = _SIZES[size]
         # The byte length of the header slots before the root's field offsets
         self.__header_size = layout.header_size()
 
@@ -106,7 +104,7 @@ class ByteBuffer:
         return self.__view
 
     def get_size(self) -> int:
-        return self.__get_size(0) if self.__sized else self.__length
+        return self.__get_size(0) if self.__layout.sized() else self.__length
 
     def set_size(self, size: int) -> None:
         self.__set_size(size)
@@ -117,17 +115,29 @@ class ByteBuffer:
 
         Raises ``TypeError`` if the buffer's layout isn't versioned.
         """
-        if not self.__versioned:
+        layout = self.__layout
+        if not layout.versioned():
             raise TypeError("The table has no version")
 
-        return self.__get_size(self.__size if self.__sized else 0)
+        return self.__get_size(self.__size if layout.sized() else 0)
 
     def set_version(self, version: int) -> None:
         self.__set_size(version)
 
+    # root_offset() and field_offset() read their slot as __get_size() does,
+    # written out as the scalar getters below are, since every field's read
+    # starts with one: without the call, reading a vector of 100 tables took
+    # 4% less time.
+
     def root_offset(self, index: int) -> int:
         """Returns the position of field ``index`` of the root table."""
-        return self.__get_size(self.__header_size + index * self.__size)
+        position = self.__header_size + index * self.__size
+        try:
+            if position >= 0:
+                return self.__size_struct.unpack_from(self.__view, position)[0]
+        except StructError, OverflowError:
+            pass
+        raise DecodeError.out_of_range(position, self.__size, self.__length)
 
     def field_offset(self, table_position: int, index: int) -> int:
         """Returns the position of field ``index`` of a nested table, which has
@@ -135,7 +145,14 @@ class ByteBuffer:
         ``table_position`` is the nested table's position, which is the offset
         of the field that holds it.
         """
-        return table_position + self.__get_size(table_position + index * self.__size)
+        position = table_position + index * self.__size
+        try:
+            if position >= 0:
+                offset = self.__size_struct.unpack_from(self.__view, position)[0]
+                return table_position + offset
+        except StructError, OverflowError:
+            pass
+        raise DecodeError.out_of_range(position, self.__size, self.__length)
 
     def set_offset(self, offset: int) -> None:
         self.__set_size(offset)
@@ -648,11 +665,12 @@ class ByteBuffer:
     def __check_size(self, count: int) -> None:
         """Raises ``ValueError`` if a count, length or vector item end doesn't
         fit in a slot, before anything is written."""
-        if count > self.__max_size:
-            offset_type = OFFSET_TYPES[self.__size]
+        max_size = MAX_LENGTHS[self.__size]
+        if count > max_size:
             raise ValueError(
-                f"Can't write {count} at {self.__position}: a {offset_type} "
-                f"count, length or item end holds at most {self.__max_size}"
+                f"Can't write {count} at {self.__position}: a "
+                f"{self.__layout.offset_type()} count, length or item end holds "
+                f"at most {max_size}"
             )
 
     def __overflow(self, byte_length: int) -> ValueError:

@@ -989,19 +989,14 @@ impl StructsFields<'_> {
 
         let mut writer = sizer.writer()?;
         writer.set_struct(0, &self.packed.to_bytes());
-        writer.set_struct_array(
+        writer.set_structs(
             1,
-            &Documented::array_to_bytes(self.documented),
-            Documented::SIZE,
+            self.documented,
+            Documented::to_bytes,
             Documented::ALIGNMENT,
         );
         writer.set_struct(2, &self.segment.to_bytes());
-        writer.set_struct_array(
-            3,
-            &Segment::array_to_bytes(self.segments),
-            Segment::SIZE,
-            Segment::ALIGNMENT,
-        );
+        writer.set_structs(3, self.segments, Segment::to_bytes, Segment::ALIGNMENT);
         writer.set_table(4, PathFields::ALIGNMENT);
         self.path.write(&mut writer);
 
@@ -1083,12 +1078,7 @@ impl PathFields<'_> {
     pub fn write(&self, writer: &mut TableWriter) {
         let parent = writer.start_table(2);
         writer.set_struct(0, &self.start.to_bytes());
-        writer.set_struct_array(
-            1,
-            &Point::array_to_bytes(self.points),
-            Point::SIZE,
-            Point::ALIGNMENT,
-        );
+        writer.set_structs(1, self.points, Point::to_bytes, Point::ALIGNMENT);
         writer.end_table(parent);
     }
 }
