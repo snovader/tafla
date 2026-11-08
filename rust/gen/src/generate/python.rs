@@ -1,6 +1,8 @@
 //! Python for `tafla`. Messages and tables are classes that read
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
-//! and structs are frozen dataclasses packed with `struct`.
+//! and structs are frozen dataclasses packed with `struct`. A table's leading
+//! fields of fixed size, and a string after them, are written in one call,
+//! from the runtime's `FixedFields`.
 
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
@@ -62,7 +64,7 @@ pub fn generate(
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blanks(2);
         match definition.kind {
-            Kind::Message(layout) => message(&mut writer, schema, definition, layout),
+            Kind::Message(layout) => message(&mut writer, schema, index, layout),
             Kind::Table => table(&mut writer, schema, index),
             Kind::Struct(_) => structure(&mut writer, schema, definition),
         }
@@ -88,6 +90,7 @@ pub fn generate(
     }]
 }
 
+#[allow(clippy::too_many_lines)]
 fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     let has = |predicate: fn(&Definition) -> bool| schema.definitions.iter().any(predicate);
     let has_message = has(|definition| matches!(definition.kind, Kind::Message(_)));
@@ -156,6 +159,9 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if versioned || has_struct {
         buffer.push("DecodeError");
     }
+    if (0..schema.definitions.len()).any(|index| fixed_fields(schema, index) > 0) {
+        buffer.push("FixedFields");
+    }
     if has_message {
         buffer.push("TableLayout");
     }
@@ -209,7 +215,8 @@ fn from_import(writer: &mut CodeWriter, module: &str, names: &[&str]) {
     writer.close(")");
 }
 
-fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
+fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+    let definition = schema.definition(index);
     let name = &definition.name;
 
     writer.open(format!("class {name}:"));
@@ -231,6 +238,11 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         writer.blank();
     }
     writer.line(format!("_LAYOUT: Final = {}", layout_expression(layout)));
+    let fixed = fixed_fields(schema, index);
+    if fixed > 0 {
+        let description = fixed_description(schema, definition, fixed, Some("_LAYOUT"));
+        writer.statement(&STYLE, "_FIXED_FIELDS: Final = ", &description, "");
+    }
     writer.blank();
 
     writer.open("def __init__(self, data: Buffer) -> None:");
@@ -272,6 +284,23 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         writer.blank();
     }
 
+    serialize(writer, schema, definition, layout, fixed);
+
+    getters(writer, schema, definition, true);
+    writer.dedent();
+}
+
+/// A message's `serialize()`, which writes it from its fields, the first
+/// `fixed` of them with its `FixedFields`
+fn serialize(
+    writer: &mut CodeWriter,
+    schema: &Schema,
+    definition: &Definition,
+    layout: Layout,
+    fixed: usize,
+) {
+    let name = &definition.name;
+
     writer.line("@classmethod");
     writer.statement(
         &STYLE,
@@ -295,12 +324,19 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         arguments.push(text("cls.FORMAT_VERSION"));
     }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
-    writes(writer, schema, definition);
+    if fixed > 0 {
+        set_fixed_fields(
+            writer,
+            schema,
+            definition,
+            fixed,
+            "writer.set_fields",
+            "cls",
+        );
+    }
+    writes(writer, schema, definition, fixed);
     writer.blank();
     writer.line("return writer.bytes()");
-    writer.dedent();
-
-    getters(writer, schema, definition, true);
     writer.dedent();
 }
 
@@ -349,6 +385,13 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     );
     writer.blank();
 
+    let fixed = fixed_fields(schema, index);
+    if fixed > 0 {
+        let description = fixed_description(schema, definition, fixed, None);
+        writer.statement(&STYLE, "_FIXED_FIELDS: Final = ", &description, "");
+        writer.blank();
+    }
+
     writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
     docstring(
         writer,
@@ -373,12 +416,28 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
             "field or vector that holds it".to_owned(),
         ],
     );
-    writer.line(format!(
-        "parent = writer.start_table({})",
-        definition.fields.len()
-    ));
-    writes(writer, schema, definition);
-    writer.line("writer.end_table(parent)");
+    // A table whose fields are all fixed is written whole, without the
+    // calls that start and end it
+    if fixed == definition.fields.len() {
+        set_fixed_fields(
+            writer,
+            schema,
+            definition,
+            fixed,
+            "writer.write_table",
+            name,
+        );
+    } else {
+        writer.line(format!(
+            "parent = writer.start_table({})",
+            definition.fields.len()
+        ));
+        if fixed > 0 {
+            set_fixed_fields(writer, schema, definition, fixed, "writer.set_fields", name);
+        }
+        writes(writer, schema, definition, fixed);
+        writer.line("writer.end_table(parent)");
+    }
     writer.dedent();
 
     getters(writer, schema, definition, false);
@@ -891,8 +950,10 @@ fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
 }
 
 /// The calls that write a table's fields, in order, each with its index
-fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
-    for (index, field) in definition.fields.iter().enumerate() {
+/// The calls that write a table's fields, from its field `first`, after the
+/// fields that `FixedFields` packs
+fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, first: usize) {
+    for (index, field) in definition.fields.iter().enumerate().skip(first) {
         let value = format!("fields[\"{}\"]", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
@@ -955,6 +1016,170 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
             }
         };
         writer.statement(&STYLE, "", &call(format!("writer.{method}"), arguments), "");
+    }
+}
+
+/// The most fields, those of nested tables included, that one `FixedFields`
+/// describes. Tables may nest another in many fields, and that one the next,
+/// so describing every nested table whole would grow the generated code and
+/// the work of generating it with the product of their fields.
+const MAX_FIXED_FIELDS: usize = 32;
+
+/// How many of the leading fields of the message or table at `index` its
+/// `FixedFields` describes, for `TableWriter` to pack with their offsets in
+/// one call: those of fixed size, whose offsets depend on no value, and a
+/// string after them, up to [`MAX_FIXED_FIELDS`]. It's 0 when packing them
+/// wouldn't save a call: for fewer than two, unless they're a whole table's,
+/// which its parent then writes without starting and ending it.
+fn fixed_fields(schema: &Schema, index: usize) -> usize {
+    let definition = schema.definition(index);
+    if definition.is_struct() {
+        return 0;
+    }
+
+    let mut budget = MAX_FIXED_FIELDS;
+    let mut packed = 0;
+    for field in &definition.fields {
+        let Some(count) = fixed_count(schema, field.field_type, budget) else {
+            break;
+        };
+        budget -= count;
+        packed += 1;
+    }
+    if let Some(field) = definition.fields.get(packed)
+        && field.field_type == FieldType::String
+        && budget > 0
+    {
+        packed += 1;
+    }
+
+    let is_whole_table = definition.kind == Kind::Table && packed == definition.fields.len();
+    if packed >= 2 || (is_whole_table && packed > 0) {
+        packed
+    } else {
+        0
+    }
+}
+
+/// The number of fields that a field adds to a `FixedFields`, itself and a
+/// nested table's fields, when its bytes are of a size that the schema fixes
+/// and they're at most `budget`: a scalar's, a struct's, or a nested table's
+/// whose fields all are, which has no arrays to align. Each step spends some
+/// of the budget or ends, so this ends soon, however tables nest.
+fn fixed_count(schema: &Schema, field_type: FieldType, budget: usize) -> Option<usize> {
+    if budget == 0 {
+        return None;
+    }
+
+    match field_type {
+        FieldType::Scalar(_) | FieldType::Struct(_) => Some(1),
+        FieldType::Table(index) => {
+            let mut count = 1;
+            for field in &schema.definition(index).fields {
+                count += fixed_count(schema, field.field_type, budget - count)?;
+            }
+            Some(count)
+        }
+        FieldType::Array(_)
+        | FieldType::String
+        | FieldType::StructArray(_)
+        | FieldType::Vector(_) => None,
+    }
+}
+
+/// The `FixedFields` of a table's first `count` fields, each a scalar's
+/// `struct` format code, a struct's size, or a nested table's own, and then
+/// the string, with a message's `layout`
+fn fixed_description(
+    schema: &Schema,
+    definition: &Definition,
+    count: usize,
+    layout: Option<&str>,
+) -> Expr {
+    let mut arguments = vec![text(definition.fields.len().to_string())];
+    let mut string = false;
+    for field in &definition.fields[..count] {
+        arguments.push(match field.field_type {
+            FieldType::Scalar(scalar) => text(format!("\"{}\"", struct_code(scalar))),
+            FieldType::Struct(index) => text(format!(
+                "\"{}s\"",
+                schema.definition(index).struct_layout().size
+            )),
+            FieldType::Table(index) => {
+                let nested = schema.definition(index);
+                fixed_description(schema, nested, nested.fields.len(), None)
+            }
+            FieldType::String => {
+                string = true;
+                continue;
+            }
+            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+                unreachable!("only fields of fixed size and a string are packed")
+            }
+        });
+    }
+
+    if string {
+        arguments.push(text("string=True"));
+    }
+    if let Some(layout) = layout {
+        arguments.push(text(format!("layout={layout}")));
+    }
+    call("FixedFields", arguments)
+}
+
+/// The call that writes a table's first `count` fields with its
+/// `FixedFields`: their values, each nested table's in place of it, and the
+/// string's
+fn set_fixed_fields(
+    writer: &mut CodeWriter,
+    schema: &Schema,
+    definition: &Definition,
+    count: usize,
+    method: &str,
+    owner: &str,
+) {
+    let mut values = Vec::new();
+    push_fixed_values(schema, definition, count, "fields", &mut values);
+
+    let mut arguments = vec![text(format!("{owner}._FIXED_FIELDS"))];
+    // A tuple of one value needs its comma
+    arguments.push(match values.as_slice() {
+        [value] => text(format!("({value},)")),
+        _ => call("", values.into_iter().map(text).collect()),
+    });
+    let last = &definition.fields[count - 1];
+    if last.field_type == FieldType::String {
+        arguments.push(text(format!("fields[\"{}\"]", identifier(&last.name))));
+    }
+
+    writer.statement(&STYLE, "", &call(method, arguments), "");
+}
+
+/// Appends the values of a table's first `count` fields, but a string's,
+/// from `fields`, with those of a nested table in place of it
+fn push_fixed_values(
+    schema: &Schema,
+    definition: &Definition,
+    count: usize,
+    fields: &str,
+    values: &mut Vec<String>,
+) {
+    for field in &definition.fields[..count] {
+        let value = format!("{fields}[\"{}\"]", identifier(&field.name));
+        match field.field_type {
+            FieldType::Scalar(_) => values.push(value),
+            FieldType::Struct(_) => values.push(format!("{value}.serialize()")),
+            FieldType::Table(index) => {
+                let nested = schema.definition(index);
+                push_fixed_values(schema, nested, nested.fields.len(), &value, values);
+            }
+            // The string is an argument of its own
+            FieldType::String => {}
+            FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => {
+                unreachable!("only fields of fixed size and a string are packed")
+            }
+        }
     }
 }
 

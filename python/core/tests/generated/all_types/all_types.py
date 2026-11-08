@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Self, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
+from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
 
 
 class Scalars:
@@ -14,6 +14,9 @@ class Scalars:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
+    _FIXED_FIELDS: Final = FixedFields(
+        11, "b", "B", "h", "H", "i", "I", "q", "Q", "f", "d", "?", layout=_LAYOUT
+    )
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -23,17 +26,22 @@ class Scalars:
     def serialize(cls, **fields: Unpack[ScalarsFields]) -> memoryview:
         """Writes a ``Scalars`` with every field"""
         writer = TableWriter(11, cls._LAYOUT)
-        writer.set_int8(0, fields["int8"])
-        writer.set_uint8(1, fields["uint8"])
-        writer.set_int16(2, fields["int16"])
-        writer.set_uint16(3, fields["uint16"])
-        writer.set_int32(4, fields["int32"])
-        writer.set_uint32(5, fields["uint32"])
-        writer.set_int64(6, fields["int64"])
-        writer.set_uint64(7, fields["uint64"])
-        writer.set_float32(8, fields["float32"])
-        writer.set_float64(9, fields["float64"])
-        writer.set_uint8(10, 1 if fields["bool_"] else 0)
+        writer.set_fields(
+            cls._FIXED_FIELDS,
+            (
+                fields["int8"],
+                fields["uint8"],
+                fields["int16"],
+                fields["uint16"],
+                fields["int32"],
+                fields["uint32"],
+                fields["int64"],
+                fields["uint64"],
+                fields["float32"],
+                fields["float64"],
+                fields["bool_"],
+            ),
+        )
 
         return writer.bytes()
 
@@ -396,6 +404,8 @@ class Keywords:
     alignment of its arrays and nested tables, or 1
     """
 
+    _FIXED_FIELDS: Final = FixedFields(6, "B", "B", "B", "B", "B", string=True)
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
@@ -406,14 +416,17 @@ class Keywords:
         """Writes a ``Keywords`` where its parent's writer is, after the
         field or vector that holds it
         """
-        parent = writer.start_table(6)
-        writer.set_uint8(0, fields["class_"])
-        writer.set_uint8(1, fields["default"])
-        writer.set_uint8(2, fields["in_"])
-        writer.set_uint8(3, fields["match_"])
-        writer.set_uint8(4, fields["self"])
-        writer.set_string(5, fields["type_"])
-        writer.end_table(parent)
+        writer.write_table(
+            Keywords._FIXED_FIELDS,
+            (
+                fields["class_"],
+                fields["default"],
+                fields["in_"],
+                fields["match_"],
+                fields["self"],
+            ),
+            fields["type_"],
+        )
 
     def class_(self) -> int:
         return self._buffer.get_uint8(self._buffer.field_offset(self._position, 0))

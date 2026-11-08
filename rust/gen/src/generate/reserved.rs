@@ -46,6 +46,7 @@ const PYTHON: &[&str] = &[
     "DecodeError",
     "False",
     "Final",
+    "FixedFields",
     "IndexError",
     "Iterable",
     "Iterator",
