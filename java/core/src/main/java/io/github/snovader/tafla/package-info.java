@@ -71,7 +71,7 @@
  *
  * <h2>Performance</h2>
  *
- * <p>Measured in OpenJDK 25 on an Apple M2 Pro, as the minimum of 41 rounds:</p>
+ * <p>Measured with JMH in Oracle's JDK 25.0.1 on an Apple M2 Pro, as the fastest iteration:</p>
  *
  * <ul>
  *   <li><b>Arrays of the field's Java type are copied in bulk</b>, both ways, such as a
@@ -80,11 +80,11 @@
  *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
  *     The array view getters, such as {@code getFloat32ArrayView()}, return a read-only
  *     {@code FloatBuffer} or other view of the bytes instead: viewing three columns of 100,000
- *     elements took 0.04 µs and 448 bytes, against 47 µs and 1.6 MB to copy them. Alignment
+ *     elements took 0.04 µs and 392 bytes, against 50 µs and 1.6 MB to copy them. Alignment
  *     doesn't matter to Java, which reads at any offset, but the TypeScript implementation reads
  *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
- *     27,028-element {@code float32} array with {@code getFloat32()} took 6.8 µs, against 9.5 µs
+ *     27,028-element {@code float32} array with {@code getFloat32()} took 23 µs, against 27 µs
  *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar
  *     getters are the slower way.</li>
  *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
@@ -92,10 +92,10 @@
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
  *     array of its own and is copied, as is a builder written already, or one whose layout has
  *     a header or another offset type than its parent's. A vector of 100 tables that each nest
- *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 54 µs and 108 µs.</li>
+ *     another took 4.6 µs to build from builders and 4.9 µs from bytes, and a table nesting
+ *     100,000 rows of three columns took 42 µs and 90 µs.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
- *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
+ *     16-byte string took 0.04 µs to write and 0.014 µs to read.</li>
  * </ul>
  *
  * <h2>Conversions</h2>
