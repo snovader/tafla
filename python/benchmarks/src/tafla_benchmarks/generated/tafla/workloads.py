@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Self, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
+from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
 
 
 class Record:
@@ -14,6 +14,7 @@ class Record:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
+    _FIXED_FIELDS: Final = FixedFields(4, "d", "d", "q", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -23,10 +24,9 @@ class Record:
     def serialize(cls, **fields: Unpack[RecordFields]) -> memoryview:
         """Writes a ``Record`` with every field"""
         writer = TableWriter(4, cls._LAYOUT)
-        writer.set_float64(0, fields["x"])
-        writer.set_float64(1, fields["y"])
-        writer.set_int64(2, fields["id"])
-        writer.set_string(3, fields["name"])
+        writer.set_fields(
+            cls._FIXED_FIELDS, (fields["x"], fields["y"], fields["id"]), fields["name"]
+        )
 
         return writer.bytes()
 
@@ -65,6 +65,7 @@ class Document:
     """
 
     _LAYOUT: Final = TableLayout(sized=True, versioned=True)
+    _FIXED_FIELDS: Final = FixedFields(4, "d", "d", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -91,9 +92,7 @@ class Document:
     def serialize(cls, **fields: Unpack[DocumentFields]) -> memoryview:
         """Writes a ``Document`` with every field"""
         writer = TableWriter(4, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_float64(0, fields["x"])
-        writer.set_float64(1, fields["y"])
-        writer.set_string(2, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["x"], fields["y"]), fields["name"])
         writer.set_table(3, Columns.ALIGNMENT)
         Columns.write(writer, fields["columns"])
 
@@ -223,6 +222,8 @@ class Item:
     alignment of its arrays and nested tables, or 1
     """
 
+    _FIXED_FIELDS: Final = FixedFields(2, "f", FixedFields(2, "f", "f"))
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
@@ -233,11 +234,10 @@ class Item:
         """Writes an ``Item`` where its parent's writer is, after the
         field or vector that holds it
         """
-        parent = writer.start_table(2)
-        writer.set_float32(0, fields["value"])
-        writer.set_table(1, Pair.ALIGNMENT)
-        Pair.write(writer, fields["pair"])
-        writer.end_table(parent)
+        writer.write_table(
+            Item._FIXED_FIELDS,
+            (fields["value"], fields["pair"]["first"], fields["pair"]["second"]),
+        )
 
     def value(self) -> float:
         return self._buffer.get_float32(self._buffer.field_offset(self._position, 0))
@@ -301,6 +301,8 @@ class Pair:
     alignment of its arrays and nested tables, or 1
     """
 
+    _FIXED_FIELDS: Final = FixedFields(2, "f", "f")
+
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
         self._buffer = buffer
@@ -311,10 +313,7 @@ class Pair:
         """Writes a ``Pair`` where its parent's writer is, after the
         field or vector that holds it
         """
-        parent = writer.start_table(2)
-        writer.set_float32(0, fields["first"])
-        writer.set_float32(1, fields["second"])
-        writer.end_table(parent)
+        writer.write_table(Pair._FIXED_FIELDS, (fields["first"], fields["second"]))
 
     def first(self) -> float:
         return self._buffer.get_float32(self._buffer.field_offset(self._position, 0))

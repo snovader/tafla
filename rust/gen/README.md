@@ -186,7 +186,11 @@ generated code adds each field to the runtime's `TableSizer`, which counts the
 table's length, and then writes them into bytes of that length with its
 `TableWriter`, with nested tables in place in their parent. Python appends
 the fields to its `TableWriter`'s bytes instead, without sizing them first,
-since a call there costs more than the bytes' growth. Each nested table has an
+since a call there costs more than the bytes' growth. For the same reason,
+it writes a table's leading fields of fixed size, whose offsets depend on no
+value, and a string after them, in one call that packs them with a `struct`,
+from a `FixedFields` that describes them: a nested table of only those fields
+is written whole, in its parent's call or in one of its own. Each nested table has an
 `ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
 and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of
