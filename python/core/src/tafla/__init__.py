@@ -159,10 +159,6 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``TypeError`` where it's taken as bytes: by ``ByteBuffer()``, whose reads
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
-- Writes past the end of a ``ByteBuffer``, and arrays, strings and vectors
-  too long for its ``offset_type``, raise ``ValueError`` and write nothing. A
-  scalar that doesn't fit its type raises ``ValueError`` and leaves the
-  position where it was, though CPython zeroes the scalar's bytes first.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
   created with, a version that doesn't fit, or arrays, structs or tables given
   as buffers whose lengths changed before ``finalize()`` so that the table's

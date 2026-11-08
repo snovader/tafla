@@ -7,8 +7,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The first release. Changed and Fixed list what changed since the repository's
-first commits, for code built from its source before the release.
+The first release. Changed, Removed and Fixed list what changed since the
+repository's first commits, for code built from its source before the release.
 
 ### Added
 
@@ -61,10 +61,16 @@ first commits, for code built from its source before the release.
   `--help`, `--version` and `--`, takes options anywhere, and reports every
   schema it can't read or write rather than stopping at the first.
 
+### Removed
+
+- Python's `ByteBuffer` only reads tables, and its setters and `reset()` are
+  removed. Tables are written with `TableBuilder` or `TableWriter`, and
+  records at fixed offsets with the standard library's `struct`.
+
 ### Fixed
 
-- `ByteBuffer`'s `setString()` and `setVector()` in TypeScript, and Python's
-  writes, write nothing when a value doesn't fit, as documented.
+- `ByteBuffer`'s `setString()` and `setVector()` in TypeScript write nothing
+  when a value doesn't fit, as documented.
 - A TypeScript struct writer whose write threw no longer breaks later writes.
 - TypeScript's `TableWriter` writes padding as zeros and never writes past its
   bytes, and generated structs are written into bytes of their own.

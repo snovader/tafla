@@ -1,11 +1,11 @@
 from collections.abc import Buffer, Callable, Iterable, Sequence
 from typing import Any, Literal, cast, overload
 
-from .byte_buffer import ByteBuffer, byte_view, struct_count
+from .byte_buffer import ByteBuffer, byte_view
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements
 from .layout import MAX_LENGTHS, TableLayout, header_length, padding_to
-from .table_writer import TableWriter
+from .table_writer import TableWriter, struct_count
 from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[..., object]
@@ -107,8 +107,8 @@ class TableBuilder:
         self.__records = []
 
     def finalize(self) -> ByteBuffer:
-        """Writes the table, once, and returns a buffer of its bytes; later
-        calls return the same buffer.
+        """Writes the table, once, and returns a ``ByteBuffer`` that reads
+        it; later calls return the same buffer.
 
         Raises ``ValueError`` if fewer fields were set than the table holds, or
         if an array, struct or table given as a buffer changed its length since

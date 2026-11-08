@@ -16,6 +16,10 @@ DOCUMENT_LAYOUT = TableLayout(sized=True, versioned=True)
 DOCUMENT_VERSION = 1
 
 SAMPLE_SIZE = 3 * SIZEOF_32
+# The fixed-size record's fields, a uint32 and two float32s, which
+# serialize_sample() packs each at its offset
+UINT32 = Struct("<I")
+FLOAT32 = Struct("<f")
 
 ITEM_STRUCT = Struct("<fff")
 """An item as a struct: its three float32s, aligned to 4 in an array"""
@@ -160,15 +164,17 @@ def deserialize_structs(data: Buffer) -> ListInput:
     )
 
 
-def serialize_sample(input: SampleInput) -> memoryview:
-    """Writes the fields one after another with ``ByteBuffer``'s setters, since
-    tafla's Python runtime has no writer of fixed-size records"""
-    buffer = ByteBuffer(bytearray(SAMPLE_SIZE))
-    buffer.set_uint32(input.key)
-    buffer.set_float32(input.a)
-    buffer.set_float32(input.b)
+def serialize_sample(input: SampleInput) -> bytearray:
+    """Packs each field at its offset with ``struct``, which tafla's
+    documentation recommends for records at fixed offsets, as the
+    TypeScript codec writes each with ``StructWriter``. The ``struct`` codec
+    packs the whole record in one call."""
+    data = bytearray(SAMPLE_SIZE)
+    UINT32.pack_into(data, 0, input.key)
+    FLOAT32.pack_into(data, SIZEOF_32, input.a)
+    FLOAT32.pack_into(data, 2 * SIZEOF_32, input.b)
 
-    return buffer.bytes()
+    return data
 
 
 def deserialize_sample(data: Buffer) -> SampleInput:
@@ -190,6 +196,6 @@ TAFLA = Codec(
     sample=Workload(serialize_sample, deserialize_sample),
 )
 """tafla's tables, nested from their builders, with columns read back as
-views. The fixed-size record is written with ``ByteBuffer``'s setters and read
-with its getters at fixed positions, and an array of structs is packed and
-unpacked with ``struct``, as tafla-gen's code does."""
+views. The fixed-size record is packed field by field with ``struct`` and read
+with ``ByteBuffer``'s getters at fixed positions, and an array of structs is
+packed and unpacked with ``struct``, as tafla-gen's code does."""

@@ -4,7 +4,7 @@ from struct import Struct, error as StructError
 from typing import Literal, overload
 
 from . import structs
-from .byte_buffer import struct_count
+from .byte_buffer import check_struct_size
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
 from .errors import describe_int
@@ -185,10 +185,9 @@ class TableWriter:
     # The scalar setters are written out, with the offset's write, since a
     # shared helper's call made writing a Point a fifth slower. struct raises
     # _PACK_ERRORS, none of which is a ValueError, and __scalar_error() turns
-    # them into ValueError, as ByteBuffer does. It's the offset that doesn't
-    # fit when the table is longer than its offset type addresses. Each packs
-    # its value before it writes the offset, so a setter that raises writes
-    # nothing.
+    # them into ValueError. It's the offset that doesn't fit when the table
+    # is longer than its offset type addresses. Each packs its value before
+    # it writes the offset, so a setter that raises writes nothing.
 
     def set_int8(self, index: int, value: int) -> None:
         data = self.__data
@@ -510,3 +509,17 @@ class TableWriter:
             f"The table's fields make it {length} bytes, "
             f"too long for {offset_type} offsets"
         )
+
+
+def struct_count(byte_length: int, size: int) -> int:
+    """Returns the number of structs of ``size`` bytes in ``byte_length``
+    bytes. Raises ``ValueError`` if ``size`` is less than 1, or the bytes
+    aren't a whole number of structs."""
+    check_struct_size(size)
+    if byte_length % size != 0:
+        raise ValueError(
+            f"{byte_length} bytes aren't a whole number of "
+            f"{describe_int(size)}-byte structs"
+        )
+
+    return byte_length // size

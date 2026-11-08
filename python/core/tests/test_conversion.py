@@ -7,7 +7,7 @@ from typing import Any
 from hypothesis import given
 from hypothesis.strategies import floats, integers, lists, one_of
 
-from tafla import ByteBuffer, TableBuilder
+from tafla import TableBuilder
 from tests.tables import FLOAT_TYPES, FORMATS
 
 INT_TYPES = [kind for kind in FORMATS if kind not in FLOAT_TYPES]
@@ -110,18 +110,6 @@ class TestConversion(unittest.TestCase):
         for element, view in views:
             with self.subTest(element=element, format=view.format):
                 self.assertEqual(round_trip(element, view), [1, 2])
-
-    @given(lists(floats(allow_nan=False), max_size=16), integers(1, 7))
-    def test_writes_into_bytes_unaligned_for_the_element_type(
-        self, values: list[float], byte_offset: int
-    ) -> None:
-        aligned = bytearray(4 + len(values) * 8)
-        ByteBuffer(aligned).set_float64_array(values)
-
-        backing = bytearray(byte_offset + len(aligned))
-        ByteBuffer(memoryview(backing)[byte_offset:]).set_float64_array(values)
-
-        self.assertEqual(backing[byte_offset:], aligned)
 
 
 if __name__ == "__main__":
