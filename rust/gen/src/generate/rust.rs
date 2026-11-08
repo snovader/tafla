@@ -693,14 +693,16 @@ impl Generator<'_> {
                     "set_struct".to_owned(),
                     vec![position, text(format!("&{value}.to_bytes()"))],
                 ),
+                // The structs and their conversion to bytes, which the writer
+                // appends without collecting them first
                 FieldType::StructArray(struct_index) => {
                     let structure = &self.schema.definition(struct_index).name;
                     (
-                        "set_struct_array".to_owned(),
+                        "set_structs".to_owned(),
                         vec![
                             position,
-                            call(format!("&{structure}::array_to_bytes"), vec![text(value)]),
-                            text(format!("{structure}::SIZE")),
+                            text(value),
+                            text(format!("{structure}::to_bytes")),
                             text(format!("{structure}::ALIGNMENT")),
                         ],
                     )
