@@ -61,6 +61,20 @@ public class TableWriterTest {
     }
 
     @Property
+    void structs_written_in_place_hold_the_bytes_of_the_array_written_from_their_bytes(
+        @ForAll("inPlaceTables") TableDescription table,
+        @ForAll @IntRange(max = 7) int length,
+        @ForAll("structArrays") FieldDescription field
+    ) {
+        // The bytes before the structs leave them 0 to 7 bytes short of any alignment
+        var before = table.withField(bytesField(length));
+        var structs = (StructArrayField) field;
+        var whole = before.withField(structs);
+
+        assertEquals(outcomeOf(() -> Tables.write(whole)), outcomeOf(() -> writeInPlace(before, structs)));
+    }
+
+    @Property
     void any_string_is_written_as_TableBuilder_writes_it_with_each_lone_surrogate_as_U_FFFD(
         @ForAll("utf16Strings") String string
     ) {
@@ -254,6 +268,20 @@ public class TableWriterTest {
     }
 
     @Example
+    void structs_that_end_past_the_sized_bytes_throw_IndexOutOfBoundsException() {
+        var sizer = new TableSizer(1);
+        sizer.addStructArray(1, Integer.BYTES, Integer.BYTES);
+        var writer = sizer.writer();
+
+        Integer[] structs = {1, 2};
+        TableWriter.StructWrite<Integer> write = (struct, bytes, offset) -> bytes[offset] = struct.byteValue();
+        assertThrows(
+            IndexOutOfBoundsException.class,
+            () -> writer.setStructs(0, structs, Integer.BYTES, Integer.BYTES, write)
+        );
+    }
+
+    @Example
     void fields_shorter_than_those_sized_throw_IllegalStateException_from_bytes() {
         var sizer = new TableSizer(1);
         sizer.addString("ab");
@@ -281,6 +309,10 @@ public class TableWriterTest {
         assertThrows(IllegalArgumentException.class, () -> writer.startTable(-1));
         assertThrows(IllegalArgumentException.class, () -> writer.setStructArray(0, new byte[5], 2, 1));
         assertThrows(IllegalArgumentException.class, () -> writer.setStructArray(0, new byte[4], 0, 1));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> writer.setStructs(0, new Integer[] {1}, 4, 3, (struct, bytes, offset) -> {})
+        );
         assertThrows(IllegalArgumentException.class, () -> writer.setTable(0, 3));
         assertThrows(IllegalArgumentException.class, () -> writer.setVector(0, -1));
         writer.setVector(0, 0);
@@ -425,6 +457,11 @@ public class TableWriterTest {
         return Descriptions.values();
     }
 
+    @Provide
+    Arbitrary<FieldDescription> structArrays() {
+        return Descriptions.structArrays();
+    }
+
     /** {@return fields after which a table's length doesn't depend on where they start} */
     @Provide
     Arbitrary<FieldDescription> unpaddedFields() {
@@ -462,6 +499,30 @@ public class TableWriterTest {
         units.forEach(string::append);
 
         return string.toString();
+    }
+
+    /**
+     * {@return the bytes of the table's fields and then the structs}, written with
+     * {@link TableWriter#setStructs} from each struct's values, as the generated code writes them
+     */
+    private static byte[] writeInPlace(TableDescription table, StructArrayField structs) {
+        var writer = Tables.size(table.withField(structs)).writer();
+        Tables.writeFields(writer, table);
+
+        // Each struct is its index in the items, whose values the writer of a struct writes
+        var indices = new Integer[structs.items().size()];
+        Arrays.setAll(indices, i -> i);
+        writer.setStructs(
+            table.fields().size(),
+            indices,
+            StructBytes.size(structs.fields()),
+            StructBytes.alignment(structs.fields()),
+            (index, bytes, offset) -> {
+                StructBytes.write(structs.fields(), structs.items().get(index), bytes, offset);
+            }
+        );
+
+        return writer.bytes();
     }
 
     /** {@return a {@code uint8[]} of {@code length} zeros} */

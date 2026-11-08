@@ -30,19 +30,15 @@ public final class Structs {
 
         var writer = sizer.writer();
         writer.setStruct(0, fields.packed().serialize());
-        writer.setStructArray(
+        writer.setStructs(
             1,
-            Documented.serializeArray(fields.documented()),
+            fields.documented(),
             Documented.SIZE,
-            Documented.ALIGNMENT
+            Documented.ALIGNMENT,
+            Documented::write
         );
         writer.setStruct(2, fields.segment().serialize());
-        writer.setStructArray(
-            3,
-            Segment.serializeArray(fields.segments()),
-            Segment.SIZE,
-            Segment.ALIGNMENT
-        );
+        writer.setStructs(3, fields.segments(), Segment.SIZE, Segment.ALIGNMENT, Segment::write);
         writer.setTable(4, Path.ALIGNMENT);
         Path.write(writer, fields.path());
 

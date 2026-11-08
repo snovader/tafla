@@ -38,12 +38,7 @@ public final class Path {
     public static void write(TableWriter writer, Fields fields) {
         var parent = writer.startTable(2);
         writer.setStruct(0, fields.start().serialize());
-        writer.setStructArray(
-            1,
-            Point.serializeArray(fields.points()),
-            Point.SIZE,
-            Point.ALIGNMENT
-        );
+        writer.setStructs(1, fields.points(), Point.SIZE, Point.ALIGNMENT, Point::write);
         writer.endTable(parent);
     }
 

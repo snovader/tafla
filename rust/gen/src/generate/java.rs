@@ -747,15 +747,19 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
                 "setStruct".to_owned(),
                 vec![position, text(format!("{value}.serialize()"))],
             ),
+            // Each struct is written straight into the table, rather than
+            // into an array of their bytes that's then copied, which took
+            // 1.5 times as long to write 100 structs
             FieldType::StructArray(struct_index) => {
                 let structure = &schema.definition(struct_index).name;
                 (
-                    "setStructArray".to_owned(),
+                    "setStructs".to_owned(),
                     vec![
                         position,
-                        call(format!("{structure}.serializeArray"), vec![text(value)]),
+                        text(value),
                         text(format!("{structure}.SIZE")),
                         text(format!("{structure}.ALIGNMENT")),
+                        text(format!("{structure}::write")),
                     ],
                 )
             }

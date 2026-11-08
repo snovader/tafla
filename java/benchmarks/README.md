@@ -355,8 +355,9 @@ Bytes allocated per operation, the mean of the measured iterations:
   1.2 MB into the table.
 - The array of structs takes 0.378 µs against 0.132 µs, and allocates 5.3 KB
   against 2.5 KB. The codec creates a `Triple` record for each item, and the
-  generated code writes them into an array of their own before copying it
-  into the table.
+  generated code wrote them into an array of their own before copying it
+  into the table. It has since written them straight into the table, with
+  `TableWriter.setStructs()`, in 4,040 bytes.
 - The generated readers read the record and the documents within 3% of the
   hand-written reads, but the column's getter returns a copy, so summing it
   copies the floats first: 59 ns against 44 ns for 100 rows, and 101.7 µs
