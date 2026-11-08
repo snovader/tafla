@@ -402,7 +402,7 @@ class Triple:
                 "Triple can't read a buffer that isn't C-contiguous"
             ) from cause
 
-        return cls(*values)
+        return cls(values[0], values[1], values[2])
 
     @classmethod
     def read_array(cls, data: Buffer) -> list[Self]:
@@ -412,7 +412,10 @@ class Triple:
         ``TypeError`` if it isn't C-contiguous.
         """
         try:
-            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+            return [
+                cls(values[0], values[1], values[2])
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
         except error as cause:
             raise DecodeError(
                 f"Triples don't fit in {memoryview(data).nbytes} bytes"
@@ -439,12 +442,12 @@ class Triple:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(
-                    data, index * cls.SIZE, item.value, item.first, item.second
-                )
+                pack_into(data, index * size, item.value, item.first, item.second)
         except (error, OverflowError) as cause:
             raise ValueError("Triple's values don't fit its fields") from cause
 
@@ -481,7 +484,7 @@ class TripleArray:
     def __iter__(self) -> Iterator[Triple]:
         """Reads the structs one after another"""
         for values in Triple._STRUCT.iter_unpack(self._data):
-            yield Triple(*values)
+            yield Triple(values[0], values[1], values[2])
 
 
 @dataclass(frozen=True, slots=True)
@@ -519,7 +522,7 @@ class Sample:
                 "Sample can't read a buffer that isn't C-contiguous"
             ) from cause
 
-        return cls(*values)
+        return cls(values[0], values[1], values[2])
 
     @classmethod
     def read_array(cls, data: Buffer) -> list[Self]:
@@ -529,7 +532,10 @@ class Sample:
         ``TypeError`` if it isn't C-contiguous.
         """
         try:
-            return [cls(*values) for values in cls._STRUCT.iter_unpack(data)]
+            return [
+                cls(values[0], values[1], values[2])
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
         except error as cause:
             raise DecodeError(
                 f"Samples don't fit in {memoryview(data).nbytes} bytes"
@@ -556,10 +562,12 @@ class Sample:
 
         Raises ``ValueError`` if a field's value doesn't fit its type.
         """
-        data = bytearray(len(items) * cls.SIZE)
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
         try:
             for index, item in enumerate(items):
-                cls._STRUCT.pack_into(data, index * cls.SIZE, item.key, item.a, item.b)
+                pack_into(data, index * size, item.key, item.a, item.b)
         except (error, OverflowError) as cause:
             raise ValueError("Sample's values don't fit its fields") from cause
 
