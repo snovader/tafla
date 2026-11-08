@@ -286,10 +286,28 @@ public final class TableWriter {
      *     number of structs, or the alignment isn't 1, 2, 4 or 8
      */
     public void setStructArray(int index, byte[] bytes, int size, int alignment) {
-        startArray(index, ByteBuffer.structCount(bytes.length, size), alignment);
+        startArray(index, structCount(bytes.length, size), alignment);
 
         System.arraycopy(bytes, 0, this.bytes, position, bytes.length);
         position += bytes.length;
+    }
+
+    /**
+     * {@return the number of {@code size}-byte structs in {@code byteLength} bytes}, for this
+     * writer's and {@link TableBuilder}'s arrays of structs
+     *
+     * @throws IllegalArgumentException if {@code size} is less than 1, or the bytes aren't a whole
+     *     number of structs
+     */
+    static int structCount(int byteLength, int size) {
+        ByteBuffer.assertStructSize(size);
+        if (byteLength % size != 0) {
+            throw new IllegalArgumentException(
+                String.format("%d bytes aren't a whole number of %d-byte structs", byteLength, size)
+            );
+        }
+
+        return byteLength / size;
     }
 
     /**

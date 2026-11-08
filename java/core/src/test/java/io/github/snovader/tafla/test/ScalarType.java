@@ -136,38 +136,6 @@ enum ScalarType {
         }
     }
 
-    /** Writes a value at the buffer's position with its own setter, rather than a builder's */
-    void write(ByteBuffer buffer, long value) {
-        switch (this) {
-            case INT8 -> buffer.setInt8((byte) value);
-            case UINT8 -> buffer.setUint8((short) value);
-            case INT16 -> buffer.setInt16((short) value);
-            case UINT16 -> buffer.setUint16((int) value);
-            case INT32 -> buffer.setInt32((int) value);
-            case UINT32 -> buffer.setUint32(value);
-            case INT64 -> buffer.setInt64(value);
-            case UINT64 -> buffer.setUint64(value);
-            case FLOAT32 -> buffer.setFloat32(Float.intBitsToFloat((int) value));
-            case FLOAT64 -> buffer.setFloat64(Double.longBitsToDouble(value));
-        }
-    }
-
-    /** Writes an array at the buffer's position with its own setter, rather than a builder's */
-    void writeArray(ByteBuffer buffer, long[] values) {
-        switch (this) {
-            case INT8 -> buffer.setInt8Array(toBytes(values));
-            case UINT8 -> buffer.setUint8Array(toShorts(values));
-            case INT16 -> buffer.setInt16Array(toShorts(values));
-            case UINT16 -> buffer.setUint16Array(toInts(values));
-            case INT32 -> buffer.setInt32Array(toInts(values));
-            case UINT32 -> buffer.setUint32Array(values);
-            case INT64 -> buffer.setInt64Array(values);
-            case UINT64 -> buffer.setUint64Array(values);
-            case FLOAT32 -> buffer.setFloat32Array(toFloats(values));
-            case FLOAT64 -> buffer.setFloat64Array(toDoubles(values));
-        }
-    }
-
     long read(ByteBuffer buffer, int position) {
         return switch (this) {
             case INT8 -> buffer.getInt8(position);
@@ -242,7 +210,10 @@ enum ScalarType {
         };
     }
 
-    /** Puts a value with the JDK's own buffer, in its byte order, to compare tafla's bytes with */
+    /**
+     * Puts a value with the JDK's own buffer, in its byte order, writing an integer's low bits as a
+     * cast would: bytes for tafla to read, or to compare its bytes with
+     */
     void put(java.nio.ByteBuffer target, long value) {
         switch (this) {
             case INT8, UINT8 -> target.put((byte) value);

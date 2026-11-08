@@ -139,12 +139,9 @@
  * <p>Using the API wrongly throws other exceptions, whatever the bytes:</p>
  *
  * <ul>
- *   <li>Writes past the end of a {@code ByteBuffer} throw an {@link IndexOutOfBoundsException},
- *     and lengths, offsets and versions too large for its offset type an
- *     {@link IllegalArgumentException}. Either writes nothing. A struct size below 1, or below 0
- *     for {@code getStruct()}, throws an {@code IllegalArgumentException}, and
- *     {@code getVectorOffset()} an {@code IndexOutOfBoundsException} for an item outside the
- *     vector.</li>
+ *   <li>{@code ByteBuffer} throws an {@link IllegalArgumentException} for a struct size below 1,
+ *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} an
+ *     {@link IndexOutOfBoundsException} for an item outside the vector.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
  *     it was created with, for writing before every field is set, and for a field set after
  *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given

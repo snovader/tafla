@@ -8,20 +8,26 @@ import java.nio.ByteOrder;
 import java.util.*;
 
 /**
- * tafla's tables, nested from their builders. The fixed-size record is written with
- * {@link ByteBuffer}'s setters and read with its getters at fixed positions, since Java has no
- * {@code StructWriter}. An array of structs is written through a little-endian {@link VarHandle}
- * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
+ * tafla's tables, nested from their builders. The runtime writes tables, and leaves records at
+ * fixed offsets to the standard library, as its package documentation says. The fixed-size record
+ * is written through little-endian {@link VarHandle}s and read with {@link ByteBuffer}'s getters
+ * at fixed positions. An array of structs is written through them too, and read from
+ * {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
  */
 public final class TaflaCodec {
     private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
     private static final int DOCUMENT_VERSION = 1;
 
+    /** The fixed-size record: a uint32 and two float32s */
     private static final int SAMPLE_SIZE = Integer.BYTES + 2 * Float.BYTES;
 
     /** An item as a struct: its three float32s, aligned to 4 in an array */
     private static final int ITEM_SIZE = 3 * Float.BYTES;
     private static final int ITEM_ALIGNMENT = Float.BYTES;
+
+    // Views of byte arrays as arrays of wider values, which write at any index, little-endian
+    private static final VarHandle INT32 =
+        MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
     private static final VarHandle FLOAT32 =
         MethodHandles.byteArrayViewVarHandle(float[].class, ByteOrder.LITTLE_ENDIAN);
 
@@ -211,12 +217,12 @@ public final class TaflaCodec {
     private static final class Samples implements Workload<SampleInput> {
         @Override
         public byte[] serialize(SampleInput input) {
-            var buffer = ByteBuffer.allocate(SAMPLE_SIZE);
-            buffer.setUint32(input.key());
-            buffer.setFloat32(input.a());
-            buffer.setFloat32(input.b());
+            var bytes = new byte[SAMPLE_SIZE];
+            INT32.set(bytes, 0, (int) input.key());
+            FLOAT32.set(bytes, Integer.BYTES, input.a());
+            FLOAT32.set(bytes, Integer.BYTES + Float.BYTES, input.b());
 
-            return buffer.bytes();
+            return bytes;
         }
 
         @Override
