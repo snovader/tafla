@@ -768,7 +768,16 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.open("if index < 0:");
     writer.line("index += self._length");
     writer.dedent();
-    writer.line("offset = self._buffer.get_vector_offset(self._position, index)");
+    // The count that the constructor checked, rather than reading it again
+    writer.statement(
+        &STYLE,
+        "offset = ",
+        &call(
+            "self._buffer.get_vector_item_offset",
+            vec![text("self._position"), text("self._length"), text("index")],
+        ),
+        "",
+    );
     writer.line(format!("return {table}(self._buffer, offset)"));
     writer.dedent();
     writer.blank();
