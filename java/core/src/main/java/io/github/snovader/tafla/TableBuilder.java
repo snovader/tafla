@@ -237,7 +237,7 @@ public final class TableBuilder {
      *     number of structs, or the alignment isn't 1, 2, 4 or 8
      */
     public void setStructArray(byte[] bytes, int size, int alignment) {
-        ByteBuffer.structCount(bytes.length, size);
+        TableWriter.structCount(bytes.length, size);
 
         FieldWrite write = (writer, index) -> writer.setStructArray(index, bytes, size, alignment);
         addElements(bytes.length, alignment, write);

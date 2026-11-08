@@ -67,11 +67,13 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- TypeScript's and Python's `ByteBuffer` only read tables, and their setters
-  and `reset()` are removed. Tables are written with `TableBuilder`, or with
-  `TableWriter` and, in TypeScript, `TableSizer`. Structs and other records at
-  fixed offsets are written with `StructWriter` in TypeScript, and with the
-  standard library's `struct` in Python.
+- TypeScript's, Python's and Java's `ByteBuffer` only read tables, and their
+  setters are removed, with `reset()` in TypeScript and Python and
+  `allocate()` in Java. Tables are written with `TableBuilder`, or with
+  `TableWriter` and, in TypeScript and Java, `TableSizer`. Structs and other
+  records at fixed offsets are written with `StructWriter` in TypeScript, with
+  the standard library's `struct` in Python, and with its `VarHandle`s in
+  Java.
 
 ### Fixed
 

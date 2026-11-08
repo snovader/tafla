@@ -4,8 +4,8 @@ import java.lang.invoke.*;
 import java.nio.*;
 
 /**
- * Writes values little-endian into bytes, for {@link ByteBuffer} and {@link TableWriter}: the
- * elements of arrays, from {@code position}, and scalars. Arrays of the elements' own Java type are
+ * Writes values little-endian into bytes, for {@link TableWriter}: the elements of arrays, from
+ * {@code position}, and scalars. Arrays of the elements' own Java type are
  * copied in bulk, and unsigned ones are narrowed element by element, as a cast would. Callers
  * check that the values fit; a write past the end throws an {@link IndexOutOfBoundsException}.
  */

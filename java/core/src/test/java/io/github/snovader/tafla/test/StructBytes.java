@@ -3,6 +3,7 @@ package io.github.snovader.tafla.test;
 import io.github.snovader.tafla.*;
 import io.github.snovader.tafla.test.FieldDescription.*;
 
+import java.nio.ByteOrder;
 import java.util.*;
 
 /**
@@ -24,18 +25,18 @@ final class StructBytes {
     }
 
     /**
-     * {@return the bytes of structs of scalars of the types, one after another}, written with
-     * {@link ByteBuffer}'s setters
+     * {@return the bytes of structs of scalars of the types, one after another}, written with the
+     * JDK's own little-endian buffer rather than with tafla
      */
     static byte[] pack(List<ScalarType> types, List<List<Long>> items) {
-        var buffer = ByteBuffer.allocate(items.size() * size(types));
+        var buffer = java.nio.ByteBuffer.allocate(items.size() * size(types)).order(ByteOrder.LITTLE_ENDIAN);
         for (var values : items) {
             for (int i = 0; i < types.size(); i++) {
-                types.get(i).write(buffer, values.get(i));
+                types.get(i).put(buffer, values.get(i));
             }
         }
 
-        return buffer.bytes();
+        return buffer.array();
     }
 
     /**

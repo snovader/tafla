@@ -5,19 +5,17 @@ import java.nio.charset.*;
 import java.util.*;
 
 /**
- * Reads and writes the supplied bytes in the table layout it was created with, storing multi-byte
- * values little-endian. Array reads copy the elements into a new Java array, and array view reads
- * return a read-only view of them in place, as struct reads return the bytes of structs.
+ * Reads a table from the supplied bytes in the table layout it was created with, whose multi-byte
+ * values are little-endian. Array reads copy the elements into a new Java array, and array view
+ * reads return a read-only view of them in place, as struct reads return the bytes of structs.
+ * {@link TableBuilder}, or a {@link TableSizer}'s {@link TableWriter}, writes the tables.
  *
  * <p>Every read checks that it stays within the bytes, and throws a {@link DecodeException}
- * otherwise. Writes past the end throw an {@link IndexOutOfBoundsException}, and lengths, offsets
- * and versions too large for the layout's offset type an {@link IllegalArgumentException}; either
- * writes nothing.</p>
+ * otherwise.</p>
  *
  * <p>Unsigned values are read into the next wider type, such as a {@code uint32} into a
  * {@code long}, except for {@code uint64}, which Java has no wider type for: it's read into a
- * {@code long} with the same bits, for {@link Long#toUnsignedString} and the like. Unsigned
- * setters write the low bits of their argument, as a cast would.</p>
+ * {@code long} with the same bits, for {@link Long#toUnsignedString} and the like.</p>
  */
 public final class ByteBuffer {
     private final byte[] bytes;
@@ -25,16 +23,10 @@ public final class ByteBuffer {
 
     private final boolean sized;
     private final boolean versioned;
-    /** The type of offsets, lengths and header slots */
-    private final OffsetType offsetType;
     /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
-    /** The largest offset, length or version that the offset type holds */
-    private final long maxOffset;
     /** The byte length of the header slots before the root's field offsets */
     private final int headerSize;
-
-    private int position = 0;
 
     public ByteBuffer(byte[] bytes) {
         this(bytes, TableLayout.DEFAULT);
@@ -46,15 +38,8 @@ public final class ByteBuffer {
 
         this.sized = layout.sized();
         this.versioned = layout.versioned();
-        this.offsetType = layout.offsetType();
         this.offsetSize = layout.offsetSize();
-        this.maxOffset = offsetType.maxValue();
         this.headerSize = layout.headerSize();
-    }
-
-    /** {@return a buffer of {@code size} zeros, to write into} */
-    public static ByteBuffer allocate(int size) {
-        return new ByteBuffer(new byte[size]);
     }
 
     public byte[] bytes() {
@@ -105,10 +90,6 @@ public final class ByteBuffer {
     public int fieldOffset(int tablePosition, int index) {
         var offset = getUnsigned(tablePosition + (long) index * offsetSize);
         return toPosition(tablePosition + offset);
-    }
-
-    public void setOffset(int offset) {
-        setUnsigned(offset);
     }
 
     // The scalar getters let the JDK's buffer check the range, which is free, and rethrow its error,
@@ -382,155 +363,6 @@ public final class ByteBuffer {
         return view.slice(position + offsetSize, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    public void setInt8(byte value) {
-        view.put(position, value);
-        position += Byte.BYTES;
-    }
-
-    public void setUint8(short value) {
-        setInt8((byte) value);
-    }
-
-    public void setInt16(short value) {
-        view.putShort(position, value);
-        position += Short.BYTES;
-    }
-
-    public void setUint16(int value) {
-        setInt16((short) value);
-    }
-
-    public void setInt32(int value) {
-        view.putInt(position, value);
-        position += Integer.BYTES;
-    }
-
-    public void setUint32(long value) {
-        setInt32((int) value);
-    }
-
-    public void setInt64(long value) {
-        view.putLong(position, value);
-        position += Long.BYTES;
-    }
-
-    /** Writes a {@code uint64} from a {@code long} with its bits */
-    public void setUint64(long value) {
-        setInt64(value);
-    }
-
-    public void setFloat32(float value) {
-        view.putFloat(position, value);
-        position += Float.BYTES;
-    }
-
-    public void setFloat64(double value) {
-        view.putDouble(position, value);
-        position += Double.BYTES;
-    }
-
-    // The array setters write the length and then the elements, after checking that both fit
-
-    public void setInt8Array(byte[] values) {
-        startArray(values.length, Byte.BYTES);
-        Elements.setInt8(bytes, position, values);
-        position += values.length * Byte.BYTES;
-    }
-
-    public void setUint8Array(short[] values) {
-        startArray(values.length, Byte.BYTES);
-        Elements.setUint8(bytes, position, values);
-        position += values.length * Byte.BYTES;
-    }
-
-    public void setInt16Array(short[] values) {
-        startArray(values.length, Short.BYTES);
-        Elements.setInt16(bytes, position, values);
-        position += values.length * Short.BYTES;
-    }
-
-    public void setUint16Array(int[] values) {
-        startArray(values.length, Short.BYTES);
-        Elements.setUint16(bytes, position, values);
-        position += values.length * Short.BYTES;
-    }
-
-    public void setInt32Array(int[] values) {
-        startArray(values.length, Integer.BYTES);
-        Elements.setInt32(bytes, position, values);
-        position += values.length * Integer.BYTES;
-    }
-
-    public void setUint32Array(long[] values) {
-        startArray(values.length, Integer.BYTES);
-        Elements.setUint32(bytes, position, values);
-        position += values.length * Integer.BYTES;
-    }
-
-    public void setInt64Array(long[] values) {
-        startArray(values.length, Long.BYTES);
-        Elements.setInt64(bytes, position, values);
-        position += values.length * Long.BYTES;
-    }
-
-    /** Writes {@code uint64}s from {@code long}s with their bits */
-    public void setUint64Array(long[] values) {
-        setInt64Array(values);
-    }
-
-    public void setFloat32Array(float[] values) {
-        startArray(values.length, Float.BYTES);
-        Elements.setFloat32(bytes, position, values);
-        position += values.length * Float.BYTES;
-    }
-
-    public void setFloat64Array(double[] values) {
-        startArray(values.length, Double.BYTES);
-        Elements.setFloat64(bytes, position, values);
-        position += values.length * Double.BYTES;
-    }
-
-    /**
-     * Checks that {@code length} elements of {@code elementSize} bytes fit after their length
-     * prefix, and writes the prefix.
-     */
-    private void startArray(int length, int elementSize) {
-        assertWritable(offsetSize + (long) length * elementSize);
-        setCount(length);
-    }
-
-    /**
-     * Writes the count of the {@code size}-byte structs in {@code bytes}, and then the bytes as
-     * they are. Padding that aligns the structs goes before the count.
-     *
-     * @throws IllegalArgumentException if {@code size} is less than 1, or {@code bytes} aren't a
-     *     whole number of structs
-     */
-    public void setStructArray(byte[] bytes, int size) {
-        var count = structCount(bytes.length, size);
-
-        startArray(count, size);
-        System.arraycopy(bytes, 0, this.bytes, position, bytes.length);
-        position += bytes.length;
-    }
-
-    /**
-     * {@return the number of {@code size}-byte structs in {@code byteLength} bytes}
-     *
-     * @throws IllegalArgumentException if {@code size} is less than 1, or the bytes aren't a whole
-     *     number of structs
-     */
-    static int structCount(int byteLength, int size) {
-        assertStructSize(size);
-        if (byteLength % size != 0) {
-            throw new IllegalArgumentException(
-                String.format("%d bytes aren't a whole number of %d-byte structs", byteLength, size)
-            );
-        }
-
-        return byteLength / size;
-    }
-
     /**
      * Checks a struct's size, which is positive
      *
@@ -540,22 +372,6 @@ public final class ByteBuffer {
         if (size < 1) {
             throw new IllegalArgumentException(String.format("A struct's size must be positive, not %d", size));
         }
-    }
-
-    /** Writes {@code bytes} as they are, without a length prefix, such as a struct */
-    public void setBytes(byte[] bytes) {
-        assertWritable(bytes.length);
-
-        System.arraycopy(bytes, 0, this.bytes, position, bytes.length);
-        position += bytes.length;
-    }
-
-    /** Writes {@code byteLength} zeros, such as to align the field after them */
-    public void setPadding(int byteLength) {
-        assertWritable(byteLength);
-
-        Arrays.fill(bytes, position, position + byteLength, (byte) 0);
-        position += byteLength;
     }
 
     /**
@@ -572,11 +388,6 @@ public final class ByteBuffer {
         } catch (CharacterCodingException ex) {
             throw new DecodeException(String.format("The string at %d isn't valid UTF-8", position), ex);
         }
-    }
-
-    /** Writes a string's UTF-8 bytes after their length */
-    public void setString(byte[] utf8) {
-        setInt8Array(utf8);
     }
 
     // A vector is its item count, the end of each item, counted from the vector's position, and
@@ -655,33 +466,6 @@ public final class ByteBuffer {
     }
 
     /**
-     * Writes the item count, the end of each item, counted from the vector's position, and then the
-     * items
-     */
-    public void setVector(byte[][] vector) {
-        // The last end is the vector's byte length, which every other end and the count are shorter
-        // than. Check that it fits, and that the vector does, before writing any of it.
-        long byteLength = firstItemStart(vector.length);
-        for (var item : vector) {
-            byteLength += item.length;
-        }
-        assertCountFits(byteLength);
-        assertWritable(byteLength);
-
-        putUnsigned(vector.length);
-
-        long end = firstItemStart(vector.length);
-        for (var item : vector) {
-            end += item.length;
-            putUnsigned(end);
-        }
-
-        for (var item : vector) {
-            setBytes(item);
-        }
-    }
-
-    /**
      * {@return where item 0 of a vector of {@code count} items starts, counted from the vector's
      * position}
      */
@@ -744,72 +528,6 @@ public final class ByteBuffer {
             };
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(index, offsetSize, ex);
-        }
-    }
-
-    /**
-     * Writes an offset or a header slot, as wide as the table's offsets.
-     *
-     * @throws IllegalArgumentException if it doesn't fit in that width
-     */
-    private void setUnsigned(long value) {
-        if (value < 0 || value > maxOffset) {
-            throw new IllegalArgumentException(
-                String.format("%d doesn't fit in %s offsets", value, offsetType)
-            );
-        }
-
-        putUnsigned(value);
-    }
-
-    /**
-     * Writes a count, length or item end, as wide as the table's offsets.
-     *
-     * @throws IllegalArgumentException if it doesn't fit in that width
-     */
-    private void setCount(long value) {
-        assertCountFits(value);
-        putUnsigned(value);
-    }
-
-    /** Writes an unsigned value as wide as the table's offsets, which it fits in */
-    private void putUnsigned(long value) {
-        switch (offsetSize) {
-            case Byte.BYTES -> view.put(position, (byte) value);
-
-            case Short.BYTES -> view.putShort(position, (short) value);
-
-            default -> view.putInt(position, (int) value);
-        }
-
-        position += offsetSize;
-    }
-
-    /** Checks that a count, length or item end fits in a slot, before anything is written */
-    private void assertCountFits(long value) {
-        if (value < 0 || value > maxOffset) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "Can't write %d at %d: a %s count, length or item end holds at most %d",
-                    value,
-                    position,
-                    offsetType,
-                    maxOffset
-                )
-            );
-        }
-    }
-
-    private void assertWritable(long byteLength) {
-        if (position + byteLength > bytes.length) {
-            throw new IndexOutOfBoundsException(
-                String.format(
-                    "Write exceeds the supplied buffer: %d bytes at %d of %d",
-                    byteLength,
-                    position,
-                    bytes.length
-                )
-            );
         }
     }
 

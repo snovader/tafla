@@ -52,11 +52,11 @@ of its own, and `ItemAccesses` holds them:
 
 - There are no `number[]` inputs. Java's arrays are typed, and its closest
   counterpart, a `List<Float>` of boxed values, isn't what a codec is given.
-- Java's tafla has no `StructWriter`, so the fixed-size record is written with
-  `ByteBuffer`'s setters into `ByteBuffer.allocate(12)` and read with its
-  getters at fixed positions. tafla's package documentation suggests
-  `MethodHandles.byteArrayViewVarHandle` for such records, which isn't tafla,
-  so it isn't timed.
+- Java's tafla has no `StructWriter`, and its package documentation leaves
+  records at fixed offsets to `MethodHandles.byteArrayViewVarHandle`. So the
+  tafla codec writes the fixed-size record through little-endian `VarHandle`s,
+  as tafla-gen's `Sample` does, and reads it with `ByteBuffer`'s getters at
+  fixed positions.
 - msgpack-core has no typed arrays, and msgpackr's extension that copies their
   bytes is msgpackr's own, so MessagePack's columns are arrays of float32s and
   uint32s, packed and unpacked element by element.
@@ -366,9 +366,10 @@ Bytes allocated per operation, the mean of the measured iterations:
   for each struct, before the codec creates the workload's records: 1.18 µs
   against 0.533 µs, and 0.519 µs against 0.200 µs, with twice the bytes.
 - tafla-gen writes and reads the fixed-size record through `VarHandle`s in
-  2.1 and 1.8 ns, against 2.2 and 2.4 ns with `ByteBuffer`'s setters and
-  getters. Both allocate only the 12-byte array, or the workload's record,
-  32 bytes, so escape analysis removes the generated `Sample` record.
+  2.1 and 1.8 ns, against 2.2 and 2.4 ns with `ByteBuffer`'s setters, which
+  are gone, and getters. Both allocate only the 12-byte array, or the
+  workload's record, 32 bytes, so escape analysis removes the generated
+  `Sample` record.
 
 `./gradlew :benchmarks:encodingReport` printed:
 

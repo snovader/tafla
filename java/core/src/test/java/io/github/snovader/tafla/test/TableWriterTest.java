@@ -471,6 +471,34 @@ public class TableWriterTest {
         assertArrayEquals(value, Arrays.copyOfRange(bytes, Integer.BYTES, bytes.length));
     }
 
+    @Property
+    void unsigned_arrays_are_written_as_their_elements_low_bits_before_the_next_field(
+        @ForAll @Size(max = 40) long[] values,
+        @ForAll OffsetType offsetType
+    ) {
+        var layout = TableLayout.builder().offsetType(offsetType).build();
+        for (var type : List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32)) {
+            var sizer = new TableSizer(2, layout);
+            type.addArray(sizer, values.length);
+            sizer.addInt32();
+            var writer = sizer.writer();
+            type.setArray(writer, 0, values);
+            writer.setInt32(1, 0x12345678);
+            var bytes = writer.bytes();
+
+            // Each element's low bytes, as the JDK's buffer puts them
+            var expected = java.nio.ByteBuffer.allocate(values.length * type.size()).order(ByteOrder.LITTLE_ENDIAN);
+            for (var value : values) {
+                type.put(expected, value);
+            }
+
+            var buffer = new ByteBuffer(bytes, layout);
+            var elements = buffer.rootOffset(0) + offsetType.size();
+            assertArrayEquals(expected.array(), Arrays.copyOfRange(bytes, elements, elements + expected.capacity()));
+            assertEquals(0x12345678, buffer.getInt32(buffer.rootOffset(1)));
+        }
+    }
+
     @Provide
     Arbitrary<TableDescription> inPlaceTables() {
         return Arbitraries.oneOf(Descriptions.tables(), Descriptions.nestingTables())

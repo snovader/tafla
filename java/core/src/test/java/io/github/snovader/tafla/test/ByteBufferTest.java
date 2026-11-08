@@ -12,9 +12,13 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Tests of {@link ByteBuffer}'s reads, from bytes that the JDK's own little-endian buffer writes as
+ * {@code SPEC.md} lays them out, so that they don't depend on tafla's writers.
+ */
 public class ByteBufferTest {
     @Property
-    void a_buffer_reads_back_the_value_that_its_setter_writes(
+    void a_buffer_reads_back_any_value_written_little_endian_at_its_position(
         @ForAll("values") FieldDescription field,
         @ForAll("layouts") LayoutDescription layout
     ) {
@@ -29,66 +33,16 @@ public class ByteBufferTest {
         assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout);
     }
 
-    @Property
-    void unsigned_arrays_write_low_bits_and_preserve_the_following_field(
-        @ForAll @Size(max = 65) long[] values,
-        @ForAll OffsetType offsetType
-    ) {
-        var layout = TableLayout.builder().offsetType(offsetType).build();
-        for (var type : List.of(ScalarType.UINT8, ScalarType.UINT16, ScalarType.UINT32)) {
-            var length = 1 + offsetType.size() + values.length * type.size() + Integer.BYTES;
-            var buffer = new ByteBuffer(new byte[length], layout);
-            buffer.setInt8((byte) 42);
-            type.writeArray(buffer, values);
-            buffer.setInt32(0x12345678);
-
-            var expectedBytes = java.nio.ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN);
-            expectedBytes.put((byte) 42);
-            for (int b = 0; b < offsetType.size(); b++) {
-                expectedBytes.put((byte) (values.length >>> (b * Byte.SIZE)));
-            }
-
-            var expectedValues = new long[values.length];
-            var mask = (1L << (type.size() * Byte.SIZE)) - 1;
-            for (int i = 0; i < values.length; i++) {
-                type.put(expectedBytes, values[i]);
-                expectedValues[i] = values[i] & mask;
-            }
-            expectedBytes.putInt(0x12345678);
-
-            assertArrayEquals(expectedBytes.array(), buffer.bytes());
-            assertArrayEquals(expectedValues, type.readArray(buffer, 1));
-        }
-    }
-
     private static void assertReadsBack(FieldDescription field, LayoutDescription layout) {
         var bytes = new byte[(int) Descriptions.maxLength(field, layout.width())];
+        put(littleEndian(bytes), field, layout.width());
         var buffer = new ByteBuffer(bytes, layout.tableLayout());
 
-        write(buffer, field);
         assertEquals(field, readAtStart(buffer, field));
 
         // After a count of 1 or 2 bytes, the elements aren't aligned
         if (field instanceof ArrayField array) {
             assertArrayEquals(array.values(), array.type().readArrayView(buffer, 0));
-        }
-    }
-
-    /**
-     * Writes a scalar, array, string, struct or array of structs from the buffer's position with
-     * the buffer's own setter
-     */
-    private static void write(ByteBuffer buffer, FieldDescription field) {
-        switch (field) {
-            case ScalarField scalar -> scalar.type().write(buffer, scalar.value());
-            case ArrayField array -> array.type().writeArray(buffer, array.values());
-            case StringField string -> buffer.setString(string.value().getBytes(StandardCharsets.UTF_8));
-            case StructField struct -> buffer.setBytes(StructBytes.pack(struct.types(), List.of(struct.values())));
-            case StructArrayField array -> buffer.setStructArray(
-                StructBytes.pack(array.fields(), array.items()),
-                StructBytes.size(array.fields())
-            );
-            default -> throw new IllegalArgumentException("Not a value: " + field);
         }
     }
 
@@ -107,152 +61,82 @@ public class ByteBufferTest {
         };
     }
 
-    // The write setters, which write fixed-size records, as the README and the benchmarks do.
-    // TableBuilder writes through TableWriter, so these are their only writes.
-
     @Property
-    void each_setter_writes_its_value_little_endian_after_the_previous_one(
-        @ForAll OffsetType offsetType,
-        @ForAll @Size(max = 8) List<@From("writes") Write> writes
+    void a_buffer_reads_every_item_of_any_vector(
+        @ForAll @Size(max = 10) List<@Size(max = 20) byte[]> items,
+        @ForAll OffsetType offsetType
     ) {
-        // Every count, offset and length of the writes fits in a uint8
-        var expected = java.nio.ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN);
-        for (var write : writes) {
-            write.put(expected, offsetType.size());
-        }
+        // At most 244 bytes, which even uint8 ends hold
+        var width = offsetType.size();
+        var byteLength = (items.size() + 1) * width + items.stream().mapToInt(item -> item.length).sum();
 
-        // Bytes that start as 0xa5, so that padding and anything past the writes show, and one more
-        var length = expected.position();
-        var bytes = new byte[length + 1];
-        Arrays.fill(bytes, (byte) 0xa5);
+        var bytes = new byte[byteLength];
+        putVector(littleEndian(bytes), items, width);
         var buffer = new ByteBuffer(bytes, TableLayout.builder().offsetType(offsetType).build());
-        for (var write : writes) {
-            write.apply(buffer);
+
+        var vector = items.toArray(byte[][]::new);
+        int[] offsets = buffer.getVectorOffsets(0);
+        for (int i = 0; i < vector.length; i++) {
+            assertArrayEquals(vector[i], Arrays.copyOfRange(buffer.bytes(), offsets[i], offsets[i] + vector[i].length));
+            assertEquals(offsets[i], buffer.getVectorOffset(0, i));
         }
-
-        var expectedBytes = Arrays.copyOf(expected.array(), length + 1);
-        expectedBytes[length] = (byte) 0xa5;
-        assertArrayEquals(expectedBytes, bytes, writes::toString);
+        assertEquals(vector.length, buffer.getVectorLength(0));
+        assertArrayEquals(vector, buffer.getVector(0));
     }
 
-    @Provide
-    Arbitrary<Write> writes() {
-        var items = Arbitraries.bytes().array(byte[].class).ofMaxSize(8).list().ofMaxSize(3);
+    // Values as SPEC.md lays them out, put with the JDK's buffer, with counts, offsets and ends of
+    // `width` bytes
 
-        return Arbitraries.oneOf(
-            Descriptions.values().map(Value::new),
-            Arbitraries.integers().between(0, 7).map(Padding::new),
-            Arbitraries.longs().between(0, 0xff).map(Offset::new),
-            items.map(VectorOfBytes::new)
-        );
+    /** {@return the JDK's little-endian buffer over the bytes, to put values into from their start} */
+    private static java.nio.ByteBuffer littleEndian(byte[] bytes) {
+        return java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    /** A call of one of {@link ByteBuffer}'s write setters */
-    private sealed interface Write {
-        void apply(ByteBuffer buffer);
-
-        /** Puts the bytes that the call writes, with counts, offsets and ends of {@code width} bytes */
-        void put(java.nio.ByteBuffer expected, int width);
-    }
-
-    /** A scalar, array, string, struct or array of structs, written with its type's setter */
-    private record Value(FieldDescription field) implements Write {
-        @Override
-        public void apply(ByteBuffer buffer) {
-            write(buffer, field);
-        }
-
-        @Override
-        public void put(java.nio.ByteBuffer expected, int width) {
-            switch (field) {
-                case ScalarField scalar -> scalar.type().put(expected, scalar.value());
-                case ArrayField array -> {
-                    putUnsigned(expected, array.values().length, width);
-                    for (var value : array.values()) {
-                        array.type().put(expected, value);
-                    }
+    /** Puts a scalar, array, string, struct or array of structs */
+    private static void put(java.nio.ByteBuffer bytes, FieldDescription field, int width) {
+        switch (field) {
+            case ScalarField scalar -> scalar.type().put(bytes, scalar.value());
+            case ArrayField array -> {
+                putUnsigned(bytes, array.values().length, width);
+                for (var value : array.values()) {
+                    array.type().put(bytes, value);
                 }
-                case StringField string -> {
-                    var utf8 = string.value().getBytes(StandardCharsets.UTF_8);
-                    putUnsigned(expected, utf8.length, width);
-                    expected.put(utf8);
-                }
-                case StructField struct -> putStruct(expected, struct.types(), struct.values());
-                case StructArrayField array -> {
-                    putUnsigned(expected, array.items().size(), width);
-                    for (var item : array.items()) {
-                        putStruct(expected, array.fields(), item);
-                    }
-                }
-                default -> throw new IllegalArgumentException("Not a value: " + field);
             }
-        }
-
-        private static void putStruct(java.nio.ByteBuffer expected, List<ScalarType> types, List<Long> values) {
-            for (int i = 0; i < types.size(); i++) {
-                types.get(i).put(expected, values.get(i));
+            case StringField string -> {
+                var utf8 = string.value().getBytes(StandardCharsets.UTF_8);
+                putUnsigned(bytes, utf8.length, width);
+                bytes.put(utf8);
             }
+            case StructField struct -> bytes.put(StructBytes.pack(struct.types(), List.of(struct.values())));
+            case StructArrayField array -> {
+                putUnsigned(bytes, array.items().size(), width);
+                bytes.put(StructBytes.pack(array.fields(), array.items()));
+            }
+            default -> throw new IllegalArgumentException("Not a value: " + field);
         }
     }
 
-    private record Padding(int length) implements Write {
-        @Override
-        public void apply(ByteBuffer buffer) {
-            buffer.setPadding(length);
+    /** Puts a vector's count, the end of each item, counted from the count, and then the items */
+    private static void putVector(java.nio.ByteBuffer bytes, List<byte[]> items, int width) {
+        putUnsigned(bytes, items.size(), width);
+
+        long end = (items.size() + 1L) * width;
+        for (var item : items) {
+            end += item.length;
+            putUnsigned(bytes, end, width);
         }
 
-        @Override
-        public void put(java.nio.ByteBuffer expected, int width) {
-            expected.put(new byte[length]);
-        }
-    }
-
-    private record Offset(long offset) implements Write {
-        @Override
-        public void apply(ByteBuffer buffer) {
-            buffer.setOffset((int) offset);
-        }
-
-        @Override
-        public void put(java.nio.ByteBuffer expected, int width) {
-            putUnsigned(expected, offset, width);
-        }
-    }
-
-    private record VectorOfBytes(List<byte[]> items) implements Write {
-        @Override
-        public void apply(ByteBuffer buffer) {
-            buffer.setVector(items.toArray(byte[][]::new));
-        }
-
-        @Override
-        public void put(java.nio.ByteBuffer expected, int width) {
-            putUnsigned(expected, items.size(), width);
-
-            // Each end counts from the count
-            long end = (items.size() + 1L) * width;
-            for (var item : items) {
-                end += item.length;
-                putUnsigned(expected, end, width);
-            }
-
-            for (var item : items) {
-                expected.put(item);
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "VectorOfBytes" + items.stream().map(Arrays::toString).toList();
+        for (var item : items) {
+            bytes.put(item);
         }
     }
 
     /** Puts an unsigned count, offset or end of {@code width} bytes */
-    private static void putUnsigned(java.nio.ByteBuffer expected, long value, int width) {
+    private static void putUnsigned(java.nio.ByteBuffer bytes, long value, int width) {
         switch (width) {
-            case Byte.BYTES -> expected.put((byte) value);
-            case Short.BYTES -> expected.putShort((short) value);
-            default -> expected.putInt((int) value);
+            case Byte.BYTES -> bytes.put((byte) value);
+            case Short.BYTES -> bytes.putShort((short) value);
+            default -> bytes.putInt((int) value);
         }
     }
 
@@ -276,22 +160,6 @@ public class ByteBufferTest {
         }
 
         return Arbitraries.of(limits);
-    }
-
-    @Property
-    void should_round_trip_vector(@ForAll @Size(max = 10) List<byte[]> items) {
-        var vector = items.toArray(byte[][]::new);
-        var byteLength = Integer.BYTES + items.stream().mapToInt(item -> Integer.BYTES + item.length).sum();
-        var buffer = ByteBuffer.allocate(byteLength);
-        buffer.setVector(vector);
-
-        int[] offsets = buffer.getVectorOffsets(0);
-        for (int i = 0; i < vector.length; i++) {
-            assertArrayEquals(vector[i], Arrays.copyOfRange(buffer.bytes(), offsets[i], offsets[i] + vector[i].length));
-            assertEquals(offsets[i], buffer.getVectorOffset(0, i));
-        }
-        assertEquals(vector.length, buffer.getVectorLength(0));
-        assertArrayEquals(vector, buffer.getVector(0));
     }
 
     @Example
@@ -357,13 +225,10 @@ public class ByteBufferTest {
 
     @Example
     void struct_array_views_hold_every_struct_after_the_count() {
+        // A uint16 count of 2, and then structs of a uint16 and a uint8
         var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
-        var buffer = new ByteBuffer(new byte[Short.BYTES + 6], layout);
-        buffer.setStructArray(new byte[] {1, 0, 2, 3, 0, 4}, 3);
+        var buffer = new ByteBuffer(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, layout);
 
-        assertArrayEquals(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, buffer.bytes());
-
-        // Structs of a uint16 and a uint8
         var structs = buffer.getStructArray(0, 3);
         assertTrue(structs.isReadOnly());
         assertEquals(ByteOrder.LITTLE_ENDIAN, structs.order());
@@ -375,18 +240,12 @@ public class ByteBufferTest {
     }
 
     @Example
-    void should_reject_a_struct_size_below_1_or_bytes_that_arent_whole_structs_and_write_nothing() {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + 4);
+    void should_reject_a_struct_size_below_1_or_below_0_for_a_single_struct() {
+        var buffer = new ByteBuffer(new byte[Integer.BYTES + 4]);
 
-        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[5], 2));
-        assertEquals("5 bytes aren't a whole number of 2-byte structs", exception.getMessage());
-        exception = assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[4], 0));
+        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, 0));
         assertEquals("A struct's size must be positive, not 0", exception.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> buffer.setStructArray(new byte[4], -2));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setStructArray(new byte[6], 2));
-        assertArrayEquals(new byte[8], buffer.bytes());
-
-        assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, 0));
+        assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, -2));
         assertThrows(IllegalArgumentException.class, () -> buffer.getStruct(0, -1));
         assertEquals(0, buffer.getStruct(8, 0).remaining());
     }
@@ -420,51 +279,18 @@ public class ByteBufferTest {
 
     @Example
     void array_views_are_read_only_and_show_later_writes_to_the_bytes() {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + 2 * Float.BYTES);
-        buffer.setFloat32Array(new float[] {1, 2});
+        var bytes = new byte[Integer.BYTES + 2 * Float.BYTES];
+        littleEndian(bytes).putInt(2).putFloat(1).putFloat(2);
+        var buffer = new ByteBuffer(bytes);
         var view = buffer.getFloat32ArrayView(0);
 
         assertTrue(view.isReadOnly());
         assertThrows(ReadOnlyBufferException.class, () -> view.put(0, 3));
 
         // 1.0f is 0x3f800000, and 0x40800000 is 4.0f
-        buffer.bytes()[Integer.BYTES + 3] = 0x40;
+        bytes[Integer.BYTES + 3] = 0x40;
         assertEquals(4, view.get(0));
         assertEquals(2, view.get(1));
-    }
-
-    @Example
-    void should_reject_a_uint16_size_beyond_65535_and_write_nothing() {
-        var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
-        var buffer = new ByteBuffer(new byte[Short.BYTES + 65536], layout);
-
-        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.setInt8Array(new byte[65536]));
-        assertEquals(
-            "Can't write 65536 at 0: a uint16 count, length or item end holds at most 65535",
-            exception.getMessage()
-        );
-        assertThrows(IllegalArgumentException.class, () -> buffer.setVector(new byte[][] {new byte[65536]}));
-
-        buffer.setInt8Array(new byte[] {7});
-        assertArrayEquals(new byte[] {1, 0, 7}, Arrays.copyOf(buffer.bytes(), 3));
-    }
-
-    @Example
-    void should_reject_writes_past_the_end_and_write_nothing() {
-        var buffer = ByteBuffer.allocate(Integer.BYTES + 2 * Float.BYTES);
-
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setFloat32Array(new float[3]));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint8Array(new short[9]));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint16Array(new int[5]));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setUint32Array(new long[3]));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setString(new byte[9]));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setVector(new byte[][] {new byte[5]}));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setPadding(13));
-        assertArrayEquals(new byte[12], buffer.bytes());
-
-        buffer.setFloat32Array(new float[] {1, 2});
-        assertArrayEquals(new float[] {1, 2}, buffer.getFloat32Array(0));
-        assertThrows(IndexOutOfBoundsException.class, () -> buffer.setInt8((byte) 1));
     }
 
     @Example

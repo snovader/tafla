@@ -4,6 +4,7 @@ import io.github.snovader.tafla.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
+import java.nio.ByteOrder;
 import java.nio.charset.*;
 import java.util.*;
 
@@ -102,8 +103,13 @@ public class DecodeExceptionTest {
         );
 
         for (var utf8 : invalid) {
-            var buffer = ByteBuffer.allocate(Integer.BYTES + utf8.length);
-            buffer.setString(utf8);
+            // The string's length, and then its bytes
+            var bytes = java.nio.ByteBuffer.allocate(Integer.BYTES + utf8.length)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .putInt(utf8.length)
+                .put(utf8)
+                .array();
+            var buffer = new ByteBuffer(bytes);
 
             var exception = assertThrows(DecodeException.class, () -> buffer.getString(0));
             assertInstanceOf(CharacterCodingException.class, exception.getCause());
