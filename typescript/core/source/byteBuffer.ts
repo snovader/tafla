@@ -6,37 +6,22 @@ import {
     SIZEOF_64
 } from './constants.ts';
 import { decode } from './encoding.ts';
-import {
-    setFloat32Elements,
-    setFloat64Elements,
-    setInt8Elements,
-    setInt16Elements,
-    setInt32Elements,
-    setInt64Elements,
-    setUint8Elements,
-    setUint16Elements,
-    setUint32Elements,
-    setUint64Elements
-} from './elements.ts';
 import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
 import { TableLayout } from './layout.ts';
-import type { OffsetSize, ElementSize } from './types.ts';
+import type { OffsetSize } from './types.ts';
 
 /**
- * Reads and writes within the supplied byte slice, in the table layout it was
- * created with, storing multi-byte values little-endian. Array reads may share
- * the slice's storage when aligned; unaligned reads return a copy. On a
+ * Reads a table within the supplied byte slice, in the table layout it was
+ * created with, whose multi-byte values are little-endian. Array reads may
+ * share the slice's storage when aligned; unaligned reads return a copy. On a
  * big-endian host, arrays of multi-byte elements are always copies, converted
  * to the host's byte order.
  *
  * Every read checks that it stays within the slice, even when the backing
  * allocation has more bytes, and throws a {@link DecodeError} otherwise.
- * Writes past the slice throw a `RangeError` and write nothing. Lengths,
- * offsets and versions are written like DataView's setters, which wrap a value
- * too large for the layout's `offsetType`. Tables are written with
- * `TableBuilder`, or `TableSizer` and `TableWriter`, which reject a table long
- * enough to need one before writing it.
+ * Tables are written with `TableBuilder`, whose `finalize()` returns a reader
+ * of its table, or with `TableSizer` and `TableWriter`.
  */
 export class ByteBuffer {
     readonly #bytes: Uint8Array;
@@ -48,8 +33,6 @@ export class ByteBuffer {
     readonly #size: OffsetSize;
     /** The byte length of the header slots before the root's field offsets */
     readonly #headerSize: number;
-
-    #position = 0;
 
     constructor(bytes: Uint8Array, layout: TableLayout = TableLayout.DEFAULT) {
         this.#bytes = bytes;
@@ -65,20 +48,12 @@ export class ByteBuffer {
         this.#headerSize = layout.headerSize();
     }
 
-    reset(): void {
-        this.#position = 0;
-    }
-
     bytes(): Uint8Array {
         return this.#bytes;
     }
 
     getSize(): number {
         return this.#sized ? this.#getSize(0) : this.#bytes.length;
-    }
-
-    setSize(size: number): void {
-        this.#setSize(size);
     }
 
     /**
@@ -93,10 +68,6 @@ export class ByteBuffer {
         }
 
         return this.#getSize(this.#sized ? this.#size : 0);
-    }
-
-    setVersion(version: number): void {
-        this.#setSize(version);
     }
 
     /** Returns the position of field `index` of the root table */
@@ -115,10 +86,6 @@ export class ByteBuffer {
         return (
             tablePosition + this.#getSize(tablePosition + index * this.#size)
         );
-    }
-
-    setOffset(offset: number): void {
-        this.#setSize(offset);
     }
 
     // The scalar getters let the DataView check the range, which is free,
@@ -205,9 +172,10 @@ export class ByteBuffer {
         }
     }
 
-    // The array getters are written out per element type, like the setters.
-    // The elements are stored little-endian, so a big-endian host gets a copy
-    // in its own byte order; single bytes have no order to swap.
+    // The array getters are written out per element type, as TableWriter's
+    // setters are. The elements are stored little-endian, so a big-endian
+    // host gets a copy in its own byte order; single bytes have no order to
+    // swap.
 
     /**
      * Reads the array at `position`, as a view of the buffer.
@@ -469,237 +437,6 @@ export class ByteBuffer {
         return this.#bytes.subarray(start, start + count * size);
     }
 
-    setInt8(value: number): void {
-        this.#view.setInt8(this.#position, value);
-        this.#position += SIZEOF_8;
-    }
-
-    setUint8(value: number): void {
-        this.#view.setUint8(this.#position, value);
-        this.#position += SIZEOF_8;
-    }
-
-    setInt16(value: number): void {
-        this.#view.setInt16(this.#position, value, true);
-        this.#position += SIZEOF_16;
-    }
-
-    setUint16(value: number): void {
-        this.#view.setUint16(this.#position, value, true);
-        this.#position += SIZEOF_16;
-    }
-
-    setInt32(value: number): void {
-        this.#view.setInt32(this.#position, value, true);
-        this.#position += SIZEOF_32;
-    }
-
-    setUint32(value: number): void {
-        this.#view.setUint32(this.#position, value, true);
-        this.#position += SIZEOF_32;
-    }
-
-    setInt64(value: bigint): void {
-        this.#view.setBigInt64(this.#position, value, true);
-        this.#position += SIZEOF_64;
-    }
-
-    setUint64(value: bigint): void {
-        this.#view.setBigUint64(this.#position, value, true);
-        this.#position += SIZEOF_64;
-    }
-
-    setFloat32(value: number): void {
-        this.#view.setFloat32(this.#position, value, true);
-        this.#position += SIZEOF_32;
-    }
-
-    setFloat64(value: number): void {
-        this.#view.setFloat64(this.#position, value, true);
-        this.#position += SIZEOF_64;
-    }
-
-    // The array setters are written out per element type, so that each
-    // conversion and typed array construction sees one type and stays
-    // monomorphic, whatever other types the program writes.
-
-    /**
-     * Writes the length and then the elements. An `Int8Array` is copied as
-     * bytes; any other array-like is converted as `new Int8Array(values)`
-     * would.
-     */
-    setInt8Array(values: ArrayLike<number> | Int8Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_8);
-
-        setInt8Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_8);
-    }
-
-    /**
-     * Writes the length and then the elements. An `Uint8Array` is copied as
-     * bytes; any other array-like is converted as `new Uint8Array(values)`
-     * would.
-     */
-    setUint8Array(values: ArrayLike<number> | Uint8Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_8);
-
-        setUint8Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_8);
-    }
-
-    /**
-     * Writes the length and then the elements. An `Int16Array` is copied as
-     * bytes; any other array-like is converted as `new Int16Array(values)`
-     * would.
-     */
-    setInt16Array(values: ArrayLike<number> | Int16Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_16);
-
-        setInt16Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_16);
-    }
-
-    /**
-     * Writes the length and then the elements. An `Uint16Array` is copied as
-     * bytes; any other array-like is converted as `new Uint16Array(values)`
-     * would.
-     */
-    setUint16Array(values: ArrayLike<number> | Uint16Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_16);
-
-        setUint16Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_16);
-    }
-
-    /**
-     * Writes the length and then the elements. An `Int32Array` is copied as
-     * bytes; any other array-like is converted as `new Int32Array(values)`
-     * would.
-     */
-    setInt32Array(values: ArrayLike<number> | Int32Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_32);
-
-        setInt32Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_32);
-    }
-
-    /**
-     * Writes the length and then the elements. An `Uint32Array` is copied as
-     * bytes; any other array-like is converted as `new Uint32Array(values)`
-     * would.
-     */
-    setUint32Array(values: ArrayLike<number> | Uint32Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_32);
-
-        setUint32Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_32);
-    }
-
-    /**
-     * Writes the length and then the elements. A `BigInt64Array` is copied as
-     * bytes; any other array-like is converted as `new BigInt64Array(values)`
-     * would.
-     */
-    setInt64Array(values: ArrayLike<bigint> | BigInt64Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_64);
-
-        setInt64Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_64);
-    }
-
-    /**
-     * Writes the length and then the elements. A `BigUint64Array` is copied as
-     * bytes; any other array-like is converted as `new BigUint64Array(values)`
-     * would.
-     */
-    setUint64Array(values: ArrayLike<bigint> | BigUint64Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_64);
-
-        setUint64Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_64);
-    }
-
-    /**
-     * Writes the length and then the elements. A `Float32Array` is copied as
-     * bytes; any other array-like is converted as `new Float32Array(values)`
-     * would.
-     */
-    setFloat32Array(values: ArrayLike<number> | Float32Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_32);
-
-        setFloat32Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_32);
-    }
-
-    /**
-     * Writes the length and then the elements. A `Float64Array` is copied as
-     * bytes; any other array-like is converted as `new Float64Array(values)`
-     * would.
-     */
-    setFloat64Array(values: ArrayLike<number> | Float64Array): void {
-        const length = values.length;
-        const elements = this.#arrayElements(length, SIZEOF_64);
-
-        setFloat64Elements(this.#bytes, elements, values, length);
-        this.#endArray(length, length * SIZEOF_64);
-    }
-
-    /**
-     * Writes the count of the `size`-byte structs in `bytes`, and then the
-     * bytes. Padding that aligns the structs goes before the count.
-     *
-     * @throws {RangeError} If `bytes` aren't a whole number of structs.
-     */
-    setStructArray(bytes: Uint8Array, size: number): void {
-        const count = structCount(bytes.length, size);
-
-        this.#assertWritable(this.#size + bytes.length);
-        this.#setSize(count);
-        this.setBytes(bytes);
-    }
-
-    /** Writes `bytes` as they are, without a length prefix, such as a struct */
-    setBytes(bytes: Uint8Array): void {
-        this.#bytes.set(bytes, this.#position);
-        this.#position += bytes.length;
-    }
-
-    /** Writes `byteLength` zeros, such as to align the field after them */
-    setPadding(byteLength: number): void {
-        this.#assertWritable(byteLength);
-
-        this.#bytes.fill(0, this.#position, this.#position + byteLength);
-        this.#position += byteLength;
-    }
-
-    /**
-     * Where `length` elements of `elementSize` bytes go, after their length
-     * prefix, once they fit. It writes nothing, so that elements that throw
-     * leave the buffer as it was.
-     */
-    #arrayElements(length: number, elementSize: ElementSize): number {
-        this.#assertWritable(this.#size + length * elementSize);
-        return this.#position + this.#size;
-    }
-
-    /**
-     * Writes the length prefix of elements written after it, and moves past
-     * them
-     */
-    #endArray(length: number, byteLength: number): void {
-        this.#setSize(length);
-        this.#position += byteLength;
-    }
-
     /** @throws {DecodeError} If the string isn't valid UTF-8. */
     getString(position: number): string {
         const length = this.#getSize(position);
@@ -717,13 +454,6 @@ export class ByteBuffer {
                 { cause: error }
             );
         }
-    }
-
-    setString(bytes: Uint8Array): void {
-        // Check that the length and the bytes fit before writing either
-        this.#assertWritable(this.#size + bytes.length);
-        this.#setSize(bytes.length);
-        this.setBytes(bytes);
     }
 
     /**
@@ -812,32 +542,6 @@ export class ByteBuffer {
     }
 
     /**
-     * Writes the count of items, the end of each, counted from the vector's
-     * position, and then the items
-     */
-    setVector(vector: Uint8Array[]): void {
-        // Check that the count, the ends and every item fit before writing
-        // any of them
-        let byteLength = this.#size;
-        for (const bytes of vector) {
-            byteLength += this.#size + bytes.length;
-        }
-        this.#assertWritable(byteLength);
-
-        this.#setSize(vector.length);
-
-        let end = (vector.length + 1) * this.#size;
-        for (const bytes of vector) {
-            end += bytes.length;
-            this.#setSize(end);
-        }
-
-        for (const bytes of vector) {
-            this.setBytes(bytes);
-        }
-    }
-
-    /**
      * Checks that a vector item, from `start` to `end` from the vector's
      * position, starts no later than it ends and lies within the bytes.
      *
@@ -893,12 +597,6 @@ export class ByteBuffer {
         }
     }
 
-    #assertWritable(byteLength: number): void {
-        if (this.#position > this.#bytes.length - byteLength) {
-            throw new RangeError('Write exceeds the supplied buffer');
-        }
-    }
-
     #getSize(position: number): number {
         switch (this.#size) {
             case SIZEOF_8:
@@ -911,41 +609,6 @@ export class ByteBuffer {
                 return this.getUint32(position);
         }
     }
-
-    #setSize(value: number): void {
-        switch (this.#size) {
-            case SIZEOF_8:
-                this.#view.setUint8(this.#position, value);
-                break;
-
-            case SIZEOF_16:
-                this.#view.setUint16(this.#position, value, true);
-                break;
-
-            case SIZEOF_32:
-                this.#view.setUint32(this.#position, value, true);
-                break;
-        }
-
-        this.#position += this.#size;
-    }
-}
-
-/**
- * The number of structs of `size` bytes in `byteLength` bytes
- *
- * @throws {RangeError} If `size` isn't a positive integer, or the bytes
- * aren't a whole number of structs.
- */
-export function structCount(byteLength: number, size: number): number {
-    assertStructSize(size);
-    if (byteLength % size !== 0) {
-        throw new RangeError(
-            `${byteLength} bytes aren't a whole number of ${size}-byte structs`
-        );
-    }
-
-    return byteLength / size;
 }
 
 export function assertStructSize(size: number): void {

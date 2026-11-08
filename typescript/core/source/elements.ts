@@ -9,10 +9,10 @@ import { byteOrderSwap } from './endianness.ts';
 import type { TypedArray } from './types.ts';
 
 // Writes `count` elements of an array, little-endian, at `position` in
-// `bytes`: ByteBuffer and TableWriter write every array with these, once
-// they've checked that `count` elements fit, and then write its count. A
-// typed array of the element type is copied as bytes, and any other
-// array-like converted as the typed array's constructor would.
+// `bytes`: TableWriter writes every array with these, once it has checked
+// that `count` elements fit, and then writes its count. A typed array of the
+// element type is copied as bytes, and any other array-like converted as the
+// typed array's constructor would.
 //
 // The count is the length that the caller checked, rather than read again:
 // the view that an aligned array is written through starts at `position` in

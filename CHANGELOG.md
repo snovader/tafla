@@ -63,14 +63,14 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- Python's `ByteBuffer` only reads tables, and its setters and `reset()` are
-  removed. Tables are written with `TableBuilder` or `TableWriter`, and
-  records at fixed offsets with the standard library's `struct`.
+- TypeScript's and Python's `ByteBuffer` only read tables, and their setters
+  and `reset()` are removed. Tables are written with `TableBuilder`, or with
+  `TableWriter` and, in TypeScript, `TableSizer`. Structs and other records at
+  fixed offsets are written with `StructWriter` in TypeScript, and with the
+  standard library's `struct` in Python.
 
 ### Fixed
 
-- `ByteBuffer`'s `setString()` and `setVector()` in TypeScript write nothing
-  when a value doesn't fit, as documented.
 - A TypeScript struct writer whose write threw no longer breaks later writes.
 - TypeScript's `TableWriter` writes padding as zeros and never writes past its
   bytes, and generated structs are written into bytes of their own.

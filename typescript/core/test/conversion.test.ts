@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder } from 'tafla';
+import { TableBuilder, TableWriter } from 'tafla';
 
 type NumberArrayType =
     | 'Float32'
@@ -135,15 +135,24 @@ describe.each([
 it.prop([doubles, fc.integer({ min: 1, max: 7 })])(
     'should convert into a slice that is unaligned for the element type',
     (values, byteOffset) => {
-        for (const [, input] of numberInputs(values)) {
-            const aligned = new Uint8Array(4 + values.length * 8);
-            new ByteBuffer(aligned).setFloat64Array(input);
+        // The array's offset, its count at 4, and its elements from 8
+        const length = 8 + values.length * 8;
 
-            const backing = new Uint8Array(byteOffset + aligned.length);
-            const unaligned = backing.subarray(byteOffset);
-            new ByteBuffer(unaligned).setFloat64Array(input);
+        for (const [, input] of numberInputs(values)) {
+            const aligned = writeFloat64Array(new Uint8Array(length), input);
+
+            const backing = new Uint8Array(byteOffset + length);
+            const unaligned = writeFloat64Array(backing.subarray(byteOffset), input);
 
             expect(unaligned).toStrictEqual(aligned);
         }
     }
 );
+
+/** Writes a table of one float64 array into `bytes`, which it fills */
+function writeFloat64Array(bytes: Uint8Array, values: ArrayLike<number>): Uint8Array {
+    const writer = new TableWriter(bytes, 1);
+    writer.setFloat64Array(0, values);
+
+    return writer.bytes();
+}

@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer } from 'tafla';
+import { TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { ARRAY_FIELDS, fitsItsLayout, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
@@ -25,17 +25,22 @@ vi.mock('../source/constants.ts', () => ({
     IS_LITTLE_ENDIAN: false
 }));
 
+// A table of one float array holds its offset, its count at 4, and its
+// elements from 8
+const ELEMENTS = 8;
+
 it.prop([fc.array(fc.double()), fc.boolean()])(
-    'should byte-swap each converted element on a big-endian host',
+    'should byte-swap each element, copied or converted, on a big-endian host',
     (values, typed) => {
-        const bytes = new Uint8Array(4 + values.length * 4);
-        new ByteBuffer(bytes).setFloat32Array(typed ? Float32Array.from(values) : values);
+        const writer = new TableWriter(new Uint8Array(ELEMENTS + values.length * 4), 1);
+        writer.setFloat32Array(0, typed ? Float32Array.from(values) : values);
+        const bytes = writer.bytes();
 
         const native = new Uint8Array(Float32Array.from(values).buffer);
         const swapped = native.map((_, i) => native[i - (i % 4) + 3 - (i % 4)]);
 
-        expect(new DataView(bytes.buffer).getUint32(0, true)).toBe(values.length);
-        expect(bytes.subarray(4)).toStrictEqual(swapped);
+        expect(new DataView(bytes.buffer).getUint32(4, true)).toBe(values.length);
+        expect(bytes.subarray(ELEMENTS)).toStrictEqual(swapped);
     }
 );
 
@@ -43,12 +48,12 @@ it.prop([fc.array(fc.double(), { minLength: 1, maxLength: 8 }), fc.nat(), SLICES
     'should throw a RangeError for an array that grows after it is counted on a big-endian host, writing nothing',
     (values, cut, slice) => {
         const counted = cut % values.length;
-        const bytes = sliceOf(new Uint8Array(4 + values.length * 8), slice);
+        // Room for the grown array, so that the count must bound the write
+        const bytes = sliceOf(new Uint8Array(ELEMENTS + values.length * 8), slice);
+        const writer = new TableWriter(bytes, 1);
         const before = new Uint8Array(bytes.buffer.slice(0));
 
-        expect(() => new ByteBuffer(bytes).setFloat64Array(growing(values, counted))).toThrow(
-            RangeError
-        );
+        expect(() => writer.setFloat64Array(0, growing(values, counted))).toThrow(RangeError);
         expect(new Uint8Array(bytes.buffer)).toStrictEqual(before);
     }
 );
