@@ -34,6 +34,10 @@ _SIZE_CODES: dict[OffsetSize, IntTypeCode] = {
     SIZEOF_16: "H",
     SIZEOF_32: "I",
 }
+# One 64-bit item position, which get_vector_offsets() repeats for every item
+# and then fills in. Repeating it, rather than array("Q", bytes(8 * count)),
+# doesn't hold the count's zeros as bytes too while they're copied.
+_ZERO_OFFSET = array("Q", [0])
 
 
 class ByteBuffer:
@@ -557,7 +561,7 @@ class ByteBuffer:
         as 64-bit unsigned integers, since the buffer may be longer than
         4 GiB, as a memory map of many tables is."""
         ends = self.__get_item_ends(position)
-        offsets = array("Q", bytes(len(ends) * SIZEOF_64))
+        offsets = _ZERO_OFFSET * len(ends)
         length = self.__length
 
         start = (len(ends) + 1) * self.__size
