@@ -731,8 +731,16 @@ export class TableWriter {
      * Writes `length` bytes of zero padding at the position, and moves past
      * them. The bytes needn't be new, so their padding is written rather
      * than left as it was.
+     *
+     * Most arrays and nested tables need none, and calling `fill()` for no
+     * bytes took a fifth of the time that writing a vector of 100 tables of
+     * scalars took, in Node 27 and d8.
      */
     #pad(length: number): void {
+        if (length === 0) {
+            return;
+        }
+
         const position = this.#position;
         this.#bytes.fill(0, position, position + length);
         this.#position = position + length;
