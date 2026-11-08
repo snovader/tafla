@@ -45,6 +45,14 @@ public final class Uint16Offsets {
         return buffer.getUint16Array(buffer.rootOffset(2));
     }
 
+    /**
+     * Views the elements of {@code values()} in place, read-only, without
+     * copying them, as {@code short}s with the same bits
+     */
+    public java.nio.ShortBuffer valuesView() {
+        return buffer.getUint16ArrayView(buffer.rootOffset(2));
+    }
+
     /** The fields of a {@code Uint16Offsets}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(long id, String name, int[] values) {}

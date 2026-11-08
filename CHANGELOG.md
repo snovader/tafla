@@ -25,7 +25,8 @@ repository's first commits, for code built from its source before the release.
 - tafla-gen, a schema compiler written in Rust, which generates code that
   writes and reads a schema's messages, tables and structs in TypeScript,
   JavaScript, Python, Java and Rust, with lazy views of vectors and arrays of
-  structs, and a WebAssembly module of it for other hosts.
+  structs, views in place of arrays of scalars in Java, whose getters copy
+  them, and a WebAssembly module of it for other hosts.
 - A conformance suite of golden tables, which every runtime reads and rebuilds
   byte for byte, and property tests of every runtime.
 - Benchmarks in every language, compared with FlatBuffers, protobuf,

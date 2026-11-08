@@ -158,7 +158,8 @@ or read its tables, or a target couldn't generate its code:
   struct in a table adds nothing to the table's depth, and vectors nest
   tables without a limit.
 - A field can't take the name of the view of a vector or an array of structs
-  beside it, `<field>_view`, in `camelCase` too, and a declaration can't take
+  beside it, `<field>_view`, in `camelCase` too, nor that of the view of an
+  array of scalars, which Java declares, and a declaration can't take
   the name of a view that the schema's vectors and arrays of structs need,
   `<Table>Vector` or `<Struct>Array`, nor another declaration's
   `<Name>Fields`, which the generated code below declares.
@@ -239,6 +240,13 @@ aren't iterable, since a loop of `for...of` over them took twice as long as a
 loop of `get(i)` in V8. The comparison suites time reading the last item and
 every item through views, against the getters and `ByteBuffer` by hand.
 
+Java's getter of an array of scalars returns a copy, a Java array, where the
+other targets return the array in place. So beside it, `<field>View()`
+returns the runtime's read-only, little-endian view of the elements in place,
+such as a `java.nio.FloatBuffer`. Unsigned elements are in the signed type of
+their size, with the same bits, such as a `uint32[]` in an `IntBuffer`, which
+`Integer.toUnsignedLong()` widens.
+
 ```rust
 # mod shapes {
 #     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/shapes/rust/shapes.rs"));
@@ -302,6 +310,7 @@ var columns = new Columns.Fields(
 byte[] bytes = Document.serialize(new Document.Fields(1.5, 2, "a", columns));
 var document = new Document(bytes); // checks the version
 document.columns().a(); // a float[]
+document.columns().aView(); // a FloatBuffer of the bytes
 ```
 
 ```rust

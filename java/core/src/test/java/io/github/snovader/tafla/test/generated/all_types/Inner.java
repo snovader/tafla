@@ -50,6 +50,11 @@ public final class Inner {
         return buffer.getFloat64Array(buffer.fieldOffset(position, 1));
     }
 
+    /** Views the elements of {@code values()} in place, read-only, without copying them */
+    public java.nio.DoubleBuffer valuesView() {
+        return buffer.getFloat64ArrayView(buffer.fieldOffset(position, 1));
+    }
+
     /** The fields of an {@code Inner}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(String name, double[] values) {}

@@ -55,12 +55,30 @@ public final class Columns {
         return buffer.getUint32Array(buffer.fieldOffset(position, 1));
     }
 
+    /**
+     * Views the elements of {@code keys()} in place, read-only, without
+     * copying them, as {@code int}s with the same bits
+     */
+    public java.nio.IntBuffer keysView() {
+        return buffer.getUint32ArrayView(buffer.fieldOffset(position, 1));
+    }
+
     public float[] a() {
         return buffer.getFloat32Array(buffer.fieldOffset(position, 2));
     }
 
+    /** Views the elements of {@code a()} in place, read-only, without copying them */
+    public java.nio.FloatBuffer aView() {
+        return buffer.getFloat32ArrayView(buffer.fieldOffset(position, 2));
+    }
+
     public float[] b() {
         return buffer.getFloat32Array(buffer.fieldOffset(position, 3));
+    }
+
+    /** Views the elements of {@code b()} in place, read-only, without copying them */
+    public java.nio.FloatBuffer bView() {
+        return buffer.getFloat32ArrayView(buffer.fieldOffset(position, 3));
     }
 
     /** The fields of a {@code Columns}, to write */

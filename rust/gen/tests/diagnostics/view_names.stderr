@@ -1,29 +1,35 @@
 error: `items_view` clashes with the view of `items`
- --> view_names.tafla:5:5
+ --> view_names.tafla:6:5
   |
-5 |     items_view: uint8;
+6 |     items_view: uint8;
   |     ^^^^^^^^^^ the generated code reads `items` lazily with `items_view()`, or `itemsView()` in camelCase
 
 error: `a1_view` clashes with the view of `a_1`
- --> view_names.tafla:8:5
+ --> view_names.tafla:9:5
   |
-8 |     a1_view: uint8;
+9 |     a1_view: uint8;
   |     ^^^^^^^ the generated code reads `a_1` lazily with `a_1_view()`, or `a1View()` in camelCase
 
-error: `children_view` clashes with the view of `children`
-  --> view_names.tafla:16:5
+error: `values_view` clashes with the view of `values`
+  --> view_names.tafla:12:5
    |
-16 |     children_view: [Item];
+12 |     values_view: uint8;
+   |     ^^^^^^^^^^^ Java's generated code reads `values` in place with `valuesView()`
+
+error: `children_view` clashes with the view of `children`
+  --> view_names.tafla:17:5
+   |
+17 |     children_view: [Item];
    |     ^^^^^^^^^^^^^ the generated code reads `children` lazily with `children_view()`, or `childrenView()` in camelCase
 
 error: `ItemVector` clashes with the view of a vector of `Item`
-  --> view_names.tafla:25:7
+  --> view_names.tafla:26:7
    |
-25 | table ItemVector {
+26 | table ItemVector {
    |       ^^^^^^^^^^ the generated code declares `ItemVector` to read a vector of `Item` lazily
 
 error: `PointArray` clashes with the view of an array of `Point`
-  --> view_names.tafla:29:8
+  --> view_names.tafla:30:8
    |
-29 | struct PointArray {
+30 | struct PointArray {
    |        ^^^^^^^^^^ the generated code declares `PointArray` to read an array of `Point` lazily
