@@ -44,6 +44,11 @@ repository's first commits, for code built from its source before the release.
   from the count that `getVectorLength()` read, so that a reader of several
   items reads and checks the count once. Generated views of vectors in
   TypeScript and JavaScript call it.
+- TypeScript's `TableSizer.writer(bytes)`, which writes a table into the
+  start of the caller's bytes rather than new ones, and a static
+  `serializeInto()` on every message that tafla-gen generates in TypeScript
+  and JavaScript, which writes the message so and returns the view of the
+  bytes that holds it, saving the allocation of new bytes for each table.
 
 ### Changed
 

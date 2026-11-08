@@ -332,6 +332,17 @@ assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+In TypeScript and JavaScript, a message's `serializeInto(fields, bytes)`
+writes it into the start of the caller's bytes rather than new ones, through
+the runtime's `TableSizer.writer(bytes)`, and returns the view of them that
+holds it. The bytes stay the caller's, so the view, and what's read from it,
+change when they're written again, as by the next message written into them.
+Reusing bytes saves allocating and zeroing new ones: in Node 27, about
+0.2 µs for a table of a few KB, a third of the write of a document of 100
+rows, and 12 µs for one of 1.2 MB, but nothing for a table of up to 64
+bytes. Bytes shorter than the table throw a `RangeError` before any of them
+is written.
+
 ### Versions
 
 A versioned message has a `FORMAT_VERSION`, which its writer writes and its

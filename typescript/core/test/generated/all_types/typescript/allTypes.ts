@@ -69,6 +69,46 @@ export class Scalars {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Scalars` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: ScalarsFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(11, Scalars.#LAYOUT);
+        sizer.addInt8();
+        sizer.addUint8();
+        sizer.addInt16();
+        sizer.addUint16();
+        sizer.addInt32();
+        sizer.addUint32();
+        sizer.addInt64();
+        sizer.addUint64();
+        sizer.addFloat32();
+        sizer.addFloat64();
+        sizer.addUint8();
+
+        const writer = sizer.writer(bytes);
+        writer.setInt8(0, fields.int8);
+        writer.setUint8(1, fields.uint8);
+        writer.setInt16(2, fields.int16);
+        writer.setUint16(3, fields.uint16);
+        writer.setInt32(4, fields.int32);
+        writer.setUint32(5, fields.uint32);
+        writer.setInt64(6, fields.int64);
+        writer.setUint64(7, fields.uint64);
+        writer.setFloat32(8, fields.float32);
+        writer.setFloat64(9, fields.float64);
+        writer.setUint8(10, fields.bool ? 1 : 0);
+
+        return writer.bytes();
+    }
+
     int8(): number {
         return this.#buffer.getInt8(this.#buffer.rootOffset(0));
     }
@@ -168,6 +208,44 @@ export class Arrays {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Arrays` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: ArraysFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        sizer.addInt8Array(fields.int8.length);
+        sizer.addUint8Array(fields.uint8.length);
+        sizer.addInt16Array(fields.int16.length);
+        sizer.addUint16Array(fields.uint16.length);
+        sizer.addInt32Array(fields.int32.length);
+        sizer.addUint32Array(fields.uint32.length);
+        sizer.addInt64Array(fields.int64.length);
+        sizer.addUint64Array(fields.uint64.length);
+        sizer.addFloat32Array(fields.float32.length);
+        sizer.addFloat64Array(fields.float64.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setInt8Array(0, fields.int8);
+        writer.setUint8Array(1, fields.uint8);
+        writer.setInt16Array(2, fields.int16);
+        writer.setUint16Array(3, fields.uint16);
+        writer.setInt32Array(4, fields.int32);
+        writer.setUint32Array(5, fields.uint32);
+        writer.setInt64Array(6, fields.int64);
+        writer.setUint64Array(7, fields.uint64);
+        writer.setFloat32Array(8, fields.float32);
+        writer.setFloat64Array(9, fields.float64);
+
+        return writer.bytes();
+    }
+
     int8(): Int8Array {
         return this.#buffer.getInt8Array(this.#buffer.rootOffset(0));
     }
@@ -245,6 +323,39 @@ export class Nested {
         }
 
         const writer = sizer.writer();
+        writer.setString(0, fields.label);
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer);
+        const vector2 = writer.setVector(2, fields.trees.length);
+        for (let i = 0; i < fields.trees.length; i++) {
+            Tree.write(writer, fields.trees[i]);
+            writer.setItemEnd(vector2, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Nested` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: NestedFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(3, Nested.#LAYOUT);
+        sizer.addString(fields.label);
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer);
+        sizer.addVector(fields.trees.length);
+        for (const item of fields.trees) {
+            Tree.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
         writer.setString(0, fields.label);
         writer.setTable(1, Outer.ALIGNMENT);
         Outer.write(writer, fields.outer);
@@ -659,6 +770,31 @@ export class Reserved {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Reserved` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(
+        fields: ReservedFields,
+        bytes: Uint8Array
+    ): Uint8Array {
+        const sizer = new TableSizer(1, Reserved.#LAYOUT);
+        sizer.addTable(Keywords.ALIGNMENT);
+        Keywords.size(sizer, fields.keywords);
+
+        const writer = sizer.writer(bytes);
+        writer.setTable(0, Keywords.ALIGNMENT);
+        Keywords.write(writer, fields.keywords);
+
+        return writer.bytes();
+    }
+
     keywords(): Keywords {
         return new Keywords(this.#buffer, this.#buffer.rootOffset(0));
     }
@@ -701,6 +837,54 @@ export class Structs {
         Path.size(sizer, fields.path);
 
         const writer = sizer.writer();
+        writer.setStruct(0, Packed.serialize(fields.packed));
+        writer.setStructArray(
+            1,
+            Documented.serializeArray(fields.documented),
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        writer.setStruct(2, Segment.serialize(fields.segment));
+        writer.setStructArray(
+            3,
+            Segment.serializeArray(fields.segments),
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Structs` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: StructsFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(5, Structs.#LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(
+            fields.documented.length,
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(
+            fields.segments.length,
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path);
+
+        const writer = sizer.writer(bytes);
         writer.setStruct(0, Packed.serialize(fields.packed));
         writer.setStructArray(
             1,

@@ -95,6 +95,61 @@ describe.each(SHAPES)('%s', (_, shapes) => {
         );
     });
 
+    describe('bytes of the caller', () => {
+        it.prop([DOCUMENT_FIELDS, fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+            'should write a Document into the start of longer bytes of any content, as serialize() writes it, and return the view of them that holds it',
+            (fields, extra, fill) => {
+                const expected = shapes.Document.serialize(fields);
+                const bytes = new Uint8Array(expected.length + extra).fill(fill);
+                const written = shapes.Document.serializeInto(fields, bytes);
+
+                expect(written).toStrictEqual(expected);
+                expect(written.buffer).toBe(bytes.buffer);
+                expect(written.byteOffset).toBe(bytes.byteOffset);
+                expect(bytes.subarray(expected.length)).toStrictEqual(
+                    new Uint8Array(extra).fill(fill)
+                );
+            }
+        );
+
+        it.prop([ITEM_LIST_FIELDS, fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+            'should write an ItemList into the start of longer bytes of any content, as serialize() writes it',
+            (fields, extra, fill) => {
+                const expected = shapes.ItemList.serialize(fields);
+                const bytes = new Uint8Array(expected.length + extra).fill(fill);
+
+                expect(shapes.ItemList.serializeInto(fields, bytes)).toStrictEqual(expected);
+            }
+        );
+
+        it.prop([DOCUMENT_FIELDS, fc.nat(), fc.nat({ max: 0xff })])(
+            'should throw RangeError for bytes shorter than a Document, and write none of them',
+            (fields, cut, fill) => {
+                const length = shapes.Document.serialize(fields).length;
+                const bytes = new Uint8Array(length - 1 - (cut % length)).fill(fill);
+
+                expect(() => shapes.Document.serializeInto(fields, bytes)).toThrow(
+                    new RangeError(
+                        `The table is ${length} bytes, longer than the ${bytes.length} bytes given`
+                    )
+                );
+                expect(bytes).toStrictEqual(new Uint8Array(bytes.length).fill(fill));
+            }
+        );
+
+        it('should return a view that the next serializeInto() into the same bytes overwrites', () => {
+            const first = { x: 1.5, y: 2.5, id: 1n, name: 'a' };
+            const second = { x: 3.5, y: 4.5, id: 2n, name: 'b' };
+            const bytes = new Uint8Array(64);
+
+            const written = shapes.Point.serializeInto(first, bytes);
+            expect(readPoint(new shapes.Point(written))).toEqual(first);
+
+            shapes.Point.serializeInto(second, bytes);
+            expect(readPoint(new shapes.Point(written))).toEqual(second);
+        });
+    });
+
     describe('versions', () => {
         it.prop([DOCUMENT_FIELDS, VERSIONS])(
             "should read a Document's version from its bytes, of any version, to choose its reader",

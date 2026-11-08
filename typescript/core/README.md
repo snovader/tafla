@@ -46,6 +46,13 @@ same fields, in the same order, into bytes of that length. `TableBuilder`
 records its fields and counts their length as they're set, and then writes
 them through a `TableWriter` too, so the two write the same bytes.
 
+The sizer's `writer()` writes into new bytes, and `writer(bytes)` into the
+start of `bytes`, such as bytes that a program reuses for each table it
+sends, and its writer's `bytes()` is then the view of them that holds the
+table. The bytes stay the caller's, and the writer keeps no reference to
+them, so the view, and what's read from it, change when they're written
+again. The generated `serializeInto()` writes a message so.
+
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:
 
@@ -135,6 +142,15 @@ byte; its README describes them. This package writes them, and
   `TableWriter` writes scalars as bytes, since V8 keeps a `Uint8Array` of up
   to 64 bytes on its heap until a `DataView` or `subarray()` asks for its
   `ArrayBuffer`, which took 140 ns.
+- **Reuse bytes for tables that you write again and again.** New bytes of
+  more than 64 are allocated outside V8's heap and zeroed, and the pages of
+  large ones are new to the process, which faults on the first write of
+  each. In Node 27, the generated code wrote a table nesting 100,000 rows of
+  three columns, 1.2 MB, in 31 µs into new bytes and in 19 µs into reused
+  ones, with `serializeInto()`, and one of 100 rows, 1.3 KB, in 0.49 µs and
+  0.33 µs. A vector of 100 nested tables, 3.2 KB, took the same 0.2 µs
+  less, 5% of its write, and a table of 60 bytes, which V8 allocates on its
+  heap, no less.
 - **Small tables cost about the allocation of their bytes.** A table of two
   float64s, a string and an int64 took 0.18–0.20 µs from `bytes()` in
   Node 27, and 0.34 µs from `finalize()`, whose `ByteBuffer` asks for the
@@ -193,7 +209,8 @@ Using the API wrongly throws other errors, whatever the bytes:
   table or fill it.
 - `TableSizer` throws as `TableBuilder`'s constructor does for its header and
   version, and its `byteLength()` and `writer()` throw a `RangeError` for a
-  table too long for its offset type. A `TableWriter` throws a `RangeError`
+  table too long for its offset type, and `writer(bytes)` for a table longer
+  than `bytes`, before writing any of them. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
   counted, and from `setString()` for a string longer than the one counted.
   It's the target of generated code, and trusts each field's index and each
