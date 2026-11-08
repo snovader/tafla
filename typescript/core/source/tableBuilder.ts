@@ -1,6 +1,6 @@
 import { ByteBuffer, structCount } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
-import { encode } from './encoding.ts';
+import { utf8Length } from './encoding.ts';
 import {
     assertAlignment,
     headerLength,
@@ -8,6 +8,7 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
+import { copyTable, newTableWriter, type TableWriter } from './tableWriter.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value
@@ -45,18 +46,25 @@ const STRUCT_ARRAY = 24;
  * padded so their elements are aligned from the start of the table. Fields are read back by index with `ByteBuffer.rootOffset()`, or
  * `ByteBuffer.fieldOffset()` for a table nested in another.
  *
- * Setting a field records it and its position. `finalize()` then allocates the
- * table at its exact size and writes every field in one pass, so the values
- * must not change in between. Tables nested from their builders are written in
- * the same pass, straight into this one. A setter throws a `RangeError`, and
- * leaves the builder as it was, when its field would make the table longer
- * than the layout's `offsetType` addresses: 255 bytes, 64 KiB or 4 GiB. Typed
- * arrays of a field's element type are copied as bytes; any other array-like,
- * such as a `number[]` or a typed array of another type, is converted as the
- * typed array's constructor would.
+ * Setting a field records it and counts the table's length. `finalize()` then
+ * writes every field, in order, through a {@link TableWriter} into bytes of
+ * exactly that length, so the values must not change in between: arrays whose
+ * lengths changed so that the fields no longer fit the table, or no longer
+ * fill it, make it throw a `RangeError` and leave the builder unfinalized.
+ * Tables nested from their builders are written by the same writer, straight
+ * into this one. A setter throws a `RangeError`, and leaves the builder as it
+ * was, when its field would make the table longer than the layout's
+ * `offsetType` addresses: 255 bytes, 64 KiB or 4 GiB. Typed arrays of a
+ * field's element type are copied as bytes; any other array-like, such as a
+ * `number[]` or a typed array of another type, is converted as the typed
+ * array's constructor would.
  */
 export class TableBuilder {
-    #buffer: ByteBuffer | undefined;
+    /**
+     * The table once written: its bytes, and then the buffer of them that
+     * `finalize()` returns
+     */
+    #written: Uint8Array | ByteBuffer | undefined;
 
     readonly #layout: TableLayout;
     readonly #version: number | undefined;
@@ -73,12 +81,13 @@ export class TableBuilder {
      */
     #alignment: ElementSize = SIZEOF_8;
 
-    // A record of four slots per field, in one plain array sized up front:
-    // its kind, the padding before it, its position from the table's start
-    // and its value. Small typed arrays took four times as long to allocate,
-    // and an array per slot made setting a small table's fields take twice as
-    // long. The slots are literals, since named constants made building a
-    // small table 5-9% slower in d8.
+    // A record of three slots per field, in one plain array sized up front:
+    // its kind, the alignment that it's padded to or 0, and its value. The
+    // writer pads each field and writes its offset as it reaches it, so the
+    // record needn't hold either. Small typed arrays took four times as long
+    // to allocate, and an array per slot made setting a small table's fields
+    // take twice as long. The slots are literals, since named constants made
+    // building a small table 5-9% slower in d8.
     #count = 0;
     #records: unknown[];
 
@@ -111,76 +120,78 @@ export class TableBuilder {
         this.#maxLength = maxLength(size);
         this.#offset = headerLength(fields, layout, version);
 
-        this.#records = new Array(fields * 4);
+        this.#records = new Array(fields * 3);
     }
 
     /**
-     * Writes the table, once; later calls return the same buffer.
+     * Writes the table, once, and returns a buffer of its bytes; later calls
+     * return the same buffer.
      *
-     * @throws {RangeError} If fewer fields were set than the table holds.
+     * @throws {RangeError} If fewer fields were set than the table holds, or
+     * the fields no longer fit the table or fill it.
      */
     finalize(): ByteBuffer {
-        if (this.#buffer) {
-            return this.#buffer;
+        const written = this.#written ?? this.#write();
+        if (written instanceof ByteBuffer) {
+            return written;
         }
 
-        this.#assertComplete();
-
-        const buffer = new ByteBuffer(
-            new Uint8Array(this.#offset),
-            this.#layout
-        );
-        this.#write(buffer);
-
-        // Release the values, which may be large arrays
-        this.#records = [];
-        this.#buffer = buffer;
+        const buffer = new ByteBuffer(written, this.#layout);
+        this.#written = buffer;
 
         return buffer;
     }
 
+    /**
+     * Writes the table, once, as `finalize()` does, and returns its bytes,
+     * which `finalize()` then returns a buffer of
+     *
+     * @throws {RangeError} If fewer fields were set than the table holds, or
+     * the fields no longer fit the table or fill it.
+     */
     bytes(): Uint8Array {
-        return this.finalize().bytes();
+        const written = this.#written ?? this.#write();
+        return written instanceof ByteBuffer ? written.bytes() : written;
     }
 
     setInt8(value: number): void {
-        this.#addField(INT8, value, SIZEOF_8, 0);
+        this.#addField(INT8, value, SIZEOF_8, 0, 0);
     }
 
     setUint8(value: number): void {
-        this.#addField(UINT8, value, SIZEOF_8, 0);
+        this.#addField(UINT8, value, SIZEOF_8, 0, 0);
     }
 
     setInt16(value: number): void {
-        this.#addField(INT16, value, SIZEOF_16, 0);
+        this.#addField(INT16, value, SIZEOF_16, 0, 0);
     }
 
     setUint16(value: number): void {
-        this.#addField(UINT16, value, SIZEOF_16, 0);
+        this.#addField(UINT16, value, SIZEOF_16, 0, 0);
     }
 
     setInt32(value: number): void {
-        this.#addField(INT32, value, SIZEOF_32, 0);
+        this.#addField(INT32, value, SIZEOF_32, 0, 0);
     }
 
     setUint32(value: number): void {
-        this.#addField(UINT32, value, SIZEOF_32, 0);
+        this.#addField(UINT32, value, SIZEOF_32, 0, 0);
     }
 
     setInt64(value: bigint): void {
-        this.#addField(INT64, value, SIZEOF_64, 0);
+        this.#addField(INT64, value, SIZEOF_64, 0, 0);
     }
 
     setUint64(value: bigint): void {
-        this.#addField(UINT64, value, SIZEOF_64, 0);
+        this.#addField(UINT64, value, SIZEOF_64, 0, 0);
     }
 
     setFloat32(value: number): void {
-        this.#addField(FLOAT32, value, SIZEOF_32, 0);
+        this.#addField(FLOAT32, value, SIZEOF_32, 0, 0);
     }
 
     setFloat64(value: number): void {
-        this.#addField(FLOAT64, value, SIZEOF_64, 0);
+        this.#addField(FLOAT64, value, SIZEOF_64, 0, 0);
     }
 
     // The array setters compute their byte lengths each for one element
@@ -320,8 +331,8 @@ export class TableBuilder {
 
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
     setString(string: string): void {
-        const encoded = encode(string);
-        this.#addField(STRING, encoded, this.#size + encoded.length, 0);
+        // The writer encodes it in place, so only its length is counted here
+        this.#addField(STRING, string, this.#size + utf8Length(string), 0, 0);
     }
 
     /**
@@ -329,7 +340,7 @@ export class TableBuilder {
      * after another, which are written as they are, without padding.
      */
     setStruct(bytes: Uint8Array): void {
-        this.#addField(STRUCT, bytes, bytes.length, 0);
+        this.#addField(STRUCT, bytes, bytes.length, 0, 0);
     }
 
     /**
@@ -353,7 +364,8 @@ export class TableBuilder {
             STRUCT_ARRAY,
             [bytes, size],
             this.#size + bytes.length,
-            padding(this.#offset + this.#size, alignment)
+            padding(this.#offset + this.#size, alignment),
+            alignment
         );
         this.#alignTo(alignment);
     }
@@ -366,7 +378,9 @@ export class TableBuilder {
      * A builder must have all its fields set. `finalize()` writes it straight
      * into this table, without bytes of its own, so its values must not change
      * until then either. It can still be finalized or nested elsewhere too,
-     * since a complete builder doesn't change.
+     * since a complete builder doesn't change. A builder that was finalized
+     * already, or whose layout has a header or another `offsetType`, is
+     * finalized and copied instead.
      *
      * The nested table's typed arrays are aligned from its own start, so it's
      * padded to start at a multiple of `alignment`, which they need to be read
@@ -389,7 +403,8 @@ export class TableBuilder {
             TABLE,
             table,
             TableBuilder.#lengthOf(table),
-            padding(this.#offset, alignment)
+            padding(this.#offset, alignment),
+            alignment
         );
         this.#alignTo(alignment);
     }
@@ -399,9 +414,10 @@ export class TableBuilder {
      * the end of each, which lets readers find any item without reading the
      * others. Builders must have all their fields set, and are written
      * straight into this table as `setTable()` writes them, except for those
-     * whose layout has another `offsetType`, which are finalized and copied.
-     * Items aren't padded, so their typed arrays are read as copies when they
-     * don't happen to be aligned.
+     * finalized already and those whose layout has a header or another
+     * `offsetType`, which are finalized and copied. Items aren't padded, so
+     * their typed arrays are read as copies when they don't happen to be
+     * aligned.
      *
      * @throws {RangeError} If a builder has fields left to set.
      */
@@ -411,7 +427,7 @@ export class TableBuilder {
             byteLength += TableBuilder.#lengthOf(vector[i]);
         }
 
-        this.#addField(VECTOR, vector, byteLength, 0);
+        this.#addField(VECTOR, vector, byteLength, 0, 0);
     }
 
     /** Pads the array so that its elements, after the length, are aligned */
@@ -425,7 +441,8 @@ export class TableBuilder {
             kind,
             values,
             this.#size + byteLength,
-            padding(this.#offset + this.#size, alignment)
+            padding(this.#offset + this.#size, alignment),
+            alignment
         );
         this.#alignTo(alignment);
     }
@@ -460,11 +477,11 @@ export class TableBuilder {
     }
 
     /**
-     * Records a field of `byteLength` bytes after `padding` bytes. Checking
-     * the table's length here, rather than in finalize(), reports a field too
-     * long for the layout from its own setter and leaves the builder as it
-     * was. Every offset and length is shorter than the table, so the table's
-     * length is the one value to check.
+     * Records a field of `byteLength` bytes after `padding` bytes, which pad
+     * it to `alignment`. Checking the table's length here, rather than in
+     * finalize(), reports a field too long for the layout from its own setter
+     * and leaves the builder as it was. Every offset and length is shorter
+     * than the table, so the table's length is the one value to check.
      *
      * @throws {RangeError} If the table already holds all its fields, or the
      * field would make it longer than the layout addresses.
@@ -474,9 +491,10 @@ export class TableBuilder {
         kind: number,
         value: unknown,
         byteLength: number,
-        padding: number
+        padding: number,
+        alignment: ElementSize | 0
     ): void {
-        if (this.#buffer) {
+        if (this.#written !== undefined) {
             throw new TypeError('The table was already finalized');
         }
 
@@ -491,213 +509,202 @@ export class TableBuilder {
         }
 
         const records = this.#records;
-        const record = index * 4;
+        const record = index * 3;
         records[record] = kind;
-        records[record + 1] = padding;
-        records[record + 2] = this.#offset + padding;
-        records[record + 3] = value;
+        records[record + 1] = alignment;
+        records[record + 2] = value;
 
         this.#offset = length;
         this.#count = index + 1;
     }
 
     /**
-     * Writes the table from the buffer's position, which counts as its start.
-     * The buffer's layout must have the table's offset type.
+     * Writes the table into bytes of the length that its fields counted
+     *
+     * @throws {RangeError} If fewer fields were set than the table holds, or
+     * the fields no longer fit the bytes or fill them.
      */
-    #write(buffer: ByteBuffer): void {
-        this.#writeHeader(buffer);
-        this.#writeFields(buffer);
+    #write(): Uint8Array {
+        this.#assertComplete();
+
+        const writer = newTableWriter(
+            new Uint8Array(this.#offset),
+            this.#fields,
+            this.#layout,
+            this.#version
+        );
+        this.#writeFields(writer);
+        const bytes = writer.bytes();
+
+        // Release the values, which may be large arrays
+        this.#records = [];
+        this.#written = bytes;
+
+        return bytes;
     }
 
-    #writeHeader(buffer: ByteBuffer): void {
-        if (this.#layout.sized()) {
-            buffer.setSize(this.#offset);
-        }
-
-        if (this.#version !== undefined) {
-            buffer.setVersion(this.#version);
-        }
-
+    /** Writes the fields in order, each with its index in this table */
+    #writeFields(writer: TableWriter): void {
         const records = this.#records;
-        for (let i = 0; i < this.#count; i++) {
-            buffer.setOffset(records[i * 4 + 2] as number);
-        }
-    }
 
-    #writeFields(buffer: ByteBuffer): void {
-        const records = this.#records;
-        const end = this.#count * 4;
-
-        for (let record = 0; record < end; record += 4) {
-            const padding = records[record + 1] as number;
-            if (padding > 0) {
-                buffer.setPadding(padding);
-            }
-
+        for (let index = 0; index < this.#count; index++) {
+            const record = index * 3;
             const kind = records[record] as number;
-            const value = records[record + 3];
+            const alignment = records[record + 1] as ElementSize;
+            const value = records[record + 2];
 
             if (kind === TABLE) {
-                this.#writeTable(buffer, value as TableBuilder | Uint8Array);
+                writer.setTable(index, alignment);
+                this.#writeTable(writer, value as TableBuilder | Uint8Array);
             } else if (kind === VECTOR) {
                 this.#writeVector(
-                    buffer,
+                    writer,
+                    index,
                     value as ReadonlyArray<TableBuilder | Uint8Array>
                 );
             } else {
-                writeField(buffer, kind, value);
+                writeField(writer, index, kind, value, alignment);
             }
         }
     }
 
     #writeVector(
-        buffer: ByteBuffer,
-        vector: ReadonlyArray<TableBuilder | Uint8Array>
+        writer: TableWriter,
+        index: number,
+        items: ReadonlyArray<TableBuilder | Uint8Array>
     ): void {
-        setLength(buffer, this.#size, vector.length);
+        const vector = writer.setVector(index, items.length);
 
-        // Each end counts from the vector's position, which is its count's
-        let end = (vector.length + 1) * this.#size;
-        for (let i = 0; i < vector.length; i++) {
-            end += TableBuilder.#lengthOf(vector[i]);
-            setLength(buffer, this.#size, end);
-        }
-
-        for (let i = 0; i < vector.length; i++) {
-            this.#writeTable(buffer, vector[i]);
+        for (let i = 0; i < items.length; i++) {
+            this.#writeTable(writer, items[i]);
+            writer.setItemEnd(vector, i);
         }
     }
 
     /**
-     * Writes a builder straight into the buffer, unless it was finalized
-     * already or has offsets of another width than the buffer, which writes
-     * every offset and length at its own width. Those tables, and bytes, are
-     * copied.
+     * Writes a builder straight into the writer, between `startTable()` and
+     * `endTable()`, unless it was finalized already or its layout has a
+     * header or another offset type, which a table nested in the writer's
+     * doesn't. Those tables, and bytes, are copied.
      */
-    #writeTable(buffer: ByteBuffer, table: TableBuilder | Uint8Array): void {
+    #writeTable(writer: TableWriter, table: TableBuilder | Uint8Array): void {
         if (!(table instanceof TableBuilder)) {
-            buffer.setBytes(table);
-        } else if (table.#buffer === undefined && table.#size === this.#size) {
-            table.#write(buffer);
+            copyTable(writer, table);
+        } else if (
+            table.#written === undefined &&
+            table.#size === this.#size &&
+            table.#layout.headerSize() === 0
+        ) {
+            const parent = writer.startTable(table.#fields);
+            table.#writeFields(writer);
+            writer.endTable(parent);
         } else {
-            buffer.setBytes(table.bytes());
+            copyTable(writer, table.bytes());
         }
     }
 }
 
-function writeField(buffer: ByteBuffer, kind: number, value: unknown): void {
+function writeField(
+    writer: TableWriter,
+    index: number,
+    kind: number,
+    value: unknown,
+    alignment: ElementSize
+): void {
     switch (kind) {
         case INT8:
-            buffer.setInt8(value as number);
+            writer.setInt8(index, value as number);
             break;
 
         case UINT8:
-            buffer.setUint8(value as number);
+            writer.setUint8(index, value as number);
             break;
 
         case INT16:
-            buffer.setInt16(value as number);
+            writer.setInt16(index, value as number);
             break;
 
         case UINT16:
-            buffer.setUint16(value as number);
+            writer.setUint16(index, value as number);
             break;
 
         case INT32:
-            buffer.setInt32(value as number);
+            writer.setInt32(index, value as number);
             break;
 
         case UINT32:
-            buffer.setUint32(value as number);
+            writer.setUint32(index, value as number);
             break;
 
         case INT64:
-            buffer.setInt64(value as bigint);
+            writer.setInt64(index, value as bigint);
             break;
 
         case UINT64:
-            buffer.setUint64(value as bigint);
+            writer.setUint64(index, value as bigint);
             break;
 
         case FLOAT32:
-            buffer.setFloat32(value as number);
+            writer.setFloat32(index, value as number);
             break;
 
         case FLOAT64:
-            buffer.setFloat64(value as number);
+            writer.setFloat64(index, value as number);
             break;
 
         case INT8_ARRAY:
-            buffer.setInt8Array(value as ArrayLike<number>);
+            writer.setInt8Array(index, value as ArrayLike<number>);
             break;
 
         case UINT8_ARRAY:
-            buffer.setUint8Array(value as ArrayLike<number>);
+            writer.setUint8Array(index, value as ArrayLike<number>);
             break;
 
         case INT16_ARRAY:
-            buffer.setInt16Array(value as ArrayLike<number>);
+            writer.setInt16Array(index, value as ArrayLike<number>);
             break;
 
         case UINT16_ARRAY:
-            buffer.setUint16Array(value as ArrayLike<number>);
+            writer.setUint16Array(index, value as ArrayLike<number>);
             break;
 
         case INT32_ARRAY:
-            buffer.setInt32Array(value as ArrayLike<number>);
+            writer.setInt32Array(index, value as ArrayLike<number>);
             break;
 
         case UINT32_ARRAY:
-            buffer.setUint32Array(value as ArrayLike<number>);
+            writer.setUint32Array(index, value as ArrayLike<number>);
             break;
 
         case INT64_ARRAY:
-            buffer.setInt64Array(value as ArrayLike<bigint>);
+            writer.setInt64Array(index, value as ArrayLike<bigint>);
             break;
 
         case UINT64_ARRAY:
-            buffer.setUint64Array(value as ArrayLike<bigint>);
+            writer.setUint64Array(index, value as ArrayLike<bigint>);
             break;
 
         case FLOAT32_ARRAY:
-            buffer.setFloat32Array(value as ArrayLike<number>);
+            writer.setFloat32Array(index, value as ArrayLike<number>);
             break;
 
         case FLOAT64_ARRAY:
-            buffer.setFloat64Array(value as ArrayLike<number>);
+            writer.setFloat64Array(index, value as ArrayLike<number>);
             break;
 
         case STRING:
-            buffer.setString(value as Uint8Array);
+            writer.setString(index, value as string);
             break;
 
         case STRUCT:
-            buffer.setBytes(value as Uint8Array);
+            writer.setStruct(index, value as Uint8Array);
             break;
 
         case STRUCT_ARRAY: {
             const [bytes, size] = value as [Uint8Array, number];
-            buffer.setStructArray(bytes, size);
+            writer.setStructArray(index, bytes, size, alignment);
             break;
         }
-    }
-}
-
-/** Writes a length or count as wide as the table's offsets */
-function setLength(buffer: ByteBuffer, size: OffsetSize, length: number): void {
-    switch (size) {
-        case SIZEOF_8:
-            buffer.setUint8(length);
-            break;
-
-        case SIZEOF_16:
-            buffer.setUint16(length);
-            break;
-
-        case SIZEOF_32:
-            buffer.setUint32(length);
-            break;
     }
 }
 

@@ -47,14 +47,19 @@ function outcomeOf(write: () => Uint8Array): Uint8Array | string {
     }
 }
 
+// TableBuilder writes through a TableWriter too, so these compare the sizer's
+// count of each table, padding included, with the builder's, and the calls
+// that a sizer's writer takes with those that the builder makes. The bytes
+// themselves are the conformance suite's.
+
 it.prop([inPlaceTables()])(
-    'should write the bytes that TableBuilder builds from the same fields',
+    'should count each table as long as TableBuilder does, and write the same bytes',
     table => {
         expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());
     }
 );
 
-it('should write a struct array, a nested table and a vector as TableBuilder pads them', () => {
+it('should count the padding of a struct array, a nested table and a vector as TableBuilder does', () => {
     // A uint8 leaves a uint32[] 3 bytes short of its alignment, and a uint16
     // a nested table of float64s 1 byte short of its own
     const table: TableDescription = {
@@ -102,8 +107,9 @@ describe('strings', () => {
         fc.string({ unit: 'binary', maxLength: 40 })
     );
 
+    // TextEncoder, rather than TableBuilder, which encodes through the writer
     it.prop([strings, fc.constantFrom(...OFFSET_TYPES)])(
-        'should write any string as TableBuilder does, with lone surrogates as U+FFFD',
+        'should write any string as TextEncoder encodes it, with lone surrogates as U+FFFD',
         (value, offsetType) => {
             const table: TableDescription = {
                 layout: { sized: false, versioned: false, offsetType },
@@ -111,7 +117,20 @@ describe('strings', () => {
             };
             fc.pre(fitsItsLayout(table));
 
-            expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());
+            // The field's offset and its length, little-endian and as wide as
+            // the offset type, and then its bytes
+            const size = OFFSET_SIZES[offsetType];
+            const unsigned = (integer: number): number[] =>
+                Array.from({ length: size }, (_, i) => (integer >>> (8 * i)) & 0xff);
+            const encoded = new TextEncoder().encode(value);
+            const expected = Uint8Array.from([
+                ...unsigned(size),
+                ...unsigned(encoded.length),
+                ...encoded
+            ]);
+
+            expect(writeTable(table)).toStrictEqual(expected);
+            expect(buildTable(table).bytes()).toStrictEqual(expected);
         }
     );
 });
