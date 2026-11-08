@@ -58,11 +58,12 @@ benchmark's call allocates.
   rather than the library.
 - Lists stand in for `number[]`: the groups that serialize documents from
   `number[]` serialize them from lists here.
-- tafla's Python runtime has no `StructWriter` or `readUint32()`, so the
-  fixed-size record is written with `ByteBuffer`'s setters into a new 12-byte
-  `bytearray` and read with its getters at fixed positions, as the Java
-  benchmarks do. tafla's documentation recommends the standard library's
-  `struct` for such records, which is compared too.
+- tafla's Python runtime has no `StructWriter` or `readUint32()`. Its
+  documentation recommends the standard library's `struct` for records at
+  fixed offsets, so tafla's codec packs the fixed-size record field by field
+  with `struct` into a new 12-byte `bytearray`, and reads it with
+  `ByteBuffer`'s getters at fixed positions. The `struct` codec packs and
+  unpacks the whole record in one call.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
   has only a call per element, which is all it has for a vector of structs.
@@ -321,8 +322,8 @@ Fastest value in µs per call, and its ratio to tafla's:
 - Converting lists dominates writing the large document from them, which took
   every library 3 to 5 ms.
 - `struct` packs the fixed-size record in 74 ns and unpacks it in 142 ns, about
-  half of which is creating the result. tafla's `ByteBuffer` takes 637 ns and
-  636 ns.
+  half of which is creating the result. tafla's codec took 637 ns and 636 ns,
+  when it wrote the record with `ByteBuffer`'s setters, which are gone.
 
 Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
@@ -420,7 +421,8 @@ Peak bytes per call, as `tafla_benchmarks.allocation` traces them:
   in 106 µs against 86 µs.
 - The fixed-size record is a frozen `Sample`, whose `serialize()` and `read()`
   pack and unpack it with one `Struct` call each: 0.34 and 0.46 µs against
-  `ByteBuffer`'s 0.70 µs. Creating the `Sample` took 0.24 µs of the 0.34 µs.
+  the tafla codec's 0.70 µs, through `ByteBuffer`'s setters, which are gone,
+  and its getters. Creating the `Sample` took 0.24 µs of the 0.34 µs.
 
 `python -m tafla_benchmarks.encoding` printed:
 

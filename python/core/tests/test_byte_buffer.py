@@ -4,46 +4,16 @@ import sys
 import tempfile
 import unittest
 from array import array
-from collections.abc import Callable
 from struct import calcsize, iter_unpack, pack, unpack
 from unittest.mock import patch
 
 from hypothesis import given
-from hypothesis.strategies import (
-    DataObject,
-    DrawFn,
-    SearchStrategy,
-    binary,
-    composite,
-    data,
-    integers,
-    lists,
-    one_of,
-    sampled_from,
-)
+from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
-from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder, TableLayout
+from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder
 from tafla.types import IntTypeCode
-from tests.descriptions import (
-    ARRAY_FIELDS,
-    MAX_ELEMENTS,
-    MAX_ITEMS,
-    OFFSET_TYPES,
-    STRINGS,
-    scalar_values,
-)
-from tests.tables import (
-    DEFAULT_LAYOUT,
-    FORMATS,
-    Description,
-    OffsetType,
-    build_table,
-    offset_size_of,
-)
-
-# A call of one of ByteBuffer's setters: its name, its arguments, and the
-# bytes that it writes
-type Write = tuple[str, tuple[object, ...], bytes]
+from tests.descriptions import ARRAY_FIELDS
+from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
 
 @composite
@@ -60,64 +30,6 @@ def strided_views(draw: DrawFn) -> memoryview:
     return memoryview(data).cast(type_code)[::step]
 
 
-def writes(offset_type: OffsetType) -> SearchStrategy[Write]:
-    """Calls of every setter of a ByteBuffer, with the bytes that ``struct``
-    packs little-endian for their values, and counts, lengths, item ends and
-    header slots of the offset type"""
-    length = f"<{FORMATS[offset_type]}"
-    largest = 2 ** (8 * offset_size_of(offset_type)) - 1
-
-    def scalar(kind: str) -> SearchStrategy[Write]:
-        return scalar_values(kind).map(
-            lambda value: (f"set_{kind}", (value,), pack(f"<{FORMATS[kind]}", value))
-        )
-
-    def array_of(kind: str) -> SearchStrategy[Write]:
-        def write(values: list[float]) -> Write:
-            elements = pack(f"<{len(values)}{FORMATS[kind]}", *values)
-            return f"set_{kind}_array", (values,), pack(length, len(values)) + elements
-
-        return lists(scalar_values(kind), max_size=MAX_ELEMENTS).map(write)
-
-    def header_slot(setter: str) -> SearchStrategy[Write]:
-        return integers(0, largest).map(
-            lambda value: (setter, (value,), pack(length, value))
-        )
-
-    @composite
-    def struct_arrays(draw: DrawFn) -> Write:
-        size = draw(integers(1, 9))
-        count = draw(integers(0, 3))
-        data = draw(binary(min_size=size * count, max_size=size * count))
-        return "set_struct_array", (data, size), pack(length, count) + data
-
-    def vector(items: list[bytes]) -> Write:
-        # The count, the end of each item from the vector's position, and
-        # then the items
-        end = (1 + len(items)) * offset_size_of(offset_type)
-        ends = []
-        for item in items:
-            end += len(item)
-            ends.append(pack(length, end))
-
-        written = pack(length, len(items)) + b"".join(ends) + b"".join(items)
-        return "set_vector", (items,), written
-
-    def string(encoded: bytes) -> Write:
-        return "set_string", (encoded,), pack(length, len(encoded)) + encoded
-
-    return one_of(
-        *(scalar(kind) for kind in FORMATS),
-        *(array_of(kind) for kind in FORMATS),
-        *(header_slot(setter) for setter in ["set_size", "set_version", "set_offset"]),
-        binary(max_size=MAX_ELEMENTS).map(lambda data: ("set_bytes", (data,), data)),
-        integers(0, 7).map(lambda length: ("set_padding", (length,), bytes(length))),
-        STRINGS.map(str.encode).map(string),
-        struct_arrays(),
-        lists(binary(max_size=MAX_ELEMENTS), max_size=MAX_ITEMS).map(vector),
-    )
-
-
 class TestByteBuffer(unittest.TestCase):
     @given(strided_views())
     def test_takes_bytes_only_when_theyre_c_contiguous(self, view: memoryview) -> None:
@@ -127,29 +39,6 @@ class TestByteBuffer(unittest.TestCase):
         else:
             with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
                 ByteBuffer(view)
-
-    def test_rejects_bytes_to_write_that_arent_c_contiguous_and_writes_nothing(
-        self,
-    ) -> None:
-        backing = bytearray(b"\xaa" * 32)
-        buffer = ByteBuffer(backing)
-        strided = memoryview(bytes(range(8)))[::2]
-
-        writes = [
-            lambda: buffer.set_bytes(strided),
-            lambda: buffer.set_string(strided),
-            lambda: buffer.set_struct_array(strided, 2),
-            lambda: buffer.set_vector([b"\x01", strided]),
-        ]
-
-        for write in writes:
-            with (
-                self.subTest(),
-                self.assertRaisesRegex(TypeError, "isn't C-contiguous"),
-            ):
-                write()
-
-        self.assertEqual(backing, b"\xaa" * 32)
 
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     @given(ARRAY_FIELDS, integers(1, 7))
@@ -182,121 +71,23 @@ class TestByteBuffer(unittest.TestCase):
         self.assertEqual(read.tolist(), [1, -2])
         self.assertIsNot(read.obj, serialized)
 
-    def test_writes_nothing_past_the_supplied_bytes(self) -> None:
-        backing = bytearray(b"\xaa" * 32)
-        buffer = ByteBuffer(memoryview(backing)[:12])
+    def test_rejects_struct_sizes_less_than_1(self) -> None:
+        buffer = ByteBuffer(bytes(16))
 
-        writes = [
-            lambda: buffer.set_float32_array(array("f", [1, 2, 3])),
-            lambda: buffer.set_float32_array([1, 2, 3]),
-            lambda: buffer.set_string(bytes(9)),
-            lambda: buffer.set_struct_array(bytes(9), 3),
-            lambda: buffer.set_vector([bytes(4), bytes(1)]),
-            lambda: buffer.set_bytes(bytes(13)),
-            lambda: buffer.set_padding(13),
-        ]
-
-        for write in writes:
-            with self.subTest(), self.assertRaises(ValueError):
-                write()
-
-        buffer.set_bytes(bytes(8))
-        with self.assertRaises(ValueError):
-            buffer.set_float64(1.5)
-
-        self.assertEqual(backing, bytes(8) + b"\xaa" * 24)
-
-    def test_rejects_a_value_that_doesnt_fit_its_slot_and_keeps_its_position(
-        self,
-    ) -> None:
-        # CPython's struct zeroes a slot before it checks the value, so only
-        # the bytes after the slot are left as they were
-        for write, value, size in [
-            ("set_uint8", 256, 1),
-            ("set_int16", -(2**15) - 1, 2),
-            ("set_uint32", 2**32, 4),
-            ("set_uint64", -1, 8),
-            ("set_float32", 1e300, 4),
-            ("set_float32", -1e300, 4),
-            ("set_offset", 2**32, 4),
+        # A size of more digits than Python converts to a string is given by
+        # its bit length
+        for size, described in [
+            (-1, "-1"),
+            (0, "0"),
+            (-(2**15000), "<negative 15001-bit integer>"),
         ]:
-            with self.subTest(write=write, value=value):
-                backing = bytearray(b"\xaa" * 12)
-                buffer = ByteBuffer(backing)
-
-                with self.assertRaises(ValueError):
-                    getattr(buffer, write)(value)
-                buffer.set_uint8(1)
-
-                self.assertEqual(backing[0], 1)
-                self.assertEqual(backing[size:], b"\xaa" * (12 - size))
-
-    def test_rejects_a_count_length_or_item_end_too_large_for_its_slot_and_writes_nothing(
-        self,
-    ) -> None:
-        backing = bytearray(b"\xaa" * 600)
-        buffer = ByteBuffer(backing, TableLayout(offset_type="uint8"))
-
-        writes = [
-            lambda: buffer.set_uint8_array(bytes(256)),
-            lambda: buffer.set_int16_array(array("h", range(256))),
-            lambda: buffer.set_string(bytes(256)),
-            lambda: buffer.set_struct_array(bytes(256), 1),
-            # The last item ends 256 bytes from the vector's count
-            lambda: buffer.set_vector([bytes(1), bytes(252)]),
-            lambda: buffer.set_vector([b""] * 256),
-        ]
-
-        for write in writes:
-            with self.subTest():
-                with self.assertRaisesRegex(
-                    ValueError, "a uint8 count, length or item end holds at most 255"
-                ):
-                    write()
-                self.assertEqual(backing, b"\xaa" * 600)
-
-        # The count, then the ends of the items, which start at 3
-        buffer.set_vector([bytes(1), bytes(251)])
-        self.assertEqual(backing[:3], b"\x02\x04\xff")
-
-    def test_rejects_struct_sizes_less_than_1_and_bytes_that_arent_whole_structs(
-        self,
-    ) -> None:
-        backing = bytearray(b"\xaa" * 16)
-        buffer = ByteBuffer(backing)
-
-        cases: list[tuple[str, Callable[[], object]]] = [
-            (
-                "5 bytes aren't a whole number of 2-byte structs",
-                lambda: buffer.set_struct_array(bytes(5), 2),
-            ),
-            (
-                "must be a positive integer, not 0",
-                lambda: buffer.set_struct_array(b"", 0),
-            ),
-            (
-                "must be a positive integer, not -1",
-                lambda: buffer.get_struct_array(0, -1),
-            ),
-            (
-                "must be a positive integer, not 0",
-                lambda: buffer.get_struct_array(0, 0),
-            ),
-            (
-                "must be a positive integer, not <negative 15001-bit integer>",
-                lambda: buffer.get_struct_array(0, -(2**15000)),
-            ),
-            (
-                "5 bytes aren't a whole number of <15001-bit integer>-byte structs",
-                lambda: buffer.set_struct_array(bytes(5), 2**15000),
-            ),
-        ]
-
-        for message, call in cases:
-            with self.subTest(message), self.assertRaisesRegex(ValueError, message):
-                call()
-
-        self.assertEqual(backing, b"\xaa" * 16)
+            with (
+                self.subTest(size=described),
+                self.assertRaisesRegex(
+                    ValueError, f"must be a positive integer, not {described}"
+                ),
+            ):
+                buffer.get_struct_array(0, size)
 
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     def test_reads_structs_as_views_of_the_bytes_at_any_alignment(self) -> None:
@@ -408,31 +199,6 @@ class TestByteBuffer(unittest.TestCase):
         for index in [0, 3]:
             with self.subTest(index=index), self.assertRaises(DecodeError):
                 buffer.get_vector_offset(0, index)
-
-    @given(sampled_from(OFFSET_TYPES), data())
-    def test_writes_each_value_after_the_previous_one_little_endian_as_struct_packs_it(
-        self, offset_type: OffsetType, data: DataObject
-    ) -> None:
-        """TableBuilder writes through a TableWriter, so the conformance suite
-        no longer checks the values that these setters write"""
-        calls = data.draw(lists(writes(offset_type), max_size=8))
-        expected = b"".join(written for _, _, written in calls)
-        # Bytes that aren't zero, so that padding shows
-        backing = bytearray(b"\xa5" * len(expected))
-        buffer = ByteBuffer(backing, TableLayout(offset_type=offset_type))
-
-        for setter, arguments, _ in calls:
-            getattr(buffer, setter)(*arguments)
-
-        self.assertEqual(backing, expected)
-
-    def test_writes_padding_as_zeros(self) -> None:
-        backing = bytearray(b"\xff" * 4)
-        buffer = ByteBuffer(backing)
-        buffer.set_padding(3)
-        buffer.set_uint8(1)
-
-        self.assertEqual(backing, b"\0\0\0\x01")
 
 
 if __name__ == "__main__":

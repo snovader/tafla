@@ -174,10 +174,17 @@ class TestStructs(unittest.TestCase):
             (bytes(5), 2, "5 bytes aren't a whole number of 2-byte structs"),
             (bytes(4), 0, "A struct's size must be a positive integer, not 0"),
             (bytes(4), -1, "A struct's size must be a positive integer, not -1"),
+            # A size of more digits than Python converts to a string is given
+            # by its bit length
+            (
+                bytes(5),
+                2**15000,
+                "5 bytes aren't a whole number of <15001-bit integer>-byte structs",
+            ),
         ]
 
         for data, size, message in cases:
-            with self.subTest(size=size):
+            with self.subTest(message):
                 builder = TableBuilder(1)
 
                 with self.assertRaisesRegex(ValueError, message):
