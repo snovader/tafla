@@ -98,10 +98,11 @@ Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off:
 - **Nest builders rather than bytes.** ``set_table()`` and ``set_vector()``
   write a ``TableBuilder`` straight into its parent when the parent is
   finalized, so the outermost table allocates and writes all the bytes once.
-  A table nested as bytes was built into a buffer of its own and is copied. A
-  vector of 100 tables that each nest another took 0.27 ms to build from
-  builders and 0.42 ms from bytes, and a table nesting 27,028 rows of three
-  columns took 16 µs and 31 µs.
+  A table nested as bytes was built into a buffer of its own and is copied, as
+  is a builder that was finalized already or whose layout has a header or
+  another offset type. A vector of 100 tables that each nest another took
+  0.27 ms to build from builders and 0.42 ms from bytes, and a table nesting
+  27,028 rows of three columns took 16 µs and 31 µs.
 - **Small tables cost their calls.** Each field is a few Python calls to set
   and to write, so a table of two float64s, an int64 and a 16-byte string took
   2.6 µs, far more than allocating and copying its 60 bytes.
@@ -163,12 +164,13 @@ Using the API wrongly raises other errors, whatever the bytes:
   scalar that doesn't fit its type raises ``ValueError`` and leaves the
   position where it was, though CPython zeroes the scalar's bytes first.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
-  created with, a version that doesn't fit, or an array or table given as a
-  buffer whose length changed before ``finalize()``. A field that would make
-  the table too long for its ``offset_type`` raises ``ValueError`` from its
-  setter and isn't added. A value that its field's type can't hold raises
-  as Conversions lists. A version missing from or given for a layout, or a
-  field set after ``finalize()``, raises ``TypeError``.
+  created with, a version that doesn't fit, or arrays, structs or tables given
+  as buffers whose lengths changed before ``finalize()`` so that the table's
+  did, which leaves it unfinalized. A field that would make the table too long
+  for its ``offset_type`` raises ``ValueError`` from its setter and isn't
+  added. A value that its field's type can't hold raises as Conversions lists.
+  A version missing from or given for a layout, or a field set after
+  ``finalize()``, raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't

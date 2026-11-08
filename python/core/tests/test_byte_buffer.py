@@ -9,12 +9,41 @@ from struct import calcsize, iter_unpack, pack, unpack
 from unittest.mock import patch
 
 from hypothesis import given
-from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
+from hypothesis.strategies import (
+    DataObject,
+    DrawFn,
+    SearchStrategy,
+    binary,
+    composite,
+    data,
+    integers,
+    lists,
+    one_of,
+    sampled_from,
+)
 
 from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder, TableLayout
 from tafla.types import IntTypeCode
-from tests.descriptions import ARRAY_FIELDS
-from tests.tables import DEFAULT_LAYOUT, Description, build_table
+from tests.descriptions import (
+    ARRAY_FIELDS,
+    MAX_ELEMENTS,
+    MAX_ITEMS,
+    OFFSET_TYPES,
+    STRINGS,
+    scalar_values,
+)
+from tests.tables import (
+    DEFAULT_LAYOUT,
+    FORMATS,
+    Description,
+    OffsetType,
+    build_table,
+    offset_size_of,
+)
+
+# A call of one of ByteBuffer's setters: its name, its arguments, and the
+# bytes that it writes
+type Write = tuple[str, tuple[object, ...], bytes]
 
 
 @composite
@@ -29,6 +58,64 @@ def strided_views(draw: DrawFn) -> memoryview:
     step = draw(sampled_from([-3, -2, -1, 2, 3]))
 
     return memoryview(data).cast(type_code)[::step]
+
+
+def writes(offset_type: OffsetType) -> SearchStrategy[Write]:
+    """Calls of every setter of a ByteBuffer, with the bytes that ``struct``
+    packs little-endian for their values, and counts, lengths, item ends and
+    header slots of the offset type"""
+    length = f"<{FORMATS[offset_type]}"
+    largest = 2 ** (8 * offset_size_of(offset_type)) - 1
+
+    def scalar(kind: str) -> SearchStrategy[Write]:
+        return scalar_values(kind).map(
+            lambda value: (f"set_{kind}", (value,), pack(f"<{FORMATS[kind]}", value))
+        )
+
+    def array_of(kind: str) -> SearchStrategy[Write]:
+        def write(values: list[float]) -> Write:
+            elements = pack(f"<{len(values)}{FORMATS[kind]}", *values)
+            return f"set_{kind}_array", (values,), pack(length, len(values)) + elements
+
+        return lists(scalar_values(kind), max_size=MAX_ELEMENTS).map(write)
+
+    def header_slot(setter: str) -> SearchStrategy[Write]:
+        return integers(0, largest).map(
+            lambda value: (setter, (value,), pack(length, value))
+        )
+
+    @composite
+    def struct_arrays(draw: DrawFn) -> Write:
+        size = draw(integers(1, 9))
+        count = draw(integers(0, 3))
+        data = draw(binary(min_size=size * count, max_size=size * count))
+        return "set_struct_array", (data, size), pack(length, count) + data
+
+    def vector(items: list[bytes]) -> Write:
+        # The count, the end of each item from the vector's position, and
+        # then the items
+        end = (1 + len(items)) * offset_size_of(offset_type)
+        ends = []
+        for item in items:
+            end += len(item)
+            ends.append(pack(length, end))
+
+        written = pack(length, len(items)) + b"".join(ends) + b"".join(items)
+        return "set_vector", (items,), written
+
+    def string(encoded: bytes) -> Write:
+        return "set_string", (encoded,), pack(length, len(encoded)) + encoded
+
+    return one_of(
+        *(scalar(kind) for kind in FORMATS),
+        *(array_of(kind) for kind in FORMATS),
+        *(header_slot(setter) for setter in ["set_size", "set_version", "set_offset"]),
+        binary(max_size=MAX_ELEMENTS).map(lambda data: ("set_bytes", (data,), data)),
+        integers(0, 7).map(lambda length: ("set_padding", (length,), bytes(length))),
+        STRINGS.map(str.encode).map(string),
+        struct_arrays(),
+        lists(binary(max_size=MAX_ELEMENTS), max_size=MAX_ITEMS).map(vector),
+    )
 
 
 class TestByteBuffer(unittest.TestCase):
@@ -321,6 +408,23 @@ class TestByteBuffer(unittest.TestCase):
         for index in [0, 3]:
             with self.subTest(index=index), self.assertRaises(DecodeError):
                 buffer.get_vector_offset(0, index)
+
+    @given(sampled_from(OFFSET_TYPES), data())
+    def test_writes_each_value_after_the_previous_one_little_endian_as_struct_packs_it(
+        self, offset_type: OffsetType, data: DataObject
+    ) -> None:
+        """TableBuilder writes through a TableWriter, so the conformance suite
+        no longer checks the values that these setters write"""
+        calls = data.draw(lists(writes(offset_type), max_size=8))
+        expected = b"".join(written for _, _, written in calls)
+        # Bytes that aren't zero, so that padding shows
+        backing = bytearray(b"\xa5" * len(expected))
+        buffer = ByteBuffer(backing, TableLayout(offset_type=offset_type))
+
+        for setter, arguments, _ in calls:
+            getattr(buffer, setter)(*arguments)
+
+        self.assertEqual(backing, expected)
 
     def test_writes_padding_as_zeros(self) -> None:
         backing = bytearray(b"\xff" * 4)

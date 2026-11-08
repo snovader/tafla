@@ -9,9 +9,11 @@ from hypothesis.strategies import booleans, integers, one_of, sampled_from
 from tafla import TableBuilder, TableLayout, TableWriter
 from tests.descriptions import tables
 from tests.tables import (
+    ELEMENT_SIZES,
     LONGEST,
     Description,
     OffsetType,
+    Placement,
     build_table,
     nested_in_place,
     offset_size_of,
@@ -44,9 +46,35 @@ def with_bytes(table: Description, length: int) -> Description:
     return {**table, "fields": [*table["fields"], field]}
 
 
+def byte_swapped_arrays(data: memoryview[int], table: Description) -> bytes:
+    """The bytes of a table that a writer wrote in place, with the bytes of
+    each element of its arrays of scalars reversed"""
+    swapped = bytearray(data)
+
+    def swap(placement: Placement) -> None:
+        kind = placement.field["type"]
+        if not kind.endswith("[]") or kind == "struct[]":
+            return
+
+        size = ELEMENT_SIZES[kind.removesuffix("[]")]
+        start = placement.position + placement.offset_size
+        for element in range(len(placement.field["value"])):
+            at = start + element * size
+            swapped[at : at + size] = swapped[at : at + size][::-1]
+
+    read_table(data, table, swap)
+    return bytes(swapped)
+
+
 class TestTableWriter(unittest.TestCase):
+    # TableBuilder writes through a TableWriter too, so these compare the
+    # length that the builder counts for each table as its fields are set,
+    # padding included, which it checks against what its writer wrote, and
+    # the calls that the test helpers make to a writer with those that the
+    # builder makes. The bytes themselves are the conformance suite's.
+
     @given(tables())
-    def test_writes_the_bytes_that_table_builder_builds_from_the_same_fields(
+    def test_writes_tables_as_long_as_table_builder_counts_them_and_the_same_bytes(
         self, table: Description
     ) -> None:
         table = nested_in_place(table)
@@ -54,21 +82,7 @@ class TestTableWriter(unittest.TestCase):
 
         self.assertEqual(bytes(write_table(table)), bytes(build_table(table).bytes()))
 
-    @given(tables())
-    def test_writes_the_same_bytes_on_a_big_endian_host(
-        self, table: Description
-    ) -> None:
-        table = nested_in_place(table)
-        assume(fits(table))
-
-        # Take the big-endian branches on any host. The host's own order is
-        # little-endian, so the elements come out swapped from both writers.
-        with patch("tafla.elements.IS_LITTLE_ENDIAN", False):
-            self.assertEqual(
-                bytes(write_table(table)), bytes(build_table(table).bytes())
-            )
-
-    def test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_them(
+    def test_pads_a_struct_array_a_nested_table_and_a_vector_as_table_builder_counts_them(
         self,
     ) -> None:
         # A uint8 leaves a uint32[] 3 bytes short of its alignment, and a
@@ -111,6 +125,21 @@ class TestTableWriter(unittest.TestCase):
         data = write_table(table)
         self.assertEqual(bytes(data), bytes(build_table(table).bytes()))
         self.assertEqual(read_table(data, table), table)
+
+    @given(tables())
+    def test_byte_swaps_the_elements_of_every_array_on_a_big_endian_host(
+        self, table: Description
+    ) -> None:
+        table = nested_in_place(table)
+        assume(fits(table))
+        expected = byte_swapped_arrays(write_table(table), table)
+
+        # Take the big-endian branches on any host. The host's own order is
+        # little-endian, so each element's bytes come out reversed, and
+        # everything else as it was.
+        with patch("tafla.elements.IS_LITTLE_ENDIAN", False):
+            self.assertEqual(bytes(write_table(table)), expected)
+            self.assertEqual(bytes(build_table(table).bytes()), expected)
 
 
 class TestTableLength(unittest.TestCase):
