@@ -51,9 +51,9 @@ are better written and read with the standard library's `to_le_bytes()` and
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
 same fields, in the same order, into bytes of that length, without recording
-them first as `TableBuilder` does. Both pad arrays and nested tables as
-`TableBuilder` does, so they write the same bytes, and the writer returns
-`TableBuilder`'s errors.
+them first as `TableBuilder` does. The builder then writes its fields through
+a `TableWriter` too, so the two write the same bytes, and the sizer's
+`writer()` returns `TableBuilder`'s errors.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:
@@ -119,7 +119,9 @@ repository's conformance suite, which covers the whole format.
 - **Nest builders rather than bytes.** `set_table()` and `set_vector()` take
   a `TableBuilder`, owned or borrowed, and write it straight into its parent,
   so the outermost table allocates and writes all the bytes once. A table
-  nested as bytes was written into an allocation of its own and is copied.
+  nested as bytes was written into an allocation of its own and is copied,
+  and so is a builder with a header or another offset type than its
+  parent's.
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
   `ArrayView`, which reads elements from the bytes at any alignment and in
   any host byte order. `as_slice()` returns them as a slice when the host is

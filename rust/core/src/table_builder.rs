@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::extend_elements};
+use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, TableWriter};
 
 /// Builds a table, which a `ByteBuffer` reads back.
 ///
@@ -13,9 +13,10 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// or `ByteBuffer::field_offset()` for a table nested in another.
 ///
 /// Setting a field records it, borrowing or owning its value, and
-/// [`TableBuilder::to_bytes()`] then allocates the table at its exact size
-/// and writes every field in one pass. Tables nested from their builders are
-/// written in the same pass, straight into this one.
+/// [`TableBuilder::to_bytes()`] then writes every field through a
+/// `TableWriter`, into bytes of the table's exact length. Tables nested from
+/// their builders are written by the same writer, straight into this one,
+/// when they have its offset type and no header.
 ///
 /// A setter returns a [`BuildError`], and leaves the builder as it was, when
 /// the table already holds all its fields or the field would make it too
@@ -43,7 +44,7 @@ pub struct TableBuilder<'a> {
 }
 
 macro_rules! scalar_setters {
-    ($($name:ident($type:ty)),*) => {$(
+    ($($name:ident($type:ty) => $variant:ident($bits:ty)),*) => {$(
         #[doc = concat!("Sets a `", stringify!($type), "` field")]
         ///
         /// # Errors
@@ -53,7 +54,8 @@ macro_rules! scalar_setters {
         /// too long for its offset type.
         #[inline]
         pub fn $name(&mut self, value: $type) -> Result<(), BuildError> {
-            self.add_field(Field::scalar(value))
+            let bits = <$bits>::from_ne_bytes(value.to_ne_bytes());
+            self.add_field(Field::Scalar(Scalar::$variant(bits)))
         }
     )*};
 }
@@ -142,23 +144,28 @@ impl<'a> TableBuilder<'a> {
     pub fn to_bytes(&self) -> Result<Vec<u8>, BuildError> {
         self.check_complete()?;
 
-        let mut bytes = Vec::with_capacity(self.length as usize);
-        self.write(&mut bytes);
+        // The constructor checked the header and the version, and each
+        // setter the table's length, so the writer fails only for a field
+        // counted otherwise than it's written
+        let version = self.versioned.then_some(self.version);
+        let mut writer = TableWriter::new(
+            self.length as usize,
+            self.fields as usize,
+            self.sized,
+            version,
+            self.offset_type,
+        );
+        self.write_fields(&mut writer);
 
-        Ok(bytes)
+        writer.into_bytes()
     }
 
     scalar_setters!(
-        set_i8(i8),
-        set_u8(u8),
-        set_i16(i16),
-        set_u16(u16),
-        set_i32(i32),
-        set_u32(u32),
-        set_i64(i64),
-        set_u64(u64),
-        set_f32(f32),
-        set_f64(f64)
+        set_i8(i8) => U8(u8), set_u8(u8) => U8(u8),
+        set_i16(i16) => U16(u16), set_u16(u16) => U16(u16),
+        set_i32(i32) => U32(u32), set_u32(u32) => U32(u32),
+        set_i64(i64) => U64(u64), set_u64(u64) => U64(u64),
+        set_f32(f32) => U32(u32), set_f64(f64) => U64(u64)
     );
 
     array_setters!(
@@ -217,7 +224,7 @@ impl<'a> TableBuilder<'a> {
 
         self.add_field(Field::StructArray {
             bytes,
-            count: length / size,
+            size,
             alignment,
         })
     }
@@ -228,9 +235,11 @@ impl<'a> TableBuilder<'a> {
     /// the table should have no header and the parent's offset type: that's
     /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.
     ///
-    /// A builder, borrowed or owned, is written straight into this table
-    /// when it's written, without bytes of its own. It must have all its
-    /// fields set.
+    /// A builder, borrowed or owned, must have all its fields set. Without a
+    /// header and with this table's offset type, it's written straight into
+    /// this table when this table is written, without bytes of its own.
+    /// Otherwise it's written into bytes of its own, in its own layout, and
+    /// copied.
     ///
     /// The nested table's arrays are aligned from its own start, so it's
     /// padded to start at a multiple of an alignment, which they need to be
@@ -267,10 +276,10 @@ impl<'a> TableBuilder<'a> {
 
     /// Writes a vector of tables, from their builders or their bytes, after
     /// the end of each, which lets readers find any item without reading the
-    /// others. Builders must have all their fields set, and are written
-    /// straight into this table as `set_table()` writes them, each in its own
-    /// layout. Items aren't padded, so their arrays are read in place only
-    /// when they happen to be aligned.
+    /// others. Builders must have all their fields set, and are written as
+    /// `set_table()` writes them: straight into this table, or into bytes of
+    /// their own, in their own layout, and copied. Items aren't padded, so
+    /// their arrays are read in place only when they happen to be aligned.
     ///
     /// # Errors
     ///
@@ -340,49 +349,37 @@ impl<'a> TableBuilder<'a> {
         }
     }
 
-    /// Appends the table to `bytes`, with its offsets counted from its own
-    /// start.
-    ///
-    /// Appending to reserved capacity rather than writing into a slice saves
-    /// zeroing the slice first: writing 27,028 floats took 2.0 µs rather than
-    /// 3.1 µs, and a table of 1.2 MB 19 µs rather than 29 µs.
-    fn write(&self, bytes: &mut Vec<u8>) {
-        let start = bytes.len();
-        let offset_type = self.offset_type;
-        let width = offset_type.size();
-
-        if self.sized {
-            push_slot(bytes, offset_type, self.length as usize);
+    /// Writes the fields into the table that `writer` is writing, each at
+    /// its index
+    fn write_fields(&self, writer: &mut TableWriter) {
+        for (index, field) in self.values.iter().enumerate() {
+            field.write(writer, index, self.offset_type);
         }
+    }
 
-        if self.versioned {
-            push_slot(bytes, offset_type, self.version as usize);
+    /// Writes the table as a field or vector item of a table of
+    /// `offset_type` offsets. It's written in place when the writer's
+    /// `start_table()` writes it as it is, with that offset type and without
+    /// a header. Otherwise it's written into bytes of its own and copied.
+    fn write_nested(&self, writer: &mut TableWriter, offset_type: OffsetType) {
+        if self.offset_type == offset_type && !self.sized && !self.versioned {
+            let parent = writer.start_table(self.fields as usize);
+            self.write_fields(writer);
+            writer.end_table(parent);
+        } else if let Ok(table) = self.to_bytes() {
+            // Its own writer fails only for a field counted otherwise than
+            // it's written, and the parent's then fails too, for the bytes
+            // left out
+            writer.copy_table(&table);
         }
-
-        // Each field's offset is set once its position is known
-        let mut slot = bytes.len();
-        bytes.resize(slot + self.values.len() * width, 0);
-
-        for field in &self.values {
-            let padding = field.padding(bytes.len() - start, width);
-            if padding > 0 {
-                bytes.resize(bytes.len() + padding, 0);
-            }
-
-            let position = bytes.len() - start;
-            set_slot(bytes, slot, offset_type, position);
-            slot += width;
-
-            field.write(bytes, offset_type);
-        }
-
-        debug_assert_eq!(bytes.len() - start, self.length as usize);
     }
 }
 
 /// A table to nest with [`TableBuilder::set_table()`] or in
-/// [`TableBuilder::set_vector()`]: a builder, borrowed or owned, which is
-/// written straight into its parent, or bytes, which are copied
+/// [`TableBuilder::set_vector()`]: a builder, borrowed or owned, or bytes.
+///
+/// A builder with its parent's offset type and no header is written straight
+/// into its parent. Bytes, and other builders, are copied.
 #[derive(Debug)]
 pub struct NestedTable<'a>(Nested<'a>);
 
@@ -419,11 +416,14 @@ impl<'a> NestedTable<'a> {
         self.builder().map_or(Ok(()), TableBuilder::check_complete)
     }
 
-    fn write(&self, bytes: &mut Vec<u8>) {
+    /// Writes the table as a field or vector item of a table of
+    /// `offset_type` offsets, after the field's offset or before the item's
+    /// end
+    fn write(&self, writer: &mut TableWriter, offset_type: OffsetType) {
         match &self.0 {
-            Nested::Builder(builder) => builder.write(bytes),
-            Nested::OwnedBuilder(builder) => builder.write(bytes),
-            Nested::Bytes(table) => bytes.extend_from_slice(table),
+            Nested::Builder(builder) => builder.write_nested(writer, offset_type),
+            Nested::OwnedBuilder(builder) => builder.write_nested(writer, offset_type),
+            Nested::Bytes(table) => writer.copy_table(table),
         }
     }
 }
@@ -472,20 +472,16 @@ impl From<Vec<u8>> for NestedTable<'_> {
 
 #[derive(Debug)]
 enum Field<'a> {
-    /// The first `size` of `bytes` are the scalar's, little-endian
-    Scalar {
-        bytes: [u8; 8],
-        size: usize,
-    },
+    Scalar(Scalar),
     Array(Array<'a>),
     String(Cow<'a, str>),
     /// A struct's bytes, written as they are
     Struct(Cow<'a, [u8]>),
-    /// The bytes of `count` structs, which start at a multiple of
-    /// `alignment` from the table's start
+    /// The bytes of structs of `size` bytes each, which start at a multiple
+    /// of `alignment` from the table's start
     StructArray {
         bytes: Cow<'a, [u8]>,
-        count: usize,
+        size: usize,
         alignment: Alignment,
     },
     Table {
@@ -496,23 +492,12 @@ enum Field<'a> {
 }
 
 impl Field<'_> {
-    #[inline]
-    fn scalar<T: Element>(value: T) -> Self {
-        let size = size_of::<T>();
-        let mut bytes = [0; 8];
-        bytes[..size].copy_from_slice(value.to_le().as_ref());
-
-        Self::Scalar { bytes, size }
-    }
-
     /// The alignment that the field needs from the table's start
     fn alignment(&self) -> Alignment {
         match self {
             Self::Array(array) => array.alignment(),
             Self::StructArray { alignment, .. } | Self::Table { alignment, .. } => *alignment,
-            Self::Scalar { .. } | Self::String(_) | Self::Struct(_) | Self::Vector(_) => {
-                Alignment::One
-            }
+            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => Alignment::One,
         }
     }
 
@@ -524,7 +509,7 @@ impl Field<'_> {
             Self::Array(array) => array.alignment().padding(offset.wrapping_add(width)),
             Self::StructArray { alignment, .. } => alignment.padding(offset.wrapping_add(width)),
             Self::Table { alignment, .. } => alignment.padding(offset),
-            Self::Scalar { .. } | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
+            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
         }
     }
 
@@ -535,7 +520,7 @@ impl Field<'_> {
         let width = width as u64;
 
         match self {
-            Self::Scalar { size, .. } => *size as u64,
+            Self::Scalar(scalar) => scalar.size() as u64,
             Self::Array(array) => width + array.byte_length() as u64,
             Self::String(string) => width + string.len() as u64,
             Self::Struct(bytes) => bytes.len() as u64,
@@ -547,51 +532,67 @@ impl Field<'_> {
         }
     }
 
-    /// Appends the field, with lengths as wide as `offset_type`
-    fn write(&self, bytes: &mut Vec<u8>, offset_type: OffsetType) {
+    /// Writes the field as field `index` of the table that `writer` is
+    /// writing, of `offset_type` offsets
+    // Inlined into `TableBuilder::write_fields()`, which makes the replay one
+    // recursive function. Called out of line for each field, saving and
+    // restoring 12 registers, it wrote a document of 100 rows in 92 ns
+    // rather than 73 ns, and a vector of 100 nested tables in 2.2–3.1 µs
+    // rather than 1.95 µs.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    fn write(&self, writer: &mut TableWriter, index: usize, offset_type: OffsetType) {
         match self {
-            Self::Scalar {
-                bytes: scalar,
-                size,
-            } => match size {
-                1 => bytes.push(scalar[0]),
-                2 => bytes.extend_from_slice(&scalar[..2]),
-                4 => bytes.extend_from_slice(&scalar[..4]),
-                _ => bytes.extend_from_slice(scalar),
-            },
-            Self::Array(array) => {
-                push_slot(bytes, offset_type, array.len());
-                array.write(bytes);
-            }
-            Self::String(string) => {
-                push_slot(bytes, offset_type, string.len());
-                bytes.extend_from_slice(string.as_bytes());
-            }
-            Self::Struct(scalars) => bytes.extend_from_slice(scalars),
+            Self::Scalar(scalar) => scalar.write(writer, index),
+            Self::Array(array) => array.write(writer, index),
+            Self::String(string) => writer.set_str(index, string),
+            Self::Struct(bytes) => writer.set_struct(index, bytes),
             Self::StructArray {
-                bytes: structs,
-                count,
-                ..
-            } => {
-                push_slot(bytes, offset_type, *count);
-                bytes.extend_from_slice(structs);
+                bytes,
+                size,
+                alignment,
+            } => writer.set_struct_array(index, bytes, *size, *alignment),
+            Self::Table { table, alignment } => {
+                writer.set_table(index, *alignment);
+                table.write(writer, offset_type);
             }
-            Self::Table { table, .. } => table.write(bytes),
             Self::Vector(items) => {
-                push_slot(bytes, offset_type, items.len());
-
-                // Each end counts from the vector's position, which is its
-                // count's
-                let mut end = (items.len() + 1) * offset_type.size();
-                for item in items {
-                    end += item.byte_length();
-                    push_slot(bytes, offset_type, end);
-                }
-
-                for item in items {
-                    item.write(bytes);
+                let vector = writer.set_vector(index, items.len());
+                for (item, table) in items.iter().enumerate() {
+                    table.write(writer, offset_type);
+                    writer.set_item_end(vector, item);
                 }
             }
+        }
+    }
+}
+
+/// A scalar, as the unsigned integer of its bits, which the writer writes
+/// as the scalar's little-endian bytes
+#[derive(Clone, Copy, Debug)]
+enum Scalar {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+}
+
+impl Scalar {
+    const fn size(self) -> usize {
+        match self {
+            Self::U8(_) => 1,
+            Self::U16(_) => 2,
+            Self::U32(_) => 4,
+            Self::U64(_) => 8,
+        }
+    }
+
+    fn write(self, writer: &mut TableWriter, index: usize) {
+        match self {
+            Self::U8(bits) => writer.set_u8(index, bits),
+            Self::U16(bits) => writer.set_u16(index, bits),
+            Self::U32(bits) => writer.set_u32(index, bits),
+            Self::U64(bits) => writer.set_u64(index, bits),
         }
     }
 }
@@ -634,52 +635,15 @@ impl Array<'_> {
         with_elements!(self, values => alignment_of(values))
     }
 
-    fn len(&self) -> usize {
-        with_elements!(self, values => values.len())
-    }
-
     fn byte_length(&self) -> usize {
         with_elements!(self, values => size_of_val::<[_]>(values))
     }
 
-    fn write(&self, bytes: &mut Vec<u8>) {
-        with_elements!(self, values => extend_elements(values, bytes));
+    fn write(&self, writer: &mut TableWriter, index: usize) {
+        with_elements!(self, values => writer.set_elements(index, values));
     }
 }
 
 const fn alignment_of<T: Element>(_: &[T]) -> Alignment {
     T::ALIGNMENT
-}
-
-// The slots, like the scalars, are copied at constant lengths, which are
-// single stores rather than calls to copy a slice. The builder checks that
-// the table's length fits in its offsets, and every value is at most that
-// long.
-
-/// Appends a length, offset or header slot as wide as `offset_type`
-#[allow(clippy::cast_possible_truncation)]
-fn push_slot(bytes: &mut Vec<u8>, offset_type: OffsetType, value: usize) {
-    debug_assert!(value <= offset_type.max_value() as usize);
-
-    match offset_type {
-        OffsetType::Uint8 => bytes.push(value as u8),
-        OffsetType::Uint16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
-        OffsetType::Uint32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
-    }
-}
-
-/// Sets the slot at `position`, which `bytes` must already hold
-#[allow(clippy::cast_possible_truncation)]
-fn set_slot(bytes: &mut [u8], position: usize, offset_type: OffsetType, value: usize) {
-    debug_assert!(value <= offset_type.max_value() as usize);
-
-    match offset_type {
-        OffsetType::Uint8 => bytes[position] = value as u8,
-        OffsetType::Uint16 => {
-            bytes[position..position + 2].copy_from_slice(&(value as u16).to_le_bytes());
-        }
-        OffsetType::Uint32 => {
-            bytes[position..position + 4].copy_from_slice(&(value as u32).to_le_bytes());
-        }
-    }
 }

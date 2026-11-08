@@ -338,7 +338,8 @@ pub struct SizerParent {
 /// Writes a table forward into bytes of exactly its length, which a
 /// [`TableSizer`] counted.
 ///
-/// It doesn't record the fields first, as `TableBuilder` does. It comes from
+/// It doesn't record the fields first, as `TableBuilder` does before it
+/// writes them through a writer of its own. It comes from
 /// [`TableSizer::writer()`], and takes the fields that the sizer added, in
 /// the same order, each with its index in its table.
 ///
@@ -347,8 +348,8 @@ pub struct SizerParent {
 /// [`TableWriter::start_table()`] and [`TableWriter::end_table()`]; the items
 /// of a vector follow its [`TableWriter::set_vector()`] the same way, each
 /// followed by [`TableWriter::set_item_end()`], which writes where it ends.
-/// Arrays and nested tables are padded as `TableBuilder` pads them, so the
-/// two write the same bytes for the same fields.
+/// Arrays and nested tables are padded so that their elements are aligned
+/// from their table's start, as the sizer counts them.
 ///
 /// It's the target of the code that tafla-gen generates, whose calls follow
 /// from the schema: fields are set in index order, each once, as the sizer
@@ -367,15 +368,14 @@ pub struct SizerParent {
 pub struct TableWriter {
     /// The bytes written so far, with the table's length reserved.
     ///
-    /// Appending to reserved capacity, as `TableBuilder` does, rather than
-    /// writing into zeroed bytes at positions, saves zeroing them first: the
-    /// generated code wrote a document of 100,000 rows, 1.2 MB, in 16 µs
-    /// rather than 23 µs. Small tables took longer to append than to write in
-    /// place, a vector of 100 tables of a float32 and a nested table of two
-    /// 0.92 µs rather than 0.69 µs, but still a tenth of `TableBuilder`'s
-    /// 8.6 µs.
+    /// Appending to reserved capacity, rather than writing into zeroed bytes
+    /// at positions, saves zeroing them first: the generated code wrote a
+    /// document of 100,000 rows, 1.2 MB, in 16 µs rather than 23 µs. Small
+    /// tables took longer to append than to write in place, a vector of 100
+    /// tables of a float32 and a nested table of two 0.92 µs rather than
+    /// 0.69 µs, but still a tenth of `TableBuilder`'s 8.6 µs.
     bytes: Vec<u8>,
-    /// The table's length, which the sizer counted
+    /// The table's length, which the sizer or `TableBuilder` counted
     length: usize,
     offset_type: OffsetType,
     /// The byte length of the root's header slots, which its offsets follow
@@ -414,9 +414,10 @@ macro_rules! array_setters {
 
 impl TableWriter {
     /// Writes the header of the root table of `fields` fields, into new
-    /// bytes with `length` reserved, which the sizer checked are at least
-    /// the header and at most what the offset type addresses
-    fn new(
+    /// bytes with `length` reserved, which the sizer or `TableBuilder`
+    /// checked are at least the header and at most what the offset type
+    /// addresses
+    pub(crate) fn new(
         length: usize,
         fields: usize,
         sized: bool,
@@ -697,8 +698,19 @@ impl TableWriter {
         self.set_slot(slot, end);
     }
 
+    /// Writes a finished table's bytes as they are, in place of the fields
+    /// that [`TableWriter::start_table()`] and [`TableWriter::end_table()`]
+    /// would enclose: after its parent's [`TableWriter::set_table()`], or
+    /// as a vector item before its [`TableWriter::set_item_end()`]. It's for
+    /// the tables that `TableBuilder` can't write in place: tables nested as
+    /// bytes, and builders with a header or another offset type.
     #[inline]
-    fn set_elements<T: Element>(&mut self, index: usize, values: &[T]) {
+    pub(crate) fn copy_table(&mut self, table: &[u8]) {
+        self.push(table);
+    }
+
+    #[inline]
+    pub(crate) fn set_elements<T: Element>(&mut self, index: usize, values: &[T]) {
         self.start_array(index, values.len(), T::ALIGNMENT);
 
         if size_of_val(values) <= self.room() {
