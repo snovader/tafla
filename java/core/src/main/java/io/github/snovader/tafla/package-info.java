@@ -90,9 +90,10 @@
  *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
  *     {@code TableBuilder} straight into its parent when the parent is written, so the outermost
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
- *     array of its own and is copied. A vector of 100 tables that each nest another took 7.1 µs to
- *     build from builders and 7.8 µs from bytes, and a table nesting 100,000 rows of three columns
- *     took 54 µs and 108 µs.</li>
+ *     array of its own and is copied, as is a builder written already, or one whose layout has
+ *     a header or another offset type than its parent's. A vector of 100 tables that each nest
+ *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
+ *     100,000 rows of three columns took 54 µs and 108 µs.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>

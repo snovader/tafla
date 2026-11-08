@@ -4,15 +4,15 @@ import java.util.*;
 
 /**
  * Writes a table forward into bytes of exactly its length, which a {@link TableSizer} counted,
- * without recording its fields first as {@link TableBuilder} does. Its writer comes from
- * {@link TableSizer#writer()}, and takes the fields that the sizer added, in the same order, each
- * with its index in its table.
+ * without recording its fields first. Its writer comes from {@link TableSizer#writer()}, and takes
+ * the fields that the sizer added, in the same order, each with its index in its table.
+ * {@link TableBuilder} records the fields, and then writes them with a writer of its own.
  *
  * <p>Each field's offset is written as the writer reaches the field. A nested table follows its
  * parent's {@link #setTable}, between {@link #startTable} and {@link #endTable}; the items of a
  * vector follow its {@link #setVector} the same way, each followed by {@link #setItemEnd}, which
- * writes where it ends. Arrays and nested tables are padded as {@code TableBuilder} pads them, so
- * the two write the same bytes for the same fields.</p>
+ * writes where it ends. Arrays and nested tables are padded as the sizer and {@code TableBuilder}
+ * count their padding, so that each field lands where they counted it.</p>
  *
  * <p>Arrays of the elements' own Java type are copied in bulk, and values convert to their
  * field's type as the package documentation's Conversions table describes, as for
@@ -239,20 +239,30 @@ public final class TableWriter {
      * copied from the bytes that the sizer encoded, if it's the string that the sizer added.
      */
     public void setString(int index, String string) {
+        if (string.length() >= Utf8.SHORT_LENGTH) {
+            setEncodedString(index, encodingOf(string));
+            return;
+        }
+
         setOffset(index);
 
         var start = position + offsetSize;
-        int length;
-        if (string.length() < Utf8.SHORT_LENGTH) {
-            length = Utf8.encodeInto(string, bytes, start);
-        } else {
-            var utf8 = encodingOf(string);
-            System.arraycopy(utf8, 0, bytes, start, utf8.length);
-            length = utf8.length;
-        }
-
+        var length = Utf8.encodeInto(string, bytes, start);
         setLength(position, length);
         position = start + length;
+    }
+
+    /**
+     * Writes a string from its UTF-8 bytes, as {@link #setString} writes a long string from the
+     * bytes that the sizer encoded. {@link TableBuilder} writes the long strings that it encoded
+     * to count them with it.
+     */
+    void setEncodedString(int index, byte[] utf8) {
+        setOffset(index);
+
+        System.arraycopy(utf8, 0, bytes, position + offsetSize, utf8.length);
+        setLength(position, utf8.length);
+        position += offsetSize + utf8.length;
     }
 
     /**
@@ -352,6 +362,19 @@ public final class TableWriter {
     /** Writes the end of item {@code item} of the vector, which was just written */
     public void setItemEnd(int vector, int item) {
         setLength(vector + (item + 1) * offsetSize, position - vector);
+    }
+
+    /**
+     * Writes a finished table's bytes as they are, in place of {@link #startTable} and its fields:
+     * after its parent's {@link #setTable}, or as a vector item before its {@link #setItemEnd}.
+     * {@link TableBuilder} copies the tables that it can't write in place with it, such as tables
+     * nested as bytes.
+     *
+     * @throws IndexOutOfBoundsException if they'd end past the bytes, having written none of them
+     */
+    void copyTable(byte[] table) {
+        System.arraycopy(table, 0, bytes, position, table.length);
+        position += table.length;
     }
 
     /**

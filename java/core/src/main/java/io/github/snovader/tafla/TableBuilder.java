@@ -3,7 +3,6 @@ package io.github.snovader.tafla;
 import org.jspecify.annotations.*;
 
 import java.util.*;
-import java.util.function.*;
 
 /**
  * Builds a table: a header with one offset per field, after the table's total length and version
@@ -13,18 +12,26 @@ import java.util.function.*;
  * are read back by index with {@link ByteBuffer#rootOffset}, or {@link ByteBuffer#fieldOffset} for
  * a table nested in another.
  *
- * <p>Setting a field records it and its position. {@link #bytes()} then allocates the table at its
- * exact size and writes every field in one pass, so array elements must not change in between.
- * Tables nested from their builders are written in the same pass, straight into this one.</p>
+ * <p>Setting a field records it and counts its bytes. {@link #bytes()} then allocates the table at
+ * its exact size and writes every field in one pass, with a {@link TableWriter} as the generated
+ * code does, so array elements must not change in between. Tables nested from their builders are
+ * written in the same pass, straight into this one.</p>
  *
  * <p>A setter throws, and leaves the builder as it was, when the table already holds all its
  * fields, or when its field would make the table longer than the layout's offset type addresses:
  * 255 bytes, 64 KiB, or for {@code uint32} offsets, as long as a Java array can be.</p>
  */
 public final class TableBuilder {
-    private static final Consumer<ByteBuffer>[] NO_WRITERS = newWriters(0);
+    private static final FieldWrite[] NO_WRITES = {};
 
-    private @Nullable ByteBuffer buffer;
+    /** Writes a field that a setter recorded, with its index, through the writer's setter */
+    @FunctionalInterface
+    private interface FieldWrite {
+        void write(TableWriter writer, int index);
+    }
+
+    /** The table's bytes, once written, after which it takes no more fields */
+    private byte @Nullable [] written;
 
     private final TableLayout layout;
     private final long version;
@@ -41,11 +48,14 @@ public final class TableBuilder {
      */
     private int alignment = Byte.BYTES;
 
-    // Per field: its position from the table's start, the padding before it, and what writes its
-    // value. A writer captures a scalar without boxing it.
-    private final int[] positions;
-    private final int[] paddings;
-    private Consumer<ByteBuffer>[] writers;
+    private final int fields;
+    /**
+     * What writes each field, which captures its value, a scalar without boxing it. The writer
+     * works out each field's padding and offset as it writes it, so they aren't recorded. A switch
+     * over recorded kinds instead was faster to record, but C2 compiled a string's encoding slowly
+     * within it.
+     */
+    private FieldWrite[] writes;
 
     /** Builds a table of {@link TableLayout#DEFAULT}, such as one to nest in another */
     public TableBuilder(int fields) {
@@ -79,9 +89,8 @@ public final class TableBuilder {
         this.offsetType = layout.offsetType();
         this.maxLength = layout.maxLength();
 
-        this.positions = new int[fields];
-        this.paddings = new int[fields];
-        this.writers = newWriters(fields);
+        this.fields = fields;
+        this.writes = new FieldWrite[fields];
     }
 
     /**
@@ -90,113 +99,123 @@ public final class TableBuilder {
      * @throws IllegalStateException if fewer fields were set than the table holds
      */
     public byte[] bytes() {
-        var buffer = this.buffer;
-        if (buffer != null) {
-            return buffer.bytes();
+        var written = this.written;
+        if (written != null) {
+            return written;
         }
 
-        if (fieldsSet != positions.length) {
+        if (fieldsSet != fields) {
             throw new IllegalStateException(
-                String.format("Only %d of the table's %d fields were set", fieldsSet, positions.length)
+                String.format("Only %d of the table's %d fields were set", fieldsSet, fields)
             );
         }
 
-        buffer = new ByteBuffer(new byte[offset], layout);
-        write(buffer);
+        // The constructor checked the header, as the sizer's writer() does
+        var writer = new TableWriter(new byte[offset], fields, layout, version, List.of());
+        writeFields(writer);
+        written = writer.bytes();
 
-        // Release the values, which may be large arrays
-        this.writers = NO_WRITERS;
-        this.buffer = buffer;
+        // Release the writes, whose values may be large arrays
+        this.writes = NO_WRITES;
+        this.written = written;
 
-        return buffer.bytes();
+        return written;
     }
 
     public void setInt8(byte value) {
-        addField(Byte.BYTES, 0, buffer -> buffer.setInt8(value));
+        addField(Byte.BYTES, 0, (writer, index) -> writer.setInt8(index, value));
     }
 
     public void setUint8(short value) {
-        addField(Byte.BYTES, 0, buffer -> buffer.setUint8(value));
+        addField(Byte.BYTES, 0, (writer, index) -> writer.setUint8(index, value));
     }
 
     public void setInt16(short value) {
-        addField(Short.BYTES, 0, buffer -> buffer.setInt16(value));
+        addField(Short.BYTES, 0, (writer, index) -> writer.setInt16(index, value));
     }
 
     public void setUint16(int value) {
-        addField(Short.BYTES, 0, buffer -> buffer.setUint16(value));
+        addField(Short.BYTES, 0, (writer, index) -> writer.setUint16(index, value));
     }
 
     public void setInt32(int value) {
-        addField(Integer.BYTES, 0, buffer -> buffer.setInt32(value));
+        addField(Integer.BYTES, 0, (writer, index) -> writer.setInt32(index, value));
     }
 
     public void setUint32(long value) {
-        addField(Integer.BYTES, 0, buffer -> buffer.setUint32(value));
+        addField(Integer.BYTES, 0, (writer, index) -> writer.setUint32(index, value));
     }
 
     public void setInt64(long value) {
-        addField(Long.BYTES, 0, buffer -> buffer.setInt64(value));
+        addField(Long.BYTES, 0, (writer, index) -> writer.setInt64(index, value));
     }
 
     /** Sets a {@code uint64} from a {@code long} with its bits */
     public void setUint64(long value) {
-        addField(Long.BYTES, 0, buffer -> buffer.setUint64(value));
+        addField(Long.BYTES, 0, (writer, index) -> writer.setUint64(index, value));
     }
 
     public void setFloat32(float value) {
-        addField(Float.BYTES, 0, buffer -> buffer.setFloat32(value));
+        addField(Float.BYTES, 0, (writer, index) -> writer.setFloat32(index, value));
     }
 
     public void setFloat64(double value) {
-        addField(Double.BYTES, 0, buffer -> buffer.setFloat64(value));
+        addField(Double.BYTES, 0, (writer, index) -> writer.setFloat64(index, value));
     }
 
     public void setInt8Array(byte[] values) {
-        addArray(values.length, Byte.BYTES, buffer -> buffer.setInt8Array(values));
+        addArray(values.length, Byte.BYTES, (writer, index) -> writer.setInt8Array(index, values));
     }
 
     public void setUint8Array(short[] values) {
-        addArray(values.length, Byte.BYTES, buffer -> buffer.setUint8Array(values));
+        addArray(values.length, Byte.BYTES, (writer, index) -> writer.setUint8Array(index, values));
     }
 
     public void setInt16Array(short[] values) {
-        addArray(values.length, Short.BYTES, buffer -> buffer.setInt16Array(values));
+        addArray(values.length, Short.BYTES, (writer, index) -> writer.setInt16Array(index, values));
     }
 
     public void setUint16Array(int[] values) {
-        addArray(values.length, Short.BYTES, buffer -> buffer.setUint16Array(values));
+        addArray(values.length, Short.BYTES, (writer, index) -> writer.setUint16Array(index, values));
     }
 
     public void setInt32Array(int[] values) {
-        addArray(values.length, Integer.BYTES, buffer -> buffer.setInt32Array(values));
+        addArray(values.length, Integer.BYTES, (writer, index) -> writer.setInt32Array(index, values));
     }
 
     public void setUint32Array(long[] values) {
-        addArray(values.length, Integer.BYTES, buffer -> buffer.setUint32Array(values));
+        addArray(values.length, Integer.BYTES, (writer, index) -> writer.setUint32Array(index, values));
     }
 
     public void setInt64Array(long[] values) {
-        addArray(values.length, Long.BYTES, buffer -> buffer.setInt64Array(values));
+        addArray(values.length, Long.BYTES, (writer, index) -> writer.setInt64Array(index, values));
     }
 
     /** Sets {@code uint64}s from {@code long}s with their bits */
     public void setUint64Array(long[] values) {
-        addArray(values.length, Long.BYTES, buffer -> buffer.setUint64Array(values));
+        addArray(values.length, Long.BYTES, (writer, index) -> writer.setUint64Array(index, values));
     }
 
     public void setFloat32Array(float[] values) {
-        addArray(values.length, Float.BYTES, buffer -> buffer.setFloat32Array(values));
+        addArray(values.length, Float.BYTES, (writer, index) -> writer.setFloat32Array(index, values));
     }
 
     public void setFloat64Array(double[] values) {
-        addArray(values.length, Double.BYTES, buffer -> buffer.setFloat64Array(values));
+        addArray(values.length, Double.BYTES, (writer, index) -> writer.setFloat64Array(index, values));
     }
 
     /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
     public void setString(String string) {
-        var utf8 = Utf8.encode(string);
-        addField(offsetType.size() + (long) utf8.length, 0, buffer -> buffer.setString(utf8));
+        // As the sizer adds strings: a short one is counted, and the writer encodes it in place,
+        // and a long one is encoded once, faster than counting it, and the writer copies it
+        if (string.length() < Utf8.SHORT_LENGTH) {
+            var byteLength = offsetType.size() + Utf8.length(string);
+            addField(byteLength, 0, (writer, index) -> writer.setString(index, string));
+        } else {
+            var utf8 = Utf8.encode(string);
+            var byteLength = offsetType.size() + (long) utf8.length;
+            addField(byteLength, 0, (writer, index) -> writer.setEncodedString(index, utf8));
+        }
     }
 
     /**
@@ -204,7 +223,7 @@ public final class TableBuilder {
      * written as they are, without padding. {@link ByteBuffer#getStruct} reads them back.
      */
     public void setStruct(byte[] bytes) {
-        addField(bytes.length, 0, buffer -> buffer.setBytes(bytes));
+        addField(bytes.length, 0, (writer, index) -> writer.setStruct(index, bytes));
     }
 
     /**
@@ -219,7 +238,9 @@ public final class TableBuilder {
      */
     public void setStructArray(byte[] bytes, int size, int alignment) {
         ByteBuffer.structCount(bytes.length, size);
-        addElements(bytes.length, alignment, buffer -> buffer.setStructArray(bytes, size));
+
+        FieldWrite write = (writer, index) -> writer.setStructArray(index, bytes, size, alignment);
+        addElements(bytes.length, alignment, write);
     }
 
     /**
@@ -240,14 +261,19 @@ public final class TableBuilder {
      *
      * <p>The builder must have all its fields set. {@link #bytes()} writes it straight into this
      * table, without bytes of its own, so its arrays must not change until then either. It can
-     * still be written itself or nested elsewhere too, since a complete builder doesn't change.</p>
+     * still be written itself or nested elsewhere too, since a complete builder doesn't change.
+     * One that was written already, or whose layout has a header or another offset type, is
+     * written to its own bytes, which are copied.</p>
      *
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
      * @throws IllegalArgumentException if the builder has fields left to set
      */
     public void setTable(TableBuilder table, int alignment) {
         var padding = TableLayout.padding(offset, alignment);
-        addField(lengthOf(table), padding, buffer -> writeTable(buffer, table));
+        addField(lengthOf(table), padding, (writer, index) -> {
+            writer.setTable(index, alignment);
+            writeTable(writer, table);
+        });
         alignTo(alignment);
     }
 
@@ -274,7 +300,10 @@ public final class TableBuilder {
      */
     public void setTable(byte[] table, int alignment) {
         var padding = TableLayout.padding(offset, alignment);
-        addField(table.length, padding, buffer -> buffer.setBytes(table));
+        addField(table.length, padding, (writer, index) -> {
+            writer.setTable(index, alignment);
+            writer.copyTable(table);
+        });
         alignTo(alignment);
     }
 
@@ -282,21 +311,21 @@ public final class TableBuilder {
      * Writes a vector of tables from their builders, after the end of each, which lets readers find
      * any item without reading the others. Builders must have all their fields set, and are written
      * straight into this table as {@link #setTable(TableBuilder)} writes them, except for those
-     * whose layout has another offset type, which are written to their own bytes and copied. Items
-     * aren't padded.
+     * that were written already, or whose layout has a header or another offset type, which are
+     * written to their own bytes and copied. Items aren't padded.
      *
      * @throws IllegalArgumentException if a builder has fields left to set
      */
     public void setVector(List<TableBuilder> tables) {
         // A copy, so that the items can't change before the table is written
-        var items = List.copyOf(tables);
+        var items = tables.toArray(new TableBuilder[0]);
 
-        var byteLength = offsetType.size() + (long) items.size() * offsetType.size();
+        var byteLength = offsetType.size() + (long) items.length * offsetType.size();
         for (var item : items) {
             byteLength += lengthOf(item);
         }
 
-        addField(byteLength, 0, buffer -> writeVector(buffer, items));
+        addField(byteLength, 0, (writer, index) -> writeVector(writer, index, items));
     }
 
     /** Writes a vector of tables from their bytes, after the end of each */
@@ -308,17 +337,12 @@ public final class TableBuilder {
             byteLength += item.length;
         }
 
-        addField(byteLength, 0, buffer -> buffer.setVector(items));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Consumer<ByteBuffer>[] newWriters(int fields) {
-        return (Consumer<ByteBuffer>[]) new Consumer<?>[fields];
+        addField(byteLength, 0, (writer, index) -> writeVector(writer, index, items));
     }
 
     /** Pads the array so that its elements, after the count, are aligned to their size */
-    private void addArray(int length, int elementSize, Consumer<ByteBuffer> writer) {
-        addElements((long) length * elementSize, elementSize, writer);
+    private void addArray(int length, int elementSize, FieldWrite write) {
+        addElements((long) length * elementSize, elementSize, write);
     }
 
     /**
@@ -327,9 +351,9 @@ public final class TableBuilder {
      *
      * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
      */
-    private void addElements(long byteLength, int alignment, Consumer<ByteBuffer> writer) {
+    private void addElements(long byteLength, int alignment, FieldWrite write) {
         var padding = TableLayout.padding(offset + offsetType.size(), alignment);
-        addField(offsetType.size() + byteLength, padding, writer);
+        addField(offsetType.size() + byteLength, padding, write);
         alignTo(alignment);
     }
 
@@ -343,13 +367,12 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the builder has fields left to set
      */
     private static int lengthOf(TableBuilder table) {
-        // A finalized builder had all its fields set, and released its writers
-        if (table.buffer == null && table.fieldsSet != table.positions.length) {
+        if (table.fieldsSet != table.fields) {
             throw new IllegalArgumentException(
                 String.format(
                     "Only %d of the nested table's %d fields were set",
                     table.fieldsSet,
-                    table.positions.length
+                    table.fields
                 )
             );
         }
@@ -367,15 +390,15 @@ public final class TableBuilder {
      * @throws IllegalArgumentException if the field would make the table longer than the layout
      *     addresses
      */
-    private void addField(long byteLength, int padding, Consumer<ByteBuffer> writer) {
-        if (buffer != null) {
+    private void addField(long byteLength, int padding, FieldWrite write) {
+        if (written != null) {
             throw new IllegalStateException("The table was already written");
         }
 
         var index = fieldsSet;
-        if (index == positions.length) {
+        if (index == fields) {
             throw new IllegalStateException(
-                String.format("Can't add field %d to a table of %d", positions.length + 1, positions.length)
+                String.format("Can't add field %d to a table of %d", fields + 1, fields)
             );
         }
 
@@ -384,9 +407,7 @@ public final class TableBuilder {
             throw new IllegalArgumentException(tooLong(index, length));
         }
 
-        positions[index] = offset + padding;
-        paddings[index] = padding;
-        writers[index] = writer;
+        writes[index] = write;
         fieldsSet = index + 1;
 
         offset = (int) length;
@@ -409,57 +430,42 @@ public final class TableBuilder {
         );
     }
 
-    /**
-     * Writes the table from the buffer's position, which counts as its start. The buffer's layout
-     * must have the table's offset type.
-     */
-    private void write(ByteBuffer buffer) {
-        if (layout.sized()) {
-            buffer.setSize(offset);
-        }
-
-        if (layout.versioned()) {
-            buffer.setVersion(version);
-        }
-
-        for (int i = 0; i < positions.length; i++) {
-            buffer.setOffset(positions[i]);
-        }
-
-        for (int i = 0; i < positions.length; i++) {
-            if (paddings[i] > 0) {
-                buffer.setPadding(paddings[i]);
-            }
-
-            writers[i].accept(buffer);
+    /** Writes the fields with {@code writer}, which has just written the table's offsets' room */
+    private void writeFields(TableWriter writer) {
+        for (int i = 0; i < writes.length; i++) {
+            writes[i].write(writer, i);
         }
     }
 
-    private void writeVector(ByteBuffer buffer, List<TableBuilder> vector) {
-        buffer.setLength(vector.size());
-
-        // Each end counts from the vector's position, which is its count's
-        var end = (vector.size() + 1) * offsetType.size();
-        for (var table : vector) {
-            end += table.offset;
-            buffer.setLength(end);
+    private void writeVector(TableWriter writer, int index, TableBuilder[] items) {
+        var vector = writer.setVector(index, items.length);
+        for (int i = 0; i < items.length; i++) {
+            writeTable(writer, items[i]);
+            writer.setItemEnd(vector, i);
         }
+    }
 
-        for (var table : vector) {
-            writeTable(buffer, table);
+    private static void writeVector(TableWriter writer, int index, byte[][] items) {
+        var vector = writer.setVector(index, items.length);
+        for (int i = 0; i < items.length; i++) {
+            writer.copyTable(items[i]);
+            writer.setItemEnd(vector, i);
         }
     }
 
     /**
-     * Writes a builder straight into the buffer, unless it was written already or has another
-     * offset type than the buffer, which writes every offset and length in its own type. Those
-     * tables are copied.
+     * Writes a nested builder straight into the writer, unless it was written already, or its
+     * layout has a header, which {@link TableWriter#startTable} doesn't write, or another offset
+     * type than this table's, whose offsets and lengths the writer can't write. Those tables are
+     * written to their own bytes and copied.
      */
-    private void writeTable(ByteBuffer buffer, TableBuilder table) {
-        if (table.buffer == null && table.offsetType == offsetType) {
-            table.write(buffer);
+    private void writeTable(TableWriter writer, TableBuilder table) {
+        if (table.written == null && table.offsetType == offsetType && table.layout.headerSize() == 0) {
+            var parent = writer.startTable(table.fields);
+            table.writeFields(writer);
+            writer.endTable(parent);
         } else {
-            buffer.setBytes(table.bytes());
+            writer.copyTable(table.bytes());
         }
     }
 }
