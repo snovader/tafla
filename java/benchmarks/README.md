@@ -233,10 +233,12 @@ after constructing a benchmark's state.
 One full run on 2026-11-08, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
 with Oracle's JDK 25.0.1 and JMH 1.37. It took 46 minutes. Other processes
 kept the 1-minute load average between 1.3 and 3.9 on the 10 cores, with a
-median of 2.0, except for a burst of about a minute, 39 minutes in, that
-reached 9.2. JMH's mean was within 5% of the fastest iteration for 80 of the
-90 benchmarks, and at most 16% above it, where one of protobuf's three forks
-read the small document in 0.829 µs and the others in 1.01 to 1.02 µs.
+median of 2.0, except for a burst 39 minutes in that raised it to 9.2, while
+the fixed-size record's writes ran. Their forks during it were as fast as
+those before and after it. JMH's mean was within 5% of the fastest iteration
+for 80 of the 90 benchmarks, and at most 16% above it, where one of
+protobuf's three forks read the small document in 0.829 µs and the others in
+1.01 to 1.02 µs.
 
 Fastest iteration in µs per operation, and its ratio to tafla's:
 
