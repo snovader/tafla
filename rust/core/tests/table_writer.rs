@@ -1,8 +1,15 @@
-//! A `TableSizer` and its `TableWriter` write the bytes that `TableBuilder`
-//! builds from the same fields, with nested tables written in place, and
-//! fail as it fails: for a table too long for its offsets, a header too long
+//! A `TableSizer` counts each table as `TableBuilder` counts it, padding
+//! included, and its `TableWriter` writes the same bytes from the tests'
+//! calls as from the builder's, which writes its tables through a
+//! `TableWriter` too, with nested tables written in place. They fail as the
+//! builder fails: for a table too long for its offsets, a header too long
 //! and a version too large. A writer given other fields than the sizer added
 //! fails rather than writing past the bytes, and no calls make it panic.
+//!
+//! The bytes themselves are checked against the format's rules in
+//! `format.rs`, against TypeScript's tables in `compatibility.rs` and the
+//! conformance suite, and against hand-written bytes here, since the builder
+//! that those tests build with writes through a `TableWriter`.
 
 mod common;
 
@@ -26,7 +33,7 @@ proptest! {
     #![proptest_config(common::config())]
 
     #[test]
-    fn test_writes_the_bytes_that_table_builder_builds_from_the_same_fields(
+    fn test_sizes_any_table_as_table_builder_counts_it_and_writes_the_same_bytes(
         table in in_place_tables(strategy::layout()),
     ) {
         let built = table.to_bytes();
@@ -361,9 +368,10 @@ impl Call {
 }
 
 #[test]
-fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_them() {
-    // A uint8 leaves a uint32[] 3 bytes short of its alignment, and a uint16
-    // a nested table of float64s 1 byte short of its own
+fn test_pads_a_struct_array_a_nested_table_and_a_vector_as_table_builder_counts_their_padding() {
+    // A uint8 leaves the uint32[] 3 bytes short of its alignment, the array
+    // leaves the structs 2 bytes short of theirs, and the structs leave the
+    // nested table of float64s 6 bytes short
     let nested = |fields| Nested {
         from: Source::Builder,
         table: Table {
@@ -394,8 +402,26 @@ fn test_writes_a_struct_array_a_nested_table_and_a_vector_as_table_builder_pads_
         ],
     };
 
+    #[rustfmt::skip]
+    let expected = [
+        // The length, the version and the offsets of the fields
+        76, 0, 7, 0, 14, 0, 18, 0, 30, 0, 48, 0, 64, 0,
+        // The uint8, the padding, the count and the uint32s
+        1, 0, 0, 0, 2, 0, 2, 0, 0, 0, 3, 0, 0, 0,
+        // The padding, the count and the struct of a uint16 and a float64
+        0, 0, 1, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0x14, 0x40,
+        // The padding, and the nested table: its offset, its padding, the
+        // count and the float64
+        0, 0, 0, 0, 0, 0,
+        6, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0x18, 0x40,
+        // The vector's count and end, and its item: its offset, and the
+        // string's length and bytes
+        1, 0, 12, 0, 2, 0, 4, 0, 0xf0, 0x9f, 0xa6, 0x80,
+    ];
+
     let bytes = table.write().unwrap();
-    assert_eq!(bytes, table.to_bytes().unwrap());
+    assert_eq!(bytes, expected);
+    assert_eq!(table.to_bytes().unwrap(), expected);
     assert_eq!(common::read::read_table(&bytes, &table), Ok(table));
 }
 
@@ -616,7 +642,7 @@ fn test_rejects_an_array_of_0_byte_structs_from_the_sizer_as_table_builder_does(
 }
 
 #[test]
-fn test_sizes_and_writes_a_struct_of_0_bytes_as_table_builder_builds_it() {
+fn test_sizes_and_writes_a_struct_of_0_bytes_at_the_next_fields_offset() {
     let mut sizer = TableSizer::new(2, TableLayout::DEFAULT).unwrap();
     sizer.add_struct(0);
     sizer.add_u8();
@@ -627,7 +653,11 @@ fn test_sizes_and_writes_a_struct_of_0_bytes_as_table_builder_builds_it() {
     let mut builder = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
     builder.set_struct(&[][..]).unwrap();
     builder.set_u8(7).unwrap();
-    assert_eq!(writer.into_bytes(), builder.to_bytes());
+
+    // Both fields' offsets are 8, after the two offsets
+    let expected = vec![8, 0, 0, 0, 8, 0, 0, 0, 7];
+    assert_eq!(writer.into_bytes(), Ok(expected.clone()));
+    assert_eq!(builder.to_bytes(), Ok(expected));
 }
 
 #[test]

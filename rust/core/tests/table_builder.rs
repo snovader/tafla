@@ -13,7 +13,9 @@ use proptest::{
     prelude::*,
     sample::{Index, select},
 };
-use tafla::{Alignment, BuildError, ByteBuffer, OffsetType, TableBuilder, TableLayout};
+use tafla::{
+    Alignment, BuildError, ByteBuffer, NestedTable, OffsetType, TableBuilder, TableLayout,
+};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -100,6 +102,73 @@ proptest! {
 
         prop_assert_eq!(builder.to_bytes(), table.to_bytes());
     }
+
+    /// A table nested from its builder, borrowed or owned, writes the same
+    /// parent as from its bytes: the builder is written in place when it
+    /// has the parent's offset type and no header, and copied otherwise. The
+    /// table starts at the alignment it's set with and holds its bytes, and
+    /// the vector's items read back as its bytes.
+    #[test]
+    fn test_a_table_nested_from_its_builder_writes_the_same_parent_as_from_its_bytes(
+        table in strategy::table(),
+        before in 0..=7_usize,
+    ) {
+        let bytes = table.to_bytes();
+        prop_assume!(bytes.is_ok());
+        let bytes = bytes.unwrap();
+
+        // Of the table's offset type when the parent fits in it, so that a
+        // builder without a header is written in place whatever its offset
+        // type, and otherwise of uint32 offsets
+        let mut offset_type = table.layout.offset_type;
+        if longest_parent(offset_type, before, bytes.len()) > offset_type.max_value() as usize {
+            offset_type = OffsetType::Uint32;
+        }
+        let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
+
+        let borrowed = table.build()?;
+        let from_borrowed = parent_of(|| (&borrowed).into(), before, layout)?;
+        let from_owned = parent_of(|| table.build().unwrap().into(), before, layout)?;
+        let from_bytes = parent_of(|| bytes.as_slice().into(), before, layout)?;
+        prop_assert_eq!(&from_borrowed, &from_bytes);
+        prop_assert_eq!(&from_owned, &from_bytes);
+
+        let buffer = ByteBuffer::new(&from_bytes, layout);
+        let nested = buffer.root_offset(1)?;
+        prop_assert_eq!(nested % 8, 0);
+        prop_assert_eq!(&from_bytes[nested..nested + bytes.len()], bytes.as_slice());
+
+        let vector = buffer.get_vector(buffer.root_offset(2)?)?;
+        let items = vector.iter().collect::<Result<Vec<_>, _>>()?;
+        prop_assert_eq!(items, [bytes.as_slice(); 2]);
+    }
+}
+
+/// A parent of `before` bytes in a `uint8[]`, the table at alignment 8, and a
+/// vector of the table twice
+fn parent_of<'a>(
+    table: impl Fn() -> NestedTable<'a>,
+    before: usize,
+    layout: TableLayout,
+) -> Result<Vec<u8>, BuildError> {
+    let mut parent = TableBuilder::new(3, layout)?;
+    parent.set_u8_array(vec![0; before])?;
+    parent.set_table_aligned(table(), Alignment::Eight)?;
+    parent.set_vector([table(), table()])?;
+
+    parent.to_bytes()
+}
+
+/// The most bytes that `parent_of()` writes for a table of `length` bytes,
+/// with `offset_type` offsets
+const fn longest_parent(offset_type: OffsetType, before: usize, length: usize) -> usize {
+    let width = offset_type.size();
+    let offsets = 3 * width;
+    let array = width + before;
+    let table = (8 - 1) + length;
+    let vector = 3 * width + 2 * length;
+
+    offsets + array + table + vector
 }
 
 /// Tables of `uint8` and `uint16` offsets, whose limits a test can reach.
