@@ -362,6 +362,34 @@ class ByteBuffer:
 
         return self.__item_offset(position, start, end)
 
+    def get_vector_item_offset(self, position: int, count: int, index: int) -> int:
+        """Returns the position of item ``index`` of the vector at
+        ``position``, as ``get_vector_offset()`` does, for a vector whose
+        ``count`` ``get_vector_length()`` returned, which it doesn't read or
+        check again. A view of the vector checks its count once, and passes it
+        for each item.
+
+        Raises ``IndexError`` if ``index`` isn't below ``count``, and
+        ``DecodeError`` if the item's ends don't lie within the buffer, or the
+        item doesn't.
+        """
+        # get_vector_offset()'s checks of the index and the item, repeated
+        # rather than shared, since a helper would add a call to each item
+        if not 0 <= index < count:
+            raise IndexError(
+                f"Item {describe_int(index)} is outside the vector of {count} "
+                f"at {position}"
+            )
+
+        size = self.__size
+        if index == 0:
+            start = (count + 1) * size
+        else:
+            start = self.__get_size(position + index * size)
+        end = self.__get_size(position + (index + 1) * size)
+
+        return self.__item_offset(position, start, end)
+
     # get_vector_offsets() and get_vector() read the ends at once and check
     # each item inline, which took a third of the time that a read and a call
     # for each item took: 6 µs against 16 µs for 100 items.

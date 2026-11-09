@@ -40,10 +40,11 @@ repository's first commits, for code built from its source before the release.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
-- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, which finds a
-  vector item from the count that `getVectorLength()` read, so that a reader
-  of several items reads and checks the count once. Generated views of
-  vectors in Java, TypeScript and JavaScript call it.
+- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, and Python's
+  `get_vector_item_offset()`, which find a vector item from the count that
+  `getVectorLength()` (`get_vector_length()` in Python) read, so that a
+  reader of several items reads and checks the count once. Generated views
+  of vectors in Java, TypeScript, JavaScript and Python call it.
 
 ### Changed
 

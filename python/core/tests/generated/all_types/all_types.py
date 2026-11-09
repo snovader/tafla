@@ -381,7 +381,9 @@ class TreeVector:
         """
         if index < 0:
             index += self._length
-        offset = self._buffer.get_vector_offset(self._position, index)
+        offset = self._buffer.get_vector_item_offset(
+            self._position, self._length, index
+        )
         return Tree(self._buffer, offset)
 
     def __iter__(self) -> Iterator[Tree]:
