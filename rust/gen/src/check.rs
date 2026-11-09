@@ -311,7 +311,7 @@ const fn java_parameter_slots(field_type: FieldType) -> usize {
 
 /// Checks that no declaration takes the name of another's fields,
 /// `<Name>Fields`, which the generated code declares beside it to write it
-/// from: TypeScript and JavaScript for every declaration, and Python and Rust
+/// from: TypeScript, JavaScript and Python for every declaration, and Rust
 /// for messages and tables
 fn check_fields_declarations(
     declarations: &[Declaration],

@@ -69,8 +69,10 @@ pub fn generate(
             Kind::Struct(_) => structure(&mut writer, schema, definition),
         }
 
-        if !definition.is_struct() {
-            writer.blanks(2);
+        writer.blanks(2);
+        if definition.is_struct() {
+            fields_protocol(&mut writer, schema, definition);
+        } else {
             fields_type(&mut writer, schema, definition);
         }
 
@@ -143,6 +145,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     }
     if has_struct {
         typing.push("Literal");
+        typing.push("Protocol");
         typing.push("Self");
     }
     if has_table {
@@ -189,6 +192,13 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         ),
         ("typing", typing),
     ];
+    // Structs' protocols declare their fields with `builtins.property`, by
+    // a name that no field takes, since fields start with a letter. A field
+    // named `property` or `builtins` would otherwise hide the decorator from
+    // the fields after it in the class.
+    if has_struct {
+        writer.line("import builtins as _builtins");
+    }
     for (module, names) in standard {
         if !names.is_empty() {
             from_import(writer, module, &names);
@@ -616,12 +626,21 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.blank();
 
     writer.line("@classmethod");
-    writer.open("def serialize_array(cls, items: Sequence[Self]) -> bytearray:");
+    writer.statement(
+        &STYLE,
+        "def ",
+        &call(
+            "serialize_array",
+            vec![text("cls"), text(format!("items: Sequence[{name}Fields]"))],
+        ),
+        " -> bytearray:",
+    );
+    writer.indent();
     docstring(
         writer,
         &[
-            format!("Returns the bytes of `{name}`s one after another, as an array of them"),
-            "holds them.".to_owned(),
+            format!("Returns the bytes of `{name}`s, or of any other objects of their"),
+            "fields, one after another, as an array of them holds them.".to_owned(),
             String::new(),
             "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
         ],
@@ -935,6 +954,47 @@ fn push_values(schema: &Schema, definition: &Definition, owner: &str, values: &m
             _ => unreachable!("structs hold scalars and structs only"),
         }
     }
+}
+
+/// The protocol of a struct's fields, which an array of it is written from:
+/// the struct's own attributes, or those of any object of the same names, as
+/// properties, which read-only attributes such as a frozen dataclass's have.
+/// It's a `Protocol` rather than the dataclass, so that an application's own
+/// objects type-check.
+fn fields_protocol(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let name = &definition.name;
+
+    writer.open(format!("class {name}Fields(Protocol):"));
+    docstring(
+        writer,
+        &[
+            format!(
+                "The fields of {}, which an array of them is written from: the",
+                article(name)
+            ),
+            format!("attributes of a `{name}`, or of any other object with attributes of"),
+            "the same names and types".to_owned(),
+        ],
+    );
+    for field in &definition.fields {
+        let value_type = match field.field_type {
+            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+            FieldType::Struct(index) => format!("{}Fields", schema.definition(index).name),
+            _ => unreachable!("structs hold scalars and structs only"),
+        };
+        let signature = format!("def {}(self) -> {value_type}:", identifier(&field.name));
+
+        writer.blank();
+        writer.line("@_builtins.property");
+        if field.docs.is_empty() {
+            writer.line(format!("{signature} ..."));
+        } else {
+            writer.open(signature);
+            docstring(writer, &field.docs);
+            writer.dedent();
+        }
+    }
+    writer.dedent();
 }
 
 fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
@@ -1388,7 +1448,10 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::String => "str".to_owned(),
         // Structs are written from their dataclasses
         FieldType::Struct(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) => format!("Sequence[{}]", schema.definition(index).name),
+        // Arrays of structs are written from any objects of their fields
+        FieldType::StructArray(index) => {
+            format!("Sequence[{}Fields]", schema.definition(index).name)
+        }
         FieldType::Table(index) => format!("{}Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("Sequence[{}Fields]", schema.definition(index).name),
     }
