@@ -87,7 +87,9 @@ and then the fields in the order they were set:
   bytes.
 - A vector starts with its item count and the end of each item, counted from
   the vector's start, so `getVectorOffset()` finds any item from two ends,
-  without reading the items before it.
+  without reading the items before it. `getVectorItemOffset()` finds it from
+  the count that `getVectorLength()` returned, so that reading many items
+  reads and checks the count once, as the generated views do.
 
 The repository's `conformance` directory holds golden tables of every part of
 the format, which every implementation of tafla reads and rebuilds byte for
@@ -200,4 +202,5 @@ Using the API wrongly throws other errors, whatever the bytes:
   an alignment other than 1, 2, 4 or 8 throw a `RangeError`.
 - `getVersion()` throws a `TypeError` when the layout isn't versioned.
 - `getVectorOffset()` throws a `RangeError` for an index outside the vector,
-  once its count has been checked against the bytes.
+  once its count has been checked against the bytes, and
+  `getVectorItemOffset()` for an index outside the count it's given.

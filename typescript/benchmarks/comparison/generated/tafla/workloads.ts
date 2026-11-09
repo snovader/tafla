@@ -374,7 +374,11 @@ export class ItemVector {
     get(index: number): Item {
         return new Item(
             this.#buffer,
-            this.#buffer.getVectorOffset(this.#position, index)
+            this.#buffer.getVectorItemOffset(
+                this.#position,
+                this.#length,
+                index
+            )
         );
     }
 }
