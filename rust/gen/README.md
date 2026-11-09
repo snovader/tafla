@@ -332,6 +332,51 @@ assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+### Items of the caller's types
+
+In Rust, a `<Name>Fields` takes the items of each of its vectors and arrays
+of structs as a slice of any type whose reference converts into the vector's
+`<Table>Fields` or the array's struct, with `From`. So a caller writes the
+items it holds without collecting them into the generated types first, and
+the generated code converts each one as it writes it. Each of these fields
+has a type parameter, `T`, `U` and so on in the order of the fields, which
+defaults to the generated type, so a slice of that type is taken as before.
+
+A conversion makes a `<Table>Fields` with its own defaults, and so does a
+nested table's field, so the vectors and arrays of structs within them take
+the generated types. A vector of a table that can hold the vector's own
+table again through vectors, such as a tree's children, takes its
+`<Table>Fields` only, since its default type would name itself.
+
+```rust
+# mod shapes {
+#     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/shapes/rust/shapes.rs"));
+# }
+use shapes::{ItemFields, ItemList, ItemListFields, PairFields};
+
+/// An item as the application holds it, with its pair's values in place
+struct Row {
+    value: f32,
+    first: f32,
+    second: f32,
+}
+
+impl From<&Row> for ItemFields {
+    fn from(row: &Row) -> Self {
+        let pair = PairFields { first: row.first, second: row.second };
+        Self { value: row.value, pair }
+    }
+}
+
+let rows = [Row { value: 1.0, first: 0.5, second: 1.5 }];
+let bytes = ItemListFields { items: &rows }.serialize()?; // a slice of Row
+assert_eq!(ItemList::new(&bytes).items()?[0].pair()?.second()?, 1.5);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+TypeScript's and JavaScript's fields are interfaces, which any object with
+their properties satisfies, so they take the caller's objects as they are.
+
 ### Versions
 
 A versioned message has a `FORMAT_VERSION`, which its writer writes and its

@@ -331,11 +331,15 @@ impl<'a> ItemList<'a> {
 
 /// The fields of an [`ItemList`], to write
 #[derive(Clone, Debug)]
-pub struct ItemListFields<'a> {
-    pub items: &'a [ItemFields],
+pub struct ItemListFields<'a, T = ItemFields> {
+    /// [`ItemFields`], or items of any type `T` whose reference converts into them
+    pub items: &'a [T],
 }
 
-impl ItemListFields<'_> {
+impl<'a, T> ItemListFields<'a, T>
+where
+    &'a T: Into<ItemFields>,
+{
     /// Writes an [`ItemList`] with every field
     ///
     /// # Errors
@@ -344,15 +348,17 @@ impl ItemListFields<'_> {
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(1, ItemList::LAYOUT)?;
         sizer.add_vector(self.items.len());
-        for fields in self.items {
+        for item in self.items {
+            let fields: ItemFields = item.into();
             fields.size(&mut sizer);
         }
 
         let mut writer = sizer.writer()?;
         let vector = writer.set_vector(0, self.items.len());
-        for (item, fields) in self.items.iter().enumerate() {
+        for (index, item) in self.items.iter().enumerate() {
+            let fields: ItemFields = item.into();
             fields.write(&mut writer);
-            writer.set_item_end(vector, item);
+            writer.set_item_end(vector, index);
         }
 
         writer.into_bytes()
@@ -419,6 +425,12 @@ impl ItemFields {
         writer.set_table(1, PairFields::ALIGNMENT);
         self.pair.write(writer);
         writer.end_table(parent);
+    }
+}
+
+impl From<&Self> for ItemFields {
+    fn from(value: &Self) -> Self {
+        value.clone()
     }
 }
 
@@ -562,11 +574,15 @@ impl<'a> Triples<'a> {
 
 /// The fields of a [`Triples`], to write
 #[derive(Clone, Debug)]
-pub struct TriplesFields<'a> {
-    pub items: &'a [Triple],
+pub struct TriplesFields<'a, T = Triple> {
+    /// [`Triple`]s, or items of any type `T` whose reference converts into a [`Triple`]
+    pub items: &'a [T],
 }
 
-impl TriplesFields<'_> {
+impl<'a, T> TriplesFields<'a, T>
+where
+    &'a T: Into<Triple>,
+{
     /// Writes a [`Triples`] with every field
     ///
     /// # Errors
@@ -577,7 +593,12 @@ impl TriplesFields<'_> {
         sizer.add_struct_array(self.items.len(), Triple::SIZE, Triple::ALIGNMENT);
 
         let mut writer = sizer.writer()?;
-        writer.set_structs(0, self.items, Triple::to_bytes, Triple::ALIGNMENT);
+        writer.set_structs(
+            0,
+            self.items,
+            |item| Triple::to_bytes(item.into()),
+            Triple::ALIGNMENT,
+        );
 
         writer.into_bytes()
     }
@@ -643,6 +664,12 @@ impl Triple {
         }
 
         bytes
+    }
+}
+
+impl From<&Self> for Triple {
+    fn from(value: &Self) -> Self {
+        *value
     }
 }
 

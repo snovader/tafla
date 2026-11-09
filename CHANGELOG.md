@@ -55,6 +55,12 @@ repository's first commits, for code built from its source before the release.
   `offset_type: uint16` rather than `offset_size: 16`.
 - Generated tables are written with a sizer and a writer rather than with
   `TableBuilder`, and each generated Rust table reads its layout as a constant.
+- Generated Rust fields of vectors and arrays of structs take a slice of any
+  type whose reference converts into the item's fields or struct, through a
+  type parameter that defaults to the generated type, so that an application
+  writes the items it holds without collecting them first. Rust's
+  `TableWriter::set_structs()` takes each struct by reference, so it needn't
+  be `Copy`.
 - Every implementation reads a vector item in place within its message, as
   the format now specifies, including an item whose offsets point past its
   end.
