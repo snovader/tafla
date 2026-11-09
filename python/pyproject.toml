@@ -10,7 +10,7 @@ build-backend = "uv_build"
 members = ["core", "benchmarks"]
 
 [dependency-groups]
-dev = ["hypothesis>=6.170.12", "ruff>=0.17.3", "ty>=0.0.96"]
+dev = ["hypothesis>=6.170.12", "ruff>=0.17.4", "ty>=0.0.96"]
 
 [tool.ty.src]
 include = ["core/src", "core/tests", "benchmarks/src", "benchmarks/tests"]
