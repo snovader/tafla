@@ -40,10 +40,11 @@ repository's first commits, for code built from its source before the release.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
-- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, which finds a
-  vector item from the count that `getVectorLength()` read, so that a reader
-  of several items reads and checks the count once. Generated views of
-  vectors in Java, TypeScript and JavaScript call it.
+- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, and Python's
+  `get_vector_item_offset()`, which find a vector item from the count that
+  `getVectorLength()` (`get_vector_length()` in Python) read, so that a
+  reader of several items reads and checks the count once. Generated views
+  of vectors in Java, TypeScript, JavaScript and Python call it.
 - TypeScript's `TableSizer.writer(bytes)`, which writes a table into the
   start of the caller's bytes rather than new ones, and a static
   `serializeInto()` on every message that tafla-gen generates in TypeScript
@@ -59,6 +60,12 @@ repository's first commits, for code built from its source before the release.
   `offset_type: uint16` rather than `offset_size: 16`.
 - Generated tables are written with a sizer and a writer rather than with
   `TableBuilder`, and each generated Rust table reads its layout as a constant.
+- Generated Rust fields of vectors and arrays of structs take a slice of any
+  type whose reference converts into the item's fields or struct, through a
+  type parameter that defaults to the generated type, so that an application
+  writes the items it holds without collecting them first. Rust's
+  `TableWriter::set_structs()` takes each struct by reference, so it needn't
+  be `Copy`.
 - Every implementation reads a vector item in place within its message, as
   the format now specifies, including an item whose offsets point past its
   end.
