@@ -40,10 +40,10 @@ repository's first commits, for code built from its source before the release.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
-- TypeScript's `ByteBuffer.getVectorItemOffset()`, which finds a vector item
-  from the count that `getVectorLength()` read, so that a reader of several
-  items reads and checks the count once. Generated views of vectors in
-  TypeScript and JavaScript call it.
+- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, which finds a
+  vector item from the count that `getVectorLength()` read, so that a reader
+  of several items reads and checks the count once. Generated views of
+  vectors in Java, TypeScript and JavaScript call it.
 - TypeScript's `TableSizer.writer(bytes)`, which writes a table into the
   start of the caller's bytes rather than new ones, and a static
   `serializeInto()` on every message that tafla-gen generates in TypeScript
