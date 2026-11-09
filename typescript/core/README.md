@@ -51,7 +51,10 @@ start of `bytes`, such as bytes that a program reuses for each table it
 sends, and its writer's `bytes()` is then the view of them that holds the
 table. The bytes stay the caller's, and the writer keeps no reference to
 them, so the view, and what's read from it, change when they're written
-again. The generated `serializeInto()` writes a message so.
+again. The generated `serializeInto()` writes a message so. The table's
+arrays are aligned from its start, so bytes that start at an offset of their
+`ArrayBuffer` that isn't a multiple of 8 make readers copy the arrays that
+are then unaligned, as for any bytes received at such an offset.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:

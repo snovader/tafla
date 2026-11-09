@@ -341,7 +341,9 @@ Reusing bytes saves allocating and zeroing new ones: in Node 27, about
 0.2 µs for a table of a few KB, a third of the write of a document of 100
 rows, and 12 µs for one of 1.2 MB, but nothing for a table of up to 64
 bytes. Bytes shorter than the table throw a `RangeError` before any of them
-is written.
+is written. Bytes that start at an offset of their `ArrayBuffer` that isn't a
+multiple of 8 make readers copy the arrays that are then unaligned, as for
+any bytes received at such an offset.
 
 ### Versions
 
