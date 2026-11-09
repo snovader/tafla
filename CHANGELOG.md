@@ -44,6 +44,10 @@ repository's first commits, for code built from its source before the release.
   vector item from the count that `getVectorLength()` read, so that a reader
   of several items reads and checks the count once. Generated views of
   vectors in Java, TypeScript and JavaScript call it.
+- Java's `TableSizer.writer(byte[])`, which writes a table into the start of
+  bytes that the caller owns and reuses rather than into new bytes, and a
+  generated `serializeInto(fields, bytes)` on Java's messages, which returns
+  the message's length.
 
 ### Changed
 

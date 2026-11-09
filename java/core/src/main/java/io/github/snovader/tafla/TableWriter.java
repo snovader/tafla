@@ -3,16 +3,18 @@ package io.github.snovader.tafla;
 import java.util.*;
 
 /**
- * Writes a table forward into bytes of exactly its length, which a {@link TableSizer} counted,
- * without recording its fields first. Its writer comes from {@link TableSizer#writer()}, and takes
- * the fields that the sizer added, in the same order, each with its index in its table.
- * {@link TableBuilder} records the fields, and then writes them with a writer of its own.
+ * Writes a table forward, without recording its fields first, into new bytes of exactly its
+ * length, which a {@link TableSizer} counted, or into the start of bytes that the caller gives
+ * {@link TableSizer#writer(byte[])}. Its writer comes from the sizer, and takes the fields that the
+ * sizer added, in the same order, each with its index in its table. {@link TableBuilder} records
+ * the fields, and then writes them with a writer of its own.
  *
  * <p>Each field's offset is written as the writer reaches the field. A nested table follows its
  * parent's {@link #setTable}, between {@link #startTable} and {@link #endTable}; the items of a
  * vector follow its {@link #setVector} the same way, each followed by {@link #setItemEnd}, which
  * writes where it ends. Arrays and nested tables are padded as the sizer and {@code TableBuilder}
- * count their padding, so that each field lands where they counted it.</p>
+ * count their padding, so that each field lands where they counted it. The writer writes every
+ * byte of the table, its padding's zeros too, so the bytes it's given needn't be zero.</p>
  *
  * <p>Arrays of the elements' own Java type are copied in bulk, and values convert to their
  * field's type as the package documentation's Conversions table describes, as for
@@ -22,17 +24,20 @@ import java.util.*;
  * it doesn't check them again: fields are set in index order, each once, as the sizer added them,
  * and each vector item is followed by its {@link #setItemEnd}. A field index outside its table, or
  * an item outside its vector, writes an offset or end over another slot or field, so the table's
- * bytes are undefined, though never outside them: a slot past them throws an
+ * bytes are undefined, though never outside the writer's bytes: a slot past them throws an
  * {@link IndexOutOfBoundsException}. Hand-written tables use {@code TableBuilder}, which checks
  * every field.</p>
  *
  * <p>Fields that differ from those that the sizer added, such as values that changed in between,
- * never write outside the table's bytes either. A field that would end past them throws an
- * {@link IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()}
- * throws an {@link IllegalStateException} for fields that didn't fill them.</p>
+ * never write outside the writer's bytes either. A field that would end past them throws an
+ * {@link IndexOutOfBoundsException}, after which the writer is unusable, and {@link #bytes()} and
+ * {@link #byteLength()} throw an {@link IllegalStateException} for fields that didn't fill the
+ * table. In bytes longer than the table, such fields may write past its end before that.</p>
  */
 public final class TableWriter {
     private final byte[] bytes;
+    /** The table's length, from the start of the bytes */
+    private final int length;
     /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
     private final int headerSize;
@@ -48,18 +53,20 @@ public final class TableWriter {
     private int nextEncodedString = 0;
 
     /**
-     * Writes the header of a table of {@code fields} fields into {@code bytes}, which are new, and
-     * as long as the table, as {@link TableSizer#writer()} makes them after checking the header,
-     * with the long strings that the sizer encoded
+     * Writes the header of a table of {@code fields} fields and {@code length} bytes into the start
+     * of {@code bytes}, which are at least that long, as {@link TableSizer}'s writers check them
+     * and the header, with the long strings that the sizer encoded
      */
     TableWriter(
         byte[] bytes,
+        int length,
         int fields,
         TableLayout layout,
         long version,
         List<TableSizer.EncodedString> encodedStrings
     ) {
         this.bytes = bytes;
+        this.length = length;
         this.encodedStrings = encodedStrings;
         this.offsetSize = layout.offsetSize();
         this.headerSize = layout.headerSize();
@@ -68,7 +75,7 @@ public final class TableWriter {
 
         var slot = 0;
         if (layout.sized()) {
-            setLength(slot, bytes.length);
+            setLength(slot, length);
             slot += offsetSize;
         }
 
@@ -78,19 +85,36 @@ public final class TableWriter {
     }
 
     /**
-     * Returns the table's bytes, which the writer wrote into rather than copies.
+     * Returns the bytes that the writer wrote the table into, rather than a copy: the table's own
+     * from {@link TableSizer#writer()}, or those given to {@link TableSizer#writer(byte[])}, whose
+     * first {@link #byteLength()} bytes hold it.
      *
-     * @throws IllegalStateException if the fields didn't fill the bytes, as when they differ from
+     * @throws IllegalStateException if the fields didn't fill the table, as when they differ from
      *     those that the sizer counted
      */
     public byte[] bytes() {
-        if (position != bytes.length) {
+        assertFilled();
+        return bytes;
+    }
+
+    /**
+     * Returns the table's length, the number of bytes from the start of the writer's bytes that
+     * hold it.
+     *
+     * @throws IllegalStateException if the fields didn't fill the table, as when they differ from
+     *     those that the sizer counted
+     */
+    public int byteLength() {
+        assertFilled();
+        return length;
+    }
+
+    private void assertFilled() {
+        if (position != length) {
             throw new IllegalStateException(
-                String.format("The fields wrote %d of the table's %d bytes", position, bytes.length)
+                String.format("The fields wrote %d of the table's %d bytes", position, length)
             );
         }
-
-        return bytes;
     }
 
     /**
@@ -354,7 +378,7 @@ public final class TableWriter {
      * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
      */
     public void setTable(int index, int alignment) {
-        position += TableLayout.padding(position - table, alignment);
+        pad(TableLayout.padding(position - table, alignment));
         setOffset(index);
     }
 
@@ -413,10 +437,20 @@ public final class TableWriter {
 
     /** Pads the array so that its elements, after the count, are aligned, and writes the count */
     private void startArray(int index, int count, int alignment) {
-        position += TableLayout.padding(position + offsetSize - table, alignment);
+        pad(TableLayout.padding(position + offsetSize - table, alignment));
         setOffset(index);
         setLength(position, count);
         position += offsetSize;
+    }
+
+    /**
+     * Writes {@code padding} zeros, which new bytes hold already, but bytes given to
+     * {@link TableSizer#writer(byte[])} may not
+     */
+    private void pad(int padding) {
+        for (var end = position + padding; position < end; position++) {
+            bytes[position] = 0;
+        }
     }
 
     /**
