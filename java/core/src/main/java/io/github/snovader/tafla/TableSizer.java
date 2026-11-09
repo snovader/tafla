@@ -142,7 +142,11 @@ public final class TableSizer {
         var length = byteLength();
         if (bytes.length < length) {
             throw new IllegalArgumentException(
-                String.format("The table's %d bytes don't fit in %d bytes", length, bytes.length)
+                String.format(
+                    "The table is %d bytes, longer than the %d bytes given",
+                    length,
+                    bytes.length
+                )
             );
         }
 
