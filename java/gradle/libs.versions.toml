@@ -22,4 +22,4 @@ sbe-tool = "uk.co.real-logic:sbe-tool:1.41.0"
 errorprone = { id = "net.ltgt.errorprone", version = "5.2.0" }
 jmh = { id = "me.champeau.jmh", version = "0.7.4" }
 maven-publish = { id = "com.vanniktech.maven.publish", version = "0.37.0" }
-protobuf = { id = "com.google.protobuf", version = "0.10.0" }
+protobuf = { id = "com.google.protobuf", version = "0.10.1" }
