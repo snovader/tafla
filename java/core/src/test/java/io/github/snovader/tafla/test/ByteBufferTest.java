@@ -177,6 +177,7 @@ public class ByteBufferTest {
         assertArrayEquals(offsets, buffer.getVectorOffsets(vector));
         for (int i = 0; i < offsets.length; i++) {
             assertEquals(offsets[i], buffer.getVectorOffset(vector, i), "Item " + i);
+            assertEquals(offsets[i], buffer.getVectorItemOffset(vector, 3, i), "Item " + i + " of 3");
         }
         assertEquals(3, buffer.getVectorLength(vector));
         assertArrayEquals(new byte[][] {{1}, {}, {2, 3}}, buffer.getVector(vector));
@@ -193,6 +194,8 @@ public class ByteBufferTest {
         var buffer = new ByteBuffer(builder.bytes());
 
         var exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorOffset(4, index));
+        assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
+        exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorItemOffset(4, 2, index));
         assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
     }
 

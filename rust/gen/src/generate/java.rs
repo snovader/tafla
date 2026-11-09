@@ -112,8 +112,8 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
 }
 
 /// The view of a vector of a table, a lazy `List` whose `get()` reads an
-/// item from its end and the end of the item before it, and returns the
-/// view's class name
+/// item from its end and the end of the item before it, checked against the
+/// count that the view read once, and returns the view's class name
 fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) -> String {
     let table = &definition.name;
     let name = format!("{table}Vector");
@@ -160,7 +160,7 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
     writer.line("@Override");
     writer.open(format!("public {table} get(int index) {{"));
     writer.line(format!(
-        "return new {table}(buffer, buffer.getVectorOffset(position, index));"
+        "return new {table}(buffer, buffer.getVectorItemOffset(position, size, index));"
     ));
     writer.close("}");
     writer.close("}");

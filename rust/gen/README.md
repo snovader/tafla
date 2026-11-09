@@ -224,8 +224,9 @@ an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
 which the generated code declares for each table that a vector holds and
 each struct that an array holds. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
-runtime's `getVectorOffset()`, or `Vector::get_in_place()` in Rust, and an
-array's at `i` times its struct's size. When it's made, it checks that the
+runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
+view read in Java, or `Vector::get_in_place()` in Rust, and an array's at `i`
+times its struct's size. When it's made, it checks that the
 bytes hold the vector's count and an end for each item, or the array's
 structs, so that its length is never more than the bytes can hold. It reads
 each item when it's asked for, which fails with the decode error if the
