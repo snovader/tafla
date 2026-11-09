@@ -398,16 +398,21 @@ impl<'a> Nested<'a> {
 
 /// The fields of a [`Nested`], to write
 #[derive(Clone, Debug)]
-pub struct NestedFields<'a> {
+pub struct NestedFields<'a, T = TreeFields<'a>> {
     /// A string beside the tables
     pub label: &'a str,
     /// The first of three levels of tables
     pub outer: OuterFields<'a>,
     /// A vector of tables that hold vectors of themselves
-    pub trees: &'a [TreeFields<'a>],
+    ///
+    /// [`TreeFields`], or items of any type `T` whose reference converts into them
+    pub trees: &'a [T],
 }
 
-impl NestedFields<'_> {
+impl<'a, T> NestedFields<'a, T>
+where
+    &'a T: Into<TreeFields<'a>>,
+{
     /// Writes a [`Nested`] with every field
     ///
     /// # Errors
@@ -419,7 +424,8 @@ impl NestedFields<'_> {
         sizer.add_table(OuterFields::ALIGNMENT);
         self.outer.size(&mut sizer);
         sizer.add_vector(self.trees.len());
-        for fields in self.trees {
+        for item in self.trees {
+            let fields: TreeFields<'a> = item.into();
             fields.size(&mut sizer);
         }
 
@@ -428,9 +434,10 @@ impl NestedFields<'_> {
         writer.set_table(1, OuterFields::ALIGNMENT);
         self.outer.write(&mut writer);
         let vector = writer.set_vector(2, self.trees.len());
-        for (item, fields) in self.trees.iter().enumerate() {
+        for (index, item) in self.trees.iter().enumerate() {
+            let fields: TreeFields<'a> = item.into();
             fields.write(&mut writer);
-            writer.set_item_end(vector, item);
+            writer.set_item_end(vector, index);
         }
 
         writer.into_bytes()
@@ -644,6 +651,12 @@ impl TreeFields<'_> {
             writer.set_item_end(vector, item);
         }
         writer.end_table(parent);
+    }
+}
+
+impl From<&Self> for TreeFields<'_> {
+    fn from(value: &Self) -> Self {
+        value.clone()
     }
 }
 
@@ -956,19 +969,26 @@ impl<'a> Structs<'a> {
 
 /// The fields of a [`Structs`], to write
 #[derive(Clone, Debug)]
-pub struct StructsFields<'a> {
+pub struct StructsFields<'a, T = Documented, U = Segment> {
     /// A struct of every scalar type
     pub packed: Packed,
     /// An array of structs of 7 bytes, aligned to 4
-    pub documented: &'a [Documented],
+    ///
+    /// [`Documented`]s, or items of any type `T` whose reference converts into a [`Documented`]
+    pub documented: &'a [T],
     /// A struct of structs
     pub segment: Segment,
-    pub segments: &'a [Segment],
+    /// [`Segment`]s, or items of any type `U` whose reference converts into a [`Segment`]
+    pub segments: &'a [U],
     /// A table nested in the message, which holds structs too
     pub path: PathFields<'a>,
 }
 
-impl StructsFields<'_> {
+impl<'a, T, U> StructsFields<'a, T, U>
+where
+    &'a T: Into<Documented>,
+    &'a U: Into<Segment>,
+{
     /// Writes a [`Structs`] with every field
     ///
     /// # Errors
@@ -992,11 +1012,16 @@ impl StructsFields<'_> {
         writer.set_structs(
             1,
             self.documented,
-            Documented::to_bytes,
+            |item| Documented::to_bytes(item.into()),
             Documented::ALIGNMENT,
         );
         writer.set_struct(2, &self.segment.to_bytes());
-        writer.set_structs(3, self.segments, Segment::to_bytes, Segment::ALIGNMENT);
+        writer.set_structs(
+            3,
+            self.segments,
+            |item| Segment::to_bytes(item.into()),
+            Segment::ALIGNMENT,
+        );
         writer.set_table(4, PathFields::ALIGNMENT);
         self.path.write(&mut writer);
 
@@ -1056,16 +1081,22 @@ impl<'a> Path<'a> {
 
 /// The fields of a [`Path`], to write
 #[derive(Clone, Debug)]
-pub struct PathFields<'a> {
+pub struct PathFields<'a, T = Point> {
     pub start: Point,
-    pub points: &'a [Point],
+    /// [`Point`]s, or items of any type `T` whose reference converts into a [`Point`]
+    pub points: &'a [T],
 }
 
 impl PathFields<'_> {
     /// The alignment that a parent pads a [`Path`] to: the largest alignment of its
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::Four;
+}
 
+impl<'a, T> PathFields<'a, T>
+where
+    &'a T: Into<Point>,
+{
     /// Adds a [`Path`] to its parent's sizer, after the field or vector that holds it
     pub fn size(&self, sizer: &mut TableSizer) {
         let parent = sizer.start_table(2);
@@ -1078,7 +1109,12 @@ impl PathFields<'_> {
     pub fn write(&self, writer: &mut TableWriter) {
         let parent = writer.start_table(2);
         writer.set_struct(0, &self.start.to_bytes());
-        writer.set_structs(1, self.points, Point::to_bytes, Point::ALIGNMENT);
+        writer.set_structs(
+            1,
+            self.points,
+            |item| Point::to_bytes(item.into()),
+            Point::ALIGNMENT,
+        );
         writer.end_table(parent);
     }
 }
@@ -1146,6 +1182,12 @@ impl Segment {
         }
 
         bytes
+    }
+}
+
+impl From<&Self> for Segment {
+    fn from(value: &Self) -> Self {
+        *value
     }
 }
 
@@ -1233,6 +1275,12 @@ impl Point {
         }
 
         bytes
+    }
+}
+
+impl From<&Self> for Point {
+    fn from(value: &Self) -> Self {
+        *value
     }
 }
 
@@ -1424,6 +1472,12 @@ impl Documented {
         }
 
         bytes
+    }
+}
+
+impl From<&Self> for Documented {
+    fn from(value: &Self) -> Self {
+        *value
     }
 }
 

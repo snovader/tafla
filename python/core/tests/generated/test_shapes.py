@@ -2,11 +2,13 @@
 with tafla."""
 
 import unittest
+from collections.abc import Callable
+from functools import partial
 
 from hypothesis import given
 from hypothesis.strategies import binary, integers, one_of
 
-from tafla import DecodeError
+from tafla import ByteBuffer, DecodeError
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
     Overwrite,
@@ -23,6 +25,7 @@ from tests.generated.expectations import (
 from tests.generated.shapes.shapes import (
     Document,
     DocumentFields,
+    Item,
     ItemFields,
     ItemList,
     ItemListFields,
@@ -184,6 +187,25 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_item_list(ItemList(data)))
 
     @SETTINGS
+    @given(item_list_fields, corruptions)
+    def test_reads_each_item_of_a_corrupted_item_list_by_index_as_its_offset_finds_it(
+        self, fields: ItemListFields, corruption: Truncation | Overwrite
+    ) -> None:
+        """The view reads each item from the count that it checked once, which
+        reads the same values, DecodeError or IndexError as reading the count
+        for each item"""
+        data = corruption.apply(bytes(ItemList.serialize(**fields)))
+
+        self.assertEqual(_items_by_index(data), _items_by_offset(data))
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_each_item_of_arbitrary_bytes_by_index_as_its_offset_finds_it(
+        self, data: bytes
+    ) -> None:
+        self.assertEqual(_items_by_index(data), _items_by_offset(data))
+
+    @SETTINGS
     @given(binary(max_size=64))
     def test_reads_arbitrary_bytes_as_any_message_or_raises_decode_error(
         self, data: bytes
@@ -294,6 +316,47 @@ class TestSample(unittest.TestCase):
         ]:
             with self.subTest(sample=sample), self.assertRaises(ValueError):
                 sample.serialize()
+
+
+def _items_by_index(data: bytes) -> list[str]:
+    """Each item of an item list, read through its view by index, the last
+    one again by -1, and one past it"""
+    try:
+        view = ItemList(data).items_view()
+    except DecodeError as error:
+        return [f"DecodeError: {error}"]
+
+    def read(index: int) -> ItemFields:
+        return read_item(view[index])
+
+    indices = [*range(len(view)), -1, len(view)]
+    return [_outcome(partial(read, index)) for index in indices]
+
+
+def _items_by_offset(data: bytes) -> list[str]:
+    """Each item of an item list, as ``_items_by_index()`` reads them, but
+    found by ``get_vector_offset()``, which reads the count for each"""
+    buffer = ByteBuffer(data)
+    try:
+        vector = buffer.root_offset(0)
+        count = buffer.get_vector_length(vector)
+    except DecodeError as error:
+        return [f"DecodeError: {error}"]
+
+    def read(index: int) -> ItemFields:
+        return read_item(Item(buffer, buffer.get_vector_offset(vector, index)))
+
+    indices = [*range(count), count - 1, count]
+    return [_outcome(partial(read, index)) for index in indices]
+
+
+def _outcome(read: Callable[[], ItemFields]) -> str:
+    """The fields that ``read`` returns, as their repr, which tells NaN and -0
+    apart, or its DecodeError or IndexError, which no other error may be"""
+    try:
+        return repr(read())
+    except (DecodeError, IndexError) as error:
+        return f"{type(error).__name__}: {error}"
 
 
 if __name__ == "__main__":
