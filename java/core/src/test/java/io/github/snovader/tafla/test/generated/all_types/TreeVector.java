@@ -39,6 +39,6 @@ public final class TreeVector extends AbstractList<Tree> implements RandomAccess
      */
     @Override
     public Tree get(int index) {
-        return new Tree(buffer, buffer.getVectorOffset(position, index));
+        return new Tree(buffer, buffer.getVectorItemOffset(position, size, index));
     }
 }
