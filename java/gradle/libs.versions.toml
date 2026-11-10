@@ -3,7 +3,7 @@ jmh = "1.37"
 protobuf = "4.36.2"
 
 [libraries]
-agrona = "org.agrona:agrona:2.7.0"
+agrona = "org.agrona:agrona:2.7.1"
 errorprone-core = "com.google.errorprone:error_prone_core:2.52.0"
 flatbuffers-java = "com.google.flatbuffers:flatbuffers-java:25.2.10"
 jakarta-json-api = "jakarta.json:jakarta.json-api:2.1.3"
