@@ -504,6 +504,42 @@ export class ByteBuffer {
     }
 
     /**
+     * Returns the position of item `index` of the vector at `position`, as
+     * `getVectorOffset()` does, from the vector's `count` that the caller has
+     * already read with `getVectorLength()`, so that reading many items, as
+     * a view of the vector does, reads and checks the count once.
+     *
+     * The count must be the vector's: another count reads other bytes as the
+     * item's ends, which, as corrupted ends do, give a position within the
+     * bytes or throw a `DecodeError`.
+     *
+     * @throws {RangeError} If `index` isn't an integer in [0, `count`).
+     * @throws {DecodeError} If the item's ends or the item don't lie within
+     * the bytes, or the item ends before it starts.
+     */
+    getVectorItemOffset(
+        position: number,
+        count: number,
+        index: number
+    ): number {
+        // getVectorOffset() repeats this body: calling it from there read
+        // the last item 2-4% slower in Node 27 and d8, 7-12% bundled
+        if (!(Number.isInteger(index) && index >= 0 && index < count)) {
+            throw new RangeError(
+                `Item ${index} is outside the vector of ${count} at ${position}`
+            );
+        }
+
+        const start =
+            index === 0
+                ? (count + 1) * this.#size
+                : this.#getSize(position + index * this.#size);
+        const end = this.#getSize(position + (index + 1) * this.#size);
+
+        return this.#itemOffset(position, start, end);
+    }
+
+    /**
      * Returns the position of every item of the vector at `position`, as
      * `getVectorOffset()` finds each.
      *

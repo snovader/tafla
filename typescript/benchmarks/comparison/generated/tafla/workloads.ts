@@ -40,6 +40,32 @@ export class Record {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Record` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: RecordFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(4, Record.#LAYOUT);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addInt64();
+        sizer.addString(fields.name);
+
+        const writer = sizer.writer(bytes);
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setInt64(2, fields.id);
+        writer.setString(3, fields.name);
+
+        return writer.bytes();
+    }
+
     x(): number {
         return this.#buffer.getFloat64(this.#buffer.rootOffset(0));
     }
@@ -119,6 +145,41 @@ export class Document {
         Columns.size(sizer, fields.columns);
 
         const writer = sizer.writer();
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setString(2, fields.name);
+        writer.setTable(3, Columns.ALIGNMENT);
+        Columns.write(writer, fields.columns);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Document` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(
+        fields: DocumentFields,
+        bytes: Uint8Array
+    ): Uint8Array {
+        const sizer = new TableSizer(
+            4,
+            Document.#LAYOUT,
+            Document.FORMAT_VERSION
+        );
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.name);
+        sizer.addTable(Columns.ALIGNMENT);
+        Columns.size(sizer, fields.columns);
+
+        const writer = sizer.writer(bytes);
         writer.setFloat64(0, fields.x);
         writer.setFloat64(1, fields.y);
         writer.setString(2, fields.name);
@@ -257,6 +318,36 @@ export class ItemList {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `ItemList` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(
+        fields: ItemListFields,
+        bytes: Uint8Array
+    ): Uint8Array {
+        const sizer = new TableSizer(1, ItemList.#LAYOUT);
+        sizer.addVector(fields.items.length);
+        for (const item of fields.items) {
+            Item.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
+        const vector0 = writer.setVector(0, fields.items.length);
+        for (let i = 0; i < fields.items.length; i++) {
+            Item.write(writer, fields.items[i]);
+            writer.setItemEnd(vector0, i);
+        }
+
+        return writer.bytes();
+    }
+
     items(): Item[] {
         const offsets = this.#buffer.getVectorOffsets(
             this.#buffer.rootOffset(0)
@@ -374,7 +465,11 @@ export class ItemVector {
     get(index: number): Item {
         return new Item(
             this.#buffer,
-            this.#buffer.getVectorOffset(this.#position, index)
+            this.#buffer.getVectorItemOffset(
+                this.#position,
+                this.#length,
+                index
+            )
         );
     }
 }
@@ -456,6 +551,35 @@ export class Triples {
         );
 
         const writer = sizer.writer();
+        writer.setStructArray(
+            0,
+            Triple.serializeArray(fields.items),
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Triples` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: TriplesFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(1, Triples.#LAYOUT);
+        sizer.addStructArray(
+            fields.items.length,
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        const writer = sizer.writer(bytes);
         writer.setStructArray(
             0,
             Triple.serializeArray(fields.items),

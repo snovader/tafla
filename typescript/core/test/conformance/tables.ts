@@ -206,17 +206,20 @@ export function setField(builder: TableBuilder, field: FieldDescription): void {
 
 /**
  * Sizes and writes a table with `TableSizer` and `TableWriter`, as its
- * description sets it out. They write tables nested in it in place, so those
- * must have no header and its offset type, as {@link nestedInPlace} makes
- * them.
+ * description sets it out, into new bytes or the start of `bytes`. They
+ * write tables nested in it in place, so those must have no header and its
+ * offset type, as {@link nestedInPlace} makes them.
  */
-export function writeTable(table: TableDescription): Uint8Array {
+export function writeTable(
+    table: TableDescription,
+    bytes?: Uint8Array
+): Uint8Array {
     const sizer = createSizer(table);
     for (const field of table.fields) {
         addField(sizer, field);
     }
 
-    return writeFields(sizer.writer(), table);
+    return writeFields(sizer.writer(bytes), table);
 }
 
 /**

@@ -186,7 +186,14 @@ generated code adds each field to the runtime's `TableSizer`, which counts the
 table's length, and then writes them into bytes of that length with its
 `TableWriter`, with nested tables in place in their parent. Python appends
 the fields to its `TableWriter`'s bytes instead, without sizing them first,
-since a call there costs more than the bytes' growth. Each nested table has an
+since a call there costs more than the bytes' growth. For the same reason,
+it writes a table's leading fields of fixed size, whose offsets depend on no
+value, and a string after them, in one call that packs them with a `struct`,
+from a `FixedFields` that describes them: a nested table of only those fields
+is written whole, in its parent's call or in one of its own. A table of only
+those fields also has `fields()`, which reads them all at once into the
+`TypedDict` that it's written from, or through its getters when its offsets
+aren't the ones that its writer writes. Each nested table has an
 `ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
 and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of
@@ -220,8 +227,9 @@ an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
 which the generated code declares for each table that a vector holds and
 each struct that an array holds. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
-runtime's `getVectorOffset()`, or `Vector::get_in_place()` in Rust, and an
-array's at `i` times its struct's size. When it's made, it checks that the
+runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
+view read in Java, TypeScript and JavaScript, or `Vector::get_in_place()` in
+Rust, and an array's at `i` times its struct's size. When it's made, it checks that the
 bytes hold the vector's count and an end for each item, or the array's
 structs, so that its length is never more than the bytes can hold. It reads
 each item when it's asked for, which fails with the decode error if the
@@ -326,6 +334,90 @@ let document = Document::new(&bytes)?; // checks the version
 assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<f32>
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+### Writing into reused bytes
+
+In TypeScript and JavaScript, a message's `serializeInto(fields, bytes)`
+writes it into the start of the caller's bytes rather than new ones, through
+the runtime's `TableSizer.writer(bytes)`, and returns the view of them that
+holds it. The bytes stay the caller's, so the view, and what's read from it,
+change when they're written again, as by the next message written into them.
+Reusing bytes saves allocating and zeroing new ones: in Node 27, about
+0.2 µs for a table of a few KB, a third of the write of a document of 100
+rows, and 12 µs for one of 1.2 MB, but nothing for a table of up to 64
+bytes. Bytes shorter than the table throw a `RangeError` before any of them
+is written. Bytes that start at an offset of their `ArrayBuffer` that isn't a
+multiple of 8 make readers copy the arrays that are then unaligned, as for
+any bytes received at such an offset.
+
+Java's messages also declare `serializeInto(fields, bytes)`, which writes the
+message into the start of a `byte[]` that the caller owns, rather than into
+new bytes, and returns its length. The bytes after it keep their values. It
+throws an `IllegalArgumentException` if the bytes are shorter than the
+message, before writing any of them, rather than falling back to new bytes,
+so that its result always lies in the caller's bytes. The message stays there
+until the bytes are written again, by the next `serializeInto()` too, which
+also changes what a reader of them reads. So the caller sends or copies it
+first, such as with `out.write(bytes, 0, length)` or
+`Arrays.copyOf(bytes, length)`:
+
+```java
+var bytes = new byte[1 << 20]; // as long as the longest message
+int length = Document.serializeInto(fields, bytes);
+out.write(bytes, 0, length);
+```
+
+Reusing bytes saves allocating, zeroing and collecting new ones for each
+message. In Java's comparison suite, on JDK 25, writing into reused bytes took
+34% less time than into new bytes for a document of 1.2 MB, 27% less for one
+of 1.3 KB, and 17% less for a record of 60 bytes. Where creating the fields'
+values costs more than the bytes, it saves little: 1.5% for a vector of 100
+nested tables, and nothing for an array of 100 structs.
+
+### Items of the caller's types
+
+In Rust, a `<Name>Fields` takes the items of each of its vectors and arrays
+of structs as a slice of any type whose reference converts into the vector's
+`<Table>Fields` or the array's struct, with `From`. So a caller writes the
+items it holds without collecting them into the generated types first, and
+the generated code converts each one as it writes it. Each of these fields
+has a type parameter, `T`, `U` and so on in the order of the fields, which
+defaults to the generated type, so a slice of that type is taken as before.
+
+A conversion makes a `<Table>Fields` with its own defaults, and so does a
+nested table's field, so the vectors and arrays of structs within them take
+the generated types. A vector of a table that can hold the vector's own
+table again through vectors, such as a tree's children, takes its
+`<Table>Fields` only, since its default type would name itself.
+
+```rust
+# mod shapes {
+#     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/shapes/rust/shapes.rs"));
+# }
+use shapes::{ItemFields, ItemList, ItemListFields, PairFields};
+
+/// An item as the application holds it, with its pair's values in place
+struct Row {
+    value: f32,
+    first: f32,
+    second: f32,
+}
+
+impl From<&Row> for ItemFields {
+    fn from(row: &Row) -> Self {
+        let pair = PairFields { first: row.first, second: row.second };
+        Self { value: row.value, pair }
+    }
+}
+
+let rows = [Row { value: 1.0, first: 0.5, second: 1.5 }];
+let bytes = ItemListFields { items: &rows }.serialize()?; // a slice of Row
+assert_eq!(ItemList::new(&bytes).items()?[0].pair()?.second()?, 1.5);
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+TypeScript's and JavaScript's fields are interfaces, which any object with
+their properties satisfies, so they take the caller's objects as they are.
 
 ### Versions
 
