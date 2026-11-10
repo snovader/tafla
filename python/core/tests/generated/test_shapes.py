@@ -21,6 +21,7 @@ from tests.generated.expectations import (
     assert_same_fields,
     assert_same_table,
     assert_values_or_decode_error,
+    fields_or_decode_error,
 )
 from tests.generated.shapes.shapes import (
     Document,
@@ -29,6 +30,7 @@ from tests.generated.shapes.shapes import (
     ItemFields,
     ItemList,
     ItemListFields,
+    ItemVector,
     Point,
     PointFields,
     Sample,
@@ -223,6 +225,79 @@ class TestDecodeErrors(unittest.TestCase):
                 message(strided)
 
 
+class TestFields(unittest.TestCase):
+    # fields() reads a fixed-layout table's fields at once, or through the
+    # getters for bytes that its writer didn't write, so it returns what the
+    # getters read or raises DecodeError as they do
+
+    @SETTINGS
+    @given(point_fields, slices)
+    def test_reads_a_points_fields_as_its_getters_read_them_and_writes_them_back(
+        self, fields: PointFields, where: Slice
+    ) -> None:
+        data = Point.serialize(**fields)
+        point = Point(where.of(data))
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
+        self.assertEqual(bytes(Point.serialize(**point.fields())), bytes(data))
+
+    @SETTINGS
+    @given(item_list_fields)
+    def test_reads_each_items_fields_as_its_getters_read_them(
+        self, fields: ItemListFields
+    ) -> None:
+        for item in ItemList(ItemList.serialize(**fields)).items():
+            self.assertEqual(
+                fields_or_decode_error(item.fields),
+                fields_or_decode_error(partial(read_item, item)),
+            )
+
+    @SETTINGS
+    @given(point_fields, corruptions)
+    def test_reads_a_corrupted_points_fields_as_its_getters_do(
+        self, fields: PointFields, corruption: Truncation | Overwrite
+    ) -> None:
+        point = Point(corruption.apply(bytes(Point.serialize(**fields))))
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
+
+    @SETTINGS
+    @given(item_list_fields, corruptions)
+    def test_reads_the_fields_of_each_item_of_a_corrupted_item_list_as_its_getters_do(
+        self, fields: ItemListFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(ItemList.serialize(**fields)))
+        try:
+            view = ItemList(data).items_view()
+        except DecodeError:
+            return
+
+        for index in range(len(view)):
+            with self.subTest(index=index):
+                self.assertEqual(
+                    fields_or_decode_error(partial(_item_fields, view, index)),
+                    fields_or_decode_error(partial(_read_item_at, view, index)),
+                )
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_the_fields_of_arbitrary_bytes_as_the_getters_do(
+        self, data: bytes
+    ) -> None:
+        point = Point(data)
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
+
+
 class TestReadingInPlace(unittest.TestCase):
     def test_reads_an_item_in_place_past_its_end_within_the_bytes_of_its_item_list(
         self,
@@ -316,6 +391,14 @@ class TestSample(unittest.TestCase):
         ]:
             with self.subTest(sample=sample), self.assertRaises(ValueError):
                 sample.serialize()
+
+
+def _item_fields(view: ItemVector, index: int) -> ItemFields:
+    return view[index].fields()
+
+
+def _read_item_at(view: ItemVector, index: int) -> ItemFields:
+    return read_item(view[index])
 
 
 def _items_by_index(data: bytes) -> list[str]:

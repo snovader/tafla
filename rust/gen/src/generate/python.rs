@@ -2,7 +2,8 @@
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
 //! and structs are frozen dataclasses packed with `struct`. A table's leading
 //! fields of fixed size, and a string after them, are written in one call,
-//! from the runtime's `FixedFields`.
+//! from the runtime's `FixedFields`, and a table of only those fields is read
+//! at once by `fields()` too.
 
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
@@ -29,12 +30,13 @@ const KEYWORDS: [&str; 38] = [
 ];
 
 /// Names that a field's getter or attribute would shadow, which names get a
-/// `_` after too: the classes' own methods, the parameter of `serialize()`
-/// beside its keyword arguments, and the built-in types that getters return,
-/// which their annotations find in the class
-const MEMBERS: [&str; 13] = [
+/// `_` after too: the classes' own methods, such as `fields()`, the
+/// parameter of `serialize()` beside its keyword arguments, and the built-in
+/// types that getters return, which their annotations find in the class
+const MEMBERS: [&str; 14] = [
     "bool",
     "cls",
+    "fields",
     "float",
     "int",
     "list",
@@ -69,8 +71,10 @@ pub fn generate(
             Kind::Struct(_) => structure(&mut writer, schema, definition),
         }
 
-        if !definition.is_struct() {
-            writer.blanks(2);
+        writer.blanks(2);
+        if definition.is_struct() {
+            fields_protocol(&mut writer, schema, definition);
+        } else {
             fields_type(&mut writer, schema, definition);
         }
 
@@ -143,6 +147,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     }
     if has_struct {
         typing.push("Literal");
+        typing.push("Protocol");
         typing.push("Self");
     }
     if has_table {
@@ -189,6 +194,13 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         ),
         ("typing", typing),
     ];
+    // Structs' protocols declare their fields with `builtins.property`, by
+    // a name that no field takes, since fields start with a letter. A field
+    // named `property` or `builtins` would otherwise hide the decorator from
+    // the fields after it in the class.
+    if has_struct {
+        writer.line("import builtins as _builtins");
+    }
     for (module, names) in standard {
         if !names.is_empty() {
             from_import(writer, module, &names);
@@ -287,6 +299,9 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     serialize(writer, schema, definition, layout, fixed);
 
     getters(writer, schema, definition, true);
+    if fixed > 0 && fixed == definition.fields.len() {
+        fields_reader(writer, schema, definition, true);
+    }
     writer.dedent();
 }
 
@@ -441,6 +456,9 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     writer.dedent();
 
     getters(writer, schema, definition, false);
+    if fixed > 0 && fixed == definition.fields.len() {
+        fields_reader(writer, schema, definition, false);
+    }
     writer.dedent();
 }
 
@@ -616,12 +634,21 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.blank();
 
     writer.line("@classmethod");
-    writer.open("def serialize_array(cls, items: Sequence[Self]) -> bytearray:");
+    writer.statement(
+        &STYLE,
+        "def ",
+        &call(
+            "serialize_array",
+            vec![text("cls"), text(format!("items: Sequence[{name}Fields]"))],
+        ),
+        " -> bytearray:",
+    );
+    writer.indent();
     docstring(
         writer,
         &[
-            format!("Returns the bytes of `{name}`s one after another, as an array of them"),
-            "holds them.".to_owned(),
+            format!("Returns the bytes of `{name}`s, or of any other objects of their"),
+            "fields, one after another, as an array of them holds them.".to_owned(),
             String::new(),
             "Raises `ValueError` if a field's value doesn't fit its type.".to_owned(),
         ],
@@ -937,6 +964,47 @@ fn push_values(schema: &Schema, definition: &Definition, owner: &str, values: &m
     }
 }
 
+/// The protocol of a struct's fields, which an array of it is written from:
+/// the struct's own attributes, or those of any object of the same names, as
+/// properties, which read-only attributes such as a frozen dataclass's have.
+/// It's a `Protocol` rather than the dataclass, so that an application's own
+/// objects type-check.
+fn fields_protocol(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let name = &definition.name;
+
+    writer.open(format!("class {name}Fields(Protocol):"));
+    docstring(
+        writer,
+        &[
+            format!(
+                "The fields of {}, which an array of them is written from: the",
+                article(name)
+            ),
+            format!("attributes of a `{name}`, or of any other object with attributes of"),
+            "the same names and types".to_owned(),
+        ],
+    );
+    for field in &definition.fields {
+        let value_type = match field.field_type {
+            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+            FieldType::Struct(index) => format!("{}Fields", schema.definition(index).name),
+            _ => unreachable!("structs hold scalars and structs only"),
+        };
+        let signature = format!("def {}(self) -> {value_type}:", identifier(&field.name));
+
+        writer.blank();
+        writer.line("@_builtins.property");
+        if field.docs.is_empty() {
+            writer.line(format!("{signature} ..."));
+        } else {
+            writer.open(signature);
+            docstring(writer, &field.docs);
+            writer.dedent();
+        }
+    }
+    writer.dedent();
+}
+
 fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     writer.open(format!("class {}Fields(TypedDict):", definition.name));
     docstring(
@@ -1192,6 +1260,136 @@ fn push_fixed_values(
     }
 }
 
+/// The `fields()` of a message or table whose fields its `FixedFields`
+/// describes whole, which reads them at once into the `TypedDict` that it's
+/// written from, or through the getters when its offsets aren't those that
+/// the runtime expects, so that its values and errors are the getters'
+fn fields_reader(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
+    let name = &definition.name;
+    let (position, written_by) = if is_root {
+        ("0", "serialize()")
+    } else {
+        ("self._position", "write()")
+    };
+
+    writer.blank();
+    writer.open(format!("def fields(self) -> {name}Fields:"));
+    docstring(
+        writer,
+        &[
+            format!("Reads every field at once, as `{written_by}` takes them, in one call"),
+            "when the table's offsets are those that its writer writes, and otherwise".to_owned(),
+            "through the getters, which raise `DecodeError` for bytes they can't read.".to_owned(),
+        ],
+    );
+    writer.line(format!(
+        "values = self._buffer.get_fields({position}, self._FIXED_FIELDS)"
+    ));
+    writer.open("if values is None:");
+    dict_statement(
+        writer,
+        "return ",
+        &getter_values(schema, definition, "self"),
+    );
+    writer.dedent();
+    writer.blank();
+    dict_statement(
+        writer,
+        "return ",
+        &unpacked_values(schema, definition, &mut 0),
+    );
+    writer.dedent();
+}
+
+/// A value of a `TypedDict` of fields that `fields()` returns: an
+/// expression, or a nested table's fields
+enum DictValue {
+    Text(String),
+    Dict(Vec<(String, DictValue)>),
+}
+
+impl DictValue {
+    fn flat(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
+            Self::Dict(entries) => {
+                let entries: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| format!("\"{key}\": {}", value.flat()))
+                    .collect();
+                format!("{{{}}}", entries.join(", "))
+            }
+        }
+    }
+}
+
+/// The fields of a table as its getters read them, a nested table's by its
+/// own `fields()`
+fn getter_values(schema: &Schema, definition: &Definition, reader: &str) -> DictValue {
+    let entries = definition
+        .fields
+        .iter()
+        .map(|field| {
+            let getter = format!("{reader}.{}()", identifier(&field.name));
+            let value = match field.field_type {
+                FieldType::Table(index) if schema.definition(index).fields.is_empty() => {
+                    DictValue::Dict(Vec::new())
+                }
+                FieldType::Table(_) => DictValue::Text(format!("{getter}.fields()")),
+                _ => DictValue::Text(getter),
+            };
+            (identifier(&field.name), value)
+        })
+        .collect();
+    DictValue::Dict(entries)
+}
+
+/// The fields of a table as `ByteBuffer.get_fields()` returns them in
+/// `values`, from `next` on, a nested table's in place of it and a struct's
+/// as its bytes
+fn unpacked_values(schema: &Schema, definition: &Definition, next: &mut usize) -> DictValue {
+    let entries = definition
+        .fields
+        .iter()
+        .map(|field| {
+            let value = match field.field_type {
+                FieldType::Table(index) => unpacked_values(schema, schema.definition(index), next),
+                FieldType::Struct(index) => {
+                    let structure = &schema.definition(index).name;
+                    *next += 1;
+                    DictValue::Text(format!("{structure}.read(values[{}])", *next - 1))
+                }
+                _ => {
+                    *next += 1;
+                    DictValue::Text(format!("values[{}]", *next - 1))
+                }
+            };
+            (identifier(&field.name), value)
+        })
+        .collect();
+    DictValue::Dict(entries)
+}
+
+/// Writes `prefix` + a dict + `suffix`, broken over lines as Ruff breaks it,
+/// an entry on each line, when it doesn't fit
+fn dict_statement(writer: &mut CodeWriter, prefix: &str, value: &DictValue) {
+    dict_lines(writer, prefix, value, "");
+}
+
+fn dict_lines(writer: &mut CodeWriter, prefix: &str, value: &DictValue, suffix: &str) {
+    let line = format!("{prefix}{}{suffix}", value.flat());
+    match value {
+        DictValue::Dict(entries) if !entries.is_empty() && !writer.fits(&STYLE, &line) => {
+            writer.open(format!("{prefix}{{"));
+            for (key, value) in entries {
+                dict_lines(writer, &format!("\"{key}\": "), value, ",");
+            }
+            writer.close(format!("}}{suffix}"));
+        }
+        _ => writer.line(line),
+    }
+}
+
 fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
     for (index, field) in definition.fields.iter().enumerate() {
         let offset = offset_expression(is_root, index);
@@ -1388,7 +1586,10 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::String => "str".to_owned(),
         // Structs are written from their dataclasses
         FieldType::Struct(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) => format!("Sequence[{}]", schema.definition(index).name),
+        // Arrays of structs are written from any objects of their fields
+        FieldType::StructArray(index) => {
+            format!("Sequence[{}Fields]", schema.definition(index).name)
+        }
         FieldType::Table(index) => format!("{}Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("Sequence[{}Fields]", schema.definition(index).name),
     }

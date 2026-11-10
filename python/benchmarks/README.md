@@ -99,12 +99,17 @@ comparison uses its counterpart:
 - **tafla-gen** is the code that tafla-gen generates from
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a
-  `TableWriter`'s `bytearray` in one call, and returns a view of it. Its
-  readers read each field with a getter, columns as views. It takes the
+  `TableWriter`'s `bytearray` in one call, and returns a view of it. It
+  reads the record and the vector's items with `fields()`, which reads a
+  table of fixed layout at once into the `TypedDict` that it's written from,
+  and the document with the getters, columns as views. It takes the
   workloads' dataclasses, as the other codecs do, so it creates the
-  generated fields' dicts, and the frozen `Triple` and `Sample` dataclasses
-  that the generated structs are, from them in each call, as the protobuf
-  codec builds its messages. Reading creates the workloads' dataclasses from
+  generated fields' dicts, and the frozen `Sample` dataclass that the
+  generated struct is, from them in each call, as the protobuf codec builds
+  its messages. The array of structs is written from the workload's own
+  items, whose attributes `TripleFields`, the struct's protocol of fields,
+  types, as an application's objects would be. Reading creates the
+  workloads' dataclasses from
   the generated readers, after the generated reader of the array of structs
   creates a `Triple` for each. Every suite has a copy of the schema; after
   changing them, regenerate the code as `rust/gen/README.md` describes.

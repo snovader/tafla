@@ -13,13 +13,20 @@ _OFFSET_CODES: dict[OffsetSize, str] = {1: "B", 2: "H", 4: "I"}
 # A function that packs the values of a table's fixed fields
 type Packer = Callable[..., bytes]
 
+# What ByteBuffer.get_fields() reads a table's fixed fields with: the Struct,
+# the header before the slots, a getter of the offsets from what the Struct
+# unpacks and the offsets that it expects, a getter of the values, and
+# whether a string's length follows them
+type Reader = tuple[Struct, int, itemgetter[Any], object, itemgetter[Any], bool]
+
 
 class FixedFields:
     """The leading fields of a table whose offsets don't depend on any value,
     which ``TableWriter.set_fields()`` and ``write_table()`` pack with the
     table's offsets in one call to a ``struct.Struct``, rather than with a
-    setter for each field. The code that tafla-gen generates creates one for
-    each table that starts with such fields.
+    setter for each field, and ``ByteBuffer.get_fields()`` unpacks. The code
+    that tafla-gen generates creates one for each table that starts with such
+    fields.
 
     Those fields are scalars, structs and nested tables whose own fields are
     all such fields, since none of them is aligned, and then a string, whose
@@ -41,7 +48,7 @@ class FixedFields:
     a table's fields as the schema declares them, so it doesn't check them.
     """
 
-    __slots__ = ("_fields", "_formats", "_packers", "_string")
+    __slots__ = ("_fields", "_formats", "_packers", "_readers", "_string")
 
     def __init__(
         self,
@@ -54,40 +61,24 @@ class FixedFields:
         self._formats = formats
         self._string = string
 
-        # A packer for each offset size, indexed by it: the root's for its
-        # layout's, after its header, and a nested table's for each
+        # A packer and a reader for each offset size, indexed by it: the
+        # root's for its layout's, after its header, and a nested table's for
+        # each
         header = 0 if layout is None else layout.header_size()
         sizes = (1, 2, 4) if layout is None else (layout.offset_size(),)
         packers: list[Packer | None] = [None] * 5
+        readers: list[Reader | None] = [None] * 5
         for size in sizes:
-            packers[size] = self.__packer(size, header)
+            codes: list[str] = []
+            arguments: list[int | None] = []
+            self.__describe(size, header, codes, arguments)
+            struct = Struct("<" + "".join(codes))
+
+            packers[size] = _packer(struct, arguments)
+            readers[size] = _reader(struct, arguments, header, string)
 
         self._packers = cast(tuple[Packer, ...], tuple(packers))
-
-    def __packer(self, size: OffsetSize, header: int) -> Packer:
-        """Returns a function that packs the fields' values, followed by the
-        string's length, with the offsets of a table whose fields follow
-        ``header`` bytes of header and are ``size`` bytes wide"""
-        codes: list[str] = []
-        arguments: list[int | None] = []
-        self.__describe(size, header, codes, arguments)
-        struct = Struct("<" + "".join(codes))
-
-        # The Struct takes the offsets and the values in the order of their
-        # bytes, which interleaves them for a nested table. Its offsets are
-        # constants, which a partial() passes before the values when they all
-        # come first.
-        offsets = tuple(argument for argument in arguments if argument is not None)
-        order = _order(arguments, len(offsets))
-        if order is None:
-            return partial(struct.pack, *offsets)
-
-        pack, arrange = struct.pack, itemgetter(*order)
-
-        def pack_nested(*values: Any) -> bytes:
-            return pack(*arrange(offsets + values))
-
-        return pack_nested
+        self._readers = cast(tuple[Reader, ...], tuple(readers))
 
     def __describe(
         self,
@@ -128,6 +119,57 @@ class FixedFields:
         arguments.extend(value_arguments)
 
         return position
+
+
+def _packer(struct: Struct, arguments: list[int | None]) -> Packer:
+    """Returns a function that packs the fields' values, followed by the
+    string's length, with the offsets that ``arguments`` holds, as ``struct``
+    takes them"""
+    # The Struct takes the offsets and the values in the order of their
+    # bytes, which interleaves them for a nested table. Its offsets are
+    # constants, which a partial() passes before the values when they all
+    # come first.
+    offsets = tuple(argument for argument in arguments if argument is not None)
+    order = _order(arguments, len(offsets))
+    if order is None:
+        return partial(struct.pack, *offsets)
+
+    pack, arrange = struct.pack, itemgetter(*order)
+
+    def pack_nested(*values: Any) -> bytes:
+        return pack(*arrange(offsets + values))
+
+    return pack_nested
+
+
+def _reader(
+    struct: Struct, arguments: list[int | None], header: int, string: bool
+) -> Reader:
+    """Returns what reads the fields that ``struct`` unpacks, whose
+    ``arguments`` are offsets or values in its order, with the string's length
+    last"""
+    offsets = [
+        index for index, argument in enumerate(arguments) if argument is not None
+    ]
+    values = [index for index, argument in enumerate(arguments) if argument is None]
+    if string:
+        values.pop()
+
+    check = _tuple_getter(offsets)
+    expected = check(
+        tuple(0 if argument is None else argument for argument in arguments)
+    )
+    return struct, header, check, expected, _tuple_getter(values), string
+
+
+def _tuple_getter(indices: list[int]) -> itemgetter[Any]:
+    """Returns a getter of the items at ``indices``, which returns a tuple
+    even of one item or none, through a slice when they're consecutive"""
+    first = indices[0] if indices else 0
+    if indices == list(range(first, first + len(indices))):
+        return itemgetter(slice(first, first + len(indices)))
+
+    return itemgetter(*indices)
 
 
 def _order(arguments: list[int | None], offsets: int) -> tuple[int, ...] | None:

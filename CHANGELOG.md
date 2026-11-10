@@ -50,6 +50,16 @@ repository's first commits, for code built from its source before the release.
   `serializeInto()` on every message that tafla-gen generates in TypeScript
   and JavaScript, which writes the message so and returns the view of the
   bytes that holds it, saving the allocation of new bytes for each table.
+- Generated Python declares `<Struct>Fields` beside each struct, a protocol
+  of its fields, which an array of the struct is written from, so that any
+  objects with those attributes write it, rather than only the struct's
+  dataclass.
+- Generated Python declares `fields()` on each message and table whose
+  fields are all scalars, structs and tables of them, and a string last,
+  which reads every field at once into the `TypedDict` that it's written
+  from, through `ByteBuffer.get_fields()`. It reads them through the getters
+  when the table's offsets aren't those that its writer writes, so its values
+  and errors are theirs. The getters stay lazy.
 
 ### Changed
 

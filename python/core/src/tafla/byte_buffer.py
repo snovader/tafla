@@ -7,6 +7,7 @@ from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import from_little_endian
 from .errors import DecodeError, describe_int
+from .fixed_fields import FixedFields
 from .layout import TableLayout
 from .structs import OFFSET_STRUCTS
 from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
@@ -323,6 +324,40 @@ class ByteBuffer:
             return str(self.__view[start : start + length], "utf-8")
         except UnicodeDecodeError as error:
             raise DecodeError(f"The string at {position} isn't valid UTF-8") from error
+
+    def get_fields(self, position: int, fields: FixedFields) -> tuple[Any, ...] | None:
+        """Returns the values of the fields that ``fields`` describes, of the
+        table at ``position``, unpacked in one call, in the order that
+        ``TableWriter.set_fields()`` takes them, with the string's last. It's
+        for a table whose fields it describes whole, when its offsets are the
+        constants that ``TableWriter`` writes them at. Otherwise, or when the
+        fields don't lie within the buffer or the string isn't valid UTF-8,
+        it returns ``None``, for the field getters to read them, which then
+        raise ``DecodeError`` for whatever they can't read. Each value is what
+        its getter returns, but a struct's, which is its bytes.
+
+        Generated code calls it to read every field of such a table at once.
+        """
+        struct, header, check, expected, values, string = fields._readers[self.__size]
+        start = position + header
+        try:
+            if position >= 0:
+                unpacked = struct.unpack_from(self.__view, start)
+                if check(unpacked) == expected:
+                    if not string:
+                        return values(unpacked)
+
+                    # The string's length is the last value, and its bytes
+                    # follow the Struct's
+                    begin = start + struct.size
+                    end = begin + unpacked[-1]
+                    if end <= self.__length:
+                        text = str(self.__view[begin:end], "utf-8")
+                        return (*values(unpacked), text)
+        except StructError, OverflowError, UnicodeDecodeError:
+            pass
+
+        return None
 
     def get_vector_length(self, position: int) -> int:
         """Returns the number of items of the vector at ``position``.
