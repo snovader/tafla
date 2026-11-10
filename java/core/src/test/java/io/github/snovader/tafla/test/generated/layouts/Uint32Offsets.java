@@ -30,6 +30,31 @@ public final class Uint32Offsets {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Uint32Offsets} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(3, LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name());
+        sizer.addUint16Array(fields.values().length);
+
+        var writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id());
+        writer.setString(1, fields.name());
+        writer.setUint16Array(2, fields.values());
+
+        return writer.byteLength();
+    }
+
     public long id() {
         return buffer.getUint32(buffer.rootOffset(0));
     }

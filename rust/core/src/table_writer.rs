@@ -590,12 +590,17 @@ impl TableWriter {
         self.push(bytes);
     }
 
-    /// Writes field `index`, an array of `structs`, each of the `N` bytes
-    /// that `to_bytes` returns for it: its scalars, little-endian, one after
-    /// another. It writes them as [`TableWriter::set_struct_array()`] writes
-    /// the bytes of every struct, without collecting them first. It's padded
-    /// so that the structs start at a multiple of `alignment` from the start
-    /// of the table, which is the size of the structs' largest scalar.
+    /// Writes field `index`, an array of a struct for each of `structs`, each
+    /// the `N` bytes that `to_bytes` returns for it: its scalars,
+    /// little-endian, one after another. It writes them as
+    /// [`TableWriter::set_struct_array()`] writes the bytes of every struct,
+    /// without collecting them first. It's padded so that the structs start
+    /// at a multiple of `alignment` from the start of the table, which is the
+    /// size of the structs' largest scalar.
+    ///
+    /// `to_bytes` takes each of `structs` by reference, so they needn't be
+    /// `Copy`, nor the structs themselves: the generated code converts the
+    /// items it's given into its structs there.
     ///
     /// [`TableWriter::into_bytes()`] returns [`BuildError::NotWholeStructs`]
     /// if `N` is 0.
@@ -604,7 +609,7 @@ impl TableWriter {
     /// use tafla::{Alignment, TableLayout, TableSizer};
     ///
     /// let points: [(u16, u16); 2] = [(1, 2), (3, 4)];
-    /// let to_bytes = |(x, y): (u16, u16)| {
+    /// let to_bytes = |&(x, y): &(u16, u16)| {
     ///     let [x0, x1] = x.to_le_bytes();
     ///     let [y0, y1] = y.to_le_bytes();
     ///     [x0, x1, y0, y1]
@@ -620,11 +625,11 @@ impl TableWriter {
     /// # Ok::<(), tafla::BuildError>(())
     /// ```
     #[inline]
-    pub fn set_structs<T: Copy, const N: usize>(
+    pub fn set_structs<'s, T, const N: usize>(
         &mut self,
         index: usize,
-        structs: &[T],
-        mut to_bytes: impl FnMut(T) -> [u8; N],
+        structs: &'s [T],
+        to_bytes: impl FnMut(&'s T) -> [u8; N],
         alignment: Alignment,
     ) {
         if N == 0 {
@@ -641,7 +646,7 @@ impl TableWriter {
         // their bytes first and copy them
         let fits = structs.len().checked_mul(N);
         if fits.is_some_and(|length| length <= self.room()) {
-            let bytes = structs.iter().flat_map(|&item| to_bytes(item));
+            let bytes = structs.iter().flat_map(to_bytes);
             self.bytes.extend(bytes);
         } else {
             self.fail();

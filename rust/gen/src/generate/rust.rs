@@ -4,12 +4,16 @@
 //! `TableWriter` writes, nested tables in place. Structs are plain structs
 //! read and written at fixed offsets.
 
+use std::collections::HashSet;
 use std::fmt::Display;
 
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    strongly_connected_components,
+};
 
 /// The runtime's crate, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -59,6 +63,12 @@ pub fn generate(
     let generator = Generator {
         schema,
         borrows: borrowing(schema),
+        vector_components: strongly_connected_components(&schema.definitions, vectors),
+        declared: schema
+            .definitions
+            .iter()
+            .map(|definition| definition.name.as_str())
+            .collect(),
     };
 
     let mut writer = CodeWriter::new(STYLE.indent);
@@ -80,6 +90,8 @@ pub fn generate(
 
         if schema.is_item(index) {
             writer.blank();
+            generator.reference_conversion(&mut writer, index);
+            writer.blank();
             if definition.is_struct() {
                 struct_array_view(&mut writer, definition);
             } else {
@@ -99,6 +111,20 @@ struct Generator<'a> {
     /// Whether each definition's fields struct borrows strings or arrays, by
     /// its index
     borrows: Vec<bool>,
+    /// The component of each definition among those that hold each other in
+    /// vectors, by its index
+    vector_components: Vec<usize>,
+    /// The names that the schema declares, which type parameters don't take
+    declared: HashSet<&'a str>,
+}
+
+/// A vector or an array of structs in a fields struct, which takes items of
+/// any type whose reference converts into its item
+struct GenericField {
+    /// The type of its items
+    parameter: String,
+    /// What they convert into: the struct, or the table's fields struct
+    item: String,
 }
 
 impl Generator<'_> {
@@ -477,46 +503,197 @@ impl Generator<'_> {
     }
 
     /// The struct of the values that write a definition, with the methods
-    /// that write them
+    /// that write them. Its vectors and arrays of structs take items of any
+    /// type whose reference converts into their item, each through a type
+    /// parameter that defaults to the item, so that a caller writes the
+    /// items it holds without collecting them into the item's type first.
     fn fields_struct(&self, writer: &mut CodeWriter, index: usize) {
         let definition = self.schema.definition(index);
         let name = &definition.name;
         let borrows = self.borrows[index];
-        let generics = if borrows { "<'a>" } else { "" };
+        let generic = self.generic_fields(index);
+        let parameters: Vec<&GenericField> = generic.iter().flatten().collect();
 
         rust_doc(
             writer,
             &[format!("The fields of {}, to write", article(name))],
         );
         writer.line("#[derive(Clone, Debug)]");
-        writer.open(format!("pub struct {name}Fields{generics} {{"));
-        for field in &definition.fields {
+        if parameters.is_empty() {
+            let generics = if borrows { "<'a>" } else { "" };
+            writer.open(format!("pub struct {name}Fields{generics} {{"));
+        } else {
+            let mut list = vec!["'a".to_owned()];
+            list.extend(
+                parameters
+                    .iter()
+                    .map(|field| format!("{} = {}", field.parameter, field.item)),
+            );
+            generic_list(writer, &format!("pub struct {name}Fields"), &list, " {");
+            writer.indent();
+        }
+        for (field, generic) in definition.fields.iter().zip(&generic) {
             rust_doc(writer, &field.docs);
-            writer.line(format!(
-                "pub {}: {},",
-                identifier(&field.name),
-                self.input_type(field.field_type)
-            ));
+            let field_type = match generic {
+                Some(generic) => {
+                    if !field.docs.is_empty() {
+                        rust_doc(writer, &[String::new()]);
+                    }
+                    rust_doc(writer, &[self.generic_doc(field.field_type, generic)]);
+                    format!("&'a [{}]", generic.parameter)
+                }
+                None => self.input_type(field.field_type),
+            };
+            writer.line(format!("pub {}: {field_type},", identifier(&field.name)));
         }
         writer.close("}");
         writer.blank();
 
-        if borrows {
-            writer.open(format!("impl {name}Fields<'_> {{"));
-        } else {
-            writer.open(format!("impl {name}Fields {{"));
+        if parameters.is_empty() {
+            if borrows {
+                writer.open(format!("impl {name}Fields<'_> {{"));
+            } else {
+                writer.open(format!("impl {name}Fields {{"));
+            }
+            match definition.kind {
+                Kind::Message(layout) => self.serialize(writer, definition, layout, &generic),
+                Kind::Table => {
+                    self.alignment(writer, index);
+                    writer.blank();
+                    self.size_and_write(writer, definition, &generic);
+                }
+                Kind::Struct(_) => unreachable!("structs are written by their own methods"),
+            }
+            writer.close("}");
+            return;
         }
+
+        // The alignment doesn't depend on the items' types, so it's the
+        // default's, which `<Name>Fields::ALIGNMENT` finds without them
+        if definition.kind == Kind::Table {
+            writer.open(format!("impl {name}Fields<'_> {{"));
+            self.alignment(writer, index);
+            writer.close("}");
+            writer.blank();
+        }
+
+        let mut names = vec!["'a".to_owned()];
+        names.extend(parameters.iter().map(|field| field.parameter.clone()));
+        let arguments = names.join(", ");
+        generic_list(
+            writer,
+            "impl",
+            &names,
+            &format!(" {name}Fields<{arguments}>"),
+        );
+        writer.open("where");
+        for field in &parameters {
+            writer.line(format!("&'a {}: Into<{}>,", field.parameter, field.item));
+        }
+        writer.close("{");
+        writer.indent();
         match definition.kind {
-            Kind::Message(layout) => self.serialize(writer, definition, layout),
-            Kind::Table => self.nested_size_and_write(writer, index),
+            Kind::Message(layout) => self.serialize(writer, definition, layout, &generic),
+            Kind::Table => self.size_and_write(writer, definition, &generic),
             Kind::Struct(_) => unreachable!("structs are written by their own methods"),
         }
         writer.close("}");
     }
 
+    /// Which of a definition's fields take items of any type, by their
+    /// position: every array of structs, and every vector but those whose
+    /// table can hold the definition again through vectors, such as a tree's
+    /// children, since their default type would name itself
+    fn generic_fields(&self, index: usize) -> Vec<Option<GenericField>> {
+        let mut names = ["T", "U", "V", "W"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain((5_usize..).map(|number| format!("T{number}")))
+            .filter(|name| !self.declared.contains(name.as_str()));
+
+        self.schema
+            .definition(index)
+            .fields
+            .iter()
+            .map(|field| {
+                let item = match field.field_type {
+                    FieldType::StructArray(structure) => {
+                        self.schema.definition(structure).name.clone()
+                    }
+                    FieldType::Vector(table)
+                        if self.vector_components[table] != self.vector_components[index] =>
+                    {
+                        self.fields_type(table, "'a")
+                    }
+                    _ => return None,
+                };
+                let parameter = names.next().expect("the names never run out");
+                Some(GenericField { parameter, item })
+            })
+            .collect()
+    }
+
+    /// The documentation of a field that takes items of any type
+    fn generic_doc(&self, field_type: FieldType, generic: &GenericField) -> String {
+        let parameter = &generic.parameter;
+        match field_type {
+            FieldType::StructArray(index) => {
+                let structure = &self.schema.definition(index).name;
+                format!(
+                    "[`{structure}`]s, or items of any type `{parameter}` whose reference \
+                     converts into {}",
+                    article(structure)
+                )
+            }
+            FieldType::Vector(index) => {
+                let table = &self.schema.definition(index).name;
+                format!(
+                    "[`{table}Fields`], or items of any type `{parameter}` whose reference \
+                     converts into them"
+                )
+            }
+            _ => unreachable!("only vectors and arrays of structs take items of any type"),
+        }
+    }
+
+    /// The conversion of a reference to a struct or a table's fields into
+    /// itself, with which a vector or an array of structs holds the default
+    /// type of its items
+    fn reference_conversion(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
+        let (item, value) = if definition.is_struct() {
+            (definition.name.clone(), "*value")
+        } else {
+            (self.fields_type(index, "'_"), "value.clone()")
+        };
+
+        writer.open(format!("impl From<&Self> for {item} {{"));
+        writer.open("fn from(value: &Self) -> Self {");
+        writer.line(value);
+        writer.close("}");
+        writer.close("}");
+    }
+
+    /// The name of the fields struct of the table at `index`, with `lifetime`
+    /// if it borrows
+    fn fields_type(&self, index: usize, lifetime: &str) -> String {
+        let name = &self.schema.definition(index).name;
+        if self.borrows[index] {
+            format!("{name}Fields<{lifetime}>")
+        } else {
+            format!("{name}Fields")
+        }
+    }
+
     /// A message's `serialize()`, which sizes its fields and then writes them
     /// into bytes of that length
-    fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
+    fn serialize(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        generic: &[Option<GenericField>],
+    ) {
         let name = &definition.name;
 
         let mut docs = vec![format!("Writes {} with every field", article(name))];
@@ -541,30 +718,18 @@ impl Generator<'_> {
             call("TableSizer::new", vec![fields, layout_constant])
         };
         writer.statement(&STYLE, "let mut sizer = ", &sizer, "?;");
-        self.sizes(writer, definition, "&mut sizer");
+        self.sizes(writer, definition, generic, "&mut sizer");
         writer.blank();
         writer.line("let mut writer = sizer.writer()?;");
-        self.writes(writer, definition, "&mut writer");
+        self.writes(writer, definition, generic, "&mut writer");
         writer.blank();
         writer.line("writer.into_bytes()");
         writer.close("}");
     }
 
-    /// The alignment of a nested table, and the methods with which its
-    /// parent sizes and writes it
-    fn nested_size_and_write(&self, writer: &mut CodeWriter, index: usize) {
-        let definition = self.schema.definition(index);
-        let name = &definition.name;
-        let fields = integer(&definition.fields.len());
-        // The length of a table of scalars and structs doesn't depend on
-        // their values
-        let sized_by_values = definition.fields.iter().any(|field| {
-            !matches!(
-                field.field_type,
-                FieldType::Scalar(_) | FieldType::Struct(_)
-            )
-        });
-
+    /// The alignment of a nested table, which its parent pads it to
+    fn alignment(&self, writer: &mut CodeWriter, index: usize) {
+        let name = &self.schema.definition(index).name;
         rust_doc(
             writer,
             &[
@@ -579,7 +744,25 @@ impl Generator<'_> {
             "pub const ALIGNMENT: Alignment = Alignment::{};",
             alignment_variant(self.schema.table_alignment(index))
         ));
-        writer.blank();
+    }
+
+    /// The methods with which a nested table's parent sizes and writes it
+    fn size_and_write(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        generic: &[Option<GenericField>],
+    ) {
+        let name = &definition.name;
+        let fields = integer(&definition.fields.len());
+        // The length of a table of scalars and structs doesn't depend on
+        // their values
+        let sized_by_values = definition.fields.iter().any(|field| {
+            !matches!(
+                field.field_type,
+                FieldType::Scalar(_) | FieldType::Struct(_)
+            )
+        });
 
         rust_doc(
             writer,
@@ -593,7 +776,7 @@ impl Generator<'_> {
         }
         writer.open("pub fn size(&self, sizer: &mut TableSizer) {");
         writer.line(format!("let parent = sizer.start_table({fields});"));
-        self.sizes(writer, definition, "sizer");
+        self.sizes(writer, definition, generic, "sizer");
         writer.line("sizer.end_table(parent);");
         writer.close("}");
         writer.blank();
@@ -607,7 +790,7 @@ impl Generator<'_> {
         );
         writer.open("pub fn write(&self, writer: &mut TableWriter) {");
         writer.line(format!("let parent = writer.start_table({fields});"));
-        self.writes(writer, definition, "writer");
+        self.writes(writer, definition, generic, "writer");
         writer.line("writer.end_table(parent);");
         writer.close("}");
     }
@@ -615,8 +798,14 @@ impl Generator<'_> {
     /// The calls that add a table's fields to its sizer, in order, with
     /// `sizer`, the expression of the sizer that nested tables take. The
     /// locals don't clash with fields, whose values are `self`'s.
-    fn sizes(&self, writer: &mut CodeWriter, definition: &Definition, sizer: &str) {
-        for field in &definition.fields {
+    fn sizes(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        generic: &[Option<GenericField>],
+        sizer: &str,
+    ) {
+        for (field, generic) in definition.fields.iter().zip(generic) {
             let value = format!("self.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("add_{}", method_type(scalar)), vec![]),
@@ -658,7 +847,12 @@ impl Generator<'_> {
                 FieldType::Vector(_) => {
                     let count = text(format!("{value}.len()"));
                     writer.statement(&STYLE, "", &call("sizer.add_vector", vec![count]), ";");
-                    writer.open(format!("for fields in {value} {{"));
+                    if let Some(generic) = generic {
+                        writer.open(format!("for item in {value} {{"));
+                        writer.line(format!("let fields: {} = item.into();", generic.item));
+                    } else {
+                        writer.open(format!("for fields in {value} {{"));
+                    }
                     writer.line(format!("fields.size({sizer});"));
                     writer.close("}");
                     continue;
@@ -671,8 +865,14 @@ impl Generator<'_> {
     /// The calls that write a table's fields, each with its index, in the
     /// order that `sizes()` added them, with `table_writer`, the expression of
     /// the writer that nested tables take
-    fn writes(&self, writer: &mut CodeWriter, definition: &Definition, table_writer: &str) {
-        for (index, field) in definition.fields.iter().enumerate() {
+    fn writes(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        generic: &[Option<GenericField>],
+        table_writer: &str,
+    ) {
+        for ((index, field), generic) in definition.fields.iter().enumerate().zip(generic) {
             let value = format!("self.{}", identifier(&field.name));
             let position = text(integer(&index));
             let (method, arguments) = match field.field_type {
@@ -693,7 +893,7 @@ impl Generator<'_> {
                     "set_struct".to_owned(),
                     vec![position, text(format!("&{value}.to_bytes()"))],
                 ),
-                // The structs and their conversion to bytes, which the writer
+                // The items and their conversion to bytes, which the writer
                 // appends without collecting them first
                 FieldType::StructArray(struct_index) => {
                     let structure = &self.schema.definition(struct_index).name;
@@ -702,7 +902,7 @@ impl Generator<'_> {
                         vec![
                             position,
                             text(value),
-                            text(format!("{structure}::to_bytes")),
+                            text(format!("|item| {structure}::to_bytes(item.into())")),
                             text(format!("{structure}::ALIGNMENT")),
                         ],
                     )
@@ -732,11 +932,20 @@ impl Generator<'_> {
                         &call("writer.set_vector", vec![position, count]),
                         ";",
                     );
-                    writer.open(format!(
-                        "for (item, fields) in {value}.iter().enumerate() {{"
-                    ));
-                    writer.line(format!("fields.write({table_writer});"));
-                    writer.line("writer.set_item_end(vector, item);");
+                    if let Some(generic) = generic {
+                        writer.open(format!(
+                            "for (index, item) in {value}.iter().enumerate() {{"
+                        ));
+                        writer.line(format!("let fields: {} = item.into();", generic.item));
+                        writer.line(format!("fields.write({table_writer});"));
+                        writer.line("writer.set_item_end(vector, index);");
+                    } else {
+                        writer.open(format!(
+                            "for (item, fields) in {value}.iter().enumerate() {{"
+                        ));
+                        writer.line(format!("fields.write({table_writer});"));
+                        writer.line("writer.set_item_end(vector, item);");
+                    }
                     writer.close("}");
                     continue;
                 }
@@ -944,11 +1153,7 @@ impl Generator<'_> {
     }
 
     fn input_type(&self, field_type: FieldType) -> String {
-        let fields = |index: usize| {
-            let definition = self.schema.definition(index);
-            let generics = if self.borrows[index] { "<'a>" } else { "" };
-            format!("{}Fields{generics}", definition.name)
-        };
+        let fields = |index: usize| self.fields_type(index, "'a");
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
@@ -1007,6 +1212,33 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
     }
 
     borrows.into_iter().map(Option::unwrap_or_default).collect()
+}
+
+/// The tables that a definition's vectors hold
+fn vectors(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
+    definition
+        .fields
+        .iter()
+        .filter_map(|field| match field.field_type {
+            FieldType::Vector(index) => Some(index),
+            _ => None,
+        })
+}
+
+/// `prefix<generics>suffix`, with each of the generics on a line of its own
+/// when it doesn't fit, as rustfmt breaks them
+fn generic_list(writer: &mut CodeWriter, prefix: &str, generics: &[String], suffix: &str) {
+    let line = format!("{prefix}<{}>{suffix}", generics.join(", "));
+    if writer.fits(&STYLE, &line) {
+        writer.line(line);
+        return;
+    }
+
+    writer.open(format!("{prefix}<"));
+    for generic in generics {
+        writer.line(format!("{generic},"));
+    }
+    writer.close(format!(">{suffix}"));
 }
 
 fn nested_tables(definition: &Definition) -> impl Iterator<Item = usize> + '_ {

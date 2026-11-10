@@ -111,7 +111,7 @@ public final class TableBuilder {
         }
 
         // The constructor checked the header, as the sizer's writer() does
-        var writer = new TableWriter(new byte[offset], fields, layout, version, List.of());
+        var writer = new TableWriter(new byte[offset], offset, fields, layout, version, List.of());
         writeFields(writer);
         written = writer.bytes();
 
