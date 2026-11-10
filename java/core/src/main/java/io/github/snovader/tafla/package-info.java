@@ -8,7 +8,9 @@
  * <p>Code that knows a table's fields before it writes them, such as the code that tafla-gen
  * generates, can count the table with a {@link io.github.snovader.tafla.TableSizer} and write it
  * forward with its {@link io.github.snovader.tafla.TableWriter}, which writes the same bytes as
- * {@code TableBuilder} without recording the fields or a builder per nested table first.</p>
+ * {@code TableBuilder} without recording the fields or a builder per nested table first. The
+ * sizer's {@code writer(byte[])} writes the table into the start of bytes that the caller owns and
+ * reuses, rather than into new bytes.</p>
  *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
@@ -153,10 +155,11 @@
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and
- *     {@code writer()} throw one for a table too long for its offset type, before allocating it.
- *     {@code TableWriter} never writes outside the sized bytes: a field that would end past them
- *     throws an {@link IndexOutOfBoundsException}, and {@code bytes()} an
- *     {@code IllegalStateException} for fields that didn't fill them. It's the target of
+ *     writers throw one for a table too long for its offset type, before allocating it, and
+ *     {@code writer(byte[])} one for bytes shorter than the table, before writing any of them.
+ *     {@code TableWriter} never writes outside its bytes: a field that would end past them throws
+ *     an {@link IndexOutOfBoundsException}, and {@code bytes()} and {@code byteLength()} an
+ *     {@code IllegalStateException} for fields that didn't fill the table. It's the target of
  *     generated code, and trusts each field's index and each item end to be its own; hand-written
  *     tables use {@code TableBuilder}.</li>
  *   <li>{@code getVersion()} throws an {@code IllegalStateException} when the layout isn't
@@ -176,8 +179,10 @@
  *     within the writer's bytes: one whose slot lies past them throws an
  *     {@link IndexOutOfBoundsException}.</li>
  *   <li>Fields that differ from those the sizer counted, in their lengths or number, throw an
- *     {@code IndexOutOfBoundsException} rather than end past the bytes, and {@code bytes()} an
- *     {@code IllegalStateException} when they didn't fill them.</li>
+ *     {@code IndexOutOfBoundsException} rather than end past the writer's bytes, and
+ *     {@code bytes()} and {@code byteLength()} an {@code IllegalStateException} when they didn't
+ *     fill the table. In bytes longer than the table, given to {@code writer(byte[])}, they may
+ *     write past its end before that.</li>
  * </ul>
  *
  * <p>Rust's writer also reports an index past its table's fields, since the parent that the

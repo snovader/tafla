@@ -45,6 +45,10 @@ repository's first commits, for code built from its source before the release.
   `getVectorLength()` (`get_vector_length()` in Python) read, so that a
   reader of several items reads and checks the count once. Generated views
   of vectors in Java, TypeScript, JavaScript and Python call it.
+- Java's `TableSizer.writer(byte[])`, which writes a table into the start of
+  bytes that the caller owns and reuses rather than into new bytes, and a
+  generated `serializeInto(fields, bytes)` on Java's messages, which returns
+  the message's length.
 - TypeScript's `TableSizer.writer(bytes)`, which writes a table into the
   start of the caller's bytes rather than new ones, and a static
   `serializeInto()` on every message that tafla-gen generates in TypeScript

@@ -28,6 +28,29 @@ public final class Reserved {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Reserved} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addTable(Keywords.ALIGNMENT);
+        Keywords.size(sizer, fields.keywords());
+
+        var writer = sizer.writer(bytes);
+        writer.setTable(0, Keywords.ALIGNMENT);
+        Keywords.write(writer, fields.keywords());
+
+        return writer.byteLength();
+    }
+
     public Keywords keywords() {
         return new Keywords(buffer, buffer.rootOffset(0));
     }

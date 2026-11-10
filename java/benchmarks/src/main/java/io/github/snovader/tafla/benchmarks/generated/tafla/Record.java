@@ -32,6 +32,33 @@ public final class Record {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Record} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(4, LAYOUT);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addInt64();
+        sizer.addString(fields.name());
+
+        var writer = sizer.writer(bytes);
+        writer.setFloat64(0, fields.x());
+        writer.setFloat64(1, fields.y());
+        writer.setInt64(2, fields.id());
+        writer.setString(3, fields.name());
+
+        return writer.byteLength();
+    }
+
     public double x() {
         return buffer.getFloat64(buffer.rootOffset(0));
     }

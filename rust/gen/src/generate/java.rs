@@ -352,6 +352,56 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         article(name)
     )]));
     writer.open("public static byte[] serialize(Fields fields) {");
+    serialize_body(writer, schema, definition, layout, Output::NewBytes);
+    writer.close("}");
+    writer.blank();
+
+    writer.lines(&javadoc(&[
+        format!(
+            "Writes {} with every field into the start of",
+            article(name)
+        ),
+        "`bytes`, as `serialize()` writes it into new bytes, and returns its length. The".to_owned(),
+        "bytes needn't be zero, and those after the message keep their values. The caller owns them:"
+            .to_owned(),
+        "writing into them again, as the next message does, overwrites this one, and what a reader of"
+            .to_owned(),
+        "them reads. `TableSizer.writer(byte[])` says when reusing bytes pays off.".to_owned(),
+        String::new(),
+        "@return the number of bytes that hold the message, from the start of `bytes`".to_owned(),
+        "@throws IllegalArgumentException if `bytes` are shorter than the message, before any of"
+            .to_owned(),
+        "    them is written".to_owned(),
+    ]));
+    writer.open("public static int serializeInto(Fields fields, byte[] bytes) {");
+    serialize_body(writer, schema, definition, layout, Output::GivenBytes);
+    writer.close("}");
+
+    getters(writer, schema, definition, true);
+    writer.blank();
+    fields_record(writer, schema, definition);
+    writer.close("}");
+}
+
+/// Where a message's `serialize()` or `serializeInto()` writes it
+#[derive(Clone, Copy)]
+enum Output {
+    /// New bytes of its length, which `serialize()` returns
+    NewBytes,
+    /// The start of the caller's `bytes`, whose length `serializeInto()`
+    /// returns
+    GivenBytes,
+}
+
+/// The body of a message's `serialize()` or `serializeInto()`: the sizer, the
+/// writer into its output, the fields, and what the method returns
+fn serialize_body(
+    writer: &mut CodeWriter,
+    schema: &Schema,
+    definition: &Definition,
+    layout: Layout,
+    output: Output,
+) {
     let mut arguments = vec![text(definition.fields.len().to_string()), text("LAYOUT")];
     if layout.version.is_some() {
         arguments.push(text("FORMAT_VERSION"));
@@ -364,16 +414,16 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     );
     sizes(writer, schema, definition);
     writer.blank();
-    writer.line("var writer = sizer.writer();");
+    writer.line(match output {
+        Output::NewBytes => "var writer = sizer.writer();",
+        Output::GivenBytes => "var writer = sizer.writer(bytes);",
+    });
     writes(writer, schema, definition);
     writer.blank();
-    writer.line("return writer.bytes();");
-    writer.close("}");
-
-    getters(writer, schema, definition, true);
-    writer.blank();
-    fields_record(writer, schema, definition);
-    writer.close("}");
+    writer.line(match output {
+        Output::NewBytes => "return writer.bytes();",
+        Output::GivenBytes => "return writer.byteLength();",
+    });
 }
 
 /// The layout, from the runtime's builder of layouts

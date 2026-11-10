@@ -335,6 +335,8 @@ assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+### Writing into reused bytes
+
 In TypeScript and JavaScript, a message's `serializeInto(fields, bytes)`
 writes it into the start of the caller's bytes rather than new ones, through
 the runtime's `TableSizer.writer(bytes)`, and returns the view of them that
@@ -347,6 +349,30 @@ bytes. Bytes shorter than the table throw a `RangeError` before any of them
 is written. Bytes that start at an offset of their `ArrayBuffer` that isn't a
 multiple of 8 make readers copy the arrays that are then unaligned, as for
 any bytes received at such an offset.
+
+Java's messages also declare `serializeInto(fields, bytes)`, which writes the
+message into the start of a `byte[]` that the caller owns, rather than into
+new bytes, and returns its length. The bytes after it keep their values. It
+throws an `IllegalArgumentException` if the bytes are shorter than the
+message, before writing any of them, rather than falling back to new bytes,
+so that its result always lies in the caller's bytes. The message stays there
+until the bytes are written again, by the next `serializeInto()` too, which
+also changes what a reader of them reads. So the caller sends or copies it
+first, such as with `out.write(bytes, 0, length)` or
+`Arrays.copyOf(bytes, length)`:
+
+```java
+var bytes = new byte[1 << 20]; // as long as the longest message
+int length = Document.serializeInto(fields, bytes);
+out.write(bytes, 0, length);
+```
+
+Reusing bytes saves allocating, zeroing and collecting new ones for each
+message. In Java's comparison suite, on JDK 25, writing into reused bytes took
+34% less time than into new bytes for a document of 1.2 MB, 27% less for one
+of 1.3 KB, and 17% less for a record of 60 bytes. Where creating the fields'
+values costs more than the bytes, it saves little: 1.5% for a vector of 100
+nested tables, and nothing for an array of 100 structs.
 
 ### Items of the caller's types
 
