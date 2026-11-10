@@ -3,6 +3,8 @@ descriptions of ``tests/tables.py``, and read bytes that may be corrupted."""
 
 from collections.abc import Callable, Sequence
 from contextlib import suppress
+from struct import pack
+from typing import Any
 from unittest import TestCase
 
 from tafla import DecodeError
@@ -48,3 +50,23 @@ def assert_values_or_decode_error(read: Callable[[], object]) -> None:
     values or raise ``DecodeError``, and any other exception fails the test."""
     with suppress(DecodeError):
         read()
+
+
+def fields_or_decode_error(read: Callable[[], object]) -> object:
+    """The fields that ``read`` returns, with each float as its bits, which
+    tells NaNs and -0 apart, or the message of the ``DecodeError`` that it
+    raises. Any other exception fails the test."""
+    try:
+        return _bits(read())
+    except DecodeError as error:
+        return f"DecodeError: {error}"
+
+
+def _bits(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _bits(item) for key, item in value.items()}
+
+    if isinstance(value, float):
+        return pack("<d", value)
+
+    return value
