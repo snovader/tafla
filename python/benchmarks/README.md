@@ -291,11 +291,11 @@ with `--filter`, so that a group that a burst of load from other processes
 reached could run again, as three did. It took 30 minutes. Other
 processes kept the 1-minute load average between 1.4 and 4.4 on the 10 cores,
 with a median of 1.9. pyperf's mean was within 5% of the fastest value for 93
-of the 98 benchmarks. Four of the others serialize the large document: for
+of the 98 benchmarks. The other five serialize the large document: for
 tafla's, tafla-gen's, FlatBuffers' and msgpack's, the medians were 10% to 15%
 above the fastest values, and the means 11% to 17%, so most values were slower
-than the fastest, rather than a few of them slowed by load. msgpack's from
-lists had its mean 5% above its fastest value, and its median 6%.
+than the fastest, rather than a few of them slowed by load, and for msgpack's
+from lists, the mean was 5% above and the median 6%.
 
 Fastest value in µs per call, and its ratio to tafla's:
 
