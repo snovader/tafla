@@ -82,7 +82,7 @@
  *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
  *     The array view getters, such as {@code getFloat32ArrayView()}, return a read-only
  *     {@code FloatBuffer} or other view of the bytes instead: viewing three columns of 100,000
- *     elements took 0.04 µs and 392 bytes, against 50 µs and 1.6 MB to copy them. Alignment
+ *     elements took 0.04 µs and 392 bytes, against 49 µs and 1.6 MB to copy them. Alignment
  *     doesn't matter to Java, which reads at any offset, but the TypeScript implementation reads
  *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
@@ -94,8 +94,8 @@
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
  *     array of its own and is copied, as is a builder written already, or one whose layout has
  *     a header or another offset type than its parent's. A vector of 100 tables that each nest
- *     another took 4.6 µs to build from builders and 4.9 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 42 µs and 90 µs.</li>
+ *     another took 4.6 µs to build from builders and 4.8 µs from bytes, and a table nesting
+ *     100,000 rows of three columns took 42 µs and 89 µs.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.04 µs to write and 0.014 µs to read.</li>
  * </ul>
