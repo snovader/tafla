@@ -36,6 +36,15 @@ const MEMBERS: [&str; 8] = [
     "valueOf",
 ];
 
+/// Where a message's generated serializer writes it
+#[derive(Clone, Copy)]
+enum Output {
+    /// Into new bytes, as `serialize()` does
+    New,
+    /// Into the caller's bytes, as `serializeInto()` does
+    Into,
+}
+
 pub fn generate(
     schema: &Schema,
     stem: &str,
@@ -273,19 +282,72 @@ impl Generator<'_> {
             writer.blank();
         }
 
-        self.doc(
-            writer,
-            &[format!("Writes a `{name}` with every field")],
-            &[
-                format!("@param {{{name}Fields}} fields"),
-                "@returns {Uint8Array}".to_owned(),
-            ],
-        );
-        writer.open(format!(
-            "static serialize(fields{}){} {{",
-            self.annotation(&format!("{name}Fields")),
-            self.annotation("Uint8Array")
-        ));
+        self.serializer(writer, definition, layout, Output::New);
+        writer.blank();
+        self.serializer(writer, definition, layout, Output::Into);
+
+        self.getters(writer, definition, true);
+        writer.close("}");
+    }
+
+    /// A message's `serialize()`, which writes it into new bytes, or its
+    /// `serializeInto()`, which writes it into the caller's. Each has a body
+    /// of its own, rather than calling one that both share, so that adding
+    /// `serializeInto()` leaves `serialize()`'s code, and how V8 inlines the
+    /// writers' calls into it, as it was.
+    fn serializer(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        output: Output,
+    ) {
+        let name = &definition.name;
+        let fields = ("fields", format!("{name}Fields"));
+
+        match output {
+            Output::New => {
+                self.doc(
+                    writer,
+                    &[format!("Writes a `{name}` with every field")],
+                    &[
+                        format!("@param {{{name}Fields}} fields"),
+                        "@returns {Uint8Array}".to_owned(),
+                    ],
+                );
+                self.signature(writer, "static serialize", &[fields], "Uint8Array");
+            }
+            Output::Into => {
+                self.doc(
+                    writer,
+                    &[
+                        format!("Writes a `{name}` with every field into the start of `bytes`,"),
+                        "rather than into new bytes, and returns the view of them that holds"
+                            .to_owned(),
+                        "it. The view, and what's read from it, change when the bytes are"
+                            .to_owned(),
+                        "written again. Reusing bytes saves allocating and zeroing new ones,"
+                            .to_owned(),
+                        "which takes longest for large tables.".to_owned(),
+                    ],
+                    &[
+                        format!("@param {{{name}Fields}} fields"),
+                        "@param {Uint8Array} bytes".to_owned(),
+                        "@returns {Uint8Array}".to_owned(),
+                        "@throws {RangeError} If `bytes` are shorter than the table, before"
+                            .to_owned(),
+                        "any of them is written.".to_owned(),
+                    ],
+                );
+                self.signature(
+                    writer,
+                    "static serializeInto",
+                    &[fields, ("bytes", "Uint8Array".to_owned())],
+                    "Uint8Array",
+                );
+            }
+        }
+
         let mut arguments = vec![
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
@@ -301,13 +363,13 @@ impl Generator<'_> {
         );
         self.sizes(writer, definition);
         writer.blank();
-        writer.line("const writer = sizer.writer();");
+        writer.line(match output {
+            Output::New => "const writer = sizer.writer();",
+            Output::Into => "const writer = sizer.writer(bytes);",
+        });
         self.writes(writer, definition);
         writer.blank();
         writer.line("return writer.bytes();");
-        writer.close("}");
-
-        self.getters(writer, definition, true);
         writer.close("}");
     }
 
