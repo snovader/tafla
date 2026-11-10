@@ -26,6 +26,27 @@ public final class Triples {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Triples} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addStructArray(fields.items().length, Triple.SIZE, Triple.ALIGNMENT);
+
+        var writer = sizer.writer(bytes);
+        writer.setStructs(0, fields.items(), Triple.SIZE, Triple.ALIGNMENT, Triple::write);
+
+        return writer.byteLength();
+    }
+
     public Triple[] items() {
         var view = buffer.getStructArray(buffer.rootOffset(0), Triple.SIZE);
         var items = new Triple[view.remaining() / Triple.SIZE];

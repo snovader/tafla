@@ -106,6 +106,27 @@ fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
     );
 }
 
+/// A Python struct's protocol declares each field as a property through
+/// `_builtins.property`, which no field's name hides from the fields after it,
+/// so fields named `property` and `builtins` keep their names
+#[test]
+fn python_struct_protocols_keep_their_decorator_whatever_the_fields_names() {
+    let schema =
+        "struct Flags {\n    property: uint8;\n    builtins: uint8;\n    after: uint8;\n}\n";
+    assert_generates(
+        "python",
+        schema,
+        &[
+            "import builtins as _builtins\n",
+            "    property: int\n",
+            "    builtins: int\n",
+            "    @_builtins.property\n    def property(self) -> int: ...",
+            "    @_builtins.property\n    def builtins(self) -> int: ...",
+            "    @_builtins.property\n    def after(self) -> int: ...",
+        ],
+    );
+}
+
 /// Python's structs set their slots through setters at module level, whose
 /// names no field, declaration or other struct's setter takes, and their
 /// `__init__()` names the instance `_self` when a field takes `self`

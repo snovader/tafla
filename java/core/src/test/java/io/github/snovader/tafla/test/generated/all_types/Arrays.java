@@ -44,6 +44,45 @@ public final class Arrays {
         return writer.bytes();
     }
 
+    /**
+     * Writes an {@code Arrays} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(10, LAYOUT);
+        sizer.addInt8Array(fields.int8().length);
+        sizer.addUint8Array(fields.uint8().length);
+        sizer.addInt16Array(fields.int16().length);
+        sizer.addUint16Array(fields.uint16().length);
+        sizer.addInt32Array(fields.int32().length);
+        sizer.addUint32Array(fields.uint32().length);
+        sizer.addInt64Array(fields.int64().length);
+        sizer.addUint64Array(fields.uint64().length);
+        sizer.addFloat32Array(fields.float32().length);
+        sizer.addFloat64Array(fields.float64().length);
+
+        var writer = sizer.writer(bytes);
+        writer.setInt8Array(0, fields.int8());
+        writer.setUint8Array(1, fields.uint8());
+        writer.setInt16Array(2, fields.int16());
+        writer.setUint16Array(3, fields.uint16());
+        writer.setInt32Array(4, fields.int32());
+        writer.setUint32Array(5, fields.uint32());
+        writer.setInt64Array(6, fields.int64());
+        writer.setUint64Array(7, fields.uint64());
+        writer.setFloat32Array(8, fields.float32());
+        writer.setFloat64Array(9, fields.float64());
+
+        return writer.byteLength();
+    }
+
     public byte[] int8() {
         return buffer.getInt8Array(buffer.rootOffset(0));
     }

@@ -1,13 +1,14 @@
 import builtins
-from collections.abc import Buffer, Iterable
+from collections.abc import Buffer, Iterable, Iterator
 from struct import error as StructError
-from typing import Literal, Self, overload
+from typing import Any, Literal, Self, overload
 
 from . import structs
 from .byte_buffer import check_struct_size
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, little_endian_bytes
 from .errors import describe_int
+from .fixed_fields import FixedFields
 from .layout import (
     ALIGNMENTS,
     MAX_LENGTHS,
@@ -39,6 +40,10 @@ _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 # pack_into() raises as IndexError in Python 3.14
 _PACK_ERRORS = (StructError, OverflowError, IndexError)
 
+# What set_fields() and write_table() fall back to the setters for: what
+# struct raises, and the UnicodeEncodeError of a lone surrogate in a string
+_FIELD_ERRORS = (*_PACK_ERRORS, UnicodeEncodeError)
+
 
 class TableWriter:
     """Writes a table forward, appending each field to its bytes as it's set,
@@ -55,6 +60,12 @@ class TableWriter:
     their length, so the two write the same bytes for the same fields, and
     convert arrays, strings and structs the same way, with the same errors: a
     struct that isn't a C-contiguous buffer raises ``TypeError``.
+
+    ``set_fields()`` writes a table's leading fields whose offsets depend on no
+    value, which a ``FixedFields`` describes, in one call: scalars, structs,
+    tables nested with only those, and a string after them. ``write_table()``
+    writes a nested table of only those fields whole. Both write the bytes
+    that the setters would, and raise what they would.
 
     It's the target of the code that tafla-gen generates, whose calls follow
     from the schema, so it doesn't check them again: every field is set, in
@@ -203,6 +214,93 @@ class TableWriter:
         self.__table = parent
         # Only the root starts at 0, and only its offsets follow a header
         self.__slots = self.__header_size if parent == 0 else parent
+
+    # set_fields() and write_table() pack fields of fixed offsets in one call,
+    # and fall back to the setters for a value that the Struct can't pack, so
+    # that they raise what the setters raise, for the first field that can't
+    # be written, after writing those before it. A lone surrogate in the
+    # string falls back too, so that a scalar before it raises first. Each
+    # packs and falls back itself, rather than through a shared helper, whose
+    # call every table that they write would make.
+
+    def set_fields(
+        self, fields: FixedFields, values: tuple[Any, ...], string: str = ""
+    ) -> None:
+        """Writes the leading fields that ``fields`` describes, from their
+        ``values`` in order, with a nested table's values in place of it, and
+        ``string`` when they end with a string, as their setters would. It's
+        called first, after the constructor or ``start_table()``, in place of
+        those fields' setters, and the table's other fields follow with
+        theirs.
+
+        Generated code calls it for the messages and tables that start with
+        such fields, and ``write_table()`` for nested tables of only those.
+        Code written by hand calls the setters, or uses ``TableBuilder``."""
+        pack = fields._packers[self.__size]
+        try:
+            if fields._string:
+                encoded = string.encode()
+                packed = pack(*values, len(encoded))
+            else:
+                encoded = b""
+                packed = pack(*values)
+        except _FIELD_ERRORS:
+            self.__set_each(fields, iter(values), string)
+            return
+
+        # The packed fields start with the table's slots, which the
+        # constructor or start_table() wrote as zeros
+        data = self.__data
+        data[self.__slots :] = packed
+        data += encoded
+
+    def write_table(
+        self, fields: FixedFields, values: tuple[Any, ...], string: str = ""
+    ) -> None:
+        """Writes a nested table whose fields ``fields`` describes whole, from
+        their ``values`` as ``set_fields()`` takes them, in place of
+        ``start_table()``, their setters and ``end_table()``: after its
+        parent's ``set_table()``, or as a vector item before its
+        ``set_item_end()``."""
+        pack = fields._packers[self.__size]
+        try:
+            if fields._string:
+                encoded = string.encode()
+                packed = pack(*values, len(encoded))
+            else:
+                encoded = b""
+                packed = pack(*values)
+        except _FIELD_ERRORS:
+            parent = self.start_table(fields._fields)
+            self.__set_each(fields, iter(values), string)
+            self.end_table(parent)
+            return
+
+        data = self.__data
+        data += packed
+        data += encoded
+
+    def __set_each(
+        self, fields: FixedFields, values: Iterator[Any], string: str
+    ) -> None:
+        """Writes the fields that ``fields`` describes with their setters, from
+        ``values``, as they're written without ``FixedFields``"""
+        for index, format in enumerate(fields._formats):
+            if isinstance(format, FixedFields):
+                # A table of fixed-size fields has no arrays to align
+                self.set_table(index, 1)
+                parent = self.start_table(format._fields)
+                self.__set_each(format, values, "")
+                self.end_table(parent)
+            elif format == "?":
+                self.set_uint8(index, 1 if next(values) else 0)
+            elif format in _SETTERS:
+                _SETTERS[format](self, index, next(values))
+            else:
+                self.set_struct(index, next(values))
+
+        if fields._string:
+            self.set_string(len(fields._formats), string)
 
     # The scalar setters are written out, with the offset's write, since a
     # shared helper's call made writing a Point a fifth slower. struct raises
@@ -531,6 +629,22 @@ class TableWriter:
             f"The table's fields make it {length} bytes, "
             f"too long for {offset_type} offsets"
         )
+
+
+# The setter of each scalar's struct format code, which FixedFields describes
+# a field by
+_SETTERS = {
+    "b": TableWriter.set_int8,
+    "B": TableWriter.set_uint8,
+    "h": TableWriter.set_int16,
+    "H": TableWriter.set_uint16,
+    "i": TableWriter.set_int32,
+    "I": TableWriter.set_uint32,
+    "q": TableWriter.set_int64,
+    "Q": TableWriter.set_uint64,
+    "f": TableWriter.set_float32,
+    "d": TableWriter.set_float64,
+}
 
 
 def struct_count(byte_length: int, size: int) -> int:

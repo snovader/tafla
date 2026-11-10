@@ -46,6 +46,47 @@ public final class Scalars {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Scalars} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(11, LAYOUT);
+        sizer.addInt8();
+        sizer.addUint8();
+        sizer.addInt16();
+        sizer.addUint16();
+        sizer.addInt32();
+        sizer.addUint32();
+        sizer.addInt64();
+        sizer.addUint64();
+        sizer.addFloat32();
+        sizer.addFloat64();
+        sizer.addUint8();
+
+        var writer = sizer.writer(bytes);
+        writer.setInt8(0, fields.int8());
+        writer.setUint8(1, fields.uint8());
+        writer.setInt16(2, fields.int16());
+        writer.setUint16(3, fields.uint16());
+        writer.setInt32(4, fields.int32());
+        writer.setUint32(5, fields.uint32());
+        writer.setInt64(6, fields.int64());
+        writer.setUint64(7, fields.uint64());
+        writer.setFloat32(8, fields.float32());
+        writer.setFloat64(9, fields.float64());
+        writer.setUint8(10, (short) (fields.bool() ? 1 : 0));
+
+        return writer.byteLength();
+    }
+
     public byte int8() {
         return buffer.getInt8(buffer.rootOffset(0));
     }

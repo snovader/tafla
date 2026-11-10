@@ -114,10 +114,16 @@ final class TableReader {
             assertEquals(items.size(), offsets.length, "The vector doesn't hold its items");
         }
 
-        // Finding each item from its ends alone finds the same item as reading every item
+        // Finding each item from its ends alone finds the same item as reading every item, whether
+        // the count is read again or given
         assertEquals(offsets.length, buffer.getVectorLength(position), "The vector's length");
         for (int index = 0; index < offsets.length; index++) {
             assertEquals(offsets[index], buffer.getVectorOffset(position, index), "Item " + index + " from its ends");
+            assertEquals(
+                offsets[index],
+                buffer.getVectorItemOffset(position, offsets.length, index),
+                "Item " + index + " from its ends and the count"
+            );
         }
 
         var read = new ArrayList<NestedTable>(items.size());

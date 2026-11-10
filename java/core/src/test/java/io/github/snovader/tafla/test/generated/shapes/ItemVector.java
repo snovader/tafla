@@ -39,6 +39,6 @@ public final class ItemVector extends AbstractList<Item> implements RandomAccess
      */
     @Override
     public Item get(int index) {
-        return new Item(buffer, buffer.getVectorOffset(position, index));
+        return new Item(buffer, buffer.getVectorItemOffset(position, size, index));
     }
 }

@@ -189,6 +189,9 @@ the schema, so it doesn't check them again. Its contract:
 
 - Every field is set, in index order, each once, and each vector item is
   followed by its ``set_item_end()``.
+- ``set_fields()`` and ``write_table()`` take the ``FixedFields`` of the
+  table's leading fields, and those fields' values in order, with a nested
+  table's in place of it.
 - A field index outside its table, or an item outside its vector, writes an
   offset or item end over another slot or field, so the table's bytes are
   undefined. Every write still stays within the writer's bytes: one whose slot
@@ -209,6 +212,7 @@ Hand-written tables use ``TableBuilder``, which checks every field.
 from .byte_buffer import ByteBuffer
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
+from .fixed_fields import FixedFields
 from .layout import TableLayout
 from .table_builder import TableBuilder
 from .table_writer import TableWriter
@@ -217,6 +221,7 @@ from .types import OffsetSize, OffsetType
 __all__ = [
     "ByteBuffer",
     "DecodeError",
+    "FixedFields",
     "OffsetSize",
     "OffsetType",
     "TableBuilder",

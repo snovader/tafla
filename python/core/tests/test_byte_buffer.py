@@ -4,6 +4,8 @@ import sys
 import tempfile
 import unittest
 from array import array
+from collections.abc import Callable
+from functools import partial
 from struct import calcsize, iter_unpack, pack, unpack
 from unittest.mock import patch
 
@@ -119,6 +121,10 @@ class TestByteBuffer(unittest.TestCase):
             [buffer.get_vector_offset(vector, index) for index in range(3)],
             [20, 21, 21],
         )
+        self.assertEqual(
+            [buffer.get_vector_item_offset(vector, 3, index) for index in range(3)],
+            [20, 21, 21],
+        )
         self.assertEqual(buffer.get_vector_length(vector), 3)
         self.assertEqual(
             [bytes(item) for item in buffer.get_vector(vector)],
@@ -189,6 +195,35 @@ class TestByteBuffer(unittest.TestCase):
                 ),
             ):
                 buffer.get_vector_offset(buffer.root_offset(0), index)
+            with (
+                self.subTest(index=described, count="given"),
+                self.assertRaisesRegex(
+                    IndexError, f"Item {described} is outside the vector of 2 at 4"
+                ),
+            ):
+                buffer.get_vector_item_offset(buffer.root_offset(0), 2, index)
+
+    @given(binary(max_size=48), integers(-4, 52))
+    def test_finds_each_item_from_the_count_given_as_get_vector_offset_finds_it(
+        self, data: bytes, position: int
+    ) -> None:
+        """With the count that get_vector_length() returns, each item's
+        position or DecodeError is get_vector_offset()'s, for any bytes"""
+        buffer = ByteBuffer(data)
+        try:
+            count = buffer.get_vector_length(position)
+        except DecodeError:
+            return
+
+        for index in range(count):
+            with self.subTest(index=index):
+                by_count = partial(buffer.get_vector_item_offset, position, count)
+                self.assertEqual(
+                    _position_or_error(partial(by_count, index)),
+                    _position_or_error(
+                        partial(buffer.get_vector_offset, position, index)
+                    ),
+                )
 
     def test_rejects_a_vector_count_that_the_bytes_cant_hold_before_the_index(
         self,
@@ -199,6 +234,15 @@ class TestByteBuffer(unittest.TestCase):
         for index in [0, 3]:
             with self.subTest(index=index), self.assertRaises(DecodeError):
                 buffer.get_vector_offset(0, index)
+
+
+def _position_or_error(find: Callable[[], int]) -> int | str:
+    """The position that ``find`` returns, or the message of the
+    ``DecodeError`` that it raises"""
+    try:
+        return find()
+    except DecodeError as error:
+        return str(error)
 
 
 if __name__ == "__main__":

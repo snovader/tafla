@@ -20,7 +20,12 @@ describe('DecodeError', () => {
         ['getString()', buffer => buffer.getString(4), '13 bytes at 8 of 8'],
         ['getStructArray()', buffer => buffer.getStructArray(4, 2), '26 bytes at 8 of 8'],
         ['getVector()', buffer => buffer.getVector(0), '5 bytes at 8 of 8'],
-        ['getVectorOffset()', buffer => buffer.getVectorOffset(0, 0), '5 bytes at 8 of 8']
+        ['getVectorOffset()', buffer => buffer.getVectorOffset(0, 0), '5 bytes at 8 of 8'],
+        [
+            'getVectorItemOffset()',
+            buffer => buffer.getVectorItemOffset(0, 1, 0),
+            '5 bytes at 8 of 8'
+        ]
     ])(
         'should give the position and length of a read outside the slice from %s, and the bytes available',
         (_, read, range) => {
@@ -43,6 +48,7 @@ describe('DecodeError', () => {
             new DecodeError('The vector item at 12 ends before it starts, at 11')
         );
         expect(() => new ByteBuffer(bytes).getVectorOffset(0, 0)).toThrow(DecodeError);
+        expect(() => new ByteBuffer(bytes).getVectorItemOffset(0, 2, 0)).toThrow(DecodeError);
     });
 
     it.each([
@@ -86,6 +92,7 @@ function gettersOf(reader: ByteBuffer): Record<string, () => unknown> {
     const [scalar, array, string, struct, structArray, vector] = [0, 1, 2, 3, 4, 5].map(index =>
         table.rootOffset(index)
     );
+    const count = table.getVectorLength(vector);
 
     return {
         'rootOffset()': () => reader.rootOffset(0),
@@ -100,6 +107,7 @@ function gettersOf(reader: ByteBuffer): Record<string, () => unknown> {
         'getStructArray()': () => reader.getStructArray(structArray, 2),
         'getVectorLength()': () => reader.getVectorLength(vector),
         'getVectorOffset()': () => reader.getVectorOffset(vector, 1),
+        'getVectorItemOffset()': () => reader.getVectorItemOffset(vector, count, 1),
         'getVectorOffsets()': () => reader.getVectorOffsets(vector),
         'getVector()': () => reader.getVector(vector)
     };

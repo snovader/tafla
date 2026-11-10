@@ -19,6 +19,7 @@ from tests.generated.all_types.all_types import (
     Arrays,
     ArraysFields,
     Documented,
+    DocumentedFields,
     Inner,
     InnerFields,
     Keywords,
@@ -31,11 +32,13 @@ from tests.generated.all_types.all_types import (
     Path,
     PathFields,
     Point,
+    PointFields,
     Reserved,
     ReservedFields,
     Scalars,
     ScalarsFields,
     Segment,
+    SegmentFields,
     Structs,
     StructsFields,
     Tree,
@@ -335,7 +338,7 @@ def packed_bytes(packed: Packed) -> bytes:
     return struct_bytes(describe_packed(packed))
 
 
-def describe_documented(documented: Documented) -> list[Description]:
+def describe_documented(documented: DocumentedFields) -> list[Description]:
     """The fields of a ``Documented``, in the order that they lie in its
     bytes"""
     return [
@@ -351,11 +354,11 @@ def documented_bytes(documented: Documented) -> bytes:
     return struct_bytes(describe_documented(documented))
 
 
-def describe_point(point: Point) -> list[Description]:
+def describe_point(point: PointFields) -> list[Description]:
     return [scalar("float32", point.x), scalar("float32", point.y)]
 
 
-def describe_segment(segment: Segment) -> list[Description]:
+def describe_segment(segment: SegmentFields) -> list[Description]:
     """The fields of a ``Segment``: those of its points, one after the
     other"""
     return [*describe_point(segment.start), *describe_point(segment.end)]

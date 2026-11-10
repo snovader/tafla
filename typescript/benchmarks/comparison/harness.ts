@@ -41,6 +41,11 @@ const SAMPLE_BYTES = fewestHeapBytes(createTimer(), () => undefined, 1, 20);
  * its own timer loop, compiled from a unique source, so that its call site
  * and type feedback aren't shared with the others.
  *
+ * A round of a variant repeats its call for about `sampleTime`. The
+ * repetitions are counted from the variant's first calls, and then again from
+ * its fastest warm-up round, since the code that V8 optimizes during the
+ * warm-up runs several times as fast as the first calls.
+ *
  * Then it counts the bytes that each variant's calls allocate on V8's heap,
  * with the same timer loops, in samples apart from the timed rounds.
  */
@@ -49,19 +54,14 @@ export function measure(
     { rounds, warmupRounds, sampleTime }: MeasureOptions
 ): Measurement[] {
     const timers = variants.map(createTimer);
-    const repetitions = variants.map(variant => calibrate(variant, sampleTime));
-    const best = variants.map(() => Number.POSITIVE_INFINITY);
+    let repetitions = variants.map(variant => calibrate(variant, sampleTime));
 
-    for (let round = -warmupRounds; round < rounds; round++) {
-        for (let j = 0; j < variants.length; j++) {
-            const i = round % 2 === 0 ? j : variants.length - 1 - j;
-            const time = timers[i](variants[i].run, repetitions[i]);
-
-            if (round >= 0) {
-                best[i] = Math.min(best[i], time);
-            }
-        }
+    if (warmupRounds > 0) {
+        const warm = fastestRounds(variants, timers, repetitions, warmupRounds);
+        repetitions = warm.map(time => repetitionsOf(time, sampleTime));
     }
+
+    const best = fastestRounds(variants, timers, repetitions, rounds);
 
     return variants.map(({ name, run }, i) => {
         const bytes = fewestHeapBytes(timers[i], run, repetitions[i]);
@@ -72,6 +72,30 @@ export function measure(
             heapBytes: (bytes - SAMPLE_BYTES) / repetitions[i]
         };
     });
+}
+
+/**
+ * Runs `rounds` rounds of the variants, each once a round, in alternating
+ * order, and returns each one's fastest call, in microseconds
+ */
+function fastestRounds(
+    variants: Variant[],
+    timers: Timer[],
+    repetitions: number[],
+    rounds: number
+): number[] {
+    const best = variants.map(() => Number.POSITIVE_INFINITY);
+
+    for (let round = 0; round < rounds; round++) {
+        for (let j = 0; j < variants.length; j++) {
+            const i = round % 2 === 0 ? j : variants.length - 1 - j;
+            const time = timers[i](variants[i].run, repetitions[i]);
+
+            best[i] = Math.min(best[i], time);
+        }
+    }
+
+    return best;
 }
 
 /**
@@ -128,7 +152,10 @@ function createTimer(): Timer {
     ) as Timer;
 }
 
-/** The repetitions that make one sample take about `sampleTime` */
+/**
+ * The repetitions that make one sample of the variant's first calls take
+ * about `sampleTime`
+ */
 function calibrate({ run }: Variant, sampleTime: number): number {
     let repetitions = 1;
     for (;;) {
@@ -139,12 +166,20 @@ function calibrate({ run }: Variant, sampleTime: number): number {
         const elapsed = performance.now() - start;
 
         if (elapsed >= sampleTime / 4 || repetitions >= 1 << 20) {
-            return Math.max(
-                1,
-                Math.round((repetitions * sampleTime) / Math.max(elapsed, 1e-3))
-            );
+            return repetitionsOf((elapsed / repetitions) * 1000, sampleTime);
         }
 
         repetitions *= 2;
     }
+}
+
+/**
+ * The repetitions of a call of `microseconds` that take about `sampleTime`,
+ * in milliseconds
+ */
+function repetitionsOf(microseconds: number, sampleTime: number): number {
+    return Math.max(
+        1,
+        Math.round((sampleTime * 1000) / Math.max(microseconds, 1e-6))
+    );
 }

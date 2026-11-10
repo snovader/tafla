@@ -45,6 +45,43 @@ public final class Structs {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Structs} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(5, LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(fields.documented().length, Documented.SIZE, Documented.ALIGNMENT);
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(fields.segments().length, Segment.SIZE, Segment.ALIGNMENT);
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path());
+
+        var writer = sizer.writer(bytes);
+        writer.setStruct(0, fields.packed().serialize());
+        writer.setStructs(
+            1,
+            fields.documented(),
+            Documented.SIZE,
+            Documented.ALIGNMENT,
+            Documented::write
+        );
+        writer.setStruct(2, fields.segment().serialize());
+        writer.setStructs(3, fields.segments(), Segment.SIZE, Segment.ALIGNMENT, Segment::write);
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path());
+
+        return writer.byteLength();
+    }
+
     /** A struct of every scalar type */
     public Packed packed() {
         return Packed.read(buffer.bytes(), buffer.rootOffset(0));

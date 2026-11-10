@@ -34,6 +34,33 @@ export class Uint8Offsets {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint8Offsets` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint8OffsetsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint8Offsets.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -84,6 +111,33 @@ export class Uint8OffsetsSized {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint8OffsetsSized` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint8OffsetsSizedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint8OffsetsSized.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);
@@ -179,6 +233,37 @@ export class Uint8OffsetsVersioned {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint8OffsetsVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint8OffsetsVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint8OffsetsVersioned.#LAYOUT,
+            Uint8OffsetsVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);
@@ -285,6 +370,37 @@ export class Uint8OffsetsSizedVersioned {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint8OffsetsSizedVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint8OffsetsSizedVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint8OffsetsSizedVersioned.#LAYOUT,
+            Uint8OffsetsSizedVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -342,6 +458,33 @@ export class Uint16Offsets {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint16Offsets` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint16OffsetsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint16Offsets.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -392,6 +535,33 @@ export class Uint16OffsetsSized {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint16OffsetsSized` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint16OffsetsSizedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint16OffsetsSized.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);
@@ -487,6 +657,37 @@ export class Uint16OffsetsVersioned {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint16OffsetsVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint16OffsetsVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint16OffsetsVersioned.#LAYOUT,
+            Uint16OffsetsVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);
@@ -593,6 +794,37 @@ export class Uint16OffsetsSizedVersioned {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint16OffsetsSizedVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint16OffsetsSizedVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint16OffsetsSizedVersioned.#LAYOUT,
+            Uint16OffsetsSizedVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -650,6 +882,33 @@ export class Uint32Offsets {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint32Offsets` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint32OffsetsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint32Offsets.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -700,6 +959,33 @@ export class Uint32OffsetsSized {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint32OffsetsSized` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint32OffsetsSizedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Uint32OffsetsSized.#LAYOUT);
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);
@@ -799,6 +1085,37 @@ export class Uint32OffsetsVersioned {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Uint32OffsetsVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint32OffsetsVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint32OffsetsVersioned.#LAYOUT,
+            Uint32OffsetsVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     id() {
         return this.#buffer.getUint32(this.#buffer.rootOffset(0));
@@ -887,6 +1204,37 @@ export class Uint32OffsetsSizedVersioned {
         sizer.addUint16Array(fields.values.length);
 
         const writer = sizer.writer();
+        writer.setUint32(0, fields.id);
+        writer.setString(1, fields.name);
+        writer.setUint16Array(2, fields.values);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Uint32OffsetsSizedVersioned` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {Uint32OffsetsSizedVersionedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            3,
+            Uint32OffsetsSizedVersioned.#LAYOUT,
+            Uint32OffsetsSizedVersioned.FORMAT_VERSION
+        );
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addUint16Array(fields.values.length);
+
+        const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setString(1, fields.name);
         writer.setUint16Array(2, fields.values);

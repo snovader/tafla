@@ -1,7 +1,13 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { DecodeError } from 'tafla';
-import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
+import {
+    BYTE_OFFSETS,
+    CORRUPTIONS,
+    corruptionOf,
+    SLICES,
+    sliceOf
+} from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
@@ -12,6 +18,7 @@ import {
     describeItemList,
     describePoint,
     ITEM_LIST_FIELDS,
+    type ItemList,
     POINT_FIELDS,
     readDocument,
     readItem,
@@ -88,6 +95,61 @@ describe.each(SHAPES)('%s', (_, shapes) => {
         );
     });
 
+    describe('bytes of the caller', () => {
+        it.prop([DOCUMENT_FIELDS, fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+            'should write a Document into the start of longer bytes of any content, as serialize() writes it, and return the view of them that holds it',
+            (fields, extra, fill) => {
+                const expected = shapes.Document.serialize(fields);
+                const bytes = new Uint8Array(expected.length + extra).fill(fill);
+                const written = shapes.Document.serializeInto(fields, bytes);
+
+                expect(written).toStrictEqual(expected);
+                expect(written.buffer).toBe(bytes.buffer);
+                expect(written.byteOffset).toBe(bytes.byteOffset);
+                expect(bytes.subarray(expected.length)).toStrictEqual(
+                    new Uint8Array(extra).fill(fill)
+                );
+            }
+        );
+
+        it.prop([ITEM_LIST_FIELDS, fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+            'should write an ItemList into the start of longer bytes of any content, as serialize() writes it',
+            (fields, extra, fill) => {
+                const expected = shapes.ItemList.serialize(fields);
+                const bytes = new Uint8Array(expected.length + extra).fill(fill);
+
+                expect(shapes.ItemList.serializeInto(fields, bytes)).toStrictEqual(expected);
+            }
+        );
+
+        it.prop([DOCUMENT_FIELDS, fc.nat(), fc.nat({ max: 0xff })])(
+            'should throw RangeError for bytes shorter than a Document, and write none of them',
+            (fields, cut, fill) => {
+                const length = shapes.Document.serialize(fields).length;
+                const bytes = new Uint8Array(length - 1 - (cut % length)).fill(fill);
+
+                expect(() => shapes.Document.serializeInto(fields, bytes)).toThrow(
+                    new RangeError(
+                        `The table is ${length} bytes, longer than the ${bytes.length} bytes given`
+                    )
+                );
+                expect(bytes).toStrictEqual(new Uint8Array(bytes.length).fill(fill));
+            }
+        );
+
+        it('should return a view that the next serializeInto() into the same bytes overwrites', () => {
+            const first = { x: 1.5, y: 2.5, id: 1n, name: 'a' };
+            const second = { x: 3.5, y: 4.5, id: 2n, name: 'b' };
+            const bytes = new Uint8Array(64);
+
+            const written = shapes.Point.serializeInto(first, bytes);
+            expect(readPoint(new shapes.Point(written))).toEqual(first);
+
+            shapes.Point.serializeInto(second, bytes);
+            expect(readPoint(new shapes.Point(written))).toEqual(second);
+        });
+    });
+
     describe('versions', () => {
         it.prop([DOCUMENT_FIELDS, VERSIONS])(
             "should read a Document's version from its bytes, of any version, to choose its reader",
@@ -154,6 +216,23 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 expectValuesOrDecodeError(() => readPoint(new shapes.Point(bytes)));
                 expectValuesOrDecodeError(() => readDocument(new shapes.Document(bytes)));
                 expectValuesOrDecodeError(() => readItemList(new shapes.ItemList(bytes)));
+            }
+        );
+
+        it.prop([ITEM_LIST_FIELDS, CORRUPTIONS, BYTE_OFFSETS])(
+            'should read each Item of a corrupted ItemList through its view as values or throw DecodeError, within its bytes',
+            (fields, corruption, byteOffset) => {
+                const bytes = shapes.ItemList.serialize(fields);
+                const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
+
+                expectViewReadsWithin(bytes => new shapes.ItemList(bytes), corrupted, byteOffset);
+            }
+        );
+
+        it.prop([fc.uint8Array({ maxLength: 64 }), BYTE_OFFSETS])(
+            'should read each Item of arbitrary bytes through an ItemList view as values or throw DecodeError, within the bytes',
+            (bytes, byteOffset) => {
+                expectViewReadsWithin(bytes => new shapes.ItemList(bytes), bytes, byteOffset);
             }
         );
     });
@@ -311,3 +390,46 @@ describe.each(SHAPES)('%s', (_, shapes) => {
         );
     });
 });
+
+/**
+ * Expects each Item of an ItemList's view, read with `get(i)` from slices of
+ * two buffers that hold different bytes around the ItemList, to be the same
+ * fields or DecodeErrors, which a read outside the bytes would make differ
+ */
+function expectViewReadsWithin(
+    read: (bytes: Uint8Array) => ItemList,
+    bytes: Uint8Array,
+    byteOffset: number
+): void {
+    expect(readItemsView(read(sliceOf(bytes, { byteOffset, fill: 0x00 })))).toStrictEqual(
+        readItemsView(read(sliceOf(bytes, { byteOffset, fill: 0xff })))
+    );
+}
+
+/**
+ * Reads each Item of an ItemList through its view, one `get(i)` at a time,
+ * and returns its fields or the DecodeError that reading it threw, or the
+ * DecodeError of the view itself
+ */
+function readItemsView(itemList: ItemList): unknown[] {
+    let view: ReturnType<ItemList['itemsView']>;
+    try {
+        view = itemList.itemsView();
+    } catch (error) {
+        expect(error).toBeInstanceOf(DecodeError);
+        return [error];
+    }
+
+    const items: unknown[] = [];
+    for (let i = 0; i < view.length(); i++) {
+        try {
+            items.push(readItem(view.get(i)));
+        } catch (error) {
+            // Neither a RangeError, which DecodeError extends, nor any other error
+            expect(error).toBeInstanceOf(DecodeError);
+            items.push(error);
+        }
+    }
+
+    return items;
+}

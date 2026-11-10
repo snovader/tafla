@@ -204,7 +204,7 @@ fn write_structs<const N: usize>(
     };
 
     (
-        write(&|writer| writer.set_structs(1, structs, |bytes| bytes, alignment)),
+        write(&|writer| writer.set_structs(1, structs, |bytes| *bytes, alignment)),
         write(&|writer| writer.set_struct_array(1, structs.as_flattened(), N, alignment)),
     )
 }
@@ -348,7 +348,8 @@ impl Call {
                 size,
             } => writer.set_struct_array(index, &vec![1; length], size, Alignment::Two),
             Self::Structs { index, count } => {
-                writer.set_structs(index, &vec![-1; count], i16::to_le_bytes, Alignment::Two);
+                let to_bytes = |value: &i16| value.to_le_bytes();
+                writer.set_structs(index, &vec![-1; count], to_bytes, Alignment::Two);
             }
             Self::Table { index, alignment } => writer.set_table(index, alignment),
             Self::StartTable { fields } => parents.push(writer.start_table(fields)),
@@ -665,13 +666,28 @@ fn test_fails_for_structs_of_0_bytes_as_for_their_bytes() {
     let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
     sizer.add_struct_array(2, 2, Alignment::One);
     let mut from_structs = sizer.writer().unwrap();
-    from_structs.set_structs(0, &[(), ()], |()| [], Alignment::One);
+    from_structs.set_structs(0, &[(), ()], |&()| [], Alignment::One);
     let mut from_bytes = sizer.writer().unwrap();
     from_bytes.set_struct_array(0, &[], 0, Alignment::One);
 
     let error = BuildError::NotWholeStructs { length: 0, size: 0 };
     assert_eq!(from_structs.into_bytes(), Err(error));
     assert_eq!(from_bytes.into_bytes(), Err(error));
+}
+
+/// `set_structs()` takes each item by reference, so the items can be any
+/// type, such as one that holds a string, that converts into the structs
+#[test]
+fn test_writes_structs_from_items_that_arent_copy() {
+    let items = [(String::from("a"), 1_u16), (String::from("b"), 2)];
+    let mut sizer = TableSizer::new(1, TableLayout::DEFAULT).unwrap();
+    sizer.add_struct_array(items.len(), 2, Alignment::Two);
+    let mut from_items = sizer.writer().unwrap();
+    from_items.set_structs(0, &items, |(_, value)| value.to_le_bytes(), Alignment::Two);
+    let mut from_bytes = sizer.writer().unwrap();
+    from_bytes.set_struct_array(0, &[1, 0, 2, 0], 2, Alignment::Two);
+
+    assert_eq!(from_items.into_bytes(), from_bytes.into_bytes());
 }
 
 #[test]

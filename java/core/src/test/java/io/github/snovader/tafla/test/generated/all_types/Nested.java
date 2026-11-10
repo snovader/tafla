@@ -42,6 +42,41 @@ public final class Nested {
         return writer.bytes();
     }
 
+    /**
+     * Writes a {@code Nested} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(3, LAYOUT);
+        sizer.addString(fields.label());
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer());
+        sizer.addVector(fields.trees().size());
+        for (var item : fields.trees()) {
+            Tree.size(sizer, item);
+        }
+
+        var writer = sizer.writer(bytes);
+        writer.setString(0, fields.label());
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer());
+        var vector2 = writer.setVector(2, fields.trees().size());
+        var written2 = 0;
+        for (var item : fields.trees()) {
+            Tree.write(writer, item);
+            writer.setItemEnd(vector2, written2++);
+        }
+
+        return writer.byteLength();
+    }
+
     /** A string beside the tables */
     public String label() {
         return buffer.getString(buffer.rootOffset(0));

@@ -12,6 +12,7 @@ import java.util.List;
 
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
 import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
+import static io.github.snovader.tafla.test.GivenBytesAssertions.*;
 import static io.github.snovader.tafla.test.ShapesTables.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -67,6 +68,36 @@ public class ShapesTest {
         var byHand = Tables.build(describeItemList(fields)).bytes();
 
         assertArrayEquals(byHand, ItemList.serialize(fields), () -> describeItemList(fields).toString());
+    }
+
+    // Writing into bytes that the caller gives, which may hold anything
+
+    @Property
+    void every_message_written_into_longer_bytes_holds_at_their_start_what_serialize_writes(
+        @ForAll("points") Point.Fields point,
+        @ForAll("documents") Document.Fields document,
+        @ForAll("itemLists") ItemList.Fields itemList,
+        @ForAll @IntRange(max = 16) int extra,
+        @ForAll byte fill
+    ) {
+        assertWrittenInto(Point.serialize(point), bytes -> Point.serializeInto(point, bytes), extra, fill);
+        assertWrittenInto(Document.serialize(document), bytes -> Document.serializeInto(document, bytes), extra, fill);
+        assertWrittenInto(ItemList.serialize(itemList), bytes -> ItemList.serializeInto(itemList, bytes), extra, fill);
+    }
+
+    @Property
+    void bytes_shorter_than_a_message_throw_IllegalArgumentException_before_any_is_written(
+        @ForAll("documents") Document.Fields document,
+        @ForAll("itemLists") ItemList.Fields itemList,
+        @ForAll @IntRange(min = 1, max = 16) int shorter,
+        @ForAll byte fill
+    ) {
+        var itemListLength = ItemList.serialize(itemList).length;
+        Assume.that(shorter <= itemListLength);
+
+        // A document's header and offsets alone take 24 bytes
+        assertTooShort(Document.serialize(document).length, bytes -> Document.serializeInto(document, bytes), shorter, fill);
+        assertTooShort(itemListLength, bytes -> ItemList.serializeInto(itemList, bytes), shorter, fill);
     }
 
     // A LinkedList, without random access, is what these tests write from

@@ -28,11 +28,11 @@ use crate::workloads::{
 /// does.
 ///
 /// The generated code writes from structs of each table's fields, which
-/// borrow strings and arrays, and from slices of the items' fields and of the
-/// structs, which `serialize()` collects from the workloads' items in each
-/// call, as the prost codec collects its messages. The generated reader of
-/// a vector of tables collects the items' readers, which `deserialize()` then
-/// reads into the workload's items.
+/// borrow strings and arrays. Its vector and array of structs take the
+/// workload's items as they are, as an application writes its own types,
+/// and convert each into the item's fields or struct as they write it. The
+/// generated reader of a vector of tables collects the items' readers, which
+/// `deserialize()` then reads into the workload's items.
 #[derive(Clone, Copy, Debug)]
 pub struct TaflaGen;
 
@@ -114,9 +114,10 @@ impl Workload<ListShape> for TaflaGen {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        let items: Vec<ItemFields> = input.items.iter().map(item_fields).collect();
-
-        Ok(ItemListFields { items: &items }.serialize()?)
+        Ok(ItemListFields {
+            items: &input.items,
+        }
+        .serialize()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -140,9 +141,10 @@ impl Workload<StructsShape> for TaflaGen {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        let triples: Vec<Triple> = input.items.iter().map(triple).collect();
-
-        Ok(TriplesFields { items: &triples }.serialize()?)
+        Ok(TriplesFields {
+            items: &input.items,
+        }
+        .serialize()?)
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
@@ -266,21 +268,27 @@ fn sum_triple(triple: Triple) -> f64 {
     sum_item(triple.value, triple.first, triple.second)
 }
 
-const fn item_fields(item: &Item) -> ItemFields {
-    ItemFields {
-        value: item.value,
-        pair: PairFields {
-            first: item.first,
-            second: item.second,
-        },
+/// A workload's item, as the vector's generated fields hold it
+impl From<&Item> for ItemFields {
+    fn from(item: &Item) -> Self {
+        Self {
+            value: item.value,
+            pair: PairFields {
+                first: item.first,
+                second: item.second,
+            },
+        }
     }
 }
 
-const fn triple(item: &Item) -> Triple {
-    Triple {
-        value: item.value,
-        first: item.first,
-        second: item.second,
+/// A workload's item, as the array's generated struct holds it
+impl From<&Item> for Triple {
+    fn from(item: &Item) -> Self {
+        Self {
+            value: item.value,
+            first: item.first,
+            second: item.second,
+        }
     }
 }
 

@@ -40,6 +40,30 @@ repository's first commits, for code built from its source before the release.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
+- Java's and TypeScript's `ByteBuffer.getVectorItemOffset()`, and Python's
+  `get_vector_item_offset()`, which find a vector item from the count that
+  `getVectorLength()` (`get_vector_length()` in Python) read, so that a
+  reader of several items reads and checks the count once. Generated views
+  of vectors in Java, TypeScript, JavaScript and Python call it.
+- Java's `TableSizer.writer(byte[])`, which writes a table into the start of
+  bytes that the caller owns and reuses rather than into new bytes, and a
+  generated `serializeInto(fields, bytes)` on Java's messages, which returns
+  the message's length.
+- TypeScript's `TableSizer.writer(bytes)`, which writes a table into the
+  start of the caller's bytes rather than new ones, and a static
+  `serializeInto()` on every message that tafla-gen generates in TypeScript
+  and JavaScript, which writes the message so and returns the view of the
+  bytes that holds it, saving the allocation of new bytes for each table.
+- Generated Python declares `<Struct>Fields` beside each struct, a protocol
+  of its fields, which an array of the struct is written from, so that any
+  objects with those attributes write it, rather than only the struct's
+  dataclass.
+- Generated Python declares `fields()` on each message and table whose
+  fields are all scalars, structs and tables of them, and a string last,
+  which reads every field at once into the `TypedDict` that it's written
+  from, through `ByteBuffer.get_fields()`. It reads them through the getters
+  when the table's offsets aren't those that its writer writes, so its values
+  and errors are theirs. The getters stay lazy.
 
 ### Changed
 
@@ -50,6 +74,12 @@ repository's first commits, for code built from its source before the release.
   `offset_type: uint16` rather than `offset_size: 16`.
 - Generated tables are written with a sizer and a writer rather than with
   `TableBuilder`, and each generated Rust table reads its layout as a constant.
+- Generated Rust fields of vectors and arrays of structs take a slice of any
+  type whose reference converts into the item's fields or struct, through a
+  type parameter that defaults to the generated type, so that an application
+  writes the items it holds without collecting them first. Rust's
+  `TableWriter::set_structs()` takes each struct by reference, so it needn't
+  be `Copy`.
 - Every implementation reads a vector item in place within its message, as
   the format now specifies, including an item whose offsets point past its
   end.

@@ -3,7 +3,7 @@
 from collections.abc import Buffer, Iterable
 from typing import Final, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, TableLayout, TableWriter
+from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
 
 
 class Uint8Offsets:
@@ -12,6 +12,7 @@ class Uint8Offsets:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint8")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -21,8 +22,7 @@ class Uint8Offsets:
     def serialize(cls, **fields: Unpack[Uint8OffsetsFields]) -> memoryview:
         """Writes a ``Uint8Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -51,6 +51,7 @@ class Uint8OffsetsSized:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout(sized=True, offset_type="uint8")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -60,8 +61,7 @@ class Uint8OffsetsSized:
     def serialize(cls, **fields: Unpack[Uint8OffsetsSizedFields]) -> memoryview:
         """Writes a ``Uint8OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -95,6 +95,7 @@ class Uint8OffsetsVersioned:
     """
 
     _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint8")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -121,8 +122,7 @@ class Uint8OffsetsVersioned:
     def serialize(cls, **fields: Unpack[Uint8OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint8OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -156,6 +156,7 @@ class Uint8OffsetsSizedVersioned:
     """
 
     _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint8")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -184,8 +185,7 @@ class Uint8OffsetsSizedVersioned:
     ) -> memoryview:
         """Writes a ``Uint8OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -214,6 +214,7 @@ class Uint16Offsets:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint16")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -223,8 +224,7 @@ class Uint16Offsets:
     def serialize(cls, **fields: Unpack[Uint16OffsetsFields]) -> memoryview:
         """Writes a ``Uint16Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -253,6 +253,7 @@ class Uint16OffsetsSized:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout(sized=True, offset_type="uint16")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -262,8 +263,7 @@ class Uint16OffsetsSized:
     def serialize(cls, **fields: Unpack[Uint16OffsetsSizedFields]) -> memoryview:
         """Writes a ``Uint16OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -297,6 +297,7 @@ class Uint16OffsetsVersioned:
     """
 
     _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint16")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -323,8 +324,7 @@ class Uint16OffsetsVersioned:
     def serialize(cls, **fields: Unpack[Uint16OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint16OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -358,6 +358,7 @@ class Uint16OffsetsSizedVersioned:
     """
 
     _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint16")
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -386,8 +387,7 @@ class Uint16OffsetsSizedVersioned:
     ) -> memoryview:
         """Writes a ``Uint16OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -416,6 +416,7 @@ class Uint32Offsets:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -425,8 +426,7 @@ class Uint32Offsets:
     def serialize(cls, **fields: Unpack[Uint32OffsetsFields]) -> memoryview:
         """Writes a ``Uint32Offsets`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -455,6 +455,7 @@ class Uint32OffsetsSized:
     __slots__ = ("_buffer",)
 
     _LAYOUT: Final = TableLayout(sized=True)
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
@@ -464,8 +465,7 @@ class Uint32OffsetsSized:
     def serialize(cls, **fields: Unpack[Uint32OffsetsSizedFields]) -> memoryview:
         """Writes a ``Uint32OffsetsSized`` with every field"""
         writer = TableWriter(3, cls._LAYOUT)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -499,6 +499,7 @@ class Uint32OffsetsVersioned:
     """
 
     _LAYOUT: Final = TableLayout(versioned=True)
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -525,8 +526,7 @@ class Uint32OffsetsVersioned:
     def serialize(cls, **fields: Unpack[Uint32OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint32OffsetsVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()
@@ -560,6 +560,7 @@ class Uint32OffsetsSizedVersioned:
     """
 
     _LAYOUT: Final = TableLayout(sized=True, versioned=True)
+    _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
@@ -588,8 +589,7 @@ class Uint32OffsetsSizedVersioned:
     ) -> memoryview:
         """Writes a ``Uint32OffsetsSizedVersioned`` with every field"""
         writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_uint32(0, fields["id"])
-        writer.set_string(1, fields["name"])
+        writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
         return writer.bytes()

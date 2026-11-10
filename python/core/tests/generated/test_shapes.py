@@ -2,11 +2,13 @@
 with tafla."""
 
 import unittest
+from collections.abc import Callable
+from functools import partial
 
 from hypothesis import given
 from hypothesis.strategies import binary, integers, one_of
 
-from tafla import DecodeError
+from tafla import ByteBuffer, DecodeError
 from tests.generated import SETTINGS
 from tests.generated.byte_strategies import (
     Overwrite,
@@ -19,13 +21,16 @@ from tests.generated.expectations import (
     assert_same_fields,
     assert_same_table,
     assert_values_or_decode_error,
+    fields_or_decode_error,
 )
 from tests.generated.shapes.shapes import (
     Document,
     DocumentFields,
+    Item,
     ItemFields,
     ItemList,
     ItemListFields,
+    ItemVector,
     Point,
     PointFields,
     Sample,
@@ -184,6 +189,25 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_item_list(ItemList(data)))
 
     @SETTINGS
+    @given(item_list_fields, corruptions)
+    def test_reads_each_item_of_a_corrupted_item_list_by_index_as_its_offset_finds_it(
+        self, fields: ItemListFields, corruption: Truncation | Overwrite
+    ) -> None:
+        """The view reads each item from the count that it checked once, which
+        reads the same values, DecodeError or IndexError as reading the count
+        for each item"""
+        data = corruption.apply(bytes(ItemList.serialize(**fields)))
+
+        self.assertEqual(_items_by_index(data), _items_by_offset(data))
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_each_item_of_arbitrary_bytes_by_index_as_its_offset_finds_it(
+        self, data: bytes
+    ) -> None:
+        self.assertEqual(_items_by_index(data), _items_by_offset(data))
+
+    @SETTINGS
     @given(binary(max_size=64))
     def test_reads_arbitrary_bytes_as_any_message_or_raises_decode_error(
         self, data: bytes
@@ -199,6 +223,79 @@ class TestDecodeErrors(unittest.TestCase):
         for message in [Point, Document, ItemList]:
             with self.subTest(message=message.__name__), self.assertRaises(TypeError):
                 message(strided)
+
+
+class TestFields(unittest.TestCase):
+    # fields() reads a fixed-layout table's fields at once, or through the
+    # getters for bytes that its writer didn't write, so it returns what the
+    # getters read or raises DecodeError as they do
+
+    @SETTINGS
+    @given(point_fields, slices)
+    def test_reads_a_points_fields_as_its_getters_read_them_and_writes_them_back(
+        self, fields: PointFields, where: Slice
+    ) -> None:
+        data = Point.serialize(**fields)
+        point = Point(where.of(data))
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
+        self.assertEqual(bytes(Point.serialize(**point.fields())), bytes(data))
+
+    @SETTINGS
+    @given(item_list_fields)
+    def test_reads_each_items_fields_as_its_getters_read_them(
+        self, fields: ItemListFields
+    ) -> None:
+        for item in ItemList(ItemList.serialize(**fields)).items():
+            self.assertEqual(
+                fields_or_decode_error(item.fields),
+                fields_or_decode_error(partial(read_item, item)),
+            )
+
+    @SETTINGS
+    @given(point_fields, corruptions)
+    def test_reads_a_corrupted_points_fields_as_its_getters_do(
+        self, fields: PointFields, corruption: Truncation | Overwrite
+    ) -> None:
+        point = Point(corruption.apply(bytes(Point.serialize(**fields))))
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
+
+    @SETTINGS
+    @given(item_list_fields, corruptions)
+    def test_reads_the_fields_of_each_item_of_a_corrupted_item_list_as_its_getters_do(
+        self, fields: ItemListFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(ItemList.serialize(**fields)))
+        try:
+            view = ItemList(data).items_view()
+        except DecodeError:
+            return
+
+        for index in range(len(view)):
+            with self.subTest(index=index):
+                self.assertEqual(
+                    fields_or_decode_error(partial(_item_fields, view, index)),
+                    fields_or_decode_error(partial(_read_item_at, view, index)),
+                )
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_the_fields_of_arbitrary_bytes_as_the_getters_do(
+        self, data: bytes
+    ) -> None:
+        point = Point(data)
+
+        self.assertEqual(
+            fields_or_decode_error(point.fields),
+            fields_or_decode_error(partial(read_point, point)),
+        )
 
 
 class TestReadingInPlace(unittest.TestCase):
@@ -294,6 +391,55 @@ class TestSample(unittest.TestCase):
         ]:
             with self.subTest(sample=sample), self.assertRaises(ValueError):
                 sample.serialize()
+
+
+def _item_fields(view: ItemVector, index: int) -> ItemFields:
+    return view[index].fields()
+
+
+def _read_item_at(view: ItemVector, index: int) -> ItemFields:
+    return read_item(view[index])
+
+
+def _items_by_index(data: bytes) -> list[str]:
+    """Each item of an item list, read through its view by index, the last
+    one again by -1, and one past it"""
+    try:
+        view = ItemList(data).items_view()
+    except DecodeError as error:
+        return [f"DecodeError: {error}"]
+
+    def read(index: int) -> ItemFields:
+        return read_item(view[index])
+
+    indices = [*range(len(view)), -1, len(view)]
+    return [_outcome(partial(read, index)) for index in indices]
+
+
+def _items_by_offset(data: bytes) -> list[str]:
+    """Each item of an item list, as ``_items_by_index()`` reads them, but
+    found by ``get_vector_offset()``, which reads the count for each"""
+    buffer = ByteBuffer(data)
+    try:
+        vector = buffer.root_offset(0)
+        count = buffer.get_vector_length(vector)
+    except DecodeError as error:
+        return [f"DecodeError: {error}"]
+
+    def read(index: int) -> ItemFields:
+        return read_item(Item(buffer, buffer.get_vector_offset(vector, index)))
+
+    indices = [*range(count), count - 1, count]
+    return [_outcome(partial(read, index)) for index in indices]
+
+
+def _outcome(read: Callable[[], ItemFields]) -> str:
+    """The fields that ``read`` returns, as their repr, which tells NaN and -0
+    apart, or its DecodeError or IndexError, which no other error may be"""
+    try:
+        return repr(read())
+    except (DecodeError, IndexError) as error:
+        return f"{type(error).__name__}: {error}"
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ use crate::diagnostic::Diagnostic;
 use crate::generate::reserved;
 use crate::model::{
     Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema, StructLayout,
+    strongly_connected_components,
 };
 use crate::naming::camel_case;
 use crate::parser::{Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Name};
@@ -310,7 +311,7 @@ const fn java_parameter_slots(field_type: FieldType) -> usize {
 
 /// Checks that no declaration takes the name of another's fields,
 /// `<Name>Fields`, which the generated code declares beside it to write it
-/// from: TypeScript and JavaScript for every declaration, and Python and Rust
+/// from: TypeScript, JavaScript and Python for every declaration, and Rust
 /// for messages and tables
 fn check_fields_declarations(
     declarations: &[Declaration],
@@ -614,80 +615,21 @@ fn check_cycles(
 /// Whether each definition holds itself in place, through the tables and
 /// structs nested in it. A definition does so exactly when it nests itself
 /// directly, or when it lies in a strongly connected component of more than
-/// one definition, which Tarjan's algorithm finds in a single search. The
-/// search runs from a stack rather than by recursion, so that long chains of
-/// definitions don't overflow it.
+/// one definition.
 fn find_definitions_that_contain_themselves(definitions: &[Definition]) -> Vec<bool> {
-    let count = definitions.len();
-    let mut contains_itself = vec![false; count];
-
-    // Each definition's position in the order that the search reaches them,
-    // and the earliest position reachable from it through definitions whose
-    // component isn't complete
-    let mut reached: Vec<Option<usize>> = vec![None; count];
-    let mut lowest = vec![0; count];
-    let mut next_position = 0;
-    // The definitions reached whose component isn't complete, in the order
-    // reached, so that each component lies at the top once complete
-    let mut incomplete = Vec::new();
-    let mut is_incomplete = vec![false; count];
-    // The definitions from the root to the one being searched, each with the
-    // definitions nested in it that are left to search
-    let mut path = Vec::new();
-
-    for root in 0..count {
-        let mut entering = reached[root].is_none().then_some(root);
-
-        loop {
-            if let Some(index) = entering.take() {
-                reached[index] = Some(next_position);
-                lowest[index] = next_position;
-                next_position += 1;
-                incomplete.push(index);
-                is_incomplete[index] = true;
-                path.push((index, nested_in_place(&definitions[index])));
-            }
-
-            let Some((index, nested)) = path.last_mut() else {
-                break;
-            };
-            let index = *index;
-
-            if let Some(inner) = nested.next() {
-                if inner == index {
-                    contains_itself[index] = true;
-                } else if let Some(position) = reached[inner] {
-                    if is_incomplete[inner] {
-                        lowest[index] = lowest[index].min(position);
-                    }
-                } else {
-                    entering = Some(inner);
-                }
-                continue;
-            }
-
-            path.pop();
-            if let Some(&(parent, _)) = path.last() {
-                lowest[parent] = lowest[parent].min(lowest[index]);
-            }
-
-            // The definition is its component's first, and the component
-            // is complete
-            if Some(lowest[index]) == reached[index] {
-                let start = incomplete
-                    .iter()
-                    .rposition(|&member| member == index)
-                    .expect("a definition is incomplete until its component is");
-                let is_cycle = incomplete.len() - start > 1;
-                for member in incomplete.drain(start..) {
-                    is_incomplete[member] = false;
-                    contains_itself[member] |= is_cycle;
-                }
-            }
-        }
+    let components = strongly_connected_components(definitions, nested_in_place);
+    let mut sizes = vec![0_usize; definitions.len()];
+    for &component in &components {
+        sizes[component] += 1;
     }
 
-    contains_itself
+    definitions
+        .iter()
+        .enumerate()
+        .map(|(index, definition)| {
+            sizes[components[index]] > 1 || nested_in_place(definition).any(|inner| inner == index)
+        })
+        .collect()
 }
 
 /// The definitions in an order where each comes after the tables and structs

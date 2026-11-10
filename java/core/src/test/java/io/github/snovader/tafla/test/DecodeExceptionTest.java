@@ -76,6 +76,24 @@ public class DecodeExceptionTest {
     }
 
     @Property
+    void finding_a_vector_item_from_any_count_finds_it_within_the_bytes_or_throws_DecodeException(
+        @ForAll @Size(max = 64) byte[] bytes,
+        @ForAll("layouts") LayoutDescription layout,
+        @ForAll @IntRange(min = 0, max = 72) int position,
+        @ForAll @IntRange(min = 1) int count,
+        @ForAll @IntRange(min = 0, max = 20) int at
+    ) {
+        // A count other than the vector's reads other bytes as the item's ends
+        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var index = Math.min(at, count - 1);
+
+        assertValuesOrDecodeException(() -> {
+            var item = buffer.getVectorItemOffset(position, count, index);
+            assertTrue(item >= position && item <= bytes.length, () -> "Item " + index + " at " + item);
+        });
+    }
+
+    @Property
     void a_scalar_read_outside_the_bytes_throws_DecodeException_naming_the_read_and_the_bytes_available(
         @ForAll @Size(max = 16) byte[] bytes,
         @ForAll ScalarType type,
@@ -201,6 +219,7 @@ public class DecodeExceptionTest {
         getters.add(new Getter("vector length", ByteBuffer::getVectorLength));
         getters.add(new Getter("vector offsets", ByteBuffer::getVectorOffsets));
         getters.add(new Getter("last vector offset", DecodeExceptionTest::getLastVectorOffset));
+        getters.add(new Getter("vector offsets from the count", DecodeExceptionTest::getEachVectorItemOffset));
 
         return Arbitraries.of(getters);
     }
@@ -210,6 +229,18 @@ public class DecodeExceptionTest {
         var length = buffer.getVectorLength(position);
         if (length > 0) {
             buffer.getVectorOffset(position, length - 1);
+        }
+    }
+
+    /**
+     * Finds each item of a vector from its count, read once, as a view of the vector does, and each
+     * on its own, so that an item that throws leaves the others to find
+     */
+    private static void getEachVectorItemOffset(ByteBuffer buffer, int position) {
+        var count = buffer.getVectorLength(position);
+        for (int index = 0; index < count; index++) {
+            var itemIndex = index;
+            assertValuesOrDecodeException(() -> buffer.getVectorItemOffset(position, count, itemIndex));
         }
     }
 

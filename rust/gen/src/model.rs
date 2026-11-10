@@ -310,3 +310,87 @@ impl Definition {
         }
     }
 }
+
+/// The strongly connected component of each definition, by its index, in
+/// the graph whose edges lead from each definition to the definitions that
+/// `edges` gives: two definitions lie in the same component exactly when each
+/// reaches the other. Tarjan's algorithm finds them in a single search, which
+/// runs from a stack rather than by recursion, so that long chains of
+/// definitions don't overflow it.
+pub fn strongly_connected_components<'a, I>(
+    definitions: &'a [Definition],
+    edges: impl Fn(&'a Definition) -> I,
+) -> Vec<usize>
+where
+    I: Iterator<Item = usize>,
+{
+    let count = definitions.len();
+    let mut components = vec![0; count];
+    let mut next_component = 0;
+
+    // Each definition's position in the order that the search reaches them,
+    // and the earliest position reachable from it through definitions whose
+    // component isn't complete
+    let mut reached: Vec<Option<usize>> = vec![None; count];
+    let mut lowest = vec![0; count];
+    let mut next_position = 0;
+    // The definitions reached whose component isn't complete, in the order
+    // reached, so that each component lies at the top once complete
+    let mut incomplete = Vec::new();
+    let mut is_incomplete = vec![false; count];
+    // The definitions from the root to the one being searched, each with the
+    // definitions it leads to that are left to search
+    let mut path = Vec::new();
+
+    for root in 0..count {
+        let mut entering = reached[root].is_none().then_some(root);
+
+        loop {
+            if let Some(index) = entering.take() {
+                reached[index] = Some(next_position);
+                lowest[index] = next_position;
+                next_position += 1;
+                incomplete.push(index);
+                is_incomplete[index] = true;
+                path.push((index, edges(&definitions[index])));
+            }
+
+            let Some((index, next)) = path.last_mut() else {
+                break;
+            };
+            let index = *index;
+
+            if let Some(inner) = next.next() {
+                if let Some(position) = reached[inner] {
+                    if is_incomplete[inner] {
+                        lowest[index] = lowest[index].min(position);
+                    }
+                } else {
+                    entering = Some(inner);
+                }
+                continue;
+            }
+
+            path.pop();
+            if let Some(&(parent, _)) = path.last() {
+                lowest[parent] = lowest[parent].min(lowest[index]);
+            }
+
+            // The definition is its component's first, and the component
+            // is complete
+            if Some(lowest[index]) == reached[index] {
+                let start = incomplete
+                    .iter()
+                    .rposition(|&member| member == index)
+                    .expect("a definition is incomplete until its component is");
+                for member in incomplete.drain(start..) {
+                    is_incomplete[member] = false;
+                    components[member] = next_component;
+                }
+                next_component += 1;
+            }
+        }
+    }
+
+    components
+}

@@ -411,7 +411,23 @@ public final class ByteBuffer {
      * @throws IndexOutOfBoundsException if the vector has no item {@code index}
      */
     public int getVectorOffset(int position, int index) {
-        var count = getVectorLength(position);
+        return getVectorItemOffset(position, getVectorLength(position), index);
+    }
+
+    /**
+     * Returns the position of item {@code index} of the vector at {@code position}, as
+     * {@code getVectorOffset()} does, from the {@code count} that {@code getVectorLength()} returned
+     * for it, so that a reader of several items reads and checks the count once.
+     *
+     * <p>Another count, such as one read before the bytes changed, reads other bytes as the item's
+     * ends. Those reads still stay within the bytes, and return a position or throw a
+     * {@code DecodeException}.</p>
+     *
+     * @throws DecodeException if the item's ends aren't within the bytes, or the item ends before it
+     *     starts or past the bytes
+     * @throws IndexOutOfBoundsException if {@code index} is negative or not below {@code count}
+     */
+    public int getVectorItemOffset(int position, int count, int index) {
         if (index < 0 || index >= count) {
             throw new IndexOutOfBoundsException(
                 String.format("Item %d is outside the vector of %d at %d", index, count, position)
