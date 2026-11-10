@@ -1,13 +1,15 @@
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
+from struct import pack
 from typing import Any
 
-from hypothesis import given
-from hypothesis.strategies import integers, sampled_from
+from hypothesis import assume, given
+from hypothesis.strategies import binary, integers, sampled_from
 
-from tafla import FixedFields, TableLayout, TableWriter
+from tafla import ByteBuffer, FixedFields, TableLayout, TableWriter
 from tests.descriptions import tables
+from tests.generated.byte_strategies import Overwrite, Truncation, corruptions
 from tests.tables import (
     FORMATS,
     INT64_TYPES,
@@ -15,6 +17,7 @@ from tests.tables import (
     OffsetType,
     alignment_of,
     from_json,
+    layout_of,
     nested_in_place,
     struct_of,
     write_field,
@@ -203,6 +206,56 @@ def write_packed_nested(writer: TableWriter, table: Description) -> None:
     writer.end_table(parent)
 
 
+def whole_fixed(table: Description) -> Description | None:
+    """The table, cut to its leading fixed fields and string, which
+    ``FixedFields`` then describes whole, or ``None`` if it has none"""
+    count = packed_count(table)
+    if count == 0:
+        return None
+
+    return {**table, "fields": table["fields"][:count]}
+
+
+def read_by_getters(
+    buffer: ByteBuffer, table: Description, position: int | None = None
+) -> list[Any]:
+    """The values of a table's fields, read by their getters in the order that
+    ``get_fields()`` returns them, a nested table's in place of it and a
+    struct's as its bytes. ``position`` is a nested table's, and ``None`` the
+    root's."""
+    values: list[Any] = []
+    for index, field in enumerate(table["fields"]):
+        if position is None:
+            at = buffer.root_offset(index)
+        else:
+            at = buffer.field_offset(position, index)
+
+        kind = field["type"]
+        if kind == "table":
+            values.extend(read_by_getters(buffer, field["table"], at))
+        elif kind == "struct":
+            size = struct_of(scalar["type"] for scalar in field["fields"]).size
+            values.append(bytes(buffer.get_struct(at, size)))
+        elif kind == "string":
+            values.append(buffer.get_string(at))
+        elif kind == "bool":
+            values.append(buffer.get_uint8(at) != 0)
+        else:
+            values.append(getattr(buffer, f"get_{kind}")(at))
+
+    return values
+
+
+def comparable(values: Sequence[Any] | None) -> list[Any] | None:
+    """Values with each float as its bits, which tells NaNs and -0 apart"""
+    if values is None:
+        return None
+
+    return [
+        pack("<d", value) if isinstance(value, float) else value for value in values
+    ]
+
+
 def scalar(kind: str, value: Any) -> Description:
     return {"type": kind, "value": value}
 
@@ -240,6 +293,50 @@ class TestFixedFields(unittest.TestCase):
                 expected.set_int8(1, 1)
 
                 self.assertEqual(bytes(write_packed(table)), bytes(expected.bytes()))
+
+
+class TestGetFields(unittest.TestCase):
+    # get_fields() returns what the getters read, or None for the getters to
+    # read the fields and raise, and never raises itself
+
+    @given(tables(), corruptions)
+    def test_reads_what_the_getters_read_or_none_whatever_the_bytes(
+        self, table: Description, corruption: Truncation | Overwrite
+    ) -> None:
+        fixed = whole_fixed(nested_in_place(table))
+        assume(fixed is not None)
+        assert fixed is not None
+        layout = layout_of(fixed["layout"])
+        fields = fixed_fields(fixed, len(fixed["fields"]), layout)
+        data = bytes(write_table(fixed))
+
+        written = ByteBuffer(data, layout)
+        self.assertEqual(
+            comparable(written.get_fields(0, fields)),
+            comparable(read_by_getters(written, fixed)),
+        )
+
+        corrupted = ByteBuffer(corruption.apply(data), layout)
+        values = corrupted.get_fields(0, fields)
+        if values is not None:
+            self.assertEqual(
+                comparable(values), comparable(read_by_getters(corrupted, fixed))
+            )
+
+    @given(binary(max_size=64), integers(-4, 70), sampled_from(OFFSET_TYPES))
+    def test_reads_a_nested_table_of_arbitrary_bytes_as_the_getters_or_none(
+        self, data: bytes, position: int, offset_type: OffsetType
+    ) -> None:
+        pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
+        table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
+        fields = fixed_fields(table, 3)
+        buffer = ByteBuffer(data, TableLayout(offset_type=offset_type))
+
+        values = buffer.get_fields(position, fields)
+        if values is not None:
+            self.assertEqual(
+                comparable(values), comparable(read_by_getters(buffer, table, position))
+            )
 
 
 class TestErrors(unittest.TestCase):
