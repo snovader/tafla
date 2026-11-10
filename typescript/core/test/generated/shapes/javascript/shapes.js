@@ -47,6 +47,35 @@ export class Point {
         return writer.bytes();
     }
 
+    /**
+     * Writes a `Point` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {PointFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(4, Point.#LAYOUT);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addInt64();
+        sizer.addString(fields.name);
+
+        const writer = sizer.writer(bytes);
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setInt64(2, fields.id);
+        writer.setString(3, fields.name);
+
+        return writer.bytes();
+    }
+
     /** @returns {number} */
     x() {
         return this.#buffer.getFloat64(this.#buffer.rootOffset(0));
@@ -140,6 +169,41 @@ export class Document {
         Columns.size(sizer, fields.columns);
 
         const writer = sizer.writer();
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setString(2, fields.name);
+        writer.setTable(3, Columns.ALIGNMENT);
+        Columns.write(writer, fields.columns);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Document` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {DocumentFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(
+            4,
+            Document.#LAYOUT,
+            Document.FORMAT_VERSION
+        );
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.name);
+        sizer.addTable(Columns.ALIGNMENT);
+        Columns.size(sizer, fields.columns);
+
+        const writer = sizer.writer(bytes);
         writer.setFloat64(0, fields.x);
         writer.setFloat64(1, fields.y);
         writer.setString(2, fields.name);
@@ -305,6 +369,36 @@ export class ItemList {
         }
 
         const writer = sizer.writer();
+        const vector0 = writer.setVector(0, fields.items.length);
+        for (let i = 0; i < fields.items.length; i++) {
+            Item.write(writer, fields.items[i]);
+            writer.setItemEnd(vector0, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `ItemList` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {ItemListFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(1, ItemList.#LAYOUT);
+        sizer.addVector(fields.items.length);
+        for (const item of fields.items) {
+            Item.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
         const vector0 = writer.setVector(0, fields.items.length);
         for (let i = 0; i < fields.items.length; i++) {
             Item.write(writer, fields.items[i]);

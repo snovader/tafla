@@ -53,6 +53,7 @@ const PYTHON: &[&str] = &[
     "Literal",
     "None",
     "OverflowError",
+    "Protocol",
     "Self",
     "Sequence",
     "Struct",
