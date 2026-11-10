@@ -138,14 +138,14 @@ and rkyv crates on the workloads that every language's benchmarks run, as
 its README describes. Its fastest samples, on an Apple M2 Pro:
 
 - **Arrays are written in bulk.** A document of 100,000 rows of three
-  columns, 1.2 MB, took 19 µs to write, against rkyv's 16 µs, which copies
+  columns, 1.2 MB, took 19 µs to write, about as long as rkyv, which copies
   arrays whole too, and 6 to 40 times faster than flatbuffers, prost and
   rmp-serde, which write them element by element. The builder writes the
   table at its exact size, appending to reserved capacity rather than zeroing
   it first.
 - **Arrays are read in place.** Reading the document, with its columns as
   slices from `ArrayView::to_cow()`, took 34 ns at 100 rows and at 100,000
-  alike. rkyv took 16 µs to copy the large document's columns out of its
+  alike. rkyv took 15 µs to copy the large document's columns out of its
   archive, and the others 0.2 to 1.3 ms.
 - **Read arrays whole.** An `ArrayView`'s iterator reads each element
   without a check of its own: summing the document's 100,000 floats through
@@ -153,10 +153,10 @@ its README describes. Its fastest samples, on an Apple M2 Pro:
   rkyv's accessors. `get_f32()` at each position would check every read and
   return early from the loop on an error.
 - **Small tables are quick to write and read.** A table of two `f64`s, an
-  `i64` and a 16-byte string took 77 ns to write, including allocating the
+  `i64` and a 16-byte string took 78 ns to write, including allocating the
   builder's record of fields and the table, and 13 ns to read.
 - **Each nested builder allocates.** A vector of 100 tables that each nest
-  another took 8.8 µs to write, 2.5 to 6.3 times as long as flatbuffers,
+  another took 8.9 µs to write, 2.5 to 6.2 times as long as flatbuffers,
   rmp-serde and prost, which took 3.5 to 1.4 µs: each of its 200 tables is a
   builder, which allocates its record of fields. It took 0.28 µs to read.
 
