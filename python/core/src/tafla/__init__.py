@@ -85,15 +85,15 @@ Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off:
 - **Buffers of the field's element type are copied as bytes.** That includes
   an ``array`` of the type code and a numpy array of the type. Anything else,
   such as a list or an array of another type, is converted as ``array()``
-  converts an iterable, at about 12 ns per element: a table of 27,028 floats
-  took 3.8 µs to write from an ``array("f")`` and 0.34 ms from a list.
+  converts an iterable, at about 13 ns per element: a table of 27,028 floats
+  took 3.8 µs to write from an ``array("f")`` and 0.35 ms from a list.
 - **Array reads return views.** A view shares the bytes' storage, so it's free
   and reflects later changes to the bytes. Unlike typed arrays in JavaScript,
   a ``memoryview`` reads elements at any alignment, so arrays received at an
   odd offset are views too. On a big-endian host, arrays of multi-byte
   elements are copies, with each element's bytes swapped to the host's order.
 - **Read arrays whole.** Each scalar getter is a call with a range check:
-  summing a 27,028-element float32 array with ``get_float32()`` took 2.3 ms,
+  summing a 27,028-element float32 array with ``get_float32()`` took 2.2 ms,
   against 0.23 ms with ``sum()`` of the array's view.
 - **Nest builders rather than bytes.** ``set_table()`` and ``set_vector()``
   write a ``TableBuilder`` straight into its parent when the parent is
@@ -101,11 +101,11 @@ Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off:
   A table nested as bytes was built into a buffer of its own and is copied, as
   is a builder that was finalized already or whose layout has a header or
   another offset type. A vector of 100 tables that each nest another took
-  0.26 ms to build from builders and 0.37 ms from bytes, and a table nesting
-  27,028 rows of three columns took 11 µs and 17 µs.
+  0.26 ms to build from builders and 0.36 ms from bytes, and a table nesting
+  27,028 rows of three columns took 11 µs and 19 µs.
 - **Small tables cost their calls.** Each field is a few Python calls to set
   and to write, so a table of two float64s, an int64 and a 16-byte string took
-  2.1 µs, far more than allocating and copying its 60 bytes.
+  2.2 µs, far more than allocating and copying its 60 bytes.
 
 Conversions
 -----------
