@@ -36,6 +36,35 @@ public final class ItemList {
         return writer.bytes();
     }
 
+    /**
+     * Writes an {@code ItemList} with every field into the start of
+     * {@code bytes}, as {@code serialize()} writes it into new bytes, and returns its length. The
+     * bytes needn't be zero, and those after the message keep their values. The caller owns them:
+     * writing into them again, as the next message does, overwrites this one, and what a reader of
+     * them reads. {@code TableSizer.writer(byte[])} says when reusing bytes pays off.
+     *
+     * @return the number of bytes that hold the message, from the start of {@code bytes}
+     * @throws IllegalArgumentException if {@code bytes} are shorter than the message, before any of
+     *     them is written
+     */
+    public static int serializeInto(Fields fields, byte[] bytes) {
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addVector(fields.items().size());
+        for (var item : fields.items()) {
+            Item.size(sizer, item);
+        }
+
+        var writer = sizer.writer(bytes);
+        var vector0 = writer.setVector(0, fields.items().size());
+        var written0 = 0;
+        for (var item : fields.items()) {
+            Item.write(writer, item);
+            writer.setItemEnd(vector0, written0++);
+        }
+
+        return writer.byteLength();
+    }
+
     public List<Item> items() {
         var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 

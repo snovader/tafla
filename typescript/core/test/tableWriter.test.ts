@@ -485,6 +485,36 @@ describe('bytes that are part of a larger buffer', () => {
         }
     );
 
+    it.prop([inPlaceTables(), fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+        "should write a table into the start of the sizer's writer's bytes, as into new bytes, and leave the rest of them as they were",
+        (table, extra, fill) => {
+            const expected = writeTable(table);
+            const bytes = new Uint8Array(expected.length + extra).fill(fill);
+            const written = writeTable(table, bytes);
+
+            expect(written).toStrictEqual(expected);
+            expect(written.buffer).toBe(bytes.buffer);
+            expect(written.byteOffset).toBe(bytes.byteOffset);
+            expect(bytes.subarray(expected.length)).toStrictEqual(new Uint8Array(extra).fill(fill));
+        }
+    );
+
+    it.prop([inPlaceTables(), fc.nat(), fc.nat({ max: 0xff })])(
+        "should throw RangeError, naming the table's length, for the sizer's writer of bytes shorter than the table, and write none of them",
+        (table, cut, fill) => {
+            const length = writeTable(table).length;
+            fc.pre(length > 0);
+            const bytes = new Uint8Array(length - 1 - (cut % length)).fill(fill);
+
+            expect(() => writeTable(table, bytes)).toThrow(
+                new RangeError(
+                    `The table is ${length} bytes, longer than the ${bytes.length} bytes given`
+                )
+            );
+            expect(bytes).toStrictEqual(new Uint8Array(bytes.length).fill(fill));
+        }
+    );
+
     it('should throw RangeError for an array past the slice before writing it', () => {
         const buffer = new Uint8Array(32).fill(99);
         const writer = new TableWriter(buffer.subarray(0, 8), 1);

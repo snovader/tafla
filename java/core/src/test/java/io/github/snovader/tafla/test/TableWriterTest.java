@@ -30,6 +30,50 @@ public class TableWriterTest {
         assertArrayEquals(Tables.build(table).bytes(), Tables.write(table));
     }
 
+    // Writing into bytes that the caller gives, which may hold anything
+
+    @Property
+    void a_table_written_into_longer_bytes_holds_at_their_start_what_new_bytes_hold_and_leaves_the_rest(
+        @ForAll("inPlaceTables") TableDescription table,
+        @ForAll @IntRange(max = 16) int extra,
+        @ForAll byte fill
+    ) {
+        GivenBytesAssertions.assertWrittenInto(Tables.write(table), bytes -> writeInto(table, bytes), extra, fill);
+    }
+
+    @Property
+    void a_writer_into_given_bytes_returns_them_from_bytes(
+        @ForAll("inPlaceTables") TableDescription table,
+        @ForAll @IntRange(max = 16) int extra
+    ) {
+        var bytes = new byte[Tables.write(table).length + extra];
+
+        var writer = Tables.size(table).writer(bytes);
+        Tables.writeFields(writer, table);
+
+        assertSame(bytes, writer.bytes());
+    }
+
+    @Property
+    void bytes_shorter_than_the_table_throw_IllegalArgumentException_before_any_is_written(
+        @ForAll("inPlaceTables") TableDescription table,
+        @ForAll @IntRange(min = 1, max = 16) int shorter,
+        @ForAll byte fill
+    ) {
+        var length = Tables.write(table).length;
+        Assume.that(shorter <= length);
+
+        GivenBytesAssertions.assertTooShort(length, bytes -> writeInto(table, bytes), shorter, fill);
+    }
+
+    /** {@return the length of the table, written into the start of {@code bytes}} */
+    private static int writeInto(TableDescription table, byte[] bytes) {
+        var writer = Tables.size(table).writer(bytes);
+        Tables.writeFields(writer, table);
+
+        return writer.byteLength();
+    }
+
     @Example
     void a_struct_array_a_nested_table_and_a_vector_are_padded_as_TableBuilder_counts_their_padding() {
         // A uint8 leaves the uint32[] 3 bytes short of its alignment, the array leaves the structs
@@ -208,6 +252,7 @@ public class TableWriterTest {
             exception.getMessage()
         );
         assertThrows(IllegalArgumentException.class, () -> Tables.build(tooLong));
+        assertThrows(IllegalArgumentException.class, () -> Tables.size(tooLong).writer(new byte[(int) max + 1]));
     }
 
     @Example

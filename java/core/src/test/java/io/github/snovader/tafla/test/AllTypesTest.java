@@ -11,6 +11,7 @@ import java.util.List;
 import static io.github.snovader.tafla.test.AllTypesTables.*;
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
 import static io.github.snovader.tafla.test.GeneratedDescriptions.*;
+import static io.github.snovader.tafla.test.GivenBytesAssertions.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -127,6 +128,25 @@ public class AllTypesTest {
         var byHand = Tables.build(describeStructs(fields)).bytes();
 
         assertArrayEquals(byHand, Structs.serialize(fields), () -> describeStructs(fields).toString());
+    }
+
+    // Writing into bytes that the caller gives, which may hold anything
+
+    @Property
+    void every_message_written_into_longer_bytes_holds_at_their_start_what_serialize_writes(
+        @ForAll("scalars") Scalars.Fields scalars,
+        @ForAll("arrays") Arrays.Fields arrays,
+        @ForAll("nesteds") Nested.Fields nested,
+        @ForAll("reserveds") Reserved.Fields reserved,
+        @ForAll("structs") Structs.Fields structs,
+        @ForAll @IntRange(max = 16) int extra,
+        @ForAll byte fill
+    ) {
+        assertWrittenInto(Scalars.serialize(scalars), bytes -> Scalars.serializeInto(scalars, bytes), extra, fill);
+        assertWrittenInto(Arrays.serialize(arrays), bytes -> Arrays.serializeInto(arrays, bytes), extra, fill);
+        assertWrittenInto(Nested.serialize(nested), bytes -> Nested.serializeInto(nested, bytes), extra, fill);
+        assertWrittenInto(Reserved.serialize(reserved), bytes -> Reserved.serializeInto(reserved, bytes), extra, fill);
+        assertWrittenInto(Structs.serialize(structs), bytes -> Structs.serializeInto(structs, bytes), extra, fill);
     }
 
     // Decode exceptions

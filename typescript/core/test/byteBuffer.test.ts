@@ -32,10 +32,10 @@ it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError'
     const builder = new TableBuilder(1);
     builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
     const buffer = builder.finalize();
+    const error = new RangeError(`Item ${index} is outside the vector of 2 at 4`);
 
-    expect(() => buffer.getVectorOffset(buffer.rootOffset(0), index)).toThrow(
-        new RangeError(`Item ${index} is outside the vector of 2 at 4`)
-    );
+    expect(() => buffer.getVectorOffset(buffer.rootOffset(0), index)).toThrow(error);
+    expect(() => buffer.getVectorItemOffset(buffer.rootOffset(0), 2, index)).toThrow(error);
 });
 
 it.each([0, 3])(
@@ -57,6 +57,9 @@ it('should find each vector item from its ends, as reading every item finds it',
     // The count and the three ends, at 4, then the items from 20
     expect(buffer.getVectorOffsets(vector)).toStrictEqual([20, 21, 21]);
     expect([0, 1, 2].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual([
+        20, 21, 21
+    ]);
+    expect([0, 1, 2].map(index => buffer.getVectorItemOffset(vector, 3, index))).toStrictEqual([
         20, 21, 21
     ]);
     expect(buffer.getVectorLength(vector)).toBe(3);
@@ -89,6 +92,9 @@ test.runIf(inject('largeBufferTests'))(
 
         expect(buffer.getVectorOffsets(vector)).toStrictEqual(expected);
         expect([0, 1].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual(expected);
+        expect([0, 1].map(index => buffer.getVectorItemOffset(vector, 2, index))).toStrictEqual(
+            expected
+        );
         expect(buffer.getVector(vector)).toStrictEqual([
             new Uint8Array([1]),
             new Uint8Array([2, 3])

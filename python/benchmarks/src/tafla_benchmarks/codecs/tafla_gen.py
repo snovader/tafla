@@ -7,7 +7,6 @@ from tafla_benchmarks.generated.tafla.workloads import (
     ItemList,
     Record,
     Sample,
-    Triple,
     Triples,
 )
 from tafla_benchmarks.workloads import (
@@ -25,9 +24,11 @@ def serialize_record(input: RecordInput) -> memoryview:
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    record = Record(data)
+    """Reads every field at once with ``fields()``, as an application that
+    wants them all would"""
+    fields = Record(data).fields()
 
-    return RecordInput(record.x(), record.y(), record.id(), record.name())
+    return RecordInput(fields["x"], fields["y"], fields["id"], fields["name"])
 
 
 def serialize_document(input: DocumentInput) -> memoryview:
@@ -74,18 +75,20 @@ def _item_fields(item: ItemInput) -> ItemFields:
 
 
 def deserialize_list(data: Buffer) -> ListInput:
+    """Reads each item's fields at once with ``fields()``"""
     items: list[ItemInput] = []
     for item in ItemList(data).items():
-        pair = item.pair()
-        items.append(ItemInput(item.value(), pair.first(), pair.second()))
+        fields = item.fields()
+        pair = fields["pair"]
+        items.append(ItemInput(fields["value"], pair["first"], pair["second"]))
 
     return ListInput(items)
 
 
 def serialize_structs(input: ListInput) -> memoryview:
-    triples = [Triple(item.value, item.first, item.second) for item in input.items]
-
-    return Triples.serialize(items=triples)
+    """Writes the items themselves, whose attributes are a ``Triple``'s
+    fields, as ``TripleFields`` types them"""
+    return Triples.serialize(items=input.items)
 
 
 def deserialize_structs(data: Buffer) -> ListInput:
@@ -114,10 +117,15 @@ TAFLA_GEN = Codec(
 )
 """The code that tafla-gen generates from ``generated/workloads.tafla``, which
 appends each message's fields to a ``TableWriter`` in one call, rather than
-nesting ``TableBuilder`` instances, and reads them with the generated getters.
+nesting ``TableBuilder`` instances. The record and the vector's items are read
+with ``fields()``, which reads a fixed-layout table's fields at once into the
+``TypedDict`` that it's written from, and the document with the getters,
+columns as views.
 
-The generated code writes from a ``TypedDict`` of each table's fields and frozen
-dataclasses of the structs, which ``serialize()`` creates from the workloads'
-inputs in each call, as the protobuf codec creates its messages. Reading
-creates the workloads' dataclasses from the generated readers' values, after
-the generated readers create the structs' own."""
+The generated code writes from a ``TypedDict`` of each table's fields, and a
+frozen dataclass of the fixed-size record, which ``serialize()`` creates from
+the workloads' inputs in each call, as the protobuf codec creates its
+messages. The array of structs is written from the workload's own items, which
+the struct's protocol of fields types. Reading creates the workloads'
+dataclasses from the generated readers' values, after the generated readers
+create the structs' own."""
