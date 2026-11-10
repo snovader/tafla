@@ -157,7 +157,7 @@ its README describes. Its fastest samples, on an Apple M2 Pro:
   builder's record of fields and the table, and 13 ns to read.
 - **Each nested builder allocates.** A vector of 100 tables that each nest
   another took 8.9 µs to write, 2.5 to 6.2 times as long as flatbuffers,
-  rmp-serde and prost, which took 3.5 to 1.4 µs: each of its 200 tables is a
+  rmp-serde and prost, which took 1.4 to 3.5 µs: each of its 200 tables is a
   builder, which allocates its record of fields. It took 0.28 µs to read.
 
 ## Conversions
