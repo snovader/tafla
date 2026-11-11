@@ -95,6 +95,30 @@ fn rust_imports_break_where_rustfmt_breaks_them() {
 }
 
 #[test]
+fn rust_imports_fill_lines_as_rustfmt_fills_them() {
+    // Every name that the module imports, whose first line rustfmt fills to
+    // 99 columns, a column less than its `max_width`
+    let source = "\
+struct Pair { a: uint8; }
+table Nested { a: uint8; }
+message Every (offset_type: uint8) { a: [uint16]; }
+message Vectors { nested: Nested; items: [Nested]; }
+";
+    let files = generate("every.tafla", source, "rust", &Options::default());
+
+    let expected = "use tafla::{
+    Alignment, ArrayView, BuildError, ByteBuffer, DecodeError, OffsetType, TableLayout, TableSizer,
+    TableWriter, Vector,
+};
+";
+    assert!(
+        files[0].contents.contains(expected),
+        "{}",
+        files[0].contents
+    );
+}
+
+#[test]
 fn java_classes_are_in_the_generated_package_by_default() {
     let files = generate("point.tafla", SCHEMA, "java", &Options::default());
 
