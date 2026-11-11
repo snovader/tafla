@@ -13,6 +13,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
@@ -678,6 +680,108 @@ TEST(TableWriter, WritesAnEmptyTableWithoutBytes) {
     auto writer = sizer.writer();
     const auto bytes = writer.finish();
     EXPECT_TRUE(bytes.empty());
+}
+
+/// A writer moved from, by construction or assignment, writes nothing into
+/// the bytes of the writer it was moved to, and fails
+TEST(TableWriter, AWriterMovedFromWritesNothingIntoTheWriterMovedTo) {
+    TableSizer sizer(2, TableLayout());
+    sizer.add_uint8();
+    sizer.add_uint8();
+    const std::vector<std::uint8_t> expected{8, 0, 0, 0, 9, 0, 0, 0, 1, 2};
+
+    auto from = sizer.writer();
+    from.set_uint8(0, 1);
+    auto constructed = std::move(from);
+    constructed.set_uint8(1, 2);
+
+    auto assigned_from = sizer.writer();
+    assigned_from.set_uint8(0, 1);
+    auto assigned = sizer.writer();
+    assigned = std::move(assigned_from);
+    assigned.set_uint8(1, 2);
+
+    for (auto* moved : {&from, &assigned_from}) {
+        // NOLINTNEXTLINE(bugprone-use-after-move): the state after it is the point
+        moved->set_uint8(1, 3);
+        EXPECT_EQ(build_error_of([&] { static_cast<void>(moved->finish()); }).kind(), BuildError::Kind::not_as_sized);
+    }
+    EXPECT_EQ(constructed.finish().to_vector(), expected);
+    EXPECT_EQ(assigned.finish().to_vector(), expected);
+}
+
+TEST(TableWriter, BytesMovedToThemselvesAreUnchanged) {
+    TableSizer sizer(1, TableLayout());
+    sizer.add_uint8();
+    auto writer = sizer.writer();
+    writer.set_uint8(0, 7);
+    auto bytes = writer.finish();
+
+    auto& same = bytes;
+    bytes = std::move(same);
+    EXPECT_EQ(bytes.to_vector(), (std::vector<std::uint8_t>{4, 0, 0, 0, 7}));
+}
+
+/// A struct whose conversion to bytes throws
+struct Throwing {
+    static constexpr std::size_t SIZE = 1;
+    static constexpr Alignment ALIGNMENT = Alignment::one;
+
+    static Throwing from_bytes(const std::uint8_t* /*bytes*/) noexcept {
+        return {};
+    }
+
+    void to_bytes(std::uint8_t* /*bytes*/) const {
+        throw std::runtime_error("Can't convert");
+    }
+};
+
+/// A struct whose conversion to bytes doesn't throw, as tafla-gen's don't
+struct Noexcept {
+    static constexpr std::size_t SIZE = 1;
+    static constexpr Alignment ALIGNMENT = Alignment::one;
+
+    static Noexcept from_bytes(const std::uint8_t* /*bytes*/) noexcept {
+        return {};
+    }
+
+    void to_bytes(std::uint8_t* bytes) const noexcept {
+        *bytes = 1;
+    }
+};
+
+/// A type that would be a struct but for its 0 bytes, whose arrays have no
+/// length to count their structs by
+struct Empty {
+    static constexpr std::size_t SIZE = 0;
+    static constexpr Alignment ALIGNMENT = Alignment::one;
+
+    static Empty from_bytes(const std::uint8_t* /*bytes*/) noexcept {
+        return {};
+    }
+
+    void to_bytes(std::uint8_t* /*bytes*/) const noexcept {}
+};
+
+static_assert(tafla::Struct<Throwing>);
+static_assert(tafla::Struct<Noexcept>);
+static_assert(!tafla::Struct<Empty>);
+
+/// The writer passes on what a struct's conversion throws, rather than
+/// terminating, and doesn't throw for a struct whose conversion doesn't
+TEST(TableWriter, PassesOnTheExceptionsOfAStructsConversion) {
+    TableSizer sizer(2, TableLayout());
+    sizer.add_struct(1);
+    sizer.add_struct_array(1, 1, Alignment::one);
+    auto writer = sizer.writer();
+
+    const std::array<Throwing, 1> throwing{};
+    EXPECT_THROW(writer.set_struct(0, throwing[0]), std::runtime_error);
+    EXPECT_THROW(writer.set_structs(1, std::span<const Throwing>(throwing)), std::runtime_error);
+
+    const std::array<Noexcept, 1> structs{};
+    static_assert(noexcept(writer.set_struct(0, structs[0])));
+    static_assert(noexcept(writer.set_structs(1, std::span<const Noexcept>(structs))));
 }
 
 }  // namespace

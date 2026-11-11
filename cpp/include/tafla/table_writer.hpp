@@ -10,6 +10,7 @@
 #include <ranges>
 #include <span>
 #include <string_view>
+#include <utility>
 
 #include "bytes.hpp"
 #include "element.hpp"
@@ -359,7 +360,8 @@ private:
     /// The table's length so far, which is where the next field goes
     std::uint64_t position_;
     /// The start of the table being sized, which arrays are aligned from: 0
-    /// for the root, and past its header for the tables nested in it
+    /// for the root, and past its header for the tables nested in it, so
+    /// that `start_field()` tells the root's fields by it
     std::uint64_t table_ = 0;
     /// The root's fields added so far, the last of which a table too long
     /// for its offsets names
@@ -421,8 +423,42 @@ private:
 /// leaves the table's bytes undefined for them.
 class TableWriter {
 public:
-    TableWriter(TableWriter&&) noexcept = default;
-    TableWriter& operator=(TableWriter&&) noexcept = default;
+    /// Moves `other`'s bytes and position, and leaves it without bytes, so
+    /// that it writes nothing and its `finish()` throws, unless its table is
+    /// empty
+    TableWriter(TableWriter&& other) noexcept
+        : bytes_(std::move(other.bytes_)),
+          begin_(other.begin_),
+          cursor_(other.cursor_),
+          end_(other.end_),
+          length_(other.length_),
+          offset_type_(other.offset_type_),
+          header_size_(other.header_size_),
+          table_(other.table_),
+          slots_(other.slots_),
+          fields_(other.fields_),
+          error_(other.error_) {
+        other.forget_bytes();
+    }
+
+    TableWriter& operator=(TableWriter&& other) noexcept {
+        if (this != &other) {
+            bytes_ = std::move(other.bytes_);
+            begin_ = other.begin_;
+            cursor_ = other.cursor_;
+            end_ = other.end_;
+            length_ = other.length_;
+            offset_type_ = other.offset_type_;
+            header_size_ = other.header_size_;
+            table_ = other.table_;
+            slots_ = other.slots_;
+            fields_ = other.fields_;
+            error_ = other.error_;
+            other.forget_bytes();
+        }
+        return *this;
+    }
+
     TableWriter(const TableWriter&) = delete;
     TableWriter& operator=(const TableWriter&) = delete;
     ~TableWriter() = default;
@@ -443,7 +479,7 @@ public:
             detail::throw_build_error({BuildError::Kind::not_as_sized, offset_type_, written(), length_});
         }
 
-        cursor_ = end_ = begin_ = empty_;
+        forget_bytes();
         return std::move(bytes_);
     }
 
@@ -596,9 +632,11 @@ public:
     }
 
     /// Writes struct field `index`, as the bytes that `value.to_bytes()`
-    /// writes, without padding
+    /// writes, without padding. It throws only what `to_bytes()` throws,
+    /// which tafla-gen's structs don't.
     template <Struct T>
-    TAFLA_ALWAYS_INLINE void set_struct(std::size_t index, const T& value) noexcept {
+    TAFLA_ALWAYS_INLINE void set_struct(std::size_t index, const T& value) noexcept(
+        noexcept(value.to_bytes(std::declval<std::uint8_t*>()))) {
         set_offset(index);
         if (T::SIZE <= room()) [[likely]] {
             value.to_bytes(cursor_);
@@ -610,10 +648,14 @@ public:
 
     /// Writes field `index`, an array of `structs`, each as the bytes that its
     /// `to_bytes()` writes, padded so that they start at a multiple of
-    /// `T::ALIGNMENT` from the start of the table
+    /// `T::ALIGNMENT` from the start of the table. It throws only what
+    /// `to_bytes()` throws.
     template <Struct T>
-    TAFLA_ALWAYS_INLINE void set_structs(std::size_t index, std::span<const T> structs) noexcept {
-        const auto write = [](const T& item, std::uint8_t* bytes) { item.to_bytes(bytes); };
+    TAFLA_ALWAYS_INLINE void set_structs(std::size_t index, std::span<const T> structs) noexcept(
+        noexcept(std::declval<const T&>().to_bytes(std::declval<std::uint8_t*>()))) {
+        const auto write = [](const T& item, std::uint8_t* bytes) noexcept(noexcept(item.to_bytes(bytes))) {
+            item.to_bytes(bytes);
+        };
         set_structs<T::SIZE>(index, structs, write, T::ALIGNMENT);
     }
 
@@ -625,10 +667,12 @@ public:
     /// multiple of `alignment` from the start of the table, which is the size
     /// of the structs' largest scalar.
     ///
-    /// `finish()` throws a `BuildError` if `Size` is 0.
+    /// `finish()` throws a `BuildError` if `Size` is 0. It throws only what
+    /// `write` throws.
     template <std::size_t Size, std::ranges::sized_range Structs, class Write>
     TAFLA_ALWAYS_INLINE void set_structs(std::size_t index, const Structs& structs, Write write,
-                                         Alignment alignment) noexcept {
+                                         Alignment alignment) noexcept(noexcept(write(*std::ranges::begin(structs),
+                                                                                      std::declval<std::uint8_t*>()))) {
         if constexpr (Size == 0) {
             record({BuildError::Kind::not_whole_structs, OffsetType::uint32, 0, 0});
             return;
@@ -885,6 +929,13 @@ private:
         detail::store(at, static_cast<std::uint32_t>(value));
     }
 
+    /// Leaves the writer without bytes to write, as `finish()` and a move
+    /// leave it, so that a write past them fails rather than writing into
+    /// bytes that it no longer holds
+    TAFLA_ALWAYS_INLINE void forget_bytes() noexcept {
+        cursor_ = end_ = begin_ = empty_;
+    }
+
     /// Records the first error, which `finish()` throws
     TAFLA_ALWAYS_INLINE void record(BuildError::Details details) noexcept {
         if (!error_) {
@@ -914,7 +965,8 @@ private:
     /// The byte length of the root's header slots, which its offsets follow
     std::size_t header_size_;
     /// The start of the table being written, which its offsets count from: 0
-    /// for the root
+    /// for the root, which `end_table()` tells from the tables nested in it
+    /// by that, since a nested table starts after its parent's offsets
     std::size_t table_ = 0;
     /// The position of that table's first offset
     std::size_t slots_;

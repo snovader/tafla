@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace tafla {
@@ -50,9 +51,10 @@ public:
     }
 
     Bytes& operator=(Bytes&& other) noexcept {
-        data_ = std::move(other.data_);
-        size_ = other.size_;
-        other.size_ = 0;
+        if (this != &other) {
+            data_ = std::move(other.data_);
+            size_ = std::exchange(other.size_, 0);
+        }
         return *this;
     }
 

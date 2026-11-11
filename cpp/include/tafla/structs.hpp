@@ -19,17 +19,19 @@
 namespace tafla {
 
 /// A struct: scalars at fixed offsets, without a header, offsets or padding,
-/// which a type reads from and writes to its `SIZE` bytes, and whose arrays
-/// are aligned to `ALIGNMENT`, its largest scalar's size. The structs that
-/// tafla-gen generates are, and so can an application's own types be, which
-/// `TableWriter` then writes and `StructArray` reads.
+/// which a type reads from and writes to its `SIZE` bytes, a constant of at
+/// least 1, and whose arrays are aligned to `ALIGNMENT`, its largest
+/// scalar's size. The structs that tafla-gen generates are, and so can an
+/// application's own types be, which `TableWriter` then writes and
+/// `StructArray` reads. An array counts its structs by their size, so a
+/// struct of 0 bytes, whose arrays a count can't describe, isn't one.
 template <class T>
 concept Struct = requires(const T& value, const std::uint8_t* from, std::uint8_t* to) {
     { T::SIZE } -> std::convertible_to<std::size_t>;
     { T::ALIGNMENT } -> std::convertible_to<Alignment>;
     { T::from_bytes(from) } -> std::same_as<T>;
     value.to_bytes(to);
-};
+} && (T::SIZE > 0);
 
 /// A view of an array of structs, which reads each struct from its bytes when
 /// it's asked for, at any alignment and in any host byte order.
