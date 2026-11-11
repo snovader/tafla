@@ -1,9 +1,6 @@
 package tafla
 
-import (
-	"iter"
-	"strconv"
-)
+import "iter"
 
 // ArrayView is an array read from a table: its elements' little-endian
 // bytes, which it reads in place at any alignment and in any host byte
@@ -37,8 +34,7 @@ func (a ArrayView[T]) Len() int {
 func (a ArrayView[T]) At(index int) T {
 	size := sizeOf[T]()
 	if uint(index) >= uint(len(a.bytes)/size) {
-		panic("tafla: index " + strconv.Itoa(index) + " out of range of an array of " +
-			strconv.Itoa(len(a.bytes)/size))
+		panic(indexOutOfRange{index: index, length: len(a.bytes) / size, of: "an array"})
 	}
 
 	start := index * size
@@ -47,7 +43,8 @@ func (a ArrayView[T]) At(index int) T {
 
 // AsSlice returns the elements in place, and true, or nil and false when they
 // aren't aligned to their type in memory or the host is big-endian. Single
-// bytes are always in place. The slice shares the table's bytes.
+// bytes, and an empty array, are always in place. The slice shares the
+// table's bytes.
 func (a ArrayView[T]) AsSlice() ([]T, bool) {
 	return elementsInPlace[T](a.bytes)
 }

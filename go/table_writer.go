@@ -79,9 +79,11 @@ func newTableSizer(fields int, layout TableLayout, versioned bool, version uint3
 		return TableSizer{}, layout.sizerFailure(fields, versioned, version)
 	}
 
-	// Built in place, rather than built and then copied
+	// Built in place, rather than built and then copied. The header's length
+	// is counted in uint64, since a header of uint32 offsets can be longer
+	// than a 32-bit int holds.
 	return TableSizer{
-		position:  uint64(layout.HeaderSize() + fields*layout.offsetType.Size()),
+		position:  uint64(layout.HeaderSize()) + uint64(fields)*uint64(layout.offsetType.Size()),
 		fields:    fields,
 		maxLength: layout.maxLength(),
 		version:   version,

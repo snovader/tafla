@@ -342,8 +342,11 @@ func (b ByteBuffer) GetVector(position int) (Vector, error) {
 		return Vector{}, err
 	}
 
+	// Without the capacity past the bytes, which an item read in place, up
+	// to their end, would otherwise give its caller
+	end := len(b.bytes)
 	return Vector{
-		bytes:      b.bytes[position:],
+		bytes:      b.bytes[position:end:end],
 		position:   position,
 		length:     count,
 		offsetType: b.layout.offsetType,

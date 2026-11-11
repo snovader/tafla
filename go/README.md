@@ -102,8 +102,9 @@ with the code that tafla-gen generates.
   the host is little-endian and the elements are aligned to their type in
   memory, and `Slice()` falls back to a copy otherwise. `TableBuilder` aligns
   arrays from the table's start, so they're aligned in memory when the table
-  is, as the bytes of a slice that Go allocated are. A slice in place shares
-  the bytes, so writing to it writes to them.
+  is, as the bytes of a slice that Go allocates for a table usually are,
+  though Go doesn't promise it. A slice in place shares the bytes, so writing
+  to it writes to them.
 - **Strings share the bytes too.** `GetString()` returns a string of the
   table's bytes rather than a copy, as FlatBuffers' Go runtime does, so the
   bytes must not change while the string is in use, as for `unsafe.String`.

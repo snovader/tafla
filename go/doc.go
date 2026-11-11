@@ -50,7 +50,9 @@
 // at any alignment and in any host byte order, and [ArrayView.AsSlice]
 // returns them as a slice of the bytes when the host is little-endian and
 // they're aligned to their type in memory, as TableBuilder aligns them
-// within an aligned table, which a slice that Go allocated is. A string
+// within an aligned table. A slice that Go allocates for a table usually
+// is, though Go doesn't promise it, and a subslice or a slice from
+// elsewhere may not be. A string
 // shares the bytes too, which Go's strings otherwise don't, so the bytes
 // must not change while it's in use. Byte arrays, structs and vector items
 // are slices of the bytes.

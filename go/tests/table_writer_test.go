@@ -449,6 +449,23 @@ func TestCountsLengthsPastAnyIntWithoutOverflowing(t *testing.T) {
 	}
 }
 
+func TestSizesTheLongestHeaderOfUint32OffsetsWithoutOverflowingAnInt(t *testing.T) {
+	// The most fields whose offsets fit, which make a header of 4 GiB less 4
+	// bytes, longer than a 32-bit int holds
+	const fields = 1<<30 - 1
+	const length uint64 = 4 * fields
+	sizer := must(tafla.NewTableSizer(fields, tafla.TableLayout{}))
+
+	if math.MaxInt >= length {
+		if sized := must(sizer.ByteLength()); uint64(sized) != length {
+			t.Errorf("sized %d bytes", sized)
+		}
+	} else {
+		expected := &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: length, OffsetType: tafla.Uint32}
+		expectError(t, second(sizer.ByteLength()), expected)
+	}
+}
+
 func TestRejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes(t *testing.T) {
 	for _, offsetType := range []tafla.OffsetType{tafla.Uint8, tafla.Uint16} {
 		width := offsetType.Size()
