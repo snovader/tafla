@@ -540,6 +540,24 @@ func TestRejectsAnArrayOf0ByteStructsFromTheSizerAsTableBuilderDoes(t *testing.T
 	expectError(t, second(sizer.Writer()), expected)
 }
 
+func TestReportsAFieldTooLongBeforeALaterArrayOf0ByteStructsAsTableBuilderDoes(t *testing.T) {
+	layout := tafla.TableLayout{}.WithOffsetType(tafla.Uint8)
+	long := strings.Repeat("a", 300)
+
+	sizer := must(tafla.NewTableSizer(3, layout))
+	sizer.AddUint8()
+	sizer.AddString(long)
+	sizer.AddStructArray(0, 0, tafla.Align1)
+
+	builder := must(tafla.NewTableBuilder(3, layout))
+	check(t, builder.SetUint8(1))
+	expected := builder.SetString(long)
+
+	expectError(t, expected, &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 305, OffsetType: tafla.Uint8})
+	expectError(t, second(sizer.ByteLength()), expected)
+	expectError(t, second(sizer.Writer()), expected)
+}
+
 func TestSizesAndWritesAStructOf0BytesAtTheNextFieldsOffset(t *testing.T) {
 	sizer := must(tafla.NewTableSizer(2, tafla.TableLayout{}))
 	sizer.AddStruct(0)

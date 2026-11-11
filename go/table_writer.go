@@ -250,15 +250,17 @@ func (s *TableSizer) AddStruct(size int) {
 // table. [TableSizer.Writer] fails with NotWholeStructs if size is 0, as
 // [TableBuilder.SetStructArray] does.
 func (s *TableSizer) AddStructArray(count, size int, alignment Alignment) {
-	if size == 0 && s.failure == 0 {
-		s.failure = NotWholeStructs
-	}
-
 	high, byteLength := bits.Mul64(uint64(count), uint64(size))
 	if high != 0 {
 		byteLength = past
 	}
 	s.addArray(min(byteLength, past), alignment)
+
+	// After addArray, which reports a field before this one that made the
+	// table too long, as TableBuilder's setter of that field does first
+	if size == 0 && s.failure == 0 {
+		s.failure = NotWholeStructs
+	}
 }
 
 // AddTable adds a nested table, padded to start at a multiple of alignment,
