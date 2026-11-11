@@ -215,6 +215,12 @@ struct Frame {
     put: uint8;
     bytes: uint8;
 }
+
+table Encodings {
+    marshal_j_s_o_n: uint8;
+    unmarshal_x_m_l: uint8;
+    marshal_json: uint8;
+}
 ";
 
     assert_generates(
@@ -237,6 +243,11 @@ struct Frame {
             "\tBytes            uint8\n",
             "func (s *Frame) UnmarshalBinary(bytes []byte) error {",
             "\ts.Put = bytes[3]\n",
+            // Fields whose exported names are those of methods that vet
+            // checks take a `_`, and a name that only resembles one doesn't
+            "func (t Encodings) MarshalJSON_() (uint8, error) {",
+            "func (t Encodings) UnmarshalXML_() (uint8, error) {",
+            "func (t Encodings) MarshalJson() (uint8, error) {",
         ],
     );
 }
