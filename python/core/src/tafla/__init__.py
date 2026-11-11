@@ -93,10 +93,9 @@ is read once, at import. ``IMPLEMENTATION`` says which: ``"native"`` or
 
 A native method does in one call what the pure-Python one does in several
 Python calls, so the tables that generated code writes and reads take about
-half the time with the native classes. Both
-implementations' docstrings describe the same behavior, and the tests compare
-them call by call, errors and their messages included. They differ only where
-CPython leaves the outcome to its own objects:
+half the time with the native classes. Both implementations' docstrings
+describe the same behavior, and the tests compare them call by call, errors
+and their messages included. They differ only in these ways:
 
 - The native ``TableWriter.bytes()`` exports the writer's own bytes, after
   which any field that would change their length raises ``BufferError``. The
@@ -110,6 +109,8 @@ CPython leaves the outcome to its own objects:
   implementation's array reads do, and the pure-Python one's string reads.
 - A ``TypeError`` for using the API wrongly, such as for bytes that aren't
   C-contiguous, may be worded differently.
+- The native classes can't be subclassed: Python raises ``TypeError`` for a
+  class derived from one.
 
 Performance
 -----------
