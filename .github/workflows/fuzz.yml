@@ -2,7 +2,8 @@ name: Fuzz
 
 # Weekly, rather than on every change, since a run takes minutes of each
 # target's time to find anything. The Rust workflow lints the fuzz targets on
-# every change, so that they keep building.
+# every change, so that they keep building, and the C++ workflow builds and
+# runs its targets briefly.
 on:
   schedule:
     # Mondays at 04:17 UTC, off the hour that most scheduled workflows start
@@ -90,4 +91,55 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: rust/fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+  # C++'s libFuzzer targets, which mirror the runtime's Rust targets, with
+  # the sanitizers
+  fuzz-cpp:
+    name: Fuzz C++ (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cpp
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [byte_buffer, conformance]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build
+
+      - name: Restore the corpus
+        uses: actions/cache@v6
+        with:
+          path: cpp/build/corpus/${{ matrix.target }}
+          key: fuzz-cpp-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-cpp-corpus-${{ matrix.target }}-
+
+      - name: Build the fuzz target
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++-18 \
+              -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
+          cmake --build build --target fuzz_${{ matrix.target }}
+
+      # libFuzzer writes an input that fails to the working directory
+      - name: Run the fuzz target
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 300 }}
+        run: |
+          mkdir -p build/corpus/${{ matrix.target }} build/artifacts
+          build/fuzz/fuzz_${{ matrix.target }} build/corpus/${{ matrix.target }} ../conformance/valid \
+              ../conformance/equivalent ../conformance/invalid -max_total_time="$SECONDS_PER_TARGET" -timeout=10 \
+              -artifact_prefix=build/artifacts/
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-cpp-artifacts-${{ matrix.target }}
+          path: cpp/build/artifacts
           if-no-files-found: ignore

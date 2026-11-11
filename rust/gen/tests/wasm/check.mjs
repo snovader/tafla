@@ -34,7 +34,8 @@ const GOLDEN_ROOTS = {
     java: {
         root: 'java/core/src/test/java/io/github/snovader/tafla/test/generated'
     },
-    rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' }
+    rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' },
+    cpp: { root: 'cpp/tests/generated' }
 };
 
 /** The Java test module's package of the classes of each example schema */

@@ -1,8 +1,8 @@
 # tafla-gen
 
 Compiles a schema of messages, tables and structs into code that writes and
-reads them with tafla's runtime for TypeScript, JavaScript, Python, Java or
-Rust. It runs as a command, as a Rust library, and as a WebAssembly module
+reads them with tafla's runtime for TypeScript, JavaScript, Python, Java, Rust
+or C++. It runs as a command, as a Rust library, and as a WebAssembly module
 without imports, which the packages for the other languages run.
 
 ```text
@@ -64,7 +64,7 @@ Each field is `name: type;`, of one of these types:
 
 A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
-TypeScript, JavaScript and Java, and `bool` in Python and Rust, and the
+TypeScript, JavaScript and Java, and `bool` in Python, Rust and C++, and the
 generated code reads and writes it with the runtime's `uint8` getters and
 setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
 and 1 holds bools in the meantime.
@@ -115,9 +115,10 @@ or read its tables, or a target couldn't generate its code:
   such as `ByteBuffer` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java and `Option`
-  in Rust, `Fields`, the record of a Java class's fields, and keywords, such
-  as `None` in Python and `Self` in Rust. `src/generate/reserved.rs` lists
-  them.
+  in Rust, `Fields`, the record of a Java class's fields, keywords, such as
+  `None` in Python and `Self` in Rust, and the macros of the C standard
+  library that a C++ header may define, such as `NULL` and `EOF`; C++ names
+  everything else in full. `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
   TypeScript, JavaScript and Java name them in. It drops the underscores, so
   `a_1` and `a1` are both `a1`.
@@ -207,16 +208,17 @@ when the bytes are in another version.
 | Python     | `<schema>.py`                            | Classes, written from `TypedDict`s of their fields as keyword arguments  | Frozen dataclasses, read and written with `struct`   |
 | Java       | `<package>/<Name>.java`                  | Final classes, written from a nested `Fields` record                     | Records, read and written in place with `VarHandle`s |
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
+| C++        | `<schema>.hpp`, a header of C++20        | Views of their bytes, written from aggregates, `<Name>Fields`            | Aggregates, read and written at their offsets        |
 
 A table's getter of a vector or an array of structs reads every item at once.
 Vectors return an array of tables in TypeScript and JavaScript, a `List` in
-Java, a `list` in Python and a `Vec` in Rust. Every target reads a vector's
+Java, a `list` in Python, a `Vec` in Rust and a `std::vector` in C++. Every target reads a vector's
 tables in place, within the message's bytes, as `SPEC.md` describes, so that
 it reads the same fields from the same bytes as the others, even where a
 corrupted item's offsets lead past its end. Arrays of structs return an
 array of structs in TypeScript, JavaScript and Java, as Java's getters of
-arrays of scalars return Java arrays, a `list` in Python, and an iterator
-that reads each from the bytes in Rust. Each struct writes an array of them
+arrays of scalars return Java arrays, a `list` in Python, a `std::vector` in
+C++, and an iterator that reads each from the bytes in Rust. Each struct writes an array of them
 with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
 
 ### Views
@@ -241,6 +243,7 @@ item's bytes are corrupt.
 | Python                 | `len(view)`           | `view[i]`, from the end if `i` is negative, or an `IndexError`                              | `for item in view`, which reads every item's end first |
 | Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`                                |
 | Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
+| C++                    | `size()`, `empty()`   | `get(i)` of a vector, `at(i)` of an array, or a `std::out_of_range`                         | `for (auto item : view)`, reading each item's end once |
 
 A view creates the reader of each item that it reads, as the getter does, but
 not those of the items it skips, nor an array of them. TypeScript's views
@@ -275,14 +278,16 @@ Field names that are keywords in a target take a `_` after them, such as
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
 `constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
-and `version_of_` in Python, `hashCode_` and `serialize_` in Java, and `new_` and
-`version_of_` in Rust. So does `then` in TypeScript and JavaScript, since a
+and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
+`version_of_` in Rust, and `serialize_`, `size_`, `write_`, `read_`,
+`to_bytes_` and `version_of_` in C++, which also renames the C standard
+library's macros in `snake_case`, such as `errno_`. So does `then` in TypeScript and JavaScript, since a
 `then()` method would make a reader a thenable, which `await` calls and never settles. `MEMBERS` in each
 target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
-it: Biome for TypeScript and JavaScript, Ruff for Python and rustfmt for
-Rust, with Java at 100 columns. With the schema above, from
+it: Biome for TypeScript and JavaScript, Ruff for Python, rustfmt for Rust and
+clang-format for C++, with Java at 100 columns. With the schema above, from
 `schemas/shapes.tafla`, the generated code reads and writes a document like
 this:
 
@@ -334,6 +339,27 @@ let document = Document::new(&bytes)?; // checks the version
 assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<f32>
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
+
+```cpp
+#include "shapes.hpp"
+
+const std::vector<std::uint32_t> keys{1, 2};
+const std::vector<float> a{0.5F, 1.5F};
+const std::vector<float> b{2.5F, 3.5F};
+const auto bytes = shapes::DocumentFields{
+    .x = 1.5, .y = 2, .name = "a", .columns = {.base = 0, .keys = keys, .a = a, .b = b},
+}.serialize();
+
+const shapes::Document document(bytes);  // checks the version
+document.columns().a();  // a tafla::ArrayView<float> of the bytes
+```
+
+C++'s namespace is the schema's file name, or `--package`'s, and its fields
+structs view their strings, arrays and items as `std::string_view`s and
+`std::span`s, which must outlive `serialize()`. A reader of a table also has
+a default constructor, of no bytes, whose getters throw a
+`tafla::DecodeError`, so that the getter of a vector can size its
+`std::vector` before reading the items into it.
 
 ### Writing into reused bytes
 
@@ -432,6 +458,7 @@ bytes don't hold the header:
 | Python                 | `Document.version_of(data)`, an `int`                        |
 | Java                   | `Document.versionOf(bytes)`, a `long`                        |
 | Rust                   | `Document::version_of(&bytes)`, a `Result<u32, DecodeError>` |
+| C++                    | `Document::version_of(bytes)`, a `std::uint32_t`             |
 
 An application that reads two versions of a document, declared with the same
 header as `message DocumentV1 (sized, version: 1)` and
@@ -453,7 +480,7 @@ switch (Document.versionOf(bytes)) {
 ## Command
 
 ```sh
-tafla-gen <typescript|javascript|python|java|rust> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen <typescript|javascript|python|java|rust|cpp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
 `ts`, `js`, `py` and `rs` abbreviate the targets. Options may come before,
@@ -484,16 +511,19 @@ they share.
 - `--runtime` names the module, package or crate that the generated code
   imports tafla's runtime from, by default:
 
-  | Target                               | Runtime                    |
-  | ------------------------------------ | -------------------------- |
-  | TypeScript, JavaScript, Python, Rust | `tafla`                    |
-  | Java                                 | `io.github.snovader.tafla` |
+  | Target                               | Runtime                                     |
+  | ------------------------------------ | ------------------------------------------- |
+  | TypeScript, JavaScript, Python, Rust | `tafla`                                     |
+  | Java                                 | `io.github.snovader.tafla`                  |
+  | C++                                  | `tafla/tafla.hpp`, a header                 |
 
 - `--package` names the package of the Java classes, which is `generated` by
   default, since they belong in a package of the project that uses them,
   which the generator can't know. It's identifiers in ASCII separated by
   dots, such as `com.example.shapes`, which are the directories of the
-  classes' files under `--out` too. Other targets ignore it.
+  classes' files under `--out` too. C++ takes it as its namespace, such as
+  `com::example::shapes`, rather than the schema's file name, with a `_` after
+  a C++ keyword, `std` or `tafla`. Other targets ignore it.
 
 From this repository, `cargo run -p tafla-gen --` runs the command.
 
@@ -522,7 +552,8 @@ assert!(Diagnostic::render_all(&errors, "point.tafla", source)
 ```
 
 Each target has a Cargo feature, `typescript` (which generates JavaScript
-too), `python`, `java` and `rust`, and the default features are all four. A
+too), `python`, `java`, `rust` and `cpp`, and the default features are all
+five. A
 crate that generates one language from its build script can depend on that
 feature alone.
 
@@ -534,7 +565,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 280 KB. It has no imports, so any host runs it with an empty import
+about 318 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
@@ -604,6 +635,7 @@ its runtime, in the same ways as the Rust:
 | Python                 | `python/core/tests/generated/<schema>/`                                     |
 | Java                   | `java/core/src/test/java/io/github/snovader/tafla/test/generated/<schema>/` |
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
+| C++                    | `cpp/tests/generated/<schema>/`                                             |
 
 The Java is generated with the package
 `io.github.snovader.tafla.test.generated.<schema>`, so that it's part of the
@@ -621,6 +653,7 @@ where:
 | Python     | `python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla`, `…/generated/tafla/`                                 |
 | Java       | `java/benchmarks/src/main/tafla/workloads.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/` |
 | Rust       | `rust/benchmarks/workloads.tafla`, `rust/benchmarks/src/codecs/tafla_gen/`                                               |
+| C++        | `cpp/benchmarks/workloads.tafla`, `cpp/benchmarks/generated/tafla/`                                                      |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

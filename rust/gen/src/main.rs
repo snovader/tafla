@@ -156,9 +156,12 @@ Options:
   --out <dir>          The directory to write the files under, by default the
                        current directory
   --runtime <module>   The module, package or crate that the code imports tafla's
-                       runtime from: `tafla` by default, and
-                       `io.github.snovader.tafla` in Java
-  --package <package>  The package of the Java classes, by default `generated`
+                       runtime from: `tafla` by default,
+                       `io.github.snovader.tafla` in Java, and the header
+                       `tafla/tafla.hpp` in C++
+  --package <package>  The package of the Java classes, by default `generated`,
+                       and the namespace of the C++, `a::b` for `a.b`, by
+                       default the schema's name
   -h, --help           Prints this help
   -V, --version        Prints the version
   --                   Ends the options, so that every argument after it is a schema

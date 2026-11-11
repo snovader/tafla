@@ -50,6 +50,7 @@ jobs:
               - "schemas/**"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
+              - "cpp/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
               - "typescript/core/test/generated/*/**"

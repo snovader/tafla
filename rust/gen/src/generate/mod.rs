@@ -5,6 +5,8 @@
 //! Each generator has a Cargo feature, which the default features enable. A
 //! build without a generator's feature doesn't know its target.
 
+#[cfg(feature = "cpp")]
+mod cpp;
 #[cfg(feature = "java")]
 mod java;
 // Options name a Java package in every build
@@ -13,7 +15,8 @@ mod java_package;
     feature = "typescript",
     feature = "python",
     feature = "java",
-    feature = "rust"
+    feature = "rust",
+    feature = "cpp"
 ))]
 mod prose;
 #[cfg(feature = "python")]
@@ -28,7 +31,8 @@ mod typescript;
     feature = "typescript",
     feature = "python",
     feature = "java",
-    feature = "rust"
+    feature = "rust",
+    feature = "cpp"
 ))]
 mod writer;
 
@@ -50,6 +54,9 @@ pub enum Target {
     Java,
     #[cfg(feature = "rust")]
     Rust,
+    /// A header of C++20
+    #[cfg(feature = "cpp")]
+    Cpp,
 }
 
 impl Target {
@@ -65,6 +72,8 @@ impl Target {
         (&["java"], Self::Java),
         #[cfg(feature = "rust")]
         (&["rust", "rs"], Self::Rust),
+        #[cfg(feature = "cpp")]
+        (&["cpp"], Self::Cpp),
     ];
 
     /// The target of a name or its abbreviation, if this build generates it
@@ -114,7 +123,8 @@ pub struct GeneratedFile {
         feature = "typescript",
         feature = "python",
         feature = "java",
-        feature = "rust"
+        feature = "rust",
+        feature = "cpp"
     )),
     allow(unused_variables)
 )]
@@ -142,6 +152,8 @@ pub fn generate(
         Target::Java => java::generate(schema, &header, options),
         #[cfg(feature = "rust")]
         Target::Rust => rust::generate(schema, stem(file_name), &header, options),
+        #[cfg(feature = "cpp")]
+        Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
     }
 }
 
@@ -165,7 +177,12 @@ fn comment_text(file_name: &str) -> String {
 /// the file of the generators that write one per schema. Java's writes one
 /// per class. On Windows, the directory may end with `\` or a drive's `:`,
 /// either of which would take the file out of the output directory.
-#[cfg(any(feature = "typescript", feature = "python", feature = "rust"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "python",
+    feature = "rust",
+    feature = "cpp"
+))]
 fn stem(file_name: &str) -> &str {
     let name = file_name
         .rsplit(['/', '\\', ':'])

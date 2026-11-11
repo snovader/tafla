@@ -195,3 +195,26 @@ fn rust_renames_the_associated_functions_of_views() {
         ],
     );
 }
+
+#[test]
+fn cpp_renames_the_members_of_structs_and_fields_structs_and_keywords() {
+    assert_declares(
+        "cpp",
+        &[
+            "    [[nodiscard]] std::uint8_t serialize_() const;",
+            "    std::uint8_t serialize_{};",
+            "    [[nodiscard]] std::uint8_t read_() const;",
+            "    [[nodiscard]] std::uint8_t write_() const;",
+            "    [[nodiscard]] std::uint8_t new_() const;",
+            "    [[nodiscard]] std::uint8_t int_() const;",
+            "    [[nodiscard]] bool bool_() const;",
+            "    [[nodiscard]] std::uint8_t then() const;",
+            "    [[nodiscard]] std::uint8_t constructor() const;",
+            "    [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);",
+            "    [[nodiscard]] std::uint8_t version_of_() const;",
+            "    std::uint8_t writer{};",
+            "    std::uint8_t bytes{};",
+            "    std::uint8_t read_{};",
+        ],
+    );
+}

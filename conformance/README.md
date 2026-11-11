@@ -14,6 +14,7 @@ format, several implementations" a checked claim.
 | Python         | `python/core/tests/test_conformance.py`                                      |
 | Java           | `java/core/src/test/java/io/github/snovader/tafla/test/ConformanceTest.java` |
 | Rust           | `rust/core/tests/conformance.rs`                                             |
+| C++            | `cpp/tests/conformance_test.cpp`                                             |
 
 Each language's CI runs its test when this directory changes.
 
@@ -175,7 +176,7 @@ rebuilt, since a writer writes the valid case's bytes.
 `case` names the valid case whose table description reads the bytes. Each
 root field before `field` must read the values that the description gives, and
 reading `field`, its offset included, must fail with the implementation's
-decode error: `DecodeError` in TypeScript, Python and Rust, and
+decode error: `DecodeError` in TypeScript, Python, Rust and C++, and
 `DecodeException` in Java. Its header isn't
 checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
@@ -189,7 +190,7 @@ An implementation's test loads `cases.json` and:
    the description. Comparing the description with its values replaced by the
    ones read, as the TypeScript and Python tests do, covers every value. The
    TypeScript test compares floats by value, with NaN and negative zero by
-   their names; the Python, Java and Rust tests compare their bits.
+   their names; the Python, Java, Rust and C++ tests compare their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
 3. Reads every equivalent table as its valid case describes it, and compares
@@ -249,4 +250,8 @@ The tests follow each implementation's API where it differs:
   and compares it with the item that reading the whole vector finds.
 - JSON parsers can round a float's last digit: the Rust test enables
   `serde_json`'s `float_roundtrip`, and Java's `JsonNumber.doubleValue()`
-  converts from a `BigDecimal`, which is exact.
+  converts from a `BigDecimal`, which is exact. nlohmann/json, which the C++
+  test parses with, converts with `strtod()`, which is exact too.
+- C++'s `Vector` returns its items' bytes, as Rust's does, and its
+  `items_in_place()` the bytes from each item to the end of its parent's, which
+  the C++ test reads an item in place from, as the Rust test does.
