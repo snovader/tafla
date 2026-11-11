@@ -1361,6 +1361,9 @@ impl TableWriter {
     /// its string when ``fields`` ends with one: the tuple that
     /// ``ByteBuffer.get_fields()`` returns.
     ///
+    /// Raises ``ValueError`` if iterating ``items`` gives more or fewer than
+    /// their ``len()``, after which the table is undefined.
+    ///
     /// Generated code calls it to write a vector of such tables.
     fn set_vector_tables(
         &mut self,
@@ -1369,12 +1372,14 @@ impl TableWriter {
         fields: &Bound<'_, FixedFields>,
         items: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let length = items.len()?.into_bound_py_any(py)?;
-        let vector = self.set_vector(py, index, &length)?;
+        let count = items.len()?;
+        let vector = self.set_vector(py, index, &count.into_bound_py_any(py)?)?;
         let fields = fields.get();
         let has_string = fields.description().string;
 
+        let mut iterated = 0;
         for (item, values) in items.try_iter()?.enumerate() {
+            iterated = item + 1;
             let (values, count, string) = Self::item_values(&values?, has_string)?;
             self.write_item(fields, &values, count, string.as_ref())?;
 
@@ -1385,6 +1390,13 @@ impl TableWriter {
             }
         }
 
+        // A sequence whose len() isn't its number of items has ends over its
+        // items, or ends left at 0, and the table is undefined
+        if iterated != count {
+            return Err(PyValueError::new_err(format!(
+                "The items' len() is {count}, but iterating them gave {iterated}"
+            )));
+        }
         Ok(())
     }
 }

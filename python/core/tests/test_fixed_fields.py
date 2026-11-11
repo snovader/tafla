@@ -1,8 +1,9 @@
+import re
 import unittest
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from struct import error as StructError, pack
-from typing import Any, Literal
+from typing import Any, Literal, overload, override
 
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
@@ -399,6 +400,51 @@ class TestVectorTables(unittest.TestCase):
             read_outcome(partial(buffer.get_vector_fields, position, fields)),
             read_outcome(partial(read_each_item, buffer, fields, position)),
         )
+
+    def test_raises_value_error_for_items_whose_len_isnt_their_number(
+        self,
+    ) -> None:
+        """A sequence whose iteration gives more or fewer items than its
+        ``len()``, whose vector would have ends over its items' bytes or ends
+        left at 0"""
+        fields = FixedFields(2, "h", string=True)
+        for length, items in [(1, [(1, "a"), (2, "b")]), (3, [(1, "a")]), (1, [])]:
+            message = (
+                f"The items' len() is {length}, but iterating them gave {len(items)}"
+            )
+            with (
+                self.subTest(length=length, items=items),
+                self.assertRaisesRegex(ValueError, f"^{re.escape(message)}$"),
+            ):
+                TableWriter(1).set_vector_tables(0, fields, Misreported(items, length))
+
+
+class Misreported(Sequence[tuple[Any, ...]]):
+    """Items whose ``len()`` is ``length``, whatever their number"""
+
+    def __init__(self, items: list[tuple[Any, ...]], length: int) -> None:
+        self.items = items
+        self.length = length
+
+    @override
+    def __len__(self) -> int:
+        return self.length
+
+    @overload
+    def __getitem__(self, index: int) -> tuple[Any, ...]: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[tuple[Any, ...]]: ...
+
+    @override
+    def __getitem__(
+        self, index: int | slice
+    ) -> tuple[Any, ...] | Sequence[tuple[Any, ...]]:
+        return self.items[index]
+
+    @override
+    def __iter__(self) -> Iterator[tuple[Any, ...]]:
+        return iter(self.items)
 
 
 def item_values(table: Description) -> tuple[Any, ...]:

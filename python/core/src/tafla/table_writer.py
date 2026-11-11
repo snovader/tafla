@@ -571,13 +571,18 @@ class TableWriter:
         its string when ``fields`` ends with one: the tuple that
         ``ByteBuffer.get_fields()`` returns.
 
+        Raises ``ValueError`` if iterating ``items`` gives more or fewer than
+        their ``len()``, after which the table is undefined.
+
         Generated code calls it to write a vector of such tables."""
-        vector = self.set_vector(index, len(items))
+        count = len(items)
+        vector = self.set_vector(index, count)
         has_string = fields._string
         pack = fields._packers[self.__size]
         data = self.__data
 
         # write_table()'s packing, inline, which saves a call for each item
+        item = -1
         for item, values in enumerate(items):
             if has_string:
                 table, string = values[:-1], values[-1]
@@ -597,6 +602,11 @@ class TableWriter:
                 data += encoded
 
             self.set_item_end(vector, item)
+
+        # A sequence whose len() isn't its number of items has ends over its
+        # items, or ends left at 0, and the table is undefined
+        if item + 1 != count:
+            raise _items_error(count, item + 1)
 
     def __set_array(
         self,
@@ -673,6 +683,12 @@ class TableWriter:
             f"The table's fields make it {length} bytes, "
             f"too long for {offset_type} offsets"
         )
+
+
+def _items_error(length: int, count: int) -> ValueError:
+    """The error of items whose ``len()`` was ``length``, but which iterating
+    gave ``count`` of"""
+    return ValueError(f"The items' len() is {length}, but iterating them gave {count}")
 
 
 # The setter of each scalar's struct format code, which FixedFields describes

@@ -42,6 +42,7 @@ from hypothesis.strategies import (
 import tafla
 from tafla import byte_buffer, fixed_fields, layout, table_writer
 from tests.tables import FORMATS
+from tests.test_fixed_fields import Misreported
 
 try:
     from tafla import _native
@@ -692,6 +693,8 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         tuples(
             INDICES,
             lists(tuples(lists(VALUES, max_size=8), text(max_size=4)), max_size=3),
+            # How far the items' len() is from their number
+            one_of(just(0), sampled_from([-1, 1])),
         ),
     ),
 )
@@ -725,7 +728,7 @@ def write(
         values = tuple(values[: value_count(description)])
         return getattr(writer, method)(fields, values, string)
     if method == "set_vector_tables":
-        index, items = args
+        index, items, misreported = args
         fields = fixed_fields_of(implementation, description)
         has_string = description[2]
         # Each item's values as set_fields() takes them, and its string last
@@ -733,7 +736,8 @@ def write(
             (*values[: value_count(description)], *([string] if has_string else []))
             for values, string in items
         ]
-        return writer.set_vector_tables(index, fields, tables)
+        length = max(len(tables) + misreported, 0)
+        return writer.set_vector_tables(index, fields, Misreported(tables, length))
     return getattr(writer, method)(*args)
 
 
