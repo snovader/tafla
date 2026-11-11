@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 	"pgregory.net/rapid"
 )
 

@@ -82,15 +82,20 @@ func (b ByteBuffer) Version() (uint32, error) {
 }
 
 // maxIndex is the largest index of a field whose slot lies at a position
-// that an int holds, after any header. A larger index, or a negative one,
-// names no field, and fails as a read at the largest int.
+// that an int holds, after any header. A larger index names no field, and
+// fails as a read at the largest int.
 const maxIndex = (math.MaxInt - 8) / 4
 
 // RootOffset returns the position of field index of the root table. It
-// fails with OutOfRange if the field's offset doesn't lie within the bytes.
+// fails with OutOfRange if the field's offset doesn't lie within the bytes,
+// and panics if index is negative.
 func (b ByteBuffer) RootOffset(index int) (int, error) {
+	if index < 0 {
+		panic("tafla: a negative field index")
+	}
+
 	size := b.layout.offsetType.Size()
-	if uint(index) > maxIndex {
+	if index > maxIndex {
 		return 0, outOfRange(math.MaxInt, uint64(size), len(b.bytes))
 	}
 
@@ -101,10 +106,14 @@ func (b ByteBuffer) RootOffset(index int) (int, error) {
 // has no header and stores its field offsets from its own start.
 // tablePosition is the nested table's position, which is the position of
 // the field that holds it. It fails with OutOfRange if the field's offset
-// doesn't lie within the bytes.
+// doesn't lie within the bytes, and panics if index is negative.
 func (b ByteBuffer) FieldOffset(tablePosition, index int) (int, error) {
+	if index < 0 {
+		panic("tafla: a negative field index")
+	}
+
 	size := b.layout.offsetType.Size()
-	if uint(index) > maxIndex {
+	if index > maxIndex {
 		return 0, outOfRange(math.MaxInt, uint64(size), len(b.bytes))
 	}
 	if tablePosition < 0 {
@@ -292,8 +301,13 @@ func (b ByteBuffer) GetString(position int) (string, error) {
 
 // GetStruct reads the size bytes of the struct at position, whose scalars
 // lie at fixed offsets from its start. They're the table's bytes. It fails
-// with OutOfRange if the struct doesn't lie within the bytes.
+// with OutOfRange if the struct doesn't lie within the bytes, and panics if
+// size is negative.
 func (b ByteBuffer) GetStruct(position, size int) ([]byte, error) {
+	if size < 0 {
+		panic("tafla: a negative struct size")
+	}
+
 	return b.byteRange(position, uint64(size))
 }
 
@@ -301,8 +315,13 @@ func (b ByteBuffer) GetStruct(position, size int) ([]byte, error) {
 // each of size bytes, one after another after the count. They're the
 // table's bytes, and their number is their length over size. Structs of 0
 // bytes take none, so a size of 0 returns no bytes, whatever the count. It
-// fails with OutOfRange if the array doesn't lie within the bytes.
+// fails with OutOfRange if the array doesn't lie within the bytes, and
+// panics if size is negative.
 func (b ByteBuffer) GetStructArray(position, size int) ([]byte, error) {
+	if size < 0 {
+		panic("tafla: a negative struct size")
+	}
+
 	return b.arrayBytes(position, uint64(size))
 }
 
@@ -323,8 +342,11 @@ func (b ByteBuffer) GetVector(position int) (Vector, error) {
 		return Vector{}, err
 	}
 
+	// Without the capacity past the bytes, which an item read in place, up
+	// to their end, would otherwise give its caller
+	end := len(b.bytes)
 	return Vector{
-		bytes:      b.bytes[position:],
+		bytes:      b.bytes[position:end:end],
 		position:   position,
 		length:     count,
 		offsetType: b.layout.offsetType,

@@ -17,10 +17,10 @@ import (
 	"testing"
 
 	tafla "github.com/snovader/tafla/go"
-	alltypes "github.com/snovader/tafla/go/internal/generated/all_types"
-	"github.com/snovader/tafla/go/internal/generated/layouts"
-	"github.com/snovader/tafla/go/internal/generated/shapes"
-	"github.com/snovader/tafla/go/internal/tables"
+	alltypes "github.com/snovader/tafla/go/tests/generated/all_types"
+	"github.com/snovader/tafla/go/tests/generated/layouts"
+	"github.com/snovader/tafla/go/tests/generated/shapes"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 	"pgregory.net/rapid"
 )
 

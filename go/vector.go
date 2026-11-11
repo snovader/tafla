@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"iter"
 	"math"
-	"strconv"
 )
 
 // Vector is a vector read from a table: its items, which are tables.
@@ -94,8 +93,7 @@ func (v Vector) ItemsInPlace() iter.Seq2[[]byte, error] {
 // position
 func (v Vector) bounds(index int) (start, end uint64) {
 	if uint(index) >= uint(v.length) {
-		panic("tafla: index " + strconv.Itoa(index) + " out of range of a vector of " +
-			strconv.Itoa(v.length))
+		panic(indexOutOfRange{index: index, length: v.length, of: "a vector"})
 	}
 
 	if index == 0 {

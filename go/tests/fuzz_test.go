@@ -21,7 +21,7 @@ import (
 	"unsafe"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 )
 
 // checked is the number of elements of an array, and items of a vector, at
@@ -133,13 +133,14 @@ func checkHeader(t *testing.T, buffer tafla.ByteBuffer) {
 		t.Fatalf("the size of %d bytes is %d, %v", len(bytes), size, err)
 	}
 
-	indices := append([]int{}, farPositions...)
+	// Indices are never negative, which would panic
+	indices := []int{math.MaxInt, math.MaxInt - 1, math.MaxInt - 3, math.MaxInt - 7}
 	for index := range len(bytes)/width + 2 {
 		indices = append(indices, index)
 	}
 	for _, index := range indices {
 		var expected uint32
-		ok := index >= 0 && index <= len(bytes)
+		ok := index <= len(bytes)
 		if ok {
 			expected, ok = slotAt(bytes, layout.HeaderSize()+index*width, layout.OffsetType())
 		}
@@ -192,9 +193,9 @@ func checkPosition(t *testing.T, buffer tafla.ByteBuffer, position int) {
 		checkIn(t, bytes, read, err, expected, ok)
 	}
 
-	for _, index := range []int{0, 1, 2, math.MaxInt, -1} {
+	for _, index := range []int{0, 1, 2, math.MaxInt} {
 		var expected uint32
-		ok := position >= 0 && index >= 0 && index <= len(bytes)
+		ok := position >= 0 && index <= len(bytes)
 		if ok {
 			expected, ok = slotAt(bytes, position+index*offsetType.Size(), offsetType)
 		}

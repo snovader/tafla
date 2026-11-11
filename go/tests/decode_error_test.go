@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 	"pgregory.net/rapid"
 )
 
@@ -93,8 +93,8 @@ func TestArbitraryBytesReadAsValuesOrDecodeErrors(t *testing.T) {
 		byteOffset := rapid.IntRange(0, 7).Draw(t, "byteOffset")
 		table := tables.Tables().Draw(t, "table")
 		position := drawLarge(t, 80, "position")
-		index := drawLarge(t, 12, "index")
-		size := drawLarge(t, 16, "size")
+		index := drawCount(t, 12, "index")
+		size := drawCount(t, 16, "size")
 
 		backing := slices.Concat(before, drawn, after)
 		within := backing[len(before) : len(before)+len(drawn)]
@@ -168,6 +168,19 @@ func drawLarge(t *rapid.T, small int, label string) int {
 		return rapid.SampledFrom([]int{math.MaxInt, math.MinInt, -1}).Draw(t, label)
 	default:
 		return rapid.Int().Draw(t, label)
+	}
+}
+
+// drawCount draws indexes and sizes, which callers never make negative,
+// mostly below small, and up to the largest int
+func drawCount(t *rapid.T, small int, label string) int {
+	switch choice := rapid.IntRange(0, 9).Draw(t, label+"Kind"); {
+	case choice < 8:
+		return rapid.IntRange(0, small-1).Draw(t, label)
+	case choice < 9:
+		return math.MaxInt
+	default:
+		return rapid.IntRange(0, math.MaxInt).Draw(t, label)
 	}
 }
 
@@ -272,11 +285,9 @@ func TestReturnsAnErrorOutsideTheBytes(t *testing.T) {
 		func() error { return second(buffer.GetUint32(5)) },
 		func() error { return second(buffer.GetInt8(8)) },
 		func() error { return second(buffer.RootOffset(math.MaxInt)) },
-		func() error { return second(buffer.RootOffset(-1)) },
 		func() error { return second(buffer.FieldOffset(math.MaxInt, math.MaxInt)) },
 		func() error { return second(buffer.FieldOffset(-4, 1)) },
 		func() error { return second(buffer.FieldOffset(4, 1)) },
-		func() error { return second(buffer.GetStruct(4, -1)) },
 	} {
 		var decodeError *tafla.DecodeError
 		if err := read(); !errors.As(err, &decodeError) {
@@ -314,6 +325,16 @@ func outside(position int, byteLength uint64) error {
 
 // The bytes hold a vector's count of 1 and its item's end at 13, which is
 // also read as the count of an array, string or array of structs
+func TestPanicsForANegativeFieldIndexOrStructSize(t *testing.T) {
+	buffer := tafla.NewByteBuffer(sliceOf(8, 0), tafla.TableLayout{})
+
+	expectPanic(t, "a negative root index", func() { _, _ = buffer.RootOffset(-1) })
+	expectPanic(t, "a negative nested index", func() { _, _ = buffer.FieldOffset(0, -1) })
+	expectPanic(t, "a negative struct size", func() { _, _ = buffer.GetStruct(0, -1) })
+	expectPanic(t, "a negative struct array size", func() { _, _ = buffer.GetStructArray(4, -1) })
+	expectPanic(t, "the smallest struct size", func() { _, _ = buffer.GetStructArray(4, math.MinInt) })
+}
+
 func TestRejectsAnArrayStringStructAndVectorItemOutsideTheBytes(t *testing.T) {
 	backing := sliceOf(1, 13)
 	buffer := tafla.NewByteBuffer(backing[4:12], tafla.TableLayout{})

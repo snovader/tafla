@@ -89,7 +89,7 @@ and then the fields in the order they were set:
 The runtime writes the same bytes as the other runtimes for the same fields,
 and reads their tables: `conformance_test.go` reads and rebuilds the
 repository's conformance suite, which covers the whole format, and
-`internal/generated` writes and reads the tables of `conformance/generated`
+`tests/generated` writes and reads the tables of `conformance/generated`
 with the code that tafla-gen generates.
 
 ## Sharing and copying
@@ -111,8 +111,9 @@ with the code that tafla-gen generates.
   the host is little-endian and the elements are aligned to their type in
   memory, and `Slice()` falls back to a copy otherwise. `TableBuilder` aligns
   arrays from the table's start, so they're aligned in memory when the table
-  is, as the bytes of a slice that Go allocated are. A slice in place shares
-  the bytes, so writing to it writes to them.
+  is, as the bytes of a slice that Go allocates for a table usually are,
+  though Go doesn't promise it. A slice in place shares the bytes, so writing
+  to it writes to them.
 - **Strings share the bytes too.** `GetString()` returns a string of the
   table's bytes rather than a copy, as FlatBuffers' Go runtime does, so the
   bytes must not change while the string is in use, as for `unsafe.String`.
@@ -162,6 +163,8 @@ Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
 
 - an index past an `ArrayView`'s or a `Vector`'s length, or negative,
+- a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
+  struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
 - a negative number of fields, `NewTableBuilder()` of a versioned layout or
   `NewVersionedTableBuilder()` of one without a version slot, and `Version()`
@@ -222,14 +225,20 @@ converts:
 
 ## Development
 
-The runtime's module is this directory, and the benchmarks' module is
-`benchmarks/`. The `go` directive is 1.23, the first release with iterators,
-which `ArrayView` and `Vector` return, and which `pgregory.net/rapid`, the
-property tests' library, requires. Run the commands below from this
-directory.
+The runtime's module is this directory, the tests' module is `tests/` and
+the benchmarks' module is `benchmarks/`, so that the runtime's module
+requires nothing, and its tests, the examples, run from the module cache,
+without the repository's files. The `go` directive is 1.23, the first release
+with iterators, which `ArrayView` and `Vector` return, and which
+`pgregory.net/rapid`, the property tests' library, requires. Run the commands
+below from this directory.
 
 ```sh
 gofmt -l .
+go vet ./...
+staticcheck ./...
+go test -race ./...
+cd tests
 go vet ./...
 staticcheck ./...
 go test ./...
@@ -238,19 +247,19 @@ go test -tags tafla_portable ./...
 ```
 
 `staticcheck` installs with `go install honnef.co/go/tools/cmd/staticcheck@latest`.
-The tests are:
+The tests in `tests/` are:
 
 - `conformance_test.go`: reads and rebuilds the conformance suite.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
   `table_builder_test.go` and `table_writer_test.go`: properties of tables
-  built from the conformance suite's descriptions, which `internal/tables`
-  parses, generates with rapid, builds and reads, as Rust's `tests/common`
+  built from the conformance suite's descriptions, which
+  `tests/internal/tables` parses, generates with rapid, builds and reads, as Rust's `tests/common`
   does, and examples of the errors and of every boundary: signed zero, NaN,
   integer limits, empty arrays, the limits of each offset type, strings
   outside the Basic Multilingual Plane and unaligned bytes.
 - `fuzz_test.go`: native fuzz targets, which mirror `rust/fuzz`, and whose
   seeds, the conformance suite's tables, run as tests.
-- `internal/generated`: the Go that tafla-gen generates from the example
+- `generated`: the Go that tafla-gen generates from the example
   schemas in `schemas/`, in a package of each schema, and the tests beside
   them, which read back what it writes, write what `TableBuilder` writes,
   reject other versions and read corrupted bytes as values or decode errors,
@@ -259,8 +268,8 @@ The tests are:
   rewrite them with the generator rather than by hand.
 
 The property tests run 256 cases each, as proptest does in Rust's, which
-`-rapid.checks` changes, and save a failing case's input under
-`testdata/rapid`, which `.gitignore` leaves out.
+`-rapid.checks` changes, and save a failing case's input under the
+package's `testdata/rapid`, which `.gitignore` leaves out.
 
 ### Byte orders and word sizes
 
@@ -270,18 +279,20 @@ written element by element, through the path that a big-endian host takes,
 and `go test -tags tafla_portable ./...` tests that path on any host. CI also
 runs the tests on a big-endian host, `s390x` under qemu, and on a 32-bit one,
 `386`, where an `int` doesn't hold every `uint32` offset. With Docker, the
-same runs from the root of the repository:
+same runs from `tests/`, and from `tests/generated`, with the repository
+mounted where the tests find the conformance suite:
 
 ```sh
-GOOS=linux GOARCH=s390x go test -c -o tafla-s390x.test ./go
-docker run --rm --platform linux/s390x -v "$PWD:$PWD" -w "$PWD/go" alpine "$PWD/tafla-s390x.test"
-GOOS=linux GOARCH=386 go test -c -o tafla-386.test ./go
-docker run --rm --platform linux/386 -v "$PWD:$PWD" -w "$PWD/go" alpine "$PWD/tafla-386.test"
+root="$(git rev-parse --show-toplevel)"
+GOOS=linux GOARCH=s390x go test -c -o tafla-s390x.test .
+docker run --rm --platform linux/s390x -v "$root:$root" -w "$PWD" alpine ./tafla-s390x.test
+GOOS=linux GOARCH=386 go test -c -o tafla-386.test .
+docker run --rm --platform linux/386 -v "$root:$root" -w "$PWD" alpine ./tafla-386.test
 ```
 
 ### Fuzzing
 
-`fuzz_test.go` holds the fuzz targets. A panic, a hang, a run out of memory
+`tests/fuzz_test.go` holds the fuzz targets. A panic, a hang, a run out of memory
 or a read that disagrees with `SPEC.md` is a finding:
 
 - `FuzzByteBuffer` reads arbitrary bytes with every getter of `ByteBuffer`,
@@ -292,7 +303,7 @@ or a read that disagrees with `SPEC.md` is a finding:
 - `FuzzConformance` mutates the conformance suite's tables and reads them as
   every valid case's description, as the conformance test reads them.
 
-Run each with `-fuzz`, and stop it with Ctrl-C or `-fuzztime`. Go writes an
+Run each from `tests/` with `-fuzz`, and stop it with Ctrl-C or `-fuzztime`. Go writes an
 input that fails to `testdata/fuzz/<target>/`, where `go test` runs it again
 as a regression test, so a finding is checked in there once it's fixed. CI
 runs each target for a minute on every change, and the weekly Fuzz workflow

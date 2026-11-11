@@ -16,7 +16,7 @@ import (
 // repository.
 func Conformance() string {
 	_, file, _, _ := runtime.Caller(0)
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "conformance")
+	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "conformance")
 }
 
 // Suite is the conformance suite's cases.json, with the bytes of each case.

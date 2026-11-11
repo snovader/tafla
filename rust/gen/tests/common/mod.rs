@@ -64,7 +64,7 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 6] = [
     // A package of each schema, which the tests beside them run
     GoldenRoot {
         target: "go",
-        root: "go/internal/generated",
+        root: "go/tests/generated",
         subdirectory: None,
     },
 ];

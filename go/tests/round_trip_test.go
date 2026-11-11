@@ -8,13 +8,14 @@ package tafla_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"slices"
 	"testing"
 	"unsafe"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 	"pgregory.net/rapid"
 )
 
@@ -152,6 +153,58 @@ func TestRoundTripsStructs(t *testing.T) {
 	}
 }
 
+func TestPanicsForAnIndexOutOfRangeWithTheIndexAndTheLength(t *testing.T) {
+	builder := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+	check(t, builder.SetUint16Array([]uint16{1, 2, 3}))
+	check(t, builder.SetVector(tafla.TableBytes{1}, tafla.TableBytes{2}))
+	buffer := tafla.NewByteBuffer(must(builder.Bytes()), tafla.TableLayout{})
+	array := must(buffer.GetUint16Array(must(buffer.RootOffset(0))))
+	vector := must(buffer.GetVector(must(buffer.RootOffset(1))))
+
+	expectPanicMessage(t, "tafla: index 3 out of range of an array of 3", func() { array.At(3) })
+	expectPanicMessage(t, "tafla: index -1 out of range of an array of 3", func() { array.At(-1) })
+	expectPanicMessage(t, "tafla: index 2 out of range of a vector of 2", func() { _, _ = vector.Get(2) })
+	expectPanicMessage(t, "tafla: index -1 out of range of a vector of 2", func() { _, _ = vector.GetInPlace(-1) })
+}
+
+func TestReturnsAnEmptyArrayInPlaceAtAnyAddress(t *testing.T) {
+	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	check(t, builder.SetFloat64Array(nil))
+	table := must(builder.Bytes())
+
+	for byteOffset := range 8 {
+		buffer := tafla.NewByteBuffer(tables.AtByteOffset(table, byteOffset), tafla.TableLayout{})
+		float64s := must(buffer.GetFloat64Array(must(buffer.RootOffset(0))))
+
+		if values, ok := float64s.AsSlice(); !ok || len(values) != 0 {
+			t.Errorf("at %d, read %v, %v", byteOffset, values, ok)
+		}
+	}
+}
+
+func TestReadsVectorItemsInPlaceWithoutTheCapacityPastTheBytes(t *testing.T) {
+	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	check(t, builder.SetVector(tafla.TableBytes{1}, tafla.TableBytes{2, 3}))
+	table := must(builder.Bytes())
+
+	// The bytes past the table, within its slice's capacity, must stay as
+	// they are when an item is appended to
+	backing := append(slices.Clone(table), 0xaa, 0xaa, 0xaa, 0xaa)
+	buffer := tafla.NewByteBuffer(backing[:len(table)], tafla.TableLayout{})
+	vector := must(buffer.GetVector(must(buffer.RootOffset(0))))
+
+	for index := range vector.Len() {
+		_ = append(must(vector.GetInPlace(index)), 0)
+	}
+	for item, err := range vector.ItemsInPlace() {
+		check(t, err)
+		_ = append(item, 0)
+	}
+	if past := backing[len(table):]; !bytes.Equal(past, []byte{0xaa, 0xaa, 0xaa, 0xaa}) {
+		t.Errorf("appending to an item wrote % x past the table", past)
+	}
+}
+
 func TestReadsArraysInPlaceWhenAligned(t *testing.T) {
 	values := []float64{1.5, math.Copysign(0, -1), math.Float64frombits(tables.QuietNaN64)}
 	builder := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
@@ -266,6 +319,18 @@ func expectPanic(t *testing.T, name string, call func()) {
 	defer func() {
 		if recover() == nil {
 			t.Errorf("%s didn't panic", name)
+		}
+	}()
+	call()
+}
+
+// expectPanicMessage fails the test unless call panics with expected
+func expectPanicMessage(t *testing.T, expected string, call func()) {
+	t.Helper()
+
+	defer func() {
+		if message := fmt.Sprint(recover()); message != expected {
+			t.Errorf("panicked with %q rather than %q", message, expected)
 		}
 	}()
 	call()
