@@ -15,12 +15,16 @@ language and publishes its packages:
 
 Each registry has a job of its own, so a registry that fails doesn't stop the
 others, and its failed jobs can be run again. A version that a registry has
-published can't be published again.
+published can't be published again. The Go module's tag can't be taken back
+either, so its job waits for every language's build, and a release whose
+build fails in any language publishes no Go version.
 
 A Go module is published by a tag rather than uploaded: the workflow tags the
 release's commit `go/v<version>`, for the module in `go/`, and asks the Go
 module proxy for it, which builds the module from the tag and keeps it.
-`go/benchmarks` is a module of its own, which isn't published and gets no tag.
+`go/tests` and `go/benchmarks` are modules of their own, which aren't
+published and get no tag, so the published module requires nothing and its
+tests run from the module cache.
 The module records no version, since its tag is its version, so
 `scripts/set-version.sh` leaves it out. From 2.0.0 on, Go requires the major
 version at the end of the module path, as in `github.com/snovader/tafla/go/v2`,
@@ -95,7 +99,12 @@ require an approval before a job runs.
   validated it.
 - **Go module proxy**: no account or secret is needed. The job pushes
   `go/v<version>` with the workflow's token, so a ruleset that restricts
-  creating tags must let GitHub Actions create them. Protect `refs/tags/go/v*`
-  from updates and deletion, as the ruleset of release tags protects
-  `refs/tags/v*`: the proxy and the checksum database keep the module that a
-  tag named first, and a moved tag would no longer match it.
+  creating tags must let GitHub Actions create them. Before the first
+  release:
+  - Make the `go-proxy` environment require an approval, from a required
+    reviewer, since its job pushes a tag that publishes the module for
+    good, and no secret stands in its way as the other registries' do.
+  - Add `refs/tags/go/v*` to the ruleset of release tags, which protects
+    `refs/tags/v*` from updates and deletion: the proxy and the checksum
+    database keep the module that a tag named first, and a moved tag would
+    no longer match it.
