@@ -211,7 +211,7 @@ struct DocumentFields {
     double x{};
     double y{};
     std::string_view name{};
-    ColumnsFields columns{};
+    ColumnsFields columns;
 
     /**
      * Writes a `Document` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
@@ -318,7 +318,7 @@ private:
 /** The fields of an `Item`, to write */
 struct ItemFields {
     float value{};
-    PairFields pair{};
+    PairFields pair;
 
     /** The alignment that a parent pads an `Item` to: the largest alignment of its arrays and nested tables, or 1 */
     static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;

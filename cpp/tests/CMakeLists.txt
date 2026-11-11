@@ -50,6 +50,8 @@ set(TAFLA_TESTS
     exception_safety_test
     format_test
     layout_test
+    macros_test
+    nesting_test
     round_trip_test
     table_builder_test
     table_writer_test

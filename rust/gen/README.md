@@ -280,8 +280,11 @@ code defines or inherits, or with a local that it reads fields beside, such as
 `constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
 and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
 `version_of_` in Rust, and `serialize_`, `size_`, `write_`, `read_`,
-`to_bytes_` and `version_of_` in C++, which also renames the C standard
-library's macros in `snake_case`, such as `errno_`. So does `then` in TypeScript and JavaScript, since a
+`to_bytes_` and `version_of_` in C++, which also renames macros in
+`snake_case`: the C standard library's, such as `errno_`, those that
+compilers predefine outside strict ISO modes, such as `linux_` and `unix_`,
+and `min_`, `max_`, `major_` and `minor_`, which glibc's and Windows'
+headers define. So does `then` in TypeScript and JavaScript, since a
 `then()` method would make a reader a thenable, which `await` calls and never settles. `MEMBERS` in each
 target's generator lists them; other targets keep the name.
 
@@ -354,7 +357,11 @@ const shapes::Document document(bytes);  // checks the version
 document.columns().a();  // a tafla::ArrayView<float> of the bytes
 ```
 
-C++'s namespace is the schema's file name, or `--package`'s, and its fields
+C++'s namespace is the schema's file name, or `--package`'s, each of whose
+names takes a `_` for a run of other characters than ASCII letters and
+digits, starts with `schema_` when it doesn't start with a letter, and takes
+a `_` after a keyword or a macro's name, such as `EOF_`, so that it's never a
+name that C++ reserves. Its fields
 structs view their strings, arrays and items as `std::string_view`s and
 `std::span`s, which must outlive `serialize()`. A reader of a table also has
 a default constructor, of no bytes, whose getters throw a

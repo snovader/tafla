@@ -167,6 +167,14 @@ fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
         namespace("point.tafla", Some("std.tafla.delete")),
         "std_::tafla_::delete_"
     );
+    assert_eq!(
+        namespace("point.tafla", Some("a._Upper.b__c.$d")),
+        "a::schema_Upper::b_c::schema_d"
+    );
+    assert_eq!(
+        namespace("point.tafla", Some("linux.EOF.min")),
+        "linux_::EOF_::min_"
+    );
     for (file_name, expected) in [
         ("schemas/point_cloud.v1.tafla", "point_cloud"),
         ("point-cloud.tafla", "point_cloud"),
@@ -176,6 +184,8 @@ fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
         ("tafla.tafla", "tafla_"),
         ("namespace.tafla", "namespace_"),
         ("errno.tafla", "errno_"),
+        ("EOF.tafla", "EOF_"),
+        ("unix.tafla", "unix_"),
         ("punktwolke_ä.tafla", "punktwolke_"),
     ] {
         assert_eq!(namespace(file_name, None), expected, "{file_name}");

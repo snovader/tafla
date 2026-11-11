@@ -468,7 +468,7 @@ private:
 /** The fields of an `Outer`, to write */
 struct OuterFields {
     std::uint32_t count{};
-    InnerFields inner{};
+    InnerFields inner;
 
     /** The alignment that a parent pads an `Outer` to: the largest alignment of its arrays and nested tables, or 1 */
     static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::eight;
@@ -527,7 +527,7 @@ struct NestedFields {
     /** A string beside the tables */
     std::string_view label{};
     /** The first of three levels of tables */
-    OuterFields outer{};
+    OuterFields outer;
     /** A vector of tables that hold vectors of themselves */
     std::span<const TreeFields> trees{};
 
@@ -659,7 +659,7 @@ private:
 
 /** The fields of a `Reserved`, to write */
 struct ReservedFields {
-    KeywordsFields keywords{};
+    KeywordsFields keywords;
 
     /**
      * Writes a `Reserved` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
@@ -783,7 +783,7 @@ struct StructsFields {
     Segment segment{};
     std::span<const Segment> segments{};
     /** A table nested in the message, which holds structs too */
-    PathFields path{};
+    PathFields path;
 
     /**
      * Writes a `Structs` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,

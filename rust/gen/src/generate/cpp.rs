@@ -132,12 +132,63 @@ const KEYWORDS: [&str; 96] = [
 /// can't take, since a name of it would hide them
 const NAMESPACES: [&str; 2] = ["std", "tafla"];
 
-/// The macros of the C standard library in `snake_case`, which a header that
-/// the generated code includes may define, so names take a `_` after them too
-const MACROS: [&str; 11] = [
-    "assert", "errno", "offsetof", "setjmp", "stderr", "stdin", "stdout", "va_arg", "va_copy",
-    "va_end", "va_start",
+/// The macros in `snake_case` that a header that the generated code
+/// includes, or that it's included beside, may define, so names take a `_`
+/// after them too: the C standard library's; those that compilers predefine
+/// for their platforms outside strict ISO modes, such as GNU's `-std=gnu++20`,
+/// which `CMAKE_CXX_EXTENSIONS` selects by default; `major()` and `minor()`
+/// of glibc's `<sys/types.h>`; and
+/// `min()`, `max()` and the empty or type macros of `<windows.h>`
+const MACROS: [&str; 32] = [
+    "assert",
+    "cdecl",
+    "errno",
+    "far",
+    "hyper",
+    "i386",
+    "interface",
+    "linux",
+    "m68k",
+    "major",
+    "makedev",
+    "max",
+    "mc68000",
+    "mc68020",
+    "min",
+    "minor",
+    "mips",
+    "near",
+    "offsetof",
+    "pascal",
+    "setjmp",
+    "small",
+    "sparc",
+    "stderr",
+    "stdin",
+    "stdout",
+    "sun",
+    "unix",
+    "va_arg",
+    "va_copy",
+    "va_end",
+    "va_start",
 ];
+
+/// The macros of the C standard library in `PascalCase`, which a header that
+/// the generated code includes may define, so that types and namespaces take
+/// a `_` after them. Platforms define more, such as POSIX's `EPERM` and
+/// `SIGHUP`.
+const TYPE_MACROS: [&str; 14] = [
+    "BUFSIZ", "EDOM", "EILSEQ", "EOF", "ERANGE", "INFINITY", "NAN", "NULL", "SIGABRT", "SIGFPE",
+    "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
+];
+
+/// The most fields that a table's `size()` and `write()` write, with those
+/// of the tables nested in it that they inline, for them to be inlined into
+/// their parent's in turn. Forcing every table's inline would copy a table's
+/// code into each field that holds it, so that tables that hold others in
+/// pairs, a few levels deep, compiled for minutes.
+const INLINE_FIELDS: usize = 64;
 
 /// The members that the generated code declares beside the fields, which a
 /// field of the same name would clash with, so names take a `_` after them
@@ -166,14 +217,15 @@ pub fn generate(
         Some(package) => package
             .as_str()
             .split('.')
-            .map(namespace_name)
+            .map(namespace_of)
             .collect::<Vec<_>>()
             .join("::"),
         None => namespace_of(stem),
     };
+    let recursive = recursive_tables(schema);
     let generator = Generator {
         schema,
-        recursive: recursive_tables(schema),
+        inlined: inlined_tables(schema, &recursive),
     };
 
     let mut writer = CodeWriter::new(INDENT);
@@ -205,10 +257,16 @@ pub fn generate(
     if !tables.is_empty() {
         writer.blank();
         for &index in &tables {
-            writer.line(format!("class {};", schema.definition(index).name));
+            writer.line(format!(
+                "class {};",
+                type_name(&schema.definition(index).name)
+            ));
         }
         for &index in &tables {
-            writer.line(format!("struct {}Fields;", schema.definition(index).name));
+            writer.line(format!(
+                "struct {}Fields;",
+                type_name(&schema.definition(index).name)
+            ));
         }
     }
 
@@ -252,14 +310,14 @@ pub fn generate(
 
 struct Generator<'a> {
     schema: &'a Schema,
-    /// Whether each table can hold itself, through vectors, by its index,
-    /// whose fields struct's functions call themselves
-    recursive: Vec<bool>,
+    /// Whether each table's `size()` and `write()` are forced inline into
+    /// their parent's, by its index
+    inlined: Vec<bool>,
 }
 
 impl Generator<'_> {
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
 
         cpp_doc(writer, &definition.docs);
         writer.line(format!("class {name} {{"));
@@ -337,7 +395,7 @@ impl Generator<'_> {
     }
 
     fn table(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
 
         cpp_doc(writer, &definition.docs);
         writer.line(format!("class {name} {{"));
@@ -415,7 +473,7 @@ impl Generator<'_> {
     /// declaration. Each reads with a buffer in the table's layout, a
     /// constant, so that its reads compile for that layout's offset type.
     fn getter_definitions(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let class = &definition.name;
+        let class = &type_name(&definition.name);
         let is_root = matches!(definition.kind, Kind::Message(_));
         let buffer = if is_root {
             "const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);"
@@ -459,13 +517,13 @@ impl Generator<'_> {
                 FieldType::Array(scalar) => format!("buffer.get_{}_array(position)", scalar.name()),
                 FieldType::String => "buffer.get_string(position)".to_owned(),
                 FieldType::Struct(structure) => {
-                    let structure = &self.schema.definition(structure).name;
+                    let structure = &type_name(&self.schema.definition(structure).name);
                     format!(
                         "{structure}::from_bytes(buffer.get_struct(position, {structure}::SIZE).data())"
                     )
                 }
                 FieldType::Table(table) => {
-                    let table = &self.schema.definition(table).name;
+                    let table = &type_name(&self.schema.definition(table).name);
                     format!("{table}(bytes_, position)")
                 }
                 FieldType::StructArray(_) | FieldType::Vector(_) => {
@@ -514,7 +572,7 @@ impl Generator<'_> {
                 writer.line(format!("return {view}(buffer.get_vector(position));"));
             }
             FieldType::StructArray(structure) => {
-                let structure = &self.schema.definition(structure).name;
+                let structure = &type_name(&self.schema.definition(structure).name);
                 writer.line(format!(
                     "return {view}(buffer.get_struct_array(position, {structure}::SIZE));"
                 ));
@@ -529,7 +587,7 @@ impl Generator<'_> {
     /// read and write it at fixed offsets
     fn structure(&self, writer: &mut CodeWriter, index: usize) {
         let definition = self.schema.definition(index);
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
         let layout = definition.struct_layout();
 
         cpp_doc(writer, &definition.docs);
@@ -578,7 +636,7 @@ impl Generator<'_> {
 
     /// A struct's `from_bytes()`, which reads its fields at their offsets
     fn struct_from_bytes(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
 
         cpp_doc(
             writer,
@@ -602,7 +660,10 @@ impl Generator<'_> {
                     format!("::tafla::load_le<{}>({at})", scalar_type(scalar))
                 }
                 FieldType::Struct(inner) => {
-                    format!("{}::from_bytes({at})", self.schema.definition(inner).name)
+                    format!(
+                        "{}::from_bytes({at})",
+                        type_name(&self.schema.definition(inner).name)
+                    )
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             };
@@ -618,7 +679,7 @@ impl Generator<'_> {
 
     /// A struct's `to_bytes()`, which writes its fields at their offsets
     fn struct_to_bytes(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
 
         cpp_doc(
             writer,
@@ -654,7 +715,7 @@ impl Generator<'_> {
     /// declarations of the functions that write it
     fn fields_struct(&self, writer: &mut CodeWriter, index: usize) {
         let definition = self.schema.definition(index);
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
 
         cpp_doc(
             writer,
@@ -663,9 +724,17 @@ impl Generator<'_> {
         writer.line(format!("struct {name}Fields {{"));
         writer.indent();
         for field in &definition.fields {
+            // A nested table's fields struct initializes its own fields, so
+            // it takes no `{}`, which Clang checks again for each struct
+            // that holds it, in time that doubled with each level of nesting
+            let initializer = if matches!(field.field_type, FieldType::Table(_)) {
+                ""
+            } else {
+                "{}"
+            };
             cpp_doc(writer, &field.docs);
             writer.line(format!(
-                "{} {}{{}};",
+                "{} {}{initializer};",
                 self.input_type(field.field_type),
                 identifier(&field.name)
             ));
@@ -708,11 +777,12 @@ impl Generator<'_> {
                 );
                 // Inlined into their parent's, so that the parent's sizer
                 // and writer stay in registers, but for a table that holds
-                // itself, which they'd inline without end
-                let inline = if self.recursive[index] {
-                    ""
-                } else {
+                // itself, which they'd inline without end, and a table whose
+                // code inlined would be long
+                let inline = if self.inlined[index] {
                     "TAFLA_ALWAYS_INLINE "
+                } else {
+                    ""
                 };
                 writer.line(format!(
                     "{inline}void size(::tafla::TableSizer& sizer_) const;"
@@ -739,7 +809,7 @@ impl Generator<'_> {
     /// A message's `serialize()`, which sizes its fields and then writes them
     /// into bytes of that length
     fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
         let fields = definition.fields.len();
 
         writer.blank();
@@ -768,7 +838,7 @@ impl Generator<'_> {
 
     /// The functions with which a nested table's parent sizes and writes it
     fn size_and_write(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
         let fields = definition.fields.len();
 
         writer.blank();
@@ -815,17 +885,17 @@ impl Generator<'_> {
                 }
                 FieldType::String => writer.line(format!("sizer_.add_string({value});")),
                 FieldType::Struct(index) => {
-                    let structure = &self.schema.definition(index).name;
+                    let structure = &type_name(&self.schema.definition(index).name);
                     writer.line(format!("sizer_.add_struct({structure}::SIZE);"));
                 }
                 FieldType::StructArray(index) => {
-                    let structure = &self.schema.definition(index).name;
+                    let structure = &type_name(&self.schema.definition(index).name);
                     writer.line(format!(
                         "sizer_.add_struct_array({value}.size(), {structure}::SIZE, {structure}::ALIGNMENT);"
                     ));
                 }
                 FieldType::Table(index) => {
-                    let table = &self.schema.definition(index).name;
+                    let table = &type_name(&self.schema.definition(index).name);
                     writer.line(format!("sizer_.add_table({table}Fields::ALIGNMENT);"));
                     writer.line(format!("{value}.size(sizer_);"));
                 }
@@ -863,7 +933,7 @@ impl Generator<'_> {
                     writer.line(format!("writer_.set_structs({index}, {value});"));
                 }
                 FieldType::Table(table) => {
-                    let table = &self.schema.definition(table).name;
+                    let table = &type_name(&self.schema.definition(table).name);
                     writer.line(format!(
                         "writer_.set_table({index}, {table}Fields::ALIGNMENT);"
                     ));
@@ -894,11 +964,11 @@ impl Generator<'_> {
     fn view(&self, field_type: FieldType) -> Option<(String, &'static str)> {
         match field_type {
             FieldType::Vector(index) => Some((
-                format!("{}Vector", self.schema.definition(index).name),
+                format!("{}Vector", type_name(&self.schema.definition(index).name)),
                 "if the field, or the vector's count or the ends of its items, lie outside the bytes",
             )),
             FieldType::StructArray(index) => Some((
-                format!("{}Array", self.schema.definition(index).name),
+                format!("{}Array", type_name(&self.schema.definition(index).name)),
                 "if the field or its structs lie outside the bytes",
             )),
             _ => None,
@@ -915,7 +985,7 @@ impl Generator<'_> {
 
     /// The type that a getter returns
     fn value_type(&self, field_type: FieldType) -> String {
-        let name = |index: usize| self.schema.definition(index).name.clone();
+        let name = |index: usize| type_name(&self.schema.definition(index).name);
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
@@ -931,7 +1001,7 @@ impl Generator<'_> {
 
     /// The type of a field of a struct or of a fields struct
     fn input_type(&self, field_type: FieldType) -> String {
-        let name = |index: usize| self.schema.definition(index).name.clone();
+        let name = |index: usize| type_name(&self.schema.definition(index).name);
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
@@ -1030,7 +1100,7 @@ fn view_aliases(writer: &mut CodeWriter, schema: &Schema) {
         }
 
         writer.blank();
-        let name = &definition.name;
+        let name = &type_name(&definition.name);
         if definition.is_struct() {
             cpp_doc(
                 writer,
@@ -1084,6 +1154,64 @@ fn recursive_tables(schema: &Schema) -> Vec<bool> {
         .collect()
 }
 
+/// Whether each table's `size()` and `write()` are forced inline into their
+/// parent's: those of a table that doesn't hold itself, whose code, with
+/// that of the tables that it inlines in turn, writes at most
+/// [`INLINE_FIELDS`] fields. The code of a function that's forced inline is
+/// then at most that long, wherever it's inlined, and the code of the
+/// others is that of their own fields, with that of the tables they inline,
+/// so that the code of a schema grows linearly with its definitions.
+fn inlined_tables(schema: &Schema, recursive: &[bool]) -> Vec<bool> {
+    let nested = |index: usize| {
+        schema
+            .definition(index)
+            .fields
+            .iter()
+            .filter_map(|field| match field.field_type {
+                FieldType::Table(nested) | FieldType::Vector(nested) => Some(nested),
+                _ => None,
+            })
+    };
+
+    // The fields that each table's functions write, counted after those of
+    // the tables nested in it, which, but for tables that hold themselves,
+    // nest without cycles. A stack, rather than recursion, visits them,
+    // since vectors may nest tables arbitrarily deep.
+    let mut fields: Vec<Option<usize>> = vec![None; schema.definitions.len()];
+    for root in 0..schema.definitions.len() {
+        let mut stack = vec![(root, false)];
+        while let Some((index, counted_nested)) = stack.pop() {
+            if fields[index].is_some() || recursive[index] {
+                continue;
+            }
+            if !counted_nested {
+                stack.push((index, true));
+                stack.extend(nested(index).map(|table| (table, false)));
+                continue;
+            }
+
+            let written = schema
+                .definition(index)
+                .fields
+                .iter()
+                .map(|field| match field.field_type {
+                    FieldType::Table(table) | FieldType::Vector(table) => match fields[table] {
+                        Some(inlined) if inlined <= INLINE_FIELDS => inlined.saturating_add(1),
+                        _ => 1,
+                    },
+                    _ => 1,
+                })
+                .fold(0, usize::saturating_add);
+            fields[index] = Some(written);
+        }
+    }
+
+    fields
+        .iter()
+        .map(|written| written.is_some_and(|written| written <= INLINE_FIELDS))
+        .collect()
+}
+
 /// The definitions that `selected` selects, each after those that it holds
 /// in place: the tables nested in a table, whose fields structs hold theirs,
 /// and the structs in a struct. Otherwise they keep the schema's order.
@@ -1116,10 +1244,10 @@ fn nesting_order(schema: &Schema, selected: impl Fn(&Definition) -> bool) -> Vec
     order
 }
 
-/// The namespace of a schema's file name, which takes a `_` for each run of
-/// characters other than ASCII letters and digits, and starts with `schema_`
-/// when it doesn't start with a letter, since C++ reserves names that start
-/// with `_` and have `__`
+/// The namespace of a schema's file name, or of one of `--package`'s names,
+/// which takes a `_` for each run of characters other than ASCII letters and
+/// digits, and starts with `schema_` when it doesn't start with a letter,
+/// since C++ reserves names that start with `_` and have `__`
 fn namespace_of(stem: &str) -> String {
     let mut name = String::with_capacity(stem.len());
     for character in stem.chars() {
@@ -1136,13 +1264,13 @@ fn namespace_of(stem: &str) -> String {
     namespace_name(&name)
 }
 
-/// One of a namespace's names, with a `_` after a keyword or a namespace that
-/// the generated code names
+/// One of a namespace's names, with a `_` after a keyword, a macro or a
+/// namespace that the generated code names
 fn namespace_name(name: &str) -> String {
     if NAMESPACES.contains(&name) {
         format!("{name}_")
     } else {
-        identifier(name)
+        type_name(&identifier(name))
     }
 }
 
@@ -1252,6 +1380,16 @@ fn doxygen_text(text: &str) -> String {
 
 fn identifier(name: &str) -> String {
     if KEYWORDS.contains(&name) || MACROS.contains(&name) || MEMBERS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// A definition's name, with a `_` after a macro's, which the names of its
+/// fields struct and views start with too
+fn type_name(name: &str) -> String {
+    if TYPE_MACROS.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()
