@@ -22,6 +22,11 @@ import (
 // takes the same fields in the same order writes each where the sizer
 // counted it.
 //
+// Fields whose sizes the schema fixes, which code generated from it can lay
+// out itself, are added together: a table's first such fields with
+// [TableSizer.AddFields], and nested tables of only such fields with
+// [TableSizer.AddTableBytes].
+//
 // Adding a field doesn't fail: [TableSizer.Writer] returns the error of a
 // table too long for its layout's offset type, or of an array of 0-byte
 // structs, as TableBuilder's setter of the field would have.
@@ -158,6 +163,49 @@ func (s *TableSizer) AppendWriter(dst []byte) (TableWriter, error) {
 	return newTableWriter(dst, length, s.fields, s.layout, s.version), nil
 }
 
+// AppendTable appends a table of fields fields in layout, of length bytes,
+// to dst, into its capacity when it has room and into new bytes otherwise,
+// as append does, and writes its header. It returns dst with the table
+// appended, and the table's bytes, header included, which the caller writes
+// every other byte of, since they aren't zeroed in bytes that it reuses: each
+// field's offset and the field.
+//
+// It's for code that lays out a table itself, without a [TableSizer] and a
+// [TableWriter], such as the code that tafla-gen generates for a message of
+// fields whose sizes the schema fixes and a string after them. Only such a
+// table's last field can make it too long, so AppendTable fails with TooLong,
+// naming its last field, if length is past what the layout's offset type
+// addresses. It fails with HeaderTooLong and panics as [NewTableSizer] does,
+// and panics if length is shorter than the header.
+func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (whole, table []byte, err error) {
+	return appendTable(dst, fields, layout, false, 0, length)
+}
+
+// AppendVersionedTable appends a table of fields fields in layout, of length
+// bytes, to dst, as [AppendTable] does, with version in its header. It fails
+// with VersionTooLarge or HeaderTooLong and panics as
+// [NewVersionedTableSizer] does, and fails with TooLong as AppendTable does.
+func AppendVersionedTable(dst []byte, fields int, layout TableLayout, version uint32, length uint64) (whole, table []byte, err error) {
+	return appendTable(dst, fields, layout, true, version, length)
+}
+
+func appendTable(dst []byte, fields int, layout TableLayout, versioned bool, version uint32, length uint64) (whole, table []byte, err error) {
+	if layout.versioned != versioned || version > layout.offsetType.MaxValue() ||
+		uint64(fields) > layout.maxFields() {
+		return nil, nil, layout.sizerFailure(fields, versioned, version)
+	}
+	if length > layout.maxLength() {
+		return nil, nil, &BuildError{Kind: TooLong, Index: max(fields-1, 0), Length: length, OffsetType: layout.offsetType}
+	}
+
+	whole, table = appendBytes(dst, int(length))
+	if layout.sized || layout.versioned {
+		putHeader(table, layout, version)
+	}
+
+	return whole, table, nil
+}
+
 // StartTable starts the fields of a nested table or vector item of fields
 // fields, after its parent's [TableSizer.AddTable] or
 // [TableSizer.AddVector].
@@ -276,6 +324,40 @@ func (s *TableSizer) AddVector(count int) {
 	s.add((elements(count) + 1) * s.width())
 }
 
+// AddFields adds the first count fields of the table being sized, of
+// byteLength bytes in all after its offsets, whose sizes the schema fixes:
+// scalars, structs, and nested tables of only such fields, which have no
+// padding. [TableWriter.ReserveFields] returns their bytes, which the caller
+// lays them out in. It's called first, after [NewTableSizer] or
+// [TableSizer.StartTable], in place of those fields' adders, and the table's
+// other fields follow with theirs.
+//
+// It's for the code that tafla-gen generates, which adds the root's fields
+// this way only when they fit after its header. Fields that made it too long
+// would fail as the last of them, rather than as the one that did.
+func (s *TableSizer) AddFields(count, byteLength int) {
+	// Only the root starts at 0, and its first fields follow its header,
+	// which fits
+	if s.table == 0 {
+		s.rootFields += count
+	}
+	s.position = min(s.position+min(uint64(byteLength), past), past)
+}
+
+// AddTableBytes adds count nested tables of byteLength bytes each, whose
+// fields' sizes the schema fixes, as [TableSizer.AddFields] adds a table's
+// first fields: a field's table, after [TableSizer.AddTable], or a vector's
+// items of the same length, after [TableSizer.AddVector]. It takes the place
+// of each table's [TableSizer.StartTable], adders and [TableSizer.EndTable],
+// and [TableWriter.ReserveTableBytes] returns each one's bytes.
+func (s *TableSizer) AddTableBytes(count, byteLength int) {
+	high, length := bits.Mul64(uint64(count), uint64(byteLength))
+	if high != 0 {
+		length = past
+	}
+	s.position = min(s.position+min(length, past), past)
+}
+
 // add adds a field of byteLength bytes, without padding
 func (s *TableSizer) add(byteLength uint64) {
 	s.startField()
@@ -346,7 +428,10 @@ func elements(count int) uint64 {
 // tables are padded so that their elements are aligned from their table's
 // start, as the sizer counts them. The writer writes every byte of a table
 // whose fields are as sized, its padding's zeros too, so the bytes that
-// AppendWriter writes into needn't be zero.
+// AppendWriter writes into needn't be zero. Fields that the sizer added
+// together, which the caller lays out itself, it reserves together:
+// [TableWriter.ReserveFields] for a table's first fields, and
+// [TableWriter.ReserveTableBytes] for a nested table.
 //
 // It's the target of the code that tafla-gen generates, whose calls follow
 // from the schema, so it doesn't check them again: fields are set in index
@@ -401,29 +486,14 @@ type VectorPosition struct {
 // checked are at least the header and at most what the offset type
 // addresses
 func newTableWriter(dst []byte, length, fields int, layout TableLayout, version uint32) TableWriter {
-	start := len(dst)
-	var whole []byte
-	switch {
-	case dst == nil:
-		// Exactly the table's length
-		whole = make([]byte, length)
-	case cap(dst)-start >= length:
-		whole = dst[:start+length]
-	default:
-		whole = append(dst, make([]byte, length)...)
-	}
-	table := whole[start : start+length : start+length]
-
-	width := layout.offsetType.Size()
-	headerSize := layout.HeaderSize()
-	if layout.sized {
-		putSlot(table, 0, width, uint32(length))
-	}
-	if layout.versioned {
-		putSlot(table, headerSize-width, width, version)
+	whole, table := appendBytes(dst, length)
+	if layout.sized || layout.versioned {
+		putHeader(table, layout, version)
 	}
 
 	// Built in place, rather than built and then copied
+	width := layout.offsetType.Size()
+	headerSize := layout.HeaderSize()
 	return TableWriter{
 		bytes:      table,
 		whole:      whole,
@@ -431,6 +501,35 @@ func newTableWriter(dst []byte, length, fields int, layout TableLayout, version 
 		slots:      headerSize,
 		headerSize: headerSize,
 		width:      width,
+	}
+}
+
+// appendBytes appends length bytes to dst, and returns dst with them
+// appended and those bytes. They're new zeros unless dst has room for them
+// in its capacity, and exactly as many when dst is nil.
+func appendBytes(dst []byte, length int) (whole, appended []byte) {
+	start := len(dst)
+	switch {
+	case dst == nil:
+		whole = make([]byte, length)
+	case cap(dst)-start >= length:
+		whole = dst[:start+length]
+	default:
+		whole = append(dst, make([]byte, length)...)
+	}
+
+	return whole, whole[start : start+length : start+length]
+}
+
+// putHeader writes the header slots of table in layout: its length, when
+// it's sized, and then version, when it's versioned
+func putHeader(table []byte, layout TableLayout, version uint32) {
+	width := layout.offsetType.Size()
+	if layout.sized {
+		putSlot(table, 0, width, uint32(len(table)))
+	}
+	if layout.versioned {
+		putSlot(table, layout.HeaderSize()-width, width, version)
 	}
 }
 
@@ -625,6 +724,32 @@ func (w *TableWriter) ReserveStructArray(index, count, size int, alignment Align
 
 	start := w.position
 	w.position += count * size
+	return w.bytes[start:w.position:w.position]
+}
+
+// ReserveFields returns the bytes of the table being written from its start,
+// a root's header included, to the end of its first fields, of byteLength
+// bytes after its offsets, which [TableSizer.AddFields] added. The caller
+// writes those fields' offsets into their slots, and the fields at those
+// offsets: every byte of them, since they aren't zeroed in bytes that
+// [TableSizer.AppendWriter] reuses, and none of the header. It's called
+// first, after AppendWriter or [TableWriter.StartTable], in place of those
+// fields' setters, and the table's other fields follow with theirs.
+func (w *TableWriter) ReserveFields(byteLength int) []byte {
+	w.position += byteLength
+	return w.bytes[w.table:w.position:w.position]
+}
+
+// ReserveTableBytes returns the bytes of a nested table of byteLength bytes,
+// which [TableSizer.AddTableBytes] added, and which the caller writes whole,
+// its offsets and its fields, in place of [TableWriter.StartTable], its
+// setters and [TableWriter.EndTable]: after its parent's
+// [TableWriter.SetTable], or as a vector item before its
+// [TableWriter.SetItemEnd]. They aren't zeroed in bytes that
+// [TableSizer.AppendWriter] reuses.
+func (w *TableWriter) ReserveTableBytes(byteLength int) []byte {
+	start := w.position
+	w.position += byteLength
 	return w.bytes[start:w.position:w.position]
 }
 

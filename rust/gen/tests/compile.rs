@@ -264,6 +264,34 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
 }
 
 #[test]
+fn go_imports_encoding_binary_and_math_for_the_fields_that_it_lays_out() {
+    // Go writes a message's fields of fixed size itself, with
+    // encoding/binary for offsets and scalars wider than a byte, and math
+    // for floats, and others with the runtime's writer
+    for (source, binary, math) in [
+        (
+            "message M (offset_type: uint8) { b: bool; s: string; }",
+            false,
+            false,
+        ),
+        ("message M (offset_type: uint16) { a: uint8; }", true, false),
+        ("message M (offset_type: uint8) { a: int16; }", true, false),
+        ("message M (offset_type: uint8) { a: float32; }", true, true),
+        ("message M { a: float32; s: [uint8]; }", false, false),
+        (
+            "message M { a: [uint8]; }\ntable T { a: float64; }",
+            true,
+            true,
+        ),
+    ] {
+        let files = generate("m.tafla", source, "go", &Options::default());
+        let imports = |package: &str| files[0].contents.contains(&format!("\"{package}\""));
+        assert_eq!(imports("encoding/binary"), binary, "{source}");
+        assert_eq!(imports("math"), math, "{source}");
+    }
+}
+
+#[test]
 fn tables_nested_in_many_fields_of_each_other_generate() {
     // Each table nests the next in three fields, so a generator that walks
     // every path through them would take 3^40 steps

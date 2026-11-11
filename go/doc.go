@@ -12,7 +12,10 @@
 // it's written, as the code that tafla-gen generates writes its tables: the
 // sizer counts the table's length from its fields, and its writer writes the
 // same fields, in the same order, into bytes of that length, without
-// recording them first as TableBuilder does.
+// recording them first as TableBuilder does. Fields whose sizes a schema
+// fixes, the generated code lays out itself: the sizer and the writer take
+// them together, and [AppendTable] appends a table that its caller lays out
+// entirely.
 //
 // # Format
 //

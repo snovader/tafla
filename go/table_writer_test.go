@@ -427,6 +427,7 @@ func TestRejectsATableOfUint32OffsetsPast4GiBBeforeAllocatingIt(t *testing.T) {
 	expected := &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: 4_294_967_304, OffsetType: tafla.Uint32}
 	expectError(t, second(sizer.ByteLength()), expected)
 	expectError(t, second(sizer.Writer()), expected)
+	expectError(t, third(tafla.AppendTable(nil, 1, tafla.TableLayout{}, 4_294_967_304)), expected)
 	expectMessage(t, expected, "tafla: field 1 makes the table 4294967304 bytes, too long for uint32 offsets")
 }
 
@@ -461,17 +462,28 @@ func TestRejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes(t *testing.T) {
 				fields--
 			}
 
+			// The longest header, which is the whole table
+			length := uint64(offsetType.MaxValue()) / uint64(width) * uint64(width)
 			if _, err := tafla.NewTableSizer(fields, layout); err != nil {
 				t.Error(err)
 			}
-			expectError(t, second(tafla.NewTableSizer(fields+1, layout)), second(tafla.NewTableBuilder(fields+1, layout)))
+			if _, _, err := tafla.AppendTable(nil, fields, layout, length); err != nil {
+				t.Error(err)
+			}
+			tooLong := second(tafla.NewTableBuilder(fields+1, layout))
+			expectError(t, second(tafla.NewTableSizer(fields+1, layout)), tooLong)
+			expectError(t, third(tafla.AppendTable(nil, fields+1, layout, length)), tooLong)
 
 			versioned := layout.Versioned()
 			if _, err := tafla.NewVersionedTableSizer(fields-1, versioned, 0); err != nil {
 				t.Error(err)
 			}
-			expectError(t, second(tafla.NewVersionedTableSizer(fields, versioned, 0)),
-				second(tafla.NewVersionedTableBuilder(fields, versioned, 0)))
+			if _, _, err := tafla.AppendVersionedTable(nil, fields-1, versioned, 0, length); err != nil {
+				t.Error(err)
+			}
+			tooLong = second(tafla.NewVersionedTableBuilder(fields, versioned, 0))
+			expectError(t, second(tafla.NewVersionedTableSizer(fields, versioned, 0)), tooLong)
+			expectError(t, third(tafla.AppendVersionedTable(nil, fields, versioned, 0, length)), tooLong)
 		}
 	}
 
@@ -490,6 +502,7 @@ func TestRejectsAVersionTooLargeForItsSlotAsTableBuilderDoes(t *testing.T) {
 
 		expected := &tafla.BuildError{Kind: tafla.VersionTooLarge, Version: c.version, OffsetType: c.offsetType}
 		expectError(t, second(tafla.NewVersionedTableSizer(1, layout, c.version)), expected)
+		expectError(t, third(tafla.AppendVersionedTable(nil, 1, layout, c.version, 3*uint64(c.offsetType.Size()))), expected)
 		expectError(t, second(tafla.NewVersionedTableBuilder(1, layout, c.version)), expected)
 		if _, err := tafla.NewVersionedTableSizer(1, layout, c.version-1); err != nil {
 			t.Error(err)
@@ -597,4 +610,101 @@ func TestFailsForBytesThatArentWholeStructsAsTableBuilderDoes(t *testing.T) {
 		expected := builder.SetStructArray(make([]byte, c.length), c.size, tafla.Align1)
 		expectError(t, second(writer.Bytes()), expected)
 	}
+}
+
+// Tables whose fields of fixed size the caller lays out itself, as the code
+// that tafla-gen generates does, are written as TableBuilder writes them,
+// every byte of them: a table's first such fields with AddFields and
+// ReserveFields, nested tables of only such fields with AddTableBytes and
+// ReserveTableBytes, and a table of only such fields, and a string after
+// them, with AppendTable
+func TestWritesTablesWhoseFixedFieldsTheCallerLaysOutAsTableBuilderDoes(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		table := inPlaceTables(tables.Layouts()).Draw(t, "table")
+		switch rapid.IntRange(0, 3).Draw(t, "fields") {
+		case 1:
+			table = table.FixedFields()
+		case 2:
+			table = table.FixedFields()
+			table.Fields = append(table.Fields, tables.String(tables.DrawString(t, 8)))
+		case 3:
+			// A table of fields of fixed size, nested in a field and as the
+			// items of a vector, which are all of the same length
+			fixed := table.FixedFields()
+			fixed.Layout, fixed.Version = tables.Headerless(table.Layout.OffsetType), 0
+			nested := tables.Nested{From: tables.FromBuilder, Table: fixed}
+			items := slices.Repeat([]tables.Nested{nested}, rapid.IntRange(0, 4).Draw(t, "items"))
+			table.Fields = slices.Concat([]tables.Field{tables.TableField{Nested: nested}, tables.Vector(items)}, table.Fields)
+		}
+		built, err := table.Bytes()
+		if err != nil {
+			t.Skip("the table doesn't fit")
+		}
+
+		if written, err := table.WriteLaidOut(nil); err != nil || !bytes.Equal(written, built) {
+			t.Fatalf("wrote % x, %v\nrather than % x", written, err, built)
+		}
+
+		dst := bytes.Repeat([]byte{0xa5}, 3+len(built)+5)[:3]
+		appended, err := table.WriteLaidOut(dst)
+		if err != nil || !bytes.Equal(appended, slices.Concat(dst, built)) || &appended[0] != &dst[0] {
+			t.Fatalf("appended % x, %v", appended, err)
+		}
+	})
+}
+
+// Only the string after a table's fields of fixed size can make it too long,
+// so AppendTable names its last field, as TableBuilder does
+func TestAppendsATableAsLongAsItsOffsetsAddressAndFailsForAStringOneByteLonger(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		table := inPlaceTables(shortLayouts()).Draw(t, "table").FixedFields()
+		offsetType := table.Layout.OffsetType
+		maxLength := int(offsetType.MaxValue())
+		withString := func(length int) tables.Table {
+			fields := append(table.Fields, tables.String(strings.Repeat("a", length)))
+			return tables.Table{Layout: table.Layout, Version: table.Version, Fields: fields}
+		}
+
+		shortest, err := withString(0).Bytes()
+		if err != nil {
+			t.Skip("the table doesn't fit")
+		}
+		room := maxLength - len(shortest)
+
+		longest := withString(room)
+		written := must(longest.WriteLaidOut(nil))
+		if len(written) != maxLength || !bytes.Equal(written, must(longest.Bytes())) {
+			t.Fatalf("wrote %d bytes", len(written))
+		}
+
+		expected := &tafla.BuildError{Kind: tafla.TooLong, Index: len(table.Fields), Length: uint64(maxLength) + 1, OffsetType: offsetType}
+		tooLong := withString(room + 1)
+		if _, err := tooLong.WriteLaidOut(nil); !equalErrors(err, expected) {
+			t.Fatalf("%#v", err)
+		}
+		if _, err := tooLong.Bytes(); !equalErrors(err, expected) {
+			t.Fatalf("%#v", err)
+		}
+	})
+}
+
+func TestPanicsForALayoutWithoutTheVersionGivenOrANegativeNumberOfFields(t *testing.T) {
+	plain, versioned := tafla.TableLayout{}, tafla.TableLayout{}.Versioned()
+
+	expectPanic(t, "a sizer of a versioned layout", func() { _, _ = tafla.NewTableSizer(1, versioned) })
+	expectPanic(t, "a versioned sizer of a layout without a version slot", func() {
+		_, _ = tafla.NewVersionedTableSizer(1, plain, 0)
+	})
+	expectPanic(t, "a sizer of a negative number of fields", func() { _, _ = tafla.NewTableSizer(-1, plain) })
+
+	expectPanic(t, "a table of a versioned layout", func() { _, _, _ = tafla.AppendTable(nil, 1, versioned, 8) })
+	expectPanic(t, "a versioned table of a layout without a version slot", func() {
+		_, _, _ = tafla.AppendVersionedTable(nil, 1, plain, 0, 4)
+	})
+	expectPanic(t, "a table of a negative number of fields", func() { _, _, _ = tafla.AppendTable(nil, -1, plain, 0) })
+}
+
+// third returns the error of a call that returns two values before it
+func third[T, U any](_ T, _ U, err error) error {
+	return err
 }
