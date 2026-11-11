@@ -87,8 +87,10 @@ which the platform wheels hold, and a pure-Python one, which the pure
 ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
 they're installed, and the pure-Python ones otherwise or when the environment
 variable ``TAFLA_PUREPYTHON`` is set to anything but the empty string, which
-is read once, at import. ``IMPLEMENTATION`` says which: ``"native"`` or
-``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
+is read once, at import. Native classes that are installed but fail to
+import, such as ones built for another Python, warn with ``RuntimeWarning``
+before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
+``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
 ``TableWriter``, so the implementations never mix.
 
 A native method does in one call what the pure-Python one does in several

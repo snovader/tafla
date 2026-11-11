@@ -5,7 +5,10 @@ raise the same errors. The rest of the tests run against the implementation
 that ``tafla`` chose, and CI runs them with each."""
 
 import inspect
+import os
 import struct
+import subprocess
+import sys
 import unittest
 from array import array
 from collections.abc import Callable
@@ -379,6 +382,79 @@ class TestImplementations(unittest.TestCase):
                 for implementation in (PURE, self.native)
             ]
             self.assertEqual(read[1], read[0])
+
+
+# Imports tafla with a finder that the module tafla._native finds first,
+# which raises the error that a missing or a broken module raises, of the
+# module named missing, and prints
+# the implementation that tafla chose and the warnings that importing it gave
+IMPORT_WITH_NATIVE_MODULE = """
+import sys, warnings
+
+class Finder:
+    def find_spec(self, name, path=None, target=None):
+        if name == "tafla._native":
+            raise {error}("{message}", name={missing!r})
+        return None
+
+sys.meta_path.insert(0, Finder())
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    import tafla
+print(tafla.IMPLEMENTATION)
+for warning in caught:
+    print(warning.category.__name__, warning.message)
+"""
+
+
+class TestChoice(unittest.TestCase):
+    """How ``tafla`` chooses its implementation when the native module is
+    missing, as without a native wheel, or fails to import, as a module built
+    for another Python does"""
+
+    def import_tafla(
+        self, error: str, message: str, missing: str = "tafla._native"
+    ) -> list[str]:
+        code = IMPORT_WITH_NATIVE_MODULE.format(
+            error=error, message=message, missing=missing
+        )
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name != "TAFLA_PUREPYTHON"
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=True,
+        )
+        return result.stdout.splitlines()
+
+    def test_uses_pure_python_silently_when_the_native_module_is_missing(
+        self,
+    ) -> None:
+        printed = self.import_tafla(
+            "ModuleNotFoundError", "No module named 'tafla._native'"
+        )
+        self.assertEqual(printed, ["python"])
+
+    def test_warns_when_the_native_module_fails_to_import(self) -> None:
+        printed = self.import_tafla("ImportError", "undefined symbol: PyFoo")
+
+        self.assertEqual(printed[0], "python")
+        self.assertEqual(len(printed), 2)
+        self.assertRegex(printed[1], r"^RuntimeWarning .*undefined symbol: PyFoo")
+
+    def test_warns_when_a_module_that_the_native_module_imports_is_missing(
+        self,
+    ) -> None:
+        printed = self.import_tafla(
+            "ModuleNotFoundError", "No module named 'other'", "other"
+        )
+        self.assertEqual(printed[0], "python")
+        self.assertRegex(printed[1], r"^RuntimeWarning ")
 
 
 def create_writer(
