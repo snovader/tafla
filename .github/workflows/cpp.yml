@@ -73,15 +73,16 @@ jobs:
         working-directory: cpp
     strategy:
       fail-fast: false
+      # The runner image's default GCC and Clang, which change with the image
       matrix:
         include:
           - name: GCC on Linux
             os: ubuntu-latest
-            cxx: g++-14
+            cxx: g++
             options: ""
           - name: Clang on Linux
             os: ubuntu-latest
-            cxx: clang++-18
+            cxx: clang++
             options: ""
           - name: Clang on macOS
             os: macos-latest
@@ -91,21 +92,26 @@ jobs:
           # undefined behavior, such as a misaligned or overflowing access
           - name: AddressSanitizer and UndefinedBehaviorSanitizer
             os: ubuntu-latest
-            cxx: clang++-18
+            cxx: clang++
             options: -DTAFLA_SANITIZERS=address,undefined -DCMAKE_BUILD_TYPE=Debug
           # Reads and writes every array element by element, as a big-endian
           # host does
           - name: Byte swapping
             os: ubuntu-latest
-            cxx: g++-14
+            cxx: g++
             options: -DTAFLA_FORCE_BYTE_SWAP=ON
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # With Clang's runtime of the sanitizers, whose package is named after
+      # the default Clang's major version
       - name: Install Ninja on Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
 
       - name: Install Ninja on macOS
         if: runner.os == 'macOS'
@@ -173,12 +179,16 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # With Clang's runtime of libFuzzer and the sanitizers
       - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
 
       - name: Configure
         run: >
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++-18
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++
           -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
 
       - name: Build the fuzz targets

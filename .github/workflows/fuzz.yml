@@ -110,8 +110,13 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # With Clang's runtime of libFuzzer and the sanitizers, whose package is
+      # named after the default Clang's major version
       - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
 
       - name: Restore the corpus
         uses: actions/cache@v6
@@ -122,7 +127,7 @@ jobs:
 
       - name: Build the fuzz target
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++-18 \
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++ \
               -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
           cmake --build build --target fuzz_${{ matrix.target }}
 
