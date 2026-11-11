@@ -98,8 +98,11 @@ intent, not a requirement to preserve every detail.
   idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
   JSpecify's annotations in Java, and PyO3, which binds the Python runtime's
-  native classes, written in Rust. Adding a dependency to a runtime needs
-  strong justification.
+  native classes, written in Rust. PyO3 and the Rust runtime are built into
+  the native module, so the installed `tafla` still depends on nothing but
+  Python. The native classes take about half the time of the pure-Python
+  ones, which remain for every other platform. Adding a dependency to a
+  runtime needs strong justification.
 
 ## Untrusted input
 

@@ -31,7 +31,8 @@ one. The release publishes:
   or Python.
 - The source distribution, which builds the native module with Rust. pip
   builds from it only when told to, since the pure-Python wheel installs
-  wherever no native one does.
+  wherever no native one does. Without Rust, uv_build builds the pure-Python
+  wheel from the same sources, as `python/README.md` shows.
 
 `python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
 that it's for, and the job that publishes them runs once every one has passed.
