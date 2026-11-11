@@ -156,8 +156,9 @@ Options:
   --out <dir>          The directory to write the files under, by default the
                        current directory
   --runtime <module>   The module, package or crate that the code imports tafla's
-                       runtime from: `tafla` by default, and
-                       `io.github.snovader.tafla` in Java
+                       runtime from: `tafla` by default,
+                       `io.github.snovader.tafla` in Java and
+                       `github.com/snovader/tafla/go` in Go
   --package <package>  The package of the Java classes, by default `generated`
   -h, --help           Prints this help
   -V, --version        Prints the version

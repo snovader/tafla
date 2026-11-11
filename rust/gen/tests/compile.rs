@@ -289,7 +289,7 @@ fn targets_are_found_by_name_or_abbreviation() {
     let names: Vec<&str> = Target::names().collect();
     assert_eq!(
         names,
-        ["typescript", "javascript", "python", "java", "rust"]
+        ["typescript", "javascript", "python", "java", "rust", "go"]
     );
 
     for (abbreviation, name) in [
@@ -301,7 +301,7 @@ fn targets_are_found_by_name_or_abbreviation() {
         assert_eq!(Target::from_name(abbreviation), Target::from_name(name));
     }
     assert_eq!(Target::from_name("TypeScript"), None);
-    assert_eq!(Target::from_name("go"), None);
+    assert_eq!(Target::from_name("cobol"), None);
 }
 
 #[test]

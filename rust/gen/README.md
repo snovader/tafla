@@ -1,8 +1,8 @@
 # tafla-gen
 
 Compiles a schema of messages, tables and structs into code that writes and
-reads them with tafla's runtime for TypeScript, JavaScript, Python, Java or
-Rust. It runs as a command, as a Rust library, and as a WebAssembly module
+reads them with tafla's runtime for TypeScript, JavaScript, Python, Java, Rust
+or Go. It runs as a command, as a Rust library, and as a WebAssembly module
 without imports, which the packages for the other languages run.
 
 ```text
@@ -64,7 +64,7 @@ Each field is `name: type;`, of one of these types:
 
 A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
-TypeScript, JavaScript and Java, and `bool` in Python and Rust, and the
+TypeScript, JavaScript and Java, and `bool` in Python, Rust and Go, and the
 generated code reads and writes it with the runtime's `uint8` getters and
 setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
 and 1 holds bools in the meantime.
@@ -157,6 +157,10 @@ or read its tables, or a target couldn't generate its code:
   a struct in those of the structs that hold it, as deep as they nest. A
   struct in a table adds nothing to the table's depth, and vectors nest
   tables without a limit.
+- A declaration can't take the name of a function or constant that the
+  generated Go declares beside a message, in the package of the schema's
+  declarations: `New<Message>`, which reads it, and a versioned message's
+  `<Message>VersionOf` and `<Message>FormatVersion`.
 - A field can't take the name of the view of a vector or an array of structs
   beside it, `<field>_view`, in `camelCase` too, nor that of the view of an
   array of scalars, which Java declares, and a declaration can't take
@@ -207,29 +211,30 @@ when the bytes are in another version.
 | Python     | `<schema>.py`                            | Classes, written from `TypedDict`s of their fields as keyword arguments  | Frozen dataclasses, read and written with `struct`   |
 | Java       | `<package>/<Name>.java`                  | Final classes, written from a nested `Fields` record                     | Records, read and written in place with `VarHandle`s |
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
+| Go         | `<schema>.go`, a package of its name     | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 
 A table's getter of a vector or an array of structs reads every item at once.
 Vectors return an array of tables in TypeScript and JavaScript, a `List` in
-Java, a `list` in Python and a `Vec` in Rust. Every target reads a vector's
+Java, a `list` in Python, a `Vec` in Rust and a slice in Go. Every target reads a vector's
 tables in place, within the message's bytes, as `SPEC.md` describes, so that
 it reads the same fields from the same bytes as the others, even where a
 corrupted item's offsets lead past its end. Arrays of structs return an
 array of structs in TypeScript, JavaScript and Java, as Java's getters of
-arrays of scalars return Java arrays, a `list` in Python, and an iterator
-that reads each from the bytes in Rust. Each struct writes an array of them
+arrays of scalars return Java arrays, a `list` in Python, an iterator
+that reads each from the bytes in Rust, and a slice in Go. Each struct writes an array of them
 with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
 
 ### Views
 
 Beside each getter of a vector or an array of structs, `<field>View()`, or
-`<field>_view()` in Python and Rust, returns a view of its items, which reads
+`<field>_view()` in Python and Rust and `<Field>View()` in Go, returns a view of its items, which reads
 an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
 which the generated code declares for each table that a vector holds and
 each struct that an array holds. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
 runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
-view read in Java, TypeScript and JavaScript, or `Vector::get_in_place()` in
-Rust, and an array's at `i` times its struct's size. When it's made, it checks that the
+view read in Java, TypeScript and JavaScript, `Vector::get_in_place()` in
+Rust or `Vector.GetInPlace()` in Go, and an array's at `i` times its struct's size. When it's made, it checks that the
 bytes hold the vector's count and an end for each item, or the array's
 structs, so that its length is never more than the bytes can hold. It reads
 each item when it's asked for, which fails with the decode error if the
@@ -241,6 +246,7 @@ item's bytes are corrupt.
 | Python                 | `len(view)`           | `view[i]`, from the end if `i` is negative, or an `IndexError`                              | `for item in view`, which reads every item's end first |
 | Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`                                |
 | Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
+| Go                     | `Len()`               | `Get(i)`, with an error for a vector's table, or a panic past the end, as indexing a slice  | `range view.All()`, which reads each item's end once   |
 
 A view creates the reader of each item that it reads, as the getter does, but
 not those of the items it skips, nor an array of them. TypeScript's views
@@ -275,14 +281,18 @@ Field names that are keywords in a target take a `_` after them, such as
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
 `constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
-and `version_of_` in Python, `hashCode_` and `serialize_` in Java, and `new_` and
-`version_of_` in Rust. So does `then` in TypeScript and JavaScript, since a
+and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
+`version_of_` in Rust, and `MarshalBinary_` in Go, as Go exports every name
+of a schema in `PascalCase`, which keywords don't clash with. So do the
+names of the methods whose signatures `go vet` checks, such as `Format_`. So does `then` in TypeScript and JavaScript, since a
 `then()` method would make a reader a thenable, which `await` calls and never settles. `MEMBERS` in each
 target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
-it: Biome for TypeScript and JavaScript, Ruff for Python and rustfmt for
-Rust, with Java at 100 columns. With the schema above, from
+it: Biome for TypeScript and JavaScript, Ruff for Python, rustfmt for Rust
+and gofmt for Go, which also reformats doc comments, as `go/doc/comment`
+parses them, with Java at 100 columns. Go's files start with the comment
+that Go's tools take as generated code, `// Code generated ... DO NOT EDIT.` With the schema above, from
 `schemas/shapes.tafla`, the generated code reads and writes a document like
 this:
 
@@ -333,6 +343,16 @@ let bytes = DocumentFields { x: 1.5, y: 2.0, name: "a", columns }.serialize()?;
 let document = Document::new(&bytes)?; // checks the version
 assert_eq!(document.columns()?.a()?.to_vec(), [0.5, 1.5]); // from an ArrayView<f32>
 # Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+```go
+bytes, err := shapes.DocumentFields{X: 1.5, Y: 2, Name: "a", Columns: shapes.ColumnsFields{
+	Base: 0, Keys: []uint32{1, 2}, A: []float32{0.5, 1.5}, B: []float32{2.5, 3.5},
+}}.MarshalBinary()
+
+document, err := shapes.NewDocument(bytes) // checks the version
+columns, err := document.Columns()
+a, err := columns.A() // a tafla.ArrayView[float32] of the bytes
 ```
 
 ### Writing into reused bytes
@@ -432,6 +452,7 @@ bytes don't hold the header:
 | Python                 | `Document.version_of(data)`, an `int`                        |
 | Java                   | `Document.versionOf(bytes)`, a `long`                        |
 | Rust                   | `Document::version_of(&bytes)`, a `Result<u32, DecodeError>` |
+| Go                     | `DocumentVersionOf(bytes)`, a `uint32` and an `error`        |
 
 An application that reads two versions of a document, declared with the same
 header as `message DocumentV1 (sized, version: 1)` and
@@ -453,7 +474,7 @@ switch (Document.versionOf(bytes)) {
 ## Command
 
 ```sh
-tafla-gen <typescript|javascript|python|java|rust> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen <typescript|javascript|python|java|rust|go> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
 `ts`, `js`, `py` and `rs` abbreviate the targets. Options may come before,
@@ -486,14 +507,19 @@ they share.
 
   | Target                               | Runtime                    |
   | ------------------------------------ | -------------------------- |
-  | TypeScript, JavaScript, Python, Rust | `tafla`                    |
-  | Java                                 | `io.github.snovader.tafla` |
+  | TypeScript, JavaScript, Python, Rust | `tafla`                        |
+  | Java                                 | `io.github.snovader.tafla`     |
+  | Go                                   | `github.com/snovader/tafla/go` |
+
+  Go imports it as `tafla`, whatever its path's last element.
 
 - `--package` names the package of the Java classes, which is `generated` by
   default, since they belong in a package of the project that uses them,
   which the generator can't know. It's identifiers in ASCII separated by
   dots, such as `com.example.shapes`, which are the directories of the
-  classes' files under `--out` too. Other targets ignore it.
+  classes' files under `--out` too. Other targets ignore it. Go's package is
+  named after the schema's file name, in lowercase ASCII letters and digits:
+  `all_types.tafla` generates `package alltypes`.
 
 From this repository, `cargo run -p tafla-gen --` runs the command.
 
@@ -522,7 +548,8 @@ assert!(Diagnostic::render_all(&errors, "point.tafla", source)
 ```
 
 Each target has a Cargo feature, `typescript` (which generates JavaScript
-too), `python`, `java` and `rust`, and the default features are all four. A
+too), `python`, `java`, `rust` and `go`, and the default features are all
+five. A
 crate that generates one language from its build script can depend on that
 feature alone.
 
@@ -604,6 +631,7 @@ its runtime, in the same ways as the Rust:
 | Python                 | `python/core/tests/generated/<schema>/`                                     |
 | Java                   | `java/core/src/test/java/io/github/snovader/tafla/test/generated/<schema>/` |
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
+| Go                     | `go/internal/generated/<schema>/`                                           |
 
 The Java is generated with the package
 `io.github.snovader.tafla.test.generated.<schema>`, so that it's part of the
@@ -621,6 +649,7 @@ where:
 | Python     | `python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla`, `…/generated/tafla/`                                 |
 | Java       | `java/benchmarks/src/main/tafla/workloads.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/` |
 | Rust       | `rust/benchmarks/workloads.tafla`, `rust/benchmarks/src/codecs/tafla_gen/`                                               |
+| Go         | `go/benchmarks/workloads.tafla`, `go/benchmarks/generated/tafla/`                                                        |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

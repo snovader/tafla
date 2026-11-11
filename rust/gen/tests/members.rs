@@ -195,3 +195,48 @@ fn rust_renames_the_associated_functions_of_views() {
         ],
     );
 }
+
+#[test]
+fn go_renames_the_binary_marshaling_methods_and_the_methods_that_vet_checks() {
+    let schema = "\
+message Members (version: 1) {
+    marshal_binary: uint8;
+    append_binary: uint8;
+    format: uint8;
+    read: uint8;
+    new: uint8;
+    version_of: uint8;
+}
+
+struct Frame {
+    unmarshal_binary: uint8;
+    read_byte: uint8;
+    write_to: uint8;
+    put: uint8;
+    bytes: uint8;
+}
+";
+
+    assert_generates(
+        "go",
+        schema,
+        &[
+            "func (t Members) MarshalBinary_() (uint8, error) {",
+            "func (t Members) AppendBinary_() (uint8, error) {",
+            "func (t Members) Format_() (uint8, error) {",
+            "func (t Members) Read() (uint8, error) {",
+            "func (t Members) New() (uint8, error) {",
+            "func (t Members) VersionOf() (uint8, error) {",
+            "func MembersVersionOf(bytes []byte) (uint32, error) {",
+            "\tMarshalBinary_ uint8\n",
+            "func (f MembersFields) MarshalBinary() ([]byte, error) {",
+            "\tUnmarshalBinary_ uint8\n",
+            "\tReadByte_        uint8\n",
+            "\tWriteTo_         uint8\n",
+            "\tPut              uint8\n",
+            "\tBytes            uint8\n",
+            "func (s *Frame) UnmarshalBinary(bytes []byte) error {",
+            "\ts.Put = bytes[3]\n",
+        ],
+    );
+}

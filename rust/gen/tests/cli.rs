@@ -313,7 +313,7 @@ fn prints_its_version_to_stdout() {
     }
 }
 
-const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust> <schema>... \
+const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust|go> <schema>... \
                      [--out <dir>] [--runtime <module>] [--package <package>]";
 
 /// Fails as wrong arguments do: with the error, the usage and exit code 2,
@@ -343,8 +343,8 @@ fn rejects_wrong_arguments() {
         (&[][..], "no target is given"),
         (&["rust"], "no schema is given"),
         (
-            &["go", "schemas/shapes.tafla"],
-            "unknown target `go`: this build generates typescript, javascript, python, java, rust",
+            &["cobol", "schemas/shapes.tafla"],
+            "unknown target `cobol`: this build generates typescript, javascript, python, java, rust, go",
         ),
         (
             &["rust", "schemas/shapes.tafla", "--outdir", "out"],

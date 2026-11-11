@@ -17,15 +17,17 @@ repository's first commits, for code built from its source before the release.
   structs, with a layout that sets the header and the offset type (`uint8`,
   `uint16` or `uint32`).
 - Runtimes in TypeScript (`tafla` on npm), Python (`tafla` on PyPI), Java
-  (`io.github.snovader.tafla:tafla` on Maven Central) and Rust (`tafla` on
-  crates.io), with `TableBuilder` and `TableWriter` to write tables, and
-  `ByteBuffer` to read them.
+  (`io.github.snovader.tafla:tafla` on Maven Central), Rust (`tafla` on
+  crates.io) and Go (the module `github.com/snovader/tafla/go`), with
+  `TableBuilder` and `TableWriter` to write tables, and `ByteBuffer` to read
+  them.
 - Bounds-checked reads in every runtime, which fail on malformed input with
-  the runtime's decode error (`DecodeError`, or `DecodeException` in Java).
+  the runtime's decode error (`DecodeError`, or `DecodeException` in Java and
+  a `*DecodeError` in Go).
 - tafla-gen, a schema compiler written in Rust, which generates code that
   writes and reads a schema's messages, tables and structs in TypeScript,
-  JavaScript, Python, Java and Rust, with lazy views of vectors and arrays of
-  structs, views in place of arrays of scalars in Java, whose getters copy
+  JavaScript, Python, Java, Rust and Go, with lazy views of vectors and arrays
+  of structs, views in place of arrays of scalars in Java, whose getters copy
   them, and a WebAssembly module of it for other hosts.
 - A conformance suite of golden tables, which every runtime reads and rebuilds
   byte for byte, and property tests of every runtime.

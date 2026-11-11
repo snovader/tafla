@@ -1,0 +1,17 @@
+// The workloads' tables, the same as the TypeScript comparison's, from which
+// `flatc --go` generates ../generated/fbs, as README.md describes.
+namespace fbs;
+
+table Record { x: double; y: double; id: long; name: string; }
+
+table Columns { base: long; keys: [uint]; a: [float]; b: [float]; }
+table Document { x: double; y: double; name: string; columns: Columns; }
+
+table Pair { first: float; second: float; }
+table Item { value: float; pair: Pair; }
+table List { items: [Item]; }
+
+struct Triple { value: float; first: float; second: float; }
+table Triples { items: [Triple]; }
+
+table Sample { key: uint; a: float; b: float; }
