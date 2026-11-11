@@ -47,6 +47,9 @@ namespace detail {
 /// Defining `TAFLA_FORCE_BYTE_SWAP` makes a little-endian host take the path
 /// of a big-endian one, which converts every element on its own, so that the
 /// tests cover it on any host. The values read and written stay the same.
+/// Every translation unit of a program must define it alike, since the
+/// inline functions that read this constant would otherwise differ between
+/// them, which breaks the one-definition rule: the linker keeps one of each.
 #if defined(TAFLA_FORCE_BYTE_SWAP)
 inline constexpr bool kHostOrder = false;
 #else

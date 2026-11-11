@@ -66,7 +66,13 @@ public:
         return iterator(vector_.items_in_place().end());
     }
 
-    /// Reads every item, reading each item's end once
+    /// Reads every item, reading each item's end once.
+    ///
+    /// It allocates a reader of each item, `size() * sizeof(T)` bytes: 24
+    /// for tafla-gen's readers of tables on a 64-bit host, which view the
+    /// bytes and hold a position. Each item takes at least the 4 bytes of its
+    /// end in a table of `uint32` offsets, so arbitrary bytes allocate at most
+    /// about 6 times their length; the view allocates nothing.
     [[nodiscard]] std::vector<T> to_vector() const {
         // Assigning to default readers, which tafla-gen's readers of tables
         // have, compiles to a tighter loop than `emplace_back()`'s, which

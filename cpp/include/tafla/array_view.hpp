@@ -90,9 +90,13 @@ public:
     /// their type in memory or the host is big-endian. Single bytes are
     /// always in place.
     ///
-    /// The span reads the table's bytes as elements of `T`, as FlatBuffers
-    /// reads its vectors, which every compiler that tafla supports allows of
-    /// bytes that hold them.
+    /// The span deliberately reads the table's bytes as elements of `T`, as
+    /// FlatBuffers reads its vectors. It relies on the bytes' storage holding
+    /// elements of `T`, which C++20's implicit creation of objects provides
+    /// for storage from `new`, `std::malloc` or an allocator, and which the
+    /// compilers that CI tests read as such from any bytes. `operator[]`,
+    /// the iterators and `to_vector()` read each element with `std::memcpy`
+    /// instead.
     [[nodiscard]] std::optional<std::span<const T>> as_span() const noexcept {
         if constexpr (sizeof(T) > 1) {
             if (!detail::kHostOrder || !detail::is_aligned<T>(bytes_)) {

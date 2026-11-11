@@ -70,23 +70,33 @@ type, offset size, vector, builder and decode error.
   its offsets without branching on their type.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
-  which must outlive them. A setter that takes a `std::span`, a
-  `std::string_view` or a `const TableBuilder&` views it until `to_bytes()`,
-  and one that takes a `std::vector`, a `std::string`, `Bytes` or a builder by
-  rvalue owns it.
+  which must outlive them. A setter that takes a `std::span` or a
+  `std::string_view` views it until `to_bytes()`, and one that takes a
+  `std::vector`, a `std::string`, `Bytes` or a builder by rvalue owns it. A
+  temporary that a setter can't own, such as a `std::array` returned by
+  value, doesn't compile, rather than leaving the builder a view of it. A
+  builder nested by `const` reference is recorded when it's set: the parent
+  shares what it owns, or writes it at once, so that it may then change or be
+  destroyed, and only what it borrows must outlive the parent's
+  `to_bytes()`.
 - **`Bytes` aren't zeroed.** A writer allocates a table's bytes at its exact
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
   them.
 - **`ArrayView::as_span()`** returns a `std::span<const T>` of the elements
   where they're aligned on a little-endian host, as `TableBuilder` aligns
-  them within an aligned table, reading the table's bytes as `T`, as
-  FlatBuffers reads its vectors. Its `operator[]`, iterators and `to_vector()`
-  read any array, at any alignment, in any byte order.
+  them within an aligned table. It deliberately reads the table's bytes as
+  `T`, as FlatBuffers reads its vectors, relying on C++20's implicit creation
+  of objects in the bytes' storage. Its `operator[]`, iterators and
+  `to_vector()` read any array, at any alignment, in any byte order, with
+  `std::memcpy`.
 - **Big-endian hosts** read and write each element with a byte swap. Defining
   `TAFLA_FORCE_BYTE_SWAP`, or configuring with `-DTAFLA_FORCE_BYTE_SWAP=ON`,
   makes a little-endian host take that path, with the same values, so that
   the tests cover it anywhere. CI also runs the tests on s390x under QEMU.
+  Every translation unit of a program must define it alike, or none: the
+  inline functions that test it would differ otherwise, against the
+  one-definition rule.
 - **`TableWriter` checks its calls**, as Rust's does: it never writes past the
   table's length, whatever it's given, and `finish()` throws the `BuildError`
   of fields other than those its `TableSizer` counted, of an index past a
