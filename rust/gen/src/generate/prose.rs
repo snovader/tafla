@@ -15,11 +15,24 @@ pub fn article(name: &str) -> String {
 /// one before another vowel, as in `Uint8Offsets`, before `ni`, as in `Unit`,
 /// or before `s`, `t`, `r` or `k` and then a vowel, as in `User` or `Utility`.
 /// Any other takes "an", such as the prefix `Un` in `Unaligned`, `Unused` and
-/// `Uninitialized`, and `Under`, `Upper` and `Update`.
+/// `Uninitialized`, and `Under`, `Upper` and `Update`. A name of a single
+/// letter is read as the letter's name: "an `S`", "an `F`" and "a `T`".
 pub fn indefinite_article(name: &str) -> &'static str {
     let mut letters = name.chars();
+    let first = letters.next().map(|letter| letter.to_ascii_lowercase());
 
-    match letters.next().map(|letter| letter.to_ascii_lowercase()) {
+    // A single letter is read by its name, as "an `S`" is "an ess"
+    if let Some(letter) = first
+        && letters.as_str().is_empty()
+    {
+        return if "aefhilmnorsx".contains(letter) {
+            "an"
+        } else {
+            "a"
+        };
+    }
+
+    match first {
         Some('u') if reads_as_you(letters.as_str()) => "a",
         Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
         _ => "a",
@@ -94,6 +107,14 @@ mod tests {
             ("Upend", "an"),
             ("Umbrella", "an"),
             ("Ux", "an"),
+            // A single letter, read by its name
+            ("S", "an"),
+            ("F", "an"),
+            ("H", "an"),
+            ("A", "an"),
+            ("T", "a"),
+            ("B", "a"),
+            ("Y", "a"),
         ];
 
         for (name, article) in cases {
@@ -107,5 +128,6 @@ mod tests {
         assert_eq!(article("Point"), "a `Point`");
         assert_eq!(article("Item"), "an `Item`");
         assert_eq!(article("Uint8Offsets"), "a `Uint8Offsets`");
+        assert_eq!(article("S"), "an `S`");
     }
 }
