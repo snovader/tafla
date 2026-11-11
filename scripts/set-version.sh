@@ -19,6 +19,8 @@ version_file="$root/VERSION"
 
 # Each place that records the version: a file, and a Perl pattern that the
 # version follows in it, up to its closing quote. Each pattern matches once.
+# The Go module records none, since its tag, go/v<version>, is its version,
+# which the release workflow takes from VERSION.
 locations=(
     'typescript/core/package.json|^  "version": "'
     'python/core/pyproject.toml|^version = "'
