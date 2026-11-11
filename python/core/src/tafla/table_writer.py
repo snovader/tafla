@@ -4,9 +4,8 @@ from struct import error as StructError
 from typing import Any, Literal, Self, overload
 
 from . import structs
-from .byte_buffer import check_struct_size
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, little_endian_bytes
+from .elements import as_elements, little_endian_bytes, struct_count
 from .errors import describe_int
 from .fixed_fields import FixedFields
 from .layout import (
@@ -645,17 +644,3 @@ _SETTERS = {
     "f": TableWriter.set_float32,
     "d": TableWriter.set_float64,
 }
-
-
-def struct_count(byte_length: int, size: int) -> int:
-    """Returns the number of structs of ``size`` bytes in ``byte_length``
-    bytes. Raises ``ValueError`` if ``size`` is less than 1, or the bytes
-    aren't a whole number of structs."""
-    check_struct_size(size)
-    if byte_length % size != 0:
-        raise ValueError(
-            f"{byte_length} bytes aren't a whole number of "
-            f"{describe_int(size)}-byte structs"
-        )
-
-    return byte_length // size

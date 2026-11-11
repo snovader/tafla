@@ -1,0 +1,37 @@
+# The native implementation of tafla's Python runtime, the extension module
+# tafla._native, which maturin builds into the tafla distribution. It isn't
+# published as a crate.
+[package]
+name = "tafla-python"
+version = "0.0.0"
+description = "The native implementation of the classes of tafla's Python runtime that generated code uses"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[lib]
+name = "_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Each class's methods are declared in several blocks, some by macros
+pyo3 = { version = "=0.29.2", features = ["multiple-pymethods"] }
+# Reads go through the Rust runtime's ByteBuffer, for its bounds checks
+tafla = { path = "../../../rust/core" }
+
+[build-dependencies]
+pyo3-build-config = "=0.29.2"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+must_use_candidate = { level = "allow", priority = 1 }
+# PyO3's methods take their arguments by value and return PyResult
+needless_pass_by_value = { level = "allow", priority = 1 }
+unnecessary_wraps = { level = "allow", priority = 1 }
+
+[profile.release]
+codegen-units = 1
+lto = true

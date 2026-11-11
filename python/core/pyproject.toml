@@ -1,6 +1,10 @@
+# maturin builds the platform wheels, with the native module tafla._native,
+# and the source distribution. The pure-Python wheel is built from the same
+# sources by uv_build, which [tool.uv.build-backend] configures; see
+# README.md.
 [build-system]
-requires = ["uv_build>=0.13.7,<0.14"]
-build-backend = "uv_build"
+requires = ["maturin>=1.16.0,<2"]
+build-backend = "maturin"
 
 [project]
 name = "tafla"
@@ -30,3 +34,26 @@ Homepage = "https://github.com/snovader/tafla/tree/main/python/core#readme"
 Source = "https://github.com/snovader/tafla"
 Issues = "https://github.com/snovader/tafla/issues"
 Specification = "https://github.com/snovader/tafla/blob/main/SPEC.md"
+
+[tool.maturin]
+manifest-path = "native/Cargo.toml"
+python-source = "src"
+module-name = "tafla._native"
+
+[tool.uv]
+# The native module's sources, which uv rebuilds the package for when they
+# change, as it does for this file
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "native/Cargo.toml" },
+  { file = "native/Cargo.lock" },
+  { file = "native/build.rs" },
+  { file = "native/src/**/*.rs" },
+  { file = "../../rust/core/Cargo.toml" },
+  { file = "../../rust/core/src/**/*.rs" },
+]
+
+# The pure-Python wheel, which uv_build builds from the same sources: without
+# the native module that an editable install builds into the package
+[tool.uv.build-backend]
+wheel-exclude = ["tafla/_native.*.so", "tafla/_native.*.pyd"]

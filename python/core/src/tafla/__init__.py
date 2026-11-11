@@ -209,16 +209,20 @@ keep that count for each nested table, so the contract doesn't promise it.
 Hand-written tables use ``TableBuilder``, which checks every field.
 """
 
-from .byte_buffer import ByteBuffer
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
-from .fixed_fields import FixedFields
-from .layout import TableLayout
+from .implementation import (
+    IMPLEMENTATION,
+    ByteBuffer,
+    FixedFields,
+    TableLayout,
+    TableWriter,
+)
 from .table_builder import TableBuilder
-from .table_writer import TableWriter
 from .types import OffsetSize, OffsetType
 
 __all__ = [
+    "IMPLEMENTATION",
     "ByteBuffer",
     "DecodeError",
     "FixedFields",

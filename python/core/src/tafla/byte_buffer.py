@@ -5,7 +5,7 @@ from typing import Any, overload
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import from_little_endian
+from .elements import check_struct_size, from_little_endian, not_contiguous
 from .errors import DecodeError, describe_int
 from .fixed_fields import FixedFields
 from .layout import TableLayout
@@ -75,7 +75,7 @@ class ByteBuffer:
         # and every reader that tafla-gen generates constructs one
         view = memoryview(bytes)
         if not view.c_contiguous:
-            raise _not_contiguous()
+            raise not_contiguous()
 
         self.__view = view if view.format == "B" and view.ndim == 1 else view.cast("B")
         self.__length = len(self.__view)
@@ -512,35 +512,3 @@ class ByteBuffer:
         except StructError, OverflowError:
             pass
         raise DecodeError.out_of_range(position, self.__size, self.__length)
-
-
-def check_struct_size(size: int) -> None:
-    """Raises ``ValueError`` if ``size`` is less than 1, which no struct's
-    size is. ``get_struct_array()`` checks the size it's given with it, and so
-    do the writers' ``set_struct_array()``."""
-    if size < 1:
-        raise ValueError(
-            f"A struct's size must be a positive integer, not {describe_int(size)}"
-        )
-
-
-def byte_view(buffer: Buffer) -> memoryview:
-    """Returns the bytes of a C-contiguous buffer, as a one-dimensional view.
-
-    Raises ``TypeError`` for a buffer that isn't C-contiguous, such as a slice
-    with a step, as ``memoryview.cast()`` does, and as ``bytearray`` does when
-    ``TableWriter`` appends it. A one-dimensional view of bytes needs no cast,
-    so it's checked here.
-    """
-    view = memoryview(buffer)
-    if not view.c_contiguous:
-        raise _not_contiguous()
-
-    return view if view.format == "B" and view.ndim == 1 else view.cast("B")
-
-
-def _not_contiguous() -> TypeError:
-    return TypeError(
-        "Can't view the bytes of a buffer that isn't C-contiguous, such as a "
-        "slice with a step"
-    )

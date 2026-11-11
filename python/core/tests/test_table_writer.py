@@ -1,12 +1,12 @@
 import unittest
 from collections.abc import Callable
 from typing import Any, cast
-from unittest.mock import patch
 
 from hypothesis import assume, given
 from hypothesis.strategies import booleans, integers, one_of, sampled_from
 
 from tafla import TableBuilder, TableLayout, TableWriter
+from tests.byte_order import big_endian_host
 from tests.descriptions import tables
 from tests.tables import (
     ELEMENT_SIZES,
@@ -134,10 +134,9 @@ class TestTableWriter(unittest.TestCase):
         assume(fits(table))
         expected = byte_swapped_arrays(write_table(table), table)
 
-        # Take the big-endian branches on any host. The host's own order is
-        # little-endian, so each element's bytes come out reversed, and
-        # everything else as it was.
-        with patch("tafla.elements.IS_LITTLE_ENDIAN", False):
+        # The host's own order is little-endian, so each element's bytes come
+        # out reversed, and everything else as it was
+        with big_endian_host():
             self.assertEqual(bytes(write_table(table)), expected)
             self.assertEqual(bytes(build_table(table).bytes()), expected)
 
