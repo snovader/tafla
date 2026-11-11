@@ -114,6 +114,37 @@ jobs:
           cargo metadata --locked --format-version 1 --manifest-path python/core/native/Cargo.toml > /dev/null
           git checkout -- .
 
+  # The native classes' Rust tests with the crate's rust-version, the oldest
+  # Rust that builds the wheels from the source distribution
+  msrv:
+    name: Test the native classes (Rust 1.88)
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python/core/native
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          toolchain: "1.88"
+          cache-workspaces: python/core/native -> target
+          cache-key: "1.88"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      - name: Run the native classes' Rust tests
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo +1.88 test --all-features
+
   test:
     name: Test (Python ${{ matrix.python_version }})
     needs: changes
@@ -197,7 +228,7 @@ jobs:
 
       - name: Build the pure-Python wheel
         working-directory: python/core
-        run: uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
+        run: uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
 
       # The wheel that the source distribution built, and the pure-Python one
       - name: Test each wheel on its own
@@ -246,7 +277,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Python.
   checks:
     name: Python checks
-    needs: [changes, verify, test, package, benchmark]
+    needs: [changes, verify, msrv, test, package, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

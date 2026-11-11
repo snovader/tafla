@@ -277,7 +277,7 @@ jobs:
       # without the native module
       - name: Build the pure-Python wheel
         working-directory: python/core
-        run: uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
+        run: uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
 
       - name: Test the wheels
         run: scripts/test-wheels.sh "$RUNNER_TEMP/build"

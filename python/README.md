@@ -63,7 +63,7 @@ the same sources by uv_build, which `[tool.uv.build-backend]` in
 
 ```sh
 mkdir -p ../dist
-uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
+uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
 ```
 
 `scripts/test-wheels.sh` tests each wheel in a directory on its own. It

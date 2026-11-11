@@ -3,7 +3,8 @@
 # sources by uv_build, which [tool.uv.build-backend] configures; see
 # README.md.
 [build-system]
-requires = ["maturin>=1.16.0,<2"]
+# The release's maturin-action builds with the same version
+requires = ["maturin==1.16.0"]
 build-backend = "maturin"
 
 [project]
@@ -39,6 +40,8 @@ Specification = "https://github.com/snovader/tafla/blob/main/SPEC.md"
 manifest-path = "native/Cargo.toml"
 python-source = "src"
 module-name = "tafla._native"
+# The Rust runtime's tests, which the source distribution's build doesn't run
+exclude = [{ path = "**/rust/core/tests/**", format = "sdist" }]
 
 [tool.uv]
 # The native module's sources, which uv rebuilds the package for when they
@@ -56,4 +59,5 @@ cache-keys = [
 # The pure-Python wheel, which uv_build builds from the same sources: without
 # the native module that an editable install builds into the package
 [tool.uv.build-backend]
-wheel-exclude = ["tafla/_native.*.so", "tafla/_native.*.pyd"]
+# Windows names the stable ABI's module _native.pyd, without a tag
+wheel-exclude = ["tafla/_native*.so", "tafla/_native*.pyd"]
