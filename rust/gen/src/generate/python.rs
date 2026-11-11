@@ -1096,7 +1096,10 @@ fn fields_protocol(writer: &mut CodeWriter, schema: &Schema, definition: &Defini
                 "The fields of {}, which an array of them is written from: the",
                 article(name)
             ),
-            format!("attributes of a `{name}`, or of any other object with attributes of"),
+            format!(
+                "attributes of {}, or of any other object with attributes of",
+                article(name)
+            ),
             "the same names and types".to_owned(),
         ],
     );
