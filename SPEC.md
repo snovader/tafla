@@ -147,6 +147,15 @@ Checks can't tell a value corrupted within range from a real one, such as an
 offset that points at another field, or one of a vector item's offsets that
 points past the item's end, at bytes that the item reads in place.
 
+Nor do readers check that a vector item lies after the vector's count and
+ends. Item `i` is found from the ends of items `i - 1` and `i` alone, so when
+the end of item `i - 1` points into the count and ends, item `i` starts there
+and reads them as its bytes. An item before it fails to read, since the ends
+can't lead back from item 0's start without one of them ending before it
+starts. Every implementation reads such an item alike, within the bytes it
+was given, so checking it would cost every item read without making any read
+safer.
+
 ## Writers
 
 Writers produce the same bytes for the same fields in every implementation:
