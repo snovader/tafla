@@ -50,7 +50,11 @@ func (a ArrayView[T]) AsSlice() ([]T, bool) {
 }
 
 // Slice returns the elements in place when [ArrayView.AsSlice] can, and
-// otherwise a copy, in the host's byte order.
+// otherwise a copy, in the host's byte order, as Rust's to_cow returns them.
+// Treat the slice as read-only: whether it shares the table's bytes depends
+// on the host and on where the bytes lie, so writing to it may write to the
+// table. [ArrayView.Append] returns a copy to own, and AsSlice says whether
+// the elements are in place.
 func (a ArrayView[T]) Slice() []T {
 	if values, ok := a.AsSlice(); ok {
 		return values
