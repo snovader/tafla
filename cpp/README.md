@@ -97,6 +97,11 @@ type, offset size, vector, builder and decode error.
   Every translation unit of a program must define it alike, or none: the
   inline functions that test it would differ otherwise, against the
   one-definition rule.
+- **32-bit x86 may quiet signalling NaNs.** Its ABI returns floats and
+  doubles on the x87 stack, whose loads quiet a signalling NaN, so a float
+  that a getter or `ArrayView::operator[]` returns there may come back
+  quieted, depending on the compiler's code. The bytes themselves, and
+  `as_span()`'s views of them, keep every bit, and the tests accept either.
 - **`TableWriter` checks its calls**, as Rust's does: it never writes past the
   table's length, whatever it's given, and `finish()` throws the `BuildError`
   of fields other than those its `TableSizer` counted, of an index past a

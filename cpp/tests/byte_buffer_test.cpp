@@ -12,6 +12,8 @@
 
 #include <tafla/tafla.hpp>
 
+#include "common/read_bits.hpp"
+
 namespace tafla::test {
 namespace {
 
@@ -54,7 +56,8 @@ void check_scalar(const std::vector<std::uint8_t>& bytes, std::size_t position, 
 
     RC_ASSERT(read.has_value() == expected.has_value());
     if (read) {
-        RC_ASSERT(std::bit_cast<detail::BitsOf<T>>(*read) == static_cast<detail::BitsOf<T>>(*expected));
+        RC_ASSERT(
+            same_read_bits<T>(std::bit_cast<detail::BitsOf<T>>(*read), static_cast<detail::BitsOf<T>>(*expected)));
     }
 }
 
@@ -75,7 +78,8 @@ void check_array(const std::vector<std::uint8_t>& bytes, std::size_t position, s
         RC_ASSERT(read->size() == *count);
         for (std::size_t index = 0; index < read->size(); ++index) {
             const auto element = little_endian(bytes, plus(position, width) + index * sizeof(T), sizeof(T));
-            RC_ASSERT(std::bit_cast<detail::BitsOf<T>>((*read)[index]) == static_cast<detail::BitsOf<T>>(*element));
+            RC_ASSERT(same_read_bits<T>(std::bit_cast<detail::BitsOf<T>>((*read)[index]),
+                                        static_cast<detail::BitsOf<T>>(*element)));
         }
     }
 }
