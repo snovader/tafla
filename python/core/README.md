@@ -45,5 +45,19 @@ wheel, which works the same way, with the same API and errors. Setting
 `tafla.IMPLEMENTATION` says which are in use: `"native"` or `"python"`. The
 docstring's Implementations section describes the few ways in which they
 differ.
+
+The native wheels are for CPython 3.14 and later, with or without the GIL,
+on Linux x86_64 and aarch64 with glibc or musl, macOS x86_64 and arm64, and
+Windows x64. Anywhere else, such as on Windows arm64, Linux on another
+architecture, 32-bit systems, PyPy or GraalPy, pip installs the pure-Python
+wheel without a word, so check `tafla.IMPLEMENTATION` where speed matters.
+Native classes that are installed but fail to import warn with
+`RuntimeWarning` before the pure-Python ones are used.
+
+pip builds the source distribution only when told to, as with
+`--no-binary`, and it needs Rust to build the native module. Without Rust,
+build the pure-Python wheel from the same sources with uv_build, as the
+[development README](https://github.com/snovader/tafla/tree/main/python#development)
+shows.
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) specifies the
 format, which tafla's TypeScript, Java and Rust runtimes read and write too.
