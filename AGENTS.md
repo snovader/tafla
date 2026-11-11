@@ -97,8 +97,9 @@ intent, not a requirement to preserve every detail.
   offset type, offset size, vector, builder, and decode error. Make the syntax
   idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
-  JSpecify's annotations in Java. Adding a dependency to a runtime needs strong
-  justification.
+  JSpecify's annotations in Java, and PyO3, which binds the Python runtime's
+  native classes, written in Rust. Adding a dependency to a runtime needs
+  strong justification.
 
 ## Untrusted input
 

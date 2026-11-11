@@ -48,8 +48,8 @@ pub struct ByteBuffer {
     held: Held,
     shape: Shape,
     /// The view of the bytes that `bytes()` returns and reads slice, created
-    /// when first used, unless the bytes are a memoryview, of which it's a
-    /// view of its own
+    /// when first used. Bytes given as a memoryview are held through a view
+    /// of its own, which it is when it's of bytes.
     view: PyOnceLock<Py<PyAny>>,
 }
 
@@ -124,7 +124,7 @@ impl ByteBuffer {
         self.view
             .get_or_try_init(py, || -> PyResult<Py<PyAny>> {
                 let source = unsafe { Bound::from_borrowed_ptr(py, self.held.0.obj) };
-                Ok(byte_view(&source)?.unbind())
+                Ok(byte_view(source)?.unbind())
             })
             .map(|view| view.bind(py))
     }
@@ -244,18 +244,25 @@ fn item_error(
     build().unwrap_or_else(|error| error)
 }
 
-/// A one-dimensional view of the bytes of `source`, as the pure-Python
-/// runtime views them: `memoryview(source)`, cast to bytes if it's of
-/// another format or shape
-fn byte_view<'py>(source: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+/// A one-dimensional view of the bytes of `source`, which a `ByteBuffer`
+/// holds, as the pure-Python runtime views them: `memoryview(source)`, cast
+/// to bytes if it's of another format or shape. A memoryview is one that
+/// the `ByteBuffer` created of its own, which it views them through.
+fn byte_view(source: Bound<'_, PyAny>) -> PyResult<Bound<'_, PyAny>> {
     let py = source.py();
-    let view =
-        unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyMemoryView_FromObject(source.as_ptr()))? };
     if source.is_exact_instance_of::<pyo3::types::PyBytes>()
         || source.is_exact_instance_of::<pyo3::types::PyByteArray>()
     {
-        return Ok(view);
+        return unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyMemoryView_FromObject(source.as_ptr()))
+        };
     }
+
+    let view = if source.is_exact_instance_of::<PyMemoryView>() {
+        source
+    } else {
+        unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyMemoryView_FromObject(source.as_ptr()))? }
+    };
 
     let format = view.getattr(intern!(py, "format"))?;
     let ndim: usize = view.getattr(intern!(py, "ndim"))?.extract()?;
@@ -330,7 +337,6 @@ impl ByteBuffer {
     #[pyo3(signature = (bytes, layout = None))]
     fn new(bytes: &Bound<'_, PyAny>, layout: Option<&Bound<'_, TableLayout>>) -> PyResult<Self> {
         let py = bytes.py();
-        let view = PyOnceLock::new();
 
         // A memoryview is viewed by one of its own, as memoryview() views it,
         // so that its caller can release theirs while this reads its bytes
@@ -352,16 +358,10 @@ impl ByteBuffer {
         }
         let held = Held(unsafe { held.assume_init() });
 
-        if source.is(bytes) {
-            // Viewed when first needed
-        } else {
-            let _ = view.set(py, byte_view(source)?.unbind());
-        }
-
         Ok(Self {
             held,
             shape: shape_of(layout),
-            view,
+            view: PyOnceLock::new(),
         })
     }
 

@@ -36,5 +36,14 @@ as `TableBuilder` does.
 The package's docstring, `help(tafla)`, has a longer example, with structs,
 and describes the format and how each value converts to its field's type. The
 tests run both examples as doctests.
+
+The classes that the code that tafla-gen generates calls are native, written
+in Rust, in the wheels for common platforms, which take about half the time
+of the pure-Python ones. On other platforms, pip installs the pure-Python
+wheel, which works the same way, with the same API and errors. Setting
+`TAFLA_PUREPYTHON=1` uses the pure-Python classes anywhere, and
+`tafla.IMPLEMENTATION` says which are in use: `"native"` or `"python"`. The
+docstring's Implementations section describes the few ways in which they
+differ.
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) specifies the
 format, which tafla's TypeScript, Java and Rust runtimes read and write too.

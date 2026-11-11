@@ -76,6 +76,22 @@ impl Bytes {
         Ok(())
     }
 
+    /// Sets the length to `len`, with zeros from `start`, which is at most
+    /// the length
+    #[inline]
+    fn zero_from(&mut self, start: usize, len: usize) -> PyResult<()> {
+        if self.frozen {
+            return Err(frozen());
+        }
+        if len > self.capacity {
+            self.grow(len)?;
+        }
+        unsafe { ptr::write_bytes(self.pointer.as_ptr().add(start), 0, len - start) };
+        self.len = len;
+
+        Ok(())
+    }
+
     #[inline]
     fn extend_from_slice(&mut self, bytes: &[u8]) -> PyResult<()> {
         let start = self.len;
@@ -624,8 +640,7 @@ impl TableWriter {
         let end = start + plan.len;
         let size = plan.size;
 
-        self.data.resize(start)?;
-        self.data.resize(end)?;
+        self.data.zero_from(start, end)?;
         let written = self.fill_fixed(plan, start, values);
         if !matches!(written, Ok(true)) {
             self.data.resize(start)?;
@@ -747,21 +762,23 @@ impl<'py> Values<'_, 'py> {
         if self.next >= self.tuple.len() {
             return Err(PyStopIteration::new_err(()));
         }
-        let value = tuple_item(self.tuple, self.next);
+        let value = tuple_item(self.tuple, self.next).to_owned();
         self.next += 1;
         Ok(value)
     }
 }
 
-/// Item `index` of `tuple`, which has it
+/// Item `index` of `tuple`, which has it, borrowed from it
 #[inline]
-fn tuple_item<'py>(tuple: &Bound<'py, PyTuple>, index: usize) -> Bound<'py, PyAny> {
+fn tuple_item<'a, 'py>(tuple: &'a Bound<'py, PyTuple>, index: usize) -> Borrowed<'a, 'py, PyAny> {
     #[cfg(not(Py_LIMITED_API))]
     unsafe {
-        tuple.get_borrowed_item_unchecked(index).to_owned()
+        tuple.get_borrowed_item_unchecked(index)
     }
     #[cfg(Py_LIMITED_API)]
-    tuple.get_item(index).expect("the tuple has the item")
+    tuple
+        .get_borrowed_item(index)
+        .expect("the tuple has the item")
 }
 
 /// The alignment of a struct array or nested table, which must be the int
