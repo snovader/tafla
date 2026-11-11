@@ -499,8 +499,10 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
 
       # Checks each download's hash against go.sum, and then that the module
-      # cache still holds what was downloaded
+      # cache still holds what was downloaded. The runtime's module requires
+      # nothing, and the tests' module requires their library.
       - name: Download and verify the dependencies
+        working-directory: go/tests
         env:
           GOPROXY: https://proxy.golang.org,direct
         run: |
@@ -519,6 +521,20 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      # The conformance suite, the property tests and the generated code, in
+      # a module of their own
+      - name: Run vet on the tests
+        working-directory: go/tests
+        run: go vet ./...
+
+      - name: Run staticcheck on the tests
+        working-directory: go/tests
+        run: staticcheck ./...
+
+      - name: Run the tests' module
+        working-directory: go/tests
+        run: go test ./...
+
       # The go command builds the module from a tag, as the module proxy will
       # from the pushed one: git fetches https://github.com/snovader/tafla
       # from the checkout, where this step tags the commit without pushing the
@@ -533,9 +549,10 @@ jobs:
           git tag "go/v$VERSION"
 
       # In a module that requires tafla's, as a user's would: go get fetches
-      # the module from the tag, the files of go/ but benchmarks/, a module of
-      # its own, then vet checks every package and test in it, and its
-      # examples run. The version isn't in the checksum database yet, so
+      # the module from the tag, the files of go/ but tests/ and benchmarks/,
+      # modules of their own, then vet checks every package and test in it,
+      # and its tests run from the module cache, as go test all runs them for
+      # a user. The version isn't in the checksum database yet, so
       # GOPRIVATE fetches it from git and doesn't look it up there, and with
       # GOPROXY off nothing else downloads. -mod=mod lets the go command write
       # the scratch module's go.mod and go.sum.
@@ -554,7 +571,7 @@ jobs:
           go mod init example.invalid/consumer
           go get "github.com/snovader/tafla/go@v$VERSION"
           go vet github.com/snovader/tafla/go/...
-          go test -run '^Example' github.com/snovader/tafla/go/...
+          go test github.com/snovader/tafla/go/...
 
       # The files that the proxy will serve for the version
       - name: Copy the module
@@ -575,10 +592,13 @@ jobs:
   # Pushes the tag that publishes the module, and fetches the module from the
   # proxy, which builds it from the tag, and from the checksum database, which
   # records its hash, as a user's first go get of the version would.
-  # pkg.go.dev then lists the version.
+  # pkg.go.dev then lists the version. Unlike an upload, the tag can't be
+  # taken back once the proxy has the module, so it waits for every
+  # language's build, rather than only Go's, and a release that fails to
+  # build in another language gets no Go version.
   go-publish:
     name: Go module proxy (publish)
-    needs: [version, go-build]
+    needs: [version, npm-build, pypi-build, crates-build, maven-build, go-build]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
