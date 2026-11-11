@@ -113,7 +113,7 @@ jobs:
       # Without the build cache, which would save the corpus under go.sum's
       # key; the next step keeps it instead
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: false
