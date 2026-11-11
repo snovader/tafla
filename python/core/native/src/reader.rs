@@ -559,7 +559,9 @@ impl ByteBuffer {
         let tuple =
             unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyTuple_New(count.cast_signed()))? };
         for (index, &(at, kind)) in plan.values.iter().enumerate() {
-            let value = unsafe { values::read(py, kind, &self.bytes_slice()[start + at..])? };
+            // Within the fields, which check_fields() found within the bytes
+            let fields = &self.bytes_slice()[start..start + plan.len];
+            let value = values::read(py, kind, &fields[at..at + kind.size()])?;
             tuple_set(&tuple, index, value)?;
         }
         if let Some(text) = text {

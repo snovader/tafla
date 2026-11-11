@@ -50,7 +50,9 @@ impl Kind {
                 if size.is_empty() {
                     Self::Struct(1)
                 } else if size.bytes().all(|digit| digit.is_ascii_digit()) {
-                    Self::Struct(size.parse().ok()?)
+                    // A size beyond a usize is too long for any plan, as
+                    // struct rejects any beyond an isize
+                    Self::Struct(size.parse().unwrap_or(usize::MAX))
                 } else {
                     return None;
                 }
@@ -230,37 +232,38 @@ fn write_by_struct(kind: Kind, value: &Bound<'_, PyAny>, destination: &mut [u8])
     Ok(true)
 }
 
-/// Reads the value of `kind` at the start of `source`, which holds it, as a
-/// new reference, as `struct` unpacks it. Creates no object that the garbage
-/// collector tracks, so no Python code runs while `source` is borrowed,
-/// except for a float32 NaN, which `struct` reads.
+/// Reads the value of `kind` that `source` holds, as a new reference, as
+/// `struct` unpacks it. Creates no object that the garbage collector tracks,
+/// so no Python code runs while `source` is borrowed, except for a float32
+/// NaN, which `struct` reads.
 ///
-/// # Safety
+/// # Panics
 ///
-/// `source` must hold at least `kind.size()` bytes.
+/// If `source` is shorter than `kind.size()`, which a plan's values never
+/// are within the bytes that it covers.
 #[inline]
-pub unsafe fn read<'py>(py: Python<'py>, kind: Kind, source: &[u8]) -> PyResult<Bound<'py, PyAny>> {
+pub fn read<'py>(py: Python<'py>, kind: Kind, source: &[u8]) -> PyResult<Bound<'py, PyAny>> {
+    let source = &source[..kind.size()];
     let object = unsafe {
-        let pointer = source.as_ptr();
         match kind {
-            Kind::F64 => ffi::PyFloat_FromDouble(f64::from_le_bytes(chunk(pointer))),
+            Kind::F64 => ffi::PyFloat_FromDouble(f64::from_le_bytes(chunk(source))),
             Kind::F32 => {
-                let single = f32::from_le_bytes(chunk(pointer));
+                let single = f32::from_le_bytes(chunk(source));
                 if single.is_nan() {
-                    return read_by_struct(py, kind, &source[..4]);
+                    return read_by_struct(py, kind, source);
                 }
                 ffi::PyFloat_FromDouble(f64::from(single))
             }
-            Kind::I64 => ffi::PyLong_FromLongLong(i64::from_le_bytes(chunk(pointer))),
-            Kind::U64 => ffi::PyLong_FromUnsignedLongLong(u64::from_le_bytes(chunk(pointer))),
-            Kind::I32 => ffi::PyLong_FromLongLong(i32::from_le_bytes(chunk(pointer)).into()),
-            Kind::U32 => ffi::PyLong_FromLongLong(u32::from_le_bytes(chunk(pointer)).into()),
-            Kind::I16 => ffi::PyLong_FromLongLong(i16::from_le_bytes(chunk(pointer)).into()),
-            Kind::U16 => ffi::PyLong_FromLongLong(u16::from_le_bytes(chunk(pointer)).into()),
-            Kind::I8 => ffi::PyLong_FromLongLong(i8::from_le_bytes(chunk(pointer)).into()),
-            Kind::U8 => ffi::PyLong_FromLongLong((*pointer).into()),
+            Kind::I64 => ffi::PyLong_FromLongLong(i64::from_le_bytes(chunk(source))),
+            Kind::U64 => ffi::PyLong_FromUnsignedLongLong(u64::from_le_bytes(chunk(source))),
+            Kind::I32 => ffi::PyLong_FromLongLong(i32::from_le_bytes(chunk(source)).into()),
+            Kind::U32 => ffi::PyLong_FromLongLong(u32::from_le_bytes(chunk(source)).into()),
+            Kind::I16 => ffi::PyLong_FromLongLong(i16::from_le_bytes(chunk(source)).into()),
+            Kind::U16 => ffi::PyLong_FromLongLong(u16::from_le_bytes(chunk(source)).into()),
+            Kind::I8 => ffi::PyLong_FromLongLong(i8::from_le_bytes(chunk(source)).into()),
+            Kind::U8 => ffi::PyLong_FromLongLong(source[0].into()),
             Kind::Bool => {
-                let truth = if *pointer == 0 {
+                let truth = if source[0] == 0 {
                     ffi::Py_False()
                 } else {
                     ffi::Py_True()
@@ -268,8 +271,9 @@ pub unsafe fn read<'py>(py: Python<'py>, kind: Kind, source: &[u8]) -> PyResult<
                 ffi::Py_IncRef(truth);
                 truth
             }
+            // A plan's struct is at most isize::MAX bytes, as is any slice
             Kind::Struct(size) => {
-                ffi::PyBytes_FromStringAndSize(pointer.cast(), size.cast_signed())
+                ffi::PyBytes_FromStringAndSize(source.as_ptr().cast(), size.cast_signed())
             }
         }
     };
@@ -298,14 +302,10 @@ fn read_by_struct<'py>(py: Python<'py>, kind: Kind, source: &[u8]) -> PyResult<B
         .get_item(0)
 }
 
-/// The `N` bytes at `pointer`
-///
-/// # Safety
-///
-/// `pointer` must point at `N` readable bytes.
+/// The first `N` bytes of `source`, which holds them
 #[inline]
-const unsafe fn chunk<const N: usize>(pointer: *const u8) -> [u8; N] {
-    unsafe { pointer.cast::<[u8; N]>().read_unaligned() }
+fn chunk<const N: usize>(source: &[u8]) -> [u8; N] {
+    *source.first_chunk().expect("the source holds the value")
 }
 
 #[cfg(test)]
@@ -320,6 +320,10 @@ mod tests {
         assert_eq!(Kind::parse("s"), Some(Kind::Struct(1)));
         assert_eq!(Kind::parse("2h"), None);
         assert_eq!(Kind::parse("-1s"), None);
+        assert_eq!(
+            Kind::parse("99999999999999999999999999s"),
+            Some(Kind::Struct(usize::MAX))
+        );
         assert_eq!(Kind::parse("e"), None);
     }
 }

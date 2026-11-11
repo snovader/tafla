@@ -172,21 +172,40 @@ def comparable(value: object) -> object:
     return value
 
 
+# Structs and counts of fields too large for any table, whose bytes pass a C
+# ssize_t, alone or together, as two of 2**63 bytes wrap a 64-bit length to
+# 0, which FixedFields rejects as struct does. Each is computed from its
+# exponent, as LARGE_INTEGERS is. Those within a ssize_t can't be compared:
+# no writer can allocate them, and the pure-Python one raises MemoryError for
+# packing them where the native one writes them with the setters.
+HUGE_STRUCTS: SearchStrategy[str] = builds(
+    lambda exponent, below: f"{2**exponent - below}s",
+    sampled_from([63, 64, 100]),
+    sampled_from([0, 1]),
+)
+HUGE_COUNTS: SearchStrategy[int] = builds(
+    lambda exponent: 2**exponent, sampled_from([63, 64, 15000])
+)
+
+
 @composite
 def descriptions(draw: DrawFn, depth: int = 1) -> tuple[int, list[Any], bool]:
     """A ``FixedFields``' arguments: the table's fields, the formats of its
     leading fields, nested tables' as descriptions, and whether a string
-    follows them"""
+    follows them. A few are fields of no table, or fewer fields than they
+    describe, which both reject."""
     nested = descriptions(depth - 1).map(lambda nested: (*nested[:2], False))
     format_strategy: SearchStrategy[Any] = sampled_from(
         ["b", "B", "h", "H", "i", "I", "q", "Q", "f", "d", "?", "3s", "8s"]
     )
+    format_strategy = one_of(format_strategy, HUGE_STRUCTS)
     if depth > 0:
         format_strategy = one_of(format_strategy, nested)
 
     formats = draw(lists(format_strategy, max_size=4))
     string = draw(booleans()) if depth == 1 else False
-    fields = len(formats) + string + draw(integers(0, 2))
+    extra = draw(one_of(integers(0, 2), integers(-2, -1), HUGE_COUNTS))
+    fields = len(formats) + string + extra
     return fields, formats, string
 
 
