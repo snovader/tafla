@@ -105,9 +105,9 @@ CPython leaves the outcome to its own objects:
   threads in parallel, and a native writer then raises ``RuntimeError`` for a
   call while another thread's call to it runs, where the pure-Python one
   writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
-  once, except that CPython 3.14's free-threaded build releases a
-  ``memoryview`` that threads slice at once, which each implementation's
-  array reads do, and the pure-Python one's string reads.
+  once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
+  release a ``memoryview`` that threads slice at once, which each
+  implementation's array reads do, and the pure-Python one's string reads.
 - A ``TypeError`` for using the API wrongly, such as for bytes that aren't
   C-contiguous, may be worded differently.
 

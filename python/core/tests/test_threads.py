@@ -54,11 +54,11 @@ class TestThreads(unittest.TestCase):
 
         self.assertEqual(run_together(read), [])
 
-    @unittest.skipIf(
-        sys.version_info[:2] == (3, 14) and not sys._is_gil_enabled(),
-        "CPython 3.14's free-threaded build releases a memoryview that threads "
-        "slice at once, as the pure-Python reader slices strings and both "
-        "slice arrays",
+    @unittest.skipUnless(
+        sys._is_gil_enabled(),
+        "CPython's free-threaded builds, 3.14 and 3.15 at least, release a "
+        "memoryview that threads slice at once, as the pure-Python reader "
+        "slices strings and both slice arrays",
     )
     def test_reads_the_same_strings_and_arrays_from_a_buffer_that_threads_share(
         self,

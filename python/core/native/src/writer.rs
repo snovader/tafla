@@ -2,7 +2,7 @@ use std::ffi::c_int;
 use std::fmt::Display;
 use std::ptr::{self, NonNull};
 
-use pyo3::exceptions::{PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyValueError};
+use pyo3::exceptions::{PyBufferError, PyMemoryError, PyStopIteration, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple, PyType};
 use pyo3::{IntoPyObjectExt, ffi};
@@ -158,26 +158,9 @@ fn frozen() -> PyErr {
     PyBufferError::new_err("Existing exports of data: object cannot be re-sized")
 }
 
-/// Why an offset, count or item end couldn't be written in its slot: the
-/// message of the error that `struct` raises for it, and whether that's an
-/// `IndexError`, as `struct` raises for a position beyond a C `ssize_t`
-struct SlotError {
-    message: String,
-    index_error: bool,
-}
-
-impl SlotError {
-    /// The error itself, which the setter's error has as its cause
-    fn into_cause(self, py: Python<'_>) -> PyErr {
-        if self.index_error {
-            return PyIndexError::new_err(self.message);
-        }
-        match objects(py) {
-            Ok(objects) => PyErr::from_type(objects.struct_error.bind(py).clone(), self.message),
-            Err(error) => error,
-        }
-    }
-}
+/// A value or position of a slot that `struct` can't pack, whose error
+/// `TableWriter::struct_error()` raises, as `struct` raises it
+struct SlotFailure;
 
 /// Writes a table forward, appending each field to its bytes as it's set,
 /// for code that knows a table's fields as it writes them, such as the code
@@ -230,11 +213,11 @@ impl TableWriter {
         };
 
         if let Some(version) = version {
-            let slot = if shape.sized { shape.size() } else { 0 };
+            let slot = Int::from(if shape.sized { shape.size() } else { 0 });
             // Only a negative number of fields leaves no room for it, and
             // struct raises its error
-            if let Err(error) = writer.pack_slot(&Int::from(slot), version) {
-                return Err(Python::attach(|py| error.into_cause(py)));
+            if writer.pack_slot(&slot, version).is_err() {
+                return Err(Python::attach(|py| writer.struct_error(py, &slot, version)));
             }
         }
 
@@ -264,111 +247,115 @@ impl TableWriter {
 
     /// Writes `value` in the slot at `position`, as `struct` packs it into
     /// the bytes with the offset type: a negative position counts from the
-    /// end. Fails with `struct`'s message for a value or position that it
-    /// rejects, and zeroes the slot for a value, as `struct` does before it
-    /// packs.
+    /// end. Fails, having written nothing, for a value or position that
+    /// `struct` rejects, whose error `struct_error()` then raises.
     #[inline]
-    fn pack_slot(&mut self, position: &Int<'_>, value: &Int<'_>) -> Result<(), SlotError> {
+    fn pack_slot(&mut self, position: &Int<'_>, value: &Int<'_>) -> Result<(), SlotFailure> {
         let size = self.size();
-        let position = self.slot_position(position)?;
-
+        let len = self.len();
+        let Int::Small(position) = *position else {
+            return Err(SlotFailure);
+        };
+        let position = if position < 0 {
+            position + len as i128
+        } else {
+            position
+        };
+        let Some(position) = usize::try_from(position)
+            .ok()
+            .filter(|&position| position <= len.saturating_sub(size) && size <= len)
+        else {
+            return Err(SlotFailure);
+        };
         let Some(value) = value
             .index()
             .filter(|&value| value <= self.shape.max_length())
         else {
-            self.data.as_mut_slice()[position..position + size].fill(0);
-            return Err(self.range_error());
+            return Err(SlotFailure);
         };
 
         self.data.as_mut_slice()[position..position + size].copy_from_slice(&slot(value)[..size]);
-
         Ok(())
     }
 
-    /// The error of a value that the offset type can't hold, as `struct`
-    /// words it
+    /// The error that `struct` raises for packing `value` at `position` in
+    /// the bytes, which `pack_slot()` refused. It's `struct.pack_into()`'s
+    /// own, from packing into the bytes themselves, which zeroes the slot
+    /// for a value that doesn't fit, as it does for the pure-Python writer.
     #[cold]
-    fn range_error(&self) -> SlotError {
-        let code = match self.size() {
-            1 => 'B',
-            2 => 'H',
-            _ => 'I',
+    fn struct_error(&mut self, py: Python<'_>, position: &Int<'_>, value: &Int<'_>) -> PyErr {
+        let kind = match self.size() {
+            1 => Kind::U8,
+            2 => Kind::U16,
+            _ => Kind::U32,
         };
-        SlotError {
-            message: format!(
-                "'{code}' format requires 0 <= number <= {}",
-                self.shape.max_length()
-            ),
-            index_error: false,
-        }
+        let pack = || -> PyResult<PyErr> {
+            let packing = objects(py)?.struct_of(py, kind);
+            // A view of the bytes, which is released before they can move
+            let view = unsafe {
+                Bound::from_owned_ptr_or_err(
+                    py,
+                    ffi::PyMemoryView_FromMemory(
+                        self.data.pointer.as_ptr().cast(),
+                        self.len().cast_signed(),
+                        ffi::PyBUF_WRITE,
+                    ),
+                )?
+            };
+            let packed = packing.call_method1(
+                "pack_into",
+                (&view, position.to_object_in(py)?, value.to_object_in(py)?),
+            );
+            view.call_method0("release")?;
+
+            Ok(match packed {
+                Err(error) => error,
+                Ok(_) => PyValueError::new_err("struct wrote a slot that the writer refused"),
+            })
+        };
+        pack().unwrap_or_else(|error| error)
     }
 
-    /// Where `struct.pack_into()` writes at `position` in the bytes
-    #[inline]
-    fn slot_position(&self, position: &Int<'_>) -> Result<usize, SlotError> {
-        let size = self.size() as i128;
-        let len = self.len() as i128;
-        let error = |message: String| SlotError {
-            message,
-            index_error: false,
+    /// The error of a count that the offset type can't hold, which `struct`
+    /// raises
+    #[cold]
+    fn count_error(&self, py: Python<'_>, count: &Int<'_>) -> PyErr {
+        let kind = match self.size() {
+            1 => Kind::U8,
+            2 => Kind::U16,
+            _ => Kind::U32,
         };
-
-        let Int::Small(mut at) = *position else {
-            return Err(SlotError {
-                message: String::from("cannot fit 'int' into an index-sized integer"),
-                index_error: true,
-            });
+        let pack = || -> PyResult<PyErr> {
+            let packing = objects(py)?.struct_of(py, kind);
+            Ok(
+                match packing.call_method1("pack", (count.to_object_in(py)?,)) {
+                    Err(error) => error,
+                    Ok(_) => PyValueError::new_err("struct packed a count that the writer refused"),
+                },
+            )
         };
-        if isize::try_from(at).is_err() {
-            return Err(SlotError {
-                message: String::from("cannot fit 'int' into an index-sized integer"),
-                index_error: true,
-            });
-        }
-
-        if at < 0 {
-            if at + size > 0 {
-                return Err(error(format!(
-                    "no space to pack {size} bytes at offset {at}"
-                )));
-            }
-            if at + len < 0 {
-                return Err(error(format!(
-                    "offset {at} out of range for {len}-byte buffer"
-                )));
-            }
-            at += len;
-        }
-        if len - at < size {
-            return Err(error(format!(
-                "pack_into requires a buffer of at least {} bytes for packing {size} bytes at \
-                 offset {at} (actual buffer size is {len})",
-                size + at
-            )));
-        }
-
-        // It lies within the bytes
-        Ok(usize::try_from(at).unwrap_or(usize::MAX))
+        pack().unwrap_or_else(|error| error)
     }
 
-    /// The error of an offset or item end that wasn't written: one too large
-    /// for the offset type, or one whose slot lies outside the bytes, which
-    /// only an index or item that isn't its own has
+    /// The error of an offset or item end that wasn't written at `position`:
+    /// one too large for the offset type, or one whose slot lies outside the
+    /// bytes, which only an index or item that isn't its own has
     #[cold]
-    fn slot_error(&self, py: Python<'_>, value: &Int<'_>, error: SlotError) -> PyErr {
+    fn slot_error(&mut self, py: Python<'_>, position: &Int<'_>, value: &Int<'_>) -> PyErr {
+        let cause = self.struct_error(py, position, value);
         let max = Int::from(self.shape.max_length());
         let raised = match max.lt(value.clone()) {
             Ok(true) => self.too_long(self.len()),
             Ok(false) => match value.describe() {
                 Ok(described) => PyValueError::new_err(format!(
                     "Can't write {described} in a slot outside the table: {}",
-                    error.message
+                    cause.value(py)
                 )),
                 Err(error) => return error,
             },
             Err(error) => return error,
         };
-        raised.set_cause(py, Some(error.into_cause(py)));
+        raised.set_cause(py, Some(cause));
         raised
     }
 
@@ -427,9 +414,9 @@ impl TableWriter {
         let offset = self.len() as i128 - self.table as i128;
         let position = Int::new(index)?.mul(self.size())?.add(self.slots)?;
 
-        if let Err(error) = self.pack_slot(&position, &Int::from(offset)) {
-            let py = value.py();
-            return Err(self.scalar_error(value, offset, error.into_cause(py)));
+        if self.pack_slot(&position, &Int::from(offset)).is_err() {
+            let cause = self.struct_error(value.py(), &position, &Int::from(offset));
+            return Err(self.scalar_error(value, offset, cause));
         }
         self.data.extend_from_slice(packed)
     }
@@ -460,8 +447,10 @@ impl TableWriter {
         let value = Int::from(self.len() as i128 - self.table as i128);
         let position = index.mul(self.size())?.add(self.slots)?;
 
-        self.pack_slot(&position, &value)
-            .map_err(|error| self.slot_error(py, &value, error))
+        if self.pack_slot(&position, &value).is_err() {
+            return Err(self.slot_error(py, &position, &value));
+        }
+        Ok(())
     }
 
     /// Appends a count or length, as wide as the offsets, of the
@@ -480,7 +469,7 @@ impl TableWriter {
         let error = self.too_long(length.display()?);
         // SAFETY: the thread is attached in every method
         let py = unsafe { Python::assume_attached() };
-        error.set_cause(py, Some(self.range_error().into_cause(py)));
+        error.set_cause(py, Some(self.count_error(py, count)));
         Err(error)
     }
 
@@ -956,10 +945,8 @@ impl TableWriter {
             }
             // Only a negative number of fields leaves no room for the length,
             // and struct raises its error
-            if writer.shape.sized
-                && let Err(error) = writer.pack_slot(&Int::from(0), &Int::from(len))
-            {
-                return Err(error.into_cause(slf.py()));
+            if writer.shape.sized && writer.pack_slot(&Int::from(0), &Int::from(len)).is_err() {
+                return Err(writer.struct_error(slf.py(), &Int::from(0), &Int::from(len)));
             }
         }
 
@@ -1188,8 +1175,10 @@ impl TableWriter {
             .add(vector.clone())?;
         let value = Int::from(self.len()).sub(vector)?;
 
-        self.pack_slot(&position, &value)
-            .map_err(|error| self.slot_error(py, &value, error))
+        if self.pack_slot(&position, &value).is_err() {
+            return Err(self.slot_error(py, &position, &value));
+        }
+        Ok(())
     }
 }
 

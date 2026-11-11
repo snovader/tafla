@@ -112,7 +112,7 @@ jobs:
       fail-fast: false
       matrix:
         # With and without the GIL, which the native classes run without
-        python_version: ["3.14", "3.15", "3.14t"]
+        python_version: ["3.14", "3.15", "3.14t", "3.15t"]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7

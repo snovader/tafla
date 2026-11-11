@@ -335,7 +335,7 @@ pub fn core_error(py: Python<'_>, error: &tafla::DecodeError) -> PyErr {
 
 impl Int<'_> {
     /// The value as a Python `int`, for an error, in any `Python`'s lifetime
-    fn to_object_in<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+    pub fn to_object_in<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         match self {
             Self::Small(value) => value.into_bound_py_any(py),
             Self::Big(value) => Ok(value.clone().unbind().into_bound(py)),
