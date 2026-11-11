@@ -47,6 +47,7 @@ set(TAFLA_TESTS
     compatibility_test
     conformance_test
     decode_error_test
+    exception_safety_test
     format_test
     layout_test
     round_trip_test

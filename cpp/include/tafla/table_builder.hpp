@@ -11,6 +11,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -47,6 +48,16 @@ struct OwnedValue final : Owned {
     T value;
 };
 
+/// A container that a setter would view after the call that it's given to
+/// ends, such as a `std::array` or a `const std::vector` returned by value,
+/// which the builder can't own. A setter that borrows its value deletes the
+/// overload of these, so that a call with one doesn't compile, where it would
+/// otherwise convert to a `std::span` or `std::string_view` of it. Views,
+/// such as spans, and containers that a setter owns from an rvalue are given
+/// as they are.
+template <class Range>
+concept Temporary = std::ranges::contiguous_range<Range> && !std::ranges::borrowed_range<Range>;
+
 }  // namespace detail
 
 /// Builds a table, which a `ByteBuffer` reads back.
@@ -67,10 +78,14 @@ struct OwnedValue final : Owned {
 /// first few fields within itself, so that a small table, nested or not,
 /// allocates nothing until it's written.
 ///
-/// A setter that takes a `std::span`, a `std::string_view` or a builder by
-/// `const` reference borrows its value, which must outlive the builder's
-/// last `to_bytes()`, as a view would. One that takes a `std::vector`, a
-/// `std::string`, a `Bytes` or a builder by rvalue reference owns it.
+/// A setter that takes a `std::span` or a `std::string_view` borrows its
+/// value, which must outlive the builder's last `to_bytes()`, as a view
+/// would. One that takes a `std::vector`, a `std::string`, a `Bytes` or a
+/// builder by rvalue reference owns it. A call with a temporary of another
+/// container, such as a `std::array` returned by value, doesn't compile,
+/// since the builder would view it after it's destroyed. A builder nested by
+/// `const` reference is recorded as it is when it's nested, as
+/// `set_table()` describes, so it needn't outlive this one.
 ///
 /// A setter throws a `BuildError`, and leaves the builder as it was, when the
 /// table already holds all its fields or the field would make it too long
@@ -180,7 +195,8 @@ public:
     }
 
     /// Sets an array field of `std::int8_t`, from a span that the builder
-    /// borrows or a vector that it owns. So do the other arrays' setters.
+    /// borrows or a vector that it owns. So do the other arrays' setters,
+    /// which don't take other temporaries, as `detail::Temporary` describes.
     ///
     /// Throws a `BuildError` as the scalars' setters do.
     void set_int8_array(std::span<const std::int8_t> values) {
@@ -191,6 +207,9 @@ public:
         set_owned_array(std::move(values));
     }
 
+    template <detail::Temporary Values>
+    void set_int8_array(Values&& values) = delete;
+
     void set_uint8_array(std::span<const std::uint8_t> values) {
         set_array(values);
     }
@@ -198,6 +217,9 @@ public:
     void set_uint8_array(std::vector<std::uint8_t>&& values) {
         set_owned_array(std::move(values));
     }
+
+    template <detail::Temporary Values>
+    void set_uint8_array(Values&& values) = delete;
 
     void set_int16_array(std::span<const std::int16_t> values) {
         set_array(values);
@@ -207,6 +229,9 @@ public:
         set_owned_array(std::move(values));
     }
 
+    template <detail::Temporary Values>
+    void set_int16_array(Values&& values) = delete;
+
     void set_uint16_array(std::span<const std::uint16_t> values) {
         set_array(values);
     }
@@ -214,6 +239,9 @@ public:
     void set_uint16_array(std::vector<std::uint16_t>&& values) {
         set_owned_array(std::move(values));
     }
+
+    template <detail::Temporary Values>
+    void set_uint16_array(Values&& values) = delete;
 
     void set_int32_array(std::span<const std::int32_t> values) {
         set_array(values);
@@ -223,6 +251,9 @@ public:
         set_owned_array(std::move(values));
     }
 
+    template <detail::Temporary Values>
+    void set_int32_array(Values&& values) = delete;
+
     void set_uint32_array(std::span<const std::uint32_t> values) {
         set_array(values);
     }
@@ -230,6 +261,9 @@ public:
     void set_uint32_array(std::vector<std::uint32_t>&& values) {
         set_owned_array(std::move(values));
     }
+
+    template <detail::Temporary Values>
+    void set_uint32_array(Values&& values) = delete;
 
     void set_int64_array(std::span<const std::int64_t> values) {
         set_array(values);
@@ -239,6 +273,9 @@ public:
         set_owned_array(std::move(values));
     }
 
+    template <detail::Temporary Values>
+    void set_int64_array(Values&& values) = delete;
+
     void set_uint64_array(std::span<const std::uint64_t> values) {
         set_array(values);
     }
@@ -246,6 +283,9 @@ public:
     void set_uint64_array(std::vector<std::uint64_t>&& values) {
         set_owned_array(std::move(values));
     }
+
+    template <detail::Temporary Values>
+    void set_uint64_array(Values&& values) = delete;
 
     void set_float32_array(std::span<const float> values) {
         set_array(values);
@@ -255,6 +295,9 @@ public:
         set_owned_array(std::move(values));
     }
 
+    template <detail::Temporary Values>
+    void set_float32_array(Values&& values) = delete;
+
     void set_float64_array(std::span<const double> values) {
         set_array(values);
     }
@@ -262,6 +305,9 @@ public:
     void set_float64_array(std::vector<double>&& values) {
         set_owned_array(std::move(values));
     }
+
+    template <detail::Temporary Values>
+    void set_float64_array(Values&& values) = delete;
 
     /// Sets a string field, from its UTF-8 bytes, which the builder borrows
     /// from a view or owns of a string.
@@ -282,6 +328,9 @@ public:
         commit(bytes_field(Kind::string, owned.data(), owned.size()), length);
     }
 
+    template <detail::Temporary String>
+    void set_string(String&& string) = delete;
+
     /// Sets a struct field from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding.
     ///
@@ -296,6 +345,9 @@ public:
         const auto& owned = own(std::move(bytes));
         commit(bytes_field(Kind::structure, owned.data(), owned.size()), length);
     }
+
+    template <detail::Temporary Range>
+    void set_struct(Range&& bytes) = delete;
 
     /// Sets an array of structs of `size` bytes each, from their bytes one
     /// after another, which it counts. It's padded so that the structs start
@@ -315,6 +367,9 @@ public:
         commit(struct_array_field(owned.data(), owned.size(), size, alignment), length);
     }
 
+    template <detail::Temporary Range>
+    void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
+
     /// Embeds a table, from its builder or its bytes, without a length
     /// prefix. Readers find its fields with `ByteBuffer::field_offset()` from
     /// the field's position, which reads offsets of the parent's offset type,
@@ -323,8 +378,13 @@ public:
     ///
     /// A builder must have all its fields set. Without a header and with this
     /// table's offset type, it's written straight into this table when this
-    /// table is written, without bytes of its own. Otherwise it's written
-    /// into bytes of its own, in its own layout, and copied.
+    /// table is written, without bytes of its own: its fields are recorded
+    /// among this table's, and this builder takes what it owns, from an
+    /// rvalue, or shares it, from a `const` reference. Otherwise it's written
+    /// into bytes of its own, in its own layout, at once, which this builder
+    /// keeps. Either way, the nested builder may then change or be destroyed;
+    /// only the values that it borrows must outlive this builder's last
+    /// `to_bytes()`.
     ///
     /// The nested table's arrays are aligned from its own start, so it's
     /// padded to start at a multiple of an alignment, which they need to be
@@ -350,7 +410,8 @@ public:
     /// their arrays are read in place only when they happen to be aligned.
     ///
     /// Throws a `BuildError` if a builder has fields left to set, or as the
-    /// scalars' setters do.
+    /// scalars' setters do, and leaves the builder as it was, as it does if
+    /// writing a builder of another layout or an allocation fails.
     void set_vector(std::vector<NestedTable> items);
 
 private:
@@ -386,8 +447,8 @@ private:
         /// structs of an array or a table's bytes, which the table's length
         /// limits to 32 bits
         std::uint32_t count = 0;
-        /// The size of an array's structs
-        std::uint32_t struct_size = 0;
+        /// The number of an array's structs
+        std::uint32_t structs = 0;
         /// A scalar's bits
         std::uint64_t bits = 0;
         /// The bytes of an array, string, struct or table
@@ -459,6 +520,15 @@ private:
             size_ = size;
         }
 
+        /// Removes the fields past the first `size`, which leaves the
+        /// vector's capacity as it was
+        void truncate(std::size_t size) noexcept {
+            if (!spilled_.empty()) {
+                spilled_.erase(spilled_.begin() + static_cast<std::ptrdiff_t>(size), spilled_.end());
+            }
+            size_ = size;
+        }
+
         /// Makes room for `size` fields, within the builder while they fit, and
         /// otherwise in the vector, which grows at least twofold, so that
         /// fields added a few at a time take amortized constant time
@@ -471,11 +541,11 @@ private:
                 // The array holds every field while the vector is empty, so
                 // there are at most `Inline`, which the bound shows GCC, whose
                 // warnings otherwise see a copy past the array
-                const auto inline_fields = static_cast<std::ptrdiff_t>(std::min(size_, Inline));
-                spilled_.reserve(std::max(size, 2 * Inline));
+                const auto inline_fields = static_cast<std::ptrdiff_t>((std::min)(size_, Inline));
+                spilled_.reserve((std::max)(size, 2 * Inline));
                 spilled_.assign(inline_.begin(), inline_.begin() + inline_fields);
             } else if (size > spilled_.capacity()) {
-                spilled_.reserve(std::max(size, 2 * spilled_.capacity()));
+                spilled_.reserve((std::max)(size, 2 * spilled_.capacity()));
             }
         }
 
@@ -511,13 +581,17 @@ private:
         return {kind, 0, Alignment::one, static_cast<std::uint32_t>(length), 0, 0, data};
     }
 
+    /// A field of an array of structs, whose bytes `check_struct_array()`
+    /// checked are whole structs of `size` bytes, and whose length the table's
+    /// length check limits. Their number, which the table holds, is recorded
+    /// rather than their size, which may be wider than 32 bits for no structs.
     static Field struct_array_field(const void* data, std::size_t length, std::size_t size,
                                     Alignment alignment) noexcept {
         return {Kind::struct_array,
                 0,
                 alignment,
                 static_cast<std::uint32_t>(length),
-                static_cast<std::uint32_t>(size),
+                static_cast<std::uint32_t>(length / size),
                 0,
                 data};
     }
@@ -554,13 +628,36 @@ private:
     }
 
     /// Keeps a value until the table is written, and returns it where it's
-    /// kept, which moving the builder doesn't change
+    /// kept, which moving the builder doesn't change. It makes room for the
+    /// field that holds the value first, so that recording the field doesn't
+    /// throw, and leaves the value and the builder as they were if an
+    /// allocation fails.
     template <class T>
     const T& own(T&& value) {
-        auto owned = std::make_unique<detail::OwnedValue<T>>(std::move(value));
+        values_.reserve(values_.size() + 1);
+        reserve_owned(1);
+
+        auto owned = std::make_shared<detail::OwnedValue<T>>(std::move(value));
         const T& kept = owned->value;
         owned_.push_back(std::move(owned));
         return kept;
+    }
+
+    /// Makes room for `count` more owned values, growing at least twofold,
+    /// so that keeping them doesn't throw
+    void reserve_owned(std::size_t count) {
+        const auto size = owned_.size() + count;
+        if (size > owned_.capacity()) {
+            owned_.reserve((std::max)(size, 2 * owned_.capacity()));
+        }
+    }
+
+    /// Removes the fields and owned values recorded past the first `values`
+    /// and `owned`, which leaves the builder as it was before a call that
+    /// failed partway
+    void truncate(std::size_t values, std::size_t owned) noexcept {
+        values_.truncate(values);
+        owned_.erase(owned_.begin() + static_cast<std::ptrdiff_t>(owned), owned_.end());
     }
 
     /// The offset size, the width of offsets, counts and lengths
@@ -597,7 +694,7 @@ private:
         }
 
         // Each part is less than 2^63, so the sum doesn't wrap
-        const std::uint64_t length = std::uint64_t{length_} + padding + std::min(byte_length, UINT64_MAX / 4);
+        const std::uint64_t length = std::uint64_t{length_} + padding + (std::min)(byte_length, UINT64_MAX / 4);
         if (length > max_value(offset_type_)) {
             throw BuildError::too_long(set_, length, offset_type_);
         }
@@ -615,7 +712,7 @@ private:
     void set(std::uint32_t length, Alignment alignment) noexcept {
         ++set_;
         length_ = length;
-        alignment_ = std::max(alignment_, alignment);
+        alignment_ = (std::max)(alignment_, alignment);
     }
 
     void check_complete() const {
@@ -631,8 +728,10 @@ private:
     }
 
     /// Records a nested table, as a field or a vector's item: a builder
-    /// written in place with its fields, which it takes the values of, and
-    /// anything else as its bytes, which it keeps until the table is written
+    /// written in place with its fields, whose owned values it takes or
+    /// shares, and anything else as its bytes, which it keeps until the table
+    /// is written. The caller makes room for the fields, and truncates them
+    /// if it throws.
     void append_nested(NestedTable&& table, Alignment alignment);
 
     /// Writes `fields` fields of a table, the first of which `values_` holds
@@ -655,8 +754,10 @@ private:
     /// The fields that were set, and the fields of the tables nested in place
     /// in them
     Fields values_;
-    /// The values that the builder owns, which its fields point into
-    std::vector<std::unique_ptr<detail::Owned>> owned_;
+    /// The values that the builder owns, which its fields point into. Builders
+    /// nested in place share them, so that a builder nested by reference may
+    /// be destroyed before its parent is written.
+    std::vector<std::shared_ptr<const detail::Owned>> owned_;
     /// The number of fields that the table holds, which a header of `uint32`
     /// offsets limits to fewer than 2^30
     std::uint32_t fields_;
@@ -673,10 +774,14 @@ private:
 
 /// A table to nest with `TableBuilder::set_table()` or in
 /// `TableBuilder::set_vector()`: a builder or bytes, which it borrows from a
-/// `const` reference or span and owns from an rvalue.
+/// `const` reference or span and owns from an rvalue. A temporary that it
+/// can't own, such as a `const Bytes` or a `std::array` returned by value,
+/// doesn't convert to one.
 ///
 /// A builder with its parent's offset type and no header is written straight
-/// into its parent. Bytes, and other builders, are copied.
+/// into its parent, which records its fields and takes or shares what it
+/// owns. Other builders are written into their own bytes when they're
+/// nested, and bytes are copied when the parent is written.
 class NestedTable {
 public:
     // NOLINTBEGIN(google-explicit-constructor): each converts as an argument
@@ -693,6 +798,11 @@ public:
     NestedTable(std::vector<std::uint8_t>&& bytes) noexcept : table_(std::move(bytes)) {}
 
     NestedTable(Bytes&& bytes) noexcept : table_(std::move(bytes)) {}
+
+    NestedTable(const TableBuilder&& builder) = delete;
+
+    template <detail::Temporary Range>
+    NestedTable(Range&& bytes) = delete;
     // NOLINTEND(google-explicit-constructor)
 
 private:
@@ -755,7 +865,11 @@ inline TableBuilder::TableBuilder(std::size_t fields, std::uint32_t header, bool
       versioned_(version.has_value()),
       sized_(sized),
       offset_type_(offset_type) {
-    values_.reserve(fields);
+    // Room for the fields of a table of up to a few hundred, which a table
+    // of more grows from as they're set, rather than for every field that a
+    // header can hold, up to 2^30, whatever is set
+    constexpr std::size_t reserved = 256;
+    values_.reserve((std::min)(fields, reserved));
 }
 
 inline TableBuilder::TableBuilder(TableBuilder&& other) noexcept
@@ -817,23 +931,36 @@ inline void TableBuilder::set_vector(std::vector<NestedTable> items) {
     std::size_t recorded = 1;
     for (const auto& item : items) {
         item.check_complete();
-        nested_bytes = std::min<std::uint64_t>(nested_bytes + item.byte_length(), UINT64_MAX / 4);
+        nested_bytes = (std::min<std::uint64_t>)(nested_bytes + item.byte_length(), UINT64_MAX / 4);
         recorded += item.recorded_fields(offset_type_);
     }
 
-    const auto slots = std::min<std::uint64_t>(std::uint64_t{items.size()} + 1, UINT64_MAX / 16) * width();
-    const auto length = check_field(0, std::min(slots + nested_bytes, UINT64_MAX / 4));
+    const auto slots = (std::min<std::uint64_t>)(std::uint64_t{items.size()} + 1, UINT64_MAX / 16) * width();
+    const auto length = check_field(0, (std::min)(slots + nested_bytes, UINT64_MAX / 4));
 
-    values_.reserve(values_.size() + recorded);
+    // Each item may allocate, or write a builder of another layout, so the
+    // items recorded before one that fails are removed
+    const auto values = values_.size();
+    const auto owned = owned_.size();
+    values_.reserve(values + recorded);
     values_.push_back({Kind::vector, 0, Alignment::one, static_cast<std::uint32_t>(items.size()), 0, 0, nullptr});
-    for (auto& item : items) {
-        append_nested(std::move(item), Alignment::one);
+    try {
+        for (auto& item : items) {
+            append_nested(std::move(item), Alignment::one);
+        }
+    } catch (...) {
+        truncate(values, owned);
+        throw;
     }
     set(length, Alignment::one);
 }
 
 inline void TableBuilder::append_nested(NestedTable&& table, Alignment alignment) {
+    // Room for what a builder in place owns comes first, so that recording
+    // its fields and what it owns doesn't throw. Its fields point into what
+    // it owns, which this builder then keeps alive.
     if (auto* owned = std::get_if<TableBuilder>(&table.table_); owned != nullptr && owned->in_place_in(offset_type_)) {
+        reserve_owned(owned->owned_.size());
         values_.push_back({Kind::table, 0, alignment, owned->fields_, 0, 0, nullptr});
         values_.append(owned->values_);
         std::move(owned->owned_.begin(), owned->owned_.end(), std::back_inserter(owned_));
@@ -842,10 +969,10 @@ inline void TableBuilder::append_nested(NestedTable&& table, Alignment alignment
 
     if (const auto* const* borrowed = std::get_if<const TableBuilder*>(&table.table_);
         borrowed != nullptr && (*borrowed)->in_place_in(offset_type_)) {
-        // Its fields point into what it owns, which outlives this builder's
-        // last `to_bytes()`
+        reserve_owned((*borrowed)->owned_.size());
         values_.push_back({Kind::table, 0, alignment, (*borrowed)->fields_, 0, 0, nullptr});
         values_.append((*borrowed)->values_);
+        owned_.insert(owned_.end(), (*borrowed)->owned_.begin(), (*borrowed)->owned_.end());
         return;
     }
 
@@ -897,8 +1024,8 @@ inline std::size_t TableBuilder::write_table(TableWriter& writer, std::size_t at
                 writer.set_struct(index, {static_cast<const std::uint8_t*>(field.data), field.count});
                 break;
             case Kind::struct_array:
-                writer.set_struct_array(index, {static_cast<const std::uint8_t*>(field.data), field.count},
-                                        field.struct_size, field.alignment);
+                writer.start_array(index, field.structs, field.alignment);
+                writer.push(field.data, field.count);
                 break;
             case Kind::table:
                 writer.set_table(index, field.alignment);

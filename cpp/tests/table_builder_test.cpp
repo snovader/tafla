@@ -5,9 +5,13 @@
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
 
+#include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -482,6 +486,174 @@ TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
 
     EXPECT_THROW(builder.set_uint8_array(std::move(values)), BuildError);
     EXPECT_EQ(values.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
+}
+
+TEST(TableBuilder, WritesAnEmptyArrayOfStructsOfAnySize) {
+    TableBuilder expected(1, TableLayout());
+    expected.set_struct_array(std::span<const std::uint8_t>(), 4, Alignment::four);
+
+    // Past 32 bits where a size_t has them
+    for (const std::uint64_t size : {std::uint64_t{UINT32_MAX} + 1, std::uint64_t{SIZE_MAX}}) {
+        if (size > SIZE_MAX) {
+            continue;
+        }
+
+        TableBuilder builder(1, TableLayout());
+        builder.set_struct_array(std::span<const std::uint8_t>(), static_cast<std::size_t>(size), Alignment::four);
+        EXPECT_EQ(builder.to_bytes(), expected.to_bytes());
+    }
+}
+
+/// A builder of the most fields that a header of `uint32` offsets holds,
+/// which it doesn't allocate room for before they're set
+TEST(TableBuilder, StartsATableOfTheMostFieldsWithoutAllocatingForThem) {
+    const std::size_t fields = max_value(OffsetType::uint32) / 4;
+    TableBuilder builder(fields, TableLayout());
+    builder.set_uint8(1);
+
+    const auto error = build_error_of([&] { static_cast<void>(builder.to_bytes()); });
+    EXPECT_EQ(error.kind(), BuildError::Kind::incomplete);
+    EXPECT_EQ(error.fields(), fields);
+}
+
+// A setter that borrows its value takes a view, or a container that outlives
+// the call, and rejects a temporary that it would view after it's destroyed,
+// unless it owns it
+
+template <class Value>
+concept SetsInt32Array =
+    requires(TableBuilder& builder, Value&& value) { builder.set_int32_array(std::forward<Value>(value)); };
+
+template <class Value>
+concept SetsString = requires(TableBuilder& builder, Value&& value) { builder.set_string(std::forward<Value>(value)); };
+
+template <class Value>
+concept SetsStruct = requires(TableBuilder& builder, Value&& value) { builder.set_struct(std::forward<Value>(value)); };
+
+template <class Value>
+concept SetsStructArray = requires(TableBuilder& builder, Value&& value) {
+    builder.set_struct_array(std::forward<Value>(value), 1, Alignment::one);
+};
+
+/// Whether a `NestedTable`, which `set_table()` and `set_vector()` take,
+/// can be made of a `Value`
+template <class Value>
+concept Nests = std::constructible_from<NestedTable, Value>;
+
+using Int32s = std::array<std::int32_t, 3>;
+using Bytes4 = std::array<std::uint8_t, 4>;
+
+static_assert(SetsInt32Array<Int32s&>);
+static_assert(SetsInt32Array<const Int32s&>);
+static_assert(SetsInt32Array<std::vector<std::int32_t>&>);
+static_assert(SetsInt32Array<std::vector<std::int32_t>>);
+static_assert(SetsInt32Array<std::span<const std::int32_t>>);
+static_assert(!SetsInt32Array<Int32s>);
+static_assert(!SetsInt32Array<const Int32s>);
+static_assert(!SetsInt32Array<const std::vector<std::int32_t>>);
+
+static_assert(SetsString<std::string&>);
+static_assert(SetsString<std::string>);
+static_assert(SetsString<std::string_view>);
+static_assert(SetsString<const char*>);
+static_assert(SetsString<const char (&)[4]>);
+static_assert(!SetsString<const std::string>);
+
+static_assert(SetsStruct<Bytes4&>);
+static_assert(SetsStruct<std::vector<std::uint8_t>>);
+static_assert(SetsStruct<std::span<const std::uint8_t>>);
+static_assert(!SetsStruct<Bytes4>);
+static_assert(!SetsStruct<const std::vector<std::uint8_t>>);
+
+static_assert(SetsStructArray<Bytes4&>);
+static_assert(SetsStructArray<std::vector<std::uint8_t>>);
+static_assert(!SetsStructArray<Bytes4>);
+
+static_assert(Nests<TableBuilder&>);
+static_assert(Nests<TableBuilder>);
+static_assert(Nests<Bytes&>);
+static_assert(Nests<Bytes>);
+static_assert(Nests<std::vector<std::uint8_t>&>);
+static_assert(Nests<std::vector<std::uint8_t>>);
+static_assert(Nests<Bytes4&>);
+static_assert(!Nests<const TableBuilder>);
+static_assert(!Nests<const Bytes>);
+static_assert(!Nests<const std::vector<std::uint8_t>>);
+static_assert(!Nests<Bytes4>);
+
+/// A builder of a table without a header, which owns its string and array,
+/// and borrows `borrowed`
+TableBuilder owning(std::span<const std::uint16_t> borrowed) {
+    TableBuilder builder(3, TableLayout());
+    builder.set_string(std::string(40, 's'));
+    builder.set_float64_array(std::vector<double>{1.5, -0.0});
+    builder.set_uint16_array(borrowed);
+    return builder;
+}
+
+/// A parent of a builder nested in place and in a vector, from `nest()`
+template <class Nest>
+Bytes parent_of(Nest nest) {
+    TableBuilder parent(2, TableLayout());
+    parent.set_table(nest());
+    std::vector<NestedTable> items;
+    items.emplace_back(nest());
+    items.emplace_back(nest());
+    parent.set_vector(std::move(items));
+    return parent.to_bytes();
+}
+
+/// A builder nested from a `const` reference shares what it owns with its
+/// parent, so it may be destroyed or reused before the parent is written,
+/// whatever its layout. What it borrows must outlive the parent's writing.
+TEST(TableBuilder, ABuilderNestedByReferenceMayBeDestroyedBeforeItsParentIsWritten) {
+    const std::vector<std::uint16_t> borrowed{7, 8, 9};
+    const auto expected = parent_of([&] { return owning(borrowed); });
+
+    TableBuilder destroyed(2, TableLayout());
+    TableBuilder reused(2, TableLayout());
+    {
+        auto nested = std::make_unique<TableBuilder>(owning(borrowed));
+        destroyed.set_table(*nested);
+        reused.set_table(*nested);
+
+        std::vector<NestedTable> items;
+        items.emplace_back(*nested);
+        items.emplace_back(*nested);
+        destroyed.set_vector(std::move(items));
+        nested.reset();
+    }
+
+    auto nested = owning(borrowed);
+    std::vector<NestedTable> items;
+    items.emplace_back(nested);
+    items.emplace_back(nested);
+    reused.set_vector(std::move(items));
+    nested = TableBuilder(3, TableLayout());
+
+    EXPECT_EQ(destroyed.to_bytes(), expected);
+    EXPECT_EQ(reused.to_bytes(), expected);
+}
+
+/// So does a builder with a header, whose own bytes are nested
+TEST(TableBuilder, ABuilderWithAHeaderNestedByReferenceMayBeDestroyedBeforeItsParentIsWritten) {
+    const auto sized = [] {
+        TableBuilder builder(1, TableLayout().sized());
+        builder.set_string(std::string(40, 's'));
+        return builder;
+    };
+    const auto expected = parent_of(sized);
+
+    TableBuilder parent(2, TableLayout());
+    {
+        const auto nested = sized();
+        parent.set_table(nested);
+        std::vector<NestedTable> items;
+        items.emplace_back(nested);
+        items.emplace_back(nested);
+        parent.set_vector(std::move(items));
+    }
+    EXPECT_EQ(parent.to_bytes(), expected);
 }
 
 }  // namespace
