@@ -13,6 +13,15 @@ from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
 
 THREADS = 8
 
+# CPython's free-threaded builds, 3.14 and 3.15 at least, release a memoryview
+# that threads slice at once, whose slices then raise ValueError, "operation
+# forbidden on released memoryview object": python/cpython#127716
+FREE_THREADED_MEMORYVIEWS = not sys._is_gil_enabled()
+MEMORYVIEW_RACE = (
+    "which CPython's free-threaded builds, 3.14 and 3.15 at least, release when "
+    "threads slice it at once: https://github.com/python/cpython/issues/127716"
+)
+
 
 def run_together(work: Callable[[], object]) -> list[BaseException]:
     """Runs ``work`` in each of several threads, started together, and
@@ -54,20 +63,29 @@ class TestThreads(unittest.TestCase):
 
         self.assertEqual(run_together(read), [])
 
-    @unittest.skipUnless(
-        sys._is_gil_enabled(),
-        "CPython's free-threaded builds, 3.14 and 3.15 at least, release a "
-        "memoryview that threads slice at once, as the pure-Python reader "
-        "slices strings and both slice arrays",
+    @unittest.skipIf(
+        FREE_THREADED_MEMORYVIEWS and tafla.IMPLEMENTATION == "python",
+        "the pure-Python reader slices a string's bytes from the buffer's "
+        f"memoryview, {MEMORYVIEW_RACE}",
     )
-    def test_reads_the_same_strings_and_arrays_from_a_buffer_that_threads_share(
-        self,
-    ) -> None:
+    def test_reads_the_same_strings_from_a_buffer_that_threads_share(self) -> None:
         buffer = shared_buffer()
 
         def read() -> None:
             for _ in range(2000):
                 assert buffer.get_string(buffer.root_offset(1)) == "Europe/Stockholm"
+
+        self.assertEqual(run_together(read), [])
+
+    @unittest.skipIf(
+        FREE_THREADED_MEMORYVIEWS,
+        f"each reader slices an array from the buffer's memoryview, {MEMORYVIEW_RACE}",
+    )
+    def test_reads_the_same_arrays_from_a_buffer_that_threads_share(self) -> None:
+        buffer = shared_buffer()
+
+        def read() -> None:
+            for _ in range(2000):
                 assert buffer.get_float32_array(buffer.root_offset(2))[999] == 999
 
         self.assertEqual(run_together(read), [])

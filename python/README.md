@@ -27,6 +27,11 @@ uv run python -m unittest discover -s core/tests -t core
 uv run python -m unittest discover -s benchmarks/tests -t benchmarks
 ```
 
+On the free-threaded 3.14t and 3.15t, the tests skip reading arrays from
+one buffer in several threads at once, and the pure-Python classes' strings
+too, since those builds release a `memoryview` that threads slice at once:
+[python/cpython#127716](https://github.com/python/cpython/issues/127716).
+
 The tests run against the native classes, and again against the pure-Python
 ones with `TAFLA_PUREPYTHON` set, which `tafla.IMPLEMENTATION` confirms. The
 tests in `core/tests/test_implementations.py` compare the two directly, call

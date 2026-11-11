@@ -105,7 +105,9 @@ and their messages included. They differ only in these ways:
   writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
-  implementation's array reads do, and the pure-Python one's string reads.
+  implementation's array reads do, and the pure-Python one's string reads,
+  so that they raise ``ValueError``: python/cpython#127716. The native
+  string reads don't slice it.
 - A ``TypeError`` for using the API wrongly, such as for bytes that aren't
   C-contiguous, may be worded differently.
 - The native classes can't be subclassed: Python raises ``TypeError`` for a
