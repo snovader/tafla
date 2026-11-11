@@ -193,7 +193,10 @@ first such fields together, and `TableWriter.ReserveFields()` returns their
 bytes; `AddTableBytes()` and `ReserveTableBytes()` take a nested table of
 only such fields whole. `AppendTable()` appends the bytes of a table that its
 caller lays out entirely, such as a message of only such fields and a string
-after them, and writes its header, without a sizer and a writer.
+after them, and writes its header, without a sizer and a writer. These six
+functions are for the generated code: they're exported because it lies in
+its user's package, but they're outside the compatibility promise of the
+rest of the API, and may change in any release, with the generator.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract, which the other

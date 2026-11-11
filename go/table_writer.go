@@ -172,10 +172,11 @@ func (s *TableSizer) AppendWriter(dst []byte) (TableWriter, error) {
 // every other byte of, since they aren't zeroed in bytes that it reuses: each
 // field's offset and the field.
 //
-// It's for code that lays out a table itself, without a [TableSizer] and a
-// [TableWriter], such as the code that tafla-gen generates for a message of
-// fields whose sizes the schema fixes and a string after them. Only such a
-// table's last field can make it too long, so AppendTable fails with TooLong,
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator. The generator lays out a table this way, without a [TableSizer]
+// and a [TableWriter], for a message of fields whose sizes the schema fixes
+// and a string after them. Only such a table's last field can make it too long, so AppendTable fails with TooLong,
 // naming its last field, if length is past what the layout's offset type
 // addresses. It fails with HeaderTooLong and panics as [NewTableSizer] does,
 // and panics if length is shorter than the header.
@@ -188,6 +189,10 @@ func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (who
 // with VersionTooLarge or HeaderTooLong and panics as
 // [NewVersionedTableSizer] does, fails with TooLong as AppendTable does, and
 // panics if length is shorter than the header.
+//
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator.
 func AppendVersionedTable(dst []byte, fields int, layout TableLayout, version uint32, length uint64) (whole, table []byte, err error) {
 	return appendTable(dst, fields, layout, true, version, length)
 }
@@ -341,9 +346,11 @@ func (s *TableSizer) AddVector(count int) {
 // [TableSizer.StartTable], in place of those fields' adders, and the table's
 // other fields follow with theirs.
 //
-// It's for the code that tafla-gen generates, which adds the root's fields
-// this way only when they fit after its header. Fields that made it too long
-// would fail as the last of them, rather than as the one that did.
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator. The generator adds the root's fields this way only when they
+// fit after its header. Fields that made it too long would fail as the last
+// of them, rather than as the one that did.
 func (s *TableSizer) AddFields(count, byteLength int) {
 	// Only the root starts at 0, and its first fields follow its header,
 	// which fits
@@ -359,6 +366,10 @@ func (s *TableSizer) AddFields(count, byteLength int) {
 // items of the same length, after [TableSizer.AddVector]. It takes the place
 // of each table's [TableSizer.StartTable], adders and [TableSizer.EndTable],
 // and [TableWriter.ReserveTableBytes] returns each one's bytes.
+//
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator.
 func (s *TableSizer) AddTableBytes(count, byteLength int) {
 	high, length := bits.Mul64(uint64(count), uint64(byteLength))
 	if high != 0 {
@@ -743,7 +754,13 @@ func (w *TableWriter) ReserveStructArray(index, count, size int, alignment Align
 // offsets: every byte of them, since they aren't zeroed in bytes that
 // [TableSizer.AppendWriter] reuses, and none of the header. It's called
 // first, after AppendWriter or [TableWriter.StartTable], in place of those
-// fields' setters, and the table's other fields follow with theirs.
+// fields' setters, and the table's other fields follow with theirs. The
+// bytes start at the table's start, as its offsets count, so that the caller
+// writes each field at its offset.
+//
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator.
 func (w *TableWriter) ReserveFields(byteLength int) []byte {
 	w.position += byteLength
 	return w.bytes[w.table:w.position:w.position]
@@ -756,6 +773,10 @@ func (w *TableWriter) ReserveFields(byteLength int) []byte {
 // [TableWriter.SetTable], or as a vector item before its
 // [TableWriter.SetItemEnd]. They aren't zeroed in bytes that
 // [TableSizer.AppendWriter] reuses.
+//
+// It's for the code that tafla-gen generates, outside the compatibility
+// promise of the rest of the API: it may change in any release, with the
+// generator.
 func (w *TableWriter) ReserveTableBytes(byteLength int) []byte {
 	start := w.position
 	w.position += byteLength
