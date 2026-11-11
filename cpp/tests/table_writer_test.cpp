@@ -9,9 +9,11 @@
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -499,6 +501,96 @@ TEST(TableWriter, CountsLengthsPastAnySizeWithoutOverflowing) {
     EXPECT_EQ(error.kind(), BuildError::Kind::too_long);
     EXPECT_EQ(error.index(), 1U);
     EXPECT_EQ(error.offset_type(), OffsetType::uint32);
+}
+
+/// Counts or sizes of any magnitude: small ones, which a builder can hold,
+/// and ones near each power of two up to SIZE_MAX, whose products wrap 32 or
+/// 64 bits
+rc::Gen<std::size_t> magnitudes(std::size_t smallest) {
+    const auto near_power = rc::gen::apply(
+        [smallest](int shift, int delta) {
+            const auto power = SIZE_MAX >> shift;
+            return (std::max)(power - (std::min)(power, static_cast<std::size_t>(delta)), smallest);
+        },
+        rc::gen::inRange(0, std::numeric_limits<std::size_t>::digits), rc::gen::inRange(0, 9));
+    return rc::gen::oneOf(rc::gen::inRange<std::size_t>(smallest, 64), near_power);
+}
+
+/// The lengths of a table of `fields` `uint8`s, an array of `count` structs
+/// of `size` bytes and a last `uint8`, after its array and after its last
+/// field, counted from SPEC.md's layout: exactly, or UINT64_MAX past it
+struct ArrayTableLengths {
+    std::uint64_t after_array;
+    std::uint64_t after_last;
+};
+
+ArrayTableLengths array_table_lengths(OffsetType offset_type, std::size_t fields, std::uint64_t count,
+                                      std::uint64_t size, Alignment alignment) {
+    const std::uint64_t width = offset_size(offset_type);
+    const std::uint64_t elements = width * (fields + 2) + fields + width;
+    const std::uint64_t align = alignment_bytes(alignment);
+    const std::uint64_t start = (elements + align - 1) / align * align;
+
+    const bool saturated = count != 0 && size > (UINT64_MAX - start) / count;
+    const auto after_array = saturated ? UINT64_MAX : start + count * size;
+    return {after_array, after_array == UINT64_MAX ? UINT64_MAX : after_array + 1};
+}
+
+/// The sizer counts an array of any count and size exactly, past 4 GiB in a
+/// 32-bit size_t too, saturating only past 64 bits, and names the field that
+/// makes the table too long with the length after it, as TableBuilder
+/// counts the arrays that it can hold
+RC_GTEST_PROP(TableWriter, CountsAnArrayOfAnyCountAndSizeExactlyOrSaturated, ()) {
+    const auto offset_type = *rc::gen::element(OffsetType::uint8, OffsetType::uint16, OffsetType::uint32);
+    const auto fields = *rc::gen::inRange<std::size_t>(0, 8);
+    const auto count = *magnitudes(0);
+    const auto size = *magnitudes(1);
+    const auto alignment = *rc::gen::element(Alignment::one, Alignment::two, Alignment::four, Alignment::eight);
+
+    const auto layout = TableLayout().with_offset_type(offset_type);
+    const auto lengths = array_table_lengths(offset_type, fields, count, size, alignment);
+    const std::uint64_t max = max_value(offset_type);
+
+    TableSizer sizer(fields + 2, layout);
+    for (std::size_t field = 0; field < fields; ++field) {
+        sizer.add_uint8();
+    }
+    sizer.add_struct_array(count, size, alignment);
+    sizer.add_uint8();
+
+    std::optional<BuildError> expected;
+    if (lengths.after_array > max) {
+        expected = BuildError::too_long(fields, lengths.after_array, offset_type);
+    } else if (lengths.after_last > max) {
+        expected = BuildError::too_long(fields + 1, lengths.after_last, offset_type);
+    }
+
+    if (expected) {
+        RC_ASSERT(same_details(build_error_of([&] { static_cast<void>(sizer.byte_length()); }), *expected));
+    } else {
+        RC_ASSERT(sizer.byte_length() == lengths.after_last);
+    }
+
+    // Arrays short enough for a builder to hold
+    if (lengths.after_array <= 4096) {
+        const std::vector<std::uint8_t> bytes(static_cast<std::size_t>(count * size), 0);
+        TableBuilder builder(fields + 2, layout);
+        for (std::size_t field = 0; field < fields; ++field) {
+            builder.set_uint8(0);
+        }
+
+        const auto built = written_by([&] {
+            builder.set_struct_array(bytes, static_cast<std::size_t>(size), alignment);
+            builder.set_uint8(0);
+            return builder.to_bytes();
+        });
+        if (expected) {
+            RC_ASSERT(built.error.has_value());
+            RC_ASSERT(same_details(*built.error, *expected));
+        } else {
+            RC_ASSERT(built.bytes->size() == lengths.after_last);
+        }
+    }
 }
 
 TEST(TableWriter, RejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes) {

@@ -17,31 +17,13 @@
 #include "errors.hpp"
 #include "layout.hpp"
 #include "structs.hpp"
+#include "table_length.hpp"
 
 namespace tafla {
 
 class TableWriter;
 
 namespace detail {
-
-/// The byte length of the header of a table of `fields` fields in a layout:
-/// its slots and an offset per field, which `TableBuilder` and `TableSizer`
-/// start a table with.
-///
-/// Throws a `BuildError` if the header is longer than the layout's offsets
-/// address.
-inline std::uint32_t header_length(std::size_t fields, bool sized, bool versioned, OffsetType offset_type) {
-    // In 64 bits, since a header longer than 4 GiB would wrap in a 32-bit
-    // size_t, and saturating, since a size_t of fields may be as wide
-    const std::uint64_t width = offset_size(offset_type);
-    const std::uint64_t extra = (sized ? 1U : 0U) + (versioned ? 1U : 0U);
-    const std::uint64_t limit = max_value(offset_type);
-
-    if (static_cast<std::uint64_t>(fields) > limit / width || (fields + extra) * width > limit) {
-        throw BuildError::header_too_long(fields, offset_type);
-    }
-    return static_cast<std::uint32_t>((fields + extra) * width);
-}
 
 /// Checks that `version` fits in a header slot of `offset_type`
 inline void check_version(std::uint32_t version, OffsetType offset_type) {
@@ -159,7 +141,7 @@ public:
     [[nodiscard]] TAFLA_ALWAYS_INLINE SizerParent start_table(std::size_t fields) noexcept {
         SizerParent parent(table_);
         table_ = position_;
-        add_saturating(saturating_product(fields, width()));
+        add_saturating(detail::saturating_product(fields, width()));
         return parent;
     }
 
@@ -253,7 +235,7 @@ public:
 
     /// Adds a string field, of its UTF-8 bytes
     TAFLA_ALWAYS_INLINE void add_string(std::string_view string) noexcept {
-        add(saturating_sum(width(), string.size()));
+        add(detail::saturating_sum(width(), string.size()));
     }
 
     /// Adds a struct field of `size` bytes
@@ -270,7 +252,7 @@ public:
         if (size == 0 && !error_) {
             error_ = BuildError::Details{BuildError::Kind::not_whole_structs, OffsetType::uint32, 0, 0};
         }
-        add_array(saturating_product(count, size), alignment);
+        add_array(detail::saturating_product(count, size), alignment);
     }
 
     /// Adds a nested table, padded to start at a multiple of `alignment`,
@@ -283,8 +265,7 @@ public:
     /// Adds a vector of `count` tables, whose fields then follow, each
     /// between `start_table()` and `end_table()`
     TAFLA_ALWAYS_INLINE void add_vector(std::size_t count) noexcept {
-        // The count, and then the end of each item
-        add(saturating_product(saturating_sum(count, 1), width()));
+        add(detail::vector_bytes(count, width()));
     }
 
 private:
@@ -296,7 +277,7 @@ private:
 
     template <class T>
     TAFLA_ALWAYS_INLINE void add_elements(std::size_t count) noexcept {
-        add_array(saturating_product(count, sizeof(T)), static_cast<Alignment>(sizeof(T)));
+        add_array(detail::saturating_product(count, sizeof(T)), static_cast<Alignment>(sizeof(T)));
     }
 
     /// Adds a field of `byte_length` bytes, without padding
@@ -309,9 +290,7 @@ private:
     /// its elements are aligned
     TAFLA_ALWAYS_INLINE void add_array(std::uint64_t byte_length, Alignment alignment) noexcept {
         start_field();
-        add_saturating(width());
-        add_saturating(detail::padding(position_ - table_, alignment));
-        add_saturating(byte_length);
+        add_saturating(detail::array_bytes(position_ - table_, width(), byte_length, alignment));
     }
 
     /// Counts a field of the root, after checking the length that the root's
@@ -332,19 +311,10 @@ private:
         ++root_fields_;
     }
 
-    /// The table's length so far, in 64 bits, so that it doesn't wrap at the
-    /// limit itself in a 32-bit size_t, saturating far past the longest
-    /// table
+    /// Adds `byte_length` bytes to the table's length, which saturates as
+    /// `detail::saturating_sum()` describes
     TAFLA_ALWAYS_INLINE void add_saturating(std::uint64_t byte_length) noexcept {
-        position_ = saturating_sum(position_, byte_length);
-    }
-
-    TAFLA_ALWAYS_INLINE static std::uint64_t saturating_sum(std::uint64_t left, std::uint64_t right) noexcept {
-        return right > UINT64_MAX - left ? UINT64_MAX : left + right;
-    }
-
-    TAFLA_ALWAYS_INLINE static std::uint64_t saturating_product(std::uint64_t left, std::uint64_t right) noexcept {
-        return left != 0 && right > UINT64_MAX / left ? UINT64_MAX : left * right;
+        position_ = detail::saturating_sum(position_, byte_length);
     }
 
     [[nodiscard]] std::uint64_t width() const noexcept {

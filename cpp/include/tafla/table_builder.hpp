@@ -23,6 +23,7 @@
 #include "element.hpp"
 #include "errors.hpp"
 #include "layout.hpp"
+#include "table_length.hpp"
 #include "table_writer.hpp"
 
 namespace tafla {
@@ -314,7 +315,7 @@ public:
     ///
     /// Throws a `BuildError` as the scalars' setters do.
     void set_string(std::string_view string) {
-        const auto length = check_field(0, width() + std::uint64_t{string.size()});
+        const auto length = check_field(detail::saturating_sum(width(), string.size()));
         commit(bytes_field(Kind::string, string.data(), string.size()), length);
     }
 
@@ -323,7 +324,7 @@ public:
     }
 
     void set_string(std::string&& string) {
-        const auto length = check_field(0, width() + std::uint64_t{string.size()});
+        const auto length = check_field(detail::saturating_sum(width(), string.size()));
         const auto& owned = own(std::move(string));
         commit(bytes_field(Kind::string, owned.data(), owned.size()), length);
     }
@@ -336,12 +337,12 @@ public:
     ///
     /// Throws a `BuildError` as the scalars' setters do.
     void set_struct(std::span<const std::uint8_t> bytes) {
-        const auto length = check_field(0, bytes.size());
+        const auto length = check_field(bytes.size());
         commit(bytes_field(Kind::structure, bytes.data(), bytes.size()), length);
     }
 
     void set_struct(std::vector<std::uint8_t>&& bytes) {
-        const auto length = check_field(0, bytes.size());
+        const auto length = check_field(bytes.size());
         const auto& owned = own(std::move(bytes));
         commit(bytes_field(Kind::structure, owned.data(), owned.size()), length);
     }
@@ -609,7 +610,7 @@ private:
 
     template <class T>
     void set_scalar(T value) {
-        const auto length = check_field(0, sizeof(T));
+        const auto length = check_field(sizeof(T));
         const auto bits = std::bit_cast<detail::BitsOf<T>>(value);
         commit({Kind::scalar, static_cast<std::uint8_t>(sizeof(T)), Alignment::one, 0, 0, bits, nullptr}, length);
     }
@@ -668,10 +669,8 @@ private:
     /// The table's length with an array of `count` elements of `size` bytes,
     /// padded so that they're aligned to their size
     [[nodiscard]] std::uint32_t check_array(std::size_t count, std::size_t size) const {
-        const auto alignment = static_cast<Alignment>(size);
-        const auto padding = detail::padding<std::uint64_t>(std::uint64_t{length_} + width(), alignment);
-        const auto elements = count > UINT64_MAX / size ? UINT64_MAX / 2 : std::uint64_t{count} * size;
-        return check_field(padding, width() + elements);
+        const auto elements = detail::saturating_product(count, size);
+        return check_field(detail::array_bytes(length_, width(), elements, static_cast<Alignment>(size)));
     }
 
     [[nodiscard]] std::uint32_t check_struct_array(std::size_t length, std::size_t size, Alignment alignment) const {
@@ -679,22 +678,20 @@ private:
             throw BuildError::not_whole_structs(length, size);
         }
 
-        const auto padding = detail::padding<std::uint64_t>(std::uint64_t{length_} + width(), alignment);
-        return check_field(padding, width() + length);
+        return check_field(detail::array_bytes(length_, width(), length, alignment));
     }
 
-    /// The table's length with a field of `byte_length` bytes after
-    /// `padding`, which checking here, rather than when writing the table,
+    /// The table's length with a field of `byte_length` bytes, its padding
+    /// included, which checking here, rather than when writing the table,
     /// reports a field too long for the layout from its own setter and leaves
     /// the builder as it was. Every offset, count, length and item end is at
     /// most the table's length, so that's the one value to check.
-    [[nodiscard]] std::uint32_t check_field(std::uint64_t padding, std::uint64_t byte_length) const {
+    [[nodiscard]] std::uint32_t check_field(std::uint64_t byte_length) const {
         if (set_ == fields_) {
             throw BuildError::too_many_fields(fields_);
         }
 
-        // Each part is less than 2^63, so the sum doesn't wrap
-        const std::uint64_t length = std::uint64_t{length_} + padding + (std::min)(byte_length, UINT64_MAX / 4);
+        const auto length = detail::saturating_sum(length_, byte_length);
         if (length > max_value(offset_type_)) {
             throw BuildError::too_long(set_, length, offset_type_);
         }
@@ -917,7 +914,7 @@ inline void TableBuilder::set_table(NestedTable table, Alignment alignment) {
 
     // Padded from the table's length, unlike an array, since it has no count
     const std::uint64_t padding = detail::padding<std::uint64_t>(length_, alignment);
-    const auto length = check_field(padding, table.byte_length());
+    const auto length = check_field(padding + table.byte_length());
 
     values_.reserve(values_.size() + table.recorded_fields(offset_type_));
     append_nested(std::move(table), alignment);
@@ -925,18 +922,16 @@ inline void TableBuilder::set_table(NestedTable table, Alignment alignment) {
 }
 
 inline void TableBuilder::set_vector(std::vector<NestedTable> items) {
-    // In 64 bits, which only a vector that nests a builder many times can
-    // overflow, saturating far past the longest table
     std::uint64_t nested_bytes = 0;
     std::size_t recorded = 1;
     for (const auto& item : items) {
         item.check_complete();
-        nested_bytes = (std::min<std::uint64_t>)(nested_bytes + item.byte_length(), UINT64_MAX / 4);
+        nested_bytes = detail::saturating_sum(nested_bytes, item.byte_length());
         recorded += item.recorded_fields(offset_type_);
     }
 
-    const auto slots = (std::min<std::uint64_t>)(std::uint64_t{items.size()} + 1, UINT64_MAX / 16) * width();
-    const auto length = check_field(0, (std::min)(slots + nested_bytes, UINT64_MAX / 4));
+    const auto slots = detail::vector_bytes(items.size(), width());
+    const auto length = check_field(detail::saturating_sum(slots, nested_bytes));
 
     // Each item may allocate, or write a builder of another layout, so the
     // items recorded before one that fails are removed

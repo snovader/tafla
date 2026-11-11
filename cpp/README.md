@@ -48,6 +48,7 @@ type, offset size, vector, builder and decode error.
 | `vector.hpp`           | `Vector`, a vector of tables, and its ranges of items                         |
 | `table_builder.hpp`    | `TableBuilder` and `NestedTable`, which write a table field by field          |
 | `table_writer.hpp`     | `TableSizer` and `TableWriter`, which the generated code writes tables with   |
+| `table_length.hpp`     | The arithmetic that `TableBuilder` and `TableSizer` count a table's length in |
 | `bytes.hpp`            | `Bytes`, the bytes of a written table                                         |
 | `structs.hpp`          | The `Struct` concept and `StructArray<T>`, a view of an array of structs      |
 | `table_vector.hpp`     | `TableVector<T>`, a view of a vector of the tables that `T` reads             |
