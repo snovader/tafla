@@ -6,13 +6,13 @@ package generated_test
 // hand. They compare versions of the runtime, with benchstat; the comparison
 // suite in benchmarks/ compares tafla with other libraries.
 //
-//	go test -run '^$' -bench . -count 10 ./internal/generated/ > new.txt
+//	go test -run '^$' -bench . -count 10 ./generated/ > new.txt
 
 import (
 	"testing"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/generated/shapes"
+	"github.com/snovader/tafla/go/tests/generated/shapes"
 )
 
 var (

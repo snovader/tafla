@@ -384,6 +384,36 @@ fn rejects_a_package_that_isnt_a_java_package() {
     );
 }
 
+#[test]
+fn rejects_two_schemas_for_go_whose_packages_would_share_a_directory() {
+    assert_usage_error(
+        REPOSITORY,
+        &["go", "schemas/shapes.tafla", "schemas/layouts.tafla"],
+        "go generates a package of each schema, which needs a directory of its own: \
+         give one schema, and another `--out` for each other",
+    );
+}
+
+#[test]
+fn generates_one_schema_given_twice_for_go() {
+    let out = tempfile::tempdir().unwrap();
+
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "go",
+            "schemas/shapes.tafla",
+            "schemas/shapes.tafla",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["shapes.go"]);
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_an_argument_that_isnt_utf8() {

@@ -171,9 +171,6 @@ func (l TableLayout) headerSlots() int {
 	return slots
 }
 
-// headerLength returns the byte length of the header of a table of fields
-// fields: its slots and an offset per field, which TableBuilder and
-// TableSizer start a table with. It panics if fields is negative.
 // maxFields returns the most fields whose offsets fit in a header, after
 // its header slots: the offsets that the offset type addresses, its largest
 // value divided by its size, a power of two
@@ -187,6 +184,9 @@ func (l TableLayout) maxLength() uint64 {
 	return min(uint64(l.offsetType.MaxValue()), math.MaxInt)
 }
 
+// headerLength returns the byte length of the header of a table of fields
+// fields: its slots and an offset per field, which TableBuilder and
+// TableSizer start a table with. It panics if fields is negative.
 func (l TableLayout) headerLength(fields int) (uint32, error) {
 	if fields < 0 {
 		panic("tafla: a table can't hold " + strconv.Itoa(fields) + " fields")

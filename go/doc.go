@@ -50,7 +50,9 @@
 // at any alignment and in any host byte order, and [ArrayView.AsSlice]
 // returns them as a slice of the bytes when the host is little-endian and
 // they're aligned to their type in memory, as TableBuilder aligns them
-// within an aligned table, which a slice that Go allocated is. A string
+// within an aligned table. A slice that Go allocates for a table usually
+// is, though Go doesn't promise it, and a subslice or a slice from
+// elsewhere may not be. A string
 // shares the bytes too, which Go's strings otherwise don't, so the bytes
 // must not change while it's in use. Byte arrays, structs and vector items
 // are slices of the bytes.
@@ -65,8 +67,8 @@
 // Functions panic only for mistakes of the code that calls them, which no
 // bytes can cause: an index past an [ArrayView]'s or a [Vector]'s length, as
 // indexing a slice does, an offset type or alignment that isn't one of the
-// constants, a negative number of fields, the version of a layout without
-// one, or a nil nested table. A [TableWriter] given other fields than its
+// constants, a negative number of fields, a negative field index or struct
+// size, the version of a layout without one, or a nil nested table. A [TableWriter] given other fields than its
 // sizer counted panics for a write past the table's bytes, rather than
 // writing past them.
 package tafla

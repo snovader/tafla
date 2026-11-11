@@ -60,11 +60,15 @@ func store[T Element](bytes []byte, value T) {
 // possible on a little-endian host when the bytes are aligned to the
 // element's alignment in memory, as TableBuilder aligns them to their size
 // within an aligned table. That's their size but on 32-bit hosts, which align
-// 64-bit elements to 4. Single bytes have no order and are always aligned.
-// The bytes hold a whole number of elements.
+// 64-bit elements to 4. Single bytes have no order and are always aligned,
+// and no elements are in place anywhere. The bytes hold a whole number of
+// elements.
 func elementsInPlace[T Element](bytes []byte) ([]T, bool) {
 	var zero T
 	size := sizeOf[T]()
+	if len(bytes) == 0 {
+		return []T{}, true
+	}
 	if !hostLittleEndian && size > 1 {
 		return nil, false
 	}

@@ -12,7 +12,7 @@ the generators of every language are checked to write one format.
 | Python     | `python/core/tests/generated/test_shapes_cases.py`                                 |
 | Java       | `java/core/src/test/java/io/github/snovader/tafla/test/ShapesCasesTest.java`       |
 | Rust       | `rust/gen/tests/shapes_cases.rs`                                                   |
-| Go         | `go/internal/generated/shapes_cases_test.go`                                       |
+| Go         | `go/tests/generated/shapes_cases_test.go`                                          |
 
 Each language's CI runs its test when this directory changes.
 

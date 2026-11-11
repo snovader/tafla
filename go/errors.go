@@ -211,3 +211,18 @@ func (e *BuildError) Error() string {
 		return "tafla: build error of kind " + e.Kind.String()
 	}
 }
+
+// indexOutOfRange is the panic of an index past an array's or a vector's
+// length. Its message is built when it's printed, rather than where it
+// panics, which keeps the getters that check the index cheap enough to
+// inline.
+type indexOutOfRange struct {
+	index  int
+	length int
+	// "an array" or "a vector"
+	of string
+}
+
+func (e indexOutOfRange) Error() string {
+	return "tafla: index " + strconv.Itoa(e.index) + " out of range of " + e.of + " of " + strconv.Itoa(e.length)
+}

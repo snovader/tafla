@@ -79,9 +79,11 @@ func newTableSizer(fields int, layout TableLayout, versioned bool, version uint3
 		return TableSizer{}, layout.sizerFailure(fields, versioned, version)
 	}
 
-	// Built in place, rather than built and then copied
+	// Built in place, rather than built and then copied. The header's length
+	// is counted in uint64, since a header of uint32 offsets can be longer
+	// than a 32-bit int holds.
 	return TableSizer{
-		position:  uint64(layout.HeaderSize() + fields*layout.offsetType.Size()),
+		position:  uint64(layout.HeaderSize()) + uint64(fields)*uint64(layout.offsetType.Size()),
 		fields:    fields,
 		maxLength: layout.maxLength(),
 		version:   version,
@@ -250,15 +252,17 @@ func (s *TableSizer) AddStruct(size int) {
 // table. [TableSizer.Writer] fails with NotWholeStructs if size is 0, as
 // [TableBuilder.SetStructArray] does.
 func (s *TableSizer) AddStructArray(count, size int, alignment Alignment) {
-	if size == 0 && s.failure == 0 {
-		s.failure = NotWholeStructs
-	}
-
 	high, byteLength := bits.Mul64(uint64(count), uint64(size))
 	if high != 0 {
 		byteLength = past
 	}
 	s.addArray(min(byteLength, past), alignment)
+
+	// After addArray, which reports a field before this one that made the
+	// table too long, as TableBuilder's setter of that field does first
+	if size == 0 && s.failure == 0 {
+		s.failure = NotWholeStructs
+	}
 }
 
 // AddTable adds a nested table, padded to start at a multiple of alignment,

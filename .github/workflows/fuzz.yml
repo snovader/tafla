@@ -101,7 +101,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: go
+        working-directory: go/tests
     strategy:
       fail-fast: false
       matrix:
@@ -122,7 +122,7 @@ jobs:
       # repository
       - name: Find the corpus
         id: corpus
-        run: echo "path=$(go env GOCACHE)/fuzz/github.com/snovader/tafla/go/${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+        run: echo "path=$(go env GOCACHE)/fuzz/github.com/snovader/tafla/go/tests/${{ matrix.target }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore the corpus
         uses: actions/cache@v6
@@ -142,5 +142,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-go-artifacts-${{ matrix.target }}
-          path: go/testdata/fuzz
+          path: go/tests/testdata/fuzz
           if-no-files-found: ignore

@@ -211,7 +211,7 @@ when the bytes are in another version.
 | Python     | `<schema>.py`                            | Classes, written from `TypedDict`s of their fields as keyword arguments  | Frozen dataclasses, read and written with `struct`   |
 | Java       | `<package>/<Name>.java`                  | Final classes, written from a nested `Fields` record                     | Records, read and written in place with `VarHandle`s |
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
-| Go         | `<schema>.go`, a package of its name     | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
+| Go         | `<package>.go`, a package of its name    | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 
 A table's getter of a vector or an array of structs reads every item at once.
 Vectors return an array of tables in TypeScript and JavaScript, a `List` in
@@ -486,11 +486,11 @@ and writes none of their files, but writes the files of the others, and then
 fails. `-h` or `--help` prints the usage, the targets and the options, and
 `-V` or `--version` the version, both to stdout.
 
-| Exit code | When                                                                                                                                                            |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0         | Every schema generated its files                                                                                                                                |
-| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, or a file can't be written                                                  |
-| 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, or a `--package` that isn't a Java package |
+| Exit code | When                                                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | Every schema generated its files                                                                                                                                                                |
+| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, or a file can't be written                                                                                  |
+| 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, or a `--package` that isn't a Java package, or more than one schema for Go |
 
 With wrong arguments, the command prints the error and its usage to stderr,
 and writes nothing.
@@ -518,8 +518,12 @@ they share.
   which the generator can't know. It's identifiers in ASCII separated by
   dots, such as `com.example.shapes`, which are the directories of the
   classes' files under `--out` too. Other targets ignore it. Go's package is
-  named after the schema's file name, in lowercase ASCII letters and digits:
-  `all_types.tafla` generates `package alltypes`.
+  named after the schema's file name, in lowercase ASCII letters and digits,
+  and so is its file: `all_types.tafla` generates `alltypes.go`, of
+  `package alltypes`, which no suffix such as `_test` or `_windows` makes a
+  test or constrains to a platform. A keyword or `main` takes a `_` after it.
+  Go takes one schema at a time, since each is a package of its own, which
+  needs a directory of its own.
 
 From this repository, `cargo run -p tafla-gen --` runs the command.
 
@@ -631,7 +635,7 @@ its runtime, in the same ways as the Rust:
 | Python                 | `python/core/tests/generated/<schema>/`                                     |
 | Java                   | `java/core/src/test/java/io/github/snovader/tafla/test/generated/<schema>/` |
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
-| Go                     | `go/internal/generated/<schema>/`                                           |
+| Go                     | `go/tests/generated/<schema>/`                                              |
 
 The Java is generated with the package
 `io.github.snovader.tafla.test.generated.<schema>`, so that it's part of the
