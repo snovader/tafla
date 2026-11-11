@@ -464,6 +464,48 @@ class ByteBuffer:
 
         return vector
 
+    def get_vector_fields(
+        self, position: int, fields: FixedFields
+    ) -> list[tuple[Any, ...]] | None:
+        """Returns the values of every item of the vector at ``position``, a
+        table whose fields ``fields`` describes whole, each as
+        ``get_fields()`` returns them, or ``None`` when it returns ``None``
+        for any item, for the field getters to read them.
+
+        Raises ``DecodeError`` if the vector's count or an item's ends don't
+        lie within the buffer, as ``get_vector_offsets()`` does.
+
+        Generated code calls it to read every field of every item at once.
+        """
+        offsets = self.get_vector_offsets(position)
+        struct, header, check, expected, values, string = fields._readers[self.__size]
+        view, length = self.__view, self.__length
+
+        # get_fields() for each item, inline, which saves a call for each.
+        # Each offset lies within the buffer, so none is negative.
+        items: list[tuple[Any, ...]] = []
+        for offset in offsets:
+            start = offset + header
+            try:
+                unpacked = struct.unpack_from(view, start)
+                if check(unpacked) != expected:
+                    return None
+                if not string:
+                    items.append(values(unpacked))
+                    continue
+
+                begin = start + struct.size
+                end = begin + unpacked[-1]
+                if end > length:
+                    return None
+                text = str(view[begin:end], "utf-8")
+            except StructError, OverflowError, UnicodeDecodeError:
+                return None
+
+            items.append((*values(unpacked), text))
+
+        return items
+
     def __get_item_ends(self, position: int) -> memoryview[int]:
         """Returns the item ends of the vector at ``position``, once they're
         checked to lie within the buffer, before anything is allocated for

@@ -1,5 +1,5 @@
 import builtins
-from collections.abc import Buffer, Iterable, Iterator
+from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
 from typing import Any, Literal, Self, overload
 
@@ -552,6 +552,43 @@ class TableWriter:
             )
         except _PACK_ERRORS as error:
             raise self.__slot_error(len(data) - vector, error) from error
+
+    def set_vector_tables(
+        self, index: int, fields: FixedFields, items: Sequence[tuple[Any, ...]]
+    ) -> None:
+        """Writes field ``index`` as a vector of tables whose fields ``fields``
+        describes whole, one for each of ``items``, as ``set_vector()``,
+        ``write_table()`` for each item and ``set_item_end()`` write it. Each
+        item is a table's values as ``write_table()`` takes them, followed by
+        its string when ``fields`` ends with one: the tuple that
+        ``ByteBuffer.get_fields()`` returns.
+
+        Generated code calls it to write a vector of such tables."""
+        vector = self.set_vector(index, len(items))
+        has_string = fields._string
+        pack = fields._packers[self.__size]
+        data = self.__data
+
+        # write_table()'s packing, inline, which saves a call for each item
+        for item, values in enumerate(items):
+            if has_string:
+                table, string = values[:-1], values[-1]
+            else:
+                table, string = values, ""
+            try:
+                if has_string:
+                    encoded = string.encode()
+                    packed = pack(*table, len(encoded))
+                else:
+                    encoded = b""
+                    packed = pack(*table)
+            except _FIELD_ERRORS:
+                self.write_table(fields, table, string)
+            else:
+                data += packed
+                data += encoded
+
+            self.set_item_end(vector, item)
 
     def __set_array(
         self,

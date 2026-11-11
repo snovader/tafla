@@ -2,7 +2,7 @@ import unittest
 from collections.abc import Callable, Sequence
 from functools import partial
 from struct import pack
-from typing import Any
+from typing import Any, Literal
 
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
@@ -337,6 +337,146 @@ class TestGetFields(unittest.TestCase):
             self.assertEqual(
                 comparable(values), comparable(read_by_getters(buffer, table, position))
             )
+
+
+class TestVectorTables(unittest.TestCase):
+    # set_vector_tables() writes what set_vector(), write_table() for each item
+    # and set_item_end() write, and get_vector_fields() reads what get_fields()
+    # reads for each item, or None, or raises what get_vector_offsets() raises
+
+    @given(
+        tables(),
+        integers(0, 4),
+        sampled_from(OFFSET_TYPES),
+        sampled_from([None, *INVALID]),
+        corruptions,
+    )
+    def test_writes_and_reads_a_vector_of_tables_as_each_item_alone(
+        self,
+        table: Description,
+        count: int,
+        offset_type: OffsetType,
+        invalid: tuple[str, Any] | None,
+        corruption: Truncation | Overwrite,
+    ) -> None:
+        item = whole_fixed(nested_in_place(table))
+        assume(item is not None)
+        assert item is not None
+        if invalid is not None:
+            # A value that the item's field can't hold, which the setters raise
+            # for, and the item's other fields
+            item = {**item, "fields": [scalar(*invalid), *item["fields"]]}
+        fields = fixed_fields(item, len(item["fields"]))
+        items = [item_values(item)] * count
+        layout = TableLayout(offset_type=offset_type)
+
+        has_string = item["fields"][-1]["type"] == "string"
+
+        written = outcome(partial(write_vector_tables, layout, fields, items))
+        by_items = partial(write_each_item, layout, fields, items, has_string)
+        self.assertEqual(written, outcome(by_items))
+        if not isinstance(written, bytes):
+            return
+
+        for data in [written, corruption.apply(written)]:
+            buffer = ByteBuffer(data, layout)
+            with self.subTest(data=data):
+                self.assertEqual(
+                    read_outcome(partial(read_vector_fields, buffer, fields)),
+                    read_outcome(partial(read_each_item, buffer, fields)),
+                )
+
+    @given(binary(max_size=64), integers(-4, 70), sampled_from(OFFSET_TYPES))
+    def test_reads_a_vector_of_arbitrary_bytes_as_each_item_alone(
+        self, data: bytes, position: int, offset_type: OffsetType
+    ) -> None:
+        pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
+        table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
+        fields = fixed_fields(table, 3)
+        buffer = ByteBuffer(data, TableLayout(offset_type=offset_type))
+
+        self.assertEqual(
+            read_outcome(partial(buffer.get_vector_fields, position, fields)),
+            read_outcome(partial(read_each_item, buffer, fields, position)),
+        )
+
+
+def item_values(table: Description) -> tuple[Any, ...]:
+    """A table's values as ``set_vector_tables()`` takes them, and
+    ``get_fields()`` returns them: a nested table's in place of it, and the
+    string's last"""
+    fields = table["fields"]
+    values: list[Any] = []
+    push_values([field for field in fields if field["type"] != "string"], values)
+    if fields[-1]["type"] == "string":
+        values.append(fields[-1]["value"])
+
+    return tuple(values)
+
+
+def write_vector_tables(
+    layout: TableLayout[Literal[False]],
+    fields: FixedFields,
+    items: list[tuple[Any, ...]],
+) -> memoryview[int]:
+    writer = TableWriter(1, layout)
+    writer.set_vector_tables(0, fields, items)
+    return writer.bytes()
+
+
+def write_each_item(
+    layout: TableLayout[Literal[False]],
+    fields: FixedFields,
+    items: list[tuple[Any, ...]],
+    has_string: bool,
+) -> memoryview[int]:
+    """Writes the vector item by item, as ``set_vector_tables()`` writes it"""
+    writer = TableWriter(1, layout)
+    vector = writer.set_vector(0, len(items))
+    for index, values in enumerate(items):
+        if has_string:
+            writer.write_table(fields, values[:-1], values[-1])
+        else:
+            writer.write_table(fields, values)
+        writer.set_item_end(vector, index)
+
+    return writer.bytes()
+
+
+def read_vector_fields(buffer: ByteBuffer, fields: FixedFields) -> object:
+    return buffer.get_vector_fields(buffer.root_offset(0), fields)
+
+
+def read_each_item(
+    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+) -> object:
+    """Reads the vector's items one by one, as ``get_vector_fields()`` reads
+    them, at ``position``, or the root's first field"""
+    if position is None:
+        position = buffer.root_offset(0)
+
+    items = []
+    for offset in buffer.get_vector_offsets(position):
+        values = buffer.get_fields(offset, fields)
+        if values is None:
+            return None
+        items.append(values)
+
+    return items
+
+
+def read_outcome(read: Callable[[], object]) -> object:
+    """The items that ``read`` returns, each comparable, or ``None``, or the
+    class and message of the error that it raises"""
+    try:
+        items = read()
+    except Exception as error:  # noqa: BLE001
+        return type(error), str(error)
+
+    if items is None:
+        return None
+    assert isinstance(items, list)
+    return [comparable(values) for values in items]
 
 
 class TestErrors(unittest.TestCase):
