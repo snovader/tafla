@@ -43,8 +43,16 @@ The native crate has Rust's checks of its own, run from `core/native`, where
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-PYO3_PYTHON=python3.14 cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+PYO3_PYTHON=python3.14 cargo test --all-features
 ```
+
+Its feature `test-hooks` adds the tests' hooks, such as one that treats the
+host as big-endian, so that the tests take the byte-swapping branches on any
+host. The development environment builds the module with it, as
+`config-settings-package` in `pyproject.toml` asks, and the wheels without
+it, so the tests that need a hook skip with a wheel. CI runs the crate's
+tests with its `rust-version`, 1.88, too.
 
 `uv build --package tafla` builds the runtime's source distribution, which
 holds the Rust sources, and a wheel with the native module for this platform,
