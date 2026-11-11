@@ -37,6 +37,12 @@ void* operator new(std::size_t size) {
     throw std::bad_alloc();
 }
 
+// GCC sees the pointers that `new` expressions return, which this allocator
+// takes from `std::malloc()`, freed with `std::free()`, as a mismatch
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmismatched-new-delete"
+#endif
+
 void operator delete(void* allocated) noexcept {
     std::free(allocated);  // NOLINT(cppcoreguidelines-no-malloc)
 }

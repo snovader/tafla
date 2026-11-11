@@ -107,8 +107,11 @@ type, offset size, vector, builder and decode error.
   writer's address: a function that did kept the writer of a generated
   `serialize()` in memory rather than in registers, and read its offset type
   from memory rather than folding the constant layout's. The generated code
-  inlines the writers of the tables nested in a message, but for tables that
-  hold themselves through vectors, whose writers call themselves.
+  inlines the writers of the tables nested in a message while they're short,
+  at most 64 fields with those they inline in turn, so that its code grows
+  linearly with the schema rather than doubling with each level of tables
+  nested in pairs, and never those of tables that hold themselves through
+  vectors, whose writers call themselves.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
@@ -118,8 +121,11 @@ scalars at fixed offsets, without bounds, at any alignment.
 
 ## Development
 
-CMake 3.25 or later builds the tests with any C++20 compiler; CI runs GCC and
-Clang on Linux and Apple Clang on macOS. Run the commands below from this
+CMake 3.25 or later builds the tests in ISO C++20, without GNU's extensions,
+which predefine macros such as `linux`. CI tests the compilers that the
+runtime supports: GCC and Clang on 64-bit Linux, GCC for 32-bit x86 and for
+s390x, and Apple Clang on macOS. Other C++20 compilers, such as MSVC, aren't
+tested yet. Run the commands below from this
 directory. The tests' dependencies, GoogleTest, RapidCheck and nlohmann/json,
 are fetched at their pinned versions when CMake configures the build.
 
@@ -148,7 +154,8 @@ The options of the build:
 | `-DTAFLA_BUILD_BENCHMARKS=ON`    | Builds the comparison in `benchmarks/`, as its README describes          |
 
 CI builds the tests with AddressSanitizer and UndefinedBehaviorSanitizer,
-with the byte-swapping path, and on s390x, a big-endian host, under QEMU:
+with the byte-swapping path, for 32-bit x86, with `-DCMAKE_CXX_FLAGS=-m32`,
+and on s390x, a big-endian host, under QEMU:
 
 ```sh
 cmake -S . -B build-sanitized -G Ninja -DCMAKE_BUILD_TYPE=Debug -DTAFLA_SANITIZERS=address,undefined
@@ -176,6 +183,15 @@ and a failure prints the `RC_PARAMS` that reproduces it.
   `compatibility_test`: every getter at every position of arbitrary bytes,
   views at every alignment, UTF-8 at its limits, layouts, and tables that the
   TypeScript runtime wrote.
+- `exception_safety_test`: each allocation of each setter fails in turn,
+  through a replaced `operator new`, and leaves its builder as it was.
+- `nesting_test` and `macros_test`: the C++ that tafla-gen generates from the
+  tests' own schemas, `nesting.tafla` and `macros.tafla`, into a directory of
+  each one's name: tables nested as deep as they nest, each in three fields,
+  whose code compiles in a time linear in their depth, and names that macros
+  take, which the test defines before it includes the code.
+- `package/`: a project that finds the installed package with
+  `find_package(tafla)`, which CI builds after `cmake --install`.
 - `tests/generated`: the C++ that tafla-gen generates from the example schemas
   in `schemas/`, in a directory of each schema, and the tests that run it: it
   writes the tables of `conformance/generated` byte for byte, writes every
@@ -224,6 +240,6 @@ the workloads of the other languages' comparisons, as its
 
 ## Releases
 
-The runtime isn't packaged or published yet; `cmake --install` installs its
-headers. A release would add a CMake package configuration, and a port to
-vcpkg or Conan.
+The runtime isn't published yet. `cmake --install` installs its headers and
+a CMake package, which `find_package(tafla)` finds, of the target
+`tafla::tafla`. A release would add a port to vcpkg or Conan.

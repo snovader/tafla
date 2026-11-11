@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.25)
 
 project(tafla VERSION 0.0.0 DESCRIPTION "Binary tables of scalars, strings and typed arrays" LANGUAGES CXX)
 
+# tafla's own targets compile as ISO C++20 rather than GNU's dialect, CMake's
+# default, which predefines macros such as `linux` and `unix`. A project that
+# adds tafla chooses its own.
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # The runtime is header-only, and depends only on the standard library of
 # C++20, so that the compiler inlines and specializes its reads and writes
 # where they're called
@@ -70,5 +75,21 @@ if(TAFLA_BUILD_FUZZERS)
     add_subdirectory(fuzz)
 endif()
 
+# `cmake --install` installs the headers and a package, which
+# `find_package(tafla)` finds, of the target `tafla::tafla`
 include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(TARGETS tafla EXPORT taflaTargets)
+install(
+    EXPORT taflaTargets
+    NAMESPACE tafla::
+    FILE taflaConfig.cmake
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/cmake/tafla)
+
+# The headers are the same on every platform, so any architecture's build
+# may use them
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/taflaConfigVersion.cmake COMPATIBILITY SameMinorVersion
+                                 ARCH_INDEPENDENT)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/taflaConfigVersion.cmake DESTINATION ${CMAKE_INSTALL_DATADIR}/cmake/tafla)

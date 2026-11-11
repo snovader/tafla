@@ -31,7 +31,8 @@ std::optional<std::uint64_t> little_endian(const std::vector<std::uint8_t>& byte
 
     std::uint64_t value = 0;
     for (std::uint64_t byte = width; byte > 0; --byte) {
-        value = value << 8 | bytes[position + byte - 1];
+        // Within the bytes, so within a size_t
+        value = value << 8 | bytes[static_cast<std::size_t>(position + byte - 1)];
     }
     return value;
 }

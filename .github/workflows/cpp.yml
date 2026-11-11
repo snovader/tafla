@@ -46,6 +46,8 @@ jobs:
               - ".github/workflows/cpp.yml"
               - "conformance/**"
               - "cpp/**"
+              - "rust/gen/**"
+              - "schemas/**"
 
   formatting:
     name: Formatting
@@ -88,6 +90,13 @@ jobs:
             os: macos-latest
             cxx: clang++
             options: ""
+          # A 32-bit size_t, which the headers' reads and writes check
+          # lengths in otherwise than on 64-bit hosts
+          - name: GCC on 32-bit x86
+            os: ubuntu-latest
+            cxx: g++
+            options: -DCMAKE_CXX_FLAGS=-m32
+            packages: g++-multilib
           # Reads every read within the bytes it was given, and finds
           # undefined behavior, such as a misaligned or overflowing access
           - name: AddressSanitizer and UndefinedBehaviorSanitizer
@@ -105,13 +114,13 @@ jobs:
         uses: actions/checkout@v7
 
       # With Clang's runtime of the sanitizers, whose package is named after
-      # the default Clang's major version
+      # the default Clang's major version, and the matrix's packages
       - name: Install Ninja on Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ninja-build \
-              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev" ${{ matrix.packages }}
 
       - name: Install Ninja on macOS
         if: runner.os == 'macOS'
@@ -128,6 +137,16 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure --parallel 4
+
+      # The package that `cmake --install` installs, which a project finds
+      - name: Install the package
+        run: cmake --install build --prefix "$RUNNER_TEMP/tafla"
+
+      - name: Build a project that uses the package
+        run: >
+          cmake -S tests/package -B build-package -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/tafla" ${{ matrix.options }}
+          && cmake --build build-package && build-package/package_test
 
   # A big-endian host, s390x, emulated by QEMU, which reads every array
   # through its byte-swapping path for real

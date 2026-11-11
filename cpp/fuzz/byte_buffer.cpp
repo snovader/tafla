@@ -65,7 +65,8 @@ std::optional<Bytes> range(Bytes bytes, std::uint64_t position, std::uint64_t by
     if (position > bytes.size() || byte_length > bytes.size() - position) {
         return std::nullopt;
     }
-    return bytes.subspan(position, byte_length);
+    // Within the bytes, so within a size_t
+    return bytes.subspan(static_cast<std::size_t>(position), static_cast<std::size_t>(byte_length));
 }
 
 /// The value of the slot as wide as `offset_type` at `position`, read a byte at
