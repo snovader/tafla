@@ -825,33 +825,34 @@ impl TableWriter {
         Ok(())
     }
 
-    /// An item of `set_vector_tables()`: its table's values, how many of the
-    /// tuple's lead they are, and its string, which follows them when
-    /// `has_string`. An exact tuple's values are used in place, and any other
-    /// sequence's are sliced as the pure-Python runtime slices them, with the
-    /// same errors.
-    fn item_values<'py>(
-        values: &Bound<'py, PyAny>,
+    /// Writes an item of `set_vector_tables()`: its table's values, followed
+    /// by its string when `has_string`. An exact tuple's values and string
+    /// are written in place, borrowed from it, and any other sequence's are
+    /// sliced as the pure-Python runtime slices them, with the same errors.
+    fn write_vector_item(
+        &mut self,
+        fields: &FixedFields,
+        values: &Bound<'_, PyAny>,
         has_string: bool,
-    ) -> PyResult<(Bound<'py, PyTuple>, usize, Option<Bound<'py, PyString>>)> {
-        if !has_string {
-            let tuple = Self::fixed_values(values)?;
-            let count = tuple.len();
-            return Ok((tuple, count, None));
+    ) -> PyResult<()> {
+        if let Ok(tuple) = values.cast_exact::<PyTuple>() {
+            if !has_string {
+                return self.write_item(fields, tuple, tuple.len(), None);
+            }
+            if let Some(count) = tuple.len().checked_sub(1) {
+                let string = tuple_item(tuple, count);
+                return self.write_item(fields, tuple, count, Some(&*string.cast::<PyString>()?));
+            }
         }
 
-        if let Ok(tuple) = values.cast_exact::<PyTuple>()
-            && let Some(count) = tuple.len().checked_sub(1)
-        {
-            let string = tuple_item(tuple, count).cast::<PyString>()?.to_owned();
-            return Ok((tuple.clone(), count, Some(string)));
-        }
-
-        let table = values.get_item(PySlice::new(values.py(), 0, -1, 1))?;
-        let string = values.get_item(-1)?.cast_into::<PyString>()?;
-        let tuple = Self::fixed_values(&table)?;
-        let count = tuple.len();
-        Ok((tuple, count, Some(string)))
+        let (tuple, string) = if has_string {
+            let table = values.get_item(PySlice::new(values.py(), 0, -1, 1))?;
+            let string = values.get_item(-1)?.cast_into::<PyString>()?;
+            (Self::fixed_values(&table)?, Some(string))
+        } else {
+            (Self::fixed_values(values)?, None)
+        };
+        self.write_item(fields, &tuple, tuple.len(), string.as_ref())
     }
 
     fn fixed_values<'py>(values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
@@ -1372,16 +1373,15 @@ impl TableWriter {
         fields: &Bound<'_, FixedFields>,
         items: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let count = items.len()?;
-        let vector = self.set_vector(py, index, &count.into_bound_py_any(py)?)?;
+        let length = items.len()?;
+        let vector = self.set_vector(py, index, &length.into_bound_py_any(py)?)?;
         let fields = fields.get();
         let has_string = fields.description().string;
 
         let mut iterated = 0;
         for (item, values) in items.try_iter()?.enumerate() {
             iterated = item + 1;
-            let (values, count, string) = Self::item_values(&values?, has_string)?;
-            self.write_item(fields, &values, count, string.as_ref())?;
+            self.write_vector_item(fields, &values?, has_string)?;
 
             let position = Int::from(vector + (item + 1) * self.size());
             let end = Int::from(self.len() - vector);
@@ -1392,9 +1392,9 @@ impl TableWriter {
 
         // A sequence whose len() isn't its number of items has ends over its
         // items, or ends left at 0, and the table is undefined
-        if iterated != count {
+        if iterated != length {
             return Err(PyValueError::new_err(format!(
-                "The items' len() is {count}, but iterating them gave {iterated}"
+                "The items' len() is {length}, but iterating them gave {iterated}"
             )));
         }
         Ok(())
