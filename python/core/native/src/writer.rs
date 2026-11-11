@@ -119,12 +119,20 @@ impl Bytes {
         self.resize(self.len.checked_add(count).ok_or_else(memory_error)?)
     }
 
-    /// Grows the capacity to at least `required`, by half again at least,
-    /// so that appending is amortized, and to `required` exactly for a
-    /// larger append, such as a large array's
+    /// Grows the capacity to at least `required`, so that appending is
+    /// amortized: by half again while it's small, and by an eighth, as a
+    /// `bytearray` grows, once it's large, so that a large table holds
+    /// little more than its bytes. A larger append, such as a large array's,
+    /// grows it to `required` exactly.
     #[cold]
     fn grow(&mut self, required: usize) -> PyResult<()> {
-        let capacity = required.max(self.capacity + self.capacity / 2);
+        const LARGE: usize = 64 * 1024;
+        let growth = if self.capacity < LARGE {
+            self.capacity / 2
+        } else {
+            self.capacity / 8
+        };
+        let capacity = required.max(self.capacity + growth);
         self.pointer = allocate(self.pointer.as_ptr(), capacity)?;
         self.capacity = capacity;
 
