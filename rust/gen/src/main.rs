@@ -120,6 +120,16 @@ impl Command {
         if schemas.is_empty() {
             return Err("no schema is given".to_owned());
         }
+        // Each schema's Go is a package of its own, and the files of two
+        // packages can't share a directory
+        #[cfg(feature = "go")]
+        if target == Target::Go && schemas.len() > 1 {
+            return Err(
+                "go generates a package of each schema, which needs a directory of its own: \
+                 give one schema, and another `--out` for each other"
+                    .to_owned(),
+            );
+        }
 
         let package = package
             .map(|name| name.parse::<JavaPackage>())
@@ -156,9 +166,12 @@ Options:
   --out <dir>          The directory to write the files under, by default the
                        current directory
   --runtime <module>   The module, package or crate that the code imports tafla's
-                       runtime from: `tafla` by default, and
-                       `io.github.snovader.tafla` in Java
-  --package <package>  The package of the Java classes, by default `generated`
+                       runtime from: `tafla` by default,
+                       `io.github.snovader.tafla` in Java and
+                       `github.com/snovader/tafla/go` in Go
+  --package <package>  The package of the Java classes, by default `generated`.
+                       Go's package is named after the schema, and Go takes
+                       one schema at a time
   -h, --help           Prints this help
   -V, --version        Prints the version
   --                   Ends the options, so that every argument after it is a schema
