@@ -102,7 +102,8 @@ inline std::vector<std::vector<std::uint8_t>> corrupted(const std::vector<std::u
     if (!bytes.empty()) {
         auto overwritten = bytes;
         for (const auto& [position, byte] : corruption.overwrites) {
-            overwritten[position % overwritten.size()] = byte;
+            // Less than the size, so within a size_t
+            overwritten[static_cast<std::size_t>(position % overwritten.size())] = byte;
         }
         copies.push_back(std::move(overwritten));
     }

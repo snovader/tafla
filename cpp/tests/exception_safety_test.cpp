@@ -1,6 +1,8 @@
 // A setter that throws leaves its builder as it was, even when an allocation
 // fails partway through it. The test replaces the global `operator new`, so
-// that it can fail each allocation of a setter in turn.
+// that it can fail each allocation of a setter in turn, and every other
+// unaligned form of `new` and `delete`, so that memory from any of them is
+// freed by its own, as AddressSanitizer checks.
 
 #include <gtest/gtest.h>
 
@@ -43,12 +45,44 @@ void* operator new(std::size_t size) {
 #pragma GCC diagnostic ignored "-Wmismatched-new-delete"
 #endif
 
+void* operator new[](std::size_t size) {
+    return ::operator new(size);
+}
+
+void* operator new(std::size_t size, const std::nothrow_t& /*nothrow*/) noexcept {
+    try {
+        return ::operator new(size);
+    } catch (const std::bad_alloc&) {
+        return nullptr;
+    }
+}
+
+void* operator new[](std::size_t size, const std::nothrow_t& nothrow) noexcept {
+    return ::operator new(size, nothrow);
+}
+
 void operator delete(void* allocated) noexcept {
     std::free(allocated);  // NOLINT(cppcoreguidelines-no-malloc)
 }
 
 void operator delete(void* allocated, std::size_t /*size*/) noexcept {
-    std::free(allocated);  // NOLINT(cppcoreguidelines-no-malloc)
+    ::operator delete(allocated);
+}
+
+void operator delete(void* allocated, const std::nothrow_t& /*nothrow*/) noexcept {
+    ::operator delete(allocated);
+}
+
+void operator delete[](void* allocated) noexcept {
+    ::operator delete(allocated);
+}
+
+void operator delete[](void* allocated, std::size_t /*size*/) noexcept {
+    ::operator delete(allocated);
+}
+
+void operator delete[](void* allocated, const std::nothrow_t& /*nothrow*/) noexcept {
+    ::operator delete(allocated);
 }
 
 namespace tafla::test {

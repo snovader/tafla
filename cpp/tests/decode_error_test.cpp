@@ -163,7 +163,8 @@ RC_GTEST_PROP(DecodeError, OverwrittenTablesReadValuesOrDecodeErrors, ()) {
     RC_PRE(!bytes.empty());
 
     for (const auto& [index, byte] : overwrites) {
-        bytes[index % bytes.size()] = byte;
+        // Less than the size, so within a size_t
+        bytes[static_cast<std::size_t>(index % bytes.size())] = byte;
     }
 
     Errors errors;
