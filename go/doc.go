@@ -65,8 +65,8 @@
 // Functions panic only for mistakes of the code that calls them, which no
 // bytes can cause: an index past an [ArrayView]'s or a [Vector]'s length, as
 // indexing a slice does, an offset type or alignment that isn't one of the
-// constants, a negative number of fields, the version of a layout without
-// one, or a nil nested table. A [TableWriter] given other fields than its
+// constants, a negative number of fields, a negative field index or struct
+// size, the version of a layout without one, or a nil nested table. A [TableWriter] given other fields than its
 // sizer counted panics for a write past the table's bytes, rather than
 // writing past them.
 package tafla

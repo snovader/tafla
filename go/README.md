@@ -153,6 +153,8 @@ Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
 
 - an index past an `ArrayView`'s or a `Vector`'s length, or negative,
+- a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
+  struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
 - a negative number of fields, `NewTableBuilder()` of a versioned layout or
   `NewVersionedTableBuilder()` of one without a version slot, and `Version()`
