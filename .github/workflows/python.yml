@@ -184,20 +184,9 @@ jobs:
         working-directory: python/core
         run: uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
 
-      - name: Run the package's examples from each wheel
-        run: |
-          for wheel in dist/*.whl; do
-            case "$wheel" in
-              *-py3-none-any.whl) expected=python ;;
-              *) expected=native ;;
-            esac
-            uv run --isolated --no-project --with "$wheel" python -I -c "
-          import doctest, tafla
-          assert tafla.IMPLEMENTATION == '$expected', ('$wheel', tafla.IMPLEMENTATION)
-          result = doctest.testmod(tafla)
-          assert result.attempted and not result.failed, result
-          "
-          done
+      # The wheel that the source distribution built, and the pure-Python one
+      - name: Test each wheel on its own
+        run: scripts/test-wheels.sh dist
 
   benchmark:
     name: Benchmark

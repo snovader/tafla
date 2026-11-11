@@ -12,9 +12,28 @@ language and publishes its packages:
 | crates.io     | `tafla`, then `tafla-gen`        | `CARGO_REGISTRY_TOKEN`, or trusted publishing without one |
 | Maven Central | `io.github.snovader.tafla:tafla` | Central Portal token, and a signing key                   |
 
-Each registry has a job of its own, so a registry that fails doesn't stop the
+Each registry has jobs of its own, so a registry that fails doesn't stop the
 others, and its failed jobs can be run again. A version that a registry has
 published can't be published again.
+
+## The Python distributions
+
+PyPI's `tafla` has a native implementation, written in Rust, and a pure-Python
+one. The release publishes:
+
+- Native wheels for Linux x86_64 and aarch64, as `manylinux_2_28` and
+  `musllinux_1_2`, macOS x86_64 and arm64, and Windows x64. Each platform has
+  an `abi3` wheel for CPython 3.14 and later, a `cp314t` wheel for
+  free-threaded CPython 3.14, and an `abi3t` wheel for free-threaded CPython
+  3.15 and later.
+- A pure-Python `py3-none-any` wheel, which pip installs on any other platform
+  or Python.
+- The source distribution, which builds the native module with Rust. pip
+  builds from it only when told to, since the pure-Python wheel installs
+  wherever no native one does.
+
+`python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
+that it's for, and the job that publishes them runs once every one has passed.
 
 ## Releasing a version
 
@@ -48,9 +67,9 @@ version in `VERSION`.
 
 A pull request that touches the release files, such as `VERSION`, a package's
 manifest or the workflow, runs the workflow without publishing. It checks every
-language, builds the npm package, the Python distributions, the crates and the
-Maven repository, signed with a throwaway key, and uploads them to the
-workflow run. To run it by hand, run the Release workflow from the Actions tab
+language, builds the npm package, the Python distributions for every platform,
+each tested, the crates and the Maven repository, signed with a throwaway key,
+and uploads them to the workflow run. To run it by hand, run the Release workflow from the Actions tab
 with `dry_run` on. A run that isn't on a tag never publishes.
 
 ## Setting up the registries

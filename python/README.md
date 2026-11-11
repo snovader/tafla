@@ -58,6 +58,16 @@ mkdir -p ../dist
 uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
 ```
 
+`scripts/test-wheels.sh` tests each wheel in a directory on its own. It
+installs the wheel alone in each Python that its tags name, checks that
+`tafla` uses the implementation that the wheel holds, and runs the core tests
+against it. The release builds a native wheel for each platform and Python,
+which [RELEASING.md](../RELEASING.md) lists, and tests each with it:
+
+```sh
+scripts/test-wheels.sh dist
+```
+
 The benchmarks' tests check that their workloads have the TypeScript
 comparison's values, and that every codec in the comparison reads back what it
 wrote. `uv run --python 3.15 ...` runs the commands with another Python. Where
