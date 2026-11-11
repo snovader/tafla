@@ -59,6 +59,13 @@ LARGE_INTEGERS: SearchStrategy[int] = builds(
 )
 INTEGERS: SearchStrategy[int] = one_of(integers(-8, 80), integers(), LARGE_INTEGERS)
 
+# Counts of a writer's fields or of a vector's tables: small ones, and ones
+# that no offset type can write, which fail before the writer allocates. The
+# writers allocate what a count in between asks for, up to 16 GB.
+COUNTS: SearchStrategy[int] = one_of(
+    integers(-8, 80), integers(max_value=-1), integers(min_value=2**32), LARGE_INTEGERS
+)
+
 SCALARS = [*sorted(FORMATS), "bool"]
 
 
@@ -281,7 +288,7 @@ class TestImplementations(unittest.TestCase):
         self, draw: DataObject
     ) -> None:
         arguments = draw.draw(layout_arguments())
-        fields = draw.draw(one_of(integers(0, 6), INTEGERS))
+        fields = draw.draw(one_of(integers(0, 6), COUNTS))
         version = draw.draw(one_of(none(), integers(-1, 300), INTEGERS))
         description = draw.draw(descriptions())
         calls = draw.draw(lists(WRITES, max_size=10))
@@ -534,7 +541,7 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
     tuples(just("set_table"), tuples(INDICES, ALIGNMENTS)),
     tuples(just("start_table"), tuples(integers(0, 4))),
     tuples(just("end_table"), tuples(integers(0, 40))),
-    tuples(just("set_vector"), tuples(INDICES, one_of(integers(-1, 4), INTEGERS))),
+    tuples(just("set_vector"), tuples(INDICES, one_of(integers(-1, 4), COUNTS))),
     tuples(just("set_item_end"), tuples(one_of(integers(-4, 40), INTEGERS), INDICES)),
     tuples(
         sampled_from(["set_fields", "write_table"]),
