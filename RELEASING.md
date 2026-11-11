@@ -24,8 +24,9 @@ one. The release publishes:
 - Native wheels for Linux x86_64 and aarch64, as `manylinux_2_28` and
   `musllinux_1_2`, macOS x86_64 and arm64, and Windows x64. Each platform has
   an `abi3` wheel for CPython 3.14 and later, a `cp314t` wheel for
-  free-threaded CPython 3.14, and an `abi3t` wheel for free-threaded CPython
-  3.15 and later.
+  free-threaded CPython 3.14, and an `abi3t` wheel for CPython 3.15 and
+  later, which loads with the GIL too, and which pip prefers there to the
+  `abi3` one.
 - A pure-Python `py3-none-any` wheel, which pip installs on any other platform
   or Python.
 - The source distribution, which builds the native module with Rust. pip
