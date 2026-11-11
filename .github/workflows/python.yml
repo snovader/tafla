@@ -46,6 +46,8 @@ jobs:
               - ".github/workflows/python.yml"
               - "conformance/**"
               - "python/**"
+              # Which writes the version into the native crate's lock file
+              - "scripts/set-version.sh"
               # The Rust runtime, which the native classes build on
               - "rust/Cargo.toml"
               - "rust/core/**"
@@ -98,6 +100,15 @@ jobs:
       - name: Run the native classes' Rust tests
         working-directory: python/core/native
         run: PYO3_PYTHON="$(uv python find 3.14)" cargo test
+
+      # The release builds the wheels with --locked, so a new version must
+      # reach the native crate's lock file, which records the Rust runtime's
+      - name: Check that setting a version keeps the native crate's lock file
+        working-directory: .
+        run: |
+          scripts/set-version.sh 99.0.0
+          cargo metadata --locked --format-version 1 --manifest-path python/core/native/Cargo.toml > /dev/null
+          git checkout -- .
 
   test:
     name: Test (Python ${{ matrix.python_version }})

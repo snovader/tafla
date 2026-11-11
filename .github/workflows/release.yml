@@ -87,6 +87,7 @@ jobs:
               - "python/pyproject.toml"
               - "python/core/pyproject.toml"
               - "python/core/native/Cargo.toml"
+              - "python/core/native/Cargo.lock"
               - "python/scripts/test-wheels.sh"
               - "rust/Cargo.toml"
               - "rust/core/Cargo.toml"
