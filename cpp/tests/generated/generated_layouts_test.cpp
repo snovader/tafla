@@ -136,10 +136,12 @@ RC_GTEST_PROP(GeneratedLayouts, EveryVersionedLayoutRejectsOtherVersions, ()) {
                 return;
             }
 
+            // Every message's header holds the version slot, which `at()`
+            // shows GCC, whose warnings otherwise see a write into no bytes
             auto bytes = typename Spec::FieldsType{}.serialize().to_vector();
             const auto slot = version_slot(spec.layout);
             for (std::size_t byte = 0; byte < offset_size(spec.layout.offset_type); ++byte) {
-                bytes[slot + byte] = static_cast<std::uint8_t>(version >> (8 * byte));
+                bytes.at(slot + byte) = static_cast<std::uint8_t>(version >> (8 * byte));
             }
 
             RC_ASSERT(Message::version_of(bytes) == version);

@@ -96,8 +96,11 @@ public:
         : TableBuilder(fields, versioned_header(fields, layout, version), layout.is_sized(), version,
                        layout.offset_type()) {}
 
-    TableBuilder(TableBuilder&&) noexcept;
-    TableBuilder& operator=(TableBuilder&&) noexcept;
+    /// Moves `other`'s fields and what it owns, and leaves it as a builder
+    /// that was just started, with its layout and number of fields, which
+    /// throws a `BuildError` until every field is set again
+    TableBuilder(TableBuilder&& other) noexcept;
+    TableBuilder& operator=(TableBuilder&& other) noexcept;
     TableBuilder(const TableBuilder&) = delete;
     TableBuilder& operator=(const TableBuilder&) = delete;
     ~TableBuilder();
@@ -397,6 +400,29 @@ private:
     public:
         static constexpr std::size_t Inline = 4;
 
+        Fields() = default;
+
+        /// Leaves `other` without fields, since its vector is moved, and its
+        /// size would otherwise count fields that its array doesn't hold
+        Fields(Fields&& other) noexcept
+            : inline_(other.inline_), spilled_(std::move(other.spilled_)), size_(std::exchange(other.size_, 0)) {
+            other.spilled_.clear();
+        }
+
+        Fields& operator=(Fields&& other) noexcept {
+            if (this != &other) {
+                inline_ = other.inline_;
+                spilled_ = std::move(other.spilled_);
+                size_ = std::exchange(other.size_, 0);
+                other.spilled_.clear();
+            }
+            return *this;
+        }
+
+        Fields(const Fields&) = delete;
+        Fields& operator=(const Fields&) = delete;
+        ~Fields() = default;
+
         [[nodiscard]] std::size_t size() const noexcept {
             return size_;
         }
@@ -442,8 +468,12 @@ private:
             }
 
             if (spilled_.empty()) {
+                // The array holds every field while the vector is empty, so
+                // there are at most `Inline`, which the bound shows GCC, whose
+                // warnings otherwise see a copy past the array
+                const auto inline_fields = static_cast<std::ptrdiff_t>(std::min(size_, Inline));
                 spilled_.reserve(std::max(size, 2 * Inline));
-                spilled_.assign(inline_.begin(), inline_.begin() + static_cast<std::ptrdiff_t>(size_));
+                spilled_.assign(inline_.begin(), inline_.begin() + inline_fields);
             } else if (size > spilled_.capacity()) {
                 spilled_.reserve(std::max(size, 2 * spilled_.capacity()));
             }
@@ -461,6 +491,19 @@ private:
     static std::uint32_t versioned_header(std::size_t fields, TableLayout<true> layout, std::uint32_t version) {
         detail::check_version(version, layout.offset_type());
         return detail::header_length(fields, layout.is_sized(), true, layout.offset_type());
+    }
+
+    /// The length of the header, which the constructor checked
+    [[nodiscard]] std::uint32_t header_length() const noexcept {
+        const auto slots = fields_ + (sized_ ? 1U : 0U) + (versioned_ ? 1U : 0U);
+        return static_cast<std::uint32_t>(slots * offset_size(offset_type_));
+    }
+
+    /// Leaves the builder as its constructor did, without fields
+    void clear() noexcept {
+        set_ = 0;
+        length_ = header_length();
+        alignment_ = Alignment::one;
     }
 
     /// A field of bytes, whose length the table's length check limits
@@ -715,8 +758,39 @@ inline TableBuilder::TableBuilder(std::size_t fields, std::uint32_t header, bool
     values_.reserve(fields);
 }
 
-inline TableBuilder::TableBuilder(TableBuilder&&) noexcept = default;
-inline TableBuilder& TableBuilder::operator=(TableBuilder&&) noexcept = default;
+inline TableBuilder::TableBuilder(TableBuilder&& other) noexcept
+    : values_(std::move(other.values_)),
+      owned_(std::move(other.owned_)),
+      fields_(other.fields_),
+      set_(other.set_),
+      length_(other.length_),
+      version_(other.version_),
+      versioned_(other.versioned_),
+      sized_(other.sized_),
+      offset_type_(other.offset_type_),
+      alignment_(other.alignment_) {
+    other.owned_.clear();
+    other.clear();
+}
+
+inline TableBuilder& TableBuilder::operator=(TableBuilder&& other) noexcept {
+    if (this != &other) {
+        values_ = std::move(other.values_);
+        owned_ = std::move(other.owned_);
+        fields_ = other.fields_;
+        set_ = other.set_;
+        length_ = other.length_;
+        version_ = other.version_;
+        versioned_ = other.versioned_;
+        sized_ = other.sized_;
+        offset_type_ = other.offset_type_;
+        alignment_ = other.alignment_;
+        other.owned_.clear();
+        other.clear();
+    }
+    return *this;
+}
+
 inline TableBuilder::~TableBuilder() = default;
 
 inline void TableBuilder::set_table(NestedTable table) {

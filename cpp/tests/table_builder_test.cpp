@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "common/build.hpp"
@@ -269,6 +271,44 @@ TEST(TableBuilder, RejectsWritingBeforeEveryFieldIsSet) {
         EXPECT_EQ(error.fields(), set + 1);
         EXPECT_EQ(std::string(error.what()),
                   "Only " + std::to_string(set) + " of the table's " + std::to_string(set + 1) + " fields were set");
+    }
+}
+
+/// Six fields of strings, more than a builder records within itself, which
+/// the builder owns
+TableBuilder six_strings(std::string_view value) {
+    TableBuilder builder(6, TableLayout().sized().with_offset_type(OffsetType::uint16));
+    for (std::size_t field = 0; field < 6; ++field) {
+        builder.set_string(std::string(value));
+    }
+    return builder;
+}
+
+/// A builder that's moved from is left as it was started, with its layout
+/// and number of fields but no fields, whether it's moved into a new
+/// builder or assigned to another
+TEST(TableBuilder, AMovedFromBuilderIsLeftWithoutFields) {
+    const auto expected = six_strings("moved").to_bytes();
+
+    auto from = six_strings("moved");
+    const TableBuilder constructed(std::move(from));
+    auto assigned = six_strings("replaced");
+    auto assigned_from = six_strings("moved");
+    assigned = std::move(assigned_from);
+
+    EXPECT_EQ(constructed.to_bytes(), expected);
+    EXPECT_EQ(assigned.to_bytes(), expected);
+    for (auto* moved : {&from, &assigned_from}) {
+        // NOLINTNEXTLINE(bugprone-use-after-move): the state after it is the point
+        const auto error = build_error_of([&] { static_cast<void>(moved->to_bytes()); });
+        EXPECT_EQ(error.kind(), BuildError::Kind::incomplete);
+        EXPECT_EQ(error.set(), 0U);
+        EXPECT_EQ(error.fields(), 6U);
+
+        for (std::size_t field = 0; field < 6; ++field) {
+            moved->set_string("again");
+        }
+        EXPECT_EQ(moved->to_bytes(), six_strings("again").to_bytes());
     }
 }
 
