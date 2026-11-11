@@ -5,7 +5,10 @@ raise the same errors. The rest of the tests run against the implementation
 that ``tafla`` chose, and CI runs them with each."""
 
 import inspect
+import os
 import struct
+import subprocess
+import sys
 import unittest
 from array import array
 from collections.abc import Callable
@@ -172,21 +175,40 @@ def comparable(value: object) -> object:
     return value
 
 
+# Structs and counts of fields too large for any table, whose bytes pass a C
+# ssize_t, alone or together, as two of 2**63 bytes wrap a 64-bit length to
+# 0, which FixedFields rejects as struct does. Each is computed from its
+# exponent, as LARGE_INTEGERS is. Those within a ssize_t can't be compared:
+# no writer can allocate them, and the pure-Python one raises MemoryError for
+# packing them where the native one writes them with the setters.
+HUGE_STRUCTS: SearchStrategy[str] = builds(
+    lambda exponent, below: f"{2**exponent - below}s",
+    sampled_from([63, 64, 100]),
+    sampled_from([0, 1]),
+)
+HUGE_COUNTS: SearchStrategy[int] = builds(
+    lambda exponent: 2**exponent, sampled_from([63, 64, 15000])
+)
+
+
 @composite
 def descriptions(draw: DrawFn, depth: int = 1) -> tuple[int, list[Any], bool]:
     """A ``FixedFields``' arguments: the table's fields, the formats of its
     leading fields, nested tables' as descriptions, and whether a string
-    follows them"""
+    follows them. A few are fields of no table, or fewer fields than they
+    describe, which both reject."""
     nested = descriptions(depth - 1).map(lambda nested: (*nested[:2], False))
     format_strategy: SearchStrategy[Any] = sampled_from(
         ["b", "B", "h", "H", "i", "I", "q", "Q", "f", "d", "?", "3s", "8s"]
     )
+    format_strategy = one_of(format_strategy, HUGE_STRUCTS)
     if depth > 0:
         format_strategy = one_of(format_strategy, nested)
 
     formats = draw(lists(format_strategy, max_size=4))
     string = draw(booleans()) if depth == 1 else False
-    fields = len(formats) + string + draw(integers(0, 2))
+    extra = draw(one_of(integers(0, 2), integers(-2, -1), HUGE_COUNTS))
+    fields = len(formats) + string + extra
     return fields, formats, string
 
 
@@ -255,6 +277,38 @@ class TestImplementations(unittest.TestCase):
                         parameters(getattr(native, attribute)), parameters(expected)
                     )
 
+    def test_native_classes_take_a_pure_python_layout_as_a_native_one(
+        self,
+    ) -> None:
+        arguments = {"sized": True, "versioned": True, "offset_type": "uint16"}
+        tables = []
+        for table_layout in [
+            self.native.TableLayout(**arguments),
+            PURE.TableLayout(**arguments),
+        ]:
+            fields = self.native.FixedFields(2, "h", layout=table_layout)
+            writer = self.native.TableWriter(2, table_layout, 3)
+            writer.set_fields(fields, (-2,))
+            writer.set_string(1, "a")
+            data = bytes(writer.bytes())
+
+            buffer = self.native.ByteBuffer(data, table_layout)
+            self.assertEqual(buffer.get_version(), 3)
+            self.assertEqual(buffer.get_fields(0, fields), (-2,))
+            tables.append(data)
+
+        self.assertEqual(tables[1], tables[0])
+
+    def test_native_classes_raise_type_error_for_a_layout_of_another_type(
+        self,
+    ) -> None:
+        for table_layout in ["uint16", None.__class__, 4]:
+            with (
+                self.subTest(layout=table_layout),
+                self.assertRaisesRegex(TypeError, "A layout is a TableLayout"),
+            ):
+                self.native.TableWriter(1, table_layout)
+
     @given(data())
     def test_read_the_same_values_and_raise_the_same_errors_whatever_the_bytes(
         self, draw: DataObject
@@ -315,6 +369,8 @@ class TestImplementations(unittest.TestCase):
             ]
             self.assertEqual(outcomes[1], outcomes[0], describe_call(method, args))
 
+        for _, writer in writers:
+            write(writer, PURE, "release_views", (), description)
         written = [outcome(writer.bytes) for _, writer in writers]
         self.assertEqual(written[1], written[0])
 
@@ -360,6 +416,79 @@ class TestImplementations(unittest.TestCase):
                 for implementation in (PURE, self.native)
             ]
             self.assertEqual(read[1], read[0])
+
+
+# Imports tafla with a finder that the module tafla._native finds first,
+# which raises the error that a missing or a broken module raises, of the
+# module named missing, and prints
+# the implementation that tafla chose and the warnings that importing it gave
+IMPORT_WITH_NATIVE_MODULE = """
+import sys, warnings
+
+class Finder:
+    def find_spec(self, name, path=None, target=None):
+        if name == "tafla._native":
+            raise {error}("{message}", name={missing!r})
+        return None
+
+sys.meta_path.insert(0, Finder())
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    import tafla
+print(tafla.IMPLEMENTATION)
+for warning in caught:
+    print(warning.category.__name__, warning.message)
+"""
+
+
+class TestChoice(unittest.TestCase):
+    """How ``tafla`` chooses its implementation when the native module is
+    missing, as without a native wheel, or fails to import, as a module built
+    for another Python does"""
+
+    def import_tafla(
+        self, error: str, message: str, missing: str = "tafla._native"
+    ) -> list[str]:
+        code = IMPORT_WITH_NATIVE_MODULE.format(
+            error=error, message=message, missing=missing
+        )
+        environment = {
+            name: value
+            for name, value in os.environ.items()
+            if name != "TAFLA_PUREPYTHON"
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env=environment,
+            check=True,
+        )
+        return result.stdout.splitlines()
+
+    def test_uses_pure_python_silently_when_the_native_module_is_missing(
+        self,
+    ) -> None:
+        printed = self.import_tafla(
+            "ModuleNotFoundError", "No module named 'tafla._native'"
+        )
+        self.assertEqual(printed, ["python"])
+
+    def test_warns_when_the_native_module_fails_to_import(self) -> None:
+        printed = self.import_tafla("ImportError", "undefined symbol: PyFoo")
+
+        self.assertEqual(printed[0], "python")
+        self.assertEqual(len(printed), 2)
+        self.assertRegex(printed[1], r"^RuntimeWarning .*undefined symbol: PyFoo")
+
+    def test_warns_when_a_module_that_the_native_module_imports_is_missing(
+        self,
+    ) -> None:
+        printed = self.import_tafla(
+            "ModuleNotFoundError", "No module named 'other'", "other"
+        )
+        self.assertEqual(printed[0], "python")
+        self.assertRegex(printed[1], r"^RuntimeWarning ")
 
 
 def create_writer(
@@ -542,8 +671,16 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         tuples(INDICES, STRUCTS, one_of(integers(-1, 4), INTEGERS), ALIGNMENTS),
     ),
     tuples(just("set_table"), tuples(INDICES, ALIGNMENTS)),
-    tuples(just("start_table"), tuples(integers(0, 4))),
-    tuples(just("end_table"), tuples(integers(0, 40))),
+    # Counts of fields and parents outside the contract too, which the
+    # pure-Python writer takes as any int
+    tuples(
+        just("start_table"),
+        tuples(one_of(integers(0, 4), integers(-80, -1), HUGE_COUNTS, LARGE_INTEGERS)),
+    ),
+    tuples(just("end_table"), tuples(one_of(integers(0, 40), INTEGERS))),
+    # A view of the bytes that's released at once, one that's held, and the
+    # release of those held, between which the bytes can't grow
+    tuples(sampled_from(["bytes", "hold_view", "release_views"]), just(())),
     tuples(just("set_vector"), tuples(INDICES, one_of(integers(-1, 4), COUNTS))),
     tuples(just("set_item_end"), tuples(one_of(integers(-4, 40), INTEGERS), INDICES)),
     tuples(
@@ -560,6 +697,11 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
 )
 
 
+# The views of each writer that the calls hold, by the writer's id, until a
+# call releases them, or the test does
+HELD_VIEWS: dict[int, list[memoryview[int]]] = {}
+
+
 def write(
     writer: Any,
     implementation: Implementation,
@@ -567,6 +709,14 @@ def write(
     args: tuple[Any, ...],
     description: tuple[int, list[Any], bool],
 ) -> object:
+    if method == "hold_view":
+        view = memoryview(writer)
+        HELD_VIEWS.setdefault(id(writer), []).append(view)
+        return view
+    if method == "release_views":
+        for view in HELD_VIEWS.pop(id(writer), []):
+            view.release()
+        return None
     if method in {"set_fields", "write_table"}:
         values, string = args
         fields = fixed_fields_of(implementation, description)

@@ -18,26 +18,43 @@ mod reader;
 mod values;
 mod writer;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use pyo3::prelude::*;
 
 /// Whether the host's byte order is little-endian, which arrays of its
-/// elements are in, and which tables are in. The tests set it to take the
-/// big-endian branches on any host.
-static LITTLE_ENDIAN_HOST: AtomicBool = AtomicBool::new(cfg!(target_endian = "little"));
-
-fn little_endian_host() -> bool {
-    LITTLE_ENDIAN_HOST.load(Ordering::Relaxed)
+/// elements are in, and which tables are in
+#[cfg(not(feature = "test-hooks"))]
+#[inline]
+const fn little_endian_host() -> bool {
+    cfg!(target_endian = "little")
 }
 
-/// Treats the host as little-endian or not, for the tests, as patching
-/// ``tafla.elements.IS_LITTLE_ENDIAN`` does for the pure-Python runtime, so
-/// that arrays are byte-swapped as on a big-endian host. Returns whether it
-/// was treated as little-endian.
-#[pyfunction]
-fn _set_little_endian_host(little_endian: bool) -> bool {
-    LITTLE_ENDIAN_HOST.swap(little_endian, Ordering::Relaxed)
+#[cfg(feature = "test-hooks")]
+use test_hooks::little_endian_host;
+
+/// Hooks for the tests, which only a build with the feature `test-hooks`
+/// has, as the development environment's is, and no wheel's
+#[cfg(feature = "test-hooks")]
+mod test_hooks {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use pyo3::prelude::*;
+
+    /// Whether the host is treated as little-endian, which the tests set to
+    /// take the big-endian branches on any host
+    static LITTLE_ENDIAN_HOST: AtomicBool = AtomicBool::new(cfg!(target_endian = "little"));
+
+    pub fn little_endian_host() -> bool {
+        LITTLE_ENDIAN_HOST.load(Ordering::Relaxed)
+    }
+
+    /// Treats the host as little-endian or not, for the tests, as patching
+    /// ``tafla.elements.IS_LITTLE_ENDIAN`` does for the pure-Python runtime,
+    /// so that arrays are byte-swapped as on a big-endian host. Returns
+    /// whether it was treated as little-endian.
+    #[pyfunction]
+    pub fn _set_little_endian_host(little_endian: bool) -> bool {
+        LITTLE_ENDIAN_HOST.swap(little_endian, Ordering::Relaxed)
+    }
 }
 
 /// The native implementation of the classes of tafla's runtime that the code
@@ -48,6 +65,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fixed_fields::FixedFields>()?;
     module.add_class::<writer::TableWriter>()?;
     module.add_class::<reader::ByteBuffer>()?;
-    module.add_function(wrap_pyfunction!(_set_little_endian_host, module)?)?;
+    #[cfg(feature = "test-hooks")]
+    module.add_function(wrap_pyfunction!(
+        test_hooks::_set_little_endian_host,
+        module
+    )?)?;
     Ok(())
 }

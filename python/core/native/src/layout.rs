@@ -1,6 +1,6 @@
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyString, PyTuple, PyType};
+use pyo3::types::{PyDict, PyString, PyTuple, PyType};
 use tafla::OffsetType;
 
 /// What the classes use of a layout, copied from it
@@ -62,15 +62,53 @@ pub struct TableLayout {
     shape: Shape,
 }
 
-impl TableLayout {
+/// A layout argument: a native `TableLayout`, or a pure-Python one, whose
+/// methods give its shape, since a format may create its layout from
+/// `tafla.layout`, whose class the pure-Python classes take as theirs.
+/// Raises `TypeError` for anything else.
+pub struct Layout(Shape);
+
+impl<'a, 'py> FromPyObject<'a, 'py> for Layout {
+    type Error = PyErr;
+
+    #[inline]
+    fn extract(layout: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        if let Ok(native) = layout.cast::<TableLayout>() {
+            return Ok(Self(native.get().shape));
+        }
+        Self::from_pure(&layout)
+    }
+}
+
+impl Layout {
+    #[cold]
+    fn from_pure(layout: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let py = layout.py();
+        let pure = py.import("tafla.layout")?.getattr("TableLayout")?;
+        if !layout.is_instance(&pure)? {
+            return Err(PyTypeError::new_err(format!(
+                "A layout is a TableLayout, not {}",
+                layout.get_type().name()?
+            )));
+        }
+
+        let flag = |name: &str| layout.call_method0(name)?.is_truthy();
+        let offset_type: OffsetTypeName = layout.call_method0("offset_type")?.extract()?;
+        Ok(Self(Shape {
+            sized: flag("sized")?,
+            versioned: flag("versioned")?,
+            offset_type: offset_type.0,
+        }))
+    }
+
     pub const fn shape(&self) -> Shape {
-        self.shape
+        self.0
     }
 }
 
 /// The shape of a layout argument, or of `TableLayout.DEFAULT` without one
-pub fn shape_of(layout: Option<&Bound<'_, TableLayout>>) -> Shape {
-    layout.map_or(Shape::DEFAULT, |layout| layout.get().shape)
+pub fn shape_of(layout: Option<&Layout>) -> Shape {
+    layout.map_or(Shape::DEFAULT, Layout::shape)
 }
 
 /// An `offset_type` argument: the name of an offset type, or `ValueError`
@@ -140,6 +178,20 @@ impl TableLayout {
         py.import("types")?
             .getattr("GenericAlias")?
             .call1(PyTuple::new(py, [cls.as_any(), item])?)
+    }
+
+    /// Pickles and copies the layout as a call of its class with its
+    /// arguments
+    fn __reduce__<'py>(slf: &Bound<'py, Self>) -> PyResult<(Bound<'py, PyAny>, ())> {
+        let py = slf.py();
+        let shape = slf.get().shape;
+        let arguments = PyDict::new(py);
+        arguments.set_item("sized", shape.sized)?;
+        arguments.set_item("versioned", shape.versioned)?;
+        arguments.set_item("offset_type", shape.offset_type.name())?;
+
+        let partial = py.import("functools")?.getattr("partial")?;
+        Ok((partial.call((slf.get_type(),), Some(&arguments))?, ()))
     }
 
     fn __repr__(&self) -> String {

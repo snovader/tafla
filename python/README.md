@@ -27,6 +27,11 @@ uv run python -m unittest discover -s core/tests -t core
 uv run python -m unittest discover -s benchmarks/tests -t benchmarks
 ```
 
+On the free-threaded 3.14t and 3.15t, the tests skip reading arrays from
+one buffer in several threads at once, and the pure-Python classes' strings
+too, since those builds release a `memoryview` that threads slice at once:
+[python/cpython#127716](https://github.com/python/cpython/issues/127716).
+
 The tests run against the native classes, and again against the pure-Python
 ones with `TAFLA_PUREPYTHON` set, which `tafla.IMPLEMENTATION` confirms. The
 tests in `core/tests/test_implementations.py` compare the two directly, call
@@ -43,8 +48,16 @@ The native crate has Rust's checks of its own, run from `core/native`, where
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-PYO3_PYTHON=python3.14 cargo test
+cargo clippy --all-targets --all-features -- -D warnings
+PYO3_PYTHON=python3.14 cargo test --all-features
 ```
+
+Its feature `test-hooks` adds the tests' hooks, such as one that treats the
+host as big-endian, so that the tests take the byte-swapping branches on any
+host. The development environment builds the module with it, as
+`config-settings-package` in `pyproject.toml` asks, and the wheels without
+it, so the tests that need a hook skip with a wheel. CI runs the crate's
+tests with its `rust-version`, 1.88, too.
 
 `uv build --package tafla` builds the runtime's source distribution, which
 holds the Rust sources, and a wheel with the native module for this platform,
@@ -55,7 +68,7 @@ the same sources by uv_build, which `[tool.uv.build-backend]` in
 
 ```sh
 mkdir -p ../dist
-uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
+uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
 ```
 
 `scripts/test-wheels.sh` tests each wheel in a directory on its own. It

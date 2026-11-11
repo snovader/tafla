@@ -77,11 +77,12 @@ class TableWriter:
     Hand-written tables use ``TableBuilder``, which checks every field.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
-    them, without copying them. A table too long for the layout's
-    ``offset_type`` raises ``ValueError``, from the setter whose offset or count
-    doesn't fit or from ``bytes()``. A scalar setter that raised wrote nothing,
-    but another setter that raised may have written part of its field, after
-    which the writer is of no further use.
+    them, without copying them. While the view is held, a field that would
+    change their length raises ``BufferError``. A table too long for the
+    layout's ``offset_type`` raises ``ValueError``, from the setter whose
+    offset or count doesn't fit or from ``bytes()``. A scalar setter that
+    raised wrote nothing, but another setter that raised may have written part
+    of its field, after which the writer is of no further use.
     """
 
     __slots__ = [
@@ -170,8 +171,10 @@ class TableWriter:
         return writer
 
     def bytes(self) -> memoryview[int]:
-        """Returns a view of the table's bytes, after which it takes no more
-        fields.
+        """Returns a view of the table's bytes, without copying them. While
+        it's held, a field that would change their length raises
+        ``BufferError``, as a ``bytearray``'s does. ``memoryview(writer)``
+        returns the same view.
 
         Raises ``ValueError`` if the table is longer than its layout addresses.
         """
@@ -183,6 +186,11 @@ class TableWriter:
             self.__length.pack_into(data, 0, len(data))
 
         return memoryview(data)
+
+    def __buffer__(self, flags: int, /) -> memoryview[int]:
+        """Exports the view that ``bytes()`` returns, so that
+        ``memoryview(writer)`` is ``writer.bytes()``"""
+        return self.bytes()
 
     def _copy_table(self, table: Buffer) -> None:
         """Writes a table that was written already, from its bytes as they

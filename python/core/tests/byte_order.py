@@ -1,6 +1,7 @@
 """Takes the runtime's big-endian branches on any host, for the implementation
 that ``tafla`` uses"""
 
+import unittest
 from collections.abc import Generator
 from contextlib import contextmanager
 from unittest.mock import patch
@@ -19,6 +20,11 @@ def big_endian_host() -> Generator[None]:
         return
 
     from tafla import _native
+
+    # Only a build with the feature test-hooks has it, as the development
+    # environment's is, and no wheel's
+    if not hasattr(_native, "_set_little_endian_host"):
+        raise unittest.SkipTest("the native module is built without test hooks")
 
     little_endian = _native._set_little_endian_host(False)
     try:

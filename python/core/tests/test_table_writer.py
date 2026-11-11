@@ -472,5 +472,44 @@ class TestAlignments(unittest.TestCase):
                 self.assertEqual(str(raised.exception), message)
 
 
+class TestBytes(unittest.TestCase):
+    def test_a_memoryview_of_the_writer_is_its_bytes_with_its_length(
+        self,
+    ) -> None:
+        for layout in [TableLayout.DEFAULT, TableLayout(sized=True)]:
+            with self.subTest(layout=layout):
+                writer = TableWriter(1, layout)
+                writer.set_uint8(0, 7)
+                with memoryview(writer) as view:
+                    exported = bytes(view)
+                self.assertEqual(exported, bytes(writer.bytes()))
+                if layout.sized():
+                    self.assertEqual(exported[0], len(exported))
+
+    def test_a_memoryview_of_a_writer_too_long_for_its_offsets_raises(
+        self,
+    ) -> None:
+        writer = TableWriter(1, TableLayout(offset_type="uint8"))
+        writer.set_struct(0, bytes(300))
+        for export in [writer.bytes, lambda: memoryview(writer)]:
+            with self.assertRaisesRegex(ValueError, "too long for uint8 offsets"):
+                export()
+
+    def test_takes_fields_again_once_its_views_are_released(self) -> None:
+        writer = TableWriter(2, TableLayout(sized=True))
+        writer.set_uint8(0, 1)
+        views = [writer.bytes(), memoryview(writer)]
+
+        for view in views:
+            with self.assertRaises(BufferError):
+                writer.set_uint8(1, 2)
+            view.release()
+
+        writer.set_uint8(1, 2)
+        data = bytes(writer.bytes())
+        self.assertEqual(data[0], len(data))
+        self.assertEqual(data[-2:], b"\x01\x02")
+
+
 if __name__ == "__main__":
     unittest.main()

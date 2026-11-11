@@ -6,7 +6,7 @@ use pyo3::{IntoPyObjectExt, ffi, intern};
 
 use crate::elements::check_struct_size;
 use crate::fixed_fields::{FixedFields, Plan};
-use crate::layout::{Shape, TableLayout, shape_of};
+use crate::layout::{Layout, Shape, shape_of};
 use crate::little_endian_host;
 use crate::python::{
     Int, contiguous_error, core_error, decode_error, objects, out_of_range, small, with_buffer,
@@ -334,7 +334,7 @@ impl ByteBuffer {
     /// wouldn't be.
     #[new]
     #[pyo3(signature = (bytes, layout = None))]
-    fn new(bytes: &Bound<'_, PyAny>, layout: Option<&Bound<'_, TableLayout>>) -> PyResult<Self> {
+    fn new(bytes: &Bound<'_, PyAny>, layout: Option<Layout>) -> PyResult<Self> {
         let py = bytes.py();
 
         // A memoryview is viewed by one of its own, as memoryview() views it,
@@ -359,7 +359,7 @@ impl ByteBuffer {
 
         Ok(Self {
             held,
-            shape: shape_of(layout),
+            shape: shape_of(layout.as_ref()),
             view: PyOnceLock::new(),
         })
     }
@@ -717,7 +717,9 @@ impl ByteBuffer {
         let tuple =
             unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyTuple_New(count.cast_signed()))? };
         for (index, &(at, kind)) in plan.values.iter().enumerate() {
-            let value = unsafe { values::read(py, kind, &self.bytes_slice()[start + at..])? };
+            // Within the fields, which check_fields() found within the bytes
+            let fields = &self.bytes_slice()[start..start + plan.len];
+            let value = values::read(py, kind, &fields[at..at + kind.size()])?;
             tuple_set(&tuple, index, value)?;
         }
         if let Some(text) = text {

@@ -28,6 +28,12 @@ locations=(
     'rust/gen/Cargo.toml|^tafla = \{ path = "\.\./core", version = "'
     'rust/Cargo.lock|^name = "tafla"\nversion = "'
     'rust/Cargo.lock|^name = "tafla-gen"\nversion = "'
+    # The Python runtime's native module, a crate on the Rust runtime, whose
+    # lock file records the runtime's version, which the release's wheels
+    # build with --locked
+    'python/core/native/Cargo.toml|^version = "'
+    'python/core/native/Cargo.lock|^name = "tafla"\nversion = "'
+    'python/core/native/Cargo.lock|^name = "tafla-python"\nversion = "'
     'java/core/build.gradle.kts|^version = "'
 )
 

@@ -24,8 +24,10 @@ for wheel in "$wheels"/*.whl; do
         *-py3-none-any.whl) versions="3.14+gil" implementation=python ;;
         # The stable ABI, which 3.14 and every later version can load
         *-cp314-abi3-*) versions="3.14+gil 3.15+gil" implementation=native ;;
-        # The free-threaded stable ABI, for 3.15 and every later version
-        *-cp315-abi3.abi3t-*) versions="3.15t" implementation=native ;;
+        # The free-threaded stable ABI, for 3.15 and every later version,
+        # which builds with the GIL load too, and which pip prefers there to
+        # the abi3 wheel for 3.14
+        *-cp315-abi3.abi3t-*) versions="3.15t 3.15+gil" implementation=native ;;
         *-cp314-cp314t-*) versions="3.14t" implementation=native ;;
         *-cp314-cp314-*) versions="3.14+gil" implementation=native ;;
         *)

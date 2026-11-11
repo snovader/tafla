@@ -4,7 +4,8 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple};
 
-use crate::layout::{TableLayout, shape_of};
+use crate::layout::Layout;
+use crate::python::{Int, objects};
 use crate::values::Kind;
 
 /// A table's leading fields as a `FixedFields` describes them
@@ -48,7 +49,10 @@ pub struct Plan {
 }
 
 impl Plan {
-    fn new(description: &Description, size: usize, header: usize) -> Self {
+    /// The plan of `description` for offset size `size`, after a header of
+    /// `header` bytes, or `None` for fields whose bytes from the first slot
+    /// pass a C `ssize_t`, which `struct` can't describe
+    fn new(description: &Description, size: usize, header: usize) -> Option<Self> {
         let mut plan = Self {
             header,
             len: 0,
@@ -58,42 +62,47 @@ impl Plan {
             fits: true,
             size,
         };
-        plan.len = plan.describe(description, header, 0) - header;
+        plan.len = plan.describe(description, header, 0)? - header;
+        if isize::try_from(plan.len).is_err() {
+            return None;
+        }
 
         let max = (1u64 << (8 * size)) - 1;
         plan.fits = plan.slots.iter().all(|&(_, offset)| offset as u64 <= max);
 
-        plan
+        Some(plan)
     }
 
     /// Adds the table that `description` describes, whose slots lie at
     /// `start` from its own start and at `base` from the plan's first slot,
     /// and returns the table's byte length up to its string's bytes, from
-    /// its own start
-    fn describe(&mut self, description: &Description, start: usize, base: usize) -> usize {
+    /// its own start, or `None` if it's beyond a `usize`
+    fn describe(&mut self, description: &Description, start: usize, base: usize) -> Option<usize> {
         let size = self.size;
-        let mut position = start + description.fields * size;
+        let mut position = description.fields.checked_mul(size)?.checked_add(start)?;
 
+        // The slots lie within the fields' slots, before position
         for (index, format) in description.formats.iter().enumerate() {
             self.slots.push((base + index * size, position));
-            let at = base + position - start;
-            position += match format {
+            let at = base.checked_add(position - start)?;
+            let length = match format {
                 Format::Value(kind) => {
                     self.values.push((at, *kind));
                     kind.size()
                 }
-                Format::Table(nested) => self.describe(nested, 0, at),
+                Format::Table(nested) => self.describe(nested, 0, at)?,
             };
+            position = position.checked_add(length)?;
         }
 
         if description.string {
             self.slots
                 .push((base + description.formats.len() * size, position));
-            self.string_length = Some(base + position - start);
-            position += size;
+            self.string_length = Some(base.checked_add(position - start)?);
+            position = position.checked_add(size)?;
         }
 
-        position
+        Some(position)
     }
 }
 
@@ -121,7 +130,9 @@ impl Plan {
 ///
 /// Like ``TableWriter``, it's the target of generated code, which describes
 /// a table's fields as the schema declares them, so it checks only that it
-/// can describe them.
+/// can describe them: it raises ``ValueError`` for fewer ``fields`` than it
+/// describes, and ``struct.error`` for fields whose bytes from the first slot
+/// pass a C ``ssize_t``, as ``struct`` does.
 #[pyclass(frozen, module = "tafla._native", name = "FixedFields")]
 pub struct FixedFields {
     description: Arc<Description>,
@@ -153,43 +164,64 @@ impl FixedFields {
     #[new]
     #[pyo3(signature = (fields, *formats, string = None, layout = None))]
     fn new(
-        fields: usize,
+        fields: &Bound<'_, PyAny>,
         formats: &Bound<'_, PyTuple>,
         string: Option<&Bound<'_, PyAny>>,
-        layout: Option<&Bound<'_, TableLayout>>,
+        layout: Option<Layout>,
     ) -> PyResult<Self> {
+        let py = formats.py();
+        let string = string.map_or(Ok(false), PyAnyMethods::is_truthy)?;
+        let leading = formats.len() + usize::from(string);
+        let count = Int::new(fields)?;
+        if count.lt(leading)? {
+            return Err(PyValueError::new_err(format!(
+                "A table of {} fields can't start with {leading} of them",
+                count.describe()?
+            )));
+        }
+        // At least the leading fields, so only a count beyond a usize is
+        // left, whose slots no struct describes
+        let fields = count.index().ok_or_else(|| too_long(py))?;
+
         let mut parsed = Vec::with_capacity(formats.len());
         for format in formats.iter() {
             parsed.push(parse(&format)?);
         }
-
         let description = Arc::new(Description {
             fields,
             formats: parsed,
-            string: string.map_or(Ok(false), PyAnyMethods::is_truthy)?,
+            string,
         });
-        if description.formats.len() + usize::from(description.string) > fields {
-            return Err(PyValueError::new_err(format!(
-                "A table of {fields} fields can't start with {} of them",
-                description.formats.len() + usize::from(description.string)
-            )));
-        }
 
         let mut plans = [None, None, None];
         match layout {
             None => {
                 for (slot, size) in plans.iter_mut().zip([1, 2, 4]) {
-                    *slot = Some(Plan::new(&description, size, 0));
+                    *slot = Some(Plan::new(&description, size, 0).ok_or_else(|| too_long(py))?);
                 }
             }
             Some(layout) => {
-                let shape = shape_of(Some(layout));
-                plans[shape.size().trailing_zeros() as usize] =
-                    Some(Plan::new(&description, shape.size(), shape.header_size()));
+                let shape = layout.shape();
+                let plan = Plan::new(&description, shape.size(), shape.header_size())
+                    .ok_or_else(|| too_long(py))?;
+                plans[shape.size().trailing_zeros() as usize] = Some(plan);
             }
         }
 
         Ok(Self { description, plans })
+    }
+}
+
+/// The error of fields too long for a `struct` to describe, which
+/// `struct.Struct()` raises for the pure-Python runtime's
+#[cold]
+fn too_long(py: Python<'_>) -> PyErr {
+    match objects(py) {
+        Ok(objects) => PyErr::from_type(
+            objects.struct_error.bind(py).clone(),
+            "total struct size too long",
+        ),
+        Err(error) => error,
     }
 }
 
@@ -242,7 +274,7 @@ mod tests {
             string: true,
         };
 
-        let plan = Plan::new(&root, 4, 8);
+        let plan = Plan::new(&root, 4, 8).expect("the fields fit");
 
         // Root slots at 0, 4 and 8 from the first slot, holding offsets from
         // the table's start, which is 8 bytes before them; the float64 at 20
@@ -257,6 +289,35 @@ mod tests {
         assert_eq!(plan.string_length, Some(36));
         assert_eq!(plan.len, 40);
         assert!(plan.fits);
-        assert!(!Plan::new(&root, 1, 0x100).fits);
+        assert!(!Plan::new(&root, 1, 0x100).expect("the fields fit").fits);
+    }
+
+    #[test]
+    fn plans_no_fields_whose_length_passes_an_isize() {
+        let structs = |sizes: &[usize]| Description {
+            fields: sizes.len(),
+            formats: sizes
+                .iter()
+                .map(|&size| Format::Value(Kind::Struct(size)))
+                .collect(),
+            string: false,
+        };
+
+        // Lengths that wrap a usize, and that pass an isize without wrapping
+        let half = 1 << (usize::BITS - 2);
+        assert!(Plan::new(&structs(&[1 << 30, usize::MAX - (1 << 30) + 1]), 4, 0).is_none());
+        assert!(Plan::new(&structs(&[half, half]), 4, 0).is_none());
+        assert!(Plan::new(&structs(&[usize::MAX]), 1, 0).is_none());
+        // isize::MAX bytes after the slot, which is one more
+        assert!(Plan::new(&structs(&[isize::MAX.unsigned_abs()]), 1, 0).is_none());
+        assert!(Plan::new(&structs(&[isize::MAX.unsigned_abs() - 1]), 1, 8).is_some());
+
+        let many = Description {
+            fields: usize::MAX / 4,
+            formats: vec![Format::Value(Kind::I32)],
+            string: false,
+        };
+        assert!(Plan::new(&many, 1, 0).is_some());
+        assert!(Plan::new(&many, 2, 0).is_none());
     }
 }

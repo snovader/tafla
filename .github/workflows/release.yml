@@ -87,6 +87,7 @@ jobs:
               - "python/pyproject.toml"
               - "python/core/pyproject.toml"
               - "python/core/native/Cargo.toml"
+              - "python/core/native/Cargo.lock"
               - "python/scripts/test-wheels.sh"
               - "rust/Cargo.toml"
               - "rust/core/Cargo.toml"
@@ -276,7 +277,7 @@ jobs:
       # without the native module
       - name: Build the pure-Python wheel
         working-directory: python/core
-        run: uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
+        run: uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
 
       - name: Test the wheels
         run: scripts/test-wheels.sh "$RUNNER_TEMP/build"
@@ -297,8 +298,8 @@ jobs:
 
   # Builds the native wheels for a platform, and tests each on its own: abi3
   # for CPython 3.14 and later, cp314t for free-threaded 3.14, and abi3t for
-  # free-threaded 3.15 and later. maturin-action builds Linux's in a manylinux
-  # or musllinux container, and the others on the runner.
+  # 3.15 and later, free-threaded or not. maturin-action builds Linux's in a
+  # manylinux or musllinux container, and the others on the runner.
   pypi-wheels:
     name: PyPI (native wheels, ${{ matrix.name }})
     needs: version

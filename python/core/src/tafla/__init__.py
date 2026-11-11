@@ -87,8 +87,10 @@ which the platform wheels hold, and a pure-Python one, which the pure
 ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
 they're installed, and the pure-Python ones otherwise or when the environment
 variable ``TAFLA_PUREPYTHON`` is set to anything but the empty string, which
-is read once, at import. ``IMPLEMENTATION`` says which: ``"native"`` or
-``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
+is read once, at import. Native classes that are installed but fail to
+import, such as ones built for another Python, warn with ``RuntimeWarning``
+before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
+``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
 ``TableWriter``, so the implementations never mix.
 
 A native method does in one call what the pure-Python one does in several
@@ -97,20 +99,25 @@ half the time with the native classes. Both implementations' docstrings
 describe the same behavior, and the tests compare them call by call, errors
 and their messages included. They differ only in these ways:
 
-- The native ``TableWriter.bytes()`` exports the writer's own bytes, after
-  which any field that would change their length raises ``BufferError``. The
-  pure-Python writer's ``bytearray`` raises it only while the view is held.
 - A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
   threads in parallel, and a native writer then raises ``RuntimeError`` for a
   call while another thread's call to it runs, where the pure-Python one
   writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
-  implementation's array reads do, and the pure-Python one's string reads.
+  implementation's array reads do, and the pure-Python one's string reads,
+  so that they raise ``ValueError``: python/cpython#127716. The native
+  string reads don't slice it.
 - A ``TypeError`` for using the API wrongly, such as for bytes that aren't
   C-contiguous, may be worded differently.
 - The native classes can't be subclassed: Python raises ``TypeError`` for a
   class derived from one.
+
+The classes are public as ``tafla`` exports them. The submodules that hold
+the pure-Python ones, such as ``tafla.layout`` and ``tafla.byte_buffer``,
+aren't, and ``tafla._native`` isn't either. The native classes take a
+pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
+for anything else, so a layout created from ``tafla.layout`` serves both.
 
 Performance
 -----------

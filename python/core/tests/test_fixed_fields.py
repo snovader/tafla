@@ -1,7 +1,7 @@
 import unittest
 from collections.abc import Callable, Sequence
 from functools import partial
-from struct import pack
+from struct import error as StructError, pack
 from typing import Any, Literal
 
 from hypothesis import assume, given
@@ -537,6 +537,37 @@ class TestErrors(unittest.TestCase):
         written = outcome(lambda: write_packed(table))
         self.assertIsInstance(written, tuple)
         self.assertEqual(written, outcome(lambda: write_table(table)))
+
+    def test_raises_struct_error_for_fields_longer_than_a_struct_describes(
+        self,
+    ) -> None:
+        """Fields whose bytes from the first slot pass a C ssize_t, however
+        their sizes add up to it, which struct.calcsize() rejects too"""
+        for fields, *formats in [
+            (2, f"{2**30}s", f"{2**64 - 2**30}s"),
+            (2, f"{2**62}s", f"{2**62}s"),
+            (1, f"{2**63 - 1}s"),
+            (1, f"{2**63}s"),
+            (1, f"{10**30}s"),
+            (2**62, "i"),
+            (2**63, "i"),
+            (2**64, "i"),
+            (2**15000, "i"),
+        ]:
+            for layout in [None, TableLayout(offset_type="uint32")]:
+                with (
+                    self.subTest(fields=fields.bit_length(), formats=formats),
+                    self.assertRaisesRegex(StructError, "total struct size too long"),
+                ):
+                    FixedFields(fields, *formats, layout=layout)
+
+    def test_raises_value_error_for_fewer_fields_than_it_describes(self) -> None:
+        for fields in [-(2**63), -1, 0, 1]:
+            with (
+                self.subTest(fields=fields),
+                self.assertRaisesRegex(ValueError, f"A table of {fields} fields"),
+            ):
+                FixedFields(fields, "i", string=True)
 
 
 if __name__ == "__main__":

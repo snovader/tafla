@@ -20,6 +20,12 @@ pyo3 = { version = "=0.29.2", features = ["multiple-pymethods"] }
 # Reads go through the Rust runtime's ByteBuffer, for its bounds checks
 tafla = { path = "../../../rust/core" }
 
+[features]
+# The tests' hooks, such as one that treats the host as big-endian, which the
+# development environment's build enables, through python/pyproject.toml,
+# and the wheels leave out, since each array's call would check it
+test-hooks = []
+
 [build-dependencies]
 pyo3-build-config = "=0.29.2"
 

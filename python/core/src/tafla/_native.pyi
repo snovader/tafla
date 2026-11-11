@@ -10,4 +10,5 @@ from .table_writer import TableWriter as TableWriter
 
 def _set_little_endian_host(little_endian: bool) -> bool:
     """Treats the host as little-endian or not, for the tests, and returns
-    whether it was treated as little-endian"""
+    whether it was treated as little-endian. Only a build with the feature
+    ``test-hooks`` has it, as the development environment's is."""
