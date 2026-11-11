@@ -46,6 +46,45 @@ class Scalars:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls,
+        int8: int,
+        uint8: int,
+        int16: int,
+        uint16: int,
+        int32: int,
+        uint32: int,
+        int64: int,
+        uint64: int,
+        float32: float,
+        float64: float,
+        bool_: bool,
+        /,
+    ) -> memoryview:
+        """Writes a ``Scalars`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(11, cls._LAYOUT)
+        writer.set_fields(
+            cls._FIXED_FIELDS,
+            (
+                int8,
+                uint8,
+                int16,
+                uint16,
+                int32,
+                uint32,
+                int64,
+                uint64,
+                float32,
+                float64,
+                bool_,
+            ),
+        )
+
+        return writer.bytes()
+
     def int8(self) -> int:
         return self._buffer.get_int8(self._buffer.root_offset(0))
 
@@ -113,6 +152,30 @@ class Scalars:
             "float64": values[9],
             "bool_": values[10],
         }
+
+    def field_values(
+        self,
+    ) -> tuple[int, int, int, int, int, int, int, int, float, float, bool]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (
+                self.int8(),
+                self.uint8(),
+                self.int16(),
+                self.uint16(),
+                self.int32(),
+                self.uint32(),
+                self.int64(),
+                self.uint64(),
+                self.float32(),
+                self.float64(),
+                self.bool_(),
+            )
+
+        return values
 
 
 class ScalarsFields(TypedDict):
@@ -508,6 +571,23 @@ class Keywords:
             "self": values[4],
             "type_": values[5],
         }
+
+    def field_values(self) -> tuple[int, int, int, int, int, str]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return (
+                self.class_(),
+                self.default(),
+                self.in_(),
+                self.match_(),
+                self.self(),
+                self.type_(),
+            )
+
+        return values
 
 
 class KeywordsFields(TypedDict):
@@ -926,6 +1006,53 @@ class Point:
 
         return data
 
+    @classmethod
+    def read_values(cls, data: Buffer, offset: int = 0) -> tuple[float, float]:
+        """Reads the values of a ``Point`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Point can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(cls, data: Buffer) -> list[tuple[float, float]]:
+        """Reads the values of the ``Point``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Points don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Point can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(cls, x: float, y: float, /) -> bytes:
+        """Returns the bytes of a ``Point`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(x, y)
+        except (error, OverflowError) as cause:
+            raise ValueError("Point's values don't fit its fields") from cause
+
 
 _Point_x = Point.__dict__["x"].__set__
 _Point_y = Point.__dict__["y"].__set__
@@ -975,6 +1102,10 @@ class PointArray:
         """Reads the structs one after another"""
         for values in Point._STRUCT.iter_unpack(self._data):
             yield Point(values[0], values[1])
+
+    def field_values(self) -> list[tuple[float, float]]:
+        """Reads every struct's values at once, as ``Point.read_values()`` reads each"""
+        return list(Point._STRUCT.iter_unpack(self._data))
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -1150,6 +1281,83 @@ class Packed:
 
         return data
 
+    @classmethod
+    def read_values(
+        cls, data: Buffer, offset: int = 0
+    ) -> tuple[int, int, int, int, int, int, int, int, float, float, bool]:
+        """Reads the values of a ``Packed`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Packed can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(
+        cls, data: Buffer
+    ) -> list[tuple[int, int, int, int, int, int, int, int, float, float, bool]]:
+        """Reads the values of the ``Packed``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Packeds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Packed can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(
+        cls,
+        int8: int,
+        uint8: int,
+        int16: int,
+        uint16: int,
+        int32: int,
+        uint32: int,
+        int64: int,
+        uint64: int,
+        float32: float,
+        float64: float,
+        bool_: bool,
+        /,
+    ) -> bytes:
+        """Returns the bytes of a ``Packed`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(
+                int8,
+                uint8,
+                int16,
+                uint16,
+                int32,
+                uint32,
+                int64,
+                uint64,
+                float32,
+                float64,
+                bool_,
+            )
+        except (error, OverflowError) as cause:
+            raise ValueError("Packed's values don't fit its fields") from cause
+
 
 _Packed_int8 = Packed.__dict__["int8"].__set__
 _Packed_uint8 = Packed.__dict__["uint8"].__set__
@@ -1310,6 +1518,53 @@ class Documented:
 
         return data
 
+    @classmethod
+    def read_values(cls, data: Buffer, offset: int = 0) -> tuple[int, int, int]:
+        """Reads the values of a ``Documented`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Documented can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(cls, data: Buffer) -> list[tuple[int, int, int]]:
+        """Reads the values of the ``Documented``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Documenteds don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Documented can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(cls, one: int, two: int, undocumented: int, /) -> bytes:
+        """Returns the bytes of a ``Documented`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(one, two, undocumented)
+        except (error, OverflowError) as cause:
+            raise ValueError("Documented's values don't fit its fields") from cause
+
 
 _Documented_one = Documented.__dict__["one"].__set__
 _Documented_two = Documented.__dict__["two"].__set__
@@ -1367,3 +1622,7 @@ class DocumentedArray:
         """Reads the structs one after another"""
         for values in Documented._STRUCT.iter_unpack(self._data):
             yield Documented(values[0], values[1], values[2])
+
+    def field_values(self) -> list[tuple[int, int, int]]:
+        """Reads every struct's values at once, as ``Documented.read_values()`` reads each"""
+        return list(Documented._STRUCT.iter_unpack(self._data))
