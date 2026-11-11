@@ -163,7 +163,7 @@ jobs:
       matrix:
         include:
           - goarch: s390x
-            emulator: qemu-s390x-static
+            emulator: qemu-s390x
           - goarch: "386"
             # Linux on amd64 runs 386 binaries natively
             emulator: ""
@@ -179,7 +179,7 @@ jobs:
 
       - name: Install qemu
         if: matrix.emulator != ''
-        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends qemu-user-static
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends qemu-user
 
       # Each package's tests, compiled for the architecture and run from the
       # package's directory, where they find the conformance suite

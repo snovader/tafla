@@ -272,7 +272,9 @@ or a read that disagrees with `SPEC.md` is a finding:
 
 Run each with `-fuzz`, and stop it with Ctrl-C or `-fuzztime`. Go writes an
 input that fails to `testdata/fuzz/<target>/`, where `go test` runs it again
-as a regression test, so a finding is checked in there once it's fixed.
+as a regression test, so a finding is checked in there once it's fixed. CI
+runs each target for a minute on every change, and the weekly Fuzz workflow
+for five minutes, from the corpus that its earlier runs grew.
 
 ```sh
 go test -run '^$' -fuzz FuzzByteBuffer -fuzztime 5m
