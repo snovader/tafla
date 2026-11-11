@@ -99,9 +99,6 @@ half the time with the native classes. Both implementations' docstrings
 describe the same behavior, and the tests compare them call by call, errors
 and their messages included. They differ only in these ways:
 
-- The native ``TableWriter.bytes()`` exports the writer's own bytes, after
-  which any field that would change their length raises ``BufferError``. The
-  pure-Python writer's ``bytearray`` raises it only while the view is held.
 - A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
   threads in parallel, and a native writer then raises ``RuntimeError`` for a
   call while another thread's call to it runs, where the pure-Python one
@@ -113,6 +110,12 @@ and their messages included. They differ only in these ways:
   C-contiguous, may be worded differently.
 - The native classes can't be subclassed: Python raises ``TypeError`` for a
   class derived from one.
+
+The classes are public as ``tafla`` exports them. The submodules that hold
+the pure-Python ones, such as ``tafla.layout`` and ``tafla.byte_buffer``,
+aren't, and ``tafla._native`` isn't either. The native classes take a
+pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
+for anything else, so a layout created from ``tafla.layout`` serves both.
 
 Performance
 -----------

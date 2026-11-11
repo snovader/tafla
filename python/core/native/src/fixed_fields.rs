@@ -4,7 +4,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple};
 
-use crate::layout::{TableLayout, shape_of};
+use crate::layout::Layout;
 use crate::python::{Int, objects};
 use crate::values::Kind;
 
@@ -167,7 +167,7 @@ impl FixedFields {
         fields: &Bound<'_, PyAny>,
         formats: &Bound<'_, PyTuple>,
         string: Option<&Bound<'_, PyAny>>,
-        layout: Option<&Bound<'_, TableLayout>>,
+        layout: Option<Layout>,
     ) -> PyResult<Self> {
         let py = formats.py();
         let string = string.map_or(Ok(false), PyAnyMethods::is_truthy)?;
@@ -201,7 +201,7 @@ impl FixedFields {
                 }
             }
             Some(layout) => {
-                let shape = shape_of(Some(layout));
+                let shape = layout.shape();
                 let plan = Plan::new(&description, shape.size(), shape.header_size())
                     .ok_or_else(|| too_long(py))?;
                 plans[shape.size().trailing_zeros() as usize] = Some(plan);

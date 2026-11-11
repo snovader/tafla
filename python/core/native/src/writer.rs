@@ -2,26 +2,29 @@ use std::ffi::c_int;
 use std::fmt::Display;
 use std::ptr::{self, NonNull};
 
-use pyo3::exceptions::{PyBufferError, PyMemoryError, PyStopIteration, PyValueError};
+use pyo3::exceptions::{
+    PyBufferError, PyIndexError, PyMemoryError, PyOverflowError, PyStopIteration, PyValueError,
+};
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple, PyType};
 use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
-use crate::layout::{Shape, TableLayout, shape_of};
+use crate::layout::{Layout, Shape, shape_of};
 use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
 
 /// The bytes of the table being written, which Python's allocator holds, so
-/// that `tracemalloc` counts them as it counts a `bytearray`'s. Once a
+/// that `tracemalloc` counts them as it counts a `bytearray`'s. While a
 /// buffer of them is exported, by `TableWriter.bytes()`, their length is
-/// frozen, so that the exported pointer stays valid.
+/// frozen, so that the exported pointer stays valid, as a `bytearray`'s is.
 struct Bytes {
     pointer: NonNull<u8>,
     len: usize,
     capacity: usize,
-    frozen: bool,
+    /// The buffers of the bytes that are exported and not yet released
+    exports: usize,
 }
 
 // SAFETY: the bytes are an allocation of their own, which only their
@@ -44,7 +47,7 @@ impl Bytes {
             pointer,
             len,
             capacity,
-            frozen: false,
+            exports: 0,
         })
     }
 
@@ -59,10 +62,10 @@ impl Bytes {
     }
 
     /// Sets the length to `len`, with zeros in the bytes it adds. Raises
-    /// `BufferError` once the bytes are exported, as a `bytearray` does.
+    /// `BufferError` while the bytes are exported, as a `bytearray` does.
     #[inline]
     fn resize(&mut self, len: usize) -> PyResult<()> {
-        if self.frozen {
+        if self.exports > 0 {
             return Err(frozen());
         }
         if len > self.capacity {
@@ -80,7 +83,7 @@ impl Bytes {
     /// the length
     #[inline]
     fn zero_from(&mut self, start: usize, len: usize) -> PyResult<()> {
-        if self.frozen {
+        if self.exports > 0 {
             return Err(frozen());
         }
         if len > self.capacity {
@@ -96,7 +99,7 @@ impl Bytes {
     fn extend_from_slice(&mut self, bytes: &[u8]) -> PyResult<()> {
         let start = self.len;
         let len = start.checked_add(bytes.len()).ok_or_else(memory_error)?;
-        if self.frozen {
+        if self.exports > 0 {
             return Err(frozen());
         }
         if len > self.capacity {
@@ -166,6 +169,43 @@ fn frozen() -> PyErr {
     PyBufferError::new_err("Existing exports of data: object cannot be re-sized")
 }
 
+/// The start of a table, or the position of its first slot, as
+/// `end_table()` takes it back: the writer's own from `start_table()`, or any
+/// other `int`, after which the writer writes where the pure-Python writer
+/// does, which keeps it as it's given
+enum Mark {
+    Small(i128),
+    Big(Py<PyAny>),
+}
+
+impl Mark {
+    const fn at(position: usize) -> Self {
+        Self::Small(position as i128)
+    }
+
+    fn from_int(int: Int<'_>) -> Self {
+        match int {
+            Int::Small(value) => Self::Small(value),
+            Int::Big(value) => Self::Big(value.unbind()),
+        }
+    }
+
+    #[inline]
+    fn int<'py>(&self, py: Python<'py>) -> Int<'py> {
+        match self {
+            Self::Small(value) => Int::Small(*value),
+            Self::Big(value) => Int::Big(value.bind(py).clone()),
+        }
+    }
+
+    fn clone_ref(&self, py: Python<'_>) -> Self {
+        match self {
+            Self::Small(value) => Self::Small(*value),
+            Self::Big(value) => Self::Big(value.clone_ref(py)),
+        }
+    }
+}
+
 /// A value or position of a slot that `struct` can't pack, whose error
 /// `TableWriter::struct_error()` raises, as `struct` raises it
 struct SlotFailure;
@@ -195,20 +235,20 @@ struct SlotFailure;
 /// ``ValueError``.
 ///
 /// The bytes grow as fields are appended, and ``bytes()`` returns a view of
-/// them, without copying them, after which the writer takes no more fields:
-/// one that would change their length raises ``BufferError``. A table too
-/// long for the layout's ``offset_type`` raises ``ValueError``, from the
-/// setter whose offset or count doesn't fit or from ``bytes()``. A scalar
-/// setter that raised wrote nothing, but another setter that raised may have
-/// written part of its field, after which the writer is of no further use.
+/// them, without copying them. While the view is held, a field that would
+/// change their length raises ``BufferError``. A table too long for the
+/// layout's ``offset_type`` raises ``ValueError``, from the setter whose
+/// offset or count doesn't fit or from ``bytes()``. A scalar setter that
+/// raised wrote nothing, but another setter that raised may have written part
+/// of its field, after which the writer is of no further use.
 #[pyclass(module = "tafla._native", name = "TableWriter")]
 pub struct TableWriter {
     data: Bytes,
     shape: Shape,
     /// The start of the table being written, which its offsets count from
-    table: usize,
+    table: Mark,
     /// The position of the table's first offset, after the root's header
-    slots: usize,
+    slots: Mark,
 }
 
 impl TableWriter {
@@ -216,8 +256,8 @@ impl TableWriter {
         let mut writer = Self {
             data: Bytes::zeroed(length)?,
             shape,
-            table: 0,
-            slots: shape.header_size(),
+            table: Mark::Small(0),
+            slots: Mark::at(shape.header_size()),
         };
 
         if let Some(version) = version {
@@ -240,6 +280,18 @@ impl TableWriter {
     #[inline]
     const fn size(&self) -> usize {
         self.shape.size()
+    }
+
+    /// The offset of a field that starts at the end, from the table's start
+    #[inline]
+    fn offset<'py>(&self, py: Python<'py>) -> PyResult<Int<'py>> {
+        Int::from(self.len()).sub(self.table.int(py))
+    }
+
+    /// The position of field `index`'s slot
+    #[inline]
+    fn slot_of<'py>(&self, py: Python<'py>, index: &Int<'py>) -> PyResult<Int<'py>> {
+        index.mul(self.size())?.add(self.slots.int(py))
     }
 
     /// The error of a table whose fields make it `length` bytes, too long
@@ -371,19 +423,19 @@ impl TableWriter {
     /// it or its offset: one too long for the offset type, if the offset is,
     /// as the pure-Python runtime raises it
     #[cold]
-    fn scalar_error(&self, value: &Bound<'_, PyAny>, offset: i128, cause: PyErr) -> PyErr {
+    fn scalar_error(&self, value: &Bound<'_, PyAny>, offset: &Int<'_>, cause: PyErr) -> PyErr {
         let py = value.py();
-        let error = if offset > self.shape.max_length() as i128 {
-            self.too_long(self.len())
-        } else {
-            match value.repr() {
+        let error = match Int::from(self.shape.max_length()).lt(offset.clone()) {
+            Ok(true) => self.too_long(self.len()),
+            Ok(false) => match value.repr() {
                 Ok(repr) => PyValueError::new_err(format!(
                     "Can't write {repr} at {}: {}",
                     self.len(),
                     cause.value(py)
                 )),
                 Err(error) => return error,
-            }
+            },
+            Err(error) => return error,
         };
         error.set_cause(py, Some(cause));
         error
@@ -392,7 +444,7 @@ impl TableWriter {
     /// The error of a value that `struct` rejects for `kind`, which `struct`
     /// raises itself
     #[cold]
-    fn value_error(&self, kind: Kind, value: &Bound<'_, PyAny>, offset: i128) -> PyErr {
+    fn value_error(&self, kind: Kind, value: &Bound<'_, PyAny>, offset: &Int<'_>) -> PyErr {
         let py = value.py();
         let objects = match objects(py) {
             Ok(objects) => objects,
@@ -419,12 +471,13 @@ impl TableWriter {
         packed: &[u8],
         value: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let offset = self.len() as i128 - self.table as i128;
-        let position = Int::new(index)?.mul(self.size())?.add(self.slots)?;
+        let py = value.py();
+        let offset = self.offset(py)?;
+        let position = self.slot_of(py, &Int::new(index)?)?;
 
-        if self.pack_slot(&position, &Int::from(offset)).is_err() {
-            let cause = self.struct_error(value.py(), &position, &Int::from(offset));
-            return Err(self.scalar_error(value, offset, cause));
+        if self.pack_slot(&position, &offset).is_err() {
+            let cause = self.struct_error(py, &position, &offset);
+            return Err(self.scalar_error(value, &offset, cause));
         }
         self.data.extend_from_slice(packed)
     }
@@ -442,8 +495,8 @@ impl TableWriter {
         let mut packed = [0u8; 8];
         let packed = &mut packed[..kind.size()];
         if !values::write(kind, value, packed)? {
-            let offset = self.len() as i128 - self.table as i128;
-            return Err(self.value_error(kind, value, offset));
+            let offset = self.offset(value.py())?;
+            return Err(self.value_error(kind, value, &offset));
         }
 
         self.set_packed(index, packed, value)
@@ -452,8 +505,8 @@ impl TableWriter {
     /// Writes the offset of field `index`, which is the table's end
     #[inline]
     fn set_offset(&mut self, py: Python<'_>, index: &Int<'_>) -> PyResult<()> {
-        let value = Int::from(self.len() as i128 - self.table as i128);
-        let position = index.mul(self.size())?.add(self.slots)?;
+        let value = self.offset(py)?;
+        let position = self.slot_of(py, index)?;
 
         if self.pack_slot(&position, &value).is_err() {
             return Err(self.slot_error(py, &position, &value));
@@ -484,9 +537,20 @@ impl TableWriter {
     /// Pads so that `position` lies at a multiple of `alignment` from the
     /// start of the table
     #[inline]
-    fn pad(&mut self, position: usize, alignment: usize) -> PyResult<()> {
-        // Modulo a power of two, which wrapping keeps
-        let padding = self.table.wrapping_sub(position) & (alignment - 1);
+    fn pad(&mut self, py: Python<'_>, position: usize, alignment: usize) -> PyResult<()> {
+        // Modulo a power of two, which wrapping keeps, and which an int's
+        // bits give, as they're its two's complement
+        let mask = alignment - 1;
+        let padding = match &self.table {
+            Mark::Small(table) => {
+                (table.wrapping_sub(position as i128).cast_unsigned() as usize) & mask
+            }
+            Mark::Big(table) => table
+                .bind(py)
+                .sub(position)?
+                .bitand(mask)?
+                .extract::<usize>()?,
+        };
         if padding > 0 {
             self.data.extend_zeros(padding)?;
         }
@@ -503,7 +567,7 @@ impl TableWriter {
         byte_length: &Int<'_>,
         alignment: usize,
     ) -> PyResult<()> {
-        self.pad(self.len() + self.size(), alignment)?;
+        self.pad(py, self.len() + self.size(), alignment)?;
         self.set_offset(py, index)?;
         self.set_count(count, byte_length)
     }
@@ -543,30 +607,45 @@ impl TableWriter {
     }
 
     fn set_table_at(&mut self, py: Python<'_>, index: &Int<'_>, alignment: usize) -> PyResult<()> {
-        self.pad(self.len(), alignment)?;
+        self.pad(py, self.len(), alignment)?;
         self.set_offset(py, index)
     }
 
-    fn start(&mut self, fields: usize) -> PyResult<usize> {
-        let parent = self.table;
+    /// Starts a table at the end, and returns its parent's start
+    fn begin(&mut self) -> Mark {
         let len = self.len();
-        self.table = len;
-        self.slots = len;
+        self.slots = Mark::at(len);
+        std::mem::replace(&mut self.table, Mark::at(len))
+    }
 
+    fn start(&mut self, fields: usize) -> PyResult<Mark> {
+        let parent = self.begin();
         let slots = fields.checked_mul(self.size()).ok_or_else(memory_error)?;
         self.data.extend_zeros(slots)?;
 
         Ok(parent)
     }
 
-    const fn end(&mut self, parent: usize) {
-        self.table = parent;
+    fn end(&mut self, py: Python<'_>, parent: Mark) {
         // Only the root starts at 0, and only its offsets follow a header
-        self.slots = if parent == 0 {
-            self.shape.header_size()
+        self.slots = if matches!(parent, Mark::Small(0)) {
+            Mark::at(self.shape.header_size())
         } else {
-            parent
+            parent.clone_ref(py)
         };
+        self.table = parent;
+    }
+
+    /// Where `set_fields()` writes the fields, at the table's slots, as a
+    /// slice of the bytes from them starts: from the end for a negative
+    /// position, and at the end for one past it
+    fn slots_start(&self, py: Python<'_>) -> PyResult<usize> {
+        let len = self.len();
+        let slots = self.slots.int(py);
+        if slots.is_negative()? {
+            return Ok(slots.add(len)?.index().unwrap_or(0));
+        }
+        Ok(slots.index().map_or(len, |slots| slots.min(len)))
     }
 
     fn set_string_at(&mut self, py: Python<'_>, index: &Int<'_>, encoded: &[u8]) -> PyResult<()> {
@@ -694,7 +773,7 @@ impl TableWriter {
                     self.set_table_at(py, &Int::from(index), 1)?;
                     let parent = self.start(nested.fields)?;
                     self.set_each(nested, values, None)?;
-                    self.end(parent);
+                    self.end(py, parent);
                 }
                 Format::Value(Kind::Bool) => {
                     let truth = u8::from(values.next()?.is_truthy()?);
@@ -741,6 +820,24 @@ const fn slot(value: usize) -> [u8; 4] {
     debug_assert!(value <= u32::MAX as usize);
     #[allow(clippy::cast_possible_truncation)]
     (value as u32).to_le_bytes()
+}
+
+/// The number of zeros that the pure-Python writer appends for `slots`
+/// bytes of slots: a tuple's item, of zeros by their number up to 64, which a
+/// negative number indexes from its end, and `bytes(slots)` beyond. Only a
+/// count of fields outside the contract, which is never negative, takes
+/// another than `slots`, so that the writers' bytes and errors agree.
+fn zeros(slots: &Int<'_>) -> PyResult<usize> {
+    const TUPLE: i128 = 16 * 4 + 1;
+    const BEYOND: &str = "cannot fit 'int' into an index-sized integer";
+
+    let slots = match *slots {
+        Int::Small(slots) if isize::try_from(slots).is_ok() => slots,
+        _ if slots.is_negative()? => return Err(PyIndexError::new_err(BEYOND)),
+        _ => return Err(PyOverflowError::new_err(BEYOND)),
+    };
+    let count = if slots < 0 { TUPLE + slots } else { slots };
+    usize::try_from(count).map_err(|_| PyIndexError::new_err("tuple index out of range"))
 }
 
 /// The order of a C-contiguous buffer, as `PyBuffer_IsContiguous()` takes it
@@ -909,10 +1006,10 @@ impl TableWriter {
     #[pyo3(signature = (fields, layout = None, version = None))]
     fn new(
         fields: &Bound<'_, PyAny>,
-        layout: Option<&Bound<'_, TableLayout>>,
+        layout: Option<Layout>,
         version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let shape = shape_of(layout);
+        let shape = shape_of(layout.as_ref());
         let version = version.map(Int::new).transpose()?;
         let length = header_length(shape, &Int::new(fields)?, version.as_ref())?;
 
@@ -927,10 +1024,10 @@ impl TableWriter {
     fn _checked(
         _cls: &Bound<'_, PyType>,
         fields: usize,
-        layout: &Bound<'_, TableLayout>,
+        layout: Layout,
         version: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Self> {
-        let shape = layout.get().shape();
+        let shape = layout.shape();
         let length = fields
             .checked_mul(shape.size())
             .and_then(|slots| slots.checked_add(shape.header_size()))
@@ -940,44 +1037,55 @@ impl TableWriter {
         Self::create(shape, length, version.as_ref())
     }
 
-    /// Returns a view of the table's bytes, after which it takes no more
-    /// fields.
+    /// Returns a view of the table's bytes, without copying them. While
+    /// it's held, a field that would change their length raises
+    /// ``BufferError``, as a ``bytearray``'s does. ``memoryview(writer)``
+    /// returns the same view.
     ///
     /// Raises ``ValueError`` if the table is longer than its layout addresses.
     fn bytes<'py>(slf: &Bound<'py, Self>) -> PyResult<Bound<'py, PyAny>> {
-        {
-            let mut writer = slf.try_borrow_mut()?;
-            let len = writer.len();
-            if len > writer.shape.max_length() {
-                return Err(writer.too_long(len));
-            }
-            // Only a negative number of fields leaves no room for the length,
-            // and struct raises its error
-            if writer.shape.sized && writer.pack_slot(&Int::from(0), &Int::from(len)).is_err() {
-                return Err(writer.struct_error(slf.py(), &Int::from(0), &Int::from(len)));
-            }
-        }
-
-        // Exports the bytes through __getbuffer__, which freezes their length
+        // Exports the bytes through __getbuffer__, which finishes the header
         unsafe {
             Bound::from_owned_ptr_or_err(slf.py(), ffi::PyMemoryView_FromObject(slf.as_ptr()))
         }
     }
 
+    /// Exports the table's bytes, as ``bytes()`` returns them, writing its
+    /// length in the header first, and freezes their length until the
+    /// buffer is released
     unsafe fn __getbuffer__(
         slf: Bound<'_, Self>,
         view: *mut ffi::Py_buffer,
         flags: c_int,
     ) -> PyResult<()> {
+        let py = slf.py();
         let mut writer = slf.try_borrow_mut()?;
-        writer.data.frozen = true;
-
-        let length = writer.len().cast_signed();
-        let buffer = writer.data.pointer.as_ptr().cast();
-        if unsafe { ffi::PyBuffer_FillInfo(view, slf.as_ptr(), buffer, length, 0, flags) } != 0 {
-            return Err(PyErr::fetch(slf.py()));
+        let len = writer.len();
+        if len > writer.shape.max_length() {
+            return Err(writer.too_long(len));
         }
+        // Only a negative number of fields leaves no room for the length,
+        // and struct raises its error
+        if writer.shape.sized && writer.pack_slot(&Int::from(0), &Int::from(len)).is_err() {
+            return Err(writer.struct_error(py, &Int::from(0), &Int::from(len)));
+        }
+
+        let buffer = writer.data.pointer.as_ptr().cast();
+        if unsafe {
+            ffi::PyBuffer_FillInfo(view, slf.as_ptr(), buffer, len.cast_signed(), 0, flags)
+        } != 0
+        {
+            return Err(PyErr::fetch(py));
+        }
+        writer.data.exports += 1;
         Ok(())
+    }
+
+    /// Releases a buffer that ``__getbuffer__()`` exported. A release that
+    /// can't borrow the writer, since another thread's call is using it,
+    /// leaves the length frozen, which is safe.
+    unsafe fn __releasebuffer__(mut slf: PyRefMut<'_, Self>, _view: *mut ffi::Py_buffer) {
+        slf.data.exports = slf.data.exports.saturating_sub(1);
     }
 
     /// Writes a table that was written already, from its bytes as they are,
@@ -991,13 +1099,23 @@ impl TableWriter {
     /// Starts the fields of a nested table or vector item of ``fields``
     /// fields, after its parent's ``set_table()`` or ``set_vector()``, and
     /// returns the parent's start, which ``end_table()`` takes back.
-    fn start_table(&mut self, fields: usize) -> PyResult<usize> {
-        self.start(fields)
+    fn start_table<'py>(
+        &mut self,
+        py: Python<'py>,
+        fields: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let slots = Int::new(fields)?.mul(self.size())?;
+        let parent = self.begin().int(py).to_object(py)?;
+        self.data.extend_zeros(zeros(&slots)?)?;
+
+        Ok(parent)
     }
 
     /// Ends the fields of the table that ``start_table()`` started
-    const fn end_table(&mut self, parent: usize) {
-        self.end(parent);
+    fn end_table(&mut self, py: Python<'_>, parent: &Bound<'_, PyAny>) -> PyResult<()> {
+        let parent = Mark::from_int(Int::new(parent)?);
+        self.end(py, parent);
+        Ok(())
     }
 
     /// Writes the leading fields that ``fields`` describes, from their
@@ -1017,7 +1135,7 @@ impl TableWriter {
         let plan = fields.plan(self.size())?;
         let values = Self::fixed_values(values)?;
 
-        if self.write_fixed(plan, self.slots, &values, string)? {
+        if self.write_fixed(plan, self.slots_start(values.py())?, &values, string)? {
             return Ok(());
         }
 
@@ -1048,6 +1166,7 @@ impl TableWriter {
             return Ok(());
         }
 
+        let py = values.py();
         let description = fields.description();
         let parent = self.start(description.fields)?;
         let mut values = Values {
@@ -1055,7 +1174,7 @@ impl TableWriter {
             next: 0,
         };
         self.set_each(description, &mut values, string)?;
-        self.end(parent);
+        self.end(py, parent);
 
         Ok(())
     }
