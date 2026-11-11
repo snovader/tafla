@@ -148,12 +148,11 @@ impl ByteBuffer {
     fn elements<'py>(
         &self,
         py: Python<'py>,
-        code: &'static str,
+        code: &Bound<'py, PyString>,
         start: usize,
         end: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
         let view = self.slice(py, start, end)?;
-        let code = PyString::intern(py, code);
         if little_endian_host() {
             return view.call_method1(intern!(py, "cast"), (code,));
         }
@@ -170,7 +169,7 @@ impl ByteBuffer {
         &self,
         py: Python<'py>,
         position: &Bound<'_, PyAny>,
-        code: &'static str,
+        code: &Bound<'py, PyString>,
         item_size: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
         let at = self.position(position, self.size())?;
@@ -306,7 +305,7 @@ macro_rules! array_getters {
                 /// Reads the array at ``position``: a view of the buffer on a
                 /// little-endian host, and a copy on a big-endian host.
                 fn $name<'py>(&self, py: Python<'py>, position: &Bound<'_, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-                    self.array(py, position, $code, $size)
+                    self.array(py, position, intern!(py, $code), $size)
                 }
             )*
         }
