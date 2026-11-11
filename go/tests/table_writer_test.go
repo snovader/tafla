@@ -739,6 +739,41 @@ func TestPanicsForALayoutWithoutTheVersionGivenOrANegativeNumberOfFields(t *test
 	expectPanic(t, "a table of a negative number of fields", func() { _, _, _ = tafla.AppendTable(nil, -1, plain, 0) })
 }
 
+func TestPanicsForATableShorterThanItsHeader(t *testing.T) {
+	plain, versioned := tafla.TableLayout{}, tafla.TableLayout{}.Sized().Versioned()
+
+	// 3 offsets of 4 bytes, and then the length and the version
+	if whole, _, err := tafla.AppendTable(nil, 3, plain, 12); len(whole) != 12 || err != nil {
+		t.Errorf("appended %d bytes, %v", len(whole), err)
+	}
+	if whole, _, err := tafla.AppendVersionedTable(nil, 3, versioned, 1, 20); len(whole) != 20 || err != nil {
+		t.Errorf("appended %d bytes, %v", len(whole), err)
+	}
+
+	expectPanic(t, "a table without its header", func() { _, _, _ = tafla.AppendTable(nil, 3, plain, 0) })
+	expectPanic(t, "a table a byte short of its header", func() { _, _, _ = tafla.AppendTable(nil, 3, plain, 11) })
+	expectPanic(t, "a versioned table short of its header", func() {
+		_, _, _ = tafla.AppendVersionedTable(nil, 3, versioned, 1, 8)
+	})
+}
+
+func TestReportsFieldsAddedTogetherThatMakeTheTableTooLongAsTheLastOfThem(t *testing.T) {
+	layout := tafla.TableLayout{}.WithOffsetType(tafla.Uint8)
+
+	// After 3 offsets, the first 2 fields' 300 bytes make the table too long
+	sizer := must(tafla.NewTableSizer(3, layout))
+	sizer.AddFields(2, 300)
+	sizer.AddUint8()
+	expected := &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 303, OffsetType: tafla.Uint8}
+	expectError(t, second(sizer.ByteLength()), expected)
+
+	// And as the table's last field, when they're all of its fields
+	whole := must(tafla.NewTableSizer(2, layout))
+	whole.AddFields(2, 300)
+	expected = &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 302, OffsetType: tafla.Uint8}
+	expectError(t, second(whole.ByteLength()), expected)
+}
+
 // third returns the error of a call that returns two values before it
 func third[T, U any](_ T, _ U, err error) error {
 	return err

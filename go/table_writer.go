@@ -186,7 +186,8 @@ func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (who
 // AppendVersionedTable appends a table of fields fields in layout, of length
 // bytes, to dst, as [AppendTable] does, with version in its header. It fails
 // with VersionTooLarge or HeaderTooLong and panics as
-// [NewVersionedTableSizer] does, and fails with TooLong as AppendTable does.
+// [NewVersionedTableSizer] does, fails with TooLong as AppendTable does, and
+// panics if length is shorter than the header.
 func AppendVersionedTable(dst []byte, fields int, layout TableLayout, version uint32, length uint64) (whole, table []byte, err error) {
 	return appendTable(dst, fields, layout, true, version, length)
 }
@@ -195,6 +196,10 @@ func appendTable(dst []byte, fields int, layout TableLayout, versioned bool, ver
 	if layout.versioned != versioned || version > layout.offsetType.MaxValue() ||
 		uint64(fields) > layout.maxFields() {
 		return nil, nil, layout.sizerFailure(fields, versioned, version)
+	}
+	// The header fits, so its length doesn't overflow
+	if length < uint64(layout.HeaderSize())+uint64(fields)*uint64(layout.offsetType.Size()) {
+		panic("tafla: a table's length is shorter than its header")
 	}
 	if length > layout.maxLength() {
 		return nil, nil, &BuildError{Kind: TooLong, Index: max(fields-1, 0), Length: length, OffsetType: layout.offsetType}
