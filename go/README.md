@@ -104,7 +104,9 @@ with the code that tafla-gen generates.
   arrays from the table's start, so they're aligned in memory when the table
   is, as the bytes of a slice that Go allocates for a table usually are,
   though Go doesn't promise it. A slice in place shares the bytes, so writing
-  to it writes to them.
+  to it writes to them. Since whether `Slice()` shares them depends on the
+  host and the bytes' address, treat its result as read-only, and take a
+  copy to own with `Append(nil)`.
 - **Strings share the bytes too.** `GetString()` returns a string of the
   table's bytes rather than a copy, as FlatBuffers' Go runtime does, so the
   bytes must not change while the string is in use, as for `unsafe.String`.
