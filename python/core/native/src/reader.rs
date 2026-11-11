@@ -633,6 +633,11 @@ impl ByteBuffer {
     /// ``get_fields()`` returns them, or ``None`` when it returns ``None``
     /// for any item, for the field getters to read them.
     ///
+    /// It's all the items or none: every implementation's writer writes such
+    /// a table at the offsets that ``get_fields()`` expects, so an item that
+    /// it can't read is corrupted or was written by hand, and the getters,
+    /// which check each read, then read the whole vector.
+    ///
     /// Raises ``DecodeError`` if the vector's count or an item's ends don't
     /// lie within the buffer, as ``get_vector_offsets()`` does.
     ///
