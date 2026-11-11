@@ -31,6 +31,10 @@ messages and tables into code that writes and reads them with a language's
 runtime. It's written in Rust, and the packages for the other languages run it
 as WebAssembly.
 
+Every package has tafla's version. A Go module is published by a git tag, so
+each release tags the Go runtime `go/v<version>`, and
+`go get github.com/snovader/tafla/go@v0.1.0` adds the release 0.1.0.
+
 ## Repository
 
 | Directory      | Contents                                                                 |

@@ -18,9 +18,9 @@ repository's first commits, for code built from its source before the release.
   `uint16` or `uint32`).
 - Runtimes in TypeScript (`tafla` on npm), Python (`tafla` on PyPI), Java
   (`io.github.snovader.tafla:tafla` on Maven Central), Rust (`tafla` on
-  crates.io) and Go (the module `github.com/snovader/tafla/go`), with
-  `TableBuilder` and `TableWriter` to write tables, and `ByteBuffer` to read
-  them.
+  crates.io) and Go (the module `github.com/snovader/tafla/go`, whose
+  releases are tagged `go/v<version>`), with `TableBuilder` and `TableWriter`
+  to write tables, and `ByteBuffer` to read them.
 - Bounds-checked reads in every runtime, which fail on malformed input with
   the runtime's decode error (`DecodeError`, or `DecodeException` in Java and
   a `*DecodeError` in Go).
