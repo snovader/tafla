@@ -67,8 +67,8 @@ what each benchmark's call allocates too.
   heap, so even the fixed-size record allocates its 12 bytes, where Rust
   returns them in an array.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported. The
-  runtime's module has microbenchmarks of its hot paths in
-  `internal/generated/bench_test.go`, which compare versions of the runtime
+  tests' module has microbenchmarks of the runtime's hot paths in
+  `tests/generated/bench_test.go`, which compare versions of the runtime
   with benchstat.
 
 ## Libraries

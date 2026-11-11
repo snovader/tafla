@@ -631,7 +631,7 @@ its runtime, in the same ways as the Rust:
 | Python                 | `python/core/tests/generated/<schema>/`                                     |
 | Java                   | `java/core/src/test/java/io/github/snovader/tafla/test/generated/<schema>/` |
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
-| Go                     | `go/internal/generated/<schema>/`                                           |
+| Go                     | `go/tests/generated/<schema>/`                                              |
 
 The Java is generated with the package
 `io.github.snovader.tafla.test.generated.<schema>`, so that it's part of the

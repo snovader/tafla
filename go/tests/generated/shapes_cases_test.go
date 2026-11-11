@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/snovader/tafla/go/internal/generated/shapes"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/generated/shapes"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 )
 
 // shapeCase is a case of shapes.json

@@ -66,7 +66,7 @@ jobs:
           go-version: stable
           cache: false
 
-      # gofmt lists the files that it would change, in both modules
+      # gofmt lists the files that it would change, in every module
       - name: Run formatting check
         run: test -z "$(gofmt -l . | tee /dev/stderr)"
 
@@ -88,7 +88,7 @@ jobs:
         with:
           go-version: stable
           cache-dependency-path: |
-            go/go.sum
+            go/tests/go.sum
             go/benchmarks/go.sum
 
       - name: Install staticcheck
@@ -98,6 +98,16 @@ jobs:
         run: go vet ./...
 
       - name: Run staticcheck
+        run: staticcheck ./...
+
+      # The tests are a module of their own, so that the runtime's module
+      # needs none of their libraries nor the repository's files
+      - name: Run vet on the tests
+        working-directory: go/tests
+        run: go vet ./...
+
+      - name: Run staticcheck on the tests
+        working-directory: go/tests
         run: staticcheck ./...
 
       # The benchmarks are a module of their own, so that the runtime's
@@ -133,17 +143,23 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: go/tests/go.sum
 
-      # The runtime's tests, the conformance suite, the property tests and
-      # the code that tafla-gen generates, with the race detector, which
-      # checkptr's checks of unsafe pointers come with
+      # The runtime's examples, with the race detector, which checkptr's
+      # checks of unsafe pointers come with
+      - name: Run the runtime's tests with the race detector
+        run: go test -race ./...
+
+      # The conformance suite, the property tests and the code that
+      # tafla-gen generates
       - name: Run tests with the race detector
+        working-directory: go/tests
         run: go test -race ./...
 
       # Reads and writes every array element by element, as on a big-endian
       # host, rather than in place
       - name: Run tests of the portable path
+        working-directory: go/tests
         run: go test -tags tafla_portable ./...
 
   # A big-endian host, which reads and writes every array through its
@@ -175,21 +191,20 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: stable
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: go/tests/go.sum
 
       - name: Install qemu
         if: matrix.emulator != ''
         run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends qemu-user
 
-      # Each package's tests, compiled for the architecture and run from the
-      # package's directory, where they find the conformance suite
+      # Each package's tests, compiled for the architecture in the package's
+      # directory, which picks its module, and run there
       - name: Run tests
         env:
           GOARCH: ${{ matrix.goarch }}
         run: |
-          for package in . ./internal/generated; do
-            go test -c -o "$RUNNER_TEMP/tafla.test" "$package"
-            (cd "$package" && ${{ matrix.emulator }} "$RUNNER_TEMP/tafla.test" -test.short)
+          for package in . tests tests/generated; do
+            (cd "$package" && go test -c -o "$RUNNER_TEMP/tafla.test" . && ${{ matrix.emulator }} "$RUNNER_TEMP/tafla.test")
           done
 
   fuzz:
@@ -200,7 +215,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: go
+        working-directory: go/tests
     strategy:
       fail-fast: false
       matrix:
@@ -213,7 +228,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: stable
-          cache-dependency-path: go/go.sum
+          cache-dependency-path: go/tests/go.sum
 
       # Briefly, from the conformance suite's tables, so that a change that
       # breaks a target, or that it finds quickly, fails here. Go writes a
@@ -226,7 +241,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-${{ matrix.target }}
-          path: go/testdata/fuzz
+          path: go/tests/testdata/fuzz
 
   benchmark:
     name: Benchmark

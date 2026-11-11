@@ -21,7 +21,7 @@ import (
 	"unsafe"
 
 	tafla "github.com/snovader/tafla/go"
-	"github.com/snovader/tafla/go/internal/tables"
+	"github.com/snovader/tafla/go/tests/internal/tables"
 )
 
 // checked is the number of elements of an array, and items of a vector, at
