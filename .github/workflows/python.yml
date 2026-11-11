@@ -46,6 +46,9 @@ jobs:
               - ".github/workflows/python.yml"
               - "conformance/**"
               - "python/**"
+              # The Rust runtime, which the native classes build on
+              - "rust/Cargo.toml"
+              - "rust/core/**"
               # The example schemas, whose generated code the tests run
               - "schemas/**"
 
@@ -62,6 +65,13 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # Rust builds the native classes, which uv installs with the workspace
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy, rustfmt
+          cache-workspaces: python/core/native -> target
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -77,6 +87,18 @@ jobs:
       - name: Run type check
         run: uv run --locked ty check
 
+      - name: Run format check of the native classes
+        working-directory: python/core/native
+        run: cargo fmt --check
+
+      - name: Run lint check of the native classes
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo clippy --all-targets -- -D warnings
+
+      - name: Run the native classes' Rust tests
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo test
+
   test:
     name: Test (Python ${{ matrix.python_version }})
     needs: changes
@@ -89,10 +111,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python_version: ["3.14", "3.15"]
+        # With and without the GIL, which the native classes run without
+        python_version: ["3.14", "3.15", "3.14t"]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -100,11 +128,76 @@ jobs:
           python-version: ${{ matrix.python_version }}
           working-directory: python
 
+      - name: Check that tafla uses the native classes
+        run: uv run --locked python -c "import tafla; assert tafla.IMPLEMENTATION == 'native', tafla.IMPLEMENTATION"
+
       - name: Run tests
         run: uv run --locked python -m unittest discover -s core/tests -t core
 
       - name: Run benchmarks' tests
         run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks
+
+      - name: Run tests with the pure-Python classes
+        env:
+          TAFLA_PUREPYTHON: "1"
+        run: |
+          uv run --locked python -c "import tafla; assert tafla.IMPLEMENTATION == 'python', tafla.IMPLEMENTATION"
+          uv run --locked python -m unittest discover -s core/tests -t core
+
+      - name: Run benchmarks' tests with the pure-Python classes
+        env:
+          TAFLA_PUREPYTHON: "1"
+        run: uv run --locked python -m unittest discover -s benchmarks/tests -t benchmarks
+
+  # The distributions as they'd be published: the source distribution and a
+  # wheel with the native classes, which maturin builds, and the pure-Python
+  # wheel, which uv_build builds, each installed on its own and running the
+  # package's examples
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-workspaces: python/core/native -> target
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          working-directory: python
+
+      - name: Build the source distribution and the native wheel
+        run: uv build --package tafla --out-dir dist
+
+      - name: Build the pure-Python wheel
+        working-directory: python/core
+        run: uv run --isolated --no-project --with 'uv-build>=0.13.7,<0.14' python -c "import uv_build; print(uv_build.build_wheel('../dist'))"
+
+      - name: Run the package's examples from each wheel
+        run: |
+          for wheel in dist/*.whl; do
+            case "$wheel" in
+              *-py3-none-any.whl) expected=python ;;
+              *) expected=native ;;
+            esac
+            uv run --isolated --no-project --with "$wheel" python -I -c "
+          import doctest, tafla
+          assert tafla.IMPLEMENTATION == '$expected', ('$wheel', tafla.IMPLEMENTATION)
+          result = doctest.testmod(tafla)
+          assert result.attempted and not result.failed, result
+          "
+          done
 
   benchmark:
     name: Benchmark
@@ -118,6 +211,11 @@ jobs:
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -144,7 +242,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Python.
   checks:
     name: Python checks
-    needs: [changes, verify, test, benchmark]
+    needs: [changes, verify, test, package, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
