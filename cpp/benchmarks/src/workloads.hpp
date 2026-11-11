@@ -16,6 +16,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -29,7 +30,8 @@ inline constexpr std::size_t kDocumentRows[] = {100, 100'000};
 
 inline constexpr std::size_t kListItems = 100;
 
-/// A column viewed in the bytes it was read from, or owned, as Rust's `Cow`
+/// A column viewed in the bytes it was read from, or owned, as Rust's `Cow`,
+/// or viewed in what a codec decoded the bytes into, which it keeps
 template <class T>
 class Column {
 public:
@@ -38,6 +40,15 @@ public:
     static Column borrowed(std::span<const T> values) {
         Column column;
         column.view_ = values;
+        return column;
+    }
+
+    /// Views `values`, which `owner` holds, such as the message that a codec
+    /// parsed, and keeps it alive with the column
+    static Column kept(std::span<const T> values, std::shared_ptr<const void> owner) {
+        Column column;
+        column.view_ = values;
+        column.owner_ = std::move(owner);
         return column;
     }
 
@@ -52,13 +63,15 @@ public:
         return owning_ ? std::span<const T>(owned_) : view_;
     }
 
+    /// Whether the column views the bytes it was read from
     [[nodiscard]] bool is_borrowed() const {
-        return !owning_;
+        return !owning_ && owner_ == nullptr;
     }
 
 private:
     std::span<const T> view_;
     std::vector<T> owned_;
+    std::shared_ptr<const void> owner_;
     bool owning_ = false;
 };
 

@@ -7,10 +7,13 @@
 #define TAFLA_BENCHMARKS_SUITE_HPP
 
 #include <array>
+#include <bit>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include "codec.hpp"
@@ -27,8 +30,15 @@
 namespace tafla::benchmarks {
 
 /// The codecs, in the order that results list them, tafla's first, which the
-/// others' ratios compare with
-using Codecs = std::tuple<Tafla, TaflaGen, FlatBuffers, Protobuf, Msgpack, BitCast>;
+/// others' ratios compare with. `bit_cast` writes the format's bytes only on a
+/// little-endian host.
+using Codecs = std::conditional_t<std::endian::native == std::endian::little,
+                                  std::tuple<Tafla, TaflaGen, FlatBuffers, Protobuf, Msgpack, BitCast>,
+                                  std::tuple<Tafla, TaflaGen, FlatBuffers, Protobuf, Msgpack>>;
+
+/// The name of tafla's codec again, timed beside itself, an A/A pair whose
+/// ratio shows the harness's noise
+inline constexpr std::string_view kTaflaAgain = "tafla A/A";
 
 /// The values that the codecs write and read, which outlive the benchmarks
 struct Inputs {
@@ -57,31 +67,38 @@ void check_round_trip(const Codec& codec, const typename Shape::Value& input) {
     }
 }
 
+/// Adds a codec's variants, named `name`, to a workload's serialize and
+/// deserialize benchmarks, after checking that it reads back what it wrote
+template <class Shape, class Codec>
+void add_variants(std::array<Benchmark, 2>& benchmarks, const Codec& codec, std::string_view name,
+                  const typename Shape::Value& input) {
+    check_round_trip<Shape>(codec, input);
+
+    const auto* value = &input;
+    benchmarks[0].variants.push_back(
+        variant(std::string(name), [codec, value] { return codec.serialize(Shape{}, *opaque(value)); }));
+
+    using Bytes = decltype(codec.serialize(Shape{}, input));
+    const auto bytes = std::make_shared<const Bytes>(codec.serialize(Shape{}, input));
+    benchmarks[1].variants.push_back(variant(
+        std::string(name), [codec, bytes] { return codec.deserialize(Shape{}, bytes_of(*opaque(bytes.get()))); }));
+}
+
 /// The serialize and deserialize benchmarks of a workload, with a variant for
-/// each codec that encodes its shape
+/// each codec that encodes its shape, and tafla's A/A pair
 template <class Shape>
 std::array<Benchmark, 2> workload(const std::string& name, const typename Shape::Value& input) {
-    Benchmark serialize{name + ": serialize", {}};
-    Benchmark deserialize{name + ": deserialize", {}};
+    std::array<Benchmark, 2> benchmarks{Benchmark{name + ": serialize", {}}, Benchmark{name + ": deserialize", {}}};
 
     for_each_codec([&](const auto& codec) {
         using Codec = std::decay_t<decltype(codec)>;
         if constexpr (Encodes<Codec, Shape>) {
-            check_round_trip<Shape>(codec, input);
-
-            const auto* value = &input;
-            serialize.variants.push_back(
-                variant(std::string(Codec::name), [codec, value] { return codec.serialize(Shape{}, *opaque(value)); }));
-
-            using Bytes = decltype(codec.serialize(Shape{}, input));
-            const auto bytes = std::make_shared<const Bytes>(codec.serialize(Shape{}, input));
-            deserialize.variants.push_back(variant(std::string(Codec::name), [codec, bytes] {
-                return codec.deserialize(Shape{}, bytes_of(*opaque(bytes.get())));
-            }));
+            add_variants<Shape>(benchmarks, codec, Codec::name, input);
         }
     });
+    add_variants<Shape>(benchmarks, Tafla(), kTaflaAgain, input);
 
-    return {std::move(serialize), std::move(deserialize)};
+    return benchmarks;
 }
 
 /// Sums a document's column `a` through each codec's per-element accessor
@@ -102,6 +119,10 @@ inline Benchmark sum_column_benchmark(const std::string& name, const Document& i
                                            [codec, bytes] { return codec.sum_a(bytes_of(*opaque(bytes.get()))); }));
         }
     });
+
+    const auto bytes = std::make_shared<const Bytes>(Tafla().serialize(DocumentShape{}, input));
+    sum.variants.push_back(
+        variant(std::string(kTaflaAgain), [bytes] { return Tafla().sum_a(bytes_of(*opaque(bytes.get()))); }));
     return sum;
 }
 

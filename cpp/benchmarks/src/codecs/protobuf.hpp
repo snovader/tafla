@@ -4,7 +4,9 @@
 #ifndef TAFLA_BENCHMARKS_CODECS_PROTOBUF_HPP
 #define TAFLA_BENCHMARKS_CODECS_PROTOBUF_HPP
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -19,8 +21,10 @@ namespace tafla::benchmarks {
 /// Messages are built from the input and written with
 /// `SerializeAsString()`, which sizes the bytes first, and read with
 /// `ParseFromArray()`. Messages own their strings and repeated fields, so
-/// building one copies its columns, as a caller that keeps its values would,
-/// and reading copies them into the output's vectors, moving the strings.
+/// building one copies its columns, as a caller that keeps its values would.
+/// Reading decodes the columns into the message's repeated fields, which the
+/// output views, keeping the message, as tafla's and FlatBuffers' outputs view
+/// theirs in the bytes, and moves its strings.
 /// protobuf has no structs, so the array of them is a repeated message of the
 /// three floats.
 struct Protobuf {
@@ -55,17 +59,17 @@ struct Protobuf {
     }
 
     [[nodiscard]] Document deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
-        auto message = parse<tafla_proto::Document>(bytes);
-        const auto& columns = message.columns();
+        const auto message = std::make_shared<tafla_proto::Document>(parse<tafla_proto::Document>(bytes));
+        const auto& columns = message->columns();
 
         return {
-            message.x(),
-            message.y(),
-            Text::owned(std::move(*message.mutable_name())),
+            message->x(),
+            message->y(),
+            Text::owned(std::move(*message->mutable_name())),
             columns.base(),
-            Column<std::uint32_t>::owned({columns.keys().begin(), columns.keys().end()}),
-            Column<float>::owned({columns.a().begin(), columns.a().end()}),
-            Column<float>::owned({columns.b().begin(), columns.b().end()}),
+            Column<std::uint32_t>::kept(view_of(columns.keys()), message),
+            Column<float>::kept(view_of(columns.a()), message),
+            Column<float>::kept(view_of(columns.b()), message),
         };
     }
 
@@ -131,6 +135,12 @@ struct Protobuf {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const auto message = parse<tafla_proto::Sample>(bytes);
         return {message.key(), message.a(), message.b()};
+    }
+
+    /// The values of a repeated field, in place
+    template <class T>
+    static std::span<const T> view_of(const ::google::protobuf::RepeatedField<T>& field) {
+        return {field.data(), static_cast<std::size_t>(field.size())};
     }
 
     template <class Message>

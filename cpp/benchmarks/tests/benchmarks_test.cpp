@@ -84,8 +84,8 @@ TEST(Workloads, GeneratesTheTypeScriptVectorOfNestedTables) {
     EXPECT_EQ(bits(items[99]), (std::array<std::uint32_t, 3>{0x4193'd915, 0x3f97'9e05, 0x418f'26e1}));
 }
 
-/// tafla's columns are read in place, as views of the bytes, where the other
-/// codecs but FlatBuffers copy them
+/// tafla's columns are read in place, as views of the bytes, as FlatBuffers'
+/// are, where protobuf's view the message that it decoded them into
 TEST(Benchmarks, TaflaReadsColumnsInPlace) {
     const auto doc = document(100);
     const auto bytes = Tafla().serialize(DocumentShape{}, doc);

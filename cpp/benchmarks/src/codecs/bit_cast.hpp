@@ -19,12 +19,12 @@ static_assert(sizeof(Sample) == 12 && std::is_trivially_copyable_v<Sample>, "A s
 /// counterpart of the record, whose fields lie at fixed offsets without
 /// padding, in the host's byte order. It writes and reads the format's
 /// little-endian bytes only on a little-endian host, where tafla's
-/// `store_le()` and `load_le()` compile to the same stores and loads.
+/// `store_le()` and `load_le()` compile to the same stores and loads, so the
+/// comparison leaves it out on a big-endian host.
 struct BitCast {
     static constexpr std::string_view name = "bit_cast";
 
     [[nodiscard]] std::array<std::uint8_t, 12> serialize(SampleShape, const Sample& input) const {
-        static_assert(std::endian::native == std::endian::little, "The record is little-endian");
         return std::bit_cast<std::array<std::uint8_t, 12>>(input);
     }
 

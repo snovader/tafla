@@ -25,7 +25,9 @@ and `std::span`, and copies otherwise. Column `a` of each document is also
 summed through each library's per-element accessor. `src/workloads.hpp` ports
 the TypeScript generator, so the inputs are the same values, which
 `tests/benchmarks_test.cpp` checks against values that the TypeScript
-generator printed.
+generator printed. Each of these benchmarks also times tafla's codec again,
+as **tafla A/A**, an A/A pair whose ratio to tafla's shows the harness's
+noise.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in three ways: **read the last item**, which a
@@ -53,8 +55,9 @@ truncated document, as the TypeScript comparison does, and
 - tafla's columns are read as views of the bytes, through
   `ArrayView::as_span()`, when they're aligned on a little-endian host, and so
   are FlatBuffers', through `Vector::data()`, as C++'s FlatBuffers reads them.
-  protobuf and MessagePack copy theirs into vectors. Summing a column shows
-  each library's per-element access.
+  protobuf's are views of the repeated fields that it decodes them into,
+  which the output keeps, and MessagePack copies its into vectors. Summing a
+  column shows each library's per-element access.
 - tafla's C++ runtime has no `StructWriter`. The tafla codec writes the
   fixed-size record with `store_le()` and reads it with `ByteBuffer`'s
   getters. tafla-gen's struct writes and reads it with the generated
@@ -117,10 +120,11 @@ comparison uses its counterpart:
 - **protobuf** builds messages from the input and writes them with
   `SerializeAsString()`, which sizes the bytes first, and reads them with
   `ParseFromArray()`. Its messages own their strings and repeated fields, so
-  building one copies its columns, as a caller that keeps its values would,
-  and reading copies the columns into the output's vectors and moves its
-  strings. protobuf has no structs, so the array of them is a repeated
-  message of the three floats.
+  building one copies its columns, as a caller that keeps its values would.
+  Reading decodes the columns into the message's repeated fields, which the
+  output views and keeps the message for, as tafla's and FlatBuffers'
+  outputs view their bytes, and moves its strings. protobuf has no structs,
+  so the array of them is a repeated message of the three floats.
 - **msgpack-cxx** packs the workloads' values with its `packer` into an
   `sbuffer`, a table as a map with its field names, as msgpackr packs an
   object, and unpacks them into an object, which the codec reads its fields
@@ -213,7 +217,8 @@ headers as system headers, and tafla-gen's is checked as the golden files of
   move the benchmark's thread to an efficiency core when others are busy.
 - Only a little-endian host was timed. On a big-endian host, tafla's
   `as_span()` returns nothing, so its columns are copied, swapping their
-  bytes, and `bit_cast`'s record isn't the format's bytes.
+  bytes, and the comparison leaves `bit_cast` out, since its record isn't
+  the format's bytes there.
 - Only macOS's allocator was timed, which every library's allocations depend
   on.
 - FlatBuffers' builder starts at 1 KiB and doubles by copying, and
