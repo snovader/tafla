@@ -2,8 +2,8 @@
 // macros that compilers predefine outside strict ISO modes, such as GNU's
 // `linux` and `unix`, and those of C's, glibc's and Windows' headers, such as
 // `EOF`, `major()` and `min()`, which this test defines as those would.
-// The generated code renames fields and namespaces of their names, and the
-// runtime calls `(std::min)()` rather than `std::min()`.
+// The generated code renames fields, types and namespaces of their names,
+// and the runtime calls `(std::min)()` rather than `std::min()`.
 
 #include <gtest/gtest.h>
 
@@ -55,9 +55,16 @@ namespace {
 
 namespace generated = linux_::EOF_::schema_Upper::b_c;
 
-TEST(Macros, FieldsNamedAfterMacrosAreWrittenAndRead) {
+// <cstdio> and <cstddef> define the macros that the schema's types are named
+// after, so that the test fails to compile if the generated code keeps them
+#if !defined(EOF) || !defined(NULL)
+#error "EOF and NULL are defined by the C headers that this test includes"
+#endif
+
+TEST(Macros, FieldsAndTypesNamedAfterMacrosAreWrittenAndRead) {
     const std::array<float, 2> low{1.5F, -2.0F};
     const std::array<float, 1> high{3.0F};
+    const std::array<generated::NULL_, 2> nulls{{{.x = 0.5}, {.x = 2.5}}};
     const auto bytes =
         generated::MacrosFields{
             .linux_ = 1,
@@ -73,6 +80,8 @@ TEST(Macros, FieldsNamedAfterMacrosAreWrittenAndRead) {
             .far_ = 11,
             .small_ = 12,
             .interface_ = {.min_ = low, .max_ = high},
+            .eof = {.x = 13},
+            .nulls = nulls,
         }
             .serialize();
 
@@ -91,6 +100,8 @@ TEST(Macros, FieldsNamedAfterMacrosAreWrittenAndRead) {
     EXPECT_EQ(macros.small_(), 12);
     EXPECT_EQ(macros.interface_().min_().to_vector(), (std::vector<float>{1.5F, -2.0F}));
     EXPECT_EQ(macros.interface_().max_().to_vector(), (std::vector<float>{3.0F}));
+    EXPECT_EQ(macros.eof().x(), 13);
+    EXPECT_EQ(macros.nulls(), (std::vector<generated::NULL_>{{.x = 0.5}, {.x = 2.5}}));
 }
 
 }  // namespace
