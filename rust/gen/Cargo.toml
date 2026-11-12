@@ -1,7 +1,7 @@
 [package]
 name = "tafla-gen"
 version = "0.0.0"
-description = "Compiles tafla schemas into code that writes and reads tables in TypeScript, Python, Java and Rust"
+description = "Compiles tafla schemas into code that writes and reads tables in TypeScript, Python, Java, Rust, Go and C++"
 readme = "README.md"
 documentation = "https://docs.rs/tafla-gen"
 keywords = ["codegen", "schema", "serialization", "tafla", "wasm"]
@@ -21,7 +21,7 @@ name = "tafla-gen"
 path = "src/main.rs"
 
 [features]
-default = ["typescript", "python", "java", "rust"]
+default = ["typescript", "python", "java", "rust", "go", "cpp"]
 # Each target language's generator, so that a crate that generates one
 # language from its build script doesn't compile the others. `typescript`
 # generates JavaScript too.
@@ -29,6 +29,8 @@ typescript = []
 python = []
 java = []
 rust = []
+go = []
+cpp = []
 
 [dev-dependencies]
 # Runs the Rust generated from the example schemas in tests/generated_*.rs. The

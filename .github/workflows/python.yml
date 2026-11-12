@@ -267,11 +267,24 @@ jobs:
       - name: Run benchmarks briefly
         run: uv run --locked python -m tafla_benchmarks --debug-single-value --quiet
 
+      # protobuf's implementation is chosen when a process first imports it, so
+      # its pure-Python implementation runs in a process of its own. The
+      # round-trip test runs it in one too.
+      - name: Run pure protobuf's benchmarks briefly
+        run: uv run --locked python -m tafla_benchmarks --codec protobuf --debug-single-value --quiet
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
+
       - name: Print encoded sizes
         run: uv run --locked python -m tafla_benchmarks.encoding
 
       - name: Print allocations
         run: uv run --locked python -m tafla_benchmarks.allocation
+
+      - name: Print pure protobuf's allocations
+        run: uv run --locked python -m tafla_benchmarks.allocation --codec protobuf
+        env:
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
 
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Python.

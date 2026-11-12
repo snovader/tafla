@@ -16,7 +16,7 @@ dependencies = [
   "msgpack>=1.2.4",
   "numpy>=2.5.4",
   "protobuf>=7.36.2",
-  "pyperf>=2.10.0",
+  "pyperf>=2.11.0",
 ]
 
 [tool.uv.sources]
