@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -311,6 +312,15 @@ struct PairFields {
 
     /** Writes a `Pair` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+
+    /** The byte length of a `Pair` written whole: its offsets and its fields */
+    static constexpr std::size_t SIZE = 16;
+
+    /**
+     * Writes the `SIZE` bytes of a `Pair`, its offsets and its fields, at `bytes_`, as its parent's writer would after
+     * its offset
+     */
+    void to_bytes(std::uint8_t* bytes_) const noexcept;
 };
 
 class Item {
@@ -349,6 +359,15 @@ struct ItemFields {
 
     /** Writes an `Item` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+
+    /** The byte length of an `Item` written whole: its offsets and its fields */
+    static constexpr std::size_t SIZE = 28;
+
+    /**
+     * Writes the `SIZE` bytes of an `Item`, its offsets and its fields, at `bytes_`, as its parent's writer would after
+     * its offset
+     */
+    void to_bytes(std::uint8_t* bytes_) const noexcept;
 };
 
 inline double Point::x() const {
@@ -376,35 +395,48 @@ inline std::string_view Point::name() const {
 }
 
 inline ::tafla::Bytes PointFields::serialize() const {
-    ::tafla::TableSizer sizer_(4, Point::LAYOUT);
-    sizer_.add_float64();
-    sizer_.add_float64();
-    sizer_.add_int64();
-    sizer_.add_string(name);
+    const std::uint64_t length_ = 44U + std::uint64_t{name.size()};
+    if (length_ > 4294967295U) [[unlikely]] {
+        throw ::tafla::BuildError::too_long(3, length_, ::tafla::OffsetType::uint32);
+    }
+    auto table_ = ::tafla::Bytes::for_overwrite(static_cast<std::size_t>(length_));
+    std::uint8_t* const bytes_ = table_.data();
 
-    auto writer_ = sizer_.writer();
-    writer_.set_float64(0, x);
-    writer_.set_float64(1, y);
-    writer_.set_int64(2, id);
-    writer_.set_string(3, name);
+    ::tafla::store_le(bytes_, std::uint32_t{16});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{24});
+    ::tafla::store_le(bytes_ + 8, std::uint32_t{32});
+    ::tafla::store_le(bytes_ + 12, std::uint32_t{40});
+    ::tafla::store_le(bytes_ + 16, x);
+    ::tafla::store_le(bytes_ + 24, y);
+    ::tafla::store_le(bytes_ + 32, id);
+    ::tafla::store_le(bytes_ + 40, static_cast<std::uint32_t>(name.size()));
+    if (!name.empty()) {
+        std::memcpy(bytes_ + 44, name.data(), name.size());
+    }
 
-    return writer_.finish();
+    return table_;
 }
 
-inline std::size_t PointFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(4, Point::LAYOUT);
-    sizer_.add_float64();
-    sizer_.add_float64();
-    sizer_.add_int64();
-    sizer_.add_string(name);
+inline std::size_t PointFields::serialize_into(std::span<std::uint8_t> given_) const {
+    const std::uint64_t length_ = 44U + std::uint64_t{name.size()};
+    if (length_ > 4294967295U) [[unlikely]] {
+        throw ::tafla::BuildError::too_long(3, length_, ::tafla::OffsetType::uint32);
+    }
+    std::uint8_t* const bytes_ = ::tafla::room_for_table(given_, static_cast<std::size_t>(length_));
 
-    auto writer_ = sizer_.writer(bytes_);
-    writer_.set_float64(0, x);
-    writer_.set_float64(1, y);
-    writer_.set_int64(2, id);
-    writer_.set_string(3, name);
+    ::tafla::store_le(bytes_, std::uint32_t{16});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{24});
+    ::tafla::store_le(bytes_ + 8, std::uint32_t{32});
+    ::tafla::store_le(bytes_ + 12, std::uint32_t{40});
+    ::tafla::store_le(bytes_ + 16, x);
+    ::tafla::store_le(bytes_ + 24, y);
+    ::tafla::store_le(bytes_ + 32, id);
+    ::tafla::store_le(bytes_ + 40, static_cast<std::uint32_t>(name.size()));
+    if (!name.empty()) {
+        std::memcpy(bytes_ + 44, name.data(), name.size());
+    }
 
-    return writer_.finish_into();
+    return static_cast<std::size_t>(length_);
 }
 
 inline std::int64_t Columns::base() const {
@@ -590,6 +622,13 @@ inline void PairFields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+inline void PairFields::to_bytes(std::uint8_t* bytes_) const noexcept {
+    ::tafla::store_le(bytes_, std::uint32_t{8});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{12});
+    ::tafla::store_le(bytes_ + 8, first);
+    ::tafla::store_le(bytes_ + 12, second);
+}
+
 inline float Item::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(position_, 0);
@@ -616,6 +655,13 @@ inline void ItemFields::write(::tafla::TableWriter& writer_) const {
     writer_.set_table(1, PairFields::ALIGNMENT);
     pair.write(writer_);
     writer_.end_table(parent_);
+}
+
+inline void ItemFields::to_bytes(std::uint8_t* bytes_) const noexcept {
+    ::tafla::store_le(bytes_, std::uint32_t{8});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{12});
+    ::tafla::store_le(bytes_ + 8, value);
+    pair.to_bytes(bytes_ + 12);
 }
 
 }  // namespace shapes

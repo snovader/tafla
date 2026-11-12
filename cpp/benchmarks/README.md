@@ -100,15 +100,17 @@ comparison uses its counterpart:
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `generated/tafla/`. A message's `serialize()` counts the table's length
   with a `TableSizer`, and then writes every field, nested tables included,
-  into bytes of that length with a `TableWriter`, in one allocation. Its
-  readers view strings and columns, as tafla's do, and read with a
-  `ByteBuffer` in the table's layout, a constant. It takes the workloads'
-  types, as the other codecs do, so it collects the generated fields of the
-  vector's items and the generated structs of the array into a
-  `std::vector` in each call, since the generated code writes them from
-  spans. The generated getter of the vector reads its items' readers into a
-  `std::vector`, which the codec reads into the workload's items, and the
-  array of structs is read through its view.
+  into bytes of that length with a `TableWriter`, in one allocation. The
+  record, whose fields' sizes are fixed but for a string after them, it writes
+  whole instead, each field at a constant position in bytes of its length,
+  without a sizer and a writer. Its readers view strings and columns, as
+  tafla's do, and read with a `ByteBuffer` in the table's layout, a constant.
+  It takes the workloads' types, as the other codecs do, so it collects the
+  generated fields of the vector's items and the generated structs of the
+  array into a `std::vector` in each call, since the generated code writes
+  them from spans. The generated getter of the vector reads its items' readers
+  into a `std::vector`, which the codec reads into the workload's items, and
+  the array of structs is read through its view.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, which grows by doubling, and each table with flatc's
   `Create*()` functions. Columns are written from spans with

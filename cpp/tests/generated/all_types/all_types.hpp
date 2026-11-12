@@ -894,63 +894,62 @@ inline bool Scalars::bool_() const {
 }
 
 inline ::tafla::Bytes ScalarsFields::serialize() const {
-    ::tafla::TableSizer sizer_(11, Scalars::LAYOUT);
-    sizer_.add_int8();
-    sizer_.add_uint8();
-    sizer_.add_int16();
-    sizer_.add_uint16();
-    sizer_.add_int32();
-    sizer_.add_uint32();
-    sizer_.add_int64();
-    sizer_.add_uint64();
-    sizer_.add_float32();
-    sizer_.add_float64();
-    sizer_.add_uint8();
+    auto table_ = ::tafla::Bytes::for_overwrite(87);
+    std::uint8_t* const bytes_ = table_.data();
 
-    auto writer_ = sizer_.writer();
-    writer_.set_int8(0, int8);
-    writer_.set_uint8(1, uint8);
-    writer_.set_int16(2, int16);
-    writer_.set_uint16(3, uint16);
-    writer_.set_int32(4, int32);
-    writer_.set_uint32(5, uint32);
-    writer_.set_int64(6, int64);
-    writer_.set_uint64(7, uint64);
-    writer_.set_float32(8, float32);
-    writer_.set_float64(9, float64);
-    writer_.set_uint8(10, static_cast<std::uint8_t>(bool_));
+    ::tafla::store_le(bytes_, std::uint32_t{44});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{45});
+    ::tafla::store_le(bytes_ + 8, std::uint32_t{46});
+    ::tafla::store_le(bytes_ + 12, std::uint32_t{48});
+    ::tafla::store_le(bytes_ + 16, std::uint32_t{50});
+    ::tafla::store_le(bytes_ + 20, std::uint32_t{54});
+    ::tafla::store_le(bytes_ + 24, std::uint32_t{58});
+    ::tafla::store_le(bytes_ + 28, std::uint32_t{66});
+    ::tafla::store_le(bytes_ + 32, std::uint32_t{74});
+    ::tafla::store_le(bytes_ + 36, std::uint32_t{78});
+    ::tafla::store_le(bytes_ + 40, std::uint32_t{86});
+    ::tafla::store_le(bytes_ + 44, int8);
+    ::tafla::store_le(bytes_ + 45, uint8);
+    ::tafla::store_le(bytes_ + 46, int16);
+    ::tafla::store_le(bytes_ + 48, uint16);
+    ::tafla::store_le(bytes_ + 50, int32);
+    ::tafla::store_le(bytes_ + 54, uint32);
+    ::tafla::store_le(bytes_ + 58, int64);
+    ::tafla::store_le(bytes_ + 66, uint64);
+    ::tafla::store_le(bytes_ + 74, float32);
+    ::tafla::store_le(bytes_ + 78, float64);
+    bytes_[86] = static_cast<std::uint8_t>(bool_);
 
-    return writer_.finish();
+    return table_;
 }
 
-inline std::size_t ScalarsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(11, Scalars::LAYOUT);
-    sizer_.add_int8();
-    sizer_.add_uint8();
-    sizer_.add_int16();
-    sizer_.add_uint16();
-    sizer_.add_int32();
-    sizer_.add_uint32();
-    sizer_.add_int64();
-    sizer_.add_uint64();
-    sizer_.add_float32();
-    sizer_.add_float64();
-    sizer_.add_uint8();
+inline std::size_t ScalarsFields::serialize_into(std::span<std::uint8_t> given_) const {
+    std::uint8_t* const bytes_ = ::tafla::room_for_table(given_, 87);
 
-    auto writer_ = sizer_.writer(bytes_);
-    writer_.set_int8(0, int8);
-    writer_.set_uint8(1, uint8);
-    writer_.set_int16(2, int16);
-    writer_.set_uint16(3, uint16);
-    writer_.set_int32(4, int32);
-    writer_.set_uint32(5, uint32);
-    writer_.set_int64(6, int64);
-    writer_.set_uint64(7, uint64);
-    writer_.set_float32(8, float32);
-    writer_.set_float64(9, float64);
-    writer_.set_uint8(10, static_cast<std::uint8_t>(bool_));
+    ::tafla::store_le(bytes_, std::uint32_t{44});
+    ::tafla::store_le(bytes_ + 4, std::uint32_t{45});
+    ::tafla::store_le(bytes_ + 8, std::uint32_t{46});
+    ::tafla::store_le(bytes_ + 12, std::uint32_t{48});
+    ::tafla::store_le(bytes_ + 16, std::uint32_t{50});
+    ::tafla::store_le(bytes_ + 20, std::uint32_t{54});
+    ::tafla::store_le(bytes_ + 24, std::uint32_t{58});
+    ::tafla::store_le(bytes_ + 28, std::uint32_t{66});
+    ::tafla::store_le(bytes_ + 32, std::uint32_t{74});
+    ::tafla::store_le(bytes_ + 36, std::uint32_t{78});
+    ::tafla::store_le(bytes_ + 40, std::uint32_t{86});
+    ::tafla::store_le(bytes_ + 44, int8);
+    ::tafla::store_le(bytes_ + 45, uint8);
+    ::tafla::store_le(bytes_ + 46, int16);
+    ::tafla::store_le(bytes_ + 48, uint16);
+    ::tafla::store_le(bytes_ + 50, int32);
+    ::tafla::store_le(bytes_ + 54, uint32);
+    ::tafla::store_le(bytes_ + 58, int64);
+    ::tafla::store_le(bytes_ + 66, uint64);
+    ::tafla::store_le(bytes_ + 74, float32);
+    ::tafla::store_le(bytes_ + 78, float64);
+    bytes_[86] = static_cast<std::uint8_t>(bool_);
 
-    return writer_.finish_into();
+    return 87;
 }
 
 inline ::tafla::ArrayView<std::int8_t> Arrays::int8() const {

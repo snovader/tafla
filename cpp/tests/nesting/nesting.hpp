@@ -361,6 +361,15 @@ struct LeafFields {
 
     /** Writes a `Leaf` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+
+    /** The byte length of a `Leaf` written whole: its offsets and its fields */
+    static constexpr std::size_t SIZE = 5;
+
+    /**
+     * Writes the `SIZE` bytes of a `Leaf`, its offsets and its fields, at `bytes_`, as its parent's writer would after
+     * its offset
+     */
+    void to_bytes(std::uint8_t* bytes_) const noexcept;
 };
 
 class Level62 {
@@ -3780,6 +3789,11 @@ inline void LeafFields::write(::tafla::TableWriter& writer_) const {
     const auto parent_ = writer_.start_table(1);
     writer_.set_uint8(0, value);
     writer_.end_table(parent_);
+}
+
+inline void LeafFields::to_bytes(std::uint8_t* bytes_) const noexcept {
+    ::tafla::store_le(bytes_, std::uint32_t{4});
+    ::tafla::store_le(bytes_ + 4, value);
 }
 
 inline Leaf Level62::level() const {

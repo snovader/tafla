@@ -26,6 +26,7 @@
 //! taking. The generated code's own helpers are unexported methods, which
 //! can't clash with them.
 
+use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::CodeWriter;
 use super::{GeneratedFile, Options};
@@ -177,14 +178,9 @@ fn package_name(stem: &str) -> String {
 struct Generator<'a> {
     schema: &'a Schema,
     /// The byte length of each table whose fields' sizes the schema fixes,
-    /// which the generated code writes whole, by its index, and `None` for
-    /// every other definition
-    fixed_tables: Vec<Option<usize>>,
+    /// which the generated code writes whole
+    fixed: FixedSizes,
 }
-
-/// The offset size of nested tables, which have `uint32` offsets, since the
-/// checker rejects tables nested in messages of a narrower offset type
-const NESTED_OFFSET_SIZE: usize = 4;
 
 /// The longest that the generated code lays out a table's fields, so that
 /// their positions are constants that an `int` holds on 32-bit hosts too.
@@ -220,22 +216,16 @@ impl Plan {
 
 impl<'a> Generator<'a> {
     fn new(schema: &'a Schema) -> Self {
-        let mut fixed_tables = vec![None; schema.definitions.len()];
-        let mut visited = vec![false; schema.definitions.len()];
-        for index in 0..schema.definitions.len() {
-            fixed_table_size(schema, index, &mut fixed_tables, &mut visited);
-        }
-
         Generator {
             schema,
-            fixed_tables,
+            fixed: FixedSizes::new(schema, MAX_LAID_OUT),
         }
     }
 
     /// The byte length of a field whose size the schema fixes: a scalar, a
     /// struct, or a table of only such fields, which has no padding
     fn fixed_size(&self, field_type: FieldType) -> Option<usize> {
-        fixed_field_size(self.schema, field_type, |index| self.fixed_tables[index])
+        self.fixed.field(self.schema, field_type)
     }
 
     /// The fields of a message or table that the generated code lays out
@@ -338,7 +328,7 @@ impl<'a> Generator<'a> {
                 continue;
             }
 
-            let (fields, width) = if self.fixed_tables[index].is_some() {
+            let (fields, width) = if self.fixed.table(index).is_some() {
                 (definition.fields.as_slice(), NESTED_OFFSET_SIZE)
             } else {
                 let plan = self.plan(definition);
@@ -796,7 +786,7 @@ impl<'a> Generator<'a> {
 
         match definition.kind {
             Kind::Message(layout) => self.marshal(writer, definition, layout),
-            Kind::Table => match self.fixed_tables[index] {
+            Kind::Table => match self.fixed.table(index) {
                 Some(size) => self.put_table(writer, definition, size),
                 None => self.size_and_write(writer, definition),
             },
@@ -1080,14 +1070,14 @@ impl<'a> Generator<'a> {
                 FieldType::Table(index) => {
                     let alignment = self.schema.table_alignment(index);
                     writer.line(format!("sizer.AddTable({})", alignment_constant(alignment)));
-                    match self.fixed_tables[index] {
+                    match self.fixed.table(index) {
                         Some(size) => writer.line(format!("sizer.AddTableBytes(1, {size})")),
                         None => writer.line(format!("{value}.size({sizer})")),
                     }
                 }
                 FieldType::Vector(index) => {
                     writer.line(format!("sizer.AddVector(len({value}))"));
-                    if let Some(size) = self.fixed_tables[index] {
+                    if let Some(size) = self.fixed.table(index) {
                         writer.line(format!("sizer.AddTableBytes(len({value}), {size})"));
                     } else {
                         writer.open(format!("for index := range {value} {{"));
@@ -1166,7 +1156,7 @@ impl<'a> Generator<'a> {
                         "writer.SetTable({index}, {})",
                         alignment_constant(alignment)
                     ));
-                    match self.fixed_tables[table_index] {
+                    match self.fixed.table(table_index) {
                         Some(size) => {
                             writer.line(format!("{value}.put(writer.ReserveTableBytes({size}))"));
                         }
@@ -1180,7 +1170,7 @@ impl<'a> Generator<'a> {
                         "vector {assign} writer.SetVector({index}, len({value}))"
                     ));
                     writer.open(format!("for item := range {value} {{"));
-                    match self.fixed_tables[item_index] {
+                    match self.fixed.table(item_index) {
                         Some(size) => writer.line(format!(
                             "{value}[item].put(writer.ReserveTableBytes({size}))"
                         )),
@@ -1481,69 +1471,6 @@ fn at(bytes: &str, offset: usize) -> String {
         bytes.to_owned()
     } else {
         format!("{bytes}[{offset}:]")
-    }
-}
-
-/// The width of an offset type's header slots, offsets and counts
-const fn offset_size(offset_type: OffsetType) -> usize {
-    match offset_type {
-        OffsetType::Uint8 => 1,
-        OffsetType::Uint16 => 2,
-        OffsetType::Uint32 => 4,
-    }
-}
-
-/// Finds the byte length of the table at `index` when its fields' sizes are
-/// all fixed, and its nested tables' first, into `sizes` by its index, which
-/// is `None` for any other definition, or one too long to lay out, and marks
-/// it `visited`. Tables nest in place at most 64 deep, and each is sized once.
-fn fixed_table_size(
-    schema: &Schema,
-    index: usize,
-    sizes: &mut [Option<usize>],
-    visited: &mut [bool],
-) -> Option<usize> {
-    if visited[index] {
-        return sizes[index];
-    }
-
-    let definition = schema.definition(index);
-    let mut size = Some(definition.fields.len().saturating_mul(NESTED_OFFSET_SIZE));
-    if definition.kind != Kind::Table {
-        size = None;
-    }
-    for field in &definition.fields {
-        let Some(table) = size else {
-            break;
-        };
-        let field_size = fixed_field_size(schema, field.field_type, |nested| {
-            fixed_table_size(schema, nested, sizes, visited)
-        });
-        size = field_size.map(|field_size| table.saturating_add(field_size));
-    }
-
-    let size = size.filter(|&size| size <= MAX_LAID_OUT);
-    sizes[index] = size;
-    visited[index] = true;
-    size
-}
-
-/// The byte length of a field whose size the schema fixes: a scalar's, a
-/// struct's, or the length of a nested table that `table` gives, when its
-/// fields' sizes are all fixed
-fn fixed_field_size(
-    schema: &Schema,
-    field_type: FieldType,
-    table: impl FnOnce(usize) -> Option<usize>,
-) -> Option<usize> {
-    match field_type {
-        FieldType::Scalar(scalar) => Some(usize::from(scalar.size())),
-        FieldType::Struct(index) => Some(schema.definition(index).struct_layout().size),
-        FieldType::Table(index) => table(index),
-        FieldType::Array(_)
-        | FieldType::String
-        | FieldType::StructArray(_)
-        | FieldType::Vector(_) => None,
     }
 }
 
