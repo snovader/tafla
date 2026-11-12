@@ -104,19 +104,19 @@ pub trait Shape {
 }
 
 /// The shape of [`Record`]
-pub enum RecordShape {}
+pub struct RecordShape;
 
 /// The shape of [`Document`]
-pub enum DocumentShape {}
+pub struct DocumentShape;
 
 /// The shape of [`List`], whose items are nested tables
-pub enum ListShape {}
+pub struct ListShape;
 
 /// The shape of [`List`], whose items are structs
-pub enum StructsShape {}
+pub struct StructsShape;
 
 /// The shape of [`Sample`]
-pub enum SampleShape {}
+pub struct SampleShape;
 
 impl Shape for RecordShape {
     const NAME: &'static str = "record";
