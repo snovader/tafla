@@ -257,6 +257,14 @@ structs, so that its length is never more than the bytes can hold. It reads
 each item when it's asked for, which fails with the decode error if the
 item's bytes are corrupt.
 
+Since a view reads an item without the items before it, it reads an item
+that corrupted ends start at the vector's count, where the getter fails at
+an item before it. Such an item can hold itself, when its table holds a
+vector of its own type, as
+[SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#validation)
+describes, so a caller that walks a tree recursively through views bounds
+how deep it walks.
+
 | Target                 | Length                | Item `i`                                                                                    | Every item                                             |
 | ---------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`                                                                 | A loop of `get(i)`                                     |
