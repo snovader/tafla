@@ -5,6 +5,8 @@
 //! Each generator has a Cargo feature, which the default features enable. A
 //! build without a generator's feature doesn't know its target.
 
+#[cfg(feature = "cpp")]
+mod cpp;
 #[cfg(feature = "go")]
 mod go;
 #[cfg(feature = "java")]
@@ -16,7 +18,8 @@ mod java_package;
     feature = "python",
     feature = "java",
     feature = "rust",
-    feature = "go"
+    feature = "go",
+    feature = "cpp"
 ))]
 mod prose;
 #[cfg(feature = "python")]
@@ -32,9 +35,10 @@ mod typescript;
     feature = "python",
     feature = "java",
     feature = "rust",
-    feature = "go"
+    feature = "go",
+    feature = "cpp"
 ))]
-// Go's generator writes lines that gofmt doesn't break, without the others'
+// Go's and C++'s generators write their lines without the others'
 // expressions
 #[cfg_attr(
     not(any(
@@ -67,6 +71,9 @@ pub enum Target {
     Rust,
     #[cfg(feature = "go")]
     Go,
+    /// A header of C++20
+    #[cfg(feature = "cpp")]
+    Cpp,
 }
 
 impl Target {
@@ -84,6 +91,8 @@ impl Target {
         (&["rust", "rs"], Self::Rust),
         #[cfg(feature = "go")]
         (&["go"], Self::Go),
+        #[cfg(feature = "cpp")]
+        (&["cpp"], Self::Cpp),
     ];
 
     /// The target of a name or its abbreviation, if this build generates it
@@ -134,7 +143,8 @@ pub struct GeneratedFile {
         feature = "typescript",
         feature = "python",
         feature = "java",
-        feature = "rust"
+        feature = "rust",
+        feature = "cpp"
     )),
     allow(unused_variables)
 )]
@@ -164,6 +174,8 @@ pub fn generate(
         Target::Rust => rust::generate(schema, stem(file_name), &header, options),
         #[cfg(feature = "go")]
         Target::Go => go::generate(schema, stem(file_name), &comment_text(file_name), options),
+        #[cfg(feature = "cpp")]
+        Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
     }
 }
 
@@ -191,7 +203,8 @@ fn comment_text(file_name: &str) -> String {
     feature = "typescript",
     feature = "python",
     feature = "rust",
-    feature = "go"
+    feature = "go",
+    feature = "cpp"
 ))]
 fn stem(file_name: &str) -> &str {
     let name = file_name

@@ -1,0 +1,388 @@
+// Tables that each hold the next level three times, once in place and in
+// two vectors, as deep as tables nest. The C++ that tafla-gen generates from
+// it compiles in a time that grows linearly with the depth, rather than in
+// threes, since a table's writers are forced inline only while they're
+// short. rust/gen/tests/cpp_schemas.rs keeps nesting/nesting.hpp the
+// generated code.
+
+message Root {
+    level: Level1;
+    first: [Level1];
+    second: [Level1];
+}
+
+table Level1 {
+    level: Level2;
+    first: [Level2];
+    second: [Level2];
+}
+
+table Level2 {
+    level: Level3;
+    first: [Level3];
+    second: [Level3];
+}
+
+table Level3 {
+    level: Level4;
+    first: [Level4];
+    second: [Level4];
+}
+
+table Level4 {
+    level: Level5;
+    first: [Level5];
+    second: [Level5];
+}
+
+table Level5 {
+    level: Level6;
+    first: [Level6];
+    second: [Level6];
+}
+
+table Level6 {
+    level: Level7;
+    first: [Level7];
+    second: [Level7];
+}
+
+table Level7 {
+    level: Level8;
+    first: [Level8];
+    second: [Level8];
+}
+
+table Level8 {
+    level: Level9;
+    first: [Level9];
+    second: [Level9];
+}
+
+table Level9 {
+    level: Level10;
+    first: [Level10];
+    second: [Level10];
+}
+
+table Level10 {
+    level: Level11;
+    first: [Level11];
+    second: [Level11];
+}
+
+table Level11 {
+    level: Level12;
+    first: [Level12];
+    second: [Level12];
+}
+
+table Level12 {
+    level: Level13;
+    first: [Level13];
+    second: [Level13];
+}
+
+table Level13 {
+    level: Level14;
+    first: [Level14];
+    second: [Level14];
+}
+
+table Level14 {
+    level: Level15;
+    first: [Level15];
+    second: [Level15];
+}
+
+table Level15 {
+    level: Level16;
+    first: [Level16];
+    second: [Level16];
+}
+
+table Level16 {
+    level: Level17;
+    first: [Level17];
+    second: [Level17];
+}
+
+table Level17 {
+    level: Level18;
+    first: [Level18];
+    second: [Level18];
+}
+
+table Level18 {
+    level: Level19;
+    first: [Level19];
+    second: [Level19];
+}
+
+table Level19 {
+    level: Level20;
+    first: [Level20];
+    second: [Level20];
+}
+
+table Level20 {
+    level: Level21;
+    first: [Level21];
+    second: [Level21];
+}
+
+table Level21 {
+    level: Level22;
+    first: [Level22];
+    second: [Level22];
+}
+
+table Level22 {
+    level: Level23;
+    first: [Level23];
+    second: [Level23];
+}
+
+table Level23 {
+    level: Level24;
+    first: [Level24];
+    second: [Level24];
+}
+
+table Level24 {
+    level: Level25;
+    first: [Level25];
+    second: [Level25];
+}
+
+table Level25 {
+    level: Level26;
+    first: [Level26];
+    second: [Level26];
+}
+
+table Level26 {
+    level: Level27;
+    first: [Level27];
+    second: [Level27];
+}
+
+table Level27 {
+    level: Level28;
+    first: [Level28];
+    second: [Level28];
+}
+
+table Level28 {
+    level: Level29;
+    first: [Level29];
+    second: [Level29];
+}
+
+table Level29 {
+    level: Level30;
+    first: [Level30];
+    second: [Level30];
+}
+
+table Level30 {
+    level: Level31;
+    first: [Level31];
+    second: [Level31];
+}
+
+table Level31 {
+    level: Level32;
+    first: [Level32];
+    second: [Level32];
+}
+
+table Level32 {
+    level: Level33;
+    first: [Level33];
+    second: [Level33];
+}
+
+table Level33 {
+    level: Level34;
+    first: [Level34];
+    second: [Level34];
+}
+
+table Level34 {
+    level: Level35;
+    first: [Level35];
+    second: [Level35];
+}
+
+table Level35 {
+    level: Level36;
+    first: [Level36];
+    second: [Level36];
+}
+
+table Level36 {
+    level: Level37;
+    first: [Level37];
+    second: [Level37];
+}
+
+table Level37 {
+    level: Level38;
+    first: [Level38];
+    second: [Level38];
+}
+
+table Level38 {
+    level: Level39;
+    first: [Level39];
+    second: [Level39];
+}
+
+table Level39 {
+    level: Level40;
+    first: [Level40];
+    second: [Level40];
+}
+
+table Level40 {
+    level: Level41;
+    first: [Level41];
+    second: [Level41];
+}
+
+table Level41 {
+    level: Level42;
+    first: [Level42];
+    second: [Level42];
+}
+
+table Level42 {
+    level: Level43;
+    first: [Level43];
+    second: [Level43];
+}
+
+table Level43 {
+    level: Level44;
+    first: [Level44];
+    second: [Level44];
+}
+
+table Level44 {
+    level: Level45;
+    first: [Level45];
+    second: [Level45];
+}
+
+table Level45 {
+    level: Level46;
+    first: [Level46];
+    second: [Level46];
+}
+
+table Level46 {
+    level: Level47;
+    first: [Level47];
+    second: [Level47];
+}
+
+table Level47 {
+    level: Level48;
+    first: [Level48];
+    second: [Level48];
+}
+
+table Level48 {
+    level: Level49;
+    first: [Level49];
+    second: [Level49];
+}
+
+table Level49 {
+    level: Level50;
+    first: [Level50];
+    second: [Level50];
+}
+
+table Level50 {
+    level: Level51;
+    first: [Level51];
+    second: [Level51];
+}
+
+table Level51 {
+    level: Level52;
+    first: [Level52];
+    second: [Level52];
+}
+
+table Level52 {
+    level: Level53;
+    first: [Level53];
+    second: [Level53];
+}
+
+table Level53 {
+    level: Level54;
+    first: [Level54];
+    second: [Level54];
+}
+
+table Level54 {
+    level: Level55;
+    first: [Level55];
+    second: [Level55];
+}
+
+table Level55 {
+    level: Level56;
+    first: [Level56];
+    second: [Level56];
+}
+
+table Level56 {
+    level: Level57;
+    first: [Level57];
+    second: [Level57];
+}
+
+table Level57 {
+    level: Level58;
+    first: [Level58];
+    second: [Level58];
+}
+
+table Level58 {
+    level: Level59;
+    first: [Level59];
+    second: [Level59];
+}
+
+table Level59 {
+    level: Level60;
+    first: [Level60];
+    second: [Level60];
+}
+
+table Level60 {
+    level: Level61;
+    first: [Level61];
+    second: [Level61];
+}
+
+table Level61 {
+    level: Level62;
+    first: [Level62];
+    second: [Level62];
+}
+
+table Level62 {
+    level: Leaf;
+    first: [Leaf];
+    second: [Leaf];
+}
+
+table Leaf {
+    value: uint8;
+}
