@@ -202,9 +202,12 @@ using RangeVector = ::tafla::TableVector<Range>;
 /** A table of only scalars, which nests whole */
 class Range {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Range(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -220,7 +223,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Range`, to write */
@@ -253,9 +255,12 @@ struct RangeFields {
  */
 class Frame {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Frame(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -274,7 +279,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Frame`, to write */
@@ -774,13 +778,13 @@ struct OverflowFields {
 
 inline std::uint32_t Range::start() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_uint32(position);
 }
 
 inline std::uint32_t Range::end() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_uint32(position);
 }
 
@@ -807,19 +811,19 @@ inline void RangeFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 
 inline Vec2 Frame::origin() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Vec2::from_bytes(buffer.get_struct(position, Vec2::SIZE).data());
 }
 
 inline Range Frame::range() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Range(bytes_, position);
 }
 
 inline std::uint16_t Frame::flags() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return buffer.get_uint16(position);
 }
 

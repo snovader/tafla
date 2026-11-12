@@ -67,6 +67,10 @@ first commits, for code built from its source before the release.
   type whose reference converts into the item's fields or struct, through a
   type parameter that defaults to the generated type, so that an application
   writes the items it holds without collecting them first.
+- Generated C++ readers of tables nested in a message hold the bytes from the
+  table's start, 16 bytes rather than 24, and read its offsets at constant
+  positions, so their decode errors report positions from the table's start,
+  as a vector item's do.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and

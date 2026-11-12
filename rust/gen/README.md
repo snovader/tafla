@@ -413,8 +413,11 @@ digits, starts with `schema_` when it doesn't start with a letter, and takes
 a `_` after a keyword or a macro's name, such as `EOF_`, so that it's never a
 name that C++ reserves. Its fields
 structs view their strings, arrays and items as `std::string_view`s and
-`std::span`s, which must outlive `serialize()`. A reader of a table also has
-a default constructor, of no bytes, whose getters throw a
+`std::span`s, which must outlive `serialize()`. A reader of a table nested in
+a message holds the bytes from the table's start, 16 bytes on a 64-bit host,
+and reads its offsets at constant positions from there, so the positions of
+its decode errors count from the table's start too, as a vector item's do.
+It also has a default constructor, of no bytes, whose getters throw a
 `tafla::DecodeError`, so that the getter of a vector can size its
 `std::vector` before reading the items into it.
 

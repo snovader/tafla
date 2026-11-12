@@ -125,9 +125,12 @@ struct PointFields {
 /** Columns with a value per key */
 class Columns {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Columns(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -153,7 +156,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Columns`, to write */
@@ -278,9 +280,12 @@ struct ItemListFields {
 /** Two values of an item */
 class Pair {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Pair(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -296,7 +301,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Pair`, to write */
@@ -325,9 +329,12 @@ struct PairFields {
 
 class Item {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Item(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -343,7 +350,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of an `Item`, to write */
@@ -441,25 +447,25 @@ inline std::size_t PointFields::serialize_into(std::span<std::uint8_t> given_) c
 
 inline std::int64_t Columns::base() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_int64(position);
 }
 
 inline ::tafla::ArrayView<std::uint32_t> Columns::keys() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_uint32_array(position);
 }
 
 inline ::tafla::ArrayView<float> Columns::a() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return buffer.get_float32_array(position);
 }
 
 inline ::tafla::ArrayView<float> Columns::b() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 3);
+    const auto position = buffer.field_offset(0, 3);
     return buffer.get_float32_array(position);
 }
 
@@ -598,13 +604,13 @@ inline std::size_t ItemListFields::serialize_into(std::span<std::uint8_t> bytes_
 
 inline float Pair::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_float32(position);
 }
 
 inline float Pair::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_float32(position);
 }
 
@@ -631,13 +637,13 @@ inline void PairFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 
 inline float Item::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_float32(position);
 }
 
 inline Pair Item::pair() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Pair(bytes_, position);
 }
 

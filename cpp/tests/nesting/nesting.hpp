@@ -331,9 +331,12 @@ using LeafVector = ::tafla::TableVector<Leaf>;
 
 class Leaf {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Leaf(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -346,7 +349,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Leaf`, to write */
@@ -374,9 +376,12 @@ struct LeafFields {
 
 class Level62 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level62(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -407,7 +412,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level62`, to write */
@@ -428,9 +432,12 @@ struct Level62Fields {
 
 class Level61 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level61(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -461,7 +468,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level61`, to write */
@@ -482,9 +488,12 @@ struct Level61Fields {
 
 class Level60 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level60(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -515,7 +524,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level60`, to write */
@@ -536,9 +544,12 @@ struct Level60Fields {
 
 class Level59 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level59(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -569,7 +580,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level59`, to write */
@@ -590,9 +600,12 @@ struct Level59Fields {
 
 class Level58 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level58(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -623,7 +636,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level58`, to write */
@@ -644,9 +656,12 @@ struct Level58Fields {
 
 class Level57 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level57(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -677,7 +692,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level57`, to write */
@@ -698,9 +712,12 @@ struct Level57Fields {
 
 class Level56 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level56(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -731,7 +748,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level56`, to write */
@@ -752,9 +768,12 @@ struct Level56Fields {
 
 class Level55 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level55(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -785,7 +804,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level55`, to write */
@@ -806,9 +824,12 @@ struct Level55Fields {
 
 class Level54 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level54(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -839,7 +860,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level54`, to write */
@@ -860,9 +880,12 @@ struct Level54Fields {
 
 class Level53 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level53(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -893,7 +916,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level53`, to write */
@@ -914,9 +936,12 @@ struct Level53Fields {
 
 class Level52 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level52(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -947,7 +972,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level52`, to write */
@@ -968,9 +992,12 @@ struct Level52Fields {
 
 class Level51 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level51(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1001,7 +1028,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level51`, to write */
@@ -1022,9 +1048,12 @@ struct Level51Fields {
 
 class Level50 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level50(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1055,7 +1084,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level50`, to write */
@@ -1076,9 +1104,12 @@ struct Level50Fields {
 
 class Level49 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level49(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1109,7 +1140,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level49`, to write */
@@ -1130,9 +1160,12 @@ struct Level49Fields {
 
 class Level48 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level48(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1163,7 +1196,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level48`, to write */
@@ -1184,9 +1216,12 @@ struct Level48Fields {
 
 class Level47 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level47(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1217,7 +1252,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level47`, to write */
@@ -1238,9 +1272,12 @@ struct Level47Fields {
 
 class Level46 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level46(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1271,7 +1308,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level46`, to write */
@@ -1292,9 +1328,12 @@ struct Level46Fields {
 
 class Level45 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level45(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1325,7 +1364,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level45`, to write */
@@ -1346,9 +1384,12 @@ struct Level45Fields {
 
 class Level44 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level44(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1379,7 +1420,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level44`, to write */
@@ -1400,9 +1440,12 @@ struct Level44Fields {
 
 class Level43 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level43(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1433,7 +1476,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level43`, to write */
@@ -1454,9 +1496,12 @@ struct Level43Fields {
 
 class Level42 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level42(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1487,7 +1532,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level42`, to write */
@@ -1508,9 +1552,12 @@ struct Level42Fields {
 
 class Level41 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level41(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1541,7 +1588,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level41`, to write */
@@ -1562,9 +1608,12 @@ struct Level41Fields {
 
 class Level40 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level40(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1595,7 +1644,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level40`, to write */
@@ -1616,9 +1664,12 @@ struct Level40Fields {
 
 class Level39 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level39(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1649,7 +1700,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level39`, to write */
@@ -1670,9 +1720,12 @@ struct Level39Fields {
 
 class Level38 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level38(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1703,7 +1756,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level38`, to write */
@@ -1724,9 +1776,12 @@ struct Level38Fields {
 
 class Level37 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level37(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1757,7 +1812,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level37`, to write */
@@ -1778,9 +1832,12 @@ struct Level37Fields {
 
 class Level36 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level36(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1811,7 +1868,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level36`, to write */
@@ -1832,9 +1888,12 @@ struct Level36Fields {
 
 class Level35 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level35(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1865,7 +1924,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level35`, to write */
@@ -1886,9 +1944,12 @@ struct Level35Fields {
 
 class Level34 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level34(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1919,7 +1980,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level34`, to write */
@@ -1940,9 +2000,12 @@ struct Level34Fields {
 
 class Level33 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level33(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -1973,7 +2036,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level33`, to write */
@@ -1994,9 +2056,12 @@ struct Level33Fields {
 
 class Level32 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level32(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2027,7 +2092,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level32`, to write */
@@ -2048,9 +2112,12 @@ struct Level32Fields {
 
 class Level31 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level31(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2081,7 +2148,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level31`, to write */
@@ -2102,9 +2168,12 @@ struct Level31Fields {
 
 class Level30 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level30(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2135,7 +2204,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level30`, to write */
@@ -2156,9 +2224,12 @@ struct Level30Fields {
 
 class Level29 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level29(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2189,7 +2260,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level29`, to write */
@@ -2210,9 +2280,12 @@ struct Level29Fields {
 
 class Level28 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level28(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2243,7 +2316,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level28`, to write */
@@ -2264,9 +2336,12 @@ struct Level28Fields {
 
 class Level27 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level27(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2297,7 +2372,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level27`, to write */
@@ -2318,9 +2392,12 @@ struct Level27Fields {
 
 class Level26 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level26(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2351,7 +2428,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level26`, to write */
@@ -2372,9 +2448,12 @@ struct Level26Fields {
 
 class Level25 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level25(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2405,7 +2484,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level25`, to write */
@@ -2426,9 +2504,12 @@ struct Level25Fields {
 
 class Level24 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level24(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2459,7 +2540,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level24`, to write */
@@ -2480,9 +2560,12 @@ struct Level24Fields {
 
 class Level23 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level23(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2513,7 +2596,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level23`, to write */
@@ -2534,9 +2616,12 @@ struct Level23Fields {
 
 class Level22 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level22(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2567,7 +2652,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level22`, to write */
@@ -2588,9 +2672,12 @@ struct Level22Fields {
 
 class Level21 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level21(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2621,7 +2708,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level21`, to write */
@@ -2642,9 +2728,12 @@ struct Level21Fields {
 
 class Level20 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level20(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2675,7 +2764,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level20`, to write */
@@ -2696,9 +2784,12 @@ struct Level20Fields {
 
 class Level19 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level19(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2729,7 +2820,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level19`, to write */
@@ -2750,9 +2840,12 @@ struct Level19Fields {
 
 class Level18 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level18(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2783,7 +2876,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level18`, to write */
@@ -2804,9 +2896,12 @@ struct Level18Fields {
 
 class Level17 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level17(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2837,7 +2932,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level17`, to write */
@@ -2858,9 +2952,12 @@ struct Level17Fields {
 
 class Level16 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level16(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2891,7 +2988,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level16`, to write */
@@ -2912,9 +3008,12 @@ struct Level16Fields {
 
 class Level15 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level15(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2945,7 +3044,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level15`, to write */
@@ -2966,9 +3064,12 @@ struct Level15Fields {
 
 class Level14 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level14(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -2999,7 +3100,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level14`, to write */
@@ -3020,9 +3120,12 @@ struct Level14Fields {
 
 class Level13 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level13(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3053,7 +3156,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level13`, to write */
@@ -3074,9 +3176,12 @@ struct Level13Fields {
 
 class Level12 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level12(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3107,7 +3212,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level12`, to write */
@@ -3128,9 +3232,12 @@ struct Level12Fields {
 
 class Level11 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level11(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3161,7 +3268,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level11`, to write */
@@ -3182,9 +3288,12 @@ struct Level11Fields {
 
 class Level10 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level10(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3215,7 +3324,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level10`, to write */
@@ -3236,9 +3344,12 @@ struct Level10Fields {
 
 class Level9 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level9(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3269,7 +3380,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level9`, to write */
@@ -3290,9 +3400,12 @@ struct Level9Fields {
 
 class Level8 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level8(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3323,7 +3436,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level8`, to write */
@@ -3344,9 +3456,12 @@ struct Level8Fields {
 
 class Level7 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level7(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3377,7 +3492,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level7`, to write */
@@ -3398,9 +3512,12 @@ struct Level7Fields {
 
 class Level6 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level6(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3431,7 +3548,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level6`, to write */
@@ -3452,9 +3568,12 @@ struct Level6Fields {
 
 class Level5 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level5(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3485,7 +3604,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level5`, to write */
@@ -3506,9 +3624,12 @@ struct Level5Fields {
 
 class Level4 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level4(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3539,7 +3660,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level4`, to write */
@@ -3560,9 +3680,12 @@ struct Level4Fields {
 
 class Level3 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level3(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3593,7 +3716,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level3`, to write */
@@ -3614,9 +3736,12 @@ struct Level3Fields {
 
 class Level2 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level2(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3647,7 +3772,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level2`, to write */
@@ -3668,9 +3792,12 @@ struct Level2Fields {
 
 class Level1 {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Level1(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -3701,7 +3828,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Level1`, to write */
@@ -3775,7 +3901,7 @@ struct RootFields {
 
 inline std::uint8_t Leaf::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_uint8(position);
 }
 
@@ -3798,7 +3924,7 @@ inline void LeafFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 
 inline Leaf Level62::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Leaf(bytes_, position);
 }
 
@@ -3808,7 +3934,7 @@ inline std::vector<Leaf> Level62::first() const {
 
 inline LeafVector Level62::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return LeafVector(buffer.get_vector(position));
 }
 
@@ -3818,7 +3944,7 @@ inline std::vector<Leaf> Level62::second() const {
 
 inline LeafVector Level62::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return LeafVector(buffer.get_vector(position));
 }
 
@@ -3856,7 +3982,7 @@ inline void Level62Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level62 Level61::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level62(bytes_, position);
 }
 
@@ -3866,7 +3992,7 @@ inline std::vector<Level62> Level61::first() const {
 
 inline Level62Vector Level61::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level62Vector(buffer.get_vector(position));
 }
 
@@ -3876,7 +4002,7 @@ inline std::vector<Level62> Level61::second() const {
 
 inline Level62Vector Level61::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level62Vector(buffer.get_vector(position));
 }
 
@@ -3914,7 +4040,7 @@ inline void Level61Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level61 Level60::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level61(bytes_, position);
 }
 
@@ -3924,7 +4050,7 @@ inline std::vector<Level61> Level60::first() const {
 
 inline Level61Vector Level60::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level61Vector(buffer.get_vector(position));
 }
 
@@ -3934,7 +4060,7 @@ inline std::vector<Level61> Level60::second() const {
 
 inline Level61Vector Level60::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level61Vector(buffer.get_vector(position));
 }
 
@@ -3972,7 +4098,7 @@ inline void Level60Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level60 Level59::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level60(bytes_, position);
 }
 
@@ -3982,7 +4108,7 @@ inline std::vector<Level60> Level59::first() const {
 
 inline Level60Vector Level59::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level60Vector(buffer.get_vector(position));
 }
 
@@ -3992,7 +4118,7 @@ inline std::vector<Level60> Level59::second() const {
 
 inline Level60Vector Level59::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level60Vector(buffer.get_vector(position));
 }
 
@@ -4030,7 +4156,7 @@ inline void Level59Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level59 Level58::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level59(bytes_, position);
 }
 
@@ -4040,7 +4166,7 @@ inline std::vector<Level59> Level58::first() const {
 
 inline Level59Vector Level58::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level59Vector(buffer.get_vector(position));
 }
 
@@ -4050,7 +4176,7 @@ inline std::vector<Level59> Level58::second() const {
 
 inline Level59Vector Level58::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level59Vector(buffer.get_vector(position));
 }
 
@@ -4088,7 +4214,7 @@ inline void Level58Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level58 Level57::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level58(bytes_, position);
 }
 
@@ -4098,7 +4224,7 @@ inline std::vector<Level58> Level57::first() const {
 
 inline Level58Vector Level57::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level58Vector(buffer.get_vector(position));
 }
 
@@ -4108,7 +4234,7 @@ inline std::vector<Level58> Level57::second() const {
 
 inline Level58Vector Level57::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level58Vector(buffer.get_vector(position));
 }
 
@@ -4146,7 +4272,7 @@ inline void Level57Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level57 Level56::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level57(bytes_, position);
 }
 
@@ -4156,7 +4282,7 @@ inline std::vector<Level57> Level56::first() const {
 
 inline Level57Vector Level56::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level57Vector(buffer.get_vector(position));
 }
 
@@ -4166,7 +4292,7 @@ inline std::vector<Level57> Level56::second() const {
 
 inline Level57Vector Level56::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level57Vector(buffer.get_vector(position));
 }
 
@@ -4204,7 +4330,7 @@ inline void Level56Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level56 Level55::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level56(bytes_, position);
 }
 
@@ -4214,7 +4340,7 @@ inline std::vector<Level56> Level55::first() const {
 
 inline Level56Vector Level55::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level56Vector(buffer.get_vector(position));
 }
 
@@ -4224,7 +4350,7 @@ inline std::vector<Level56> Level55::second() const {
 
 inline Level56Vector Level55::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level56Vector(buffer.get_vector(position));
 }
 
@@ -4262,7 +4388,7 @@ inline void Level55Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level55 Level54::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level55(bytes_, position);
 }
 
@@ -4272,7 +4398,7 @@ inline std::vector<Level55> Level54::first() const {
 
 inline Level55Vector Level54::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level55Vector(buffer.get_vector(position));
 }
 
@@ -4282,7 +4408,7 @@ inline std::vector<Level55> Level54::second() const {
 
 inline Level55Vector Level54::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level55Vector(buffer.get_vector(position));
 }
 
@@ -4320,7 +4446,7 @@ inline void Level54Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level54 Level53::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level54(bytes_, position);
 }
 
@@ -4330,7 +4456,7 @@ inline std::vector<Level54> Level53::first() const {
 
 inline Level54Vector Level53::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level54Vector(buffer.get_vector(position));
 }
 
@@ -4340,7 +4466,7 @@ inline std::vector<Level54> Level53::second() const {
 
 inline Level54Vector Level53::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level54Vector(buffer.get_vector(position));
 }
 
@@ -4378,7 +4504,7 @@ inline void Level53Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level53 Level52::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level53(bytes_, position);
 }
 
@@ -4388,7 +4514,7 @@ inline std::vector<Level53> Level52::first() const {
 
 inline Level53Vector Level52::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level53Vector(buffer.get_vector(position));
 }
 
@@ -4398,7 +4524,7 @@ inline std::vector<Level53> Level52::second() const {
 
 inline Level53Vector Level52::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level53Vector(buffer.get_vector(position));
 }
 
@@ -4436,7 +4562,7 @@ inline void Level52Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level52 Level51::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level52(bytes_, position);
 }
 
@@ -4446,7 +4572,7 @@ inline std::vector<Level52> Level51::first() const {
 
 inline Level52Vector Level51::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level52Vector(buffer.get_vector(position));
 }
 
@@ -4456,7 +4582,7 @@ inline std::vector<Level52> Level51::second() const {
 
 inline Level52Vector Level51::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level52Vector(buffer.get_vector(position));
 }
 
@@ -4494,7 +4620,7 @@ inline void Level51Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level51 Level50::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level51(bytes_, position);
 }
 
@@ -4504,7 +4630,7 @@ inline std::vector<Level51> Level50::first() const {
 
 inline Level51Vector Level50::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level51Vector(buffer.get_vector(position));
 }
 
@@ -4514,7 +4640,7 @@ inline std::vector<Level51> Level50::second() const {
 
 inline Level51Vector Level50::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level51Vector(buffer.get_vector(position));
 }
 
@@ -4552,7 +4678,7 @@ inline void Level50Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level50 Level49::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level50(bytes_, position);
 }
 
@@ -4562,7 +4688,7 @@ inline std::vector<Level50> Level49::first() const {
 
 inline Level50Vector Level49::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level50Vector(buffer.get_vector(position));
 }
 
@@ -4572,7 +4698,7 @@ inline std::vector<Level50> Level49::second() const {
 
 inline Level50Vector Level49::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level50Vector(buffer.get_vector(position));
 }
 
@@ -4610,7 +4736,7 @@ inline void Level49Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level49 Level48::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level49(bytes_, position);
 }
 
@@ -4620,7 +4746,7 @@ inline std::vector<Level49> Level48::first() const {
 
 inline Level49Vector Level48::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level49Vector(buffer.get_vector(position));
 }
 
@@ -4630,7 +4756,7 @@ inline std::vector<Level49> Level48::second() const {
 
 inline Level49Vector Level48::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level49Vector(buffer.get_vector(position));
 }
 
@@ -4668,7 +4794,7 @@ inline void Level48Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level48 Level47::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level48(bytes_, position);
 }
 
@@ -4678,7 +4804,7 @@ inline std::vector<Level48> Level47::first() const {
 
 inline Level48Vector Level47::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level48Vector(buffer.get_vector(position));
 }
 
@@ -4688,7 +4814,7 @@ inline std::vector<Level48> Level47::second() const {
 
 inline Level48Vector Level47::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level48Vector(buffer.get_vector(position));
 }
 
@@ -4726,7 +4852,7 @@ inline void Level47Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level47 Level46::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level47(bytes_, position);
 }
 
@@ -4736,7 +4862,7 @@ inline std::vector<Level47> Level46::first() const {
 
 inline Level47Vector Level46::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level47Vector(buffer.get_vector(position));
 }
 
@@ -4746,7 +4872,7 @@ inline std::vector<Level47> Level46::second() const {
 
 inline Level47Vector Level46::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level47Vector(buffer.get_vector(position));
 }
 
@@ -4784,7 +4910,7 @@ inline void Level46Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level46 Level45::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level46(bytes_, position);
 }
 
@@ -4794,7 +4920,7 @@ inline std::vector<Level46> Level45::first() const {
 
 inline Level46Vector Level45::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level46Vector(buffer.get_vector(position));
 }
 
@@ -4804,7 +4930,7 @@ inline std::vector<Level46> Level45::second() const {
 
 inline Level46Vector Level45::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level46Vector(buffer.get_vector(position));
 }
 
@@ -4842,7 +4968,7 @@ inline void Level45Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level45 Level44::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level45(bytes_, position);
 }
 
@@ -4852,7 +4978,7 @@ inline std::vector<Level45> Level44::first() const {
 
 inline Level45Vector Level44::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level45Vector(buffer.get_vector(position));
 }
 
@@ -4862,7 +4988,7 @@ inline std::vector<Level45> Level44::second() const {
 
 inline Level45Vector Level44::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level45Vector(buffer.get_vector(position));
 }
 
@@ -4900,7 +5026,7 @@ inline void Level44Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level44 Level43::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level44(bytes_, position);
 }
 
@@ -4910,7 +5036,7 @@ inline std::vector<Level44> Level43::first() const {
 
 inline Level44Vector Level43::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level44Vector(buffer.get_vector(position));
 }
 
@@ -4920,7 +5046,7 @@ inline std::vector<Level44> Level43::second() const {
 
 inline Level44Vector Level43::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level44Vector(buffer.get_vector(position));
 }
 
@@ -4958,7 +5084,7 @@ inline void Level43Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level43 Level42::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level43(bytes_, position);
 }
 
@@ -4968,7 +5094,7 @@ inline std::vector<Level43> Level42::first() const {
 
 inline Level43Vector Level42::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level43Vector(buffer.get_vector(position));
 }
 
@@ -4978,7 +5104,7 @@ inline std::vector<Level43> Level42::second() const {
 
 inline Level43Vector Level42::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level43Vector(buffer.get_vector(position));
 }
 
@@ -5016,7 +5142,7 @@ inline void Level42Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level42 Level41::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level42(bytes_, position);
 }
 
@@ -5026,7 +5152,7 @@ inline std::vector<Level42> Level41::first() const {
 
 inline Level42Vector Level41::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level42Vector(buffer.get_vector(position));
 }
 
@@ -5036,7 +5162,7 @@ inline std::vector<Level42> Level41::second() const {
 
 inline Level42Vector Level41::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level42Vector(buffer.get_vector(position));
 }
 
@@ -5074,7 +5200,7 @@ inline void Level41Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level41 Level40::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level41(bytes_, position);
 }
 
@@ -5084,7 +5210,7 @@ inline std::vector<Level41> Level40::first() const {
 
 inline Level41Vector Level40::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level41Vector(buffer.get_vector(position));
 }
 
@@ -5094,7 +5220,7 @@ inline std::vector<Level41> Level40::second() const {
 
 inline Level41Vector Level40::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level41Vector(buffer.get_vector(position));
 }
 
@@ -5132,7 +5258,7 @@ inline void Level40Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level40 Level39::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level40(bytes_, position);
 }
 
@@ -5142,7 +5268,7 @@ inline std::vector<Level40> Level39::first() const {
 
 inline Level40Vector Level39::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level40Vector(buffer.get_vector(position));
 }
 
@@ -5152,7 +5278,7 @@ inline std::vector<Level40> Level39::second() const {
 
 inline Level40Vector Level39::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level40Vector(buffer.get_vector(position));
 }
 
@@ -5190,7 +5316,7 @@ inline void Level39Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level39 Level38::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level39(bytes_, position);
 }
 
@@ -5200,7 +5326,7 @@ inline std::vector<Level39> Level38::first() const {
 
 inline Level39Vector Level38::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level39Vector(buffer.get_vector(position));
 }
 
@@ -5210,7 +5336,7 @@ inline std::vector<Level39> Level38::second() const {
 
 inline Level39Vector Level38::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level39Vector(buffer.get_vector(position));
 }
 
@@ -5248,7 +5374,7 @@ inline void Level38Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level38 Level37::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level38(bytes_, position);
 }
 
@@ -5258,7 +5384,7 @@ inline std::vector<Level38> Level37::first() const {
 
 inline Level38Vector Level37::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level38Vector(buffer.get_vector(position));
 }
 
@@ -5268,7 +5394,7 @@ inline std::vector<Level38> Level37::second() const {
 
 inline Level38Vector Level37::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level38Vector(buffer.get_vector(position));
 }
 
@@ -5306,7 +5432,7 @@ inline void Level37Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level37 Level36::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level37(bytes_, position);
 }
 
@@ -5316,7 +5442,7 @@ inline std::vector<Level37> Level36::first() const {
 
 inline Level37Vector Level36::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level37Vector(buffer.get_vector(position));
 }
 
@@ -5326,7 +5452,7 @@ inline std::vector<Level37> Level36::second() const {
 
 inline Level37Vector Level36::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level37Vector(buffer.get_vector(position));
 }
 
@@ -5364,7 +5490,7 @@ inline void Level36Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level36 Level35::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level36(bytes_, position);
 }
 
@@ -5374,7 +5500,7 @@ inline std::vector<Level36> Level35::first() const {
 
 inline Level36Vector Level35::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level36Vector(buffer.get_vector(position));
 }
 
@@ -5384,7 +5510,7 @@ inline std::vector<Level36> Level35::second() const {
 
 inline Level36Vector Level35::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level36Vector(buffer.get_vector(position));
 }
 
@@ -5422,7 +5548,7 @@ inline void Level35Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level35 Level34::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level35(bytes_, position);
 }
 
@@ -5432,7 +5558,7 @@ inline std::vector<Level35> Level34::first() const {
 
 inline Level35Vector Level34::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level35Vector(buffer.get_vector(position));
 }
 
@@ -5442,7 +5568,7 @@ inline std::vector<Level35> Level34::second() const {
 
 inline Level35Vector Level34::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level35Vector(buffer.get_vector(position));
 }
 
@@ -5480,7 +5606,7 @@ inline void Level34Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level34 Level33::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level34(bytes_, position);
 }
 
@@ -5490,7 +5616,7 @@ inline std::vector<Level34> Level33::first() const {
 
 inline Level34Vector Level33::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level34Vector(buffer.get_vector(position));
 }
 
@@ -5500,7 +5626,7 @@ inline std::vector<Level34> Level33::second() const {
 
 inline Level34Vector Level33::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level34Vector(buffer.get_vector(position));
 }
 
@@ -5538,7 +5664,7 @@ inline void Level33Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level33 Level32::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level33(bytes_, position);
 }
 
@@ -5548,7 +5674,7 @@ inline std::vector<Level33> Level32::first() const {
 
 inline Level33Vector Level32::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level33Vector(buffer.get_vector(position));
 }
 
@@ -5558,7 +5684,7 @@ inline std::vector<Level33> Level32::second() const {
 
 inline Level33Vector Level32::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level33Vector(buffer.get_vector(position));
 }
 
@@ -5596,7 +5722,7 @@ inline void Level32Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level32 Level31::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level32(bytes_, position);
 }
 
@@ -5606,7 +5732,7 @@ inline std::vector<Level32> Level31::first() const {
 
 inline Level32Vector Level31::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level32Vector(buffer.get_vector(position));
 }
 
@@ -5616,7 +5742,7 @@ inline std::vector<Level32> Level31::second() const {
 
 inline Level32Vector Level31::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level32Vector(buffer.get_vector(position));
 }
 
@@ -5654,7 +5780,7 @@ inline void Level31Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level31 Level30::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level31(bytes_, position);
 }
 
@@ -5664,7 +5790,7 @@ inline std::vector<Level31> Level30::first() const {
 
 inline Level31Vector Level30::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level31Vector(buffer.get_vector(position));
 }
 
@@ -5674,7 +5800,7 @@ inline std::vector<Level31> Level30::second() const {
 
 inline Level31Vector Level30::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level31Vector(buffer.get_vector(position));
 }
 
@@ -5712,7 +5838,7 @@ inline void Level30Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level30 Level29::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level30(bytes_, position);
 }
 
@@ -5722,7 +5848,7 @@ inline std::vector<Level30> Level29::first() const {
 
 inline Level30Vector Level29::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level30Vector(buffer.get_vector(position));
 }
 
@@ -5732,7 +5858,7 @@ inline std::vector<Level30> Level29::second() const {
 
 inline Level30Vector Level29::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level30Vector(buffer.get_vector(position));
 }
 
@@ -5770,7 +5896,7 @@ inline void Level29Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level29 Level28::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level29(bytes_, position);
 }
 
@@ -5780,7 +5906,7 @@ inline std::vector<Level29> Level28::first() const {
 
 inline Level29Vector Level28::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level29Vector(buffer.get_vector(position));
 }
 
@@ -5790,7 +5916,7 @@ inline std::vector<Level29> Level28::second() const {
 
 inline Level29Vector Level28::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level29Vector(buffer.get_vector(position));
 }
 
@@ -5828,7 +5954,7 @@ inline void Level28Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level28 Level27::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level28(bytes_, position);
 }
 
@@ -5838,7 +5964,7 @@ inline std::vector<Level28> Level27::first() const {
 
 inline Level28Vector Level27::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level28Vector(buffer.get_vector(position));
 }
 
@@ -5848,7 +5974,7 @@ inline std::vector<Level28> Level27::second() const {
 
 inline Level28Vector Level27::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level28Vector(buffer.get_vector(position));
 }
 
@@ -5886,7 +6012,7 @@ inline void Level27Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level27 Level26::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level27(bytes_, position);
 }
 
@@ -5896,7 +6022,7 @@ inline std::vector<Level27> Level26::first() const {
 
 inline Level27Vector Level26::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level27Vector(buffer.get_vector(position));
 }
 
@@ -5906,7 +6032,7 @@ inline std::vector<Level27> Level26::second() const {
 
 inline Level27Vector Level26::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level27Vector(buffer.get_vector(position));
 }
 
@@ -5944,7 +6070,7 @@ inline void Level26Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level26 Level25::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level26(bytes_, position);
 }
 
@@ -5954,7 +6080,7 @@ inline std::vector<Level26> Level25::first() const {
 
 inline Level26Vector Level25::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level26Vector(buffer.get_vector(position));
 }
 
@@ -5964,7 +6090,7 @@ inline std::vector<Level26> Level25::second() const {
 
 inline Level26Vector Level25::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level26Vector(buffer.get_vector(position));
 }
 
@@ -6002,7 +6128,7 @@ inline void Level25Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level25 Level24::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level25(bytes_, position);
 }
 
@@ -6012,7 +6138,7 @@ inline std::vector<Level25> Level24::first() const {
 
 inline Level25Vector Level24::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level25Vector(buffer.get_vector(position));
 }
 
@@ -6022,7 +6148,7 @@ inline std::vector<Level25> Level24::second() const {
 
 inline Level25Vector Level24::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level25Vector(buffer.get_vector(position));
 }
 
@@ -6060,7 +6186,7 @@ inline void Level24Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level24 Level23::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level24(bytes_, position);
 }
 
@@ -6070,7 +6196,7 @@ inline std::vector<Level24> Level23::first() const {
 
 inline Level24Vector Level23::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level24Vector(buffer.get_vector(position));
 }
 
@@ -6080,7 +6206,7 @@ inline std::vector<Level24> Level23::second() const {
 
 inline Level24Vector Level23::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level24Vector(buffer.get_vector(position));
 }
 
@@ -6118,7 +6244,7 @@ inline void Level23Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level23 Level22::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level23(bytes_, position);
 }
 
@@ -6128,7 +6254,7 @@ inline std::vector<Level23> Level22::first() const {
 
 inline Level23Vector Level22::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level23Vector(buffer.get_vector(position));
 }
 
@@ -6138,7 +6264,7 @@ inline std::vector<Level23> Level22::second() const {
 
 inline Level23Vector Level22::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level23Vector(buffer.get_vector(position));
 }
 
@@ -6176,7 +6302,7 @@ inline void Level22Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level22 Level21::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level22(bytes_, position);
 }
 
@@ -6186,7 +6312,7 @@ inline std::vector<Level22> Level21::first() const {
 
 inline Level22Vector Level21::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level22Vector(buffer.get_vector(position));
 }
 
@@ -6196,7 +6322,7 @@ inline std::vector<Level22> Level21::second() const {
 
 inline Level22Vector Level21::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level22Vector(buffer.get_vector(position));
 }
 
@@ -6234,7 +6360,7 @@ inline void Level21Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level21 Level20::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level21(bytes_, position);
 }
 
@@ -6244,7 +6370,7 @@ inline std::vector<Level21> Level20::first() const {
 
 inline Level21Vector Level20::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level21Vector(buffer.get_vector(position));
 }
 
@@ -6254,7 +6380,7 @@ inline std::vector<Level21> Level20::second() const {
 
 inline Level21Vector Level20::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level21Vector(buffer.get_vector(position));
 }
 
@@ -6292,7 +6418,7 @@ inline void Level20Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level20 Level19::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level20(bytes_, position);
 }
 
@@ -6302,7 +6428,7 @@ inline std::vector<Level20> Level19::first() const {
 
 inline Level20Vector Level19::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level20Vector(buffer.get_vector(position));
 }
 
@@ -6312,7 +6438,7 @@ inline std::vector<Level20> Level19::second() const {
 
 inline Level20Vector Level19::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level20Vector(buffer.get_vector(position));
 }
 
@@ -6350,7 +6476,7 @@ inline void Level19Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level19 Level18::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level19(bytes_, position);
 }
 
@@ -6360,7 +6486,7 @@ inline std::vector<Level19> Level18::first() const {
 
 inline Level19Vector Level18::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level19Vector(buffer.get_vector(position));
 }
 
@@ -6370,7 +6496,7 @@ inline std::vector<Level19> Level18::second() const {
 
 inline Level19Vector Level18::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level19Vector(buffer.get_vector(position));
 }
 
@@ -6408,7 +6534,7 @@ inline void Level18Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level18 Level17::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level18(bytes_, position);
 }
 
@@ -6418,7 +6544,7 @@ inline std::vector<Level18> Level17::first() const {
 
 inline Level18Vector Level17::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level18Vector(buffer.get_vector(position));
 }
 
@@ -6428,7 +6554,7 @@ inline std::vector<Level18> Level17::second() const {
 
 inline Level18Vector Level17::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level18Vector(buffer.get_vector(position));
 }
 
@@ -6466,7 +6592,7 @@ inline void Level17Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level17 Level16::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level17(bytes_, position);
 }
 
@@ -6476,7 +6602,7 @@ inline std::vector<Level17> Level16::first() const {
 
 inline Level17Vector Level16::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level17Vector(buffer.get_vector(position));
 }
 
@@ -6486,7 +6612,7 @@ inline std::vector<Level17> Level16::second() const {
 
 inline Level17Vector Level16::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level17Vector(buffer.get_vector(position));
 }
 
@@ -6524,7 +6650,7 @@ inline void Level16Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level16 Level15::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level16(bytes_, position);
 }
 
@@ -6534,7 +6660,7 @@ inline std::vector<Level16> Level15::first() const {
 
 inline Level16Vector Level15::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level16Vector(buffer.get_vector(position));
 }
 
@@ -6544,7 +6670,7 @@ inline std::vector<Level16> Level15::second() const {
 
 inline Level16Vector Level15::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level16Vector(buffer.get_vector(position));
 }
 
@@ -6582,7 +6708,7 @@ inline void Level15Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level15 Level14::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level15(bytes_, position);
 }
 
@@ -6592,7 +6718,7 @@ inline std::vector<Level15> Level14::first() const {
 
 inline Level15Vector Level14::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level15Vector(buffer.get_vector(position));
 }
 
@@ -6602,7 +6728,7 @@ inline std::vector<Level15> Level14::second() const {
 
 inline Level15Vector Level14::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level15Vector(buffer.get_vector(position));
 }
 
@@ -6640,7 +6766,7 @@ inline void Level14Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level14 Level13::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level14(bytes_, position);
 }
 
@@ -6650,7 +6776,7 @@ inline std::vector<Level14> Level13::first() const {
 
 inline Level14Vector Level13::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level14Vector(buffer.get_vector(position));
 }
 
@@ -6660,7 +6786,7 @@ inline std::vector<Level14> Level13::second() const {
 
 inline Level14Vector Level13::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level14Vector(buffer.get_vector(position));
 }
 
@@ -6698,7 +6824,7 @@ inline void Level13Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level13 Level12::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level13(bytes_, position);
 }
 
@@ -6708,7 +6834,7 @@ inline std::vector<Level13> Level12::first() const {
 
 inline Level13Vector Level12::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level13Vector(buffer.get_vector(position));
 }
 
@@ -6718,7 +6844,7 @@ inline std::vector<Level13> Level12::second() const {
 
 inline Level13Vector Level12::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level13Vector(buffer.get_vector(position));
 }
 
@@ -6756,7 +6882,7 @@ inline void Level12Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level12 Level11::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level12(bytes_, position);
 }
 
@@ -6766,7 +6892,7 @@ inline std::vector<Level12> Level11::first() const {
 
 inline Level12Vector Level11::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level12Vector(buffer.get_vector(position));
 }
 
@@ -6776,7 +6902,7 @@ inline std::vector<Level12> Level11::second() const {
 
 inline Level12Vector Level11::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level12Vector(buffer.get_vector(position));
 }
 
@@ -6814,7 +6940,7 @@ inline void Level11Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level11 Level10::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level11(bytes_, position);
 }
 
@@ -6824,7 +6950,7 @@ inline std::vector<Level11> Level10::first() const {
 
 inline Level11Vector Level10::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level11Vector(buffer.get_vector(position));
 }
 
@@ -6834,7 +6960,7 @@ inline std::vector<Level11> Level10::second() const {
 
 inline Level11Vector Level10::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level11Vector(buffer.get_vector(position));
 }
 
@@ -6872,7 +6998,7 @@ inline void Level10Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level10 Level9::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level10(bytes_, position);
 }
 
@@ -6882,7 +7008,7 @@ inline std::vector<Level10> Level9::first() const {
 
 inline Level10Vector Level9::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level10Vector(buffer.get_vector(position));
 }
 
@@ -6892,7 +7018,7 @@ inline std::vector<Level10> Level9::second() const {
 
 inline Level10Vector Level9::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level10Vector(buffer.get_vector(position));
 }
 
@@ -6930,7 +7056,7 @@ inline void Level9Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level9 Level8::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level9(bytes_, position);
 }
 
@@ -6940,7 +7066,7 @@ inline std::vector<Level9> Level8::first() const {
 
 inline Level9Vector Level8::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level9Vector(buffer.get_vector(position));
 }
 
@@ -6950,7 +7076,7 @@ inline std::vector<Level9> Level8::second() const {
 
 inline Level9Vector Level8::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level9Vector(buffer.get_vector(position));
 }
 
@@ -6988,7 +7114,7 @@ inline void Level8Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level8 Level7::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level8(bytes_, position);
 }
 
@@ -6998,7 +7124,7 @@ inline std::vector<Level8> Level7::first() const {
 
 inline Level8Vector Level7::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level8Vector(buffer.get_vector(position));
 }
 
@@ -7008,7 +7134,7 @@ inline std::vector<Level8> Level7::second() const {
 
 inline Level8Vector Level7::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level8Vector(buffer.get_vector(position));
 }
 
@@ -7046,7 +7172,7 @@ inline void Level7Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level7 Level6::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level7(bytes_, position);
 }
 
@@ -7056,7 +7182,7 @@ inline std::vector<Level7> Level6::first() const {
 
 inline Level7Vector Level6::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level7Vector(buffer.get_vector(position));
 }
 
@@ -7066,7 +7192,7 @@ inline std::vector<Level7> Level6::second() const {
 
 inline Level7Vector Level6::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level7Vector(buffer.get_vector(position));
 }
 
@@ -7104,7 +7230,7 @@ inline void Level6Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level6 Level5::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level6(bytes_, position);
 }
 
@@ -7114,7 +7240,7 @@ inline std::vector<Level6> Level5::first() const {
 
 inline Level6Vector Level5::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level6Vector(buffer.get_vector(position));
 }
 
@@ -7124,7 +7250,7 @@ inline std::vector<Level6> Level5::second() const {
 
 inline Level6Vector Level5::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level6Vector(buffer.get_vector(position));
 }
 
@@ -7162,7 +7288,7 @@ inline void Level5Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level5 Level4::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level5(bytes_, position);
 }
 
@@ -7172,7 +7298,7 @@ inline std::vector<Level5> Level4::first() const {
 
 inline Level5Vector Level4::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level5Vector(buffer.get_vector(position));
 }
 
@@ -7182,7 +7308,7 @@ inline std::vector<Level5> Level4::second() const {
 
 inline Level5Vector Level4::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level5Vector(buffer.get_vector(position));
 }
 
@@ -7220,7 +7346,7 @@ inline void Level4Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level4 Level3::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level4(bytes_, position);
 }
 
@@ -7230,7 +7356,7 @@ inline std::vector<Level4> Level3::first() const {
 
 inline Level4Vector Level3::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level4Vector(buffer.get_vector(position));
 }
 
@@ -7240,7 +7366,7 @@ inline std::vector<Level4> Level3::second() const {
 
 inline Level4Vector Level3::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level4Vector(buffer.get_vector(position));
 }
 
@@ -7278,7 +7404,7 @@ inline void Level3Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level3 Level2::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level3(bytes_, position);
 }
 
@@ -7288,7 +7414,7 @@ inline std::vector<Level3> Level2::first() const {
 
 inline Level3Vector Level2::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level3Vector(buffer.get_vector(position));
 }
 
@@ -7298,7 +7424,7 @@ inline std::vector<Level3> Level2::second() const {
 
 inline Level3Vector Level2::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level3Vector(buffer.get_vector(position));
 }
 
@@ -7336,7 +7462,7 @@ inline void Level2Fields::write(::tafla::TableWriter& writer_) const {
 
 inline Level2 Level1::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Level2(bytes_, position);
 }
 
@@ -7346,7 +7472,7 @@ inline std::vector<Level2> Level1::first() const {
 
 inline Level2Vector Level1::first_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Level2Vector(buffer.get_vector(position));
 }
 
@@ -7356,7 +7482,7 @@ inline std::vector<Level2> Level1::second() const {
 
 inline Level2Vector Level1::second_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return Level2Vector(buffer.get_vector(position));
 }
 

@@ -18,9 +18,12 @@ struct MacrosFields;
 
 class Interface {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Interface(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -36,7 +39,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of an `Interface`, to write */
@@ -139,13 +141,13 @@ struct MacrosFields {
 
 inline ::tafla::ArrayView<float> Interface::min_() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_float32_array(position);
 }
 
 inline ::tafla::ArrayView<float> Interface::max_() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_float32_array(position);
 }
 
