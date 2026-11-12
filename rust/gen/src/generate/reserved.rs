@@ -8,7 +8,9 @@
 //! Only names that start with a capital letter are listed, since
 //! declarations are `PascalCase`. `tests/diagnostics.rs` checks that every
 //! such name that the code generated from the example schemas imports is
-//! listed.
+//! listed. Go and C++ list none: Go names what it imports by its package, and
+//! C++ names the runtime and the standard library in full, and renames the
+//! types named after the macros of C's headers itself.
 
 /// The runtime's classes that TypeScript and JavaScript import, and the
 /// globals that they read arrays and check indices with
@@ -117,22 +119,12 @@ const RUST: &[&str] = &[
     "Vector",
 ];
 
-/// The macros of the C standard library that a name can take, which a header
-/// that C++'s generated code includes may define. C++ names the runtime and
-/// the standard library in full, as `::tafla::` and `std::`, so nothing else
-/// would clash. Platforms define more, such as POSIX's `EPERM` and `SIGHUP`.
-const CPP: &[&str] = &[
-    "BUFSIZ", "EDOM", "EILSEQ", "EOF", "ERANGE", "INFINITY", "NAN", "NULL", "SIGABRT", "SIGFPE",
-    "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
-];
-
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 5] = [
+const RESERVED: [(&[&str], &[&str]); 4] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
-    (&["C++"], CPP),
 ];
 
 /// The targets whose generated code uses `name`, which a declaration can't
