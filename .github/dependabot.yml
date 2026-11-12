@@ -35,3 +35,13 @@ updates:
       interval: "daily"
     allow:
       - dependency-type: "all"
+
+  # The tests' module, whose only requirement is the property tests'
+  # library, and the benchmarks' module of the libraries they compare. The
+  # runtime's module requires nothing.
+  - package-ecosystem: "gomod"
+    directories:
+      - "/go/tests"
+      - "/go/benchmarks"
+    schedule:
+      interval: "daily"

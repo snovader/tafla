@@ -7,6 +7,8 @@
 
 #[cfg(feature = "cpp")]
 mod cpp;
+#[cfg(feature = "go")]
+mod go;
 #[cfg(feature = "java")]
 mod java;
 // Options name a Java package in every build
@@ -16,6 +18,7 @@ mod java_package;
     feature = "python",
     feature = "java",
     feature = "rust",
+    feature = "go",
     feature = "cpp"
 ))]
 mod prose;
@@ -32,8 +35,20 @@ mod typescript;
     feature = "python",
     feature = "java",
     feature = "rust",
+    feature = "go",
     feature = "cpp"
 ))]
+// Go's and C++'s generators write their lines without the others'
+// expressions
+#[cfg_attr(
+    not(any(
+        feature = "typescript",
+        feature = "python",
+        feature = "java",
+        feature = "rust"
+    )),
+    allow(dead_code)
+)]
 mod writer;
 
 pub use java_package::{InvalidJavaPackage, JavaPackage};
@@ -54,6 +69,8 @@ pub enum Target {
     Java,
     #[cfg(feature = "rust")]
     Rust,
+    #[cfg(feature = "go")]
+    Go,
     /// A header of C++20
     #[cfg(feature = "cpp")]
     Cpp,
@@ -72,6 +89,8 @@ impl Target {
         (&["java"], Self::Java),
         #[cfg(feature = "rust")]
         (&["rust", "rs"], Self::Rust),
+        #[cfg(feature = "go")]
+        (&["go"], Self::Go),
         #[cfg(feature = "cpp")]
         (&["cpp"], Self::Cpp),
     ];
@@ -117,7 +136,8 @@ pub struct GeneratedFile {
 
 /// Generates code for a checked schema from the file `file_name`, which the
 /// generated files' header names
-// A build without generators has no target to call this with
+// A build without generators has no target to call this with, and Go's
+// generator writes a header of its own
 #[cfg_attr(
     not(any(
         feature = "typescript",
@@ -152,6 +172,8 @@ pub fn generate(
         Target::Java => java::generate(schema, &header, options),
         #[cfg(feature = "rust")]
         Target::Rust => rust::generate(schema, stem(file_name), &header, options),
+        #[cfg(feature = "go")]
+        Target::Go => go::generate(schema, stem(file_name), &comment_text(file_name), options),
         #[cfg(feature = "cpp")]
         Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
     }
@@ -181,6 +203,7 @@ fn comment_text(file_name: &str) -> String {
     feature = "typescript",
     feature = "python",
     feature = "rust",
+    feature = "go",
     feature = "cpp"
 ))]
 fn stem(file_name: &str) -> &str {

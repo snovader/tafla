@@ -2,8 +2,8 @@ name: Fuzz
 
 # Weekly, rather than on every change, since a run takes minutes of each
 # target's time to find anything. The Rust workflow lints the fuzz targets on
-# every change, so that they keep building, and the C++ workflow builds and
-# runs its targets briefly.
+# every change, so that they keep building, and the Go and C++ workflows run
+# their targets briefly.
 on:
   schedule:
     # Mondays at 04:17 UTC, off the hour that most scheduled workflows start
@@ -91,6 +91,58 @@ jobs:
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: rust/fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+  # Go's native fuzz targets, which mirror the runtime's Rust targets, seeded
+  # with the conformance suite's tables
+  fuzz-go:
+    name: Fuzz Go (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: go/tests
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzByteBuffer, FuzzConformance]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without the build cache, which would save the corpus under go.sum's
+      # key; the next step keeps it instead
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
+
+      # Go grows a target's corpus in its build cache, rather than in the
+      # repository
+      - name: Find the corpus
+        id: corpus
+        run: echo "path=$(go env GOCACHE)/fuzz/github.com/snovader/tafla/go/tests/${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the corpus
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.corpus.outputs.path }}
+          key: fuzz-go-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-go-corpus-${{ matrix.target }}-
+
+      # Go writes an input that fails to testdata/fuzz
+      - name: Run the fuzz target
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 300 }}
+        run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime "${SECONDS_PER_TARGET}s" .
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-go-artifacts-${{ matrix.target }}
+          path: go/tests/testdata/fuzz
           if-no-files-found: ignore
 
   # C++'s libFuzzer targets, which mirror the runtime's Rust targets, with

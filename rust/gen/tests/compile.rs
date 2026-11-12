@@ -252,6 +252,39 @@ fn files_are_named_after_the_schema_and_name_it() {
 }
 
 #[test]
+fn go_files_are_named_after_their_package_which_no_suffix_constrains() {
+    // Go takes a file name's suffix of an operating system or architecture
+    // as a build constraint, and one of `_test` as a test, and a package
+    // named `main` as a program
+    for (file_name, path, package) in [
+        (
+            "schemas/v1/point_cloud.v1.tafla",
+            "pointcloud.go",
+            "pointcloud",
+        ),
+        ("events_windows.tafla", "eventswindows.go", "eventswindows"),
+        (
+            "frames_linux_arm64.tafla",
+            "frameslinuxarm64.go",
+            "frameslinuxarm64",
+        ),
+        ("shapes_test.tafla", "shapestest.go", "shapestest"),
+        ("_hidden.tafla", "hidden.go", "hidden"),
+        ("main.tafla", "main_.go", "main_"),
+    ] {
+        let files = generate(file_name, SCHEMA, "go", &Options::default());
+
+        assert_eq!(paths(&files), [path], "{file_name}");
+        assert!(
+            files[0]
+                .contents
+                .contains(&format!("\npackage {package}\n")),
+            "{file_name}"
+        );
+    }
+}
+
+#[test]
 fn files_are_named_after_the_schema_without_its_windows_directory() {
     for file_name in [
         r"schemas\v1\point_cloud.v1.tafla",
@@ -343,7 +376,15 @@ fn targets_are_found_by_name_or_abbreviation() {
     let names: Vec<&str> = Target::names().collect();
     assert_eq!(
         names,
-        ["typescript", "javascript", "python", "java", "rust", "cpp"]
+        [
+            "typescript",
+            "javascript",
+            "python",
+            "java",
+            "rust",
+            "go",
+            "cpp"
+        ]
     );
 
     for (abbreviation, name) in [
@@ -355,7 +396,7 @@ fn targets_are_found_by_name_or_abbreviation() {
         assert_eq!(Target::from_name(abbreviation), Target::from_name(name));
     }
     assert_eq!(Target::from_name("TypeScript"), None);
-    assert_eq!(Target::from_name("go"), None);
+    assert_eq!(Target::from_name("cobol"), None);
 }
 
 #[test]

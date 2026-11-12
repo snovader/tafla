@@ -313,7 +313,7 @@ fn prints_its_version_to_stdout() {
     }
 }
 
-const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust|cpp> <schema>... \
+const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp> <schema>... \
                      [--out <dir>] [--runtime <module>] [--package <package>]";
 
 /// Fails as wrong arguments do: with the error, the usage and exit code 2,
@@ -343,8 +343,8 @@ fn rejects_wrong_arguments() {
         (&[][..], "no target is given"),
         (&["rust"], "no schema is given"),
         (
-            &["go", "schemas/shapes.tafla"],
-            "unknown target `go`: this build generates typescript, javascript, python, java, rust, cpp",
+            &["cobol", "schemas/shapes.tafla"],
+            "unknown target `cobol`: this build generates typescript, javascript, python, java, rust, go, cpp",
         ),
         (
             &["rust", "schemas/shapes.tafla", "--outdir", "out"],
@@ -382,6 +382,36 @@ fn rejects_a_package_that_isnt_a_java_package() {
         "`.generated` isn't a Java package, which is identifiers in ASCII separated by dots, \
          such as `com.example.shapes`",
     );
+}
+
+#[test]
+fn rejects_two_schemas_for_go_whose_packages_would_share_a_directory() {
+    assert_usage_error(
+        REPOSITORY,
+        &["go", "schemas/shapes.tafla", "schemas/layouts.tafla"],
+        "go generates a package of each schema, which needs a directory of its own: \
+         give one schema, and another `--out` for each other",
+    );
+}
+
+#[test]
+fn generates_one_schema_given_twice_for_go() {
+    let out = tempfile::tempdir().unwrap();
+
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "go",
+            "schemas/shapes.tafla",
+            "schemas/shapes.tafla",
+            "--out",
+            out.path().to_str().unwrap(),
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let files: Vec<String> = read_tree(out.path()).into_keys().collect();
+    assert_eq!(files, ["shapes.go"]);
 }
 
 #[cfg(unix)]

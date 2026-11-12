@@ -35,6 +35,7 @@ const GOLDEN_ROOTS = {
         root: 'java/core/src/test/java/io/github/snovader/tafla/test/generated'
     },
     rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' },
+    go: { root: 'go/tests/generated' },
     cpp: { root: 'cpp/tests/generated' }
 };
 
@@ -224,10 +225,10 @@ for (const name of namesWith(DIAGNOSTICS, '.tafla')) {
     }
 }
 
-const unknown = call(instance, ['go', 'point.tafla', '', '', '']);
+const unknown = call(instance, ['cobol', 'point.tafla', '', '', '']);
 if (
     unknown.status !== 1 ||
-    !unknown.errors.startsWith('unknown target `go`: this build generates')
+    !unknown.errors.startsWith('unknown target `cobol`: this build generates')
 ) {
     fail(`an unknown target: ${JSON.stringify(unknown)}`);
 }
