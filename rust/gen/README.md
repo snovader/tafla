@@ -212,9 +212,14 @@ fields in memory at every call: its sizer and writer take a table's leading
 fields of fixed size together, and a nested table of only those fields
 whole, and a message of only those fields and a string after them is
 written into the bytes that the runtime's `AppendTable()` returns, without a
-sizer and a writer. Each nested table has an `ALIGNMENT`, which its parent
-pads it to: the largest alignment of its arrays and nested tables. Structs
-are read and written whole, and arrays of
+sizer and a writer. C++ writes such a message whole too, each field at a
+constant position, without a sizer and a writer, into new bytes or, from
+`serialize_into()`, the start of the given bytes, which the runtime's
+`room_for_table()` checks hold it. A nested table of only those fields has a
+`SIZE` and a `to_bytes()`, with which such a message writes it. Each nested
+table has an `ALIGNMENT`, which its parent pads it to: the largest alignment
+of its arrays and nested tables. Structs are read and written whole, and
+arrays of
 them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
@@ -639,7 +644,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 397 KB. It has no imports, so any host runs it with an empty import
+about 403 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 

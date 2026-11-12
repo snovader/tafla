@@ -51,6 +51,20 @@ TAFLA_ALWAYS_INLINE void copy(std::uint8_t* to, const void* from, std::size_t le
 
 }  // namespace detail
 
+/// Returns the start of `bytes`, which a table of `length` bytes is written
+/// into, after checking that they hold it, as `TableSizer::writer(bytes)`
+/// does. It's for code that writes a table's bytes itself, at positions that
+/// it works out, as tafla-gen's code writes a message of fields of fixed
+/// size into bytes that the caller gives.
+///
+/// Throws `std::invalid_argument` if `bytes` are shorter than `length`.
+[[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t* room_for_table(std::span<std::uint8_t> bytes, std::size_t length) {
+    if (bytes.size() < length) [[unlikely]] {
+        detail::throw_too_short(length, bytes.size());
+    }
+    return bytes.data();
+}
+
 /// The table that a nested table or vector item was started in, which
 /// `TableSizer::end_table()` takes back
 class [[nodiscard]] SizerParent {
@@ -1060,16 +1074,14 @@ TAFLA_ALWAYS_INLINE TableWriter TableSizer::writer() const {
 
 TAFLA_ALWAYS_INLINE TableWriter TableSizer::writer(std::span<std::uint8_t> bytes) const {
     const std::size_t length = byte_length();
-    if (bytes.size() < length) [[unlikely]] {
-        detail::throw_too_short(length, bytes.size());
-    }
+    auto* const start = room_for_table(bytes, length);
 
     std::optional<std::uint32_t> version;
     if (versioned_) {
         version = version_;
     }
 
-    return {bytes, length, fields_, sized_, version, offset_type_};
+    return {{start, bytes.size()}, length, fields_, sized_, version, offset_type_};
 }
 
 }  // namespace tafla

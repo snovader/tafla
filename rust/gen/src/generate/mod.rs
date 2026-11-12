@@ -7,6 +7,9 @@
 
 #[cfg(feature = "cpp")]
 mod cpp;
+// The fields that Go's and C++'s generated code lays out itself
+#[cfg(any(feature = "go", feature = "cpp"))]
+mod fixed;
 #[cfg(feature = "go")]
 mod go;
 #[cfg(feature = "java")]

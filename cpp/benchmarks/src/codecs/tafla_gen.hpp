@@ -17,8 +17,10 @@ namespace tafla::benchmarks {
 /// The code that tafla-gen generates from `workloads.tafla`, in
 /// `generated/tafla/`. A message's `serialize()` counts the table's length
 /// with a `TableSizer`, and then writes every field, nested tables included,
-/// into bytes of that length with a `TableWriter`, in one allocation. Its
-/// readers view strings and columns, as tafla's do.
+/// into bytes of that length with a `TableWriter`, in one allocation. The
+/// record, whose fields' sizes are fixed but for a string after them, it
+/// writes whole instead, each field at a constant position in bytes of its
+/// length. Its readers view strings and columns, as tafla's do.
 ///
 /// It takes the workloads' types, as the other codecs do, so it collects the
 /// generated fields of the vector's items and the generated structs of the

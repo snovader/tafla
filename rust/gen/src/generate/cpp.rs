@@ -5,12 +5,20 @@
 //! and a `TableWriter` writes, nested tables in place. Structs are aggregates
 //! read and written at fixed offsets.
 //!
+//! The fields whose sizes the schema fixes, scalars, structs and nested
+//! tables of only such fields, the generated code lays out itself, as Go's
+//! does: a message of only such fields, and a string after them, is written
+//! whole into bytes of its length, each field at a constant position, without
+//! a sizer and a writer, and a nested table of only such fields has a
+//! `to_bytes()` with which such a message writes it.
+//!
 //! A header declares its classes before any of their members' definitions,
 //! which follow them, so that tables can name each other in any order,
 //! including through vectors that hold their own table. Structs, and the
 //! structs of tables' fields, which hold others by value, come after those
 //! that they hold.
 
+use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, comment_text, escape_outside_code_spans};
 use super::{GeneratedFile, Options};
@@ -190,6 +198,11 @@ const TYPE_MACROS: [&str; 14] = [
 /// pairs, a few levels deep, compiled for minutes.
 const INLINE_FIELDS: usize = 64;
 
+/// The longest table that the generated code lays out itself: the longest
+/// that `uint32` offsets address, whose positions a `std::size_t` holds on
+/// 32-bit hosts too
+const MAX_LAID_OUT: usize = u32::MAX as usize;
+
 /// The members that the generated code declares beside the fields, which a
 /// field of the same name would clash with, so names take a `_` after them
 /// too: a struct's `read()`, `from_bytes()`, `to_bytes()` and
@@ -227,6 +240,7 @@ pub fn generate(
     let generator = Generator {
         schema,
         inlined: inlined_tables(schema, &recursive),
+        fixed: FixedSizes::new(schema, MAX_LAID_OUT),
     };
 
     let mut writer = CodeWriter::new(INDENT);
@@ -242,8 +256,19 @@ pub fn generate(
     writer.blank();
     writer.line("#pragma once");
     writer.blank();
-    for include in ["cstddef", "cstdint", "span", "string_view", "vector"] {
-        writer.line(format!("#include <{include}>"));
+    // `std::memcpy()` copies the string of a message written whole
+    let copies_strings = generator.writes_whole_strings();
+    for include in [
+        "cstddef",
+        "cstdint",
+        "cstring",
+        "span",
+        "string_view",
+        "vector",
+    ] {
+        if include != "cstring" || copies_strings {
+            writer.line(format!("#include <{include}>"));
+        }
     }
     writer.blank();
     writer.line(format!("#include <{runtime}>"));
@@ -295,7 +320,12 @@ pub fn generate(
         generator.getter_definitions(&mut writer, definition);
         match definition.kind {
             Kind::Message(layout) => generator.serialize(&mut writer, definition, layout),
-            Kind::Table => generator.size_and_write(&mut writer, definition),
+            Kind::Table => {
+                generator.size_and_write(&mut writer, definition);
+                if generator.fixed.table(index).is_some() {
+                    generator.table_to_bytes(&mut writer, definition);
+                }
+            }
             Kind::Struct(_) => unreachable!("structs are written before tables"),
         }
     }
@@ -314,6 +344,35 @@ struct Generator<'a> {
     /// Whether each table's `size()` and `write()` are forced inline into
     /// their parent's, by its index
     inlined: Vec<bool>,
+    /// The byte length of each nested table whose fields' sizes the schema
+    /// fixes, which a message written whole writes with its `to_bytes()`
+    fixed: FixedSizes,
+}
+
+/// A message that the generated code writes whole, into bytes of its length,
+/// without a sizer and a writer: its fields' sizes are all fixed, but for a
+/// string after them, and they fit in its offset type with the string's
+/// count, so that only the string's length can make it too long
+struct Whole<'a> {
+    /// The width of the message's header slots, offsets and counts
+    width: usize,
+    /// The position of each field of fixed size, after the header and the
+    /// offsets
+    positions: Vec<usize>,
+    /// Where those fields end, and the string's count starts
+    end: usize,
+    /// The string after them, and its index
+    string: Option<(usize, &'a Field)>,
+}
+
+impl Whole<'_> {
+    /// The message's length without the string's bytes
+    fn fixed_length(&self) -> usize {
+        match self.string {
+            Some(_) => self.end + self.width,
+            None => self.end,
+        }
+    }
 }
 
 impl Generator<'_> {
@@ -815,6 +874,10 @@ impl Generator<'_> {
                 writer.line(format!(
                     "{inline}void write(::tafla::TableWriter& writer_) const;"
                 ));
+
+                if let Some(size) = self.fixed.table(index) {
+                    fixed_table_declarations(writer, name, size);
+                }
             }
             Kind::Struct(_) => unreachable!("structs are written by their own functions"),
         }
@@ -824,22 +887,31 @@ impl Generator<'_> {
 
     /// A message's `serialize()` and `serialize_into()`, each of which sizes
     /// its fields and then writes them, into new bytes of that length or the
-    /// start of the caller's
+    /// start of the caller's, or writes them whole
     fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
         let name = &type_name(&definition.name);
+        let whole = self.whole(definition, layout);
+        // A message written whole writes through its own `bytes_`, a pointer
+        let given = if whole.is_some() { "given_" } else { "bytes_" };
 
         writer.blank();
         writer.line(format!(
             "inline ::tafla::Bytes {name}Fields::serialize() const {{"
         ));
-        self.serialize_body(writer, definition, layout, Output::NewBytes);
+        self.serialize_body(writer, definition, layout, whole.as_ref(), Output::NewBytes);
         writer.line("}");
 
         writer.blank();
         writer.line(format!(
-            "inline std::size_t {name}Fields::serialize_into(std::span<std::uint8_t> bytes_) const {{"
+            "inline std::size_t {name}Fields::serialize_into(std::span<std::uint8_t> {given}) const {{"
         ));
-        self.serialize_body(writer, definition, layout, Output::GivenBytes);
+        self.serialize_body(
+            writer,
+            definition,
+            layout,
+            whole.as_ref(),
+            Output::GivenBytes,
+        );
         writer.line("}");
     }
 
@@ -852,12 +924,19 @@ impl Generator<'_> {
         writer: &mut CodeWriter,
         definition: &Definition,
         layout: Layout,
+        whole: Option<&Whole>,
         output: Output,
     ) {
         let name = &type_name(&definition.name);
         let fields = definition.fields.len();
 
         writer.indent();
+        if let Some(whole) = whole {
+            serialize_whole(writer, definition, layout, whole, output);
+            writer.dedent();
+            return;
+        }
+
         if layout.version.is_some() {
             writer.line(format!(
                 "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT, {name}::FORMAT_VERSION);"
@@ -880,6 +959,85 @@ impl Generator<'_> {
             Output::GivenBytes => "return writer_.finish_into();",
         });
         writer.dedent();
+    }
+
+    /// How the generated code writes a message whole, when its fields' sizes
+    /// are all fixed but for a string after them, and they fit in its offset
+    /// type with the string's count
+    fn whole<'a>(&self, definition: &'a Definition, layout: Layout) -> Option<Whole<'a>> {
+        let width = offset_size(layout.offset_type);
+        let slots = usize::from(layout.sized) + usize::from(layout.version.is_some());
+        let (fixed, string) = match definition.fields.split_last() {
+            Some((last, rest)) if last.field_type == FieldType::String => {
+                (rest, Some((rest.len(), last)))
+            }
+            _ => (definition.fields.as_slice(), None),
+        };
+
+        // The fields follow the header and the offsets
+        let start = (slots + definition.fields.len()).checked_mul(width)?;
+        let (positions, end) = self.lay_out(fixed, start)?;
+        let whole = Whole {
+            width,
+            positions,
+            end,
+            string,
+        };
+        let max = usize::try_from(layout.offset_type.max_value()).unwrap_or(usize::MAX);
+        (whole.fixed_length() <= max).then_some(whole)
+    }
+
+    /// The positions of fields of fixed size, one after another from `start`,
+    /// and where they end, or nothing if a field's size isn't fixed or the
+    /// positions overflow. A nested table of only such fields has an
+    /// alignment of 1, so that its parent's writer pads it with nothing.
+    fn lay_out(&self, fields: &[Field], start: usize) -> Option<(Vec<usize>, usize)> {
+        let mut position = start;
+        let mut positions = Vec::with_capacity(fields.len());
+        for field in fields {
+            let size = self.fixed.field(self.schema, field.field_type)?;
+            if let FieldType::Table(index) = field.field_type {
+                debug_assert_eq!(self.schema.table_alignment(index), 1);
+            }
+            positions.push(position);
+            position = position.checked_add(size)?;
+        }
+        Some((positions, position))
+    }
+
+    /// Whether a message that the generated code writes whole holds a string,
+    /// which it copies with `std::memcpy()`
+    fn writes_whole_strings(&self) -> bool {
+        self.schema
+            .definitions
+            .iter()
+            .any(|definition| match definition.kind {
+                Kind::Message(layout) => self
+                    .whole(definition, layout)
+                    .is_some_and(|whole| whole.string.is_some()),
+                Kind::Table | Kind::Struct(_) => false,
+            })
+    }
+
+    /// A nested table's `to_bytes()`, which writes the table of only fields
+    /// of fixed size whole, at constant positions from its start, as its
+    /// parent's writer would write it after its offset
+    fn table_to_bytes(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &type_name(&definition.name);
+
+        writer.blank();
+        writer.line(format!(
+            "inline void {name}Fields::to_bytes(std::uint8_t* bytes_) const noexcept {{"
+        ));
+        writer.indent();
+        let start = definition.fields.len() * NESTED_OFFSET_SIZE;
+        let (positions, _) = self
+            .lay_out(&definition.fields, start)
+            .expect("a table written whole has only fields of fixed size");
+        put_offsets(writer, NESTED_OFFSET_SIZE, 0, &positions);
+        put_fields(writer, &definition.fields, &positions);
+        writer.dedent();
+        writer.line("}");
     }
 
     /// The functions with which a nested table's parent sizes and writes it
@@ -1069,6 +1227,223 @@ enum Output {
     /// The start of the caller's `bytes_`, whose length `serialize_into()`
     /// returns
     GivenBytes,
+}
+
+/// The declarations of the `SIZE` and `to_bytes()` of a nested table of
+/// `size` bytes of only fields of fixed size, which a message written whole
+/// writes it with
+fn fixed_table_declarations(writer: &mut CodeWriter, name: &str, size: usize) {
+    writer.blank();
+    cpp_doc(
+        writer,
+        &[format!(
+            "The byte length of {} written whole: its offsets and its fields",
+            article(name)
+        )],
+    );
+    writer.line(format!("static constexpr std::size_t SIZE = {size};"));
+    writer.blank();
+    cpp_doc(
+        writer,
+        &[format!(
+            "Writes the `SIZE` bytes of {}, its offsets and its fields, at `bytes_`, as its \
+             parent's writer would after its offset",
+            article(name)
+        )],
+    );
+    writer.line("void to_bytes(std::uint8_t* bytes_) const noexcept;");
+}
+
+/// The body of `serialize()` or `serialize_into()` of a message that the
+/// generated code writes whole: it allocates the message's length, or checks
+/// that the given bytes hold it, and writes its header, its offsets, its
+/// fields and the string after them at their positions. Only the string's
+/// length can make it too long for its offsets, which throws the
+/// `tafla::BuildError` that `TableSizer` throws, naming the string.
+fn serialize_whole(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    layout: Layout,
+    whole: &Whole,
+    output: Output,
+) {
+    let fixed_length = whole.fixed_length();
+    let fields = &definition.fields[..whole.positions.len()];
+
+    let length = allocate_whole(writer, layout, whole, output);
+    if let Output::NewBytes = output {
+        writer.line("std::uint8_t* const bytes_ = table_.data();");
+    }
+    writer.blank();
+
+    // The header: the length, and then the version
+    let mut slot = 0;
+    if layout.sized {
+        put_slot(writer, whole.width, slot, length);
+        slot += whole.width;
+    }
+    if let Some(version) = layout.version {
+        let version = usize::try_from(version).expect("a version fits in a usize");
+        put_slot(writer, whole.width, slot, SlotValue::Constant(version));
+        slot += whole.width;
+    }
+
+    // The string's offset is where its count starts, after the other fields
+    put_offsets(writer, whole.width, slot, &whole.positions);
+    if whole.string.is_some() {
+        let string_slot = slot + whole.positions.len() * whole.width;
+        put_slot(
+            writer,
+            whole.width,
+            string_slot,
+            SlotValue::Constant(whole.end),
+        );
+    }
+    put_fields(writer, fields, &whole.positions);
+
+    if let Some((_, field)) = whole.string {
+        let string = identifier(&field.name);
+        let size = format!("{string}.size()");
+        put_slot(writer, whole.width, whole.end, SlotValue::Expression(&size));
+        // An empty string's data may be null, which `std::memcpy()` can't take
+        writer.line(format!("if (!{string}.empty()) {{"));
+        writer.line(format!(
+            "{INDENT}std::memcpy({}, {string}.data(), {string}.size());",
+            at_offset("bytes_", fixed_length)
+        ));
+        writer.line("}");
+    }
+
+    writer.blank();
+    match (output, length) {
+        (Output::NewBytes, _) => writer.line("return table_;"),
+        (Output::GivenBytes, SlotValue::Constant(length)) => {
+            writer.line(format!("return {length};"));
+        }
+        (Output::GivenBytes, SlotValue::Expression(length)) => {
+            writer.line(format!("return static_cast<std::size_t>({length});"));
+        }
+    }
+}
+
+/// The lines that allocate the bytes of a message written whole, `table_`,
+/// or find them at the start of the given bytes, after checking that a
+/// string after its fields leaves it within its offsets, and the expression
+/// of its length
+fn allocate_whole(
+    writer: &mut CodeWriter,
+    layout: Layout,
+    whole: &Whole,
+    output: Output,
+) -> SlotValue<'static> {
+    let fixed_length = whole.fixed_length();
+    let Some((index, field)) = whole.string else {
+        match output {
+            Output::NewBytes => writer.line(format!(
+                "auto table_ = ::tafla::Bytes::for_overwrite({fixed_length});"
+            )),
+            Output::GivenBytes => room_in_given(writer, &fixed_length.to_string()),
+        }
+        return SlotValue::Constant(fixed_length);
+    };
+
+    // Counted in 64 bits, as `TableSizer` counts it, which no string's
+    // length wraps
+    let string = identifier(&field.name);
+    writer.line(format!(
+        "const std::uint64_t length_ = {fixed_length}U + std::uint64_t{{{string}.size()}};"
+    ));
+    writer.line(format!(
+        "if (length_ > {}U) [[unlikely]] {{",
+        layout.offset_type.max_value()
+    ));
+    writer.line(format!(
+        "{INDENT}throw ::tafla::BuildError::too_long({index}, length_, ::tafla::OffsetType::{});",
+        layout.offset_type.name()
+    ));
+    writer.line("}");
+    match output {
+        Output::NewBytes => writer.line(
+            "auto table_ = ::tafla::Bytes::for_overwrite(static_cast<std::size_t>(length_));",
+        ),
+        Output::GivenBytes => room_in_given(writer, "static_cast<std::size_t>(length_)"),
+    }
+    SlotValue::Expression("length_")
+}
+
+/// The line that finds the start of the given bytes, `given_`, as
+/// `bytes_`, after the runtime checks that they hold a message of `length`
+/// bytes
+fn room_in_given(writer: &mut CodeWriter, length: &str) {
+    writer.line(format!(
+        "std::uint8_t* const bytes_ = ::tafla::room_for_table(given_, {length});"
+    ));
+}
+
+/// The value of a header slot, an offset or a count that the generated code
+/// writes
+#[derive(Clone, Copy)]
+enum SlotValue<'a> {
+    /// A position or a version that the generator works out
+    Constant(usize),
+    /// An expression of the message's length or a string's, which fits in the
+    /// slot
+    Expression(&'a str),
+}
+
+/// The lines that write the offsets of fields at `positions` from the
+/// table's start, into its slots of `width` bytes from `first`
+fn put_offsets(writer: &mut CodeWriter, width: usize, first: usize, positions: &[usize]) {
+    for (index, position) in positions.iter().enumerate() {
+        put_slot(
+            writer,
+            width,
+            first + index * width,
+            SlotValue::Constant(*position),
+        );
+    }
+}
+
+/// The line that writes a header slot, an offset or a count, `value`, in
+/// `width` bytes at `position` in `bytes_`
+fn put_slot(writer: &mut CodeWriter, width: usize, position: usize, value: SlotValue) {
+    let slot = match width {
+        1 => "std::uint8_t",
+        2 => "std::uint16_t",
+        _ => "std::uint32_t",
+    };
+    let value = match value {
+        SlotValue::Constant(value) => format!("{slot}{{{value}}}"),
+        SlotValue::Expression(value) => format!("static_cast<{slot}>({value})"),
+    };
+
+    if width == 1 {
+        writer.line(format!("bytes_[{position}] = {value};"));
+    } else {
+        writer.line(format!(
+            "::tafla::store_le({}, {value});",
+            at_offset("bytes_", position)
+        ));
+    }
+}
+
+/// The lines that write fields of fixed size at their `positions` in
+/// `bytes_`, from the members of the fields struct
+fn put_fields(writer: &mut CodeWriter, fields: &[Field], positions: &[usize]) {
+    for (field, &position) in fields.iter().zip(positions) {
+        let name = identifier(&field.name);
+        let at = at_offset("bytes_", position);
+        match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => writer.line(format!(
+                "bytes_[{position}] = static_cast<std::uint8_t>({name});"
+            )),
+            FieldType::Scalar(_) => writer.line(format!("::tafla::store_le({at}, {name});")),
+            FieldType::Struct(_) | FieldType::Table(_) => {
+                writer.line(format!("{name}.to_bytes({at});"));
+            }
+            _ => unreachable!("only fields of fixed size are written whole"),
+        }
+    }
 }
 
 /// The definitions of a versioned message's constructor, which checks the
