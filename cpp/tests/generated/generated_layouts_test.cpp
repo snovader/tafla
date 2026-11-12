@@ -1,18 +1,21 @@
 // The code generated from `schemas/layouts.tafla` writes a message in each
 // layout as `TableBuilder` writes it by hand, with the version in its header,
-// reads back what it writes, rejects other versions, reads corrupted bytes as
-// values or decode errors, and writes tables of `uint8` and `uint16` offsets up
-// to the longest that they address and fails past it
+// into new bytes and into the start of bytes that the caller gives, reads back
+// what it writes, rejects other versions, reads corrupted bytes as values or
+// decode errors, and writes tables of `uint8` and `uint16` offsets up to the
+// longest that they address and fails past it
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "common/build.hpp"
+#include "common/given_bytes.hpp"
 #include "common/values.hpp"
 #include "layouts/layouts.hpp"
 
@@ -108,11 +111,21 @@ RC_GTEST_PROP(GeneratedLayouts, EveryLayoutIsWrittenAsTableBuilderWritesItAndRea
             } catch (const BuildError& error) {
                 RC_ASSERT(error.kind() == BuildError::Kind::too_long);
             }
+
+            // Into bytes longer than any table of its offsets, it fails alike
+            std::vector<std::uint8_t> bytes(max_value(spec.layout.offset_type) + 1);
+            try {
+                static_cast<void>(fields.serialize_into(bytes));
+                RC_FAIL("A table too long for its offsets was written into given bytes");
+            } catch (const BuildError& error) {
+                RC_ASSERT(error.kind() == BuildError::Kind::too_long);
+            }
             return;
         }
 
         const auto bytes = fields.serialize();
         RC_ASSERT(bytes == *built);
+        RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
         RC_ASSERT(read(spec.layout, spec.version, Message(bytes)) == expected);
         if constexpr (requires { Message::FORMAT_VERSION; }) {
             RC_ASSERT(Message::FORMAT_VERSION == *spec.version);
@@ -204,16 +217,21 @@ TEST(GeneratedLayouts, EveryLayoutOfShortOffsetsIsWrittenUpToItsLimitAndFailsPas
         EXPECT_GT(bytes.size(), max - 2);
         EXPECT_LE(bytes.size(), max);
         EXPECT_EQ(bytes, to_bytes(describe(spec.layout, spec.version, {0, "", values})));
+        EXPECT_TRUE(written_into(longest, bytes.span(), 1, 0xa5));
 
         const std::vector<std::uint16_t> more(count + 1, 7);
         const typename Spec::FieldsType too_long{.values = more};
-        try {
-            static_cast<void>(too_long.serialize());
-            ADD_FAILURE() << "A table too long for its offsets was written";
-        } catch (const BuildError& error) {
-            EXPECT_EQ(error.kind(), BuildError::Kind::too_long);
-            EXPECT_EQ(error.index(), 2U);
-            EXPECT_EQ(error.offset_type(), spec.layout.offset_type);
+        std::vector<std::uint8_t> given(max + 1);
+        for (const auto& write : {std::function<void()>([&] { static_cast<void>(too_long.serialize()); }),
+                                  std::function<void()>([&] { static_cast<void>(too_long.serialize_into(given)); })}) {
+            try {
+                write();
+                ADD_FAILURE() << "A table too long for its offsets was written";
+            } catch (const BuildError& error) {
+                EXPECT_EQ(error.kind(), BuildError::Kind::too_long);
+                EXPECT_EQ(error.index(), 2U);
+                EXPECT_EQ(error.offset_type(), spec.layout.offset_type);
+            }
         }
     });
 }

@@ -339,6 +339,13 @@ struct ScalarsFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Scalars` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** An array of every scalar type but bool, which has none */
@@ -402,6 +409,13 @@ struct ArraysFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes an `Arrays` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 class Inner {
@@ -536,6 +550,13 @@ struct NestedFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Nested` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /**
@@ -666,6 +687,13 @@ struct ReservedFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Reserved` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 class Path {
@@ -790,6 +818,13 @@ struct StructsFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Structs` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 inline std::int8_t Scalars::int8() const {
@@ -888,6 +923,36 @@ inline ::tafla::Bytes ScalarsFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t ScalarsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(11, Scalars::LAYOUT);
+    sizer_.add_int8();
+    sizer_.add_uint8();
+    sizer_.add_int16();
+    sizer_.add_uint16();
+    sizer_.add_int32();
+    sizer_.add_uint32();
+    sizer_.add_int64();
+    sizer_.add_uint64();
+    sizer_.add_float32();
+    sizer_.add_float64();
+    sizer_.add_uint8();
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_int8(0, int8);
+    writer_.set_uint8(1, uint8);
+    writer_.set_int16(2, int16);
+    writer_.set_uint16(3, uint16);
+    writer_.set_int32(4, int32);
+    writer_.set_uint32(5, uint32);
+    writer_.set_int64(6, int64);
+    writer_.set_uint64(7, uint64);
+    writer_.set_float32(8, float32);
+    writer_.set_float64(9, float64);
+    writer_.set_uint8(10, static_cast<std::uint8_t>(bool_));
+
+    return writer_.finish_into();
+}
+
 inline ::tafla::ArrayView<std::int8_t> Arrays::int8() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -974,6 +1039,34 @@ inline ::tafla::Bytes ArraysFields::serialize() const {
     writer_.set_float64_array(9, float64);
 
     return writer_.finish();
+}
+
+inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(10, Arrays::LAYOUT);
+    sizer_.add_int8_array(int8.size());
+    sizer_.add_uint8_array(uint8.size());
+    sizer_.add_int16_array(int16.size());
+    sizer_.add_uint16_array(uint16.size());
+    sizer_.add_int32_array(int32.size());
+    sizer_.add_uint32_array(uint32.size());
+    sizer_.add_int64_array(int64.size());
+    sizer_.add_uint64_array(uint64.size());
+    sizer_.add_float32_array(float32.size());
+    sizer_.add_float64_array(float64.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_int8_array(0, int8);
+    writer_.set_uint8_array(1, uint8);
+    writer_.set_int16_array(2, int16);
+    writer_.set_uint16_array(3, uint16);
+    writer_.set_int32_array(4, int32);
+    writer_.set_uint32_array(5, uint32);
+    writer_.set_int64_array(6, int64);
+    writer_.set_uint64_array(7, uint64);
+    writer_.set_float32_array(8, float32);
+    writer_.set_float64_array(9, float64);
+
+    return writer_.finish_into();
 }
 
 inline std::string_view Inner::name() const {
@@ -1073,6 +1166,29 @@ inline ::tafla::Bytes NestedFields::serialize() const {
     }
 
     return writer_.finish();
+}
+
+inline std::size_t NestedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Nested::LAYOUT);
+    sizer_.add_string(label);
+    sizer_.add_table(OuterFields::ALIGNMENT);
+    outer.size(sizer_);
+    sizer_.add_vector(trees.size());
+    for (const auto& item_ : trees) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_string(0, label);
+    writer_.set_table(1, OuterFields::ALIGNMENT);
+    outer.write(writer_);
+    const auto vector2_ = writer_.set_vector(2, trees.size());
+    for (std::size_t index_ = 0; index_ < trees.size(); ++index_) {
+        trees[index_].write(writer_);
+        writer_.set_item_end(vector2_, index_);
+    }
+
+    return writer_.finish_into();
 }
 
 inline std::int32_t Tree::value() const {
@@ -1188,6 +1304,18 @@ inline ::tafla::Bytes ReservedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t ReservedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(1, Reserved::LAYOUT);
+    sizer_.add_table(KeywordsFields::ALIGNMENT);
+    keywords.size(sizer_);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_table(0, KeywordsFields::ALIGNMENT);
+    keywords.write(writer_);
+
+    return writer_.finish_into();
+}
+
 inline Point Path::start() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(position_, 0);
@@ -1274,6 +1402,26 @@ inline ::tafla::Bytes StructsFields::serialize() const {
     path.write(writer_);
 
     return writer_.finish();
+}
+
+inline std::size_t StructsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(5, Structs::LAYOUT);
+    sizer_.add_struct(Packed::SIZE);
+    sizer_.add_struct_array(documented.size(), Documented::SIZE, Documented::ALIGNMENT);
+    sizer_.add_struct(Segment::SIZE);
+    sizer_.add_struct_array(segments.size(), Segment::SIZE, Segment::ALIGNMENT);
+    sizer_.add_table(PathFields::ALIGNMENT);
+    path.size(sizer_);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_struct(0, packed);
+    writer_.set_structs(1, documented);
+    writer_.set_struct(2, segment);
+    writer_.set_structs(3, segments);
+    writer_.set_table(4, PathFields::ALIGNMENT);
+    path.write(writer_);
+
+    return writer_.finish_into();
 }
 
 }  // namespace all_types

@@ -112,6 +112,13 @@ struct PointFields {
      * addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Point` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** Columns with a value per key */
@@ -218,6 +225,13 @@ struct DocumentFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Document` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** A list of items, each a table of its own */
@@ -251,6 +265,13 @@ struct ItemListFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes an `ItemList` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** Two values of an item */
@@ -370,6 +391,22 @@ inline ::tafla::Bytes PointFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t PointFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(4, Point::LAYOUT);
+    sizer_.add_float64();
+    sizer_.add_float64();
+    sizer_.add_int64();
+    sizer_.add_string(name);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_float64(0, x);
+    writer_.set_float64(1, y);
+    writer_.set_int64(2, id);
+    writer_.set_string(3, name);
+
+    return writer_.finish_into();
+}
+
 inline std::int64_t Columns::base() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(position_, 0);
@@ -465,6 +502,24 @@ inline ::tafla::Bytes DocumentFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t DocumentFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(4, Document::LAYOUT, Document::FORMAT_VERSION);
+    sizer_.add_float64();
+    sizer_.add_float64();
+    sizer_.add_string(name);
+    sizer_.add_table(ColumnsFields::ALIGNMENT);
+    columns.size(sizer_);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_float64(0, x);
+    writer_.set_float64(1, y);
+    writer_.set_string(2, name);
+    writer_.set_table(3, ColumnsFields::ALIGNMENT);
+    columns.write(writer_);
+
+    return writer_.finish_into();
+}
+
 inline std::vector<Item> ItemList::items() const {
     return items_view().to_vector();
 }
@@ -490,6 +545,23 @@ inline ::tafla::Bytes ItemListFields::serialize() const {
     }
 
     return writer_.finish();
+}
+
+inline std::size_t ItemListFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(1, ItemList::LAYOUT);
+    sizer_.add_vector(items.size());
+    for (const auto& item_ : items) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    const auto vector0_ = writer_.set_vector(0, items.size());
+    for (std::size_t index_ = 0; index_ < items.size(); ++index_) {
+        items[index_].write(writer_);
+        writer_.set_item_end(vector0_, index_);
+    }
+
+    return writer_.finish_into();
 }
 
 inline float Pair::first() const {

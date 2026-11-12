@@ -9,6 +9,8 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -30,6 +32,13 @@ inline void check_version(std::uint32_t version, OffsetType offset_type) {
     if (version > max_value(offset_type)) {
         throw BuildError::version_too_large(version, offset_type);
     }
+}
+
+/// Throws the error of bytes given to a writer that are shorter than its
+/// table
+[[noreturn]] TAFLA_COLD inline void throw_too_short(std::size_t length, std::size_t given) {
+    throw std::invalid_argument("The table is " + std::to_string(length) + " bytes, longer than the " +
+                                std::to_string(given) + " bytes given");
 }
 
 /// Copies `length` bytes, which may be none from no address, as an empty
@@ -81,6 +90,17 @@ private:
 /// writer.set_float64(0, 59.3293);
 /// writer.set_string(1, "Europe/Stockholm");
 /// tafla::Bytes bytes = writer.finish();
+/// ```
+///
+/// A writer from `writer(bytes)` writes the table into bytes that the caller
+/// gives it, such as bytes reused for each table, rather than into new bytes:
+///
+/// ```cpp
+/// std::vector<std::uint8_t> buffer(1024);
+/// auto writer = sizer.writer(buffer);
+/// writer.set_float64(0, 59.3293);
+/// writer.set_string(1, "Europe/Stockholm");
+/// std::span<const std::uint8_t> table(buffer.data(), writer.finish_into());
 /// ```
 class TableSizer {
 public:
@@ -135,6 +155,28 @@ public:
     /// Throws the `BuildError` of `byte_length()`, before allocating the
     /// bytes.
     [[nodiscard]] TableWriter writer() const;
+
+    /// Returns a writer of the table into the start of `bytes`, rather than
+    /// into new bytes, which takes its fields in the order that they were
+    /// added. Its `finish_into()` returns the table's length, the number of
+    /// bytes that hold it. It writes every byte of the table, padding
+    /// included, so the bytes needn't be zero, and leaves those after it as
+    /// they were.
+    ///
+    /// The caller owns the bytes, which must outlive the writer. The table
+    /// stays in them until they're written again, such as by the next table
+    /// written into them, which also changes what a reader of them reads.
+    /// `ArrayView::as_span()` views the table's arrays in place only when the
+    /// table starts at an address aligned to their elements, as the start of
+    /// `Bytes`, a `std::vector` or other memory from `new` is to 8.
+    ///
+    /// Reusing bytes saves allocating new ones for each table: the generated
+    /// code wrote a record of 60 bytes in a quarter of the time, and a table
+    /// of 1.3 KB in two thirds, as cpp/README.md describes.
+    ///
+    /// Throws the `BuildError` of `byte_length()`, or `std::invalid_argument`
+    /// if `bytes` are shorter than the table, before writing any of them.
+    [[nodiscard]] TableWriter writer(std::span<std::uint8_t> bytes) const;
 
     /// Starts the fields of a nested table or vector item of `fields` fields,
     /// after its parent's `add_table()` or `add_vector()`
@@ -366,7 +408,8 @@ private:
 };
 
 /// Writes a table forward into bytes of exactly its length, which a
-/// `TableSizer` counted.
+/// `TableSizer` counted: new bytes, which `finish()` returns, or the start of
+/// bytes that the caller gave, whose table `finish_into()` checks.
 ///
 /// It doesn't record the fields first, as `TableBuilder` does before it
 /// writes them through a writer of its own. It comes from
@@ -385,17 +428,17 @@ private:
 /// added them, and each vector item is followed by its `set_item_end()`.
 /// Hand-written tables use `TableBuilder`, which checks every field.
 ///
-/// Writing a field doesn't throw: `finish()` throws the `BuildError` of
-/// fields that differ from those that the sizer added. The writer never
-/// writes past the table's length, nor allocates more than it, whatever it's
-/// given. Like Rust's, it also reports an index past its table's fields, or
-/// an item past its vector's count; the contract that the runtimes share
-/// leaves the table's bytes undefined for them.
+/// Writing a field doesn't throw: `finish()` and `finish_into()` throw the
+/// `BuildError` of fields that differ from those that the sizer added. The
+/// writer never writes past the table's length, nor allocates more than it,
+/// whatever it's given. Like Rust's, it also reports an index past its
+/// table's fields, or an item past its vector's count; the contract that the
+/// runtimes share leaves the table's bytes undefined for them.
 class TableWriter {
 public:
     /// Moves `other`'s bytes and position, and leaves it without bytes, so
-    /// that it writes nothing and its `finish()` throws, unless its table is
-    /// empty
+    /// that it writes nothing and its `finish()` or `finish_into()` throws,
+    /// unless its table is empty
     TableWriter(TableWriter&& other) noexcept
         : bytes_(std::move(other.bytes_)),
           begin_(other.begin_),
@@ -403,6 +446,7 @@ public:
           end_(other.end_),
           length_(other.length_),
           offset_type_(other.offset_type_),
+          given_(other.given_),
           header_size_(other.header_size_),
           table_(other.table_),
           slots_(other.slots_),
@@ -419,6 +463,7 @@ public:
             end_ = other.end_;
             length_ = other.length_;
             offset_type_ = other.offset_type_;
+            given_ = other.given_;
             header_size_ = other.header_size_;
             table_ = other.table_;
             slots_ = other.slots_;
@@ -439,18 +484,34 @@ public:
     /// they differ from those that the sizer added, if one was written at an
     /// index past its table's fields, or if an array of structs was given
     /// bytes that aren't whole structs. The bytes, of which the writer
-    /// wrote only some, are then freed with the writer.
+    /// wrote only some, are then freed with the writer. Throws
+    /// `std::logic_error` if the writer writes into bytes that the caller
+    /// gave, whose table `finish_into()` checks instead.
     [[nodiscard]] TAFLA_ALWAYS_INLINE Bytes finish() {
-        if (error_) [[unlikely]] {
-            detail::throw_build_error(*error_);
+        if (given_) [[unlikely]] {
+            throw_finished_as("tafla::TableWriter::finish: the writer writes into given bytes; use finish_into()");
         }
-
-        if (written() != length_) [[unlikely]] {
-            detail::throw_build_error({BuildError::Kind::not_as_sized, offset_type_, written(), length_});
-        }
+        check();
 
         forget_bytes();
         return std::move(bytes_);
+    }
+
+    /// Checks the table that a writer from `TableSizer::writer(bytes)` wrote
+    /// into the start of those bytes, returns its length, the number of bytes
+    /// that hold it, and leaves the writer without the bytes.
+    ///
+    /// Throws the `BuildError` that `finish()` throws, and leaves the bytes
+    /// with what the writer wrote of the table, or `std::logic_error` if the
+    /// writer writes into new bytes, which `finish()` returns.
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::size_t finish_into() {
+        if (!given_) [[unlikely]] {
+            throw_finished_as("tafla::TableWriter::finish_into: the writer writes into new bytes; use finish()");
+        }
+        check();
+
+        forget_bytes();
+        return length_;
     }
 
     /// Starts the fields of a nested table or vector item of `fields`
@@ -728,12 +789,32 @@ private:
           header_size_(((sized ? 1U : 0U) + (version ? 1U : 0U)) * offset_size(offset_type)),
           slots_(header_size_),
           fields_(fields) {
-        begin_ = length == 0 ? empty_ : bytes_.data();
+        start(bytes_.data(), fields, sized, version);
+    }
+
+    /// Writes the header as the constructor above does, into the start of
+    /// `bytes`, which the sizer checked are at least `length`
+    TAFLA_ALWAYS_INLINE TableWriter(std::span<std::uint8_t> bytes, std::size_t length, std::size_t fields, bool sized,
+                                    std::optional<std::uint32_t> version, OffsetType offset_type)
+        : length_(length),
+          offset_type_(offset_type),
+          given_(true),
+          header_size_(((sized ? 1U : 0U) + (version ? 1U : 0U)) * offset_size(offset_type)),
+          slots_(header_size_),
+          fields_(fields) {
+        start(bytes.data(), fields, sized, version);
+    }
+
+    /// Writes the header of the table that `bytes` start, which are its
+    /// length long
+    TAFLA_ALWAYS_INLINE void start(std::uint8_t* bytes, std::size_t fields, bool sized,
+                                   std::optional<std::uint32_t> version) noexcept {
+        begin_ = length_ == 0 ? empty_ : bytes;
         cursor_ = begin_;
-        end_ = begin_ + length;
+        end_ = begin_ + length_;
 
         if (sized) {
-            push_slot(length);
+            push_slot(length_);
         }
 
         if (version) {
@@ -741,11 +822,29 @@ private:
         }
 
         // Each field's offset is written as the writer reaches the field
-        if (fields <= room() / offset_size(offset_type)) {
-            push_zeros(fields * offset_size(offset_type));
+        if (fields <= room() / offset_size(offset_type_)) {
+            push_zeros(fields * offset_size(offset_type_));
         } else {
             fail();
         }
+    }
+
+    /// Throws the `BuildError` of fields that didn't fill the table, as
+    /// `finish()` and `finish_into()` do
+    TAFLA_ALWAYS_INLINE void check() const {
+        if (error_) [[unlikely]] {
+            detail::throw_build_error(*error_);
+        }
+
+        if (written() != length_) [[unlikely]] {
+            detail::throw_build_error({BuildError::Kind::not_as_sized, offset_type_, written(), length_});
+        }
+    }
+
+    /// Throws the error of finishing a writer as the other kind: of new
+    /// bytes, or of bytes that the caller gave
+    [[noreturn]] TAFLA_COLD static void throw_finished_as(const char* message) {
+        throw std::logic_error(message);
     }
 
     template <class T>
@@ -932,6 +1031,9 @@ private:
     /// The table's length, which the sizer or `TableBuilder` counted
     std::size_t length_;
     OffsetType offset_type_;
+    /// Whether the writer writes into bytes that the caller gave, rather
+    /// than into `bytes_`
+    bool given_ = false;
     /// The byte length of the root's header slots, which its offsets follow
     std::size_t header_size_;
     /// The start of the table being written, which its offsets count from: 0
@@ -954,6 +1056,20 @@ TAFLA_ALWAYS_INLINE TableWriter TableSizer::writer() const {
     }
 
     return {length, fields_, sized_, version, offset_type_};
+}
+
+TAFLA_ALWAYS_INLINE TableWriter TableSizer::writer(std::span<std::uint8_t> bytes) const {
+    const std::size_t length = byte_length();
+    if (bytes.size() < length) [[unlikely]] {
+        detail::throw_too_short(length, bytes.size());
+    }
+
+    std::optional<std::uint32_t> version;
+    if (versioned_) {
+        version = version_;
+    }
+
+    return {bytes, length, fields_, sized_, version, offset_type_};
 }
 
 }  // namespace tafla

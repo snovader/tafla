@@ -1,5 +1,6 @@
 // The code generated from `schemas/shapes.tafla` writes the tables that
-// `TableBuilder` writes by hand, reads back what it writes, and reads
+// `TableBuilder` writes by hand, into new bytes and into the start of bytes
+// that the caller gives, reads back what it writes, and reads
 // corrupted and arbitrary bytes as values or decode errors, alike through its
 // views and its getters, and without reading outside them, which the
 // sanitizers check
@@ -13,6 +14,7 @@
 
 #include "common/at_byte_offset.hpp"
 #include "common/build.hpp"
+#include "common/given_bytes.hpp"
 #include "common/values.hpp"
 #include "shapes_describe.hpp"
 
@@ -73,6 +75,7 @@ RC_GTEST_PROP(GeneratedShapes, APointIsWrittenAsTableBuilderWritesItAndReadsBack
 
     const auto bytes = fields.serialize();
     RC_ASSERT(bytes == to_bytes(tables::describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
 
     const AtByteOffset copy(bytes, byte_offset);
     RC_ASSERT(tables::read(shapes::Point(copy.bytes())) == tables::describe(fields));
@@ -86,6 +89,7 @@ RC_GTEST_PROP(GeneratedShapes, ADocumentIsWrittenAsTableBuilderWritesItAndReadsB
     const auto bytes = fields.serialize();
     RC_ASSERT(bytes == to_bytes(tables::describe(fields)));
     RC_ASSERT(shapes::Document::version_of(bytes) == shapes::Document::FORMAT_VERSION);
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
 
     // At any address, so that its arrays are read in place or copied
     const AtByteOffset copy(bytes, byte_offset);
@@ -98,6 +102,7 @@ RC_GTEST_PROP(GeneratedShapes, AnItemListIsWrittenAsTableBuilderWritesItAndReads
 
     const auto bytes = fields.serialize();
     RC_ASSERT(bytes == to_bytes(tables::describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
 
     const shapes::ItemList read(bytes);
     RC_ASSERT(tables::read(read) == tables::describe(fields));

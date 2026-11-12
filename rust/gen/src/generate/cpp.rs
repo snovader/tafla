@@ -193,13 +193,14 @@ const INLINE_FIELDS: usize = 64;
 /// The members that the generated code declares beside the fields, which a
 /// field of the same name would clash with, so names take a `_` after them
 /// too: a struct's `read()`, `from_bytes()`, `to_bytes()` and
-/// `array_to_bytes()`, a fields struct's `serialize()`, `size()` and
-/// `write()`, and a versioned message's `version_of()`
-const MEMBERS: [&str; 8] = [
+/// `array_to_bytes()`, a fields struct's `serialize()`, `serialize_into()`,
+/// `size()` and `write()`, and a versioned message's `version_of()`
+const MEMBERS: [&str; 9] = [
     "array_to_bytes",
     "from_bytes",
     "read",
     "serialize",
+    "serialize_into",
     "size",
     "to_bytes",
     "version_of",
@@ -753,6 +754,21 @@ impl Generator<'_> {
                     )],
                 );
                 writer.line("[[nodiscard]] ::tafla::Bytes serialize() const;");
+                writer.blank();
+                cpp_doc(
+                    writer,
+                    &[format!(
+                        "Writes {} as `serialize()` does, but into the start of `bytes_` rather \
+                         than into new bytes, and returns its length, the number of bytes that \
+                         hold it, leaving the bytes after it as they were. Throws \
+                         `std::invalid_argument` if `bytes_` are shorter than it, before writing \
+                         any of them.",
+                        article(name)
+                    )],
+                );
+                writer.line(
+                    "[[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;",
+                );
             }
             Kind::Table => {
                 cpp_doc(
@@ -806,16 +822,41 @@ impl Generator<'_> {
         writer.line("};");
     }
 
-    /// A message's `serialize()`, which sizes its fields and then writes them
-    /// into bytes of that length
+    /// A message's `serialize()` and `serialize_into()`, each of which sizes
+    /// its fields and then writes them, into new bytes of that length or the
+    /// start of the caller's
     fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
         let name = &type_name(&definition.name);
-        let fields = definition.fields.len();
 
         writer.blank();
         writer.line(format!(
             "inline ::tafla::Bytes {name}Fields::serialize() const {{"
         ));
+        self.serialize_body(writer, definition, layout, Output::NewBytes);
+        writer.line("}");
+
+        writer.blank();
+        writer.line(format!(
+            "inline std::size_t {name}Fields::serialize_into(std::span<std::uint8_t> bytes_) const {{"
+        ));
+        self.serialize_body(writer, definition, layout, Output::GivenBytes);
+        writer.line("}");
+    }
+
+    /// The body of a message's `serialize()` or `serialize_into()`: the
+    /// sizer, the writer into its output, the fields, and what it returns.
+    /// Each is written whole, rather than calling a function that the other
+    /// shares, so that `serialize()` stays as it was.
+    fn serialize_body(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        output: Output,
+    ) {
+        let name = &type_name(&definition.name);
+        let fields = definition.fields.len();
+
         writer.indent();
         if layout.version.is_some() {
             writer.line(format!(
@@ -828,12 +869,17 @@ impl Generator<'_> {
         }
         self.sizes(writer, definition);
         writer.blank();
-        writer.line("auto writer_ = sizer_.writer();");
+        writer.line(match output {
+            Output::NewBytes => "auto writer_ = sizer_.writer();",
+            Output::GivenBytes => "auto writer_ = sizer_.writer(bytes_);",
+        });
         self.writes(writer, definition);
         writer.blank();
-        writer.line("return writer_.finish();");
+        writer.line(match output {
+            Output::NewBytes => "return writer_.finish();",
+            Output::GivenBytes => "return writer_.finish_into();",
+        });
         writer.dedent();
-        writer.line("}");
     }
 
     /// The functions with which a nested table's parent sizes and writes it
@@ -1013,6 +1059,16 @@ impl Generator<'_> {
             FieldType::Vector(index) => format!("std::span<const {}Fields>", name(index)),
         }
     }
+}
+
+/// Where a message's `serialize()` or `serialize_into()` writes it
+#[derive(Clone, Copy)]
+enum Output {
+    /// New bytes of its length, which `serialize()` returns
+    NewBytes,
+    /// The start of the caller's `bytes_`, whose length `serialize_into()`
+    /// returns
+    GivenBytes,
 }
 
 /// The definitions of a versioned message's constructor, which checks the

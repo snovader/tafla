@@ -49,6 +49,13 @@ Field field_in_place(const Field& field, const Layout& layout) {
     return field;
 }
 
+/// Writes the table's fields, in order
+void write_fields(const Table& table, TableWriter& writer) {
+    for (std::size_t index = 0; index < table.fields.size(); ++index) {
+        write_field(table.fields[index], writer, index);
+    }
+}
+
 std::vector<std::uint8_t> struct_array_bytes(const StructArray& array) {
     std::vector<std::uint8_t> bytes;
     for (const auto& item : array.items) {
@@ -70,21 +77,33 @@ TableSizer sizer_of(const Table& table) {
     return {fields, layout};
 }
 
+namespace {
+
+/// A sizer of the table with its fields added
+TableSizer sized_of(const Table& table) {
+    auto sizer = sizer_of(table);
+    for (const auto& field : table.fields) {
+        add_field(field, sizer);
+    }
+    return sizer;
+}
+
+}  // namespace
+
 Bytes write(const Table& table) {
     return write_as(table, table);
 }
 
 Bytes write_as(const Table& sized, const Table& written) {
-    auto sizer = sizer_of(sized);
-    for (const auto& field : sized.fields) {
-        add_field(field, sizer);
-    }
-
-    auto writer = sizer.writer();
-    for (std::size_t index = 0; index < written.fields.size(); ++index) {
-        write_field(written.fields[index], writer, index);
-    }
+    auto writer = sized_of(sized).writer();
+    write_fields(written, writer);
     return writer.finish();
+}
+
+std::size_t write_into(const Table& table, std::span<std::uint8_t> bytes) {
+    auto writer = sized_of(table).writer(bytes);
+    write_fields(table, writer);
+    return writer.finish_into();
 }
 
 Table nested_in_place(const Table& table) {

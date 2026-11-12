@@ -5,6 +5,8 @@
 #define TAFLA_TEST_WRITE_HPP
 
 #include <cstddef>
+#include <cstdint>
+#include <span>
 
 #include <tafla/tafla.hpp>
 
@@ -24,6 +26,10 @@ Bytes write(const Table& table);
 /// Sizes the table `sized`, and writes the fields of `written` into the bytes
 /// that it sized, which fails unless they're as long as its own
 Bytes write_as(const Table& sized, const Table& written);
+
+/// Sizes and writes the table as `write()` does, but into the start of
+/// `bytes`, and returns its length
+std::size_t write_into(const Table& table, std::span<std::uint8_t> bytes);
 
 /// The table with every table nested in it made one that a `TableWriter`
 /// writes in place: from its builder, without a header, and with the root's

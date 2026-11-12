@@ -4,7 +4,10 @@
 // with nested tables written in place. They fail as the builder fails: for a
 // table too long for its offsets, a header too long and a version too large.
 // A writer given other fields than the sizer added fails rather than writing
-// past the bytes, and no calls make it crash, which the sanitizers check.
+// past the bytes, and no calls make it crash, which the sanitizers check. A
+// writer into bytes that the caller gives writes the same table at their
+// start, padding included, leaves the rest of them as they were, and rejects
+// bytes too short before writing any.
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -79,6 +82,49 @@ RC_GTEST_PROP(TableWriter, SizesAnyTableAsTableBuilderCountsItAndWritesTheSameBy
     RC_ASSERT(write(table).to_vector() == *built.bytes);
 }
 
+/// The bytes are arbitrary, so a table with padding comes out whole only if
+/// the writer writes its padding too, and the table starts at any address
+RC_GTEST_PROP(TableWriter, WritesAnyTableIntoTheStartOfGivenBytesAsIntoNewOnesAndLeavesTheOthers, ()) {
+    const auto table = *in_place_tables(strategy::layout());
+    const auto written = written_by([&] { return write(table); });
+    RC_PRE(written.bytes.has_value());
+    const auto& expected = *written.bytes;
+
+    const auto before = *rc::gen::inRange<std::size_t>(0, 9);
+    const auto after = *rc::gen::inRange<std::size_t>(0, 9);
+    const auto given = *rc::gen::container<std::vector<std::uint8_t>>(before + expected.size() + after,
+                                                                      rc::gen::arbitrary<std::uint8_t>());
+
+    auto bytes = given;
+    const auto length = write_into(table, std::span(bytes).subspan(before));
+
+    RC_ASSERT(length == expected.size());
+    RC_ASSERT(std::ranges::equal(std::span(bytes).subspan(before, length), expected));
+    RC_ASSERT(std::ranges::equal(std::span(bytes).first(before), std::span(given).first(before)));
+    RC_ASSERT(std::ranges::equal(std::span(bytes).last(after), std::span(given).last(after)));
+}
+
+RC_GTEST_PROP(TableWriter, RejectsGivenBytesShorterThanTheTableBeforeWritingAny, ()) {
+    const auto table = *in_place_tables(strategy::layout());
+    const auto written = written_by([&] { return write(table); });
+    RC_PRE(written.bytes.has_value() && !written.bytes->empty());
+    const auto length = written.bytes->size();
+
+    const auto shorter = *rc::gen::inRange<std::size_t>(0, length);
+    const auto given = *rc::gen::container<std::vector<std::uint8_t>>(shorter, rc::gen::arbitrary<std::uint8_t>());
+
+    auto bytes = given;
+    try {
+        static_cast<void>(write_into(table, bytes));
+        RC_FAIL("Bytes shorter than the table were written");
+    } catch (const std::invalid_argument& error) {
+        const auto message = "The table is " + std::to_string(length) + " bytes, longer than the " +
+                             std::to_string(shorter) + " bytes given";
+        RC_ASSERT(std::string(error.what()) == message);
+    }
+    RC_ASSERT(bytes == given);
+}
+
 /// The index of the root field that `TableBuilder` fails to set, whether the
 /// root or a table nested in that field is too long
 std::optional<std::size_t> failing_field(const Table& table) {
@@ -112,6 +158,14 @@ RC_GTEST_PROP(TableWriter, FailsAsTableBuilderFailsForAnyTableTooLongForItsOffse
         if (written.error->kind() == BuildError::Kind::too_long) {
             RC_ASSERT(std::optional(written.error->index()) == failing_field(longer));
         }
+    }
+
+    // Into bytes longer than any table of its offsets, it fails alike
+    std::vector<std::uint8_t> bytes(max_value(longer.layout.offset_type) + 1);
+    const auto into = written_by([&] { return Bytes::copy_of(std::span(bytes).first(write_into(longer, bytes))); });
+    RC_ASSERT(into.bytes == written.bytes);
+    if (!into.bytes) {
+        RC_ASSERT(same_details(*into.error, *written.error));
     }
 }
 
@@ -772,6 +826,45 @@ TEST(TableWriter, WritesAnEmptyTableWithoutBytes) {
     auto writer = sizer.writer();
     const auto bytes = writer.finish();
     EXPECT_TRUE(bytes.empty());
+
+    auto into = sizer.writer(std::span<std::uint8_t>());
+    EXPECT_EQ(into.finish_into(), 0U);
+}
+
+/// Each writer is finished as the writer of its bytes, and finishing it as
+/// the other throws, without changing it
+TEST(TableWriter, FinishesAWriterIntoGivenBytesWithFinishIntoAndOneIntoNewBytesWithFinish) {
+    TableSizer sizer(1, TableLayout());
+    sizer.add_uint8();
+    std::array<std::uint8_t, 6> bytes{};
+    bytes.fill(0xee);
+
+    auto given = sizer.writer(bytes);
+    given.set_uint8(0, 7);
+    EXPECT_THROW(static_cast<void>(given.finish()), std::logic_error);
+    EXPECT_EQ(given.finish_into(), 5U);
+    EXPECT_EQ(bytes, (std::array<std::uint8_t, 6>{4, 0, 0, 0, 7, 0xee}));
+
+    auto fresh = sizer.writer();
+    fresh.set_uint8(0, 7);
+    EXPECT_THROW(static_cast<void>(fresh.finish_into()), std::logic_error);
+    EXPECT_EQ(fresh.finish().to_vector(), (std::vector<std::uint8_t>{4, 0, 0, 0, 7}));
+}
+
+/// Fields that differ from those sized fail as they do into new bytes, and
+/// leave the given bytes with what was written of the table
+TEST(TableWriter, AWriterIntoGivenBytesFailsForFieldsShorterThanThoseSized) {
+    TableSizer sizer(2, TableLayout());
+    sizer.add_uint8();
+    sizer.add_uint16();
+    std::array<std::uint8_t, 11> bytes{};
+
+    auto writer = sizer.writer(bytes);
+    writer.set_uint8(0, 7);
+    writer.set_uint8(1, 8);
+    const auto error = build_error_of([&] { static_cast<void>(writer.finish_into()); });
+    EXPECT_EQ(error.kind(), BuildError::Kind::not_as_sized);
+    EXPECT_EQ(error.length(), 11U);
 }
 
 /// A writer moved from, by construction or assignment, writes nothing into
@@ -800,6 +893,26 @@ TEST(TableWriter, AWriterMovedFromWritesNothingIntoTheWriterMovedTo) {
     }
     EXPECT_EQ(constructed.finish().to_vector(), expected);
     EXPECT_EQ(assigned.finish().to_vector(), expected);
+}
+
+/// A writer of given bytes moved from writes nothing more into them, and
+/// fails, and the writer moved to finishes the table
+TEST(TableWriter, AWriterIntoGivenBytesMovedFromWritesNothingIntoThem) {
+    TableSizer sizer(2, TableLayout());
+    sizer.add_uint8();
+    sizer.add_uint8();
+    std::array<std::uint8_t, 10> bytes{};
+
+    auto from = sizer.writer(bytes);
+    from.set_uint8(0, 1);
+    auto to = std::move(from);
+    // NOLINTNEXTLINE(bugprone-use-after-move): the state after it is the point
+    from.set_uint8(1, 3);
+    to.set_uint8(1, 2);
+
+    EXPECT_EQ(build_error_of([&] { static_cast<void>(from.finish_into()); }).kind(), BuildError::Kind::not_as_sized);
+    EXPECT_EQ(to.finish_into(), 10U);
+    EXPECT_EQ(bytes, (std::array<std::uint8_t, 10>{8, 0, 0, 0, 9, 0, 0, 0, 1, 2}));
 }
 
 TEST(TableWriter, BytesMovedToThemselvesAreUnchanged) {

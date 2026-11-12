@@ -42,6 +42,9 @@ first commits, for code built from its source before the release.
   TypeScript and JavaScript, which writes the message into the start of the
   caller's bytes and returns the view of the bytes that holds it, saving the
   allocation of new bytes for each table.
+- A generated `serialize_into(bytes)` on C++'s messages, which writes the
+  message into the start of bytes that the caller owns and reuses, and
+  returns the message's length.
 - Generated Python declares `<Struct>Fields` beside each struct, a protocol
   of its fields, which an array of the struct is written from, so that any
   objects with those attributes write it, rather than only the struct's

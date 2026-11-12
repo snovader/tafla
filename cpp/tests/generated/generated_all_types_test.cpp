@@ -2,8 +2,9 @@
 // as `TableBuilder` writes it by hand: each scalar and bool, each array,
 // strings, tables nested in tables, vectors of tables that hold vectors of
 // themselves, fields named after keywords, and structs alone, within structs,
-// in tables and in arrays. It reads back what it writes, through its views as
-// through its getters, and reads corrupted bytes as values or decode errors.
+// in tables and in arrays, into new bytes and into the start of bytes that the
+// caller gives. It reads back what it writes, through its views as through its
+// getters, and reads corrupted bytes as values or decode errors.
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -16,6 +17,7 @@
 
 #include "all_types/all_types.hpp"
 #include "common/build.hpp"
+#include "common/given_bytes.hpp"
 #include "common/values.hpp"
 
 namespace tafla::test {
@@ -441,6 +443,7 @@ RC_GTEST_PROP(GeneratedAllTypes, ScalarsAreWrittenAsTableBuilderWritesThemAndRea
     const auto bytes = fields.serialize();
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     RC_ASSERT(read(all_types::Scalars(bytes)) == describe(fields));
 }
 
@@ -450,6 +453,7 @@ RC_GTEST_PROP(GeneratedAllTypes, ArraysAreWrittenAsTableBuilderWritesThemAndRead
     const auto bytes = fields.serialize();
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     RC_ASSERT(read(all_types::Arrays(bytes)) == describe(fields));
 }
 
@@ -465,6 +469,7 @@ RC_GTEST_PROP(GeneratedAllTypes, NestedTablesAndTreesAreWrittenAsTableBuilderWri
     const auto bytes = fields.serialize();
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     RC_ASSERT(read(all_types::Nested(bytes), false) == describe(fields));
     RC_ASSERT(read(all_types::Nested(bytes), true) == describe(fields));
 }
@@ -482,6 +487,7 @@ RC_GTEST_PROP(GeneratedAllTypes, FieldsNamedAfterKeywordsAreWrittenAndReadBack, 
     const auto bytes = fields.serialize();
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     RC_ASSERT(read(all_types::Reserved(bytes)) == describe(fields));
 }
 
@@ -491,6 +497,7 @@ RC_GTEST_PROP(GeneratedAllTypes, StructsAreWrittenAsTableBuilderWritesThemAndRea
     const auto bytes = fields.serialize();
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     const all_types::Structs structs(bytes);
     RC_ASSERT(read(structs, std::nullopt) == describe(fields));
     RC_ASSERT(read(structs, true) == describe(fields));
