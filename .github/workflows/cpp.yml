@@ -46,8 +46,6 @@ jobs:
               - ".github/workflows/cpp.yml"
               - "conformance/**"
               - "cpp/**"
-              - "rust/gen/**"
-              - "schemas/**"
 
   formatting:
     name: Formatting

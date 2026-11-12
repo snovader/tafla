@@ -51,8 +51,6 @@ jobs:
               # The Rust runtime, which the native classes build on
               - "rust/Cargo.toml"
               - "rust/core/**"
-              # The example schemas, whose generated code the tests run
-              - "schemas/**"
 
   verify:
     name: Verify

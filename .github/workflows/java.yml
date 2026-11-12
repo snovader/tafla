@@ -46,8 +46,6 @@ jobs:
               - ".github/workflows/java.yml"
               - "conformance/**"
               - "java/**"
-              # The example schemas, whose generated code the tests run
-              - "schemas/**"
 
   build:
     name: Build (Java ${{ matrix.java_version }})
