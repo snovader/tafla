@@ -98,6 +98,53 @@ class Vec2:
 
         return data
 
+    @classmethod
+    def read_values(cls, data: Buffer, offset: int = 0) -> tuple[float, float]:
+        """Reads the values of a ``Vec2`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Vec2 can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(cls, data: Buffer) -> list[tuple[float, float]]:
+        """Reads the values of the ``Vec2``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Vec2s don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Vec2 can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(cls, x: float, y: float, /) -> bytes:
+        """Returns the bytes of a ``Vec2`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(x, y)
+        except (error, OverflowError) as cause:
+            raise ValueError("Vec2's values don't fit its fields") from cause
+
 
 _Vec2_x = Vec2.__dict__["x"].__set__
 _Vec2_y = Vec2.__dict__["y"].__set__
@@ -258,6 +305,68 @@ class Quad:
             raise ValueError("Quad's values don't fit its fields") from cause
 
         return data
+
+    @classmethod
+    def read_values(
+        cls, data: Buffer, offset: int = 0
+    ) -> tuple[float, float, float, float, float, float, float, float]:
+        """Reads the values of a ``Quad`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Quad can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(
+        cls, data: Buffer
+    ) -> list[tuple[float, float, float, float, float, float, float, float]]:
+        """Reads the values of the ``Quad``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Quads don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Quad can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(
+        cls,
+        a: float,
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+        f: float,
+        g: float,
+        h: float,
+        /,
+    ) -> bytes:
+        """Returns the bytes of a ``Quad`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(a, b, c, d, e, f, g, h)
+        except (error, OverflowError) as cause:
+            raise ValueError("Quad's values don't fit its fields") from cause
 
 
 _Quad_a = Quad.__dict__["a"].__set__
@@ -612,6 +721,16 @@ class Range:
 
         return {"start": values[0], "end": values[1]}
 
+    def field_values(self) -> tuple[int, int]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return (self.start(), self.end())
+
+        return values
+
 
 class RangeFields(TypedDict):
     """The fields of a ``Range``, to write"""
@@ -660,6 +779,28 @@ class RangeVector:
         buffer = self._buffer
         for offset in buffer.get_vector_offsets(self._position):
             yield Range(buffer, offset)
+
+    def fields(self) -> list[RangeFields]:
+        """Reads every item's fields at once, as ``Range.fields()`` reads each,
+        in one call when the items' offsets are those that their writer writes,
+        and otherwise item by item
+        """
+        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
+        if items is None:
+            return [item.fields() for item in self]
+
+        return [{"start": values[0], "end": values[1]} for values in items]
+
+    def field_values(self) -> list[tuple[int, int]]:
+        """Reads every item's values at once, as ``Range.field_values()`` reads
+        each, in one call when the items' offsets are those that their writer
+        writes, and otherwise item by item
+        """
+        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
+        if items is None:
+            return [item.field_values() for item in self]
+
+        return items
 
 
 class Frame:
@@ -759,6 +900,16 @@ class Tiny:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(cls, id: int, kind: int, /) -> memoryview:
+        """Writes a ``Tiny`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(2, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id, kind))
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint16(self._buffer.root_offset(0))
 
@@ -775,6 +926,16 @@ class Tiny:
             return {"id": self.id(), "kind": self.kind()}
 
         return {"id": values[0], "kind": values[1]}
+
+    def field_values(self) -> tuple[int, int]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.kind())
+
+        return values
 
 
 class TinyFields(TypedDict):
@@ -1228,10 +1389,8 @@ class Span:
         Range.write(writer, fields["range"])
         writer.set_table(2, Frame.ALIGNMENT)
         Frame.write(writer, fields["frame"])
-        vector = writer.set_vector(3, len(fields["ranges"]))
-        for i, item in enumerate(fields["ranges"]):
-            Range.write(writer, item)
-            writer.set_item_end(vector, i)
+        items = [(item["start"], item["end"]) for item in fields["ranges"]]
+        writer.set_vector_tables(3, Range._FIXED_FIELDS, items)
 
         return writer.bytes()
 
