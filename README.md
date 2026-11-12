@@ -13,8 +13,9 @@ tafla hasn't been released yet.
 
 [SPEC.md](SPEC.md) describes the format.
 
-[CHANGELOG.md](CHANGELOG.md) lists the changes that each release brings, and
-[RELEASING.md](RELEASING.md) describes how to release the packages.
+Each package has a changelog of the changes that each of its releases brings,
+which [RELEASING.md](RELEASING.md) lists, and describes how to release the
+packages.
 
 ## Packages
 
@@ -32,9 +33,12 @@ messages and tables into code that writes and reads them with a language's
 runtime. It's written in Rust, and the packages for the other languages run it
 as WebAssembly.
 
-Every package has tafla's version. A Go module is published by a git tag, so
-each release tags the Go runtime `go/v<version>`, and
-`go get github.com/snovader/tafla/go@v0.1.0` adds the release 0.1.0.
+Each package has a version of its own, which describes its API and behavior,
+and is released on its own. Every implementation reads and writes the format
+that [SPEC.md](SPEC.md) describes, whatever its version, and passes the same
+conformance suite. A Go module is published by a git tag, so each release of
+the Go runtime is tagged `go/v<version>`, and
+`go get github.com/snovader/tafla/go@v0.1.0` adds its release 0.1.0.
 
 ## Repository
 

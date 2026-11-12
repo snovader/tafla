@@ -1,0 +1,63 @@
+# Changelog
+
+The changes in each release of `tafla` on npm, tafla's runtime for
+TypeScript. Each of tafla's packages has a version and a changelog of its own,
+as [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
+describes. The format is that of
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions
+follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+The first release. Changed, Removed and Fixed list what changed since the
+repository's first commits, for code built from its source before the release.
+
+### Added
+
+- The runtime, which writes and reads tables in the format that
+  [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) describes:
+  tables of scalars, strings, typed arrays, nested tables, vectors of tables,
+  structs and arrays of structs, with a layout that sets the header and the
+  offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
+  `TableWriter` write tables, and `ByteBuffer` reads them.
+- Bounds-checked reads, which fail on malformed input with `DecodeError`.
+- The runtime reads and rebuilds the golden tables of tafla's conformance
+  suite byte for byte, as every implementation of the format does.
+- `ByteBuffer.getVectorItemOffset()`, which finds a vector item from the count
+  that `getVectorLength()` read, so that a reader of several items reads and
+  checks the count once.
+- `TableSizer.writer(bytes)`, which writes a table into the start of the
+  caller's bytes rather than new ones.
+
+### Changed
+
+- The project is named tafla rather than buffy, and the package is `tafla`
+  rather than `@buffy/core`.
+- A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
+  in the API and its errors.
+- `ByteBuffer` reads a vector item in place within its message, as the format
+  now specifies, including an item whose offsets point past its end.
+- `ByteBuffer.getVectorOffsets()` returns a `number[]` rather than a
+  `Uint32Array`, so that positions past 4 GiB are exact.
+- `ByteBuffer` checks each read against its bytes' length at the time of the
+  read, so bytes made over a resizable buffer without a length follow the
+  buffer as it's resized. A read past them still throws a `DecodeError`.
+
+### Removed
+
+- `ByteBuffer` only reads tables, and its setters are removed, with
+  `reset()`. Tables are written with `TableBuilder`, or with `TableWriter` and
+  `TableSizer`, and structs and other records at fixed offsets with
+  `StructWriter`.
+
+### Fixed
+
+- A struct writer whose write threw no longer breaks later writes.
+- `TableWriter` writes padding as zeros and never writes past its bytes.
+- `ByteBuffer` fails with `DecodeError` on a detached or shrunk buffer.
+- The runtime rejects an alignment other than 1, 2, 4 or 8, as Java's does,
+  rather than padding to it or dividing by zero.
+- `TableSizer` accepts a struct of 0 bytes and rejects an array of 0-byte
+  structs, as the builders and writers do.
+
+[Unreleased]: https://github.com/snovader/tafla/commits/main/typescript
