@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Each class's methods are declared in several blocks, some by macros
-pyo3 = { version = "=0.29.2", features = ["multiple-pymethods"] }
+pyo3 = { version = "=0.30.1", features = ["multiple-pymethods"] }
 # Reads go through the Rust runtime's ByteBuffer, for its bounds checks
 tafla = { path = "../../../rust/core" }
 
