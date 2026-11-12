@@ -21,8 +21,7 @@ namespace tafla::test {
 /// as they were. Every byte of the buffer is `fill` first, so a table with
 /// padding is written whole only if the writer writes its padding too.
 template <class Fields>
-bool written_into(const Fields& fields, std::span<const std::uint8_t> expected, std::size_t before,
-                  std::uint8_t fill) {
+bool written_into(const Fields& fields, std::span<const std::uint8_t> expected, std::size_t before, std::uint8_t fill) {
     constexpr std::size_t after = 3;
     std::vector<std::uint8_t> buffer(before + expected.size() + after, fill);
 
