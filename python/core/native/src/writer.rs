@@ -6,7 +6,7 @@ use pyo3::exceptions::{
     PyBufferError, PyIndexError, PyMemoryError, PyOverflowError, PyStopIteration, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PyString, PyTuple, PyType};
+use pyo3::types::{PySlice, PyString, PyTuple, PyType};
 use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
@@ -666,19 +666,20 @@ impl TableWriter {
     }
 
     /// Writes the fields that `plan` describes at `start`, which are the
-    /// table's slots, from their `values` and `string`, as `struct` packs
-    /// them for the pure-Python runtime. Returns `false`, having written
-    /// nothing, for fields that it rejects, which the setters write instead,
-    /// raising what they raise.
+    /// table's slots, from the first `count` of `values` and `string`, as
+    /// `struct` packs them for the pure-Python runtime. Returns `false`,
+    /// having written nothing, for fields that it rejects, which the setters
+    /// write instead, raising what they raise.
     fn write_fixed(
         &mut self,
         plan: &Plan,
         start: usize,
         values: &Bound<'_, PyTuple>,
+        count: usize,
         string: Option<&Bound<'_, PyString>>,
     ) -> PyResult<bool> {
         let py = values.py();
-        if values.len() != plan.values.len() || !plan.fits {
+        if count != plan.values.len() || !plan.fits {
             return Ok(false);
         }
 
@@ -802,6 +803,58 @@ impl TableWriter {
         Ok(())
     }
 
+    /// Writes a nested table of `fields`, from the first `count` of `values`
+    /// and `string`, as `write_table()` does
+    fn write_item(
+        &mut self,
+        fields: &FixedFields,
+        values: &Bound<'_, PyTuple>,
+        count: usize,
+        string: Option<&Bound<'_, PyString>>,
+    ) -> PyResult<()> {
+        let plan = fields.plan(self.size())?;
+        if self.write_fixed(plan, self.len(), values, count, string)? {
+            return Ok(());
+        }
+
+        let description = fields.description();
+        let parent = self.start(description.fields)?;
+        self.set_each(description, &mut Values::first(values, count), string)?;
+        self.end(values.py(), parent);
+
+        Ok(())
+    }
+
+    /// Writes an item of `set_vector_tables()`: its table's values, followed
+    /// by its string when `has_string`. An exact tuple's values and string
+    /// are written in place, borrowed from it, and any other sequence's are
+    /// sliced as the pure-Python runtime slices them, with the same errors.
+    fn write_vector_item(
+        &mut self,
+        fields: &FixedFields,
+        values: &Bound<'_, PyAny>,
+        has_string: bool,
+    ) -> PyResult<()> {
+        if let Ok(tuple) = values.cast_exact::<PyTuple>() {
+            if !has_string {
+                return self.write_item(fields, tuple, tuple.len(), None);
+            }
+            if let Some(count) = tuple.len().checked_sub(1) {
+                let string = tuple_item(tuple, count);
+                return self.write_item(fields, tuple, count, Some(&*string.cast::<PyString>()?));
+            }
+        }
+
+        let (tuple, string) = if has_string {
+            let table = values.get_item(PySlice::new(values.py(), 0, -1, 1))?;
+            let string = values.get_item(-1)?.cast_into::<PyString>()?;
+            (Self::fixed_values(&table)?, Some(string))
+        } else {
+            (Self::fixed_values(values)?, None)
+        };
+        self.write_item(fields, &tuple, tuple.len(), string.as_ref())
+    }
+
     fn fixed_values<'py>(values: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyTuple>> {
         match values.cast::<PyTuple>() {
             Ok(tuple) => Ok(tuple.clone()),
@@ -844,16 +897,29 @@ fn zeros(slots: &Int<'_>) -> PyResult<usize> {
 #[allow(clippy::cast_possible_wrap)]
 const C_ORDER: std::ffi::c_char = b'C' as std::ffi::c_char;
 
-/// The values of fixed fields, which the setters take one by one, as the
-/// pure-Python runtime takes them from an iterator
+/// The values of fixed fields, the first `end` of a tuple, which the setters
+/// take one by one, as the pure-Python runtime takes them from an iterator
 struct Values<'a, 'py> {
     tuple: &'a Bound<'py, PyTuple>,
     next: usize,
+    end: usize,
 }
 
-impl<'py> Values<'_, 'py> {
+impl<'a, 'py> Values<'a, 'py> {
+    fn all(tuple: &'a Bound<'py, PyTuple>) -> Self {
+        Self::first(tuple, tuple.len())
+    }
+
+    const fn first(tuple: &'a Bound<'py, PyTuple>, end: usize) -> Self {
+        Self {
+            tuple,
+            next: 0,
+            end,
+        }
+    }
+
     fn next(&mut self) -> PyResult<Bound<'py, PyAny>> {
-        if self.next >= self.tuple.len() {
+        if self.next >= self.end {
             return Err(PyStopIteration::new_err(()));
         }
         let value = tuple_item(self.tuple, self.next).to_owned();
@@ -1135,14 +1201,12 @@ impl TableWriter {
         let plan = fields.plan(self.size())?;
         let values = Self::fixed_values(values)?;
 
-        if self.write_fixed(plan, self.slots_start(values.py())?, &values, string)? {
+        let start = self.slots_start(values.py())?;
+        if self.write_fixed(plan, start, &values, values.len(), string)? {
             return Ok(());
         }
 
-        let mut values = Values {
-            tuple: &values,
-            next: 0,
-        };
+        let mut values = Values::all(&values);
         self.set_each(fields.description(), &mut values, string)
     }
 
@@ -1158,25 +1222,8 @@ impl TableWriter {
         values: &Bound<'_, PyAny>,
         string: Option<&Bound<'_, PyString>>,
     ) -> PyResult<()> {
-        let fields = fields.get();
-        let plan = fields.plan(self.size())?;
         let values = Self::fixed_values(values)?;
-
-        if self.write_fixed(plan, self.len(), &values, string)? {
-            return Ok(());
-        }
-
-        let py = values.py();
-        let description = fields.description();
-        let parent = self.start(description.fields)?;
-        let mut values = Values {
-            tuple: &values,
-            next: 0,
-        };
-        self.set_each(description, &mut values, string)?;
-        self.end(py, parent);
-
-        Ok(())
+        self.write_item(fields.get(), &values, values.len(), string)
     }
 
     /// Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a
@@ -1304,6 +1351,51 @@ impl TableWriter {
 
         if self.pack_slot(&position, &value).is_err() {
             return Err(self.slot_error(py, &position, &value));
+        }
+        Ok(())
+    }
+
+    /// Writes field ``index`` as a vector of tables whose fields ``fields``
+    /// describes whole, one for each of ``items``, as ``set_vector()``,
+    /// ``write_table()`` for each item and ``set_item_end()`` write it. Each
+    /// item is a table's values as ``write_table()`` takes them, followed by
+    /// its string when ``fields`` ends with one: the tuple that
+    /// ``ByteBuffer.get_fields()`` returns.
+    ///
+    /// Raises ``ValueError`` if iterating ``items`` gives more or fewer than
+    /// their ``len()``, after which the table is undefined.
+    ///
+    /// Generated code calls it to write a vector of such tables.
+    fn set_vector_tables(
+        &mut self,
+        py: Python<'_>,
+        index: &Bound<'_, PyAny>,
+        fields: &Bound<'_, FixedFields>,
+        items: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let length = items.len()?;
+        let vector = self.set_vector(py, index, &length.into_bound_py_any(py)?)?;
+        let fields = fields.get();
+        let has_string = fields.description().string;
+
+        let mut iterated = 0;
+        for (item, values) in items.try_iter()?.enumerate() {
+            iterated = item + 1;
+            self.write_vector_item(fields, &values?, has_string)?;
+
+            let position = Int::from(vector + (item + 1) * self.size());
+            let end = Int::from(self.len() - vector);
+            if self.pack_slot(&position, &end).is_err() {
+                return Err(self.slot_error(py, &position, &end));
+            }
+        }
+
+        // A sequence whose len() isn't its number of items has ends over its
+        // items, or ends left at 0, and the table is undefined
+        if iterated != length {
+            return Err(PyValueError::new_err(format!(
+                "The items' len() is {length}, but iterating them gave {iterated}"
+            )));
         }
         Ok(())
     }

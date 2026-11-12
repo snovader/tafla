@@ -541,34 +541,12 @@ impl ByteBuffer {
         fields: &Bound<'_, FixedFields>,
     ) -> PyResult<Option<Bound<'py, PyTuple>>> {
         let plan = fields.get().plan(self.size())?;
-        let Some(start) = small(position)?
-            .and_then(|position| usize::try_from(position).ok())
-            .and_then(|position| position.checked_add(plan.header))
+        let Some(position) = small(position)?.and_then(|position| usize::try_from(position).ok())
         else {
             return Ok(None);
         };
 
-        let Some(Checked { string: text }) = self.check_fields(py, plan, start) else {
-            return Ok(None);
-        };
-
-        // The tuple is created first, since creating it may run the garbage
-        // collector, and with it Python code, and the values create no
-        // objects that it tracks
-        let count = plan.values.len() + usize::from(text.is_some());
-        let tuple =
-            unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyTuple_New(count.cast_signed()))? };
-        for (index, &(at, kind)) in plan.values.iter().enumerate() {
-            // Within the fields, which check_fields() found within the bytes
-            let fields = &self.bytes_slice()[start..start + plan.len];
-            let value = values::read(py, kind, &fields[at..at + kind.size()])?;
-            tuple_set(&tuple, index, value)?;
-        }
-        if let Some(text) = text {
-            tuple_set(&tuple, plan.values.len(), text)?;
-        }
-
-        Ok(Some(unsafe { tuple.cast_into_unchecked() }))
+        self.fields_at(py, plan, position)
     }
 
     /// Returns the number of items of the vector at ``position``.
@@ -650,6 +628,51 @@ impl ByteBuffer {
         Ok(offsets)
     }
 
+    /// Returns the values of every item of the vector at ``position``, a
+    /// table whose fields ``fields`` describes whole, each as
+    /// ``get_fields()`` returns them, or ``None`` when it returns ``None``
+    /// for any item, for the field getters to read them.
+    ///
+    /// It's all the items or none: every implementation's writer writes such
+    /// a table at the offsets that ``get_fields()`` expects, so an item that
+    /// it can't read is corrupted or was written by hand, and the getters,
+    /// which check each read, then read the whole vector.
+    ///
+    /// Raises ``DecodeError`` if the vector's count or an item's ends don't
+    /// lie within the buffer, as ``get_vector_offsets()`` does.
+    ///
+    /// Generated code calls it to read every field of every item at once.
+    fn get_vector_fields<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'_, PyAny>,
+        fields: &Bound<'_, FixedFields>,
+    ) -> PyResult<Option<Bound<'py, PyList>>> {
+        // Every item's position first, as get_vector_offsets() reads them
+        let at = self.position(position, self.size())?;
+        let offsets = self
+            .core()
+            .get_vector(at)
+            .and_then(|vector| {
+                vector
+                    .iter_in_place()
+                    .map(|item| item.map(|item| self.offset_of(item)))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(|error| core_error(py, &error))?;
+
+        let plan = fields.get().plan(self.size())?;
+        let mut items = Vec::with_capacity(offsets.len());
+        for offset in offsets {
+            match self.fields_at(py, plan, offset)? {
+                Some(values) => items.push(values),
+                None => return Ok(None),
+            }
+        }
+
+        Ok(Some(PyList::new(py, items)?))
+    }
+
     /// Returns the bytes of every item of the vector at ``position``, as
     /// views of the buffer.
     fn get_vector<'py>(
@@ -677,6 +700,40 @@ impl ByteBuffer {
 }
 
 impl ByteBuffer {
+    /// The values of the fields of `plan`, of the table at `position`, as
+    /// `get_fields()` returns them, or `None`
+    fn fields_at<'py>(
+        &self,
+        py: Python<'py>,
+        plan: &Plan,
+        position: usize,
+    ) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        let Some(start) = position.checked_add(plan.header) else {
+            return Ok(None);
+        };
+        let Some(Checked { string: text }) = self.check_fields(py, plan, start) else {
+            return Ok(None);
+        };
+
+        // The tuple is created first, since creating it may run the garbage
+        // collector, and with it Python code, and the values create no
+        // objects that it tracks
+        let count = plan.values.len() + usize::from(text.is_some());
+        let tuple =
+            unsafe { Bound::from_owned_ptr_or_err(py, ffi::PyTuple_New(count.cast_signed()))? };
+        for (index, &(at, kind)) in plan.values.iter().enumerate() {
+            // Within the fields, which check_fields() found within the bytes
+            let fields = &self.bytes_slice()[start..start + plan.len];
+            let value = values::read(py, kind, &fields[at..at + kind.size()])?;
+            tuple_set(&tuple, index, value)?;
+        }
+        if let Some(text) = text {
+            tuple_set(&tuple, plan.values.len(), text)?;
+        }
+
+        Ok(Some(unsafe { tuple.cast_into_unchecked() }))
+    }
+
     /// Checks that the fields of `plan` lie within the bytes at `start`,
     /// with the offsets that the writer writes, and decodes their string.
     /// Returns `None` otherwise.

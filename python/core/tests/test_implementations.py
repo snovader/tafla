@@ -42,6 +42,7 @@ from hypothesis.strategies import (
 import tafla
 from tafla import byte_buffer, fixed_fields, layout, table_writer
 from tests.tables import FORMATS
+from tests.test_fixed_fields import Misreported
 
 try:
     from tafla import _native
@@ -585,6 +586,7 @@ READS = [
     "get_vector_offsets",
     "get_vector",
     "get_fields",
+    "get_vector_fields",
     "get_size",
     "get_version",
     "bytes",
@@ -606,6 +608,7 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector_offsets": tuples(POSITIONS),
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
+    "get_vector_fields": tuples(POSITIONS),
     "get_size": just(()),
     "get_version": just(()),
     "bytes": just(()),
@@ -619,9 +622,10 @@ def read(
     args: tuple[Any, ...],
     description: tuple[int, list[Any], bool],
 ) -> object:
-    if method == "get_fields":
+    if method in {"get_fields", "get_vector_fields"}:
         # A nested table's fields, for any offset type
-        return buffer.get_fields(*args, fixed_fields_of(implementation, description))
+        fields = fixed_fields_of(implementation, description)
+        return getattr(buffer, method)(*args, fields)
     return getattr(buffer, method)(*args)
 
 
@@ -684,6 +688,15 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         sampled_from(["set_fields", "write_table"]),
         tuples(lists(VALUES, max_size=8), text(max_size=4)),
     ),
+    tuples(
+        just("set_vector_tables"),
+        tuples(
+            INDICES,
+            lists(tuples(lists(VALUES, max_size=8), text(max_size=4)), max_size=3),
+            # How far the items' len() is from their number
+            one_of(just(0), sampled_from([-1, 1])),
+        ),
+    ),
 )
 
 
@@ -714,6 +727,17 @@ def write(
         # the pure-Python packer ignores them for nested tables alone
         values = tuple(values[: value_count(description)])
         return getattr(writer, method)(fields, values, string)
+    if method == "set_vector_tables":
+        index, items, misreported = args
+        fields = fixed_fields_of(implementation, description)
+        has_string = description[2]
+        # Each item's values as set_fields() takes them, and its string last
+        tables = [
+            (*values[: value_count(description)], *([string] if has_string else []))
+            for values, string in items
+        ]
+        length = max(len(tables) + misreported, 0)
+        return writer.set_vector_tables(index, fields, Misreported(tables, length))
     return getattr(writer, method)(*args)
 
 

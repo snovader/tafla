@@ -1,5 +1,5 @@
 import builtins
-from collections.abc import Buffer, Iterable, Iterator
+from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
 from typing import Any, Literal, Self, overload
 
@@ -561,6 +561,53 @@ class TableWriter:
         except _PACK_ERRORS as error:
             raise self.__slot_error(len(data) - vector, error) from error
 
+    def set_vector_tables(
+        self, index: int, fields: FixedFields, items: Sequence[tuple[Any, ...]]
+    ) -> None:
+        """Writes field ``index`` as a vector of tables whose fields ``fields``
+        describes whole, one for each of ``items``, as ``set_vector()``,
+        ``write_table()`` for each item and ``set_item_end()`` write it. Each
+        item is a table's values as ``write_table()`` takes them, followed by
+        its string when ``fields`` ends with one: the tuple that
+        ``ByteBuffer.get_fields()`` returns.
+
+        Raises ``ValueError`` if iterating ``items`` gives more or fewer than
+        their ``len()``, after which the table is undefined.
+
+        Generated code calls it to write a vector of such tables."""
+        count = len(items)
+        vector = self.set_vector(index, count)
+        has_string = fields._string
+        pack = fields._packers[self.__size]
+        data = self.__data
+
+        # write_table()'s packing, inline, which saves a call for each item
+        item = -1
+        for item, values in enumerate(items):
+            if has_string:
+                table, string = values[:-1], values[-1]
+            else:
+                table, string = values, ""
+            try:
+                if has_string:
+                    encoded = string.encode()
+                    packed = pack(*table, len(encoded))
+                else:
+                    encoded = b""
+                    packed = pack(*table)
+            except _FIELD_ERRORS:
+                self.write_table(fields, table, string)
+            else:
+                data += packed
+                data += encoded
+
+            self.set_item_end(vector, item)
+
+        # A sequence whose len() isn't its number of items has ends over its
+        # items, or ends left at 0, and the table is undefined
+        if item + 1 != count:
+            raise _items_error(count, item + 1)
+
     def __set_array(
         self,
         index: int,
@@ -636,6 +683,12 @@ class TableWriter:
             f"The table's fields make it {length} bytes, "
             f"too long for {offset_type} offsets"
         )
+
+
+def _items_error(length: int, count: int) -> ValueError:
+    """The error of items whose ``len()`` was ``length``, but which iterating
+    gave ``count`` of"""
+    return ValueError(f"The items' len() is {length}, but iterating them gave {count}")
 
 
 # The setter of each scalar's struct format code, which FixedFields describes

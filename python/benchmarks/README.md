@@ -105,20 +105,23 @@ comparison uses its counterpart:
 - **tafla-gen** is the code that tafla-gen generates from
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a
-  `TableWriter`'s `bytearray` in one call, and returns a view of it. It
-  reads the record and the vector's items with `fields()`, which reads a
-  table of fixed layout at once into the `TypedDict` that it's written from,
-  and the document with the getters, columns as views. It takes the
-  workloads' dataclasses, as the other codecs do, so it creates the
-  generated fields' dicts, and the frozen `Sample` dataclass that the
-  generated struct is, from them in each call, as the protobuf codec builds
-  its messages. The array of structs is written from the workload's own
-  items, whose attributes `TripleFields`, the struct's protocol of fields,
-  types, as an application's objects would be. Reading creates the
-  workloads' dataclasses from
-  the generated readers, after the generated reader of the array of structs
-  creates a `Triple` for each. Every suite has a copy of the schema; after
-  changing them, regenerate the code as `rust/gen/README.md` describes.
+  `TableWriter`'s `bytearray` in one call, and returns a view of it, and
+  writes a vector of tables of fixed layout in one call too. The record and
+  the fixed-size `Sample` are written from their values, as positional
+  arguments, with `serialize_values()`, and read into tuples of them with
+  `field_values()` and `read_values()`. The document is written from the
+  generated fields' dicts, and read with the getters, columns as views. The
+  vector is written from its items' dicts, and read into them with its
+  view's `fields()`, which reads every item at once. The array of structs is
+  written from the workload's own items, whose attributes `TripleFields`, the
+  struct's protocol of fields, types, as an application's objects would be,
+  and read with its view's `field_values()`, into a tuple of each struct's
+  values. It takes the workloads' dataclasses, as the other codecs do, so it
+  creates the dicts of the document and the vector from them in each call,
+  as the protobuf codec builds its messages, and reading creates the
+  workloads' dataclasses from the generated readers' values. Every suite has
+  a copy of the schema; after changing them, regenerate the code as
+  `rust/gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
   with the generated accessors. Columns are written with
@@ -297,10 +300,9 @@ generated code:
 - FlatBuffers' builder starts at 1 KiB and doubles by copying. Reusing a
   `Builder` with `Clear()` would make small messages cheaper, but the
   TypeScript comparison doesn't reuse it either.
-- tafla-gen's codec creates the generated fields and structs from the
-  workloads' dataclasses in each call, which a caller that holds its values
-  in them wouldn't. Creating a frozen dataclass takes about twice as long as
-  creating the workloads' own, which aren't frozen.
+- tafla-gen's codec creates the generated fields' dicts of the document and
+  the vector from the workloads' dataclasses in each call, which a caller
+  that holds its values in them wouldn't.
 - The peak bytes aren't the bytes that a call allocates in all, which
   tracemalloc doesn't count: CPython frees most temporary objects as soon as
   they're unused, so a call that creates many in turn holds few at once.
