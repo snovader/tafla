@@ -8,8 +8,9 @@ copying arrays in bulk, and `ByteBuffer` reads fields back by offset, sharing
 arrays, strings and structs with the bytes. Every read checks that it stays
 within the bytes it was given. It depends only on Go's standard library.
 
-Each release of tafla tags the module `go/v<version>`, from which the Go
-module proxy serves it, so `go get` adds a release by its version, or the
+Each release of the module is tagged `go/v<version>`, and
+[CHANGELOG.md](CHANGELOG.md) lists the changes that it brings. The Go module
+proxy serves it from its tag, so `go get` adds a release by its version, or the
 latest release:
 
 ```sh
