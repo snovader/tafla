@@ -37,6 +37,9 @@ must_use_candidate = { level = "allow", priority = 1 }
 # PyO3's methods take their arguments by value and return PyResult
 needless_pass_by_value = { level = "allow", priority = 1 }
 unnecessary_wraps = { level = "allow", priority = 1 }
+# Python's private names begin with an underscore, such as the module's and
+# TableBuilder's helpers, and PyO3's code calls the functions that bear them
+used_underscore_items = { level = "allow", priority = 1 }
 
 [profile.release]
 codegen-units = 1

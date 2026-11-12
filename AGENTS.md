@@ -87,6 +87,10 @@ intent, not a requirement to preserve every detail.
 - A change to the bytes of an existing case is a change to the format. Make it
   in one PR that changes `SPEC.md`, the suite, and every implementation,
   so that no commit has implementations that disagree.
+- Each package has a version and a changelog of its own, which `RELEASING.md`
+  lists. Describe a change in the Unreleased section of each package that it
+  changes, and a change to the format in every implementation's. Versions
+  change only in a release, with `scripts/version.sh`.
 - The code that tafla-gen generates from the example schemas in `schemas/`
   lies in each language's test tree, whose checks and tests run it, and is
   the generator's golden output. So is the code that it generates from each
