@@ -9,6 +9,7 @@
 #include <rapidcheck/gtest.h>
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -228,6 +229,42 @@ TEST(GeneratedShapes, ADefaultTableReadsAsDecodeErrors) {
     const shapes::Columns columns;
     EXPECT_THROW(static_cast<void>(columns.base()), DecodeError);
     EXPECT_THROW(static_cast<void>(columns.keys()), DecodeError);
+}
+
+/// The error that `read` throws
+template <class Read>
+DecodeError decode_error_of(Read read) {
+    try {
+        read();
+    } catch (const DecodeError& error) {
+        return error;
+    }
+    throw std::logic_error("The read didn't fail");
+}
+
+/// A reader of a table nested in a field reads it from the table's start, so
+/// its decode errors report positions from there, as a vector item's do, and
+/// as a `ByteBuffer` of the table's bytes reports them
+TEST(GeneratedShapes, ATableNestedInAFieldReportsDecodeErrorsFromItsOwnStart) {
+    const std::vector<std::uint32_t> keys{1, 2, 3};
+    const std::vector<float> a{0.5F, 1.5F, 2.5F};
+    const std::vector<float> b{2.5F, 3.5F, 4.5F};
+    const auto bytes =
+        shapes::DocumentFields{.x = 1, .y = 2, .name = "a", .columns = {.base = 0, .keys = keys, .a = a, .b = b}}
+            .serialize();
+
+    // Cut inside `b`, the last column, which the columns' offsets still find
+    const auto truncated = bytes.span().first(bytes.size() - 2);
+    const auto columns = ByteBuffer(truncated, shapes::Document::LAYOUT).root_offset(3);
+    const ByteBuffer nested(truncated.subspan(columns), TableLayout());
+
+    const auto expected =
+        decode_error_of([&] { static_cast<void>(nested.get_float32_array(nested.field_offset(0, 3))); });
+    const auto error = decode_error_of([&] { static_cast<void>(shapes::Document(truncated).columns().b()); });
+    EXPECT_EQ(error.kind(), DecodeError::Kind::out_of_range);
+    EXPECT_EQ(error.position(), expected.position());
+    EXPECT_EQ(error.byte_length(), expected.byte_length());
+    EXPECT_EQ(error.available(), truncated.size() - columns);
 }
 
 }  // namespace

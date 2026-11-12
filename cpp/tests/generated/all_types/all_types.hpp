@@ -420,9 +420,12 @@ struct ArraysFields {
 
 class Inner {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Inner(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -438,7 +441,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of an `Inner`, to write */
@@ -458,9 +460,12 @@ struct InnerFields {
 
 class Outer {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Outer(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -476,7 +481,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of an `Outer`, to write */
@@ -565,9 +569,12 @@ struct NestedFields {
  */
 class Tree {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Tree(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -589,7 +596,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Tree`, to write */
@@ -610,9 +616,12 @@ struct TreeFields {
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 class Keywords {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Keywords(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -640,7 +649,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Keywords`, to write */
@@ -698,9 +706,12 @@ struct ReservedFields {
 
 class Path {
 public:
-    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
     constexpr Path(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
-        : bytes_(bytes), position_(position) {}
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
 
     /**
      * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
@@ -722,7 +733,6 @@ public:
 
 private:
     std::span<const std::uint8_t> bytes_;
-    std::size_t position_ = 0;
 };
 
 /** The fields of a `Path`, to write */
@@ -1071,13 +1081,13 @@ inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) 
 
 inline std::string_view Inner::name() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_string(position);
 }
 
 inline ::tafla::ArrayView<double> Inner::values() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_float64_array(position);
 }
 
@@ -1097,13 +1107,13 @@ inline void InnerFields::write(::tafla::TableWriter& writer_) const {
 
 inline std::uint32_t Outer::count() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_uint32(position);
 }
 
 inline Inner Outer::inner() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return Inner(bytes_, position);
 }
 
@@ -1193,7 +1203,7 @@ inline std::size_t NestedFields::serialize_into(std::span<std::uint8_t> bytes_) 
 
 inline std::int32_t Tree::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_int32(position);
 }
 
@@ -1203,7 +1213,7 @@ inline std::vector<Tree> Tree::children() const {
 
 inline TreeVector Tree::children_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return TreeVector(buffer.get_vector(position));
 }
 
@@ -1230,37 +1240,37 @@ inline void TreeFields::write(::tafla::TableWriter& writer_) const {
 
 inline std::uint8_t Keywords::class_() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return buffer.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::default_() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return buffer.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::in() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 2);
+    const auto position = buffer.field_offset(0, 2);
     return buffer.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::match() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 3);
+    const auto position = buffer.field_offset(0, 3);
     return buffer.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::self() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 4);
+    const auto position = buffer.field_offset(0, 4);
     return buffer.get_uint8(position);
 }
 
 inline std::string_view Keywords::type() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 5);
+    const auto position = buffer.field_offset(0, 5);
     return buffer.get_string(position);
 }
 
@@ -1318,7 +1328,7 @@ inline std::size_t ReservedFields::serialize_into(std::span<std::uint8_t> bytes_
 
 inline Point Path::start() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 0);
+    const auto position = buffer.field_offset(0, 0);
     return Point::from_bytes(buffer.get_struct(position, Point::SIZE).data());
 }
 
@@ -1328,7 +1338,7 @@ inline std::vector<Point> Path::points() const {
 
 inline PointArray Path::points_view() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(position_, 1);
+    const auto position = buffer.field_offset(0, 1);
     return PointArray(buffer.get_struct_array(position, Point::SIZE));
 }
 

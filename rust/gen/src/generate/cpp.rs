@@ -405,14 +405,20 @@ impl Generator<'_> {
         cpp_doc(
             writer,
             &[
-                "Reads the table at `position` in `bytes`, as its parent's getter finds it"
+                "Reads the table at `position` in `bytes`, as its parent's getter finds it. It \
+                 holds the bytes from the table's start, which the positions of its decode errors \
+                 count from."
                     .to_owned(),
             ],
         );
         writer.line(format!(
             "constexpr {name}(std::span<const std::uint8_t> bytes, std::size_t position) noexcept"
         ));
-        writer.line(format!("{INDENT}: bytes_(bytes), position_(position) {{}}"));
+        // From the table's start, so that its getters read its offsets at
+        // constant positions; a position past the bytes reads as no bytes
+        writer.line(format!(
+            "{INDENT}: bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {{}}"
+        ));
         writer.blank();
         cpp_doc(
             writer,
@@ -430,7 +436,6 @@ impl Generator<'_> {
         writer.line("private:");
         writer.indent();
         writer.line("std::span<const std::uint8_t> bytes_;");
-        writer.line("std::size_t position_ = 0;");
         writer.dedent();
         writer.line("};");
     }
@@ -494,7 +499,7 @@ impl Generator<'_> {
             let offset = if is_root {
                 format!("buffer.root_offset({index})")
             } else {
-                format!("buffer.field_offset(position_, {index})")
+                format!("buffer.field_offset(0, {index})")
             };
 
             // The getter of a vector or an array of structs reads every item
