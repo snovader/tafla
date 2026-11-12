@@ -32,6 +32,7 @@ fn imports_the_runtime_that_the_options_name() {
             "import org.example.tafla.ByteBuffer;\n",
         ),
         ("rust", "crate::tafla", "use crate::tafla::{"),
+        ("cpp", "vendor/tafla.hpp", "\n#include <vendor/tafla.hpp>\n"),
     ] {
         let options = Options {
             runtime: Some(runtime.to_owned()),
@@ -56,6 +57,7 @@ fn imports_taflas_runtimes_by_default() {
         ("python", "from tafla import ByteBuffer"),
         ("java", "import io.github.snovader.tafla.ByteBuffer;\n"),
         ("rust", "use tafla::{"),
+        ("cpp", "\n#include <tafla/tafla.hpp>\n"),
     ] {
         for file in generate("point.tafla", SCHEMA, target, &Options::default()) {
             assert!(
@@ -167,6 +169,54 @@ fn other_targets_ignore_the_package() {
 }
 
 #[test]
+fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
+    let namespace = |file_name: &str, package: Option<&str>| {
+        let options = Options {
+            runtime: None,
+            package: package.map(|package| package.parse().unwrap()),
+        };
+        let files = generate(file_name, SCHEMA, "cpp", &options);
+        let contents = &files[0].contents;
+
+        let start = contents.find("\nnamespace ").unwrap() + "\nnamespace ".len();
+        let end = start + contents[start..].find(" {\n").unwrap();
+        contents[start..end].to_owned()
+    };
+
+    assert_eq!(
+        namespace("point.tafla", Some("org.example.tables")),
+        "org::example::tables"
+    );
+    assert_eq!(
+        namespace("point.tafla", Some("std.tafla.delete")),
+        "std_::tafla_::delete_"
+    );
+    assert_eq!(
+        namespace("point.tafla", Some("a._Upper.b__c.$d")),
+        "a::schema_Upper::b_c::schema_d"
+    );
+    assert_eq!(
+        namespace("point.tafla", Some("linux.EOF.min")),
+        "linux_::EOF_::min_"
+    );
+    for (file_name, expected) in [
+        ("schemas/point_cloud.v1.tafla", "point_cloud"),
+        ("point-cloud.tafla", "point_cloud"),
+        ("my--points.tafla", "my_points"),
+        ("1st.tafla", "schema_1st"),
+        ("_points.tafla", "schema_points"),
+        ("tafla.tafla", "tafla_"),
+        ("namespace.tafla", "namespace_"),
+        ("errno.tafla", "errno_"),
+        ("EOF.tafla", "EOF_"),
+        ("unix.tafla", "unix_"),
+        ("punktwolke_ä.tafla", "punktwolke_"),
+    ] {
+        assert_eq!(namespace(file_name, None), expected, "{file_name}");
+    }
+}
+
+#[test]
 fn a_java_package_is_identifiers_separated_by_dots() {
     for name in ["generated", "org.example.tables", "a1.$b._c", "org.Example"] {
         let package: JavaPackage = name.parse().unwrap();
@@ -212,6 +262,7 @@ fn files_are_named_after_the_schema_and_name_it() {
         ("javascript", "pointCloud.js"),
         ("python", "point_cloud.py"),
         ("rust", "point_cloud.rs"),
+        ("cpp", "point_cloud.hpp"),
     ] {
         let files = generate(file_name, SCHEMA, target, &Options::default());
 
@@ -268,6 +319,7 @@ fn files_are_named_after_the_schema_without_its_windows_directory() {
             ("typescript", "pointCloud.ts"),
             ("python", "point_cloud.py"),
             ("rust", "point_cloud.rs"),
+            ("cpp", "point_cloud.hpp"),
         ] {
             let files = generate(file_name, SCHEMA, target, &Options::default());
             assert_eq!(paths(&files), [path], "{file_name}");
@@ -289,6 +341,7 @@ fn a_header_names_any_path_in_one_comment() {
         ("python", "#", shown.to_owned()),
         ("java", "//", shown.replace("\\u", "\\u005cu")),
         ("rust", "//", shown.to_owned()),
+        ("cpp", "//", shown.to_owned()),
     ] {
         for file in generate(file_name, SCHEMA, target, &Options::default()) {
             let header = file.contents.lines().next().unwrap();
@@ -311,6 +364,7 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         ("javascript", format!("// {header}\n")),
         ("python", format!("# {header}\n")),
         ("rust", format!("// {header}\n")),
+        ("cpp", format!("// {header}\n")),
     ] {
         let files = generate("empty.tafla", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
@@ -374,7 +428,15 @@ fn targets_are_found_by_name_or_abbreviation() {
     let names: Vec<&str> = Target::names().collect();
     assert_eq!(
         names,
-        ["typescript", "javascript", "python", "java", "rust", "go"]
+        [
+            "typescript",
+            "javascript",
+            "python",
+            "java",
+            "rust",
+            "go",
+            "cpp"
+        ]
     );
 
     for (abbreviation, name) in [

@@ -205,7 +205,7 @@ export class Arrays {
     }
 
     /**
-     * Writes a `Arrays` with every field
+     * Writes an `Arrays` with every field
      *
      * @param {ArraysFields} fields
      * @returns {Uint8Array}
@@ -239,7 +239,7 @@ export class Arrays {
     }
 
     /**
-     * Writes a `Arrays` with every field into the start of `bytes`,
+     * Writes an `Arrays` with every field into the start of `bytes`,
      * rather than into new bytes, and returns the view of them that holds
      * it. The view, and what's read from it, change when the bytes are
      * written again. Reusing bytes saves allocating and zeroing new ones,
@@ -331,7 +331,7 @@ export class Arrays {
 }
 
 /**
- * The fields of a `Arrays`, to write
+ * The fields of an `Arrays`, to write
  *
  * @typedef {object} ArraysFields
  * @property {ArrayLike<number> | Int8Array} int8
@@ -542,7 +542,7 @@ export class Outer {
 }
 
 /**
- * The fields of a `Outer`, to write
+ * The fields of an `Outer`, to write
  *
  * @typedef {object} OuterFields
  * @property {number} count
@@ -620,7 +620,7 @@ export class Inner {
 }
 
 /**
- * The fields of a `Inner`, to write
+ * The fields of an `Inner`, to write
  *
  * @typedef {object} InnerFields
  * @property {string} name

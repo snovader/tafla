@@ -50,6 +50,7 @@ jobs:
               - "schemas/**"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
+              - "cpp/tests/generated/*/**"
               - "go/tests/generated/*/**"
               # The Go comparison suite's schema and generated code
               - "go/benchmarks/workloads.tafla"
