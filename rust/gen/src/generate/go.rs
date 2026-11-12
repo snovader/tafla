@@ -11,6 +11,15 @@
 //! that generates Go takes one schema, since two packages can't share the
 //! directory that it writes to.
 //!
+//! The fields whose sizes the schema fixes, scalars, structs and nested
+//! tables of only such fields, the generated code lays out itself, as it lays
+//! out structs, since Go's compiler keeps a sizer's and a writer's fields in
+//! memory rather than in registers at every field: a table's first such
+//! fields, which the sizer and the writer take together, a nested table of
+//! only such fields, which they take whole, and a message of only such
+//! fields and a string after them, which the generated code writes into the
+//! bytes that `tafla.AppendTable()` returns, without a sizer and a writer.
+//!
 //! Everything that a schema names is exported, in `PascalCase`, beside the
 //! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
 //! and `<Message>FormatVersion`, which the checker keeps declarations from
@@ -104,7 +113,7 @@ pub fn generate(
     options: &Options,
 ) -> Vec<GeneratedFile> {
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
-    let generator = Generator { schema };
+    let generator = Generator::new(schema);
     let package = package_name(stem);
 
     let mut writer = CodeWriter::new("\t");
@@ -123,7 +132,7 @@ pub fn generate(
             Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
         if !definition.is_struct() {
-            generator.fields_struct(&mut writer, definition);
+            generator.fields_struct(&mut writer, index);
         }
 
         if schema.is_item(index) {
@@ -167,9 +176,114 @@ fn package_name(stem: &str) -> String {
 
 struct Generator<'a> {
     schema: &'a Schema,
+    /// The byte length of each table whose fields' sizes the schema fixes,
+    /// which the generated code writes whole, by its index, and `None` for
+    /// every other definition
+    fixed_tables: Vec<Option<usize>>,
 }
 
-impl Generator<'_> {
+/// The offset size of nested tables, which have `uint32` offsets, since the
+/// checker rejects tables nested in messages of a narrower offset type
+const NESTED_OFFSET_SIZE: usize = 4;
+
+/// The longest that the generated code lays out a table's fields, so that
+/// their positions are constants that an `int` holds on 32-bit hosts too.
+/// Longer ones, which no table that fits in memory there holds, it writes
+/// with the runtime's sizer and writer.
+const MAX_LAID_OUT: usize = i32::MAX as usize;
+
+/// The fields of a message or table that the generated code lays out itself,
+/// rather than the runtime's sizer and writer: its first fields of fixed size,
+/// when there are at least two, which they take together, or a message's
+/// fields when they're all of fixed size but a string after them
+struct Plan {
+    /// The byte length of a message's header slots, before its offsets
+    header: usize,
+    /// The offset size of the table's header slots, offsets and counts
+    width: usize,
+    /// How many of the first fields the generated code lays out
+    fixed: usize,
+    /// The byte length of those fields, after the offsets
+    bytes: usize,
+    /// Whether they're the whole message's but a string after them, which
+    /// the generated code writes without a sizer and a writer
+    whole: bool,
+}
+
+impl Plan {
+    /// Where the fields that the generated code lays out end, from the
+    /// table's start: after its header, its offsets and those fields
+    const fn end(&self, fields: usize) -> usize {
+        self.header + fields * self.width + self.bytes
+    }
+}
+
+impl<'a> Generator<'a> {
+    fn new(schema: &'a Schema) -> Self {
+        let mut fixed_tables = vec![None; schema.definitions.len()];
+        let mut visited = vec![false; schema.definitions.len()];
+        for index in 0..schema.definitions.len() {
+            fixed_table_size(schema, index, &mut fixed_tables, &mut visited);
+        }
+
+        Generator {
+            schema,
+            fixed_tables,
+        }
+    }
+
+    /// The byte length of a field whose size the schema fixes: a scalar, a
+    /// struct, or a table of only such fields, which has no padding
+    fn fixed_size(&self, field_type: FieldType) -> Option<usize> {
+        fixed_field_size(self.schema, field_type, |index| self.fixed_tables[index])
+    }
+
+    /// The fields of a message or table that the generated code lays out
+    /// itself, which fit in its offset type
+    fn plan(&self, definition: &Definition) -> Plan {
+        let (header, width, max_length) = match definition.kind {
+            Kind::Message(layout) => {
+                let width = offset_size(layout.offset_type);
+                let slots = usize::from(layout.sized) + usize::from(layout.version.is_some());
+                (slots * width, width, layout.offset_type.max_value())
+            }
+            Kind::Table | Kind::Struct(_) => {
+                (0, NESTED_OFFSET_SIZE, OffsetType::Uint32.max_value())
+            }
+        };
+        let max_length =
+            usize::try_from(max_length).map_or(MAX_LAID_OUT, |max| max.min(MAX_LAID_OUT));
+
+        let mut fixed = 0;
+        let mut bytes = 0_usize;
+        for field in &definition.fields {
+            let Some(size) = self.fixed_size(field.field_type) else {
+                break;
+            };
+            fixed += 1;
+            bytes = bytes.saturating_add(size);
+        }
+
+        let fits = header
+            .saturating_add(definition.fields.len().saturating_mul(width))
+            .saturating_add(bytes)
+            <= max_length;
+        let rest = &definition.fields[fixed..];
+        let whole = matches!(definition.kind, Kind::Message(_))
+            && fits
+            && (rest.is_empty() || (rest.len() == 1 && rest[0].field_type == FieldType::String));
+
+        // Fewer than two fields together save no call
+        let laid_out = whole || (fits && fixed >= 2);
+        Plan {
+            header,
+            width,
+            fixed: if laid_out { fixed } else { 0 },
+            bytes: if laid_out { bytes } else { 0 },
+            whole,
+        }
+    }
+
     fn imports(&self, writer: &mut CodeWriter, runtime: &str) {
         let definitions = &self.schema.definitions;
         // A schema without definitions imports nothing
@@ -187,17 +301,18 @@ impl Generator<'_> {
             })
             .collect();
 
+        // The scalars and offsets that the generated code writes itself
+        let (laid_out_scalars, wide_offsets) = self.laid_out();
+        let scalars = || struct_scalars.iter().chain(&laid_out_scalars);
+
         let mut standard = Vec::new();
-        if struct_scalars.iter().any(|scalar| scalar.size() > 1) {
+        if wide_offsets || scalars().any(|scalar| scalar.size() > 1) {
             standard.push("encoding/binary");
         }
         if (0..definitions.len()).any(|index| self.schema.is_item(index)) {
             standard.push("iter");
         }
-        if struct_scalars
-            .iter()
-            .any(|scalar| matches!(scalar, Scalar::Float32 | Scalar::Float64))
-        {
+        if scalars().any(|scalar| matches!(scalar, Scalar::Float32 | Scalar::Float64)) {
             standard.push("math");
         }
 
@@ -211,6 +326,39 @@ impl Generator<'_> {
         }
         writer.line(format!("tafla \"{}\"", go_string(runtime)));
         writer.close(")");
+    }
+
+    /// The scalars of the fields that the generated code lays out itself, and
+    /// whether it writes offsets wider than a byte
+    fn laid_out(&self) -> (Vec<Scalar>, bool) {
+        let mut scalars = Vec::new();
+        let mut wide_offsets = false;
+        for (index, definition) in self.schema.definitions.iter().enumerate() {
+            if definition.is_struct() {
+                continue;
+            }
+
+            let (fields, width) = if self.fixed_tables[index].is_some() {
+                (definition.fields.as_slice(), NESTED_OFFSET_SIZE)
+            } else {
+                let plan = self.plan(definition);
+                // A string after a message's fields has its offset and count
+                let count = if plan.whole {
+                    definition.fields.len()
+                } else {
+                    plan.fixed
+                };
+                (&definition.fields[..count], plan.width)
+            };
+
+            wide_offsets |= !fields.is_empty() && width > 1;
+            scalars.extend(fields.iter().filter_map(|field| match field.field_type {
+                FieldType::Scalar(scalar) => Some(scalar),
+                _ => None,
+            }));
+        }
+
+        (scalars, wide_offsets)
     }
 
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
@@ -604,7 +752,7 @@ impl Generator<'_> {
                     if read {
                         writer.line(format!("{member} = {}", read_scalar(scalar, offset)));
                     } else {
-                        put_scalar(writer, scalar, &member, offset);
+                        put_scalar(writer, scalar, &member, "bytes", offset);
                     }
                     offset += usize::from(scalar.size());
                 }
@@ -622,7 +770,8 @@ impl Generator<'_> {
     /// The struct of the values that write a message or table, with the
     /// methods that write it: a message's binary marshaling, and a nested
     /// table's methods with which its parent sizes and writes it
-    fn fields_struct(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn fields_struct(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
 
         writer.blank();
@@ -647,7 +796,10 @@ impl Generator<'_> {
 
         match definition.kind {
             Kind::Message(layout) => self.marshal(writer, definition, layout),
-            Kind::Table => self.size_and_write(writer, definition),
+            Kind::Table => match self.fixed_tables[index] {
+                Some(size) => self.put_table(writer, definition, size),
+                None => self.size_and_write(writer, definition),
+            },
             Kind::Struct(_) => unreachable!("structs are written by their own methods"),
         }
     }
@@ -687,6 +839,13 @@ impl Generator<'_> {
         writer.open(format!(
             "func ({FIELDS} {name}Fields) AppendBinary(bytes []byte) ([]byte, error) {{"
         ));
+        let plan = self.plan(definition);
+        if plan.whole {
+            self.append_whole(writer, definition, layout, &plan);
+            writer.close("}");
+            return;
+        }
+
         if layout.version.is_some() {
             writer.line(format!(
                 "sizer, err := tafla.NewVersionedTableSizer({fields}, {name}{{}}.layout(), {name}FormatVersion)"
@@ -705,6 +864,149 @@ impl Generator<'_> {
         writer.blank();
         writer.line("return writer.Bytes()");
         writer.close("}");
+    }
+
+    /// The body of `AppendBinary()` of a message whose fields are all of fixed
+    /// size but a string after them, which it lays out in the bytes that the
+    /// runtime appends and writes the header of
+    fn append_whole(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        plan: &Plan,
+    ) {
+        let name = &definition.name;
+        let fields = definition.fields.len();
+        let string = definition.fields.get(plan.fixed);
+
+        // Only the string's length isn't fixed
+        let end = plan.end(fields);
+        let length = match string {
+            Some(field) => format!(
+                "{}+uint64(len({FIELDS}.{}))",
+                end + plan.width,
+                exported(&field.name)
+            ),
+            None => end.to_string(),
+        };
+        let table = if fields == 0 { "_" } else { "table" };
+        if layout.version.is_some() {
+            writer.line(format!(
+                "bytes, {table}, err := tafla.AppendVersionedTable(bytes, {fields}, {name}{{}}.layout(), {name}FormatVersion, {length})"
+            ));
+        } else {
+            writer.line(format!(
+                "bytes, {table}, err := tafla.AppendTable(bytes, {fields}, {name}{{}}.layout(), {length})"
+            ));
+        }
+        return_on_error(writer, "nil");
+
+        if fields > 0 {
+            writer.blank();
+            self.put_fixed(writer, "table", definition, plan, string);
+        }
+        writer.blank();
+        writer.line("return bytes, nil");
+    }
+
+    /// A table's `put()`, which writes a nested table of only fields of fixed
+    /// size, of `size` bytes, whole: its offsets and its fields
+    fn put_table(&self, writer: &mut CodeWriter, definition: &Definition, size: usize) {
+        let name = &definition.name;
+        let fields = definition.fields.len();
+
+        writer.blank();
+        writer.lines(&prose(&[
+            format!(
+                "put writes {} whole, its offsets and its fields, into the start",
+                article(name)
+            ),
+            format!("of bytes, which hold at least its {size} bytes, where its parent's"),
+            "writer reserved them".to_owned(),
+        ]));
+        writer.open(format!(
+            "func ({FIELDS} *{name}Fields) put(bytes []byte) {{"
+        ));
+        let plan = Plan {
+            header: 0,
+            width: NESTED_OFFSET_SIZE,
+            fixed: fields,
+            bytes: size - fields * NESTED_OFFSET_SIZE,
+            whole: true,
+        };
+        if fields > 0 {
+            self.put_fixed(writer, "bytes", definition, &plan, None);
+        }
+        writer.close("}");
+    }
+
+    /// The lines that write the offsets and values of the fields that `plan`
+    /// lays out into `bytes`, which hold the table from its start, and then
+    /// those of `string`, the string after them, when it's given
+    fn put_fixed(
+        &self,
+        writer: &mut CodeWriter,
+        bytes: &str,
+        definition: &Definition,
+        plan: &Plan,
+        string: Option<&Field>,
+    ) {
+        let fields = &definition.fields[..plan.fixed];
+        let end = plan.end(definition.fields.len());
+
+        // The last byte before the string's bounds every access, so that the
+        // compiler checks it alone
+        let last = if string.is_some() {
+            end + plan.width
+        } else {
+            end
+        };
+        writer.line(format!("_ = {bytes}[{}]", last - 1));
+
+        // The fields follow the header and the offsets
+        let mut position = plan.header + definition.fields.len() * plan.width;
+        let mut positions = Vec::with_capacity(fields.len());
+        for field in fields {
+            positions.push(position);
+            position += self.fixed_size(field.field_type).unwrap_or_default();
+        }
+        for (index, &position) in positions.iter().enumerate() {
+            put_slot(
+                writer,
+                bytes,
+                plan.width,
+                plan.header + index * plan.width,
+                &position.to_string(),
+            );
+        }
+        if string.is_some() {
+            put_slot(
+                writer,
+                bytes,
+                plan.width,
+                plan.header + fields.len() * plan.width,
+                &end.to_string(),
+            );
+        }
+
+        for (field, &position) in fields.iter().zip(&positions) {
+            let member = format!("{FIELDS}.{}", exported(&field.name));
+            match field.field_type {
+                FieldType::Scalar(scalar) => put_scalar(writer, scalar, &member, bytes, position),
+                FieldType::Struct(_) | FieldType::Table(_) => {
+                    writer.line(format!("{member}.put({})", at(bytes, position)));
+                }
+                _ => unreachable!("only fields of fixed size are laid out"),
+            }
+        }
+
+        if let Some(field) = string {
+            let member = format!("{FIELDS}.{}", exported(&field.name));
+            let count = format!("uint{}(len({member}))", 8 * plan.width);
+            put_slot(writer, bytes, plan.width, end, &count);
+            writer.line(format!("copy({bytes}[{}:], {member})", end + plan.width));
+        }
     }
 
     /// The methods with which a nested table's parent sizes and writes it
@@ -748,7 +1050,12 @@ impl Generator<'_> {
     /// The calls that add a table's fields to its sizer, in order, with
     /// `sizer`, the expression of the sizer that nested tables take
     fn sizes(&self, writer: &mut CodeWriter, definition: &Definition, sizer: &str) {
-        for field in &definition.fields {
+        let plan = self.plan(definition);
+        if plan.fixed > 0 {
+            writer.line(format!("sizer.AddFields({}, {})", plan.fixed, plan.bytes));
+        }
+
+        for field in &definition.fields[plan.fixed..] {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
                 FieldType::Scalar(scalar) => {
@@ -773,13 +1080,20 @@ impl Generator<'_> {
                 FieldType::Table(index) => {
                     let alignment = self.schema.table_alignment(index);
                     writer.line(format!("sizer.AddTable({})", alignment_constant(alignment)));
-                    writer.line(format!("{value}.size({sizer})"));
+                    match self.fixed_tables[index] {
+                        Some(size) => writer.line(format!("sizer.AddTableBytes(1, {size})")),
+                        None => writer.line(format!("{value}.size({sizer})")),
+                    }
                 }
-                FieldType::Vector(_) => {
+                FieldType::Vector(index) => {
                     writer.line(format!("sizer.AddVector(len({value}))"));
-                    writer.open(format!("for index := range {value} {{"));
-                    writer.line(format!("{value}[index].size({sizer})"));
-                    writer.close("}");
+                    if let Some(size) = self.fixed_tables[index] {
+                        writer.line(format!("sizer.AddTableBytes(len({value}), {size})"));
+                    } else {
+                        writer.open(format!("for index := range {value} {{"));
+                        writer.line(format!("{value}[index].size({sizer})"));
+                        writer.close("}");
+                    }
                 }
             }
         }
@@ -794,7 +1108,13 @@ impl Generator<'_> {
         let mut declared_structs = false;
         let mut declared_vector = false;
 
-        for (index, field) in definition.fields.iter().enumerate() {
+        let plan = self.plan(definition);
+        if plan.fixed > 0 {
+            writer.line(format!("fixed := writer.ReserveFields({})", plan.bytes));
+            self.put_fixed(writer, "fixed", definition, &plan, None);
+        }
+
+        for (index, field) in definition.fields.iter().enumerate().skip(plan.fixed) {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => {
@@ -846,16 +1166,26 @@ impl Generator<'_> {
                         "writer.SetTable({index}, {})",
                         alignment_constant(alignment)
                     ));
-                    writer.line(format!("{value}.write({table_writer})"));
+                    match self.fixed_tables[table_index] {
+                        Some(size) => {
+                            writer.line(format!("{value}.put(writer.ReserveTableBytes({size}))"));
+                        }
+                        None => writer.line(format!("{value}.write({table_writer})")),
+                    }
                 }
-                FieldType::Vector(_) => {
+                FieldType::Vector(item_index) => {
                     let assign = if declared_vector { "=" } else { ":=" };
                     declared_vector = true;
                     writer.line(format!(
                         "vector {assign} writer.SetVector({index}, len({value}))"
                     ));
                     writer.open(format!("for item := range {value} {{"));
-                    writer.line(format!("{value}[item].write({table_writer})"));
+                    match self.fixed_tables[item_index] {
+                        Some(size) => writer.line(format!(
+                            "{value}[item].put(writer.ReserveTableBytes({size}))"
+                        )),
+                        None => writer.line(format!("{value}[item].write({table_writer})")),
+                    }
                     writer.line("writer.SetItemEnd(vector, item)");
                     writer.close("}");
                 }
@@ -1102,25 +1432,21 @@ fn read_scalar(scalar: Scalar, offset: usize) -> String {
     }
 }
 
-/// The lines that write the scalar `member` at `offset` in `bytes`
-fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, offset: usize) {
-    let at = if offset == 0 {
-        "bytes".to_owned()
-    } else {
-        format!("bytes[{offset}:]")
-    };
+/// The lines that write the scalar `member` at `offset` in the slice `bytes`
+fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, bytes: &str, offset: usize) {
+    let at = at(bytes, offset);
     let put =
         |size: u8, value: String| format!("binary.LittleEndian.PutUint{}({at}, {value})", 8 * size);
 
     match scalar {
         Scalar::Bool => {
-            writer.line(format!("bytes[{offset}] = 0"));
+            writer.line(format!("{bytes}[{offset}] = 0"));
             writer.open(format!("if {member} {{"));
-            writer.line(format!("bytes[{offset}] = 1"));
+            writer.line(format!("{bytes}[{offset}] = 1"));
             writer.close("}");
         }
-        Scalar::Int8 => writer.line(format!("bytes[{offset}] = byte({member})")),
-        Scalar::Uint8 => writer.line(format!("bytes[{offset}] = {member}")),
+        Scalar::Int8 => writer.line(format!("{bytes}[{offset}] = byte({member})")),
+        Scalar::Uint8 => writer.line(format!("{bytes}[{offset}] = {member}")),
         Scalar::Int16 | Scalar::Int32 | Scalar::Int64 => {
             let size = scalar.size();
             writer.line(put(size, format!("uint{}({member})", 8 * size)));
@@ -1130,6 +1456,94 @@ fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, offset: usi
         }
         Scalar::Float32 => writer.line(put(4, format!("math.Float32bits({member})"))),
         Scalar::Float64 => writer.line(put(8, format!("math.Float64bits({member})"))),
+    }
+}
+
+/// The lines that write an offset, a count or a length, `value`, in `width`
+/// bytes at `position` in the slice `bytes`
+fn put_slot(writer: &mut CodeWriter, bytes: &str, width: usize, position: usize, value: &str) {
+    match width {
+        1 => writer.line(format!("{bytes}[{position}] = {value}")),
+        2 => writer.line(format!(
+            "binary.LittleEndian.PutUint16({}, {value})",
+            at(bytes, position)
+        )),
+        _ => writer.line(format!(
+            "binary.LittleEndian.PutUint32({}, {value})",
+            at(bytes, position)
+        )),
+    }
+}
+
+/// The slice `bytes` from `offset`
+fn at(bytes: &str, offset: usize) -> String {
+    if offset == 0 {
+        bytes.to_owned()
+    } else {
+        format!("{bytes}[{offset}:]")
+    }
+}
+
+/// The width of an offset type's header slots, offsets and counts
+const fn offset_size(offset_type: OffsetType) -> usize {
+    match offset_type {
+        OffsetType::Uint8 => 1,
+        OffsetType::Uint16 => 2,
+        OffsetType::Uint32 => 4,
+    }
+}
+
+/// Finds the byte length of the table at `index` when its fields' sizes are
+/// all fixed, and its nested tables' first, into `sizes` by its index, which
+/// is `None` for any other definition, or one too long to lay out, and marks
+/// it `visited`. Tables nest in place at most 64 deep, and each is sized once.
+fn fixed_table_size(
+    schema: &Schema,
+    index: usize,
+    sizes: &mut [Option<usize>],
+    visited: &mut [bool],
+) -> Option<usize> {
+    if visited[index] {
+        return sizes[index];
+    }
+
+    let definition = schema.definition(index);
+    let mut size = Some(definition.fields.len().saturating_mul(NESTED_OFFSET_SIZE));
+    if definition.kind != Kind::Table {
+        size = None;
+    }
+    for field in &definition.fields {
+        let Some(table) = size else {
+            break;
+        };
+        let field_size = fixed_field_size(schema, field.field_type, |nested| {
+            fixed_table_size(schema, nested, sizes, visited)
+        });
+        size = field_size.map(|field_size| table.saturating_add(field_size));
+    }
+
+    let size = size.filter(|&size| size <= MAX_LAID_OUT);
+    sizes[index] = size;
+    visited[index] = true;
+    size
+}
+
+/// The byte length of a field whose size the schema fixes: a scalar's, a
+/// struct's, or the length of a nested table that `table` gives, when its
+/// fields' sizes are all fixed
+fn fixed_field_size(
+    schema: &Schema,
+    field_type: FieldType,
+    table: impl FnOnce(usize) -> Option<usize>,
+) -> Option<usize> {
+    match field_type {
+        FieldType::Scalar(scalar) => Some(usize::from(scalar.size())),
+        FieldType::Struct(index) => Some(schema.definition(index).struct_layout().size),
+        FieldType::Table(index) => table(index),
+        FieldType::Array(_)
+        | FieldType::String
+        | FieldType::StructArray(_)
+        | FieldType::Vector(_) => None,
     }
 }
 

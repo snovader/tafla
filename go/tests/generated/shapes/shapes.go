@@ -83,25 +83,23 @@ func (f PointFields) MarshalBinary() ([]byte, error) {
 // [PointFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f PointFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewTableSizer(4, Point{}.layout())
+	bytes, table, err := tafla.AppendTable(bytes, 4, Point{}.layout(), 44+uint64(len(f.Name)))
 	if err != nil {
 		return nil, err
 	}
-	sizer.AddFloat64()
-	sizer.AddFloat64()
-	sizer.AddInt64()
-	sizer.AddString(f.Name)
 
-	writer, err := sizer.AppendWriter(bytes)
-	if err != nil {
-		return nil, err
-	}
-	writer.SetFloat64(0, f.X)
-	writer.SetFloat64(1, f.Y)
-	writer.SetInt64(2, f.Id)
-	writer.SetString(3, f.Name)
+	_ = table[43]
+	binary.LittleEndian.PutUint32(table, 16)
+	binary.LittleEndian.PutUint32(table[4:], 24)
+	binary.LittleEndian.PutUint32(table[8:], 32)
+	binary.LittleEndian.PutUint32(table[12:], 40)
+	binary.LittleEndian.PutUint64(table[16:], math.Float64bits(f.X))
+	binary.LittleEndian.PutUint64(table[24:], math.Float64bits(f.Y))
+	binary.LittleEndian.PutUint64(table[32:], uint64(f.Id))
+	binary.LittleEndian.PutUint32(table[40:], uint32(len(f.Name)))
+	copy(table[44:], f.Name)
 
-	return writer.Bytes()
+	return bytes, nil
 }
 
 // A document, whose header holds its length and version, with a nested
@@ -204,8 +202,7 @@ func (f DocumentFields) AppendBinary(bytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sizer.AddFloat64()
-	sizer.AddFloat64()
+	sizer.AddFields(2, 16)
 	sizer.AddString(f.Name)
 	sizer.AddTable(tafla.Align4)
 	f.Columns.size(&sizer)
@@ -214,8 +211,12 @@ func (f DocumentFields) AppendBinary(bytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	writer.SetFloat64(0, f.X)
-	writer.SetFloat64(1, f.Y)
+	fixed := writer.ReserveFields(16)
+	_ = fixed[39]
+	binary.LittleEndian.PutUint32(fixed[8:], 24)
+	binary.LittleEndian.PutUint32(fixed[12:], 32)
+	binary.LittleEndian.PutUint64(fixed[24:], math.Float64bits(f.X))
+	binary.LittleEndian.PutUint64(fixed[32:], math.Float64bits(f.Y))
 	writer.SetString(2, f.Name)
 	writer.SetTable(3, tafla.Align4)
 	f.Columns.write(&writer)
@@ -375,9 +376,7 @@ func (f ItemListFields) AppendBinary(bytes []byte) ([]byte, error) {
 		return nil, err
 	}
 	sizer.AddVector(len(f.Items))
-	for index := range f.Items {
-		f.Items[index].size(&sizer)
-	}
+	sizer.AddTableBytes(len(f.Items), 28)
 
 	writer, err := sizer.AppendWriter(bytes)
 	if err != nil {
@@ -385,7 +384,7 @@ func (f ItemListFields) AppendBinary(bytes []byte) ([]byte, error) {
 	}
 	vector := writer.SetVector(0, len(f.Items))
 	for item := range f.Items {
-		f.Items[item].write(&writer)
+		f.Items[item].put(writer.ReserveTableBytes(28))
 		writer.SetItemEnd(vector, item)
 	}
 
@@ -423,24 +422,15 @@ type ItemFields struct {
 	Pair  PairFields
 }
 
-// size adds an [Item] to its parent's sizer, after the field or vector that
-// holds it
-func (f *ItemFields) size(sizer *tafla.TableSizer) {
-	parent := sizer.StartTable(2)
-	sizer.AddFloat32()
-	sizer.AddTable(tafla.Align1)
-	f.Pair.size(sizer)
-	sizer.EndTable(parent)
-}
-
-// write writes an [Item] where its parent's writer is, after the field or
-// vector that holds it
-func (f *ItemFields) write(writer *tafla.TableWriter) {
-	parent := writer.StartTable(2)
-	writer.SetFloat32(0, f.Value)
-	writer.SetTable(1, tafla.Align1)
-	f.Pair.write(writer)
-	writer.EndTable(parent)
+// put writes an [Item] whole, its offsets and its fields, into the start of
+// bytes, which hold at least its 28 bytes, where its parent's writer reserved
+// them
+func (f *ItemFields) put(bytes []byte) {
+	_ = bytes[27]
+	binary.LittleEndian.PutUint32(bytes, 8)
+	binary.LittleEndian.PutUint32(bytes[4:], 12)
+	binary.LittleEndian.PutUint32(bytes[8:], math.Float32bits(f.Value))
+	f.Pair.put(bytes[12:])
 }
 
 // ItemVector is a vector of [Item]s, which reads each item when it's asked for.
@@ -505,22 +495,15 @@ type PairFields struct {
 	Second float32
 }
 
-// size adds a [Pair] to its parent's sizer, after the field or vector that
-// holds it
-func (f *PairFields) size(sizer *tafla.TableSizer) {
-	parent := sizer.StartTable(2)
-	sizer.AddFloat32()
-	sizer.AddFloat32()
-	sizer.EndTable(parent)
-}
-
-// write writes a [Pair] where its parent's writer is, after the field or vector
-// that holds it
-func (f *PairFields) write(writer *tafla.TableWriter) {
-	parent := writer.StartTable(2)
-	writer.SetFloat32(0, f.First)
-	writer.SetFloat32(1, f.Second)
-	writer.EndTable(parent)
+// put writes a [Pair] whole, its offsets and its fields, into the start of
+// bytes, which hold at least its 16 bytes, where its parent's writer reserved
+// them
+func (f *PairFields) put(bytes []byte) {
+	_ = bytes[15]
+	binary.LittleEndian.PutUint32(bytes, 8)
+	binary.LittleEndian.PutUint32(bytes[4:], 12)
+	binary.LittleEndian.PutUint32(bytes[8:], math.Float32bits(f.First))
+	binary.LittleEndian.PutUint32(bytes[12:], math.Float32bits(f.Second))
 }
 
 // A fixed-size sample, such as a stream sends one per frame

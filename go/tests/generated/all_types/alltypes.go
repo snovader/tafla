@@ -164,43 +164,39 @@ func (f ScalarsFields) MarshalBinary() ([]byte, error) {
 // [ScalarsFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f ScalarsFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewTableSizer(11, Scalars{}.layout())
+	bytes, table, err := tafla.AppendTable(bytes, 11, Scalars{}.layout(), 87)
 	if err != nil {
 		return nil, err
 	}
-	sizer.AddInt8()
-	sizer.AddUint8()
-	sizer.AddInt16()
-	sizer.AddUint16()
-	sizer.AddInt32()
-	sizer.AddUint32()
-	sizer.AddInt64()
-	sizer.AddUint64()
-	sizer.AddFloat32()
-	sizer.AddFloat64()
-	sizer.AddUint8()
 
-	writer, err := sizer.AppendWriter(bytes)
-	if err != nil {
-		return nil, err
-	}
-	writer.SetInt8(0, f.Int8)
-	writer.SetUint8(1, f.Uint8)
-	writer.SetInt16(2, f.Int16)
-	writer.SetUint16(3, f.Uint16)
-	writer.SetInt32(4, f.Int32)
-	writer.SetUint32(5, f.Uint32)
-	writer.SetInt64(6, f.Int64)
-	writer.SetUint64(7, f.Uint64)
-	writer.SetFloat32(8, f.Float32)
-	writer.SetFloat64(9, f.Float64)
-	var boolean uint8
+	_ = table[86]
+	binary.LittleEndian.PutUint32(table, 44)
+	binary.LittleEndian.PutUint32(table[4:], 45)
+	binary.LittleEndian.PutUint32(table[8:], 46)
+	binary.LittleEndian.PutUint32(table[12:], 48)
+	binary.LittleEndian.PutUint32(table[16:], 50)
+	binary.LittleEndian.PutUint32(table[20:], 54)
+	binary.LittleEndian.PutUint32(table[24:], 58)
+	binary.LittleEndian.PutUint32(table[28:], 66)
+	binary.LittleEndian.PutUint32(table[32:], 74)
+	binary.LittleEndian.PutUint32(table[36:], 78)
+	binary.LittleEndian.PutUint32(table[40:], 86)
+	table[44] = byte(f.Int8)
+	table[45] = f.Uint8
+	binary.LittleEndian.PutUint16(table[46:], uint16(f.Int16))
+	binary.LittleEndian.PutUint16(table[48:], f.Uint16)
+	binary.LittleEndian.PutUint32(table[50:], uint32(f.Int32))
+	binary.LittleEndian.PutUint32(table[54:], f.Uint32)
+	binary.LittleEndian.PutUint64(table[58:], uint64(f.Int64))
+	binary.LittleEndian.PutUint64(table[66:], f.Uint64)
+	binary.LittleEndian.PutUint32(table[74:], math.Float32bits(f.Float32))
+	binary.LittleEndian.PutUint64(table[78:], math.Float64bits(f.Float64))
+	table[86] = 0
 	if f.Bool {
-		boolean = 1
+		table[86] = 1
 	}
-	writer.SetUint8(10, boolean)
 
-	return writer.Bytes()
+	return bytes, nil
 }
 
 // An array of every scalar type but bool, which has none
@@ -804,11 +800,7 @@ type KeywordsFields struct {
 // holds it
 func (f *KeywordsFields) size(sizer *tafla.TableSizer) {
 	parent := sizer.StartTable(6)
-	sizer.AddUint8()
-	sizer.AddUint8()
-	sizer.AddUint8()
-	sizer.AddUint8()
-	sizer.AddUint8()
+	sizer.AddFields(5, 5)
 	sizer.AddString(f.Type)
 	sizer.EndTable(parent)
 }
@@ -817,11 +809,18 @@ func (f *KeywordsFields) size(sizer *tafla.TableSizer) {
 // vector that holds it
 func (f *KeywordsFields) write(writer *tafla.TableWriter) {
 	parent := writer.StartTable(6)
-	writer.SetUint8(0, f.Class)
-	writer.SetUint8(1, f.Default)
-	writer.SetUint8(2, f.In)
-	writer.SetUint8(3, f.Match)
-	writer.SetUint8(4, f.Self)
+	fixed := writer.ReserveFields(5)
+	_ = fixed[28]
+	binary.LittleEndian.PutUint32(fixed, 24)
+	binary.LittleEndian.PutUint32(fixed[4:], 25)
+	binary.LittleEndian.PutUint32(fixed[8:], 26)
+	binary.LittleEndian.PutUint32(fixed[12:], 27)
+	binary.LittleEndian.PutUint32(fixed[16:], 28)
+	fixed[24] = f.Class
+	fixed[25] = f.Default
+	fixed[26] = f.In
+	fixed[27] = f.Match
+	fixed[28] = f.Self
 	writer.SetString(5, f.Type)
 	writer.EndTable(parent)
 }

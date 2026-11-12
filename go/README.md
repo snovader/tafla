@@ -185,12 +185,28 @@ them first as `TableBuilder` does. `TableSizer.AppendWriter()` writes the table
 after the bytes of a slice, into its capacity when it has room, as `append`
 does, so that a caller can reuse bytes.
 
+Fields whose sizes the schema fixes, scalars, structs and nested tables of
+only such fields, the generated code lays out itself, at positions that the
+generator works out, since Go's compiler keeps the sizer's and the writer's
+fields in memory at every call. `TableSizer.AddFields()` adds a table's
+first such fields together, and `TableWriter.ReserveFields()` returns their
+bytes; `AddTableBytes()` and `ReserveTableBytes()` take a nested table of
+only such fields whole. `AppendTable()` appends the bytes of a table that its
+caller lays out entirely, such as a message of only such fields and a string
+after them, and writes its header, without a sizer and a writer. These six
+functions are for the generated code: they're exported because it lies in
+its user's package, but they're outside the compatibility promise of the
+rest of the API, and may change in any release, with the generator.
+
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract, which the other
 runtimes share:
 
 - Fields are set in index order, each once, as the sizer added them, and each
-  vector item is followed by its `SetItemEnd()`.
+  vector item is followed by its `SetItemEnd()`. Fields that the sizer added
+  together are reserved together: a table's first fields with
+  `ReserveFields()`, before any setter, and a nested table with
+  `ReserveTableBytes()`, and the caller writes every byte of them.
 - A field index outside its table, or an item outside its vector, writes an
   offset or item end over another slot or field, so the table's bytes are
   undefined. Every write still stays within the table's bytes: one past them

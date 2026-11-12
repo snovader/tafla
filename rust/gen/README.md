@@ -198,7 +198,13 @@ from a `FixedFields` that describes them: a nested table of only those fields
 is written whole, in its parent's call or in one of its own. A table of only
 those fields also has `fields()`, which reads them all at once into the
 `TypedDict` that it's written from, or through its getters when its offsets
-aren't the ones that its writer writes. Each nested table has an
+aren't the ones that its writer writes. Go lays out the same fields itself,
+at positions that the generator works out, since Go's compiler keeps a
+sizer's and a writer's fields in memory at every call: its sizer and writer
+take a table's leading fields of fixed size together, and a nested table of
+only those fields whole, and a message of only those fields and a string
+after them is written into the bytes that the runtime's `AppendTable()`
+returns, without a sizer and a writer. Each nested table has an
 `ALIGNMENT`, which its parent pads it to: the largest alignment of its arrays
 and nested tables. Structs are read and written whole, and arrays of
 them are read into a struct each, and written from them into one run of

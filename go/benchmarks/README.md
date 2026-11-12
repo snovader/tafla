@@ -95,10 +95,14 @@ comparison uses its counterpart:
   builder takes with `SetStructArray()`, and read from `GetStructArray()`'s
   bytes with `encoding/binary`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
-  in `generated/tafla/`. A message's `MarshalBinary()` counts the table's
-  length with a `TableSizer`, and then writes every field, nested tables
-  included, into bytes of that length with a `TableWriter`, in one
-  allocation. Its readers share strings and columns with the bytes, as
+  in `generated/tafla/`. A message's `MarshalBinary()` writes it into bytes
+  of its exact length, in one allocation, and lays out the fields whose sizes
+  the schema fixes itself, as it lays out structs. The record, whose only
+  other field is a string, it writes into the bytes that
+  `tafla.AppendTable()` returns, without a sizer and a writer. The others it
+  counts with a `TableSizer` and writes with a `TableWriter`, which take the
+  document's first scalars together and each of the vector's items, a table
+  of only such fields, whole. Its readers share strings and columns with the bytes, as
   tafla's do. It takes the workloads' types, as the other codecs do, so it
   collects the generated fields of the vector's items and the generated
   structs of the array into a slice in each call, as the protobuf codecs

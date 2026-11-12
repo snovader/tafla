@@ -12,7 +12,10 @@
 // it's written, as the code that tafla-gen generates writes its tables: the
 // sizer counts the table's length from its fields, and its writer writes the
 // same fields, in the same order, into bytes of that length, without
-// recording them first as TableBuilder does.
+// recording them first as TableBuilder does. Fields whose sizes a schema
+// fixes, the generated code lays out itself: the sizer and the writer take
+// them together, and [AppendTable] appends a table that its caller lays out
+// entirely.
 //
 // # Format
 //
@@ -56,6 +59,16 @@
 // shares the bytes too, which Go's strings otherwise don't, so the bytes
 // must not change while it's in use. Byte arrays, structs and vector items
 // are slices of the bytes.
+//
+// # For generated code
+//
+// [AppendTable], [AppendVersionedTable], [TableSizer.AddFields],
+// [TableSizer.AddTableBytes], [TableWriter.ReserveFields] and
+// [TableWriter.ReserveTableBytes] are for the code that tafla-gen generates,
+// which lays out the fields whose sizes the schema fixes itself. They're
+// exported because generated code lies in its user's package, but they're
+// outside the compatibility promise of the rest of the API, and may change in
+// any release, with the generator.
 //
 // # Errors and panics
 //

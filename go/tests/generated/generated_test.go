@@ -18,6 +18,7 @@ import (
 
 	tafla "github.com/snovader/tafla/go"
 	alltypes "github.com/snovader/tafla/go/tests/generated/all_types"
+	"github.com/snovader/tafla/go/tests/generated/fixed_fields"
 	"github.com/snovader/tafla/go/tests/generated/layouts"
 	"github.com/snovader/tafla/go/tests/generated/shapes"
 	"github.com/snovader/tafla/go/tests/internal/tables"
@@ -134,6 +135,21 @@ var messages = []message{
 	unversioned[alltypes.Nested, alltypes.NestedFields]("all_types.Nested", tafla.Uint32, false, alltypes.NewNested),
 	unversioned[alltypes.Reserved, alltypes.ReservedFields]("all_types.Reserved", tafla.Uint32, false, alltypes.NewReserved),
 	unversioned[alltypes.Structs, alltypes.StructsFields]("all_types.Structs", tafla.Uint32, false, alltypes.NewStructs),
+
+	// Fixed fields, which the generated code lays out itself. Overflow, which
+	// is always too long, has a test of its own.
+	unversioned[fixedfields.Tiny, fixedfields.TinyFields]("fixed_fields.Tiny", tafla.Uint8, true, fixedfields.NewTiny),
+	versioned[fixedfields.Tagged, fixedfields.TaggedFields](
+		"fixed_fields.Tagged", tafla.Uint8, true, 3, fixedfields.NewTagged, fixedfields.TaggedVersionOf),
+	unversioned[fixedfields.Header, fixedfields.HeaderFields]("fixed_fields.Header", tafla.Uint8, false, fixedfields.NewHeader),
+	versioned[fixedfields.Pixel, fixedfields.PixelFields](
+		"fixed_fields.Pixel", tafla.Uint16, true, 2, fixedfields.NewPixel, fixedfields.PixelVersionOf),
+	unversioned[fixedfields.Strip, fixedfields.StripFields]("fixed_fields.Strip", tafla.Uint16, false, fixedfields.NewStrip),
+	versioned[fixedfields.Box, fixedfields.BoxFields](
+		"fixed_fields.Box", tafla.Uint32, false, 1, fixedfields.NewBox, fixedfields.BoxVersionOf),
+	unversioned[fixedfields.Track, fixedfields.TrackFields]("fixed_fields.Track", tafla.Uint32, false, fixedfields.NewTrack),
+	unversioned[fixedfields.Label, fixedfields.LabelFields]("fixed_fields.Label", tafla.Uint32, false, fixedfields.NewLabel),
+	unversioned[fixedfields.Span, fixedfields.SpanFields]("fixed_fields.Span", tafla.Uint32, false, fixedfields.NewSpan),
 }
 
 // structs are every struct of the example schemas, with their sizes
@@ -147,6 +163,9 @@ var structs = []struct {
 	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8},
 	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43},
 	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7},
+	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8},
+	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64},
+	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256},
 }
 
 // write writes a message's fields with the generated code
@@ -213,8 +232,8 @@ func TestEveryMessageIsWrittenAsTableBuilderWritesItOrFailsAsItFails(t *testing.
 						t.Fatalf("wrote % x\nrather than % x", written, built)
 					}
 				case errors.As(writeErr, &writeError) && errors.As(buildErr, &buildError):
-					if writeError.Kind != buildError.Kind {
-						t.Fatalf("%v rather than %v", writeErr, buildErr)
+					if *writeError != *buildError {
+						t.Fatalf("%#v rather than %#v", writeError, buildError)
 					}
 				default:
 					t.Fatalf("%v rather than %v", writeErr, buildErr)
@@ -222,6 +241,25 @@ func TestEveryMessageIsWrittenAsTableBuilderWritesItOrFailsAsItFails(t *testing.
 			})
 		})
 	}
+}
+
+// A message whose fixed fields alone are too long for its offset type is
+// written field by field, rather than laid out, and fails as TableBuilder
+// fails, naming the field that makes it too long
+func TestAMessageWhoseFixedFieldsAreTooLongFailsAsTableBuilderFails(t *testing.T) {
+	layout := tables.Layout{OffsetType: tafla.Uint8}
+
+	rapid.Check(t, func(t *rapid.T) {
+		fields := drawFields(t, reflect.TypeFor[fixedfields.OverflowFields](), 4)
+		_, writeErr := write(fields)
+		_, buildErr := describe(fields, layout, 0).Bytes()
+
+		// The offsets, the id and then the block's 256 bytes
+		expected := &tafla.BuildError{Kind: tafla.TooLong, Index: 1, Length: 259, OffsetType: tafla.Uint8}
+		if !sameError(writeErr, expected) || !sameError(buildErr, expected) {
+			t.Fatalf("wrote %v and built %v rather than %v", writeErr, buildErr, expected)
+		}
+	})
 }
 
 // AppendBinary appends a message to bytes, into their capacity when they

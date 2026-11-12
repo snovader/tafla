@@ -7,10 +7,13 @@ import (
 
 // TaflaGen writes and reads tafla's tables with the code that tafla-gen
 // generates from workloads.tafla, in generated/tafla. A message's
-// MarshalBinary counts the table's length with a TableSizer, and then writes
-// every field, nested tables included, into bytes of that length with a
-// TableWriter, in one allocation. Its readers share strings and columns with
-// the bytes, as tafla's do.
+// MarshalBinary writes it into bytes of its exact length, in one allocation,
+// and lays out the fields whose sizes the schema fixes itself, as it lays out
+// structs: the record, whose only other field is a string, into the bytes
+// that tafla.AppendTable returns, without a sizer and a writer, and the
+// others with a TableSizer and a TableWriter, which take the document's
+// first scalars together and each of the vector's items whole. Its readers
+// share strings and columns with the bytes, as tafla's do.
 //
 // It takes the workloads' types, as the other codecs do, so it collects the
 // generated fields of the vector's items and the generated structs of the
