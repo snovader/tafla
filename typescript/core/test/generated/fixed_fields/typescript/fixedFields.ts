@@ -1250,7 +1250,7 @@ export class Overflow {
         this.#buffer = new ByteBuffer(bytes, Overflow.#LAYOUT);
     }
 
-    /** Writes a `Overflow` with every field */
+    /** Writes an `Overflow` with every field */
     static serialize(fields: OverflowFields): Uint8Array {
         const sizer = new TableSizer(2, Overflow.#LAYOUT);
         sizer.addUint8();
@@ -1264,7 +1264,7 @@ export class Overflow {
     }
 
     /**
-     * Writes a `Overflow` with every field into the start of `bytes`,
+     * Writes an `Overflow` with every field into the start of `bytes`,
      * rather than into new bytes, and returns the view of them that holds
      * it. The view, and what's read from it, change when the bytes are
      * written again. Reusing bytes saves allocating and zeroing new ones,
@@ -1297,7 +1297,7 @@ export class Overflow {
     }
 }
 
-/** The fields of a `Overflow`, to write */
+/** The fields of an `Overflow`, to write */
 export interface OverflowFields {
     id: number;
     block: BlockFields;

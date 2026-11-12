@@ -1550,7 +1550,7 @@ export class Overflow {
     }
 
     /**
-     * Writes a `Overflow` with every field
+     * Writes an `Overflow` with every field
      *
      * @param {OverflowFields} fields
      * @returns {Uint8Array}
@@ -1568,7 +1568,7 @@ export class Overflow {
     }
 
     /**
-     * Writes a `Overflow` with every field into the start of `bytes`,
+     * Writes an `Overflow` with every field into the start of `bytes`,
      * rather than into new bytes, and returns the view of them that holds
      * it. The view, and what's read from it, change when the bytes are
      * written again. Reusing bytes saves allocating and zeroing new ones,
@@ -1604,7 +1604,7 @@ export class Overflow {
 }
 
 /**
- * The fields of a `Overflow`, to write
+ * The fields of an `Overflow`, to write
  *
  * @typedef {object} OverflowFields
  * @property {number} id
