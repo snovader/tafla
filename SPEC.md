@@ -156,6 +156,15 @@ starts. Every implementation reads such an item alike, within the bytes it
 was given, so checking it would cost every item read without making any read
 safer.
 
+Such an item can hold itself. When item `i` starts at the count, its offset
+`i` is the end of item `i - 1`, which is 0, so it leads back to the item's
+start. Read in place, an item whose field `i` is a vector of its own type,
+such as a tree's vector of trees, finds that vector there, and itself as its
+item `i`, without end. A reader reads each value when it's asked for, so it
+never loops on such bytes, and one that reads every item of the vector fails
+at an item before it. A caller that walks nested tables recursively, reading
+an item without the items before it, bounds how deep it walks.
+
 ## Writers
 
 Writers produce the same bytes for the same fields in every implementation:
