@@ -57,6 +57,11 @@ repository's first commits, for code built from its source before the release.
   `serializeInto()` on every message that tafla-gen generates in TypeScript
   and JavaScript, which writes the message so and returns the view of the
   bytes that holds it, saving the allocation of new bytes for each table.
+- C++'s `TableSizer::writer(std::span<std::uint8_t>)`, which writes a table
+  into the start of bytes that the caller owns and reuses rather than into
+  new bytes, with `TableWriter::finish_into()`, which returns the table's
+  length, and a generated `serialize_into(bytes)` on C++'s messages, which
+  returns the message's length.
 - Generated Python declares `<Struct>Fields` beside each struct, a protocol
   of its fields, which an array of the struct is written from, so that any
   objects with those attributes write it, rather than only the struct's

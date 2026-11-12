@@ -69,6 +69,13 @@ struct Uint8OffsetsFields {
      * `uint8`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint8Offsets` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint8` offsets, after the table's length */
@@ -104,6 +111,13 @@ struct Uint8OffsetsSizedFields {
      * type, `uint8`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint8OffsetsSized` as `serialize()` does, but into the start of `bytes_` rather than into new bytes,
+     * and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint8` offsets, after the largest version they hold */
@@ -151,6 +165,13 @@ struct Uint8OffsetsVersionedFields {
      * type, `uint8`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint8OffsetsVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint8` offsets, after the table's length and version zero */
@@ -199,6 +220,13 @@ struct Uint8OffsetsSizedVersionedFields {
      * offset type, `uint8`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint8OffsetsSizedVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint16` offsets, for tables of up to 65,535 bytes */
@@ -234,6 +262,13 @@ struct Uint16OffsetsFields {
      * `uint16`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint16Offsets` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint16` offsets, after the table's length */
@@ -269,6 +304,13 @@ struct Uint16OffsetsSizedFields {
      * type, `uint16`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint16OffsetsSized` as `serialize()` does, but into the start of `bytes_` rather than into new bytes,
+     * and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint16` offsets, after the largest version they hold */
@@ -316,6 +358,13 @@ struct Uint16OffsetsVersionedFields {
      * offset type, `uint16`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint16OffsetsVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint16` offsets, after the table's length and a version */
@@ -364,6 +413,13 @@ struct Uint16OffsetsSizedVersionedFields {
      * offset type, `uint16`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint16OffsetsSizedVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint32` offsets, the default, for tables of up to 4 GiB */
@@ -399,6 +455,13 @@ struct Uint32OffsetsFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint32Offsets` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint32` offsets, after the table's length */
@@ -434,6 +497,13 @@ struct Uint32OffsetsSizedFields {
      * type, `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint32OffsetsSized` as `serialize()` does, but into the start of `bytes_` rather than into new bytes,
+     * and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint32` offsets, after the largest version they hold */
@@ -481,6 +551,13 @@ struct Uint32OffsetsVersionedFields {
      * offset type, `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint32OffsetsVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 /** `uint32` offsets, after the table's length and a version */
@@ -528,6 +605,13 @@ struct Uint32OffsetsSizedVersionedFields {
      * offset type, `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Uint32OffsetsSizedVersioned` as `serialize()` does, but into the start of `bytes_` rather than into new
+     * bytes, and returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 inline std::uint32_t Uint8Offsets::id() const {
@@ -562,6 +646,20 @@ inline ::tafla::Bytes Uint8OffsetsFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint8OffsetsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint8Offsets::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline std::uint32_t Uint8OffsetsSized::id() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -592,6 +690,20 @@ inline ::tafla::Bytes Uint8OffsetsSizedFields::serialize() const {
     writer_.set_uint16_array(2, values);
 
     return writer_.finish();
+}
+
+inline std::size_t Uint8OffsetsSizedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsSized::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
 }
 
 inline Uint8OffsetsVersioned::Uint8OffsetsVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
@@ -637,6 +749,20 @@ inline ::tafla::Bytes Uint8OffsetsVersionedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint8OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsVersioned::LAYOUT, Uint8OffsetsVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline Uint8OffsetsSizedVersioned::Uint8OffsetsSizedVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
     const auto version = version_of(bytes);
     if (version != FORMAT_VERSION) {
@@ -680,6 +806,20 @@ inline ::tafla::Bytes Uint8OffsetsSizedVersionedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint8OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsSizedVersioned::LAYOUT, Uint8OffsetsSizedVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline std::uint32_t Uint16Offsets::id() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -712,6 +852,20 @@ inline ::tafla::Bytes Uint16OffsetsFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint16OffsetsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint16Offsets::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline std::uint32_t Uint16OffsetsSized::id() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -742,6 +896,20 @@ inline ::tafla::Bytes Uint16OffsetsSizedFields::serialize() const {
     writer_.set_uint16_array(2, values);
 
     return writer_.finish();
+}
+
+inline std::size_t Uint16OffsetsSizedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsSized::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
 }
 
 inline Uint16OffsetsVersioned::Uint16OffsetsVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
@@ -787,6 +955,20 @@ inline ::tafla::Bytes Uint16OffsetsVersionedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint16OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsVersioned::LAYOUT, Uint16OffsetsVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline Uint16OffsetsSizedVersioned::Uint16OffsetsSizedVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
     const auto version = version_of(bytes);
     if (version != FORMAT_VERSION) {
@@ -830,6 +1012,20 @@ inline ::tafla::Bytes Uint16OffsetsSizedVersionedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint16OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsSizedVersioned::LAYOUT, Uint16OffsetsSizedVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline std::uint32_t Uint32Offsets::id() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -862,6 +1058,20 @@ inline ::tafla::Bytes Uint32OffsetsFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint32OffsetsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint32Offsets::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline std::uint32_t Uint32OffsetsSized::id() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -892,6 +1102,20 @@ inline ::tafla::Bytes Uint32OffsetsSizedFields::serialize() const {
     writer_.set_uint16_array(2, values);
 
     return writer_.finish();
+}
+
+inline std::size_t Uint32OffsetsSizedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsSized::LAYOUT);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
 }
 
 inline Uint32OffsetsVersioned::Uint32OffsetsVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
@@ -937,6 +1161,20 @@ inline ::tafla::Bytes Uint32OffsetsVersionedFields::serialize() const {
     return writer_.finish();
 }
 
+inline std::size_t Uint32OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsVersioned::LAYOUT, Uint32OffsetsVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
+}
+
 inline Uint32OffsetsSizedVersioned::Uint32OffsetsSizedVersioned(std::span<const std::uint8_t> bytes) : bytes_(bytes) {
     const auto version = version_of(bytes);
     if (version != FORMAT_VERSION) {
@@ -978,6 +1216,20 @@ inline ::tafla::Bytes Uint32OffsetsSizedVersionedFields::serialize() const {
     writer_.set_uint16_array(2, values);
 
     return writer_.finish();
+}
+
+inline std::size_t Uint32OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsSizedVersioned::LAYOUT, Uint32OffsetsSizedVersioned::FORMAT_VERSION);
+    sizer_.add_uint32();
+    sizer_.add_string(name);
+    sizer_.add_uint16_array(values.size());
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint32(0, id);
+    writer_.set_string(1, name);
+    writer_.set_uint16_array(2, values);
+
+    return writer_.finish_into();
 }
 
 }  // namespace layouts

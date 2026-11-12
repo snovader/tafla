@@ -84,6 +84,22 @@ type, offset size, vector, builder and decode error.
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
   them.
+- **Writing into reused bytes.** `TableSizer::writer(bytes)` and a generated
+  message's `serialize_into(bytes)` write the table into the start of a
+  `std::span<std::uint8_t>` that the caller owns, rather than into new
+  `Bytes`, and return its length, as Java's `serializeInto()` does. They
+  write every byte of the table, padding included, so reused bytes needn't be
+  zeroed, and throw `std::invalid_argument` for bytes shorter than the table
+  before writing any of them. A writer's `finish()` and `finish_into()` each
+  throw `std::logic_error` for a writer of the other kind of bytes. In the
+  comparison suite's workloads, with the fields built as its tafla-gen codec
+  builds them, writing into reused bytes took 5.9 ns for the record against
+  23.5 ns into new bytes, 28 ns for the document of 100 rows against 45 ns,
+  and 61 ns for the array of 100 structs against 79 ns. It saves less where
+  the bytes cost little beside the rest: 5% for the vector of 100 nested
+  tables, whose codec allocates the items' fields, and 2% for the document of
+  1.2 MB, which copying its columns takes most of. A `serialize()` compiles
+  to the same code as before.
 - **`ArrayView::as_span()`** returns a `std::span<const T>` of the elements
   where they're aligned on a little-endian host, as `TableBuilder` aligns
   them within an aligned table. It deliberately reads the table's bytes as

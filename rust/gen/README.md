@@ -302,7 +302,8 @@ code defines or inherits, or with a local that it reads fields beside, such as
 and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
 `version_of_` in Rust, `MarshalBinary_` in Go, as Go exports every name of a
 schema in `PascalCase`, which keywords don't clash with, and `serialize_`,
-`size_`, `write_`, `read_`, `to_bytes_` and `version_of_` in C++, which also
+`serialize_into_`, `size_`, `write_`, `read_`, `to_bytes_` and `version_of_`
+in C++, which also
 renames macros in `snake_case`: the C standard library's, such as `errno_`,
 those that compilers predefine outside strict ISO modes, such as `linux_` and
 `unix_`, and `min_`, `max_`, `major_` and `minor_`, which glibc's and Windows'
@@ -442,6 +443,26 @@ message. In Java's comparison suite, on JDK 25, writing into reused bytes took
 of 1.3 KB, and 17% less for a record of 60 bytes. Where creating the fields'
 values costs more than the bytes, it saves little: 1.5% for a vector of 100
 nested tables, and nothing for an array of 100 structs.
+
+C++'s messages declare `serialize_into(bytes)`, which writes the message
+into the start of a `std::span<std::uint8_t>` that the caller owns, through
+the runtime's `TableSizer::writer(bytes)`, and returns its length, as Java's
+`serializeInto()` does. Bytes shorter than the message throw a
+`std::invalid_argument` before any of them is written. Arrays are viewed in
+place, through `as_span()`, only when the message starts at an address
+aligned to 8, as a `std::vector`'s bytes do:
+
+```cpp
+std::vector<std::uint8_t> bytes(1 << 20);  // as long as the longest message
+const auto length = fields.serialize_into(bytes);
+send(std::span(bytes).first(length));
+```
+
+On the workloads of C++'s comparison suite, on an Apple M2 Pro with Apple
+Clang, writing into reused bytes took 75% less time than into new bytes for the record of 60
+bytes, 37% less for the document of 1.3 KB, and 22% less for the array of 100
+structs, but only 5% less for the vector of 100 nested tables and 2% less for
+the document of 1.2 MB, whose columns' copies take most of its time.
 
 ### Items of the caller's types
 
@@ -618,7 +639,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 318 KB. It has no imports, so any host runs it with an empty import
+about 397 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 

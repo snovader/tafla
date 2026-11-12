@@ -3755,6 +3755,13 @@ struct RootFields {
      * addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Root` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns its
+     * length, the number of bytes that hold it, leaving the bytes after it as they were. Throws `std::invalid_argument`
+     * if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 inline std::uint8_t Leaf::value() const {
@@ -7425,6 +7432,36 @@ inline ::tafla::Bytes RootFields::serialize() const {
     }
 
     return writer_.finish();
+}
+
+inline std::size_t RootFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(3, Root::LAYOUT);
+    sizer_.add_table(Level1Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(first.size());
+    for (const auto& item_ : first) {
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(second.size());
+    for (const auto& item_ : second) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_table(0, Level1Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, first.size());
+    for (std::size_t index_ = 0; index_ < first.size(); ++index_) {
+        first[index_].write(writer_);
+        writer_.set_item_end(vector1_, index_);
+    }
+    const auto vector2_ = writer_.set_vector(2, second.size());
+    for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
+        second[index_].write(writer_);
+        writer_.set_item_end(vector2_, index_);
+    }
+
+    return writer_.finish_into();
 }
 
 }  // namespace nesting

@@ -128,6 +128,13 @@ struct MacrosFields {
      * `uint32`, addresses
      */
     [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Macros` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 inline ::tafla::ArrayView<float> Interface::min_() const {
@@ -268,6 +275,42 @@ inline ::tafla::Bytes MacrosFields::serialize() const {
     interface_.write(writer_);
 
     return writer_.finish();
+}
+
+inline std::size_t MacrosFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(13, Macros::LAYOUT);
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_uint8();
+    sizer_.add_table(InterfaceFields::ALIGNMENT);
+    interface_.size(sizer_);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint8(0, linux_);
+    writer_.set_uint8(1, unix_);
+    writer_.set_uint8(2, i386_);
+    writer_.set_uint8(3, sun_);
+    writer_.set_uint8(4, min_);
+    writer_.set_uint8(5, max_);
+    writer_.set_uint8(6, major_);
+    writer_.set_uint8(7, minor_);
+    writer_.set_uint8(8, errno_);
+    writer_.set_uint8(9, near_);
+    writer_.set_uint8(10, far_);
+    writer_.set_uint8(11, small_);
+    writer_.set_table(12, InterfaceFields::ALIGNMENT);
+    interface_.write(writer_);
+
+    return writer_.finish_into();
 }
 
 }  // namespace linux_::EOF_::schema_Upper::b_c
