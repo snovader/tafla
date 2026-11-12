@@ -6,8 +6,10 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -415,6 +417,35 @@ public:
     /// writing a builder of another layout or an allocation fails.
     void set_vector(std::vector<NestedTable> items);
 
+    class Item;
+
+    /// Records a table of `fields` fields nested in this one, in place, as a
+    /// nested builder would be, but without a builder of its own: `fill` sets
+    /// its fields, in order, on the `Item` that it's given, and each is
+    /// recorded straight among this builder's fields. The table is padded to
+    /// start at a multiple of its largest alignment, as `set_table()` pads a
+    /// builder.
+    ///
+    /// The builder itself mustn't be used within `fill`, only the `Item`.
+    ///
+    /// Throws a `BuildError` if `fill` leaves fields of the table unset, or as
+    /// the setters do, and passes on what `fill` throws, leaving the builder
+    /// as it was either way.
+    template <std::invocable<Item&> Fill>
+    void set_table(std::size_t fields, Fill&& fill);
+
+    /// Records a vector of `count` tables of `fields` fields each, in place,
+    /// as `set_table(fields, fill)` records one: `fill(index, item)` sets the
+    /// fields of item `index`, for each in order. Items aren't padded, as
+    /// `set_vector()` doesn't pad them.
+    ///
+    /// Throws a `BuildError` if the vector's count makes the table too long
+    /// before any item is recorded, if `fill` leaves an item's fields unset,
+    /// or as the setters do, and passes on what `fill` throws, leaving the
+    /// builder as it was either way.
+    template <std::invocable<std::size_t, Item&> Fill>
+    void set_vector(std::size_t count, std::size_t fields, Fill&& fill);
+
 private:
     friend class NestedTable;
 
@@ -497,12 +528,18 @@ private:
             return spilled_.empty() ? inline_.data() : spilled_.data();
         }
 
-        /// Appends a field, inline while the array has room for it, which is
-        /// every field of a small table, so that setting one doesn't call a
-        /// function
+        /// Appends a field, inline while the array or the vector has room for
+        /// it, which is every field of a small table and most of a large one,
+        /// so that setting one doesn't call a function
         TAFLA_ALWAYS_INLINE void push_back(const Field& field) {
-            if (spilled_.empty() && size_ < Inline) [[likely]] {
-                inline_[size_++] = field;
+            if (spilled_.empty()) {
+                if (size_ < Inline) [[likely]] {
+                    inline_[size_++] = field;
+                    return;
+                }
+            } else if (spilled_.size() < spilled_.capacity()) [[likely]] {
+                spilled_.push_back(field);
+                ++size_;
                 return;
             }
             push_back_spilled(field);
@@ -528,6 +565,12 @@ private:
                 spilled_.insert(spilled_.end(), fields.data(), fields.data() + fields.size_);
             }
             size_ = size;
+        }
+
+        /// Sets the alignment of the field at `index`, a table recorded in
+        /// place, which is known once its fields are
+        void set_alignment(std::size_t index, Alignment alignment) noexcept {
+            (spilled_.empty() ? inline_.data() : spilled_.data())[index].alignment = alignment;
         }
 
         /// Removes the fields past the first `size`, which leaves the
@@ -575,6 +618,34 @@ private:
     static std::uint32_t versioned_header(std::size_t fields, TableLayout<true> layout, std::uint32_t version) {
         detail::check_version(version, layout.offset_type());
         return detail::header_length(fields, layout.is_sized(), true, layout.offset_type());
+    }
+
+    /// What the builder counts of the table whose fields it's recording: its
+    /// own, or those of a table that it records in place
+    struct Counters {
+        std::uint32_t fields;
+        std::uint32_t set;
+        std::uint32_t length;
+        Alignment alignment;
+    };
+
+    [[nodiscard]] Counters counters() const noexcept {
+        return {fields_, set_, length_, alignment_};
+    }
+
+    void restore(const Counters& counters) noexcept {
+        fields_ = counters.fields;
+        set_ = counters.set;
+        length_ = counters.length;
+        alignment_ = counters.alignment;
+    }
+
+    /// Records a table of `fields` fields in place, whose header, of
+    /// `header` bytes, holds only their offsets, and starts counting its
+    /// fields rather than this table's
+    void start_in_place(std::size_t fields, std::uint32_t header) {
+        values_.push_back({Kind::table, 0, Alignment::one, static_cast<std::uint32_t>(fields), 0, 0, nullptr});
+        restore({static_cast<std::uint32_t>(fields), 0, header, Alignment::one});
     }
 
     /// The length of the header, which the constructor checked
@@ -878,6 +949,307 @@ private:
     std::variant<const TableBuilder*, TableBuilder, std::span<const std::uint8_t>, Bytes, std::vector<std::uint8_t>>
         table_;
 };
+
+/// The fields of a table that a `TableBuilder` records in place, as one of
+/// its own fields or an item of a vector, which its `set_table(fields, fill)`
+/// and `set_vector(count, fields, fill)` give to the function that sets
+/// them. Its setters are the builder's, taking the same values and throwing
+/// the same errors, and record each field among the builder's own, so the
+/// table needs no builder of its own and its fields are never copied. It's
+/// valid only within that function.
+class TableBuilder::Item {
+public:
+    Item(const Item&) = delete;
+    Item& operator=(const Item&) = delete;
+    ~Item() = default;
+
+    void set_int8(std::int8_t value) {
+        builder_->set_int8(value);
+    }
+
+    void set_uint8(std::uint8_t value) {
+        builder_->set_uint8(value);
+    }
+
+    void set_int16(std::int16_t value) {
+        builder_->set_int16(value);
+    }
+
+    void set_uint16(std::uint16_t value) {
+        builder_->set_uint16(value);
+    }
+
+    void set_int32(std::int32_t value) {
+        builder_->set_int32(value);
+    }
+
+    void set_uint32(std::uint32_t value) {
+        builder_->set_uint32(value);
+    }
+
+    void set_int64(std::int64_t value) {
+        builder_->set_int64(value);
+    }
+
+    void set_uint64(std::uint64_t value) {
+        builder_->set_uint64(value);
+    }
+
+    void set_float32(float value) {
+        builder_->set_float32(value);
+    }
+
+    void set_float64(double value) {
+        builder_->set_float64(value);
+    }
+
+    void set_int8_array(std::span<const std::int8_t> values) {
+        builder_->set_int8_array(values);
+    }
+
+    void set_int8_array(std::vector<std::int8_t>&& values) {
+        builder_->set_int8_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_int8_array(Values&& values) = delete;
+
+    void set_uint8_array(std::span<const std::uint8_t> values) {
+        builder_->set_uint8_array(values);
+    }
+
+    void set_uint8_array(std::vector<std::uint8_t>&& values) {
+        builder_->set_uint8_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_uint8_array(Values&& values) = delete;
+
+    void set_int16_array(std::span<const std::int16_t> values) {
+        builder_->set_int16_array(values);
+    }
+
+    void set_int16_array(std::vector<std::int16_t>&& values) {
+        builder_->set_int16_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_int16_array(Values&& values) = delete;
+
+    void set_uint16_array(std::span<const std::uint16_t> values) {
+        builder_->set_uint16_array(values);
+    }
+
+    void set_uint16_array(std::vector<std::uint16_t>&& values) {
+        builder_->set_uint16_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_uint16_array(Values&& values) = delete;
+
+    void set_int32_array(std::span<const std::int32_t> values) {
+        builder_->set_int32_array(values);
+    }
+
+    void set_int32_array(std::vector<std::int32_t>&& values) {
+        builder_->set_int32_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_int32_array(Values&& values) = delete;
+
+    void set_uint32_array(std::span<const std::uint32_t> values) {
+        builder_->set_uint32_array(values);
+    }
+
+    void set_uint32_array(std::vector<std::uint32_t>&& values) {
+        builder_->set_uint32_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_uint32_array(Values&& values) = delete;
+
+    void set_int64_array(std::span<const std::int64_t> values) {
+        builder_->set_int64_array(values);
+    }
+
+    void set_int64_array(std::vector<std::int64_t>&& values) {
+        builder_->set_int64_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_int64_array(Values&& values) = delete;
+
+    void set_uint64_array(std::span<const std::uint64_t> values) {
+        builder_->set_uint64_array(values);
+    }
+
+    void set_uint64_array(std::vector<std::uint64_t>&& values) {
+        builder_->set_uint64_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_uint64_array(Values&& values) = delete;
+
+    void set_float32_array(std::span<const float> values) {
+        builder_->set_float32_array(values);
+    }
+
+    void set_float32_array(std::vector<float>&& values) {
+        builder_->set_float32_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_float32_array(Values&& values) = delete;
+
+    void set_float64_array(std::span<const double> values) {
+        builder_->set_float64_array(values);
+    }
+
+    void set_float64_array(std::vector<double>&& values) {
+        builder_->set_float64_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_float64_array(Values&& values) = delete;
+
+    void set_string(std::string_view string) {
+        builder_->set_string(string);
+    }
+
+    void set_string(const char* string) {
+        builder_->set_string(string);
+    }
+
+    void set_string(std::string&& string) {
+        builder_->set_string(std::move(string));
+    }
+
+    template <detail::Temporary String>
+    void set_string(String&& string) = delete;
+
+    void set_struct(std::span<const std::uint8_t> bytes) {
+        builder_->set_struct(bytes);
+    }
+
+    void set_struct(std::vector<std::uint8_t>&& bytes) {
+        builder_->set_struct(std::move(bytes));
+    }
+
+    template <detail::Temporary Range>
+    void set_struct(Range&& bytes) = delete;
+
+    void set_struct_array(std::span<const std::uint8_t> bytes, std::size_t size, Alignment alignment) {
+        builder_->set_struct_array(bytes, size, alignment);
+    }
+
+    void set_struct_array(std::vector<std::uint8_t>&& bytes, std::size_t size, Alignment alignment) {
+        builder_->set_struct_array(std::move(bytes), size, alignment);
+    }
+
+    template <detail::Temporary Range>
+    void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
+
+    void set_table(NestedTable table) {
+        builder_->set_table(std::move(table));
+    }
+
+    void set_table(NestedTable table, Alignment alignment) {
+        builder_->set_table(std::move(table), alignment);
+    }
+
+    template <std::invocable<Item&> Fill>
+    void set_table(std::size_t fields, Fill&& fill) {
+        builder_->set_table(fields, std::forward<Fill>(fill));
+    }
+
+    void set_vector(std::vector<NestedTable> items) {
+        builder_->set_vector(std::move(items));
+    }
+
+    template <std::invocable<std::size_t, Item&> Fill>
+    void set_vector(std::size_t count, std::size_t fields, Fill&& fill) {
+        builder_->set_vector(count, fields, std::forward<Fill>(fill));
+    }
+
+private:
+    friend class TableBuilder;
+
+    explicit Item(TableBuilder& builder) noexcept : builder_(&builder) {}
+
+    TableBuilder* builder_;
+};
+
+template <std::invocable<TableBuilder::Item&> Fill>
+void TableBuilder::set_table(std::size_t fields, Fill&& fill) {
+    if (set_ == fields_) [[unlikely]] {
+        throw_too_many_fields(fields_);
+    }
+    const auto header = detail::header_length(fields, false, false, offset_type_);
+
+    const auto values = values_.size();
+    const auto owned = owned_.size();
+    const auto parent = counters();
+    try {
+        start_in_place(fields, header);
+        Item item(*this);
+        std::invoke(fill, item);
+        check_complete();
+
+        // Padded from this table's length, as a nested builder is
+        const auto table = counters();
+        restore(parent);
+        const std::uint64_t padding = detail::padding<std::uint64_t>(length_, table.alignment);
+        const auto length = check_field(padding + table.length);
+        values_.set_alignment(values, table.alignment);
+        set(length, table.alignment);
+    } catch (...) {
+        restore(parent);
+        truncate(values, owned);
+        throw;
+    }
+}
+
+template <std::invocable<std::size_t, TableBuilder::Item&> Fill>
+void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill) {
+    // The count and the items' ends, which fail before any item is recorded
+    const auto slots = detail::vector_bytes(count, width());
+    static_cast<void>(check_field(slots));
+    const auto header = detail::header_length(fields, false, false, offset_type_);
+
+    const auto values = values_.size();
+    const auto owned = owned_.size();
+    const auto parent = counters();
+    try {
+        // Room for the fewest fields that the items record, one for each
+        // table and each of its fields, which is all of them unless they
+        // nest tables of their own, so that recording them grows the fields
+        // at most a few times. It never reserves more than they record.
+        const auto fewest = detail::saturating_product(count, detail::saturating_sum(fields, 1));
+        if (fewest < SIZE_MAX - values) {
+            values_.reserve(values + 1 + static_cast<std::size_t>(fewest));
+        }
+        values_.push_back({Kind::vector, 0, Alignment::one, static_cast<std::uint32_t>(count), 0, 0, nullptr});
+
+        std::uint64_t nested_bytes = 0;
+        for (std::size_t index = 0; index < count; ++index) {
+            start_in_place(fields, header);
+            Item item(*this);
+            std::invoke(fill, index, item);
+            check_complete();
+
+            nested_bytes = detail::saturating_sum(nested_bytes, length_);
+            restore(parent);
+        }
+
+        const auto length = check_field(detail::saturating_sum(slots, nested_bytes));
+        set(length, Alignment::one);
+    } catch (...) {
+        restore(parent);
+        truncate(values, owned);
+        throw;
+    }
+}
 
 inline TableBuilder::TableBuilder(std::size_t fields, std::uint32_t header, bool sized,
                                   std::optional<std::uint32_t> version, OffsetType offset_type)
