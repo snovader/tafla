@@ -3,7 +3,9 @@ name: Release
 # Publishes every package when a tag v<version> is pushed, as RELEASING.md
 # describes. Each registry has jobs that check its language and build its
 # artifacts, which a dry run uploads to the workflow run, and a job that
-# publishes them, so that one registry's failure doesn't stop the others.
+# publishes them, so that one registry's failure doesn't stop the others. The
+# Go module is published by a tag of its own, go/v<version>, which its publish
+# job pushes, and from which the Go module proxy builds it.
 #
 # A dry run builds without publishing: a pull request that touches the release
 # files runs one, and so does a manual run, unless it's on a tag with dry_run
@@ -94,6 +96,7 @@ jobs:
               - "rust/gen/Cargo.toml"
               - "java/core/build.gradle.kts"
               - "java/gradle/libs.versions.toml"
+              - "go/go.mod"
 
       # A tag publishes, and so does a manual run on a tag with dry_run off.
       # Any other manual run, and a pull request that touches the release
@@ -639,3 +642,188 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
         run: ./gradlew :core:publishToMavenCentral
+
+  # Go module proxy
+
+  go-build:
+    name: Go module proxy (check and zip)
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: go
+    env:
+      # Only the steps that set GOPROXY download modules, so that the others
+      # build from what go.mod and go.sum name. They leave -mod at readonly,
+      # its default, so that a requirement or a hash that's missing fails
+      # rather than being written.
+      GOPROXY: "off"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, so that every dependency comes from the proxy, as it
+      # will for a module that requires tafla's
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install staticcheck
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+
+      # Checks each download's hash against go.sum, and then that the module
+      # cache still holds what was downloaded. The runtime's module requires
+      # nothing, and the tests' module requires their library.
+      - name: Download and verify the dependencies
+        working-directory: go/tests
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run formatting check
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      # The conformance suite, the property tests and the generated code, in
+      # a module of their own
+      - name: Run vet on the tests
+        working-directory: go/tests
+        run: go vet ./...
+
+      - name: Run staticcheck on the tests
+        working-directory: go/tests
+        run: staticcheck ./...
+
+      - name: Run the tests' module
+        working-directory: go/tests
+        run: go test ./...
+
+      # The go command builds the module from a tag, as the module proxy will
+      # from the pushed one: git fetches https://github.com/snovader/tafla
+      # from the checkout, where this step tags the commit without pushing the
+      # tags. A dry run tags v<version> too, which a release has checked out,
+      # since the go command looks for the package in the repository's root
+      # at that version as well.
+      - name: Tag the commit in the checkout
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git rev-parse --quiet --verify "refs/tags/v$VERSION" > /dev/null || git tag "v$VERSION"
+          git tag "go/v$VERSION"
+
+      # In a module that requires tafla's, as a user's would: go get fetches
+      # the module from the tag, the files of go/ but tests/ and benchmarks/,
+      # modules of their own, then vet checks every package and test in it,
+      # and its tests run from the module cache, as go test all runs them for
+      # a user. The version isn't in the checksum database yet, so
+      # GOPRIVATE fetches it from git and doesn't look it up there, and with
+      # GOPROXY off nothing else downloads. -mod=mod lets the go command write
+      # the scratch module's go.mod and go.sum.
+      - name: Build the module from its tag
+        working-directory: ${{ runner.temp }}
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.file://${{ github.workspace }}/.git.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/snovader/tafla
+          GOPRIVATE: github.com/snovader/tafla
+          GOFLAGS: -mod=mod
+        run: |
+          mkdir consumer
+          cd consumer
+          go mod init example.invalid/consumer
+          go get "github.com/snovader/tafla/go@v$VERSION"
+          go vet github.com/snovader/tafla/go/...
+          go test github.com/snovader/tafla/go/...
+
+      # The files that the proxy will serve for the version
+      - name: Copy the module
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir "$RUNNER_TEMP/go"
+          cp "$(go env GOMODCACHE)/cache/download/github.com/snovader/tafla/go/@v/v$VERSION".{info,mod,zip} "$RUNNER_TEMP/go/"
+          unzip -l "$RUNNER_TEMP/go/v$VERSION.zip"
+
+      - name: Upload the module
+        uses: actions/upload-artifact@v7
+        with:
+          name: go
+          path: ${{ runner.temp }}/go/
+          if-no-files-found: error
+
+  # Pushes the tag that publishes the module, and fetches the module from the
+  # proxy, which builds it from the tag, and from the checksum database, which
+  # records its hash, as a user's first go get of the version would.
+  # pkg.go.dev then lists the version. Unlike an upload, the tag can't be
+  # taken back once the proxy has the module, so it waits for every
+  # language's build, rather than only Go's, and a release that fails to
+  # build in another language gets no Go version.
+  go-publish:
+    name: Go module proxy (publish)
+    needs: [version, npm-build, pypi-build, pypi-wheels, crates-build, maven-build, go-build]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: go-proxy
+      url: https://pkg.go.dev/github.com/snovader/tafla/go@v${{ needs.version.outputs.version }}
+    permissions:
+      # Pushes the tag
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Tags the commit that v<version> tags, which the checkout is. A job run
+      # again finds the tag that it pushed, and fails if the tag names another
+      # commit, since the proxy keeps the module that it built first.
+      - name: Push the tag go/v<version>
+        run: |
+          tag="go/v$VERSION"
+          commit=$(git rev-parse HEAD)
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            git fetch --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
+            tagged=$(git rev-parse "$tag^{commit}")
+            if [[ "$tagged" != "$commit" ]]; then
+              echo "::error::$tag tags $tagged, but v$VERSION tags $commit"
+              exit 1
+            fi
+            echo "$tag already tags $commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "tafla $VERSION for Go" "$commit"
+            git push origin "refs/tags/$tag"
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      # Outside a module, through the proxy and the checksum database that
+      # GOPROXY and GOSUMDB name by default
+      - name: Fetch the module from the proxy
+        working-directory: ${{ runner.temp }}
+        run: go mod download -json "github.com/snovader/tafla/go@v$VERSION"

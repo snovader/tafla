@@ -1,0 +1,120 @@
+// Fields whose sizes the schema fixes: scalars, structs, and tables of only
+// such fields. Generated code may lay them out itself rather than field by
+// field: a message of only such fields, or of such fields and a string after
+// them, whole, the first such fields of other tables together, and a nested
+// table of only such fields whole, in every offset type and header, though
+// only `uint32` offsets nest tables. A message whose fixed fields alone are
+// too long for its offset type can never be written.
+
+/// Two coordinates
+struct Vec2 {
+    x: float32;
+    y: float32;
+}
+
+/// Eight coordinates, the bytes of a large struct
+struct Quad {
+    a: float64;
+    b: float64;
+    c: float64;
+    d: float64;
+    e: float64;
+    f: float64;
+    g: float64;
+    h: float64;
+}
+
+/// 256 bytes, longer than a table of `uint8` offsets
+struct Block {
+    first: Quad;
+    second: Quad;
+    third: Quad;
+    fourth: Quad;
+}
+
+/// A table of only scalars, which nests whole
+table Range {
+    start: uint32;
+    end: uint32;
+}
+
+/// A table of a struct, a table of fixed fields and a scalar, which nests
+/// whole too
+table Frame {
+    origin: Vec2;
+    range: Range;
+    flags: uint16;
+}
+
+/// `uint8` offsets after the table's length: only fixed fields, written
+/// whole
+message Tiny (sized, offset_type: uint8) {
+    id: uint16;
+    kind: uint8;
+}
+
+/// `uint8` offsets after the table's length and a version: fixed fields and
+/// a string after them, written whole
+message Tagged (sized, offset_type: uint8, version: 3) {
+    id: uint32;
+    position: Vec2;
+    label: string;
+}
+
+/// `uint8` offsets: two fixed fields together, and then an array
+message Header (offset_type: uint8) {
+    kind: uint8;
+    length: uint16;
+    values: [uint8];
+}
+
+/// `uint16` offsets after the table's length and a version: a struct among
+/// fixed fields, written whole
+message Pixel (sized, offset_type: uint16, version: 2) {
+    position: Vec2;
+    color: uint32;
+}
+
+/// `uint16` offsets: fixed fields with a struct together, and then an array
+message Strip (offset_type: uint16) {
+    id: uint32;
+    origin: Vec2;
+    values: [uint16];
+}
+
+/// A version: a struct and a nested table among fixed fields, written whole
+message Box (version: 1) {
+    min: Vec2;
+    max: Vec2;
+    range: Range;
+}
+
+/// Fixed fields with a struct and a nested table together, and then other
+/// fields
+message Track {
+    id: uint32;
+    origin: Vec2;
+    frame: Frame;
+    points: [float32];
+    name: string;
+}
+
+/// Only a string, written whole
+message Label {
+    text: string;
+}
+
+/// Fixed tables after other fields, alone and in a vector
+message Span {
+    name: string;
+    range: Range;
+    frame: Frame;
+    ranges: [Range];
+}
+
+/// `uint8` offsets whose fixed fields alone take more than 255 bytes, which
+/// generated code writes field by field, and fails to write as too long
+message Overflow (offset_type: uint8) {
+    id: uint8;
+    block: Block;
+}

@@ -1,0 +1,274 @@
+name: C++
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Every push and pull request runs this workflow, so that its required check
+  # always reports, and the jobs below run only when the change touches these
+  # paths
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      cpp: ${{ steps.filter.outputs.cpp }}
+    steps:
+      # A pull request lists its files through the API, and a push compares
+      # its commits, which needs the repository
+      - name: Checkout GitHub repo
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: Filter the changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cpp:
+              - ".github/workflows/cpp.yml"
+              - "conformance/**"
+              - "cpp/**"
+              - "rust/gen/**"
+              - "schemas/**"
+
+  formatting:
+    name: Formatting
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # The version that cpp/README.md names, since clang-format's versions
+      # format alike only mostly. tafla-gen's golden files are checked too.
+      - name: Run formatting check
+        run: git ls-files -z 'cpp/*.hpp' 'cpp/*.cpp' | xargs -0 pipx run clang-format==23.1.5 --dry-run --Werror
+
+  test:
+    name: Test (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cpp
+    strategy:
+      fail-fast: false
+      # The runner image's default GCC and Clang, which change with the image
+      matrix:
+        include:
+          - name: GCC on Linux
+            os: ubuntu-latest
+            cxx: g++
+            options: ""
+          - name: Clang on Linux
+            os: ubuntu-latest
+            cxx: clang++
+            options: ""
+          - name: Clang on macOS
+            os: macos-latest
+            cxx: clang++
+            options: ""
+          # A 32-bit size_t, which the headers' reads and writes check
+          # lengths in otherwise than on 64-bit hosts
+          - name: GCC on 32-bit x86
+            os: ubuntu-latest
+            cxx: g++
+            options: -DCMAKE_CXX_FLAGS=-m32
+            packages: g++-multilib
+          # Reads every read within the bytes it was given, and finds
+          # undefined behavior, such as a misaligned or overflowing access
+          - name: AddressSanitizer and UndefinedBehaviorSanitizer
+            os: ubuntu-latest
+            cxx: clang++
+            options: -DTAFLA_SANITIZERS=address,undefined -DCMAKE_BUILD_TYPE=Debug
+          # Reads and writes every array element by element, as a big-endian
+          # host does
+          - name: Byte swapping
+            os: ubuntu-latest
+            cxx: g++
+            options: -DTAFLA_FORCE_BYTE_SWAP=ON
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # With Clang's runtime of the sanitizers, whose package is named after
+      # the default Clang's major version, and the matrix's packages
+      - name: Install Ninja on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev" ${{ matrix.packages }}
+
+      - name: Install Ninja on macOS
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      # With warnings as errors, which tafla's own targets compile with
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DTAFLA_WARNINGS_AS_ERRORS=ON ${{ matrix.options }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+      # The package that `cmake --install` installs, which a project finds
+      - name: Install the package
+        run: cmake --install build --prefix "$RUNNER_TEMP/tafla"
+
+      - name: Build a project that uses the package
+        run: >
+          cmake -S tests/package -B build-package -G Ninja -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/tafla" ${{ matrix.options }}
+          && cmake --build build-package && build-package/package_test
+
+  # A big-endian host, s390x, emulated by QEMU, which reads every array
+  # through its byte-swapping path for real
+  big-endian:
+    name: Test (big-endian)
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Install the cross-compiler and QEMU
+        run: >
+          sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build g++-s390x-linux-gnu
+          qemu-user
+
+      # Statically linked, so that QEMU runs the tests without s390x's shared
+      # libraries
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux
+          -DCMAKE_SYSTEM_PROCESSOR=s390x -DCMAKE_CXX_COMPILER=s390x-linux-gnu-g++
+          -DCMAKE_EXE_LINKER_FLAGS=-static -DCMAKE_CROSSCOMPILING_EMULATOR=qemu-s390x
+          -DTAFLA_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure --parallel 4
+
+  # libFuzzer's targets, built with the sanitizers and run briefly, so that a
+  # change that breaks them fails here; cpp/README.md runs them for longer
+  fuzz:
+    name: Fuzz
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # With Clang's runtime of libFuzzer and the sanitizers
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ninja-build \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++
+          -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
+
+      - name: Build the fuzz targets
+        run: cmake --build build --target fuzz_byte_buffer fuzz_conformance
+
+      - name: Run each fuzz target for a minute
+        run: |
+          for target in byte_buffer conformance; do
+              mkdir -p build/corpus/$target
+              build/fuzz/fuzz_$target build/corpus/$target ../conformance/valid ../conformance/equivalent \
+                  ../conformance/invalid -max_total_time=60 -timeout=10
+          done
+
+  benchmark:
+    name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: cpp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Install the libraries of the comparison
+        run: brew install ninja flatbuffers protobuf msgpack-cxx
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAFLA_BUILD_BENCHMARKS=ON -DTAFLA_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build --target tafla_comparison tafla_encoding tafla_allocation benchmarks_test
+
+      # Shared runners are too noisy for the numbers to mean much; these runs
+      # check that every codec in the comparison reads back what it wrote, and
+      # that the benchmarks work
+      - name: Run round-trip test
+        run: build/benchmarks/benchmarks_test
+
+      - name: Run benchmarks briefly
+        run: build/benchmarks/tafla_comparison --quick
+
+      - name: Print encoded sizes
+        run: build/benchmarks/tafla_encoding
+
+      - name: Print allocations
+        run: build/benchmarks/tafla_allocation
+
+  # The check that the main branch's ruleset requires. It passes when every job
+  # passed, or was skipped because the change doesn't touch C++.
+  checks:
+    name: C++ checks
+    needs: [changes, formatting, test, big-endian, fuzz, benchmark]
+    # Runs after a failure too, since GitHub counts a skipped required check as
+    # passed
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
