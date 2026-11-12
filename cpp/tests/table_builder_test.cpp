@@ -9,9 +9,11 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +22,7 @@
 #include "common/build.hpp"
 #include "common/read.hpp"
 #include "common/strategy.hpp"
+#include "common/write.hpp"
 
 namespace tafla::test {
 namespace {
@@ -248,6 +251,125 @@ RC_GTEST_PROP(TableBuilder, ATableNestedFromItsBuilderWritesTheSameParentAsFromI
     for (auto item : buffer.get_vector(buffer.root_offset(2)).items()) {
         RC_ASSERT(std::ranges::equal(item, bytes.span()));
     }
+}
+
+/// What building a table returned: its bytes, or its error
+struct Built {
+    std::optional<std::vector<std::uint8_t>> bytes;
+    std::optional<BuildError> error;
+};
+
+Built built_by(const std::function<Bytes()>& build) {
+    try {
+        return {build().to_vector(), std::nullopt};
+    } catch (const BuildError& error) {
+        return {std::nullopt, error};
+    }
+}
+
+bool same_built(const Built& left, const Built& right) {
+    if (left.bytes || right.bytes) {
+        return left.bytes == right.bytes;
+    }
+    const auto& details = right.error->details();
+    return same_error(*left.error, details.kind, details.offset_type, details.first, details.second);
+}
+
+/// Tables nested from builders and recorded in place, with
+/// `set_table(fields, fill)` and `set_vector(count, fields, fill)`, write the
+/// bytes that their builders write, and fail as they fail, for tables of any
+/// offset type and of short ones, whose limits the fields reach
+RC_GTEST_PROP(TableBuilder, TablesRecordedInPlaceWriteWhatTheirBuildersWrite, ()) {
+    const auto table = nested_in_place(*rc::gen::oneOf(strategy::table(), tables_of_short_offsets()));
+
+    RC_ASSERT(
+        same_built(built_by([&] { return to_bytes_in_place(table); }), built_by([&] { return to_bytes(table); })));
+}
+
+/// The two tables of the vector of nested tables that the benchmarks write:
+/// an item of a float32 and a pair of float32s
+std::vector<std::uint8_t> items_of(std::span<const float> values, TableBuilder& builder) {
+    builder.set_vector(values.size(), 2, [&](std::size_t index, TableBuilder::Item& item) {
+        item.set_float32(values[index]);
+        item.set_table(2, [&](TableBuilder::Item& pair) {
+            pair.set_float32(values[index] + 1);
+            pair.set_float32(values[index] + 2);
+        });
+    });
+    return builder.to_bytes().to_vector();
+}
+
+std::vector<std::uint8_t> items_from_builders(std::span<const float> values) {
+    std::vector<NestedTable> items;
+    for (const auto value : values) {
+        TableBuilder pair(2, TableLayout());
+        pair.set_float32(value + 1);
+        pair.set_float32(value + 2);
+
+        TableBuilder item(2, TableLayout());
+        item.set_float32(value);
+        item.set_table(std::move(pair));
+        items.emplace_back(std::move(item));
+    }
+
+    TableBuilder builder(1, TableLayout());
+    builder.set_vector(std::move(items));
+    return builder.to_bytes().to_vector();
+}
+
+/// Whatever throws while items are recorded leaves the builder as it was,
+/// with none of their fields, so that the vector can be set again
+TEST(TableBuilder, AnItemThatFailsLeavesTheBuilderAsItWas) {
+    constexpr std::array<float, 3> values{1, 2, 3};
+    const auto expected = items_from_builders(values);
+
+    TableBuilder thrown(1, TableLayout());
+    EXPECT_THROW(thrown.set_vector(3, 2,
+                                   [](std::size_t index, TableBuilder::Item& item) {
+                                       item.set_float32(1);
+                                       if (index == 2) {
+                                           throw std::runtime_error("The caller's");
+                                       }
+                                       item.set_float32(2);
+                                   }),
+                 std::runtime_error);
+    EXPECT_EQ(items_of(values, thrown), expected);
+
+    TableBuilder incomplete(1, TableLayout());
+    const auto error = build_error_of([&] {
+        incomplete.set_vector(3, 2, [](std::size_t index, TableBuilder::Item& item) {
+            item.set_float32(1);
+            if (index != 1) {
+                item.set_float32(2);
+            }
+        });
+    });
+    EXPECT_TRUE(same_error(error, BuildError::Kind::incomplete, OffsetType::uint32, 1, 2));
+    EXPECT_EQ(items_of(values, incomplete), expected);
+
+    TableBuilder nested_incomplete(1, TableLayout());
+    EXPECT_THROW(nested_incomplete.set_vector(3, 2,
+                                              [](std::size_t, TableBuilder::Item& item) {
+                                                  item.set_float32(1);
+                                                  item.set_table(2,
+                                                                 [](TableBuilder::Item& pair) { pair.set_float32(2); });
+                                              }),
+                 BuildError);
+    EXPECT_EQ(items_of(values, nested_incomplete), expected);
+}
+
+TEST(TableBuilder, RejectsAnItemFieldBeyondItsCount) {
+    TableBuilder builder(1, TableLayout());
+    const auto error = build_error_of([&] {
+        builder.set_table(1, [](TableBuilder::Item& item) {
+            item.set_uint8(1);
+            item.set_uint8(2);
+        });
+    });
+    EXPECT_EQ(error.kind(), BuildError::Kind::too_many_fields);
+
+    builder.set_table(1, [](TableBuilder::Item& item) { item.set_uint8(1); });
+    EXPECT_EQ(builder.to_bytes().to_vector(), (std::vector<std::uint8_t>{4, 0, 0, 0, 4, 0, 0, 0, 1}));
 }
 
 TEST(TableBuilder, RejectsAFieldBeyondItsCount) {
