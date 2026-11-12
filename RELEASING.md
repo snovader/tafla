@@ -13,7 +13,7 @@ language and publishes its packages:
 | Maven Central   | `io.github.snovader.tafla:tafla` | Central Portal token, and a signing key                   |
 | Go module proxy | `github.com/snovader/tafla/go`   | None: the workflow's token pushes the tag `go/v<version>` |
 
-Each registry has a job of its own, so a registry that fails doesn't stop the
+Each registry has jobs of its own, so a registry that fails doesn't stop the
 others, and its failed jobs can be run again. A version that a registry has
 published can't be published again. The Go module's tag can't be taken back
 either, so its job waits for every language's build, and a release whose
@@ -30,6 +30,27 @@ The module records no version, since its tag is its version, so
 version at the end of the module path, as in `github.com/snovader/tafla/go/v2`,
 in `go/go.mod` and every import of it, and the workflow's Go check fails until
 they have it.
+
+## The Python distributions
+
+PyPI's `tafla` has a native implementation, written in Rust, and a pure-Python
+one. The release publishes:
+
+- Native wheels for Linux x86_64 and aarch64, as `manylinux_2_28` and
+  `musllinux_1_2`, macOS x86_64 and arm64, and Windows x64. Each platform has
+  an `abi3` wheel for CPython 3.14 and later, a `cp314t` wheel for
+  free-threaded CPython 3.14, and an `abi3t` wheel for CPython 3.15 and
+  later, which loads with the GIL too, and which pip prefers there to the
+  `abi3` one.
+- A pure-Python `py3-none-any` wheel, which pip installs on any other platform
+  or Python.
+- The source distribution, which builds the native module with Rust. pip
+  builds from it only when told to, since the pure-Python wheel installs
+  wherever no native one does. Without Rust, uv_build builds the pure-Python
+  wheel from the same sources, as `python/README.md` shows.
+
+`python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
+that it's for, and the job that publishes them runs once every one has passed.
 
 ## Releasing a version
 
@@ -63,11 +84,12 @@ version in `VERSION`. It pushes the Go module's tag, `go/v0.1.0`, itself.
 
 A pull request that touches the release files, such as `VERSION`, a package's
 manifest or the workflow, runs the workflow without publishing. It checks every
-language, builds the npm package, the Python distributions, the crates, the
-Maven repository, signed with a throwaway key, and the Go module, which the go
-command fetches from a tag `go/v<version>` in the run's checkout, and uploads
-them to the workflow run. To run it by hand, run the Release workflow from the
-Actions tab with `dry_run` on. A run that isn't on a tag never publishes.
+language, builds the npm package, the Python distributions for every platform,
+each tested, the crates, the Maven repository, signed with a throwaway key, and
+the Go module, which the go command fetches from a tag `go/v<version>` in the
+run's checkout, and uploads them to the workflow run. To run it by hand, run the
+Release workflow from the Actions tab with `dry_run` on. A run that isn't on a
+tag never publishes.
 
 ## Setting up the registries
 

@@ -77,10 +77,53 @@ then the fields in the order they were set:
   the vector's start, and then the items. An item starts where the one before
   it ends, so ``get_vector_offset()`` finds any item from two ends.
 
+Implementations
+---------------
+
+The classes that the code that tafla-gen generates calls, ``TableLayout``,
+``FixedFields``, ``TableWriter`` and ``ByteBuffer``, have two implementations
+with the same API, conversions and errors: a native one, written in Rust,
+which the platform wheels hold, and a pure-Python one, which the pure
+``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
+they're installed, and the pure-Python ones otherwise or when the environment
+variable ``TAFLA_PUREPYTHON`` is set to anything but the empty string, which
+is read once, at import. Native classes that are installed but fail to
+import, such as ones built for another Python, warn with ``RuntimeWarning``
+before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
+``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
+``TableWriter``, so the implementations never mix.
+
+A native method does in one call what the pure-Python one does in several
+Python calls, so the tables that generated code writes and reads take about
+half the time with the native classes. Both implementations' docstrings
+describe the same behavior, and the tests compare them call by call, errors
+and their messages included. They differ only in these ways:
+
+- A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
+  threads in parallel, and a native writer then raises ``RuntimeError`` for a
+  call while another thread's call to it runs, where the pure-Python one
+  writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
+  once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
+  release a ``memoryview`` that threads slice at once, which each
+  implementation's array reads do, and the pure-Python one's string reads,
+  so that they raise ``ValueError``: python/cpython#127716. The native
+  string reads don't slice it.
+- A ``TypeError`` for using the API wrongly, such as for bytes that aren't
+  C-contiguous, may be worded differently.
+- The native classes can't be subclassed: Python raises ``TypeError`` for a
+  class derived from one.
+
+The classes are public as ``tafla`` exports them. The submodules that hold
+the pure-Python ones, such as ``tafla.layout`` and ``tafla.byte_buffer``,
+aren't, and ``tafla._native`` isn't either. The native classes take a
+pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
+for anything else, so a layout created from ``tafla.layout`` serves both.
+
 Performance
 -----------
 
-Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off:
+Measured in CPython 3.14 on an Apple M2 Pro, with the garbage collector off,
+and the pure-Python classes:
 
 - **Buffers of the field's element type are copied as bytes.** That includes
   an ``array`` of the type code and a numpy array of the type. Anything else,
@@ -209,16 +252,20 @@ keep that count for each nested table, so the contract doesn't promise it.
 Hand-written tables use ``TableBuilder``, which checks every field.
 """
 
-from .byte_buffer import ByteBuffer
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
-from .fixed_fields import FixedFields
-from .layout import TableLayout
+from .implementation import (
+    IMPLEMENTATION,
+    ByteBuffer,
+    FixedFields,
+    TableLayout,
+    TableWriter,
+)
 from .table_builder import TableBuilder
-from .table_writer import TableWriter
 from .types import OffsetSize, OffsetType
 
 __all__ = [
+    "IMPLEMENTATION",
     "ByteBuffer",
     "DecodeError",
     "FixedFields",

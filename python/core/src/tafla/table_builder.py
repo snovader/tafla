@@ -1,11 +1,10 @@
 from collections.abc import Buffer, Callable, Iterable, Sequence
 from typing import Any, Literal, overload
 
-from .byte_buffer import ByteBuffer, byte_view
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements
-from .layout import MAX_LENGTHS, TableLayout, header_length, padding_to
-from .table_writer import TableWriter, struct_count
+from .elements import as_elements, byte_view, struct_count
+from .implementation import ByteBuffer, TableLayout, TableWriter
+from .layout import MAX_LENGTHS, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[..., object]

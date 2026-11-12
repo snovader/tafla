@@ -36,6 +36,15 @@ updates:
     allow:
       - dependency-type: "all"
 
+  # The Python runtime's native module, a crate of its own, with its own lock
+  # file
+  - package-ecosystem: "cargo"
+    directory: "/python/core/native"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
+
   # The tests' module, whose only requirement is the property tests'
   # library, and the benchmarks' module of the libraries they compare. The
   # runtime's module requires nothing.

@@ -1,7 +1,7 @@
 name: Release
 
 # Publishes every package when a tag v<version> is pushed, as RELEASING.md
-# describes. Each registry has a job that checks its language and builds its
+# describes. Each registry has jobs that check its language and build its
 # artifacts, which a dry run uploads to the workflow run, and a job that
 # publishes them, so that one registry's failure doesn't stop the others. The
 # Go module is published by a tag of its own, go/v<version>, which its publish
@@ -88,6 +88,9 @@ jobs:
               - "typescript/core/package.json"
               - "python/pyproject.toml"
               - "python/core/pyproject.toml"
+              - "python/core/native/Cargo.toml"
+              - "python/core/native/Cargo.lock"
+              - "python/scripts/test-wheels.sh"
               - "rust/Cargo.toml"
               - "rust/core/Cargo.toml"
               - "rust/gen/Cargo.toml"
@@ -208,18 +211,30 @@ jobs:
 
   # PyPI
 
+  # Checks both implementations of the Python runtime, and builds the
+  # distributions that install anywhere: the source distribution, which builds
+  # the native classes with Rust, and the pure-Python wheel, which pip installs
+  # where no native wheel fits
   pypi-build:
     name: PyPI (check and build)
     needs: version
     if: needs.version.outputs.build == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: python
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
+
+      # Rust builds the native classes, which uv installs with the workspace
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy, rustfmt
+          cache-workspaces: python/core/native -> target
+          cache-key: release
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -236,23 +251,187 @@ jobs:
       - name: Run type check
         run: uv run --locked ty check
 
-      - name: Run tests
+      - name: Run format check of the native classes
+        working-directory: python/core/native
+        run: cargo fmt --check
+
+      - name: Run lint check of the native classes
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo clippy --all-targets -- -D warnings
+
+      - name: Run the native classes' Rust tests
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo test
+
+      - name: Run tests with the native classes
         run: uv run --locked python -m unittest discover -s core/tests -t core
 
-      - name: Build the source distribution and wheel
-        run: uv build --package tafla --out-dir "$RUNNER_TEMP/pypi"
+      - name: Run tests with the pure-Python classes
+        env:
+          TAFLA_PUREPYTHON: "1"
+        run: uv run --locked python -m unittest discover -s core/tests -t core
+
+      # And a wheel from the source distribution, as pip builds one where no
+      # wheel fits, to check that it builds
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --package tafla --out-dir "$RUNNER_TEMP/build"
+
+      # uv_build packs the pure-Python sources, from the same pyproject.toml,
+      # without the native module
+      - name: Build the pure-Python wheel
+        working-directory: python/core
+        run: uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
+
+      - name: Test the wheels
+        run: scripts/test-wheels.sh "$RUNNER_TEMP/build"
+
+      # PyPI rejects the wheel that the source distribution built on the
+      # runner, which isn't a manylinux wheel. pypi-wheels builds those.
+      - name: Collect the distributions to publish
+        run: |
+          mkdir "$RUNNER_TEMP/pypi"
+          mv "$RUNNER_TEMP"/build/*.tar.gz "$RUNNER_TEMP"/build/*-py3-none-any.whl "$RUNNER_TEMP/pypi/"
 
       - name: Upload the distributions
         uses: actions/upload-artifact@v7
         with:
-          name: pypi
+          name: pypi-any
           path: ${{ runner.temp }}/pypi/
           if-no-files-found: error
 
-  # Publishes the distributions that pypi-build built and checked
+  # Builds the native wheels for a platform, and tests each on its own: abi3
+  # for CPython 3.14 and later, cp314t for free-threaded 3.14, and abi3t for
+  # 3.15 and later, free-threaded or not. maturin-action builds Linux's in a
+  # manylinux or musllinux container, and the others on the runner.
+  pypi-wheels:
+    name: PyPI (native wheels, ${{ matrix.name }})
+    needs: version
+    if: needs.version.outputs.build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Every platform's wheels build, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: Linux aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: Linux x86_64, musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: Linux aarch64, musl
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: macOS arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: python
+
+      # A manylinux container holds the Pythons, which maturin-action puts on
+      # the path, and maturin cross-compiles for musl with configurations of
+      # its own. On macOS and Windows, maturin builds against the Pythons that
+      # uv installs, named by their paths, with forward slashes.
+      - name: Choose the Pythons to build against
+        id: pythons
+        env:
+          OS: ${{ runner.os }}
+        run: |
+          if [[ "$OS" == Linux ]]; then
+            {
+              echo "abi3=python3.14"
+              echo "cp314t=python3.14t"
+              echo "abi3t=python3.15t"
+            } >> "$GITHUB_OUTPUT"
+          else
+            uv python install 3.14 3.14t 3.15t
+            path_of() {
+              local path
+              path=$(uv python find --managed-python "$1")
+              echo "${path//\\//}"
+            }
+            {
+              echo "abi3=$(path_of 3.14+gil)"
+              echo "cp314t=$(path_of 3.14t)"
+              echo "abi3t=$(path_of 3.15t)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the abi3 wheel, for CPython 3.14 and later
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.abi3 }} --features pyo3/abi3-py314
+
+      - name: Build the cp314t wheel, for free-threaded CPython 3.14
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.cp314t }}
+
+      - name: Build the abi3t wheel, for free-threaded CPython 3.15 and later
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.abi3t }} --features pyo3/abi3t-py315
+
+      # musl's run in Alpine, with uv's musl builds of CPython
+      - name: Test the wheels
+        env:
+          MUSL: ${{ endsWith(matrix.target, '-musl') }}
+        run: |
+          if [[ "$MUSL" == true ]]; then
+            docker run --rm -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$PWD" \
+              ghcr.io/astral-sh/uv:0.13.7-alpine scripts/test-wheels.sh dist
+          else
+            scripts/test-wheels.sh dist
+          fi
+
+      - name: Upload the wheels
+        uses: actions/upload-artifact@v7
+        with:
+          name: pypi-wheels-${{ matrix.target }}
+          path: python/dist/*.whl
+          if-no-files-found: error
+
+  # Publishes the distributions that pypi-build and pypi-wheels built and
+  # tested
   pypi-publish:
     name: PyPI (publish)
-    needs: [version, pypi-build]
+    needs: [version, pypi-build, pypi-wheels]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -267,7 +446,8 @@ jobs:
       - name: Download the distributions
         uses: actions/download-artifact@v8
         with:
-          name: pypi
+          pattern: pypi-*
+          merge-multiple: true
           path: dist
 
       - name: Setup uv
@@ -279,7 +459,6 @@ jobs:
       # release, so the job needs no token
       - name: Publish to PyPI
         run: uv publish --trusted-publishing always dist/*
-
   # crates.io
 
   crates-build:
@@ -598,7 +777,7 @@ jobs:
   # build in another language gets no Go version.
   go-publish:
     name: Go module proxy (publish)
-    needs: [version, npm-build, pypi-build, crates-build, maven-build, go-build]
+    needs: [version, npm-build, pypi-build, pypi-wheels, crates-build, maven-build, go-build]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
