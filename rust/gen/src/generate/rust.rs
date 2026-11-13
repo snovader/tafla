@@ -36,6 +36,10 @@ const FN_CALL_WIDTH: usize = 60;
 /// columns less than its `max_width`
 const USE_LIST_WIDTH: usize = 98;
 
+/// The widest line of a `use` statement's list that rustfmt fills when the
+/// statement doesn't fit on one line, a column less than its `max_width`
+const USE_LIST_LINE_WIDTH: usize = 99;
+
 /// Strict and reserved keywords, which names take as raw identifiers
 const KEYWORDS: [&str; 48] = [
     "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "do", "dyn",
@@ -194,13 +198,12 @@ impl Generator<'_> {
             return;
         }
 
-        // rustfmt fills the lines of a list that doesn't fit, each as wide as
-        // a `use` statement on one line
+        // rustfmt fills the lines of a list that doesn't fit
         writer.open(format!("use {runtime}::{{"));
         let mut line = String::new();
         for name in names {
             let width = STYLE.indent.len() + line.len() + 1 + name.len() + 1;
-            if !line.is_empty() && width > USE_LIST_WIDTH {
+            if !line.is_empty() && width > USE_LIST_LINE_WIDTH {
                 writer.line(&line);
                 line.clear();
             }

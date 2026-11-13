@@ -1,27 +1,42 @@
 name: Release
 
-# Publishes every package when a tag v<version> is pushed, as RELEASING.md
-# describes. Each registry has a job that checks its language and builds its
-# artifacts, which a dry run uploads to the workflow run, and a job that
-# publishes them, so that one registry's failure doesn't stop the others.
+# Publishes one of tafla's packages, each of which has a version of its own,
+# as RELEASING.md describes. A manual run on main names the package and its
+# version, checks the package and builds its artifacts, publishes them, and
+# then tags the commit <package>/v<version>. Each registry has jobs that check
+# its language and build its artifacts, which a dry run uploads to the
+# workflow run, and a job that publishes them. The Go module is published by
+# its tag, go/v<version>, which its publish job pushes once the module has
+# built, and from which the Go module proxy builds it.
 #
-# A dry run builds without publishing: a pull request that touches the release
-# files runs one, and so does a manual run, unless it's on a tag with dry_run
-# turned off.
+# A dry run builds without publishing: a manual run does, unless it's on main
+# with dry_run turned off, and so does a pull request, for each package whose
+# version it changes, and for every package when it changes the release's own
+# files.
 
 on:
-  push:
-    tags:
-      - "v*"
-
   pull_request:
     branches:
       - main
 
   workflow_dispatch:
     inputs:
+      package:
+        description: "The package to release"
+        type: choice
+        options:
+          - typescript
+          - python
+          - java
+          - rust
+          - tafla-gen
+          - go
+      version:
+        description: "Its version, which must be its manifest's. The Go module records none, so this is its version."
+        type: string
+        required: true
       dry_run:
-        description: "Build every artifact without publishing it. A run off a tag never publishes."
+        description: "Build the package without publishing it. A run that isn't on main never publishes."
         type: boolean
         default: true
 
@@ -30,106 +45,136 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # One package's release doesn't wait for another's
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.package }}
   # A release runs to its end, and a pull request's dry run gives way to a newer
   # one
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Runs on every pull request, so that a package whose version disagrees with
-  # VERSION fails, and decides what the jobs below do
-  version:
-    name: Version
+  # Decides which packages the jobs below build, and whether they publish. It
+  # runs on every pull request, so that a package whose manifest and lock files
+  # disagree on its version fails.
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: read
-      pull-requests: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      build: ${{ steps.mode.outputs.build }}
-      publish: ${{ steps.mode.outputs.publish }}
+      packages: ${{ steps.dispatch.outputs.packages || steps.pull_request.outputs.packages }}
+      publish: ${{ steps.dispatch.outputs.publish || 'false' }}
+      go_version: ${{ steps.dispatch.outputs.go_version || steps.pull_request.outputs.go_version }}
     steps:
+      # A pull request's checkout is the merge of its branch into main, which
+      # it compares with its first parent, main
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
 
-      - name: Check that every package has the version in VERSION
-        run: scripts/set-version.sh --check
-
-      - name: Read the version
-        id: version
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-
-      - name: Check that the tag names the version
-        if: github.ref_type == 'tag'
+      # A manual run builds the package that it names, and publishes it if
+      # it's on main and not a dry run
+      - name: Plan a manual run
+        if: github.event_name == 'workflow_dispatch'
+        id: dispatch
         env:
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ steps.version.outputs.version }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REF: ${{ github.ref }}
         run: |
-          if [[ "$TAG" != "v$VERSION" ]]; then
-            echo "::error::The tag is $TAG, but VERSION is $VERSION, whose tag is v$VERSION"
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$VERSION isn't a version of the form MAJOR.MINOR.PATCH"
             exit 1
           fi
 
-      - name: Filter the changed paths
-        if: github.event_name == 'pull_request'
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            release:
-              - ".github/actions/prepare-node-dependencies/action.yml"
-              - ".github/actions/prepare-node-environment/action.yml"
-              - ".github/workflows/release.yml"
-              - "VERSION"
-              - "scripts/set-version.sh"
-              - "typescript/core/package.json"
-              - "python/pyproject.toml"
-              - "python/core/pyproject.toml"
-              - "rust/Cargo.toml"
-              - "rust/core/Cargo.toml"
-              - "rust/gen/Cargo.toml"
-              - "java/core/build.gradle.kts"
-              - "java/gradle/libs.versions.toml"
+          if [[ "$PACKAGE" != go ]]; then
+            own=$(scripts/version.sh "$PACKAGE")
+            if [[ "$own" != "$VERSION" ]]; then
+              echo "::error::The run releases $PACKAGE $VERSION, but $PACKAGE's version is $own"
+              exit 1
+            fi
+          fi
 
-      # A tag publishes, and so does a manual run on a tag with dry_run off.
-      # Any other manual run, and a pull request that touches the release
-      # files, builds without publishing.
-      - name: Choose what to run
-        id: mode
-        env:
-          EVENT: ${{ github.event_name }}
-          REF_TYPE: ${{ github.ref_type }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          RELEASE_FILES_CHANGED: ${{ steps.filter.outputs.release }}
-        run: |
-          build=false
           publish=false
-          case "$EVENT" in
-            push)
-              build=true
-              publish=true
-              ;;
-            workflow_dispatch)
-              build=true
-              if [[ "$REF_TYPE" == tag && "$DRY_RUN" == false ]]; then
-                publish=true
+          if [[ "$REF" == refs/heads/main && "$DRY_RUN" == false ]]; then
+            publish=true
+          fi
+
+          {
+            echo "packages=$(jq -cn '$ARGS.positional' --args "$PACKAGE")"
+            echo "publish=$publish"
+            echo "go_version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+          echo "Package: $PACKAGE $VERSION, publish: $publish"
+
+      # A registry rejects a version that it has, so a release whose tag
+      # names another commit fails before it builds
+      - name: Check the release's tag
+        if: steps.dispatch.outputs.publish == 'true'
+        uses: ./.github/actions/release-tag
+        with:
+          tag: ${{ inputs.package }}/v${{ inputs.version }}
+
+      # A pull request builds each package whose version it changes, which a
+      # release of the version would build, and every package when it changes
+      # the release's own files. Each package's manifest and lock files must
+      # agree on its version.
+      - name: Plan a pull request
+        if: github.event_name == 'pull_request'
+        id: pull_request
+        run: |
+          # main's files, read with this branch's script
+          base="$RUNNER_TEMP/base"
+          git worktree add --quiet --detach "$base" HEAD^1
+          cp scripts/version.sh "$base/scripts/version.sh"
+
+          packages=()
+          for package in typescript python java rust tafla-gen; do
+            version=$(scripts/version.sh "$package")
+            base_version=$("$base/scripts/version.sh" "$package" 2> /dev/null || true)
+            if [[ "$version" != "$base_version" ]]; then
+              packages+=("$package")
+            fi
+          done
+
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          touches() {
+            local path
+            for path in "$@"; do
+              if grep -qxF "$path" <<< "$changed"; then
+                return 0
               fi
-              ;;
-            pull_request)
-              build="$RELEASE_FILES_CHANGED"
-              ;;
-          esac
-          echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          echo "Build: $build, publish: $publish"
+            done
+            return 1
+          }
+
+          if touches .github/workflows/release.yml .github/actions/release-tag/action.yml scripts/version.sh; then
+            packages=(typescript python java rust tafla-gen go)
+          fi
+          if touches python/scripts/test-wheels.sh; then
+            packages+=(python)
+          fi
+          if touches go/go.mod; then
+            packages+=(go)
+          fi
+
+          # The Go module has no version until its release names one, so its
+          # dry run takes the first of its major version, which go.mod's
+          # module path ends with from 2 on
+          major=$(sed -nE 's#^module github\.com/snovader/tafla/go/v([0-9]+)$#\1#p' go/go.mod)
+
+          {
+            echo "packages=$(jq -cn '$ARGS.positional' --args "${packages[@]}")"
+            echo "go_version=${major:-0}.0.0"
+          } >> "$GITHUB_OUTPUT"
+          echo "Packages: ${packages[*]:-none}"
 
   # npm
 
   npm-build:
     name: npm (check and pack)
-    needs: version
-    if: needs.version.outputs.build == 'true'
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'typescript')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -169,13 +214,13 @@ jobs:
 
   npm-publish:
     name: npm (publish)
-    needs: [version, npm-build]
-    if: needs.version.outputs.publish == 'true'
+    needs: [plan, npm-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'typescript'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: npm
-      url: https://www.npmjs.com/package/tafla/v/${{ needs.version.outputs.version }}
+      url: https://www.npmjs.com/package/tafla/v/${{ inputs.version }}
     permissions:
       contents: read
       # Trusted publishing and provenance
@@ -205,18 +250,30 @@ jobs:
 
   # PyPI
 
+  # Checks both implementations of the Python runtime, and builds the
+  # distributions that install anywhere: the source distribution, which builds
+  # the native classes with Rust, and the pure-Python wheel, which pip installs
+  # where no native wheel fits
   pypi-build:
     name: PyPI (check and build)
-    needs: version
-    if: needs.version.outputs.build == 'true'
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'python')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: python
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
+
+      # Rust builds the native classes, which uv installs with the workspace
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          components: clippy, rustfmt
+          cache-workspaces: python/core/native -> target
+          cache-key: release
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -233,29 +290,193 @@ jobs:
       - name: Run type check
         run: uv run --locked ty check
 
-      - name: Run tests
+      - name: Run format check of the native classes
+        working-directory: python/core/native
+        run: cargo fmt --check
+
+      - name: Run lint check of the native classes
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo clippy --all-targets -- -D warnings
+
+      - name: Run the native classes' Rust tests
+        working-directory: python/core/native
+        run: PYO3_PYTHON="$(uv python find 3.14)" cargo test
+
+      - name: Run tests with the native classes
         run: uv run --locked python -m unittest discover -s core/tests -t core
 
-      - name: Build the source distribution and wheel
-        run: uv build --package tafla --out-dir "$RUNNER_TEMP/pypi"
+      - name: Run tests with the pure-Python classes
+        env:
+          TAFLA_PUREPYTHON: "1"
+        run: uv run --locked python -m unittest discover -s core/tests -t core
+
+      # And a wheel from the source distribution, as pip builds one where no
+      # wheel fits, to check that it builds
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --package tafla --out-dir "$RUNNER_TEMP/build"
+
+      # uv_build packs the pure-Python sources, from the same pyproject.toml,
+      # without the native module
+      - name: Build the pure-Python wheel
+        working-directory: python/core
+        run: uv run --isolated --no-project --with 'uv-build==0.13.7' python -c "import sys, uv_build; print(uv_build.build_wheel(sys.argv[1]))" "$RUNNER_TEMP/build"
+
+      - name: Test the wheels
+        run: scripts/test-wheels.sh "$RUNNER_TEMP/build"
+
+      # PyPI rejects the wheel that the source distribution built on the
+      # runner, which isn't a manylinux wheel. pypi-wheels builds those.
+      - name: Collect the distributions to publish
+        run: |
+          mkdir "$RUNNER_TEMP/pypi"
+          mv "$RUNNER_TEMP"/build/*.tar.gz "$RUNNER_TEMP"/build/*-py3-none-any.whl "$RUNNER_TEMP/pypi/"
 
       - name: Upload the distributions
         uses: actions/upload-artifact@v7
         with:
-          name: pypi
+          name: pypi-any
           path: ${{ runner.temp }}/pypi/
           if-no-files-found: error
 
-  # Publishes the distributions that pypi-build built and checked
+  # Builds the native wheels for a platform, and tests each on its own: abi3
+  # for CPython 3.14 and later, cp314t for free-threaded 3.14, and abi3t for
+  # 3.15 and later, free-threaded or not. maturin-action builds Linux's in a
+  # manylinux or musllinux container, and the others on the runner.
+  pypi-wheels:
+    name: PyPI (native wheels, ${{ matrix.name }})
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'python')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Every platform's wheels build, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: Linux aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2_28"
+          - name: Linux x86_64, musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: Linux aarch64, musl
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: macOS arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          working-directory: python
+
+      # A manylinux container holds the Pythons, which maturin-action puts on
+      # the path, and maturin cross-compiles for musl with configurations of
+      # its own. On macOS and Windows, maturin builds against the Pythons that
+      # uv installs, named by their paths, with forward slashes.
+      - name: Choose the Pythons to build against
+        id: pythons
+        env:
+          OS: ${{ runner.os }}
+        run: |
+          if [[ "$OS" == Linux ]]; then
+            {
+              echo "abi3=python3.14"
+              echo "cp314t=python3.14t"
+              echo "abi3t=python3.15t"
+            } >> "$GITHUB_OUTPUT"
+          else
+            uv python install 3.14 3.14t 3.15t
+            path_of() {
+              local path
+              path=$(uv python find --managed-python "$1")
+              echo "${path//\\//}"
+            }
+            {
+              echo "abi3=$(path_of 3.14+gil)"
+              echo "cp314t=$(path_of 3.14t)"
+              echo "abi3t=$(path_of 3.15t)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the abi3 wheel, for CPython 3.14 and later
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.abi3 }} --features pyo3/abi3-py314
+
+      - name: Build the cp314t wheel, for free-threaded CPython 3.14
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.cp314t }}
+
+      - name: Build the abi3t wheel, for free-threaded CPython 3.15 and later
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/core
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out ../dist --interpreter ${{ steps.pythons.outputs.abi3t }} --features pyo3/abi3t-py315
+
+      # musl's run in Alpine, with uv's musl builds of CPython
+      - name: Test the wheels
+        env:
+          MUSL: ${{ endsWith(matrix.target, '-musl') }}
+        run: |
+          if [[ "$MUSL" == true ]]; then
+            docker run --rm -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$PWD" \
+              ghcr.io/astral-sh/uv:0.13.7-alpine scripts/test-wheels.sh dist
+          else
+            scripts/test-wheels.sh dist
+          fi
+
+      - name: Upload the wheels
+        uses: actions/upload-artifact@v7
+        with:
+          name: pypi-wheels-${{ matrix.target }}
+          path: python/dist/*.whl
+          if-no-files-found: error
+
+  # Publishes the distributions that pypi-build and pypi-wheels built and
+  # tested
   pypi-publish:
     name: PyPI (publish)
-    needs: [version, pypi-build]
-    if: needs.version.outputs.publish == 'true'
+    needs: [plan, pypi-build, pypi-wheels]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'python'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: pypi
-      url: https://pypi.org/project/tafla/${{ needs.version.outputs.version }}/
+      url: https://pypi.org/project/tafla/${{ inputs.version }}/
     permissions:
       contents: read
       # Trusted publishing
@@ -264,7 +485,8 @@ jobs:
       - name: Download the distributions
         uses: actions/download-artifact@v8
         with:
-          name: pypi
+          pattern: pypi-*
+          merge-multiple: true
           path: dist
 
       - name: Setup uv
@@ -279,10 +501,12 @@ jobs:
 
   # crates.io
 
+  # Checks the Rust workspace, which holds the runtime, tafla, and the
+  # generator, tafla-gen, and packages both, for a release of either
   crates-build:
     name: crates.io (check and package)
-    needs: version
-    if: needs.version.outputs.build == 'true'
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'rust') || contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -320,15 +544,17 @@ jobs:
           path: rust/target/package/*.crate
           if-no-files-found: error
 
+  # Publishes the crate of the package that the run releases: tafla, for the
+  # Rust runtime, or tafla-gen
   crates-publish:
     name: crates.io (publish)
-    needs: [version, crates-build]
-    if: needs.version.outputs.publish == 'true'
+    needs: [plan, crates-build]
+    if: needs.plan.outputs.publish == 'true' && (inputs.package == 'rust' || inputs.package == 'tafla-gen')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
       name: crates-io
-      url: https://crates.io/crates/tafla/${{ needs.version.outputs.version }}
+      url: https://crates.io/crates/${{ inputs.package == 'rust' && 'tafla' || 'tafla-gen' }}/${{ inputs.version }}
     permissions:
       contents: read
       # Trusted publishing
@@ -336,6 +562,8 @@ jobs:
     defaults:
       run:
         working-directory: rust
+    env:
+      CRATE: ${{ inputs.package == 'rust' && 'tafla' || 'tafla-gen' }}
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
@@ -360,25 +588,20 @@ jobs:
         id: auth
         uses: rust-lang/crates-io-auth-action@v1
 
-      # tafla-gen's tests depend on tafla at the same version, which crates.io
-      # resolves, so tafla goes first. cargo publish waits until crates.io
-      # serves the crate.
-      - name: Publish tafla
+      # tafla-gen's tests depend on tafla at the version that its manifest
+      # names, which crates.io resolves, so that version of tafla is published
+      # first. cargo publish waits until crates.io serves the crate.
+      - name: Publish ${{ env.CRATE }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
-        run: cargo publish --locked -p tafla
-
-      - name: Publish tafla-gen
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || steps.auth.outputs.token }}
-        run: cargo publish --locked -p tafla-gen
+        run: cargo publish --locked -p "$CRATE"
 
   # Maven Central
 
   maven-build:
     name: Maven Central (check and build)
-    needs: version
-    if: needs.version.outputs.build == 'true'
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'java')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -426,14 +649,14 @@ jobs:
 
   maven-publish:
     name: Maven Central (publish)
-    needs: [version, maven-build]
-    if: needs.version.outputs.publish == 'true'
+    needs: [plan, maven-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'java'
     runs-on: ubuntu-latest
     # Waits for the Central Portal to validate the deployment
     timeout-minutes: 60
     environment:
       name: maven-central
-      url: https://central.sonatype.com/artifact/io.github.snovader.tafla/tafla/${{ needs.version.outputs.version }}
+      url: https://central.sonatype.com/artifact/io.github.snovader.tafla/tafla/${{ inputs.version }}
     defaults:
       run:
         working-directory: java
@@ -460,3 +683,197 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
         run: ./gradlew :core:publishToMavenCentral
+
+  # Go module proxy
+
+  go-build:
+    name: Go module proxy (check and zip)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'go')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: go
+    env:
+      # Only the steps that set GOPROXY download modules, so that the others
+      # build from what go.mod and go.sum name. They leave -mod at readonly,
+      # its default, so that a requirement or a hash that's missing fails
+      # rather than being written.
+      GOPROXY: "off"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, so that every dependency comes from the proxy, as it
+      # will for a module that requires tafla's
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Install staticcheck
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+
+      # Checks each download's hash against go.sum, and then that the module
+      # cache still holds what was downloaded. The runtime's module requires
+      # nothing, and the tests' module requires their library.
+      - name: Download and verify the dependencies
+        working-directory: go/tests
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run formatting check
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+      - name: Run tests
+        run: go test ./...
+
+      # The conformance suite, the property tests and the generated code, in
+      # a module of their own
+      - name: Run vet on the tests
+        working-directory: go/tests
+        run: go vet ./...
+
+      - name: Run staticcheck on the tests
+        working-directory: go/tests
+        run: staticcheck ./...
+
+      - name: Run the tests' module
+        working-directory: go/tests
+        run: go test ./...
+
+      # The go command builds the module from a tag, as the module proxy will
+      # from the pushed one: git fetches https://github.com/snovader/tafla
+      # from the checkout, where this step tags the commit without pushing the
+      # tag
+      - name: Tag the commit in the checkout
+        env:
+          VERSION: ${{ needs.plan.outputs.go_version }}
+        run: git tag "go/v$VERSION"
+
+      # In a module that requires tafla's, as a user's would: go get fetches
+      # the module from the tag, the files of go/ but tests/ and benchmarks/,
+      # modules of their own, then vet checks every package and test in it,
+      # and its tests run from the module cache, as go test all runs them for
+      # a user. The version isn't in the checksum database yet, so
+      # GOPRIVATE fetches it from git and doesn't look it up there, and with
+      # GOPROXY off nothing else downloads. -mod=mod lets the go command write
+      # the scratch module's go.mod and go.sum.
+      - name: Build the module from its tag
+        working-directory: ${{ runner.temp }}
+        env:
+          VERSION: ${{ needs.plan.outputs.go_version }}
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.file://${{ github.workspace }}/.git.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/snovader/tafla
+          GOPRIVATE: github.com/snovader/tafla
+          GOFLAGS: -mod=mod
+        run: |
+          mkdir consumer
+          cd consumer
+          go mod init example.invalid/consumer
+          go get "github.com/snovader/tafla/go@v$VERSION"
+          go vet github.com/snovader/tafla/go/...
+          go test github.com/snovader/tafla/go/...
+
+      # The files that the proxy will serve for the version
+      - name: Copy the module
+        env:
+          VERSION: ${{ needs.plan.outputs.go_version }}
+        run: |
+          mkdir "$RUNNER_TEMP/go"
+          cp "$(go env GOMODCACHE)/cache/download/github.com/snovader/tafla/go/@v/v$VERSION".{info,mod,zip} "$RUNNER_TEMP/go/"
+          unzip -l "$RUNNER_TEMP/go/v$VERSION.zip"
+
+      - name: Upload the module
+        uses: actions/upload-artifact@v7
+        with:
+          name: go
+          path: ${{ runner.temp }}/go/
+          if-no-files-found: error
+
+  # Pushes the tag that publishes the module, and fetches the module from the
+  # proxy, which builds it from the tag, and from the checksum database, which
+  # records its hash, as a user's first go get of the version would.
+  # pkg.go.dev then lists the version. Unlike an upload, the tag can't be
+  # taken back once the proxy has the module, so the job pushes it only once
+  # the module has built from it.
+  go-publish:
+    name: Go module proxy (publish)
+    needs: [plan, go-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: go-proxy
+      url: https://pkg.go.dev/github.com/snovader/tafla/go@v${{ inputs.version }}
+    permissions:
+      # Pushes the tag
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Push the tag go/v<version>
+        uses: ./.github/actions/release-tag
+        with:
+          tag: go/v${{ inputs.version }}
+          push: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: false
+
+      # Outside a module, through the proxy and the checksum database that
+      # GOPROXY and GOSUMDB name by default
+      - name: Fetch the module from the proxy
+        working-directory: ${{ runner.temp }}
+        run: go mod download -json "github.com/snovader/tafla/go@v$VERSION"
+
+  # Tags the commit that a package was published from <package>/v<version>,
+  # once its publish job has succeeded, in a job of its own, so that the jobs
+  # that run the registries' tools can't push. Go's publish job pushes its
+  # tag itself, since the tag publishes the module.
+  tag:
+    name: Tag the release
+    needs: [plan, npm-publish, pypi-publish, crates-publish, maven-publish]
+    # The other packages' publish jobs are skipped, so the job checks the
+    # result of the released package's
+    if: >-
+      !cancelled() && needs.plan.outputs.publish == 'true' && (
+        (inputs.package == 'typescript' && needs.npm-publish.result == 'success') ||
+        (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
+        (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
+        ((inputs.package == 'rust' || inputs.package == 'tafla-gen') && needs.crates-publish.result == 'success')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      # Pushes the tag
+      contents: write
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Push the tag ${{ inputs.package }}/v<version>
+        uses: ./.github/actions/release-tag
+        with:
+          tag: ${{ inputs.package }}/v${{ inputs.version }}
+          push: true

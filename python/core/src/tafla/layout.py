@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from functools import partial
 from typing import ClassVar, Literal, cast, overload, override
 
 from .types import ElementSize, OffsetSize, OffsetType
@@ -100,6 +102,18 @@ class TableLayout[Versioned: bool = bool]:
         self.__offset_size: OffsetSize = offset_size
         header_slots = (1 if sized else 0) + (1 if versioned else 0)
         self.__header_size = header_slots * offset_size
+
+    @override
+    def __reduce__(self) -> tuple[Callable[[], TableLayout], tuple[()]]:
+        """Pickles and copies the layout as a call of its class with its
+        arguments, as the native class does"""
+        arguments = partial(
+            TableLayout,
+            sized=self.__sized,
+            versioned=self.__versioned,
+            offset_type=self.__offset_type,
+        )
+        return arguments, ()
 
     @override
     def __repr__(self) -> str:

@@ -191,6 +191,76 @@ def _build_nested(nested: Description) -> TableBuilder | memoryview[int]:
     return builder if nested["from"] == "builder" else builder.bytes()
 
 
+def build_table_in_place(table: Description) -> TableBuilder:
+    """Builds a table as ``build_table()`` does, but records each table nested
+    from a builder that the builder writes in place with
+    ``set_table_in_place()``, and each vector of them whose items hold as
+    many fields with ``set_vector_in_place()``, rather than from their
+    builders. A table nested at an alignment of its own is nested from its
+    builder still."""
+    builder = create_builder(table)
+    offset_type = table["layout"]["offsetType"]
+    for field in table["fields"]:
+        set_field_in_place(builder, field, offset_type)
+
+    return builder
+
+
+def set_field_in_place(
+    builder: TableBuilder, field: Description, offset_type: OffsetType
+) -> None:
+    """Sets a field as ``set_field()`` does, recording the tables nested in it
+    in place as ``build_table_in_place()`` does, in a builder of
+    ``offset_type``"""
+    kind = field["type"]
+
+    if (
+        kind == "table"
+        and "alignment" not in field
+        and records_in_place(field, offset_type)
+    ):
+        fields = field["table"]["fields"]
+        builder.set_table_in_place(
+            _set_fields_in_place, fields, offset_type, fields=len(fields)
+        )
+    elif kind == "vector" and all(
+        records_in_place(item, offset_type) for item in field["items"]
+    ):
+        tables = [item["table"]["fields"] for item in field["items"]]
+        counts = {len(fields) for fields in tables}
+        if len(counts) > 1:
+            set_field(builder, field)
+            return
+
+        def set_item(item: TableBuilder, fields: list[Description]) -> None:
+            _set_fields_in_place(item, fields, offset_type)
+
+        builder.set_vector_in_place(
+            tables, set_item, fields=counts.pop() if counts else 0
+        )
+    else:
+        set_field(builder, field)
+
+
+def records_in_place(nested: Description, offset_type: OffsetType) -> bool:
+    """Whether a nested table is one that a builder of ``offset_type`` writes
+    in place: from a builder without a header and of that offset type"""
+    layout = nested["table"]["layout"]
+    return (
+        nested["from"] == "builder"
+        and not layout["sized"]
+        and not layout["versioned"]
+        and layout["offsetType"] == offset_type
+    )
+
+
+def _set_fields_in_place(
+    builder: TableBuilder, fields: list[Description], offset_type: OffsetType
+) -> None:
+    for field in fields:
+        set_field_in_place(builder, field, offset_type)
+
+
 def _struct_values(scalars: list[Description]) -> list[Any]:
     """The values of a struct's scalars, as tafla takes them"""
     return [from_json(scalar["type"], scalar["value"]) for scalar in scalars]

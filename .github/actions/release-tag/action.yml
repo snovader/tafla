@@ -1,0 +1,45 @@
+name: "Release Tag"
+description: >-
+  Checks a release's tag, <package>/v<version>, against the commit that the
+  job checked out, and pushes it if asked. A tag that the repository has
+  must tag that commit: a tag records the commit that a version was
+  published from, and the Go module proxy keeps the module that its tag
+  named first. The job needs contents: write to push.
+
+inputs:
+  tag:
+    description: "The tag, such as python/v0.1.0"
+    required: true
+  push:
+    description: "Whether to tag the commit and push the tag, if the repository doesn't have it"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    # A job run again finds the tag that it pushed
+    - name: Check or push the tag
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        PUSH: ${{ inputs.push }}
+      run: |
+        commit=$(git rev-parse HEAD)
+
+        if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          tagged=$(git rev-parse "$TAG^{commit}")
+          if [[ "$tagged" != "$commit" ]]; then
+            echo "::error::$TAG tags $tagged, but the run releases $commit"
+            exit 1
+          fi
+          echo "$TAG already tags $commit"
+        elif [[ "$PUSH" == true ]]; then
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "${TAG%/v*} ${TAG##*/v}" "$commit"
+          git push origin "refs/tags/$TAG"
+        else
+          echo "No tag $TAG yet"
+        fi

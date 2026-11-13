@@ -3,6 +3,7 @@ package io.github.snovader.tafla;
 import org.jspecify.annotations.*;
 
 import java.util.*;
+import java.util.function.*;
 
 /**
  * Builds a table: a header with one offset per field, after the table's total length and version
@@ -15,7 +16,9 @@ import java.util.*;
  * <p>Setting a field records it and counts its bytes. {@link #bytes()} then allocates the table at
  * its exact size and writes every field in one pass, with a {@link TableWriter} as the generated
  * code does, so array elements must not change in between. Tables nested from their builders are
- * written in the same pass, straight into this one.</p>
+ * written in the same pass, straight into this one. {@link #setTable(int, Consumer)} and
+ * {@link #setVector(int, int, ObjIntConsumer)} record a nested table, or each item of a vector,
+ * among this table's own fields instead, without a builder of its own.</p>
  *
  * <p>A setter throws, and leaves the builder as it was, when the table already holds all its
  * fields, or when its field would make the table longer than the layout's offset type addresses:
@@ -37,9 +40,22 @@ public final class TableBuilder {
     private final long version;
     /** The type of offsets, lengths and header slots */
     private final OffsetType offsetType;
+    /**
+     * The longest table that the layout's offsets and lengths address, which a Java array's length
+     * limits to an {@code int}
+     */
+    private final int maxLength;
+
+    // What the builder counts of the table whose fields it's recording: its own, or one that it
+    // records in place, as a field or a vector's item, while that table's fill runs. Every nested
+    // builder is one of these objects, which holds these and what every table needs in 64 bytes
+    // with compressed references, as it did before tables were recorded in place.
+
+    /** Where the table's fields go in {@link #writes} */
+    private int tableStart = 0;
+    /** The number of fields that the table holds */
+    private int fields;
     private int fieldsSet;
-    /** The longest table that the layout's offsets and lengths address */
-    private final long maxLength;
     /** The table's length so far, which is where the next field goes */
     private int offset;
     /**
@@ -48,14 +64,19 @@ public final class TableBuilder {
      */
     private int alignment = Byte.BYTES;
 
-    private final int fields;
     /**
-     * What writes each field, which captures its value, a scalar without boxing it. The writer
-     * works out each field's padding and offset as it writes it, so they aren't recorded. A switch
-     * over recorded kinds instead was faster to record, but C2 compiled a string's encoding slowly
-     * within it.
+     * What writes each field, which captures its value, a scalar without boxing it: this table's
+     * own fields first, and then those of the tables recorded in place in it, each table's
+     * together. The writer works out each field's padding and offset as it writes it, so they
+     * aren't recorded. A switch over recorded kinds instead was faster to record, but C2 compiled
+     * a string's encoding slowly within it.
      */
     private FieldWrite[] writes;
+    /**
+     * The number of {@link #writes} that hold or are kept for fields: this table's own, and then
+     * those of the tables recorded in place in it
+     */
+    private int recorded;
 
     /** Builds a table of {@link TableLayout#DEFAULT}, such as one to nest in another */
     public TableBuilder(int fields) {
@@ -87,10 +108,11 @@ public final class TableBuilder {
         this.layout = layout;
         this.version = version;
         this.offsetType = layout.offsetType();
-        this.maxLength = layout.maxLength();
+        this.maxLength = (int) layout.maxLength();
 
         this.fields = fields;
         this.writes = new FieldWrite[fields];
+        this.recorded = fields;
     }
 
     /**
@@ -104,6 +126,9 @@ public final class TableBuilder {
             return written;
         }
 
+        if (tableStart != 0) {
+            throw new IllegalStateException("The table can't be written while a fill records a table in it");
+        }
         if (fieldsSet != fields) {
             throw new IllegalStateException(
                 String.format("Only %d of the table's %d fields were set", fieldsSet, fields)
@@ -112,7 +137,7 @@ public final class TableBuilder {
 
         // The constructor checked the header, as the sizer's writer() does
         var writer = new TableWriter(new byte[offset], offset, fields, layout, version, List.of());
-        writeFields(writer);
+        writeFields(writer, 0, fields);
         written = writer.bytes();
 
         // Release the writes, whose values may be large arrays
@@ -340,6 +365,113 @@ public final class TableBuilder {
         addField(byteLength, 0, (writer, index) -> writeVector(writer, index, items));
     }
 
+    /**
+     * Records a table of {@code fields} fields nested in this one, as a nested builder would be, but
+     * without a builder of its own: {@code fill} sets its fields, in order, on the {@link Item} that
+     * it's given, which records each straight among this table's fields. The nested table has this
+     * table's offset type and no header, and is padded to start at a multiple of its largest
+     * alignment, as {@link #setTable(TableBuilder)} pads a builder, so it's written as a nested
+     * builder of that layout is.
+     *
+     * <p>While {@code fill} runs, this builder records the nested table's fields rather than its
+     * own, so it's used only through the item. What {@code fill} throws is passed on, and whatever
+     * is thrown, the builder is left as it was.</p>
+     *
+     * @throws IllegalArgumentException if the number of fields is negative or their offsets don't fit
+     *     in the offset type, if {@code fill} leaves fields unset, or as the setters do
+     * @throws IllegalStateException as the setters do
+     */
+    public void setTable(int fields, Consumer<Item> fill) {
+        nextField();
+        var header = headerOf(fields);
+
+        var parent = counters();
+        var start = keep(fields);
+        try {
+            startInPlace(start, fields, header);
+            fill.accept(new Item());
+            checkComplete();
+
+            // Padded from this table's length, as a nested builder is
+            var length = offset;
+            var tableAlignment = alignment;
+            restore(parent);
+            addField(length, TableLayout.padding(offset, tableAlignment), (writer, index) -> {
+                writer.setTable(index, tableAlignment);
+                writeInPlace(writer, start, fields);
+            });
+            alignTo(tableAlignment);
+        } catch (Throwable failure) {
+            restore(parent);
+            release(start);
+            throw failure;
+        }
+    }
+
+    /**
+     * Records a vector of {@code count} tables of {@code fields} fields each, as
+     * {@link #setTable(int, Consumer)} records one: {@code fill} sets the fields of each item, in
+     * order, on the {@link Item} that it's given with the item's index. Items aren't padded, as
+     * {@link #setVector(List)} doesn't pad them.
+     *
+     * {@snippet :
+     * // Items of a float32 and a nested table of two float32s
+     * builder.setVector(points.size(), 2, (item, index) -> {
+     *     var point = points.get(index);
+     *     item.setFloat32(point.value());
+     *     item.setTable(2, position -> {
+     *         position.setFloat32(point.x());
+     *         position.setFloat32(point.y());
+     *     });
+     * });
+     * }
+     *
+     * <p>The vector's count, its items' ends and their offsets, which every item takes whatever its
+     * fields, are checked before any item is recorded. A vector that they alone make too long fails
+     * without calling {@code fill}, as a vector of as many tables of their offsets' bytes would.
+     * What {@code fill} throws is passed on, and whatever is thrown, the builder is left as it
+     * was.</p>
+     *
+     * @throws IllegalArgumentException if the count or the number of fields is negative, if an
+     *     item's offsets don't fit in the offset type, if the vector would make the table too long
+     *     for it, if {@code fill} leaves an item's fields unset, or as the setters do
+     * @throws IllegalStateException as the setters do
+     */
+    public void setVector(int count, int fields, ObjIntConsumer<Item> fill) {
+        var field = nextField();
+        var header = headerOf(fields);
+
+        // Checked first, which also bounds the writes that the items' fields are kept in
+        var slots = (TableSizer.checkCount(count) + 1L) * offsetType.size();
+        var fewest = offset + slots + (long) count * header;
+        if (fewest > maxLength) {
+            throw new IllegalArgumentException(tooLong(field, fewest));
+        }
+
+        // The items' writes, one item's after another's, before those of the tables recorded in
+        // place in them
+        var parent = counters();
+        var start = keep(count * fields);
+        try {
+            var item = new Item();
+            long itemBytes = 0;
+            for (int i = 0; i < count; i++) {
+                startInPlace(start + i * fields, fields, header);
+                fill.accept(item, i);
+                checkComplete();
+
+                itemBytes += offset;
+                restore(parent);
+            }
+
+            addField(slots + itemBytes, 0, (writer, index) -> writeVector(writer, index, start, count, fields));
+        } catch (Throwable failure) {
+            restore(parent);
+            release(start);
+            throw failure;
+        }
+    }
+
     /** Pads the array so that its elements, after the count, are aligned to their size */
     private void addArray(int length, int elementSize, FieldWrite write) {
         addElements((long) length * elementSize, elementSize, write);
@@ -368,16 +500,91 @@ public final class TableBuilder {
      */
     private static int lengthOf(TableBuilder table) {
         if (table.fieldsSet != table.fields) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "Only %d of the nested table's %d fields were set",
-                    table.fieldsSet,
-                    table.fields
-                )
-            );
+            throw new IllegalArgumentException(incomplete(table.fieldsSet, table.fields));
         }
 
         return table.offset;
+    }
+
+    private static String incomplete(int fieldsSet, int fields) {
+        return String.format("Only %d of the nested table's %d fields were set", fieldsSet, fields);
+    }
+
+    /** What the builder counts of the table whose fields it's recording */
+    private record Counters(int tableStart, int fields, int fieldsSet, int offset, int alignment) {}
+
+    private Counters counters() {
+        return new Counters(tableStart, fields, fieldsSet, offset, alignment);
+    }
+
+    private void restore(Counters counters) {
+        tableStart = counters.tableStart();
+        fields = counters.fields();
+        fieldsSet = counters.fieldsSet();
+        offset = counters.offset();
+        alignment = counters.alignment();
+    }
+
+    /**
+     * Starts counting the fields of a table recorded in place rather than those of the table that
+     * holds it: {@code fields} fields, whose writes go from {@code start}, after offsets of
+     * {@code header} bytes
+     */
+    private void startInPlace(int start, int fields, int header) {
+        tableStart = start;
+        this.fields = fields;
+        fieldsSet = 0;
+        offset = header;
+        alignment = Byte.BYTES;
+    }
+
+    /**
+     * {@return the byte length of the offsets of a table of {@code fields} fields recorded in
+     * place}, which has this table's offset type and no header, as a nested builder's layout
+     * checks them
+     *
+     * @throws IllegalArgumentException if the number of fields is negative, or their offsets don't
+     *     fit in the offset type
+     */
+    private int headerOf(int fields) {
+        return TableLayout.headerless(offsetType).headerLength(fields, false, 0);
+    }
+
+    /** @throws IllegalArgumentException if the table recorded in place has fields left to set */
+    private void checkComplete() {
+        if (fieldsSet != fields) {
+            throw new IllegalArgumentException(incomplete(fieldsSet, fields));
+        }
+    }
+
+    /**
+     * Keeps {@code slots} writes for the fields of tables recorded in place, {@return where they
+     * start}. The writes grow to twice the room they need, so that tables recorded one after
+     * another take amortized constant time, and the tables nested in a vector's items usually fit
+     * in the room that the vector's items made.
+     */
+    private int keep(int slots) {
+        var start = recorded;
+        var end = start + (long) slots;
+        if (end > writes.length) {
+            if (end > TableLayout.MAX_ARRAY_LENGTH) {
+                throw new OutOfMemoryError("Too many fields to record: " + end);
+            }
+
+            writes = Arrays.copyOf(writes, (int) Math.min(2 * end, TableLayout.MAX_ARRAY_LENGTH));
+        }
+
+        recorded = (int) end;
+        return start;
+    }
+
+    /**
+     * Releases the writes kept from {@code start}, by a fill that failed, so that the values they
+     * capture can be collected
+     */
+    private void release(int start) {
+        Arrays.fill(writes, start, recorded, null);
+        recorded = start;
     }
 
     /**
@@ -391,6 +598,25 @@ public final class TableBuilder {
      *     addresses
      */
     private void addField(long byteLength, int padding, FieldWrite write) {
+        var index = nextField();
+
+        var length = offset + padding + byteLength;
+        if (length > maxLength) {
+            throw new IllegalArgumentException(tooLong(index, length));
+        }
+
+        writes[tableStart + index] = write;
+        fieldsSet = index + 1;
+
+        offset = (int) length;
+    }
+
+    /**
+     * {@return the index of the next field of the table being recorded}
+     *
+     * @throws IllegalStateException if the table is already written, or holds all its fields
+     */
+    private int nextField() {
         if (written != null) {
             throw new IllegalStateException("The table was already written");
         }
@@ -402,15 +628,7 @@ public final class TableBuilder {
             );
         }
 
-        var length = offset + padding + byteLength;
-        if (length > maxLength) {
-            throw new IllegalArgumentException(tooLong(index, length));
-        }
-
-        writes[index] = write;
-        fieldsSet = index + 1;
-
-        offset = (int) length;
+        return index;
     }
 
     private String tooLong(int index, long length) {
@@ -430,10 +648,30 @@ public final class TableBuilder {
         );
     }
 
-    /** Writes the fields with {@code writer}, which has just written the table's offsets' room */
-    private void writeFields(TableWriter writer) {
-        for (int i = 0; i < writes.length; i++) {
-            writes[i].write(writer, i);
+    /**
+     * Writes the {@code fields} fields of a table, whose writes start at {@code start}, with
+     * {@code writer}, which has just written the table's offsets' room
+     */
+    private void writeFields(TableWriter writer, int start, int fields) {
+        var writes = this.writes;
+        for (int i = 0; i < fields; i++) {
+            writes[start + i].write(writer, i);
+        }
+    }
+
+    /** Writes a table recorded in place, as a nested builder is written */
+    private void writeInPlace(TableWriter writer, int start, int fields) {
+        var parent = writer.startTable(fields);
+        writeFields(writer, start, fields);
+        writer.endTable(parent);
+    }
+
+    /** Writes a vector of tables recorded in place, whose items' writes follow one another */
+    private void writeVector(TableWriter writer, int index, int start, int count, int fields) {
+        var vector = writer.setVector(index, count);
+        for (int i = 0; i < count; i++) {
+            writeInPlace(writer, start + i * fields, fields);
+            writer.setItemEnd(vector, i);
         }
     }
 
@@ -462,10 +700,154 @@ public final class TableBuilder {
     private void writeTable(TableWriter writer, TableBuilder table) {
         if (table.written == null && table.offsetType == offsetType && table.layout.headerSize() == 0) {
             var parent = writer.startTable(table.fields);
-            table.writeFields(writer);
+            table.writeFields(writer, 0, table.fields);
             writer.endTable(parent);
         } else {
             writer.copyTable(table.bytes());
+        }
+    }
+
+    /**
+     * The fields of a table that a {@code TableBuilder} records in place, as one of its own fields
+     * or an item of a vector, which {@link #setTable(int, Consumer)} and
+     * {@link #setVector(int, int, ObjIntConsumer)} give to the fill that sets them. Its setters are
+     * the builder's, taking the same values and throwing the same exceptions, and record each field
+     * among the builder's own, so the table needs no builder of its own. It's valid only within
+     * that fill.
+     */
+    public final class Item {
+        /**
+         * Each fill is given an item of its own rather than one that the builder keeps, which the
+         * JIT removes when it inlines the fill, knowing that the item's builder is the one that
+         * records the table. Recording the benchmarks' vector of nested tables took 4.4 µs with
+         * an item kept in a field of the builder, and 3.8 µs so.
+         */
+        private Item() {}
+
+        public void setInt8(byte value) {
+            TableBuilder.this.setInt8(value);
+        }
+
+        public void setUint8(short value) {
+            TableBuilder.this.setUint8(value);
+        }
+
+        public void setInt16(short value) {
+            TableBuilder.this.setInt16(value);
+        }
+
+        public void setUint16(int value) {
+            TableBuilder.this.setUint16(value);
+        }
+
+        public void setInt32(int value) {
+            TableBuilder.this.setInt32(value);
+        }
+
+        public void setUint32(long value) {
+            TableBuilder.this.setUint32(value);
+        }
+
+        public void setInt64(long value) {
+            TableBuilder.this.setInt64(value);
+        }
+
+        /** Sets a {@code uint64} from a {@code long} with its bits */
+        public void setUint64(long value) {
+            TableBuilder.this.setUint64(value);
+        }
+
+        public void setFloat32(float value) {
+            TableBuilder.this.setFloat32(value);
+        }
+
+        public void setFloat64(double value) {
+            TableBuilder.this.setFloat64(value);
+        }
+
+        public void setInt8Array(byte[] values) {
+            TableBuilder.this.setInt8Array(values);
+        }
+
+        public void setUint8Array(short[] values) {
+            TableBuilder.this.setUint8Array(values);
+        }
+
+        public void setInt16Array(short[] values) {
+            TableBuilder.this.setInt16Array(values);
+        }
+
+        public void setUint16Array(int[] values) {
+            TableBuilder.this.setUint16Array(values);
+        }
+
+        public void setInt32Array(int[] values) {
+            TableBuilder.this.setInt32Array(values);
+        }
+
+        public void setUint32Array(long[] values) {
+            TableBuilder.this.setUint32Array(values);
+        }
+
+        public void setInt64Array(long[] values) {
+            TableBuilder.this.setInt64Array(values);
+        }
+
+        /** Sets {@code uint64}s from {@code long}s with their bits */
+        public void setUint64Array(long[] values) {
+            TableBuilder.this.setUint64Array(values);
+        }
+
+        public void setFloat32Array(float[] values) {
+            TableBuilder.this.setFloat32Array(values);
+        }
+
+        public void setFloat64Array(double[] values) {
+            TableBuilder.this.setFloat64Array(values);
+        }
+
+        public void setString(String string) {
+            TableBuilder.this.setString(string);
+        }
+
+        public void setStruct(byte[] bytes) {
+            TableBuilder.this.setStruct(bytes);
+        }
+
+        public void setStructArray(byte[] bytes, int size, int alignment) {
+            TableBuilder.this.setStructArray(bytes, size, alignment);
+        }
+
+        public void setTable(TableBuilder table) {
+            TableBuilder.this.setTable(table);
+        }
+
+        public void setTable(TableBuilder table, int alignment) {
+            TableBuilder.this.setTable(table, alignment);
+        }
+
+        public void setTable(byte[] table) {
+            TableBuilder.this.setTable(table);
+        }
+
+        public void setTable(byte[] table, int alignment) {
+            TableBuilder.this.setTable(table, alignment);
+        }
+
+        public void setTable(int fields, Consumer<Item> fill) {
+            TableBuilder.this.setTable(fields, fill);
+        }
+
+        public void setVector(List<TableBuilder> tables) {
+            TableBuilder.this.setVector(tables);
+        }
+
+        public void setVector(byte[][] tables) {
+            TableBuilder.this.setVector(tables);
+        }
+
+        public void setVector(int count, int fields, ObjIntConsumer<Item> fill) {
+            TableBuilder.this.setVector(count, fields, fill);
         }
     }
 }

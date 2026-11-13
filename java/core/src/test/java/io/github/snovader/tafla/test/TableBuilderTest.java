@@ -4,8 +4,10 @@ import io.github.snovader.tafla.*;
 import io.github.snovader.tafla.test.FieldDescription.*;
 import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
+import net.jqwik.api.statistics.*;
 
 import java.util.*;
+import java.util.function.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -129,6 +131,189 @@ public class TableBuilderTest {
     @Provide
     Arbitrary<TableDescription> headerlessTables() {
         return Descriptions.headerlessTables();
+    }
+
+    @Property
+    void tables_recorded_in_place_write_the_bytes_and_throw_the_exceptions_of_nested_builders(
+        @ForAll("tablesToRecordInPlace") TableDescription described
+    ) {
+        var table = Tables.nestedInPlace(described);
+        var inPlace = new InPlaceTables();
+
+        var recorded = outcome(() -> inPlace.build(table).bytes());
+        var fromBuilders = outcome(() -> Tables.build(table).bytes());
+
+        // Both outcomes, so that the property compares exceptions too
+        Statistics.collect(fromBuilders.startsWith("java.") ? "exception" : "bytes");
+        Statistics.coverage(coverage -> {
+            coverage.check("bytes").percentage(percentage -> percentage > 50);
+            coverage.check("exception").percentage(percentage -> percentage > 5);
+        });
+
+        // Except that a vector whose items' ends and offsets alone make its table too long fails
+        // before its items are recorded, with the length of those rather than of the whole vector
+        if (!recorded.equals(fromBuilders) && inPlace.failedBeforeItems()) {
+            var tooLong = String.format(" bytes, too long for %s offsets", table.layout().offsetType());
+            assertTrue(recorded.endsWith(tooLong), recorded);
+            assertTrue(fromBuilders.endsWith(tooLong), fromBuilders);
+        } else {
+            assertEquals(fromBuilders, recorded);
+        }
+    }
+
+    @Provide
+    Arbitrary<TableDescription> tablesToRecordInPlace() {
+        // Tables that fit their layout, and their fields in tables of uint8 offsets, which they
+        // often make too long, from a field of a nested table or item too
+        var tables = Descriptions.nestingTables();
+        return Arbitraries.oneOf(tables, tables.map(TableBuilderTest::withUint8Offsets));
+    }
+
+    private static TableDescription withUint8Offsets(TableDescription table) {
+        var layout = new LayoutDescription(table.layout().sized(), false, OffsetType.UINT8);
+        return new TableDescription(layout, OptionalLong.empty(), table.fields());
+    }
+
+    /** {@return the table's bytes in hexadecimal, or the exception that building them threw} */
+    private static String outcome(Supplier<byte[]> build) {
+        try {
+            return HexFormat.of().formatHex(build.get());
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return e.toString();
+        }
+    }
+
+    @Example
+    void should_pass_on_what_a_fill_throws_and_leave_the_builder_as_it_was() {
+        var failure = new IllegalStateException("The fill failed");
+        var builder = uint8Before();
+
+        // From the second item, once it and the first were recorded, with a table nested in each
+        var thrown = assertThrows(IllegalStateException.class, () -> builder.setVector(2, 2, (item, index) -> {
+            item.setFloat32(index);
+            item.setTable(1, pair -> pair.setFloat32(index));
+            if (index == 1) {
+                throw failure;
+            }
+        }));
+        assertSame(failure, thrown);
+
+        thrown = assertThrows(IllegalStateException.class, () -> builder.setTable(1, table -> {
+            table.setFloat32(1);
+            throw failure;
+        }));
+        assertSame(failure, thrown);
+
+        setItems(builder);
+        assertArrayEquals(uint8AndItems(), builder.bytes());
+    }
+
+    @Example
+    void should_reject_an_item_or_a_table_in_it_with_fields_left_to_set_and_leave_the_builder_as_it_was() {
+        var builder = uint8Before();
+
+        var exception = assertThrows(IllegalArgumentException.class, () -> builder.setVector(2, 2, (item, index) -> {
+            item.setFloat32(index);
+            if (index == 0) {
+                item.setTable(1, pair -> pair.setFloat32(index));
+            }
+        }));
+        assertEquals("Only 1 of the nested table's 2 fields were set", exception.getMessage());
+
+        exception = assertThrows(IllegalArgumentException.class, () -> builder.setVector(2, 2, (item, index) -> {
+            item.setFloat32(index);
+            item.setTable(2, pair -> pair.setFloat32(index));
+        }));
+        assertEquals("Only 1 of the nested table's 2 fields were set", exception.getMessage());
+
+        exception = assertThrows(IllegalArgumentException.class, () -> builder.setTable(1, table -> {}));
+        assertEquals("Only 0 of the nested table's 1 fields were set", exception.getMessage());
+
+        setItems(builder);
+        assertArrayEquals(uint8AndItems(), builder.bytes());
+    }
+
+    @Example
+    void should_reject_a_field_past_an_items_count_and_leave_the_builder_as_it_was() {
+        var builder = uint8Before();
+
+        var exception = assertThrows(IllegalStateException.class, () -> builder.setVector(1, 1, (item, index) -> {
+            item.setFloat32(1);
+            item.setFloat32(2);
+        }));
+        assertEquals("Can't add field 2 to a table of 1", exception.getMessage());
+
+        setItems(builder);
+        assertArrayEquals(uint8AndItems(), builder.bytes());
+    }
+
+    @Example
+    void should_reject_a_vector_whose_items_ends_and_offsets_are_too_long_before_recording_any_item() {
+        var layout = TableLayout.builder().offsetType(OffsetType.UINT8).build();
+
+        // The field's offset, then the count and 100 ends, and 2 offsets in each item: 302 bytes
+        var builder = new TableBuilder(1, layout);
+        var exception = assertThrows(IllegalArgumentException.class, () -> builder.setVector(100, 2, (item, index) -> {
+            throw new AssertionError("Item " + index + " was recorded");
+        }));
+
+        var offsets = new TableBuilder(1, layout);
+        var expected = assertThrows(IllegalArgumentException.class, () -> offsets.setVector(new byte[100][2]));
+        assertEquals("Field 1 makes the table 302 bytes, too long for uint8 offsets", expected.getMessage());
+        assertEquals(expected.getMessage(), exception.getMessage());
+
+        assertThrows(IllegalArgumentException.class, () -> builder.setVector(-1, 0, (item, index) -> {}));
+        assertThrows(IllegalArgumentException.class, () -> builder.setVector(0, -1, (item, index) -> {}));
+        assertThrows(IllegalArgumentException.class, () -> builder.setTable(-1, table -> {}));
+        exception = assertThrows(IllegalArgumentException.class, () -> builder.setTable(256, table -> {}));
+        assertEquals("A header of 256 fields doesn't fit in uint8 offsets", exception.getMessage());
+
+        builder.setVector(0, 0, (item, index) -> {});
+        assertArrayEquals(new byte[] {1, 0}, builder.bytes());
+    }
+
+    @Example
+    void should_reject_writing_the_builder_within_a_fill() {
+        var builder = new TableBuilder(1);
+
+        assertThrows(IllegalStateException.class, () -> builder.setTable(0, table -> builder.bytes()));
+
+        builder.setTable(0, table -> {});
+        assertArrayEquals(new byte[] {4, 0, 0, 0}, builder.bytes());
+    }
+
+    /** {@return a builder of a uint8 and then a vector} */
+    private static TableBuilder uint8Before() {
+        var builder = new TableBuilder(2);
+        builder.setUint8((short) 1);
+
+        return builder;
+    }
+
+    /** Records a vector of two items in place, each a float32 and a table of a float32 */
+    private static void setItems(TableBuilder builder) {
+        builder.setVector(2, 2, (item, index) -> {
+            item.setFloat32(index);
+            item.setTable(1, pair -> pair.setFloat32(index + 0.5f));
+        });
+    }
+
+    /** {@return the bytes of {@link #uint8Before} with the items of {@link #setItems}, from builders} */
+    private static byte[] uint8AndItems() {
+        var items = new ArrayList<TableBuilder>();
+        for (int index = 0; index < 2; index++) {
+            var pair = new TableBuilder(1);
+            pair.setFloat32(index + 0.5f);
+
+            var item = new TableBuilder(2);
+            item.setFloat32(index);
+            item.setTable(pair);
+            items.add(item);
+        }
+
+        var builder = uint8Before();
+        builder.setVector(items);
+        return builder.bytes();
     }
 
     @Property

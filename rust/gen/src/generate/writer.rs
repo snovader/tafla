@@ -70,6 +70,12 @@ impl CodeWriter {
         }
     }
 
+    /// The width of the current depth's indentation
+    #[cfg(feature = "cpp")]
+    pub const fn indentation(&self) -> usize {
+        self.depth * self.indent.len()
+    }
+
     /// Whether a line of `text` fits within the style's width at the current
     /// depth
     pub const fn fits(&self, style: &Style, text: &str) -> bool {
@@ -243,7 +249,7 @@ pub fn doc_comment(docs: &[String]) -> Vec<String> {
 /// spans escaped, and its code spans as they are. A code span starts at
 /// every other backtick, and ends at the next or at the end of the line, as
 /// Java's `{@code ...}` does.
-#[cfg(any(feature = "typescript", feature = "java"))]
+#[cfg(any(feature = "typescript", feature = "java", feature = "cpp"))]
 pub fn escape_outside_code_spans(line: &str, escape: impl Fn(&str) -> String) -> String {
     let mut escaped = String::with_capacity(line.len());
     for (index, part) in line.split('`').enumerate() {
@@ -262,7 +268,7 @@ pub fn escape_outside_code_spans(line: &str, escape: impl Fn(&str) -> String) ->
 /// Text for a `/* ... */` comment, with `*/` written as an HTML entity, which
 /// `JSDoc` and Javadoc render as the characters, so that it doesn't end the
 /// comment
-#[cfg(any(feature = "typescript", feature = "java"))]
+#[cfg(any(feature = "typescript", feature = "java", feature = "cpp"))]
 pub fn comment_text(text: &str) -> String {
     text.replace("*/", "*&#47;")
 }

@@ -8,15 +8,14 @@ from statistics import fmean, median
 
 import pyperf
 
-from tafla_benchmarks.codecs import CODECS, STRUCT, TAFLA
+from tafla_benchmarks.codecs import CODEC_NAMES, STRUCT, TAFLA
 from tafla_benchmarks.item_access import ACCESSES
 from tafla_benchmarks.suite import groups
 
-# The codecs, and the ways of reading tafla's items that aren't codecs
+# The codecs, protobuf's pure-Python implementation included, which runs in
+# processes of its own, and the ways of reading tafla's items that aren't codecs
 _CODEC_NAMES = list(
-    dict.fromkeys(
-        [codec.name for codec in CODECS] + [STRUCT] + [a.name for a in ACCESSES]
-    )
+    dict.fromkeys([*CODEC_NAMES, STRUCT, *(access.name for access in ACCESSES)])
 )
 
 

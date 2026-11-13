@@ -31,6 +31,16 @@ class Point:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(cls, x: float, y: float, id: int, name: str, /) -> memoryview:
+        """Writes a ``Point`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(4, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (x, y, id), name)
+
+        return writer.bytes()
+
     def x(self) -> float:
         return self._buffer.get_float64(self._buffer.root_offset(0))
 
@@ -53,6 +63,16 @@ class Point:
             return {"x": self.x(), "y": self.y(), "id": self.id(), "name": self.name()}
 
         return {"x": values[0], "y": values[1], "id": values[2], "name": values[3]}
+
+    def field_values(self) -> tuple[float, float, int, str]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.x(), self.y(), self.id(), self.name())
+
+        return values
 
 
 class PointFields(TypedDict):
@@ -204,10 +224,11 @@ class ItemList:
     def serialize(cls, **fields: Unpack[ItemListFields]) -> memoryview:
         """Writes an ``ItemList`` with every field"""
         writer = TableWriter(1, cls._LAYOUT)
-        vector = writer.set_vector(0, len(fields["items"]))
-        for i, item in enumerate(fields["items"]):
-            Item.write(writer, item)
-            writer.set_item_end(vector, i)
+        items = [
+            (item["value"], item["pair"]["first"], item["pair"]["second"])
+            for item in fields["items"]
+        ]
+        writer.set_vector_tables(0, Item._FIXED_FIELDS, items)
 
         return writer.bytes()
 
@@ -317,6 +338,20 @@ class ItemVector:
         for offset in buffer.get_vector_offsets(self._position):
             yield Item(buffer, offset)
 
+    def fields(self) -> list[ItemFields]:
+        """Reads every item's fields at once, as ``Item.fields()`` reads each,
+        in one call when the items' offsets are those that their writer writes,
+        and otherwise item by item
+        """
+        items = self._buffer.get_vector_fields(self._position, Item._FIXED_FIELDS)
+        if items is None:
+            return [item.fields() for item in self]
+
+        return [
+            {"value": values[0], "pair": {"first": values[1], "second": values[2]}}
+            for values in items
+        ]
+
 
 class Pair:
     """Two values of an item"""
@@ -358,6 +393,16 @@ class Pair:
             return {"first": self.first(), "second": self.second()}
 
         return {"first": values[0], "second": values[1]}
+
+    def field_values(self) -> tuple[float, float]:
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``fields()`` reads them into a dict.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return (self.first(), self.second())
+
+        return values
 
 
 class PairFields(TypedDict):
@@ -458,6 +503,53 @@ class Sample:
             raise ValueError("Sample's values don't fit its fields") from cause
 
         return data
+
+    @classmethod
+    def read_values(cls, data: Buffer, offset: int = 0) -> tuple[int, float, float]:
+        """Reads the values of a ``Sample`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(cls, data: Buffer) -> list[tuple[int, float, float]]:
+        """Reads the values of the ``Sample``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Samples don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Sample can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(cls, key: int, a: float, b: float, /) -> bytes:
+        """Returns the bytes of a ``Sample`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(key, a, b)
+        except (error, OverflowError) as cause:
+            raise ValueError("Sample's values don't fit its fields") from cause
 
 
 _Sample_key = Sample.__dict__["key"].__set__

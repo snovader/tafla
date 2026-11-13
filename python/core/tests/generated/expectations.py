@@ -53,9 +53,9 @@ def assert_values_or_decode_error(read: Callable[[], object]) -> None:
 
 
 def fields_or_decode_error(read: Callable[[], object]) -> object:
-    """The fields that ``read`` returns, with each float as its bits, which
-    tells NaNs and -0 apart, or the message of the ``DecodeError`` that it
-    raises. Any other exception fails the test."""
+    """The fields or values that ``read`` returns, with each float as its
+    bits, which tells NaNs and -0 apart, or the message of the
+    ``DecodeError`` that it raises. Any other exception fails the test."""
     try:
         return _bits(read())
     except DecodeError as error:
@@ -65,6 +65,9 @@ def fields_or_decode_error(read: Callable[[], object]) -> object:
 def _bits(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _bits(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return type(value)(_bits(item) for item in value)
 
     if isinstance(value, float):
         return pack("<d", value)

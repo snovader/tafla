@@ -117,12 +117,22 @@ const RUST: &[&str] = &[
     "Vector",
 ];
 
+/// The macros of the C standard library that a name can take, which a header
+/// that C++'s generated code includes may define. C++ names the runtime and
+/// the standard library in full, as `::tafla::` and `std::`, so nothing else
+/// would clash. Platforms define more, such as POSIX's `EPERM` and `SIGHUP`.
+const CPP: &[&str] = &[
+    "BUFSIZ", "EDOM", "EILSEQ", "EOF", "ERANGE", "INFINITY", "NAN", "NULL", "SIGABRT", "SIGFPE",
+    "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
+];
+
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 4] = [
+const RESERVED: [(&[&str], &[&str]); 5] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
+    (&["C++"], CPP),
 ];
 
 /// The targets whose generated code uses `name`, which a declaration can't

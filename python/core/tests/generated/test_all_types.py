@@ -3,9 +3,9 @@ writes and reads tables with tafla."""
 
 import unittest
 from collections.abc import Callable
-from dataclasses import FrozenInstanceError, fields, replace
+from dataclasses import FrozenInstanceError, astuple, fields, replace
 from functools import partial
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists, one_of
@@ -680,6 +680,114 @@ class TestFields(unittest.TestCase):
             fields_or_decode_error(lambda: corrupted.keywords().fields()),
             fields_or_decode_error(lambda: read_reserved(corrupted)["keywords"]),
         )
+
+
+class TestValues(unittest.TestCase):
+    # field_values() reads the fields of a table of scalars and a string into a
+    # tuple, as fields() reads them into a dict, and serialize_values() writes
+    # a message from them. Structs of scalars read and write their values as
+    # tuples, as their dataclasses hold them, and their arrays' views read
+    # every struct's.
+
+    @SETTINGS
+    @given(scalars_fields, reserved_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_scalars_and_keywords_values_as_their_getters_and_writes_them_back(
+        self,
+        scalars: ScalarsFields,
+        reserved: ReservedFields,
+        corruption: Truncation | Overwrite | bytes,
+    ) -> None:
+        scalars_data = bytes(Scalars.serialize(**scalars))
+        reserved_data = bytes(Reserved.serialize(**reserved))
+        if not isinstance(corruption, bytes):
+            scalars_data = corruption.apply(scalars_data)
+            reserved_data = corruption.apply(reserved_data)
+        written = Scalars(scalars_data)
+        keywords = Reserved(reserved_data)
+
+        self.assertEqual(
+            fields_or_decode_error(written.field_values),
+            fields_or_decode_error(lambda: tuple(read_scalars(written).values())),
+        )
+        self.assertEqual(
+            fields_or_decode_error(lambda: keywords.keywords().field_values()),
+            fields_or_decode_error(
+                lambda: tuple(read_reserved(keywords)["keywords"].values())
+            ),
+        )
+        if isinstance(corruption, bytes):
+            values = written.field_values()
+            self.assertEqual(bytes(Scalars.serialize_values(*values)), scalars_data)
+
+    @SETTINGS
+    @given(packed_structs, documented_structs, point_structs, binary(max_size=8))
+    def test_reads_and_writes_each_structs_values_as_its_dataclass_holds_them(
+        self, packed: Packed, documented: Documented, point: Point, before: bytes
+    ) -> None:
+        for struct in [packed, documented, point]:
+            _assert_struct_values(self, struct, before)
+
+    @SETTINGS
+    @given(binary(max_size=60), integers(-60, 60))
+    def test_reads_each_structs_values_or_raises_as_read_does(
+        self, data: bytes, offset: int
+    ) -> None:
+        for struct in [Packed, Documented, Point]:
+            self.assertEqual(
+                fields_or_decode_error(partial(struct.read_values, data, offset)),
+                fields_or_decode_error(
+                    lambda struct=struct: astuple(struct.read(data, offset))
+                ),
+                struct.__name__,
+            )
+            self.assertEqual(
+                fields_or_decode_error(partial(struct.read_array_values, data)),
+                fields_or_decode_error(
+                    lambda struct=struct: _astuples(struct.read_array(data))
+                ),
+                struct.__name__,
+            )
+
+    @SETTINGS
+    @given(structs_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_every_structs_values_through_a_view_as_the_getter_reads_them(
+        self, fields: StructsFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        data = bytes(Structs.serialize(**fields))
+        if not isinstance(corruption, bytes):
+            data = corruption.apply(data)
+        structs = Structs(data)
+
+        self.assertEqual(
+            fields_or_decode_error(lambda: structs.documented_view().field_values()),
+            fields_or_decode_error(lambda: _astuples(structs.documented())),
+        )
+        self.assertEqual(
+            fields_or_decode_error(lambda: structs.path().points_view().field_values()),
+            fields_or_decode_error(lambda: _astuples(structs.path().points())),
+        )
+
+
+def _assert_struct_values(test: unittest.TestCase, struct: Any, before: bytes) -> None:
+    """Asserts that a struct of scalars reads and writes the values that its
+    dataclass holds, alone and in an array"""
+    values = astuple(struct)
+    data = before + struct.serialize()
+    array = type(struct).serialize_array([struct, struct])
+
+    test.assertEqual(
+        fields_or_decode_error(partial(type(struct).read_values, data, len(before))),
+        fields_or_decode_error(lambda: values),
+    )
+    test.assertEqual(type(struct).serialize_values(*values), struct.serialize())
+    test.assertEqual(
+        fields_or_decode_error(partial(type(struct).read_array_values, array)),
+        fields_or_decode_error(lambda: [values, values]),
+    )
+
+
+def _astuples(structs: list[Any]) -> list[tuple[Any, ...]]:
+    return [astuple(struct) for struct in structs]
 
 
 class _PointTuple(NamedTuple):

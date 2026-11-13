@@ -1,5 +1,6 @@
 """Conversions between the array-likes that callers pass and the little-endian
-elements that tables store."""
+elements that tables store, and the checks of the buffers that they pass as
+bytes and structs."""
 
 from array import array
 from collections.abc import Buffer, Iterable
@@ -7,6 +8,7 @@ from struct import calcsize, error as StructError
 from typing import Any, cast
 
 from .constants import IS_LITTLE_ENDIAN
+from .errors import describe_int
 from .types import TypeCode
 
 
@@ -106,3 +108,49 @@ def from_little_endian(type_code: TypeCode, view: memoryview) -> memoryview[Any]
     swapped.byteswap()
 
     return memoryview(swapped)
+
+
+def check_struct_size(size: int) -> None:
+    """Raises ``ValueError`` if ``size`` is less than 1, which no struct's
+    size is. ``get_struct_array()`` checks the size it's given with it, and so
+    do the writers' ``set_struct_array()``."""
+    if size < 1:
+        raise ValueError(
+            f"A struct's size must be a positive integer, not {describe_int(size)}"
+        )
+
+
+def byte_view(buffer: Buffer) -> memoryview:
+    """Returns the bytes of a C-contiguous buffer, as a one-dimensional view.
+
+    Raises ``TypeError`` for a buffer that isn't C-contiguous, such as a slice
+    with a step, as ``memoryview.cast()`` does, and as ``bytearray`` does when
+    ``TableWriter`` appends it. A one-dimensional view of bytes needs no cast,
+    so it's checked here.
+    """
+    view = memoryview(buffer)
+    if not view.c_contiguous:
+        raise not_contiguous()
+
+    return view if view.format == "B" and view.ndim == 1 else view.cast("B")
+
+
+def not_contiguous() -> TypeError:
+    return TypeError(
+        "Can't view the bytes of a buffer that isn't C-contiguous, such as a "
+        "slice with a step"
+    )
+
+
+def struct_count(byte_length: int, size: int) -> int:
+    """Returns the number of structs of ``size`` bytes in ``byte_length``
+    bytes. Raises ``ValueError`` if ``size`` is less than 1, or the bytes
+    aren't a whole number of structs."""
+    check_struct_size(size)
+    if byte_length % size != 0:
+        raise ValueError(
+            f"{byte_length} bytes aren't a whole number of "
+            f"{describe_int(size)}-byte structs"
+        )
+
+    return byte_length // size

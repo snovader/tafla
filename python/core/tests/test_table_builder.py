@@ -2,10 +2,10 @@ import unittest
 from array import array
 from collections.abc import Buffer, Callable
 from struct import pack
-from typing import Any, cast
+from typing import Any, cast, override
 
 from hypothesis import given
-from hypothesis.strategies import integers
+from hypothesis.strategies import integers, one_of
 
 from tafla import (
     ByteBuffer,
@@ -14,10 +14,12 @@ from tafla import (
 )
 from tests.descriptions import tables
 from tests.tables import (
+    LONGEST,
     Description,
     OffsetType,
     alignment_of,
     build_table,
+    build_table_in_place,
     offset_size_of,
 )
 
@@ -514,6 +516,235 @@ class TestNestedBuilders(unittest.TestCase):
         position = buffer.field_offset(buffer.root_offset(0), 0)
 
         self.assertEqual(buffer.get_float32_array(position).tolist(), [3, 2])
+
+
+def with_offset_type(table: Description, offset_type: OffsetType) -> Description:
+    """Returns a table's description with every table in it, nested ones
+    included, of ``offset_type``, and versions that fit its slots, so that a
+    table of short offsets may be too long for them"""
+    layout = {**table["layout"], "offsetType": offset_type}
+    shortened: Description = {**table, "layout": layout}
+    if "version" in table:
+        shortened["version"] = min(table["version"], LONGEST[offset_type])
+
+    shortened["fields"] = [
+        _field_with_offset_type(field, offset_type) for field in table["fields"]
+    ]
+    return shortened
+
+
+def _field_with_offset_type(field: Description, offset_type: OffsetType) -> Description:
+    if field["type"] == "table":
+        return {**field, "table": with_offset_type(field["table"], offset_type)}
+
+    if field["type"] == "vector":
+        items = [
+            {**item, "table": with_offset_type(item["table"], offset_type)}
+            for item in field["items"]
+        ]
+        return {**field, "items": items}
+
+    return field
+
+
+def built_by(
+    build: Callable[[Description], TableBuilder], table: Description
+) -> object:
+    """The bytes that a builder of the table writes, or the type of what it
+    raises"""
+    try:
+        return bytes(build(table).bytes())
+    except (TypeError, ValueError) as error:
+        return type(error)
+
+
+def items_of(values: list[float], builder: TableBuilder) -> bytes:
+    """Records the vector of nested tables that the benchmarks write in
+    place, an item of a float32 and a pair of float32s for each value, and
+    returns the builder's bytes"""
+    builder.set_vector_in_place(values, set_item, fields=2)
+    return bytes(builder.bytes())
+
+
+def set_item(item: TableBuilder, value: float) -> None:
+    item.set_float32(value)
+    item.set_table_in_place(set_pair, value + 1, value + 2, fields=2)
+
+
+def set_pair(pair: TableBuilder, first: float, second: float) -> None:
+    pair.set_float32(first)
+    pair.set_float32(second)
+
+
+def items_from_builders(values: list[float]) -> bytes:
+    builder = TableBuilder(1)
+    builder.set_vector([_item_builder(value) for value in values])
+    return bytes(builder.bytes())
+
+
+def _item_builder(value: float) -> TableBuilder:
+    pair = TableBuilder(2)
+    pair.set_float32(value + 1)
+    pair.set_float32(value + 2)
+
+    item = TableBuilder(2)
+    item.set_float32(value)
+    item.set_table(pair)
+    return item
+
+
+VALUES = [1.0, 2.0, 3.0]
+
+
+class TestTablesInPlace(unittest.TestCase):
+    @given(
+        one_of(tables(), tables().map(lambda table: with_offset_type(table, "uint8")))
+    )
+    def test_tables_recorded_in_place_write_what_their_builders_write(
+        self, table: Description
+    ) -> None:
+        """Tables nested from builders and recorded in place write the bytes
+        that their builders write, and raise as they raise, for tables of any
+        offset type and of uint8 offsets, whose limits the fields reach"""
+        self.assertEqual(
+            built_by(build_table_in_place, table), built_by(build_table, table)
+        )
+
+    def test_writes_the_vector_of_nested_tables_as_its_builders_do(self) -> None:
+        self.assertEqual(items_of(VALUES, TableBuilder(1)), items_from_builders(VALUES))
+
+    def test_an_item_that_raises_leaves_the_builder_as_it_was(self) -> None:
+        def fill(item: TableBuilder, value: float) -> None:
+            item.set_float32(value)
+            if value == 3:
+                raise LookupError("The caller's")
+            item.set_table_in_place(set_pair, 1, 2, fields=2)
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(LookupError, "The caller's"):
+            builder.set_vector_in_place(VALUES, fill, fields=2)
+
+        self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_an_incomplete_item_raises_and_leaves_the_builder_as_it_was(self) -> None:
+        def fill(item: TableBuilder, value: float) -> None:
+            item.set_float32(value)
+            if value != 2:
+                item.set_table_in_place(set_pair, 1, 2, fields=2)
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(ValueError, "Only 1 of item 1's 2 fields were set"):
+            builder.set_vector_in_place(VALUES, fill, fields=2)
+
+        self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_an_incomplete_nested_table_raises_and_leaves_the_builder_as_it_was(
+        self,
+    ) -> None:
+        def fill(item: TableBuilder, value: float) -> None:
+            item.set_float32(value)
+            item.set_table_in_place(TableBuilder.set_float32, value, fields=2)
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(
+            ValueError, "Only 1 of the nested table's 2 fields were set"
+        ):
+            builder.set_vector_in_place(VALUES, fill, fields=2)
+
+        self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_a_field_past_an_items_count_raises_and_leaves_the_builder_as_it_was(
+        self,
+    ) -> None:
+        def fill(item: TableBuilder, value: float) -> None:
+            set_item(item, value)
+            item.set_float32(value)
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(ValueError, "Can't add field 3 to a table of 2"):
+            builder.set_vector_in_place(VALUES, fill, fields=2)
+
+        self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_rejects_a_count_too_long_for_the_table_before_recording_any_item(
+        self,
+    ) -> None:
+        """A vector of 253 items of no fields holds its count and an end for
+        each, of a byte each, which make a table of uint8 offsets, with its
+        own offset, 255 bytes long. Another item makes it too long."""
+        filled: list[int] = []
+
+        def fill(item: TableBuilder, value: int) -> None:
+            filled.append(value)
+
+        builder = TableBuilder(1, TableLayout(offset_type="uint8"))
+        with self.assertRaisesRegex(ValueError, "makes the table 256 bytes"):
+            builder.set_vector_in_place(range(254), fill, fields=0)
+
+        self.assertEqual(filled, [])
+        builder.set_vector_in_place(range(253), fill, fields=0)
+        self.assertEqual(len(builder.bytes()), 255)
+
+    def test_raises_for_values_that_give_other_than_their_length(self) -> None:
+        class Shrinking(list[float]):
+            @override
+            def __len__(self) -> int:
+                return super().__len__() + 1
+
+        builder = TableBuilder(1)
+        with self.assertRaisesRegex(ValueError, r"other than the 4 of len\(\)"):
+            builder.set_vector_in_place(Shrinking(VALUES), set_item, fields=2)
+
+        self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_a_builder_written_within_fill_raises_and_is_left_as_it_was(
+        self,
+    ) -> None:
+        """The builder holds the nested table's fields while fill runs, so
+        writing it there writes them as a table of their own, which the
+        in-place setter undoes once fill returns"""
+        for write in (TableBuilder.bytes, TableBuilder.finalize):
+            with self.subTest(write=write.__name__):
+
+                def fill(
+                    item: TableBuilder,
+                    value: float,
+                    write: Callable[[TableBuilder], object] = write,
+                ) -> None:
+                    set_item(item, value)
+                    write(item)
+
+                table = TableBuilder(2)
+                table.set_float32(0)
+                with self.assertRaisesRegex(ValueError, "was written while"):
+                    table.set_table_in_place(fill, 1, fields=2)
+
+                vector = TableBuilder(1)
+                with self.assertRaisesRegex(ValueError, "was written while"):
+                    vector.set_vector_in_place(VALUES, fill, fields=2)
+
+                table.set_table_in_place(set_item, 1, fields=2)
+                expected = TableBuilder(2)
+                expected.set_float32(0)
+                expected.set_table(_item_builder(1))
+                self.assertEqual(table.bytes(), expected.bytes())
+                self.assertEqual(items_of(VALUES, vector), items_from_builders(VALUES))
+
+    def test_rejects_an_in_place_table_beyond_the_number_the_table_holds(
+        self,
+    ) -> None:
+        filled: list[object] = []
+
+        def fill(item: TableBuilder, *values: object) -> None:
+            filled.append(values)
+
+        builder = TableBuilder(0)
+        with self.assertRaisesRegex(ValueError, "Can't add field 1 to a table of 0"):
+            builder.set_table_in_place(fill, fields=0)
+        with self.assertRaisesRegex(ValueError, "Can't add field 1 to a table of 0"):
+            builder.set_vector_in_place([1], fill, fields=0)
+
+        self.assertEqual(filled, [])
 
 
 if __name__ == "__main__":

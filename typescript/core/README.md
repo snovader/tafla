@@ -132,6 +132,30 @@ byte; its README describes them. This package writes them, and
   type. In Node, a vector of 100 tables that each nest another took 12 µs to
   build from builders and 49 µs from bytes, and a table nesting 100,000 rows
   of three columns took 30 µs and 77 µs.
+- **Record nested tables in place.** `setTableInPlace(fields, fill)` and
+  `setVectorInPlace(count, fields, fill)` record a nested table, or each item
+  of a vector, among the builder's own fields, rather than from a builder of
+  its own. `fill` sets the fields on the `TableItem` that it's given, which
+  is the builder itself, counting the nested table's fields until `fill`
+  returns. They write the bytes that nested builders write, and leave the
+  builder as it was if `fill` throws or leaves fields unset. A table built
+  elsewhere, or reused, is still nested from its builder or its bytes.
+
+  ```ts
+  builder.setVectorInPlace(items.length, 2, (item, index) => {
+      item.setFloat32(items[index].value);
+      item.setTableInPlace(2, pair => {
+          pair.setFloat32(items[index].first);
+          pair.setFloat32(items[index].second);
+      });
+  });
+  ```
+
+  In Node 26, the comparison suite's vector of 100 nested tables took
+  11.5 µs so, against 13.7 µs from a builder per item, and allocated 31 KB
+  on V8's heap rather than 47 KB. V8 optimizes the builder's code for every
+  way that a program uses it, so in a program that records tables in place,
+  tables built from builders took 2–8% longer than in one that doesn't.
 - **Write records of fixed size as arrays of structs.** An array of 100
   structs of three float32s took about 1 µs to write and 1,208 bytes, against
   13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of

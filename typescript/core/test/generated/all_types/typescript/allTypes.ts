@@ -179,7 +179,7 @@ export class Arrays {
         this.#buffer = new ByteBuffer(bytes, Arrays.#LAYOUT);
     }
 
-    /** Writes a `Arrays` with every field */
+    /** Writes an `Arrays` with every field */
     static serialize(fields: ArraysFields): Uint8Array {
         const sizer = new TableSizer(10, Arrays.#LAYOUT);
         sizer.addInt8Array(fields.int8.length);
@@ -209,7 +209,7 @@ export class Arrays {
     }
 
     /**
-     * Writes a `Arrays` with every field into the start of `bytes`,
+     * Writes an `Arrays` with every field into the start of `bytes`,
      * rather than into new bytes, and returns the view of them that holds
      * it. The view, and what's read from it, change when the bytes are
      * written again. Reusing bytes saves allocating and zeroing new ones,
@@ -287,7 +287,7 @@ export class Arrays {
     }
 }
 
-/** The fields of a `Arrays`, to write */
+/** The fields of an `Arrays`, to write */
 export interface ArraysFields {
     int8: ArrayLike<number> | Int8Array;
     uint8: ArrayLike<number> | Uint8Array;
@@ -466,7 +466,7 @@ export class Outer {
     }
 }
 
-/** The fields of a `Outer`, to write */
+/** The fields of an `Outer`, to write */
 export interface OuterFields {
     count: number;
     inner: InnerFields;
@@ -523,7 +523,7 @@ export class Inner {
     }
 }
 
-/** The fields of a `Inner`, to write */
+/** The fields of an `Inner`, to write */
 export interface InnerFields {
     name: string;
     values: ArrayLike<number> | Float64Array;

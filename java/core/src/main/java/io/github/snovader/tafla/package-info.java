@@ -96,6 +96,11 @@
  *     a header or another offset type than its parent's. A vector of 100 tables that each nest
  *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
  *     100,000 rows of three columns took 54 µs and 108 µs.</li>
+ *   <li><b>Record nested tables in place.</b> {@code setTable(int, Consumer)} and
+ *     {@code setVector(int, int, ObjIntConsumer)} record a nested table, or each item of a vector,
+ *     among its parent's fields, without a builder of its own. The vector of 100 tables that each
+ *     nest another took 12% less time so than from a builder per item, as the fastest of JMH's
+ *     iterations, and allocated 13.0 KB rather than 29.1 KB.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>
@@ -146,12 +151,15 @@
  *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
  *     vector, or the count it's given.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
- *     it was created with, for writing before every field is set, and for a field set after
- *     writing. It throws an {@link IllegalArgumentException} for a version missing from or given
- *     for a layout, a version that doesn't fit, a nested builder with fields left to set, an
- *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
- *     number of structs. A field that would make the table too long for its offset type throws an
- *     {@code IllegalArgumentException} from its setter and isn't added.</li>
+ *     that its table holds, a table recorded in place too, for writing before every field is set
+ *     or while a fill records a table in it, and for a field set after writing. It throws an
+ *     {@link IllegalArgumentException} for a version missing from or given for a layout, a version
+ *     that doesn't fit, a negative number of fields or count, a nested builder or a table recorded
+ *     in place with fields left to set, an alignment other than 1, 2, 4 or 8, and a struct size
+ *     below 1 or bytes that aren't a whole number of structs. A field that would make the table
+ *     too long for its offset type throws an {@code IllegalArgumentException} from its setter and
+ *     isn't added. A table recorded in place passes on what its fill throws, and leaves the
+ *     builder as it was whatever is thrown.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and

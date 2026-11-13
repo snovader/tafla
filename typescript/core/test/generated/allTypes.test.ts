@@ -234,7 +234,7 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             (fields, slice) => {
                 const bytes = sliceOf(allTypes.Nested.serialize(fields), slice);
 
-                expect(readNestedViews(new allTypes.Nested(bytes))).toEqual(fields);
+                expect(readNestedViews(new allTypes.Nested(bytes), bytes.length)).toEqual(fields);
             }
         );
 
@@ -253,7 +253,9 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 const bytes = allTypes.Nested.serialize(fields);
                 const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
 
-                expectValuesOrDecodeError(() => readNestedViews(new allTypes.Nested(corrupted)));
+                expectValuesOrDecodeError(() =>
+                    readNestedViews(new allTypes.Nested(corrupted), corrupted.length)
+                );
             }
         );
 
@@ -270,7 +272,9 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
         it.prop([fc.uint8Array({ maxLength: 64 })])(
             'should read arbitrary bytes through the views of any message or throw DecodeError',
             bytes => {
-                expectValuesOrDecodeError(() => readNestedViews(new allTypes.Nested(bytes)));
+                expectValuesOrDecodeError(() =>
+                    readNestedViews(new allTypes.Nested(bytes), bytes.length)
+                );
                 expectValuesOrDecodeError(() => readStructsViews(new allTypes.Structs(bytes)));
             }
         );
@@ -299,6 +303,35 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             const tree = new allTypes.Nested(bytes).treesView().get(0);
 
             expect(() => tree.childrenView()).toThrow(DecodeError);
+        });
+
+        it('should read a tree that holds itself through views, where the getter throws DecodeError', () => {
+            const bytes = allTypes.Nested.serialize({
+                label: '',
+                outer: { count: 0, inner: { name: '', values: [] } },
+                trees: [
+                    { value: 0, children: [] },
+                    { value: 0, children: [] }
+                ]
+            });
+            // End 0 for the first tree, which then ends before it starts. The
+            // second starts at the trees' count, and reads the count and this
+            // end as its offsets, so its children are the trees, and it's the
+            // second of them.
+            const trees = new ByteBuffer(bytes).rootOffset(2);
+            bytes.set([0, 0, 0, 0], trees + 4);
+            const nested = new allTypes.Nested(bytes);
+
+            const top = nested.treesView().get(1);
+            let tree = top;
+            for (let level = 0; level < bytes.length; level++) {
+                tree = tree.childrenView().get(1);
+            }
+
+            expect(tree.value()).toBe(top.value());
+            expect(tree.childrenView().length()).toBe(2);
+            expect(() => nested.trees()).toThrow(DecodeError);
+            expect(() => readNestedViews(nested, bytes.length)).toThrow(DecodeError);
         });
 
         it('should view empty vectors and arrays of structs', () => {

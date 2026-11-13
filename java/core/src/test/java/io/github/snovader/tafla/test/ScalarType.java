@@ -76,6 +76,36 @@ enum ScalarType {
         }
     }
 
+    void set(TableBuilder.Item item, long value) {
+        switch (this) {
+            case INT8 -> item.setInt8((byte) value);
+            case UINT8 -> item.setUint8((short) value);
+            case INT16 -> item.setInt16((short) value);
+            case UINT16 -> item.setUint16((int) value);
+            case INT32 -> item.setInt32((int) value);
+            case UINT32 -> item.setUint32(value);
+            case INT64 -> item.setInt64(value);
+            case UINT64 -> item.setUint64(value);
+            case FLOAT32 -> item.setFloat32(Float.intBitsToFloat((int) value));
+            case FLOAT64 -> item.setFloat64(Double.longBitsToDouble(value));
+        }
+    }
+
+    void setArray(TableBuilder.Item item, long[] values) {
+        switch (this) {
+            case INT8 -> item.setInt8Array(toBytes(values));
+            case UINT8 -> item.setUint8Array(toShorts(values));
+            case INT16 -> item.setInt16Array(toShorts(values));
+            case UINT16 -> item.setUint16Array(toInts(values));
+            case INT32 -> item.setInt32Array(toInts(values));
+            case UINT32 -> item.setUint32Array(values);
+            case INT64 -> item.setInt64Array(values);
+            case UINT64 -> item.setUint64Array(values);
+            case FLOAT32 -> item.setFloat32Array(toFloats(values));
+            case FLOAT64 -> item.setFloat64Array(toDoubles(values));
+        }
+    }
+
     void add(TableSizer sizer) {
         switch (this) {
             case INT8 -> sizer.addInt8();

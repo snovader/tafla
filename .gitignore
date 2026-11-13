@@ -18,6 +18,10 @@ __pycache__
 /python/.venv
 /python/**/dist
 /python/results.json
+# The native module, which an editable install builds into the package
+/python/core/src/tafla/_native.*.so
+/python/core/src/tafla/_native.*.pyd
+/python/core/native/target
 
 # Java
 .jqwik-database

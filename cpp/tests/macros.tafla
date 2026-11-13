@@ -1,0 +1,26 @@
+// Names that compilers', C's, glibc's and Windows' macros take, which the
+// C++ that tafla-gen generates renames. macros_test.cpp defines them before
+// it includes the generated code, which lies in the namespace of a package
+// whose names are macros and reserved names too.
+// rust/gen/tests/cpp_schemas.rs keeps macros/macros.hpp the generated code.
+
+message Macros {
+    linux: uint8;
+    unix: uint8;
+    i386: uint8;
+    sun: uint8;
+    min: uint8;
+    max: uint8;
+    major: uint8;
+    minor: uint8;
+    errno: uint8;
+    near: uint8;
+    far: uint8;
+    small: uint8;
+    interface: Interface;
+}
+
+table Interface {
+    min: [float32];
+    max: [float32];
+}

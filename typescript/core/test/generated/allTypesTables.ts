@@ -188,19 +188,42 @@ function readPath(path: Path): PathFields {
 // Reading the vectors and arrays of structs through their views instead, from
 // the last item to the first, as a reader that skips items would
 
-export function readNestedViews(nested: Nested): NestedFields {
+/**
+ * Reads a `Nested` of `byteLength` bytes through its views, with trees nested
+ * as many levels deep as the bytes are long at most.
+ *
+ * A view reads an item without the items before it, so corrupted ends can
+ * give it a tree that holds itself, as SPEC.md's Validation describes, which
+ * a walk would follow without end. A tree, read in place, lies at or after
+ * its parent, and one at its parent's position reads as its parent, which
+ * then holds itself. So a tree nested deeper than the bytes are long lies
+ * below one that holds itself, and reads as a tree a level above it, which
+ * the walk reads.
+ */
+export function readNestedViews(
+    nested: Nested,
+    byteLength: number
+): NestedFields {
     return {
         label: nested.label(),
         outer: readOuter(nested.outer()),
-        trees: readView(nested.treesView(), readTreeViews)
+        trees: readView(nested.treesView(), (tree: Tree) =>
+            readTreeViews(tree, byteLength)
+        )
     };
 }
 
-function readTreeViews(tree: Tree): TreeFields {
-    return {
-        value: tree.value(),
-        children: readView(tree.childrenView(), readTreeViews)
-    };
+/** Reads a tree and its children through their views, `levels` levels deep */
+function readTreeViews(tree: Tree, levels: number): TreeFields {
+    const value = tree.value();
+    const children =
+        levels > 1
+            ? readView(tree.childrenView(), (child: Tree) =>
+                  readTreeViews(child, levels - 1)
+              )
+            : [];
+
+    return { value, children };
 }
 
 export function readStructsViews(structs: Structs): StructsFields {

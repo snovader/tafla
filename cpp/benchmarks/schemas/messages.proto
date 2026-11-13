@@ -1,0 +1,33 @@
+// The workloads' messages, the same as the TypeScript comparison's, from which
+// the build generates the protobuf codec's code with `protoc --cpp_out`.
+// proto3 packs repeated scalars by default.
+syntax = "proto3";
+
+package tafla_proto;
+
+message Record { double x = 1; double y = 2; int64 id = 3; string name = 4; }
+
+message Columns {
+    int64 base = 1;
+    repeated uint32 keys = 2;
+    repeated float a = 3;
+    repeated float b = 4;
+}
+
+message Document {
+    double x = 1;
+    double y = 2;
+    string name = 3;
+    Columns columns = 4;
+}
+
+message Pair { float first = 1; float second = 2; }
+message Item { float value = 1; Pair pair = 2; }
+message List { repeated Item items = 1; }
+
+// protobuf has no structs, so an array of them is a repeated message, whose
+// floats are fixed32s
+message Triple { float value = 1; float first = 2; float second = 3; }
+message Triples { repeated Triple items = 1; }
+
+message Sample { uint32 key = 1; float a = 2; float b = 3; }

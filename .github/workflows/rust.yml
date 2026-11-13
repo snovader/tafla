@@ -50,9 +50,22 @@ jobs:
               - "schemas/**"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
+              - "cpp/tests/generated/*/**"
+              - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
               - "typescript/core/test/generated/*/**"
+              # The other comparison suites' schemas and generated code
+              - "cpp/benchmarks/workloads.tafla"
+              - "cpp/benchmarks/generated/tafla/**"
+              - "go/benchmarks/workloads.tafla"
+              - "go/benchmarks/generated/tafla/**"
+              - "java/benchmarks/src/main/tafla/workloads.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/**"
+              - "python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla"
+              - "python/benchmarks/src/tafla_benchmarks/generated/tafla/**"
+              - "typescript/benchmarks/comparison/workloads.tafla"
+              - "typescript/benchmarks/comparison/generated/tafla/**"
 
   formatting:
     name: Formatting

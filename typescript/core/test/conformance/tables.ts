@@ -12,6 +12,7 @@ import {
     readUint64,
     StructWriter,
     TableBuilder,
+    type TableItem,
     TableLayout,
     TableSizer,
     TableWriter
@@ -25,6 +26,7 @@ import {
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
+    type OffsetType,
     type ScalarType,
     type StructArrayField,
     type TableDescription,
@@ -64,6 +66,83 @@ export function buildTable(table: TableDescription): TableBuilder {
     return builder;
 }
 
+/**
+ * Builds a table as {@link buildTable} does, but records each table nested
+ * from a builder that it writes in place with `setTableInPlace()`, and
+ * each vector of them whose items hold as many fields with
+ * `setVectorInPlace()`, rather than from their builders
+ */
+export function buildTableInPlace(table: TableDescription): TableBuilder {
+    const builder = createBuilder(table);
+    for (const field of table.fields) {
+        setFieldInPlace(builder, field, table.layout.offsetType);
+    }
+
+    return builder;
+}
+
+/**
+ * Sets a field as {@link setField} does, on a builder of `offsetType`
+ * offsets or a table that it records in place, and records the tables nested
+ * in it in place as {@link buildTableInPlace} does
+ */
+function setFieldInPlace(
+    target: TableItem,
+    field: FieldDescription,
+    offsetType: OffsetType
+): void {
+    if (
+        field.type === 'table' &&
+        field.alignment === undefined &&
+        recordsInPlace(field, offsetType)
+    ) {
+        const { fields } = field.table;
+        target.setTableInPlace(fields.length, table => {
+            for (const nested of fields) {
+                setFieldInPlace(table, nested, offsetType);
+            }
+        });
+    } else if (
+        field.type === 'vector' &&
+        itemsInPlace(field.items, offsetType)
+    ) {
+        const { items } = field;
+        const fields = items.length === 0 ? 0 : items[0].table.fields.length;
+        target.setVectorInPlace(items.length, fields, (item, index) => {
+            for (const nested of items[index].table.fields) {
+                setFieldInPlace(item, nested, offsetType);
+            }
+        });
+    } else {
+        setField(target, field);
+    }
+}
+
+/**
+ * Whether a nested table is written in place in a table of `offsetType`
+ * offsets: from its builder, without a header and with those offsets
+ */
+function recordsInPlace(
+    { from, table: { layout } }: NestedTable,
+    offsetType: OffsetType
+): boolean {
+    return (
+        from === 'builder' &&
+        !layout.sized &&
+        !layout.versioned &&
+        layout.offsetType === offsetType
+    );
+}
+
+/** Whether every item is written in place, and they hold as many fields */
+function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
+    return items.every(
+        item =>
+            recordsInPlace(item, offsetType) &&
+            item.table.fields.length === items[0].table.fields.length
+    );
+}
+
 /** Creates the builder of a table, with none of its fields set */
 export function createBuilder({
     layout,
@@ -86,8 +165,11 @@ export function createBuilder({
     );
 }
 
-/** Sets a field as its description sets it out */
-export function setField(builder: TableBuilder, field: FieldDescription): void {
+/**
+ * Sets a field as its description sets it out, on a builder or a table that
+ * one records in place
+ */
+export function setField(builder: TableItem, field: FieldDescription): void {
     switch (field.type) {
         case 'int8':
             builder.setInt8(fromJsonNumber(field.value));

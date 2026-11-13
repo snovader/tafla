@@ -5,7 +5,7 @@ comparison prints after its timings. Run it with
 
 from collections.abc import Buffer, Callable
 
-from tafla_benchmarks.codecs import CODECS, STRUCT, samples
+from tafla_benchmarks.codecs import CODECS, MSGPACK_PURE, STRUCT, samples
 from tafla_benchmarks.workloads import (
     DOCUMENT_ROWS,
     LIST_ITEMS,
@@ -19,6 +19,10 @@ from tafla_benchmarks.workloads import (
 
 _NAME_WIDTH = 16
 _COLUMN_WIDTH = 12
+
+# msgpack's pure-Python build packs the same bytes as its C extension, and
+# raises the same error for a truncated document
+_CODECS = [codec for codec in CODECS if codec is not MSGPACK_PURE]
 
 
 def main() -> None:
@@ -41,7 +45,7 @@ def print_sizes(documents: list[DocumentInput]) -> None:
     print(f"  {'':{_NAME_WIDTH}}" + "".join(f"{c:>{_COLUMN_WIDTH}}" for c in columns))
 
     vector = list_input(LIST_ITEMS)
-    for codec in CODECS:
+    for codec in _CODECS:
         sizes = [
             _size(codec.record.serialize(RECORD)),
             *(_size(codec.document.serialize(document)) for document in documents),
@@ -62,7 +66,7 @@ def print_truncation(document: DocumentInput) -> None:
     rows = len(document.a)
     print(f"Truncated document of {rows} rows: deserialize()")
 
-    for codec in CODECS:
+    for codec in _CODECS:
         data = bytes(codec.document.serialize(document))
         for length in (len(data) // 2, 24):
             outcome = _describe_outcome(codec.document.deserialize, data[:length], rows)

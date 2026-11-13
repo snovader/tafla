@@ -20,15 +20,15 @@ from tafla_benchmarks.workloads import (
 
 
 def serialize_record(input: RecordInput) -> memoryview:
-    return Record.serialize(x=input.x, y=input.y, id=input.id, name=input.name)
+    """Writes the fields' values in their order, as ``serialize_values()``
+    takes them"""
+    return Record.serialize_values(input.x, input.y, input.id, input.name)
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    """Reads every field at once with ``fields()``, as an application that
-    wants them all would"""
-    fields = Record(data).fields()
-
-    return RecordInput(fields["x"], fields["y"], fields["id"], fields["name"])
+    """Reads every field's value at once with ``field_values()``, as an
+    application that wants them all would"""
+    return RecordInput(*Record(data).field_values())
 
 
 def serialize_document(input: DocumentInput) -> memoryview:
@@ -75,10 +75,9 @@ def _item_fields(item: ItemInput) -> ItemFields:
 
 
 def deserialize_list(data: Buffer) -> ListInput:
-    """Reads each item's fields at once with ``fields()``"""
+    """Reads every item's fields at once with the view's ``fields()``"""
     items: list[ItemInput] = []
-    for item in ItemList(data).items():
-        fields = item.fields()
+    for fields in ItemList(data).items_view().fields():
         pair = fields["pair"]
         items.append(ItemInput(fields["value"], pair["first"], pair["second"]))
 
@@ -92,19 +91,19 @@ def serialize_structs(input: ListInput) -> memoryview:
 
 
 def deserialize_structs(data: Buffer) -> ListInput:
-    triples = Triples(data).items()
+    """Reads every struct's values at once with the view's
+    ``field_values()``, rather than into a ``Triple`` each"""
+    values = Triples(data).items_view().field_values()
 
-    return ListInput([ItemInput(t.value, t.first, t.second) for t in triples])
+    return ListInput([ItemInput(*triple) for triple in values])
 
 
 def serialize_sample(input: SampleInput) -> bytes:
-    return Sample(input.key, input.a, input.b).serialize()
+    return Sample.serialize_values(input.key, input.a, input.b)
 
 
 def deserialize_sample(data: Buffer) -> SampleInput:
-    sample = Sample.read(data)
-
-    return SampleInput(sample.key, sample.a, sample.b)
+    return SampleInput(*Sample.read_values(data))
 
 
 TAFLA_GEN = Codec(
@@ -117,15 +116,17 @@ TAFLA_GEN = Codec(
 )
 """The code that tafla-gen generates from ``generated/workloads.tafla``, which
 appends each message's fields to a ``TableWriter`` in one call, rather than
-nesting ``TableBuilder`` instances. The record and the vector's items are read
-with ``fields()``, which reads a fixed-layout table's fields at once into the
-``TypedDict`` that it's written from, and the document with the getters,
-columns as views.
+nesting ``TableBuilder`` instances, and a vector of fixed-layout tables in one
+call too.
 
-The generated code writes from a ``TypedDict`` of each table's fields, and a
-frozen dataclass of the fixed-size record, which ``serialize()`` creates from
-the workloads' inputs in each call, as the protobuf codec creates its
-messages. The array of structs is written from the workload's own items, which
-the struct's protocol of fields types. Reading creates the workloads'
-dataclasses from the generated readers' values, after the generated readers
-create the structs' own."""
+The record and the fixed-size record are written from their values, as
+positional arguments, and read into tuples of them, with ``serialize_values()``,
+``field_values()`` and ``read_values()``. The document is written from a
+``TypedDict`` of each table's fields, and read with the getters, columns as
+views. The vector is written from its items' ``TypedDict``s, and read into
+them with its view's ``fields()``, which reads every item's fields at once.
+The array of structs is written from the workload's own items, which the
+struct's protocol of fields types, and read with its view's
+``field_values()``, into a tuple of each struct's values rather than a struct.
+Reading creates the workloads' dataclasses from the values that the generated
+readers return."""

@@ -1,0 +1,2 @@
+# CMake build directories, such as build/, build-asan/ and build-bench/
+/build*/

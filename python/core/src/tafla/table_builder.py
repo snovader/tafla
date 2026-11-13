@@ -1,20 +1,29 @@
-from collections.abc import Buffer, Callable, Iterable, Sequence
+from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
 from typing import Any, Literal, overload
 
-from .byte_buffer import ByteBuffer, byte_view
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements
-from .layout import MAX_LENGTHS, TableLayout, header_length, padding_to
-from .table_writer import TableWriter, struct_count
+from .elements import as_elements, byte_view, struct_count
+from .implementation import ByteBuffer, TableLayout, TableWriter
+from .layout import MAX_LENGTHS, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
 
 type _Write = Callable[..., object]
+
+# A field as the builder records it: the TableWriter setter that writes it,
+# the alignment that it's padded to, and its value
+type _Record = tuple[_Write, ElementSize, Any]
 
 # The writer's setters of the fields that take more than their index and
 # value, which __write_fields() tells apart from the others by identity
 _SET_STRUCT_ARRAY = TableWriter.set_struct_array
 _SET_TABLE = TableWriter.set_table
 _SET_VECTOR = TableWriter.set_vector
+
+# The alignment that a table recorded in place starts from, as a builder's
+# does, before any field needs one. It's declared rather than inferred, so
+# that a type checker takes the table's alignment after fill() sets its
+# fields for any of them, rather than for 1.
+_UNALIGNED: ElementSize = SIZEOF_8
 
 # The writer's constructor for arguments that the builder's own constructor
 # checked, bound once: called through this name, it took 244 ns, and through
@@ -36,12 +45,15 @@ class TableBuilder:
     structs and tables given as buffers must keep their length in between; a
     changed length that changes the table's raises ``ValueError``. Tables
     nested from their builders are written by the same writer, straight into
-    this one. A setter raises ``ValueError``, and leaves the builder as it was,
-    when its field would make the table longer than the layout's
-    ``offset_type`` addresses: 255 bytes, 64 KiB or 4 GiB. Structs, and tables
-    and vector items given as bytes, must be C-contiguous buffers: a setter
-    given one that isn't, such as a slice with a step, raises ``TypeError``
-    and leaves the builder as it was too. Arrays are converted instead.
+    this one. ``set_table_in_place()`` and ``set_vector_in_place()`` record a
+    nested table, or each item of a vector, among this builder's own fields
+    instead, without a builder of its own. A setter raises ``ValueError``, and
+    leaves the builder as it was, when its field would make the table longer
+    than the layout's ``offset_type`` addresses: 255 bytes, 64 KiB or 4 GiB.
+    Structs, and tables and vector items given as bytes, must be C-contiguous
+    buffers: a setter given one that isn't, such as a slice with a step,
+    raises ``TypeError`` and leaves the builder as it was too. Arrays are
+    converted instead.
     """
 
     __slots__ = [
@@ -67,7 +79,7 @@ class TableBuilder:
     # record needn't hold either. The setters aren't bound to a writer, nor
     # to the builder, so that the builder isn't in a reference cycle with its
     # values.
-    __records: list[tuple[_Write, ElementSize, Any]]
+    __records: list[_Record]
 
     @overload
     def __init__(
@@ -345,6 +357,180 @@ class TableBuilder:
 
         self.__add_field(_SET_VECTOR, items, byte_length)
 
+    # The in-place setters record a nested table's fields in a list of their
+    # own, which becomes the table's record, so that leaving the builder as
+    # it was restores the slots that count the table being recorded, and no
+    # builder is created: creating one alone took 0.23 µs. They save, set and
+    # restore those slots inline, and check and record the table's field as
+    # __add_field() does, since calls for those made writing the vector of
+    # 100 nested tables 12% slower with the native classes, and 9% with the
+    # pure-Python ones. set_table_in_place() checks its field inline too,
+    # since it records every item's nested table there: through
+    # __check_room(), the vector took 2.5% longer, and with max() rather than
+    # an if for its alignment 1% to 3% longer.
+    #
+    # fill() is given the builder itself, whose setters record the nested
+    # table's fields. Writing it there would write the nested table as this
+    # one, and leave it written, so a builder written within fill() is
+    # unwritten and raises once fill() returns. A flag that made it raise
+    # from the write instead, and from nesting it, took every builder a slot
+    # and made the vector of 100 nested tables from builders 1% slower.
+
+    def set_table_in_place[*Args](
+        self,
+        fill: Callable[[TableBuilder, *Args], object],
+        *args: *Args,
+        fields: int,
+    ) -> None:
+        """Records a table of ``fields`` fields nested in this one, as
+        ``set_table()`` records a builder of it, but without a builder of its
+        own: ``fill(builder, *args)`` sets its fields in order on this
+        builder, which records them as the nested table's while ``fill``
+        runs. The table is padded to start at a multiple of its largest
+        alignment, as ``set_table()`` pads a builder by default, and the two
+        write the same bytes.
+
+        Until ``fill`` returns, the builder holds the nested table's fields
+        rather than its own, so ``fill`` mustn't write it or nest it in
+        another table.
+
+        Raises ``ValueError`` if ``fill`` leaves fields of the table unset, or
+        wrote the builder, or as the setters do, and passes on what ``fill``
+        raises, leaving the builder as it was either way.
+        """
+        if self.__written is not None:
+            raise _finalized_error()
+
+        index = len(self.__records)
+        if index == self.__fields:
+            raise _field_count_error(index)
+
+        parent = (
+            self.__records,
+            self.__fields,
+            self.__offset,
+            self.__alignment,
+        )
+        table: list[_Record] = []
+        self.__records = table
+        self.__fields = fields
+        self.__offset = fields * self.__size
+        self.__alignment = _UNALIGNED
+        try:
+            fill(self, *args)
+            if len(table) != fields:
+                raise _unset_fields_error(len(table), fields, "the nested table's")
+
+            byte_length, alignment = self.__offset, self.__alignment
+        finally:
+            (
+                self.__records,
+                self.__fields,
+                self.__offset,
+                self.__alignment,
+            ) = parent
+            if self.__written is not None:
+                self.__written = None
+                raise _written_in_place_error()
+
+        # Padded from its parent's length, as a nested builder is
+        offset = self.__offset
+        length = offset + (-offset % alignment) + byte_length
+        if length > self.__max_length:
+            raise self.__length_error(index, length)
+
+        self.__records.append((_SET_TABLE, alignment, table))
+        self.__offset = length
+        if alignment > self.__alignment:  # noqa: PLR1730
+            self.__alignment = alignment
+
+    def set_vector_in_place[T](
+        self,
+        values: Collection[T],
+        fill: Callable[[TableBuilder, T], object],
+        *,
+        fields: int,
+    ) -> None:
+        """Records a vector of tables of ``fields`` fields each, one for each
+        of ``values``, as ``set_table_in_place()`` records a table:
+        ``fill(builder, value)`` sets the fields of the value's item in order
+        on this builder. Items aren't padded, as ``set_vector()`` doesn't pad
+        them, and the two write the same bytes.
+
+        Raises ``ValueError`` if the vector's count makes the table too long,
+        before any item is recorded, if ``fill`` leaves an item's fields
+        unset or wrote the builder, if iterating ``values`` gives more or
+        fewer than their ``len()``, or as the setters do, and passes on what
+        ``fill`` raises, leaving the builder as it was either way.
+        """
+        count = len(values)
+        byte_length = self.__size * (1 + count)
+        index = self.__check_room(byte_length)
+
+        parent = (
+            self.__records,
+            self.__fields,
+            self.__offset,
+            self.__alignment,
+        )
+        header = fields * self.__size
+        items: list[list[_Record]] = []
+        self.__fields = fields
+        try:
+            # Each item counts its length and alignment from its own start,
+            # as a builder does
+            for value in values:
+                if len(items) == count:
+                    raise _count_error(count)
+
+                item: list[_Record] = []
+                self.__records = item
+                self.__offset = header
+                self.__alignment = _UNALIGNED
+                fill(self, value)
+                if len(item) != fields:
+                    raise _unset_fields_error(len(item), fields, f"item {len(items)}'s")
+
+                byte_length += self.__offset
+                items.append(item)
+
+            if len(items) != count:
+                raise _count_error(count)
+        finally:
+            (
+                self.__records,
+                self.__fields,
+                self.__offset,
+                self.__alignment,
+            ) = parent
+            if self.__written is not None:
+                self.__written = None
+                raise _written_in_place_error()
+
+        length = self.__offset + byte_length
+        if length > self.__max_length:
+            raise self.__length_error(index, length)
+
+        self.__records.append((_SET_VECTOR, SIZEOF_8, items))
+        self.__offset = length
+
+    def __check_room(self, byte_length: int) -> int:
+        """Checks that a field of at least ``byte_length`` bytes can be set, as
+        ``__add_field()`` does, before an in-place setter records it, and
+        returns its index"""
+        if self.__written is not None:
+            raise _finalized_error()
+
+        index = len(self.__records)
+        if index == self.__fields:
+            raise _field_count_error(index)
+
+        length = self.__offset + byte_length
+        if length > self.__max_length:
+            raise self.__length_error(index, length)
+
+        return index
+
     def __add_array(
         self,
         type_code: TypeCode,
@@ -385,29 +571,29 @@ class TableBuilder:
         ``TypeError`` if the table is already written.
         """
         if self.__written is not None:
-            raise TypeError("The table was already finalized")
+            raise _finalized_error()
 
         records = self.__records
         index = len(records)
         if index == self.__fields:
-            raise ValueError(f"Can't add field {index + 1} to a table of {index}")
+            raise _field_count_error(index)
 
         length = self.__offset + padding + byte_length
         if length > self.__max_length:
-            raise ValueError(
-                f"Field {index + 1} makes the table {length} bytes, "
-                f"too long for {self.__layout.offset_type()} offsets"
-            )
+            raise self.__length_error(index, length)
 
         records.append((write, alignment, value))
         self.__offset = length
 
+    def __length_error(self, index: int, length: int) -> ValueError:
+        return ValueError(
+            f"Field {index + 1} makes the table {length} bytes, "
+            f"too long for {self.__layout.offset_type()} offsets"
+        )
+
     def __assert_complete(self) -> None:
         if self.__written is None and len(self.__records) != self.__fields:
-            raise ValueError(
-                f"Only {len(self.__records)} of the table's {self.__fields} "
-                "fields were set"
-            )
+            raise _unset_fields_error(len(self.__records), self.__fields, "the table's")
 
     @staticmethod
     def __length_of(table: TableBuilder | Buffer) -> int:
@@ -429,7 +615,7 @@ class TableBuilder:
         self.__assert_complete()
 
         writer = _checked_writer(self.__fields, self.__layout, self.__version)
-        self.__write_fields(writer)
+        self.__write_fields(writer, self.__records)
         data = writer.bytes()
 
         # The writer writes each offset as it reaches its field, so a buffer
@@ -450,13 +636,26 @@ class TableBuilder:
     # iteration Python 3.14 doesn't specialize: building the record took 3%
     # less time, and the vector of 100 nested tables 4.5% less.
 
-    def __write_fields(self, writer: TableWriter) -> None:
-        """Writes the fields in order, each with its index in this table"""
+    # A table nested in place is a list of its fields' records, which isn't
+    # a buffer, so a list that a caller nests is rejected when it's set.
+    # Writing its records here rather than through __write_table(), whose
+    # call and checks those tables don't need, made writing the vector of 100
+    # nested tables 5% to 7% faster with the native classes, and 3% to 5%
+    # with the pure-Python ones.
+
+    def __write_fields(self, writer: TableWriter, records: list[_Record]) -> None:
+        """Writes the fields of a table in order, each with its index in that
+        table: this one, or a table nested in it"""
         index = 0
-        for write, alignment, value in self.__records:
+        for write, alignment, value in records:
             if write is _SET_TABLE:
                 writer.set_table(index, alignment)
-                self.__write_table(writer, value)
+                if type(value) is list:
+                    parent = writer.start_table(len(value))
+                    self.__write_fields(writer, value)
+                    writer.end_table(parent)
+                else:
+                    self.__write_table(writer, value)
             elif write is _SET_VECTOR:
                 self.__write_vector(writer, index, value)
             elif write is _SET_STRUCT_ARRAY:
@@ -468,15 +667,28 @@ class TableBuilder:
             index += 1  # noqa: SIM113
 
     def __write_vector(
-        self, writer: TableWriter, index: int, items: tuple[TableBuilder | Buffer, ...]
+        self,
+        writer: TableWriter,
+        index: int,
+        items: tuple[TableBuilder | Buffer, ...] | list[list[_Record]],
     ) -> None:
+        """Writes a vector of tables nested from builders or bytes, or of
+        tables nested in place, from their records"""
         vector = writer.set_vector(index, len(items))
 
         item = 0
-        for table in items:
-            self.__write_table(writer, table)
-            writer.set_item_end(vector, item)
-            item += 1  # noqa: SIM113
+        if isinstance(items, list):
+            for records in items:
+                parent = writer.start_table(len(records))
+                self.__write_fields(writer, records)
+                writer.end_table(parent)
+                writer.set_item_end(vector, item)
+                item += 1
+        else:
+            for table in items:
+                self.__write_table(writer, table)
+                writer.set_item_end(vector, item)
+                item += 1
 
     def __write_table(self, writer: TableWriter, table: TableBuilder | Buffer) -> None:
         """Writes a builder straight into the writer, between ``start_table()``
@@ -491,7 +703,27 @@ class TableBuilder:
             and not table.__layout.header_size()
         ):
             parent = writer.start_table(table.__fields)
-            table.__write_fields(writer)
+            table.__write_fields(writer, table.__records)
             writer.end_table(parent)
         else:
             writer._copy_table(table.bytes())
+
+
+def _finalized_error() -> TypeError:
+    return TypeError("The table was already finalized")
+
+
+def _field_count_error(fields: int) -> ValueError:
+    return ValueError(f"Can't add field {fields + 1} to a table of {fields}")
+
+
+def _unset_fields_error(set_fields: int, fields: int, whose: str) -> ValueError:
+    return ValueError(f"Only {set_fields} of {whose} {fields} fields were set")
+
+
+def _count_error(count: int) -> ValueError:
+    return ValueError(f"Iterating the values gave other than the {count} of len()")
+
+
+def _written_in_place_error() -> ValueError:
+    return ValueError("The builder was written while it recorded a nested table")

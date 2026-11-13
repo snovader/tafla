@@ -1,8 +1,9 @@
+import re
 import unittest
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from functools import partial
-from struct import pack
-from typing import Any
+from struct import error as StructError, pack
+from typing import Any, Literal, overload, override
 
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
@@ -339,6 +340,191 @@ class TestGetFields(unittest.TestCase):
             )
 
 
+class TestVectorTables(unittest.TestCase):
+    # set_vector_tables() writes what set_vector(), write_table() for each item
+    # and set_item_end() write, and get_vector_fields() reads what get_fields()
+    # reads for each item, or None, or raises what get_vector_offsets() raises
+
+    @given(
+        tables(),
+        integers(0, 4),
+        sampled_from(OFFSET_TYPES),
+        sampled_from([None, *INVALID]),
+        corruptions,
+    )
+    def test_writes_and_reads_a_vector_of_tables_as_each_item_alone(
+        self,
+        table: Description,
+        count: int,
+        offset_type: OffsetType,
+        invalid: tuple[str, Any] | None,
+        corruption: Truncation | Overwrite,
+    ) -> None:
+        item = whole_fixed(nested_in_place(table))
+        assume(item is not None)
+        assert item is not None
+        if invalid is not None:
+            # A value that the item's field can't hold, which the setters raise
+            # for, and the item's other fields
+            item = {**item, "fields": [scalar(*invalid), *item["fields"]]}
+        fields = fixed_fields(item, len(item["fields"]))
+        items = [item_values(item)] * count
+        layout = TableLayout(offset_type=offset_type)
+
+        has_string = item["fields"][-1]["type"] == "string"
+
+        written = outcome(partial(write_vector_tables, layout, fields, items))
+        by_items = partial(write_each_item, layout, fields, items, has_string)
+        self.assertEqual(written, outcome(by_items))
+        if not isinstance(written, bytes):
+            return
+
+        for data in [written, corruption.apply(written)]:
+            buffer = ByteBuffer(data, layout)
+            with self.subTest(data=data):
+                self.assertEqual(
+                    read_outcome(partial(read_vector_fields, buffer, fields)),
+                    read_outcome(partial(read_each_item, buffer, fields)),
+                )
+
+    @given(binary(max_size=64), integers(-4, 70), sampled_from(OFFSET_TYPES))
+    def test_reads_a_vector_of_arbitrary_bytes_as_each_item_alone(
+        self, data: bytes, position: int, offset_type: OffsetType
+    ) -> None:
+        pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
+        table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
+        fields = fixed_fields(table, 3)
+        buffer = ByteBuffer(data, TableLayout(offset_type=offset_type))
+
+        self.assertEqual(
+            read_outcome(partial(buffer.get_vector_fields, position, fields)),
+            read_outcome(partial(read_each_item, buffer, fields, position)),
+        )
+
+    def test_raises_value_error_for_items_whose_len_isnt_their_number(
+        self,
+    ) -> None:
+        """A sequence whose iteration gives more or fewer items than its
+        ``len()``, whose vector would have ends over its items' bytes or ends
+        left at 0"""
+        fields = FixedFields(2, "h", string=True)
+        for length, items in [(1, [(1, "a"), (2, "b")]), (3, [(1, "a")]), (1, [])]:
+            message = (
+                f"The items' len() is {length}, but iterating them gave {len(items)}"
+            )
+            with (
+                self.subTest(length=length, items=items),
+                self.assertRaisesRegex(ValueError, f"^{re.escape(message)}$"),
+            ):
+                TableWriter(1).set_vector_tables(0, fields, Misreported(items, length))
+
+
+class Misreported(Sequence[tuple[Any, ...]]):
+    """Items whose ``len()`` is ``length``, whatever their number"""
+
+    def __init__(self, items: list[tuple[Any, ...]], length: int) -> None:
+        self.items = items
+        self.length = length
+
+    @override
+    def __len__(self) -> int:
+        return self.length
+
+    @overload
+    def __getitem__(self, index: int) -> tuple[Any, ...]: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[tuple[Any, ...]]: ...
+
+    @override
+    def __getitem__(
+        self, index: int | slice
+    ) -> tuple[Any, ...] | Sequence[tuple[Any, ...]]:
+        return self.items[index]
+
+    @override
+    def __iter__(self) -> Iterator[tuple[Any, ...]]:
+        return iter(self.items)
+
+
+def item_values(table: Description) -> tuple[Any, ...]:
+    """A table's values as ``set_vector_tables()`` takes them, and
+    ``get_fields()`` returns them: a nested table's in place of it, and the
+    string's last"""
+    fields = table["fields"]
+    values: list[Any] = []
+    push_values([field for field in fields if field["type"] != "string"], values)
+    if fields[-1]["type"] == "string":
+        values.append(fields[-1]["value"])
+
+    return tuple(values)
+
+
+def write_vector_tables(
+    layout: TableLayout[Literal[False]],
+    fields: FixedFields,
+    items: list[tuple[Any, ...]],
+) -> memoryview[int]:
+    writer = TableWriter(1, layout)
+    writer.set_vector_tables(0, fields, items)
+    return writer.bytes()
+
+
+def write_each_item(
+    layout: TableLayout[Literal[False]],
+    fields: FixedFields,
+    items: list[tuple[Any, ...]],
+    has_string: bool,
+) -> memoryview[int]:
+    """Writes the vector item by item, as ``set_vector_tables()`` writes it"""
+    writer = TableWriter(1, layout)
+    vector = writer.set_vector(0, len(items))
+    for index, values in enumerate(items):
+        if has_string:
+            writer.write_table(fields, values[:-1], values[-1])
+        else:
+            writer.write_table(fields, values)
+        writer.set_item_end(vector, index)
+
+    return writer.bytes()
+
+
+def read_vector_fields(buffer: ByteBuffer, fields: FixedFields) -> object:
+    return buffer.get_vector_fields(buffer.root_offset(0), fields)
+
+
+def read_each_item(
+    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+) -> object:
+    """Reads the vector's items one by one, as ``get_vector_fields()`` reads
+    them, at ``position``, or the root's first field"""
+    if position is None:
+        position = buffer.root_offset(0)
+
+    items = []
+    for offset in buffer.get_vector_offsets(position):
+        values = buffer.get_fields(offset, fields)
+        if values is None:
+            return None
+        items.append(values)
+
+    return items
+
+
+def read_outcome(read: Callable[[], object]) -> object:
+    """The items that ``read`` returns, each comparable, or ``None``, or the
+    class and message of the error that it raises"""
+    try:
+        items = read()
+    except Exception as error:  # noqa: BLE001
+        return type(error), str(error)
+
+    if items is None:
+        return None
+    assert isinstance(items, list)
+    return [comparable(values) for values in items]
+
+
 class TestErrors(unittest.TestCase):
     # The setters raise ValueError for a value that they can't write, naming
     # it and its position, and for a table too long for its offset type, and
@@ -397,6 +583,37 @@ class TestErrors(unittest.TestCase):
         written = outcome(lambda: write_packed(table))
         self.assertIsInstance(written, tuple)
         self.assertEqual(written, outcome(lambda: write_table(table)))
+
+    def test_raises_struct_error_for_fields_longer_than_a_struct_describes(
+        self,
+    ) -> None:
+        """Fields whose bytes from the first slot pass a C ssize_t, however
+        their sizes add up to it, which struct.calcsize() rejects too"""
+        for fields, *formats in [
+            (2, f"{2**30}s", f"{2**64 - 2**30}s"),
+            (2, f"{2**62}s", f"{2**62}s"),
+            (1, f"{2**63 - 1}s"),
+            (1, f"{2**63}s"),
+            (1, f"{10**30}s"),
+            (2**62, "i"),
+            (2**63, "i"),
+            (2**64, "i"),
+            (2**15000, "i"),
+        ]:
+            for layout in [None, TableLayout(offset_type="uint32")]:
+                with (
+                    self.subTest(fields=fields.bit_length(), formats=formats),
+                    self.assertRaisesRegex(StructError, "total struct size too long"),
+                ):
+                    FixedFields(fields, *formats, layout=layout)
+
+    def test_raises_value_error_for_fewer_fields_than_it_describes(self) -> None:
+        for fields in [-(2**63), -1, 0, 1]:
+            with (
+                self.subTest(fields=fields),
+                self.assertRaisesRegex(ValueError, f"A table of {fields} fields"),
+            ):
+                FixedFields(fields, "i", string=True)
 
 
 if __name__ == "__main__":

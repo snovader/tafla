@@ -7,13 +7,13 @@ from array import array
 from collections.abc import Callable
 from functools import partial
 from struct import calcsize, iter_unpack, pack, unpack
-from unittest.mock import patch
 
 from hypothesis import given
 from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
 from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder
 from tafla.types import IntTypeCode
+from tests.byte_order import big_endian_host
 from tests.descriptions import ARRAY_FIELDS
 from tests.tables import DEFAULT_LAYOUT, Description, build_table
 
@@ -59,9 +59,9 @@ class TestByteBuffer(unittest.TestCase):
     def test_swaps_each_elements_bytes_on_big_endian_hosts(self) -> None:
         values = array("i", [1, -2])
 
-        # Take the big-endian branches on any host. The host's own order is
-        # little-endian, so each element's bytes come out reversed.
-        with patch("tafla.elements.IS_LITTLE_ENDIAN", False):
+        # The host's own order is little-endian, so each element's bytes come
+        # out reversed
+        with big_endian_host():
             builder = TableBuilder(1)
             builder.set_int32_array(values)
             serialized = bytes(builder.bytes())
