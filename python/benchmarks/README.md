@@ -95,8 +95,9 @@ benchmark's call allocates.
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders and reads columns as views of the
-  bytes. Arrays of the columns' element types are copied as bytes, and lists
+- **tafla** records nested tables among their parent builder's fields with
+  `set_table_in_place()` and `set_vector_in_place()`, and reads columns as
+  views of the bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
   as tafla's documentation advises over a getter call per element. The array
   of structs is packed into a `bytearray` and unpacked from

@@ -86,12 +86,12 @@ what each benchmark's call allocates too.
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders, which keep the columns and
-  write each array in bulk into a table of its exact size. Readers check the
-  document's version, return each read's error as it comes, as the runtime's
-  examples do, and read columns as `ArrayView`s, whose `Slice()` shares the
-  bytes. The vector's items are nested from builders. The array
-  of structs is written with `encoding/binary` into a slice, which the
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `SetTableFunc()` and `SetVectorFunc()`. The builders keep the
+  columns and write each array in bulk into a table of its exact size.
+  Readers check the document's version, return each read's error as it
+  comes, as the runtime's examples do, and read columns as `ArrayView`s, whose
+  `Slice()` shares the bytes. The array of structs is written with `encoding/binary` into a slice, which the
   builder takes with `SetStructArray()`, and read from `GetStructArray()`'s
   bytes with `encoding/binary`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,

@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
-use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{
+    Alignment, BuildError, ByteBuffer, DecodeError, InPlaceTable, TableBuilder, TableLayout,
+};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
 use crate::item_access::{ItemAccess, no_items, sum_item};
@@ -65,17 +67,16 @@ impl Workload<DocumentShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Document<'_>) -> Result<Vec<u8>, Error> {
-        let mut columns = TableBuilder::new(4, TableLayout::DEFAULT)?;
-        columns.set_i64(input.base)?;
-        columns.set_u32_array(input.keys.as_ref())?;
-        columns.set_f32_array(input.a.as_ref())?;
-        columns.set_f32_array(input.b.as_ref())?;
-
         let mut document = TableBuilder::versioned(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)?;
         document.set_f64(input.x)?;
         document.set_f64(input.y)?;
         document.set_str(input.name.as_ref())?;
-        document.set_table(columns)?;
+        document.set_table_with(4, |columns| {
+            columns.set_i64(input.base)?;
+            columns.set_u32_array(input.keys.as_ref())?;
+            columns.set_f32_array(input.a.as_ref())?;
+            columns.set_f32_array(input.b.as_ref())
+        })?;
 
         Ok(document.to_bytes()?)
     }
@@ -114,17 +115,11 @@ impl DocumentWorkload for Tafla {
 impl Workload<ListShape> for Tafla {
     type Bytes = Vec<u8>;
 
-    /// Nests each item from its builder, collected first, since creating a
-    /// builder can fail
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        let items = input
-            .items
-            .iter()
-            .map(item_builder)
-            .collect::<Result<Vec<_>, _>>()?;
+        let items = &input.items;
 
         let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
-        builder.set_vector(items)?;
+        builder.set_vector_with(items.len(), 2, |index, item| set_item(item, &items[index]))?;
 
         Ok(builder.to_bytes()?)
     }
@@ -253,16 +248,12 @@ fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
     Ok(buffer)
 }
 
-fn item_builder(item: &Item) -> Result<TableBuilder<'static>, BuildError> {
-    let mut pair = TableBuilder::new(2, TableLayout::DEFAULT)?;
-    pair.set_f32(item.first)?;
-    pair.set_f32(item.second)?;
-
-    let mut builder = TableBuilder::new(2, TableLayout::DEFAULT)?;
-    builder.set_f32(item.value)?;
-    builder.set_table(pair)?;
-
-    Ok(builder)
+fn set_item(table: &mut InPlaceTable<'_, '_>, item: &Item) -> Result<(), BuildError> {
+    table.set_f32(item.value)?;
+    table.set_table_with(2, |pair| {
+        pair.set_f32(item.first)?;
+        pair.set_f32(item.second)
+    })
 }
 
 /// Reads an item of the vector in place, a table without a header, whose
