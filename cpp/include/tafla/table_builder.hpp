@@ -130,14 +130,14 @@ public:
         check_complete();
 
         // The constructor checked the header and the version, and each
-        // setter the table's length, so the writer fails only for a field
-        // counted otherwise than it's written
+        // setter its field and the table's length, so the writer doesn't
+        // check them again
         std::optional<std::uint32_t> version;
         if (versioned_) {
             version = version_;
         }
 
-        TableWriter writer(length_, fields_, sized_, version, offset_type_);
+        Writer writer(length_, fields_, sized_, version, offset_type_);
         write_fields(writer);
         return writer.finish();
     }
@@ -909,6 +909,11 @@ private:
         std::size_t size_ = 0;
     };
 
+    /// The writer of `to_bytes()`, which skips a `TableWriter`'s checks of
+    /// its room, indexes and items, since the setters checked each field as
+    /// they recorded it, and counted the table's length
+    using Writer = BasicTableWriter<false>;
+
     /// Writes the fields that were set, and the tables written in place in
     /// them, in the order that `values_` holds them, as the fields of the
     /// table that `writer` is writing.
@@ -921,13 +926,13 @@ private:
     /// may alias it. A profile of the recursive walk that it replaces, of
     /// the benchmarks' vector of 100 nested tables, found the most time
     /// spent on checks of a position just reloaded.
-    TAFLA_ALWAYS_INLINE void write_fields(TableWriter& writer) const;
+    TAFLA_ALWAYS_INLINE void write_fields(Writer& writer) const;
 
     /// Writes field `index`, of a kind that nests no table in place
-    TAFLA_ALWAYS_INLINE static void write_field(TableWriter& writer, std::size_t index, const Field& field) noexcept;
+    TAFLA_ALWAYS_INLINE static void write_field(Writer& writer, std::size_t index, const Field& field) noexcept;
 
     /// Writes an array's elements after its count, little-endian
-    TAFLA_ALWAYS_INLINE static void write_elements(TableWriter& writer, const Field& field) noexcept;
+    TAFLA_ALWAYS_INLINE static void write_elements(Writer& writer, const Field& field) noexcept;
 
     /// The fields that were set, and the fields of the tables nested in place
     /// in them
@@ -1468,7 +1473,7 @@ inline void TableBuilder::append_nested(NestedTable&& table, Alignment alignment
     values_.push_back({Kind::table_bytes, 0, alignment, static_cast<std::uint32_t>(bytes.size()), 0, 0, bytes.data()});
 }
 
-TAFLA_ALWAYS_INLINE void TableBuilder::write_fields(TableWriter& writer) const {
+TAFLA_ALWAYS_INLINE void TableBuilder::write_fields(Writer& writer) const {
     const Field* values = values_.data();
     Levels outer;
     auto level = Level::table({}, fields_);
@@ -1521,8 +1526,7 @@ TAFLA_ALWAYS_INLINE void TableBuilder::write_fields(TableWriter& writer) const {
     }
 }
 
-TAFLA_ALWAYS_INLINE void TableBuilder::write_field(TableWriter& writer, std::size_t index,
-                                                   const Field& field) noexcept {
+TAFLA_ALWAYS_INLINE void TableBuilder::write_field(Writer& writer, std::size_t index, const Field& field) noexcept {
     switch (field.kind) {
         case Kind::scalar:
             writer.set_offset(index);
@@ -1565,7 +1569,7 @@ TAFLA_ALWAYS_INLINE void TableBuilder::write_field(TableWriter& writer, std::siz
     }
 }
 
-TAFLA_ALWAYS_INLINE void TableBuilder::write_elements(TableWriter& writer, const Field& field) noexcept {
+TAFLA_ALWAYS_INLINE void TableBuilder::write_elements(Writer& writer, const Field& field) noexcept {
     const std::size_t byte_length = std::size_t{field.count} * field.size;
     if (detail::kHostOrder || field.size == 1) {
         writer.push(field.data, byte_length);
