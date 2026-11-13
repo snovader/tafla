@@ -87,14 +87,13 @@ truncated document, as the TypeScript comparison does, and
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders, which view the columns and
-  write each array in bulk into a table of its exact size. A builder records
-  its first fields within itself, and a builder nested in place records its
-  fields among its parent's, so a small table allocates nothing until it's
-  written. Readers check the document's version, and read columns as
-  `ArrayView`s, whose `as_span()` views them. The vector's items are nested
-  from builders, collected into a `std::vector` of `NestedTable`s first. The
-  array of structs is written with `store_le()` into a vector, which the
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `set_table(fields, fill)` and `set_vector(count, fields,
+  fill)`. The builders view the columns and write each array in bulk into a
+  table of its exact size. A builder records its first fields within itself,
+  so a small table allocates nothing until it's written. Readers check the
+  document's version, and read columns as `ArrayView`s, whose `as_span()`
+  views them. The array of structs is written with `store_le()` into a vector, which the
   builder owns through `set_struct_array()`, and read from
   `get_struct_array()`'s bytes with `load_le()`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
