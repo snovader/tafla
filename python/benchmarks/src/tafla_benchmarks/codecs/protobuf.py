@@ -1,5 +1,7 @@
 from collections.abc import Buffer
 
+from google.protobuf.internal import api_implementation
+
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
 from tafla_benchmarks.generated import messages_pb2
 from tafla_benchmarks.workloads import (
@@ -10,6 +12,14 @@ from tafla_benchmarks.workloads import (
     RecordInput,
     SampleInput,
 )
+
+IMPLEMENTATION_VARIABLE = "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"
+"""The environment variable that selects protobuf's implementation, which
+protobuf reads when a process first imports it: ``python`` selects its
+pure-Python implementation, rather than upb, which its wheels use"""
+
+PROTOBUF_NAMES = {"upb": "protobuf", "python": "protobuf (pure)"}
+"""The codec's names by protobuf's implementation"""
 
 
 def serialize_record(input: RecordInput) -> bytes:
@@ -111,21 +121,30 @@ def deserialize_sample(data: Buffer) -> SampleInput:
     return SampleInput(sample.key, sample.a, sample.b)
 
 
+def _name() -> str:
+    """Names the codec after the implementation that this process imported"""
+    implementation = api_implementation.Type()
+    return PROTOBUF_NAMES.get(implementation, f"protobuf ({implementation})")
+
+
 PROTOBUF = Codec(
-    name="protobuf",
+    name=_name(),
     record=Workload(serialize_record, deserialize_record),
     document=DocumentWorkload(serialize_document, deserialize_document, sum_a),
     list=Workload(serialize_list, deserialize_list),
     structs=Workload(serialize_structs, deserialize_structs),
     sample=Workload(serialize_sample, deserialize_sample),
 )
-"""protoc's generated messages, parsed with ``FromString()``, in the upb runtime
-that protobuf's wheels use. Messages are built from their fields, and nested
-messages in place, as protobuf's tutorial builds them: passing a nested message
-to its parent's constructor copies it, which made writing the vector of nested
-tables 2.6 times slower, and the large document 13% slower. Repeated fields
-are converted element by element when a message is built, and read back as
-the message's containers. protobuf has no structs, so an array of them is a
-repeated message of the three floats, whose fields protobuf writes as fixed32s.
-Packed repeated floats would be a column for each field, which the documents
-time already."""
+"""protoc's generated messages, parsed with ``FromString()``, in the
+implementation of protobuf that this process imported, which the codec's name
+says: the upb runtime that protobuf's wheels use, or its pure-Python
+implementation, which ``PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`` selects,
+and which writes the same bytes. Messages are built from their fields, and
+nested messages in place, as protobuf's tutorial builds them: passing a nested
+message to its parent's constructor copies it, which made writing the vector of
+nested tables 2.6 times slower, and the large document 13% slower, in upb.
+Repeated fields are converted element by element when a message is built, and
+read back as the message's containers. protobuf has no structs, so an array of
+them is a repeated message of the three floats, whose fields protobuf writes as
+fixed32s. Packed repeated floats would be a column for each field, which the
+documents time already."""

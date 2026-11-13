@@ -309,7 +309,7 @@ impl Generator<'_> {
             Output::New => {
                 self.doc(
                     writer,
-                    &[format!("Writes a `{name}` with every field")],
+                    &[format!("Writes {} with every field", article(name))],
                     &[
                         format!("@param {{{name}Fields}} fields"),
                         "@returns {Uint8Array}".to_owned(),
@@ -321,7 +321,10 @@ impl Generator<'_> {
                 self.doc(
                     writer,
                     &[
-                        format!("Writes a `{name}` with every field into the start of `bytes`,"),
+                        format!(
+                            "Writes {} with every field into the start of `bytes`,",
+                            article(name)
+                        ),
                         "rather than into new bytes, and returns the view of them that holds"
                             .to_owned(),
                         "it. The view, and what's read from it, change when the bytes are"
@@ -499,7 +502,10 @@ impl Generator<'_> {
 
         writer.lines(&doc_comment(&schema_docs(&definition.docs)));
         writer.open(format!("export class {name} {{"));
-        writer.lines(&doc_comment(&[format!("The byte length of a `{name}`")]));
+        writer.lines(&doc_comment(&[format!(
+            "The byte length of {}",
+            article(name)
+        )]));
         writer.line(format!(
             "{}SIZE = {};",
             self.static_readonly(),
@@ -533,7 +539,10 @@ impl Generator<'_> {
         self.doc(
             writer,
             &[
-                format!("Reads a `{name}` at `offset` in `bytes`, eagerly, so that it"),
+                format!(
+                    "Reads {} at `offset` in `bytes`, eagerly, so that it",
+                    article(name)
+                ),
                 "doesn't keep them alive".to_owned(),
             ],
             &[
@@ -583,7 +592,7 @@ impl Generator<'_> {
 
         self.doc(
             writer,
-            &[format!("Writes a `{name}`")],
+            &[format!("Writes {}", article(name))],
             &[
                 format!("@param {{{name}Fields}} fields"),
                 "@returns {Uint8Array}".to_owned(),
@@ -642,7 +651,7 @@ impl Generator<'_> {
 
         self.doc(
             writer,
-            &[format!("Writes a `{name}` at the writer's position")],
+            &[format!("Writes {} at the writer's position", article(name))],
             &[
                 "@param {StructWriter} writer".to_owned(),
                 format!("@param {{{name}Fields}} fields"),
@@ -682,7 +691,7 @@ impl Generator<'_> {
 
         self.doc(
             writer,
-            &[format!("Writes a `{name}` at `offset` in `bytes`")],
+            &[format!("Writes {} at `offset` in `bytes`", article(name))],
             &[
                 "@param {Uint8Array} bytes".to_owned(),
                 "@param {number} offset".to_owned(),
@@ -918,7 +927,7 @@ impl Generator<'_> {
     /// The interface, or `JSDoc` typedef, of the values that write a definition
     fn fields_type(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = format!("{}Fields", definition.name);
-        let summary = format!("The fields of a `{}`, to write", definition.name);
+        let summary = format!("The fields of {}, to write", article(&definition.name));
 
         if self.typed {
             writer.lines(&doc_comment(&[summary]));
