@@ -122,6 +122,34 @@ repository's conformance suite, which covers the whole format.
   nested as bytes was written into an allocation of its own and is copied,
   and so is a builder with a header or another offset type than its
   parent's.
+- **Record nested tables in place.** `set_table_with()` and
+  `set_vector_with()` record a nested table, or each item of a vector of
+  them, straight among the builder's own fields, rather than from a builder
+  of their own: a closure sets the fields on the `InPlaceTable` that it's
+  given, whose setters are the builder's. The builder is borrowed meanwhile,
+  so only the `InPlaceTable` sets fields. They write the bytes that nested
+  builders write, and leave the builder as it was if the closure returns an
+  error, leaves fields unset or panics. A table nested from a builder or
+  bytes, with `set_table()` and `set_vector()`, is still what a table built
+  elsewhere, or reused, needs.
+
+  ```rust
+  # use tafla::{BuildError, TableBuilder, TableLayout};
+  let items = [(1.0_f32, [2.0_f32, 3.0]), (4.0, [5.0, 6.0])];
+
+  // Items of a float32 and a nested table of two
+  let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+  builder.set_vector_with(items.len(), 2, |index, item| {
+      let (value, pair) = items[index];
+      item.set_f32(value)?;
+      item.set_table_with(2, |nested| {
+          nested.set_f32(pair[0])?;
+          nested.set_f32(pair[1])
+      })
+  })?;
+  let bytes = builder.to_bytes()?;
+  # Ok::<(), BuildError>(())
+  ```
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
   `ArrayView`, which reads elements from the bytes at any alignment and in
   any host byte order. `as_slice()` returns them as a slice when the host is
@@ -159,6 +187,9 @@ its README describes. Its fastest samples, on an Apple M2 Pro:
   another took 9.0 µs to write, 2.5 to 6.4 times as long as flatbuffers,
   rmp-serde and prost, which took 1.4 µs: each of its 200 tables is a
   builder, which allocates its record of fields. It took 0.30 µs to read.
+  Recorded in place with `set_vector_with()` and `set_table_with()`, it took
+  4.4 µs, in 4 allocations rather than 208, against 8.8 µs from a builder
+  per item and 3.5 µs through flatbuffers in the same runs.
 
 ## Conversions
 
