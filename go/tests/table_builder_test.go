@@ -150,6 +150,199 @@ func TestATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes(t *testing.
 	})
 }
 
+// Tables nested from builders and recorded in place, with SetTableFunc and
+// SetVectorFunc, write the bytes that their builders write, and fail as they
+// fail, for tables of any offset type and of short ones, whose limits the
+// fields reach. Most tables nest only tables that are recorded in place, and
+// others any tables, of which those are recorded in place among the others.
+func TestTablesRecordedInPlaceWriteWhatTheirBuildersWrite(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		table := rapid.OneOf(tables.Tables(), tablesOfShortOffsets()).Draw(t, "table")
+		if rapid.IntRange(0, 3).Draw(t, "in place") > 0 {
+			table = recordedInPlace(table.NestedInPlace())
+		}
+
+		inPlace, inPlaceErr := table.BytesInPlace()
+		fromBuilders, err := table.Bytes()
+		if !bytes.Equal(inPlace, fromBuilders) || !equalErrors(inPlaceErr, err) {
+			t.Fatalf("wrote % x, %v\nin place and % x, %v\nfrom builders", inPlace, inPlaceErr, fromBuilders, err)
+		}
+	})
+}
+
+// recordedInPlace returns a table, of tables nested from builders that are
+// written in place, with each of them nested at its own alignment and the
+// items of each vector cut to the fields of its shortest, so that
+// SetTableFunc and SetVectorFunc record them all
+func recordedInPlace(table tables.Table) tables.Table {
+	fields := make([]tables.Field, len(table.Fields))
+	for index, field := range table.Fields {
+		fields[index] = fieldRecordedInPlace(field)
+	}
+	table.Fields = fields
+
+	return table
+}
+
+func fieldRecordedInPlace(field tables.Field) tables.Field {
+	switch value := field.(type) {
+	case tables.TableField:
+		value.Nested.Table = recordedInPlace(value.Nested.Table)
+		value.Alignment = 0
+		return value
+	case tables.Vector:
+		shortest := math.MaxInt
+		for _, item := range value {
+			shortest = min(shortest, len(item.Table.Fields))
+		}
+
+		items := make(tables.Vector, len(value))
+		for index, item := range value {
+			item.Table.Fields = item.Table.Fields[:shortest]
+			item.Table = recordedInPlace(item.Table)
+			items[index] = item
+		}
+		return items
+	default:
+		return field
+	}
+}
+
+// listOf writes the vector of items that the benchmarks write, each a
+// float32 and a nested pair of float32s, recorded in place
+func listOf(builder *tafla.TableBuilder, values []float32) ([]byte, error) {
+	err := builder.SetVectorFunc(len(values), 2, func(index int, item tafla.Item) error {
+		value := values[index]
+		return errors.Join(item.SetFloat32(value), item.SetTableFunc(2, func(pair tafla.Item) error {
+			return errors.Join(pair.SetFloat32(value+1), pair.SetFloat32(value+2))
+		}))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+// listFromBuilders writes listOf's items from a builder each
+func listFromBuilders(values []float32) []byte {
+	items := make([]tafla.NestedTable, 0, len(values))
+	for _, value := range values {
+		pair := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+		item := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+		err := errors.Join(
+			pair.SetFloat32(value+1),
+			pair.SetFloat32(value+2),
+			item.SetFloat32(value),
+			item.SetTable(pair),
+		)
+		if err != nil {
+			panic(err)
+		}
+		items = append(items, item)
+	}
+
+	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	if err := builder.SetVector(items...); err != nil {
+		panic(err)
+	}
+
+	return must(builder.Bytes())
+}
+
+// What an item's function returns, an item left incomplete, and a table
+// nested in it left incomplete, each leave the builder as it was, without
+// the fields recorded before, so that the vector can be set again
+func TestAnItemThatFailsLeavesTheBuilderAsItWas(t *testing.T) {
+	values := []float32{1, 2, 3}
+	expected := listFromBuilders(values)
+
+	callers := errors.New("the caller's")
+	failing := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	err := failing.SetVectorFunc(3, 2, func(index int, item tafla.Item) error {
+		check(t, item.SetFloat32(1))
+		if index == 2 {
+			return callers
+		}
+		return item.SetFloat32(2)
+	})
+	if err != callers {
+		t.Errorf("returned %v", err)
+	}
+	if built := must(listOf(failing, values)); !bytes.Equal(built, expected) {
+		t.Errorf("wrote % x rather than % x", built, expected)
+	}
+
+	incomplete := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	err = incomplete.SetVectorFunc(3, 2, func(index int, item tafla.Item) error {
+		check(t, item.SetFloat32(1))
+		if index == 1 {
+			return nil
+		}
+		return item.SetFloat32(2)
+	})
+	expectError(t, err, &tafla.BuildError{Kind: tafla.Incomplete, Set: 1, Fields: 2})
+	if built := must(listOf(incomplete, values)); !bytes.Equal(built, expected) {
+		t.Errorf("wrote % x rather than % x", built, expected)
+	}
+
+	nestedIncomplete := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	err = nestedIncomplete.SetVectorFunc(3, 2, func(_ int, item tafla.Item) error {
+		check(t, item.SetFloat32(1))
+		return item.SetTableFunc(2, func(pair tafla.Item) error { return pair.SetFloat32(2) })
+	})
+	expectError(t, err, &tafla.BuildError{Kind: tafla.Incomplete, Set: 1, Fields: 2})
+	if built := must(listOf(nestedIncomplete, values)); !bytes.Equal(built, expected) {
+		t.Errorf("wrote % x rather than % x", built, expected)
+	}
+}
+
+func TestRejectsAFieldBeyondAnItemsCount(t *testing.T) {
+	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	err := builder.SetTableFunc(1, func(table tafla.Item) error {
+		check(t, table.SetUint8(1))
+		return table.SetUint8(2)
+	})
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooManyFields, Fields: 1})
+
+	check(t, builder.SetTableFunc(1, func(table tafla.Item) error { return table.SetUint8(1) }))
+	if table := must(builder.Bytes()); !bytes.Equal(table, []byte{4, 0, 0, 0, 4, 0, 0, 0, 1}) {
+		t.Errorf("wrote % x", table)
+	}
+	expectError(t, builder.SetTableFunc(0, nil), &tafla.BuildError{Kind: tafla.TooManyFields, Fields: 1})
+	expectError(t, builder.SetVectorFunc(0, 0, nil), &tafla.BuildError{Kind: tafla.TooManyFields, Fields: 1})
+}
+
+// A vector's count is checked before any item is recorded, and its items
+// once they are
+func TestRejectsAVectorTooLongForItsOffsetType(t *testing.T) {
+	layout := tafla.TableLayout{}.WithOffsetType(tafla.Uint8)
+	builder := must(tafla.NewTableBuilder(1, layout))
+	err := builder.SetVectorFunc(254, 0, func(int, tafla.Item) error {
+		t.Fatal("recorded an item")
+		return nil
+	})
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: 256, OffsetType: tafla.Uint8})
+
+	// The offset, the count and 2 item ends, and 2 items of 127 bytes, an
+	// offset and an array of a count and 125 bytes
+	array := make([]byte, 125)
+	err = builder.SetVectorFunc(2, 1, func(_ int, item tafla.Item) error { return item.SetUint8Array(array) })
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: 258, OffsetType: tafla.Uint8})
+
+	check(t, builder.SetVectorFunc(253, 0, func(int, tafla.Item) error { return nil }))
+	if table := must(builder.Bytes()); len(table) != 255 {
+		t.Errorf("wrote %d bytes", len(table))
+	}
+}
+
+func TestPanicsForANegativeCountOrNumberOfFields(t *testing.T) {
+	builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+	expectPanic(t, "a table of -1 fields", func() { _ = builder.SetTableFunc(-1, nil) })
+	expectPanic(t, "a vector of -1 items", func() { _ = builder.SetVectorFunc(-1, 0, nil) })
+	expectPanic(t, "items of -1 fields", func() { _ = builder.SetVectorFunc(0, -1, nil) })
+}
+
 // parentOf writes a parent of before bytes in a uint8[], the table at
 // alignment 8, and a vector of the table twice
 func parentOf(table func() tafla.NestedTable, before int, layout tafla.TableLayout) ([]byte, error) {

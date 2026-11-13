@@ -2,6 +2,8 @@ package tafla
 
 import (
 	"math"
+	"slices"
+	"strconv"
 	"unsafe"
 )
 
@@ -27,14 +29,29 @@ import (
 // for the layout's offset type: longer than 255 bytes, 64 KiB or 4 GiB, or
 // than an int on a 32-bit host.
 //
+// [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] record a
+// nested table, or each item of a vector, in place, straight among the
+// builder's own fields, through the [Item] that their function sets the
+// fields on, rather than from a builder of its own. They write the bytes that
+// nested builders write, without allocating a builder per table.
+//
 // A builder is used through the pointer that its constructor returns, and
 // isn't copied, since it holds the fields of a small table within itself.
 type TableBuilder struct {
 	// The fields set so far, which a small table holds in the allocation of
-	// its builder
+	// its builder. A table recorded in place is a field followed by its own
+	// fields, and a vector of them a field followed by each item's fields.
 	values []field
+	// The counters below are those of the table whose fields are being set:
+	// the builder's own, or those of a table that it records in place, which
+	// counts its fields as a builder of its own would.
+	//
+	// The index in values past the table's last field: the table holds all
+	// its fields when values reaches it. A table recorded in place among the
+	// fields moves it past that table's own fields.
+	end int
 	// The number of fields that the table holds
-	fields int
+	fields uint32
 	// The table's length so far, which is where the next field goes
 	length  uint32
 	version uint32
@@ -73,8 +90,10 @@ func newTableBuilder(fields int, layout TableLayout, versioned bool, version uin
 		return nil, err
 	}
 
+	// The header check keeps fields within a uint32
 	builder := allocateBuilder(fields)
-	builder.fields = fields
+	builder.end = fields
+	builder.fields = uint32(fields)
 	builder.length = header
 	builder.version = version
 	builder.layout = layout
@@ -127,8 +146,12 @@ func (b *TableBuilder) Bytes() ([]byte, error) {
 
 	// The constructor checked the header and the version, and each setter
 	// the table's length, so the writer writes the fields as counted
-	writer := newTableWriter(nil, int(b.length), b.fields, b.layout, b.version)
-	b.writeFields(&writer)
+	writer := newTableWriter(nil, int(b.length), int(b.fields), b.layout, b.version)
+	if b.valuePerField() {
+		b.writeValues(&writer)
+	} else {
+		b.writeRecorded(&writer)
+	}
 
 	return writer.Bytes()
 }
@@ -327,6 +350,130 @@ func (b *TableBuilder) SetVector(items ...NestedTable) error {
 	return b.addField(field{data: unsafe.Pointer(unsafe.SliceData(items)), length: len(items), kind: vectorField})
 }
 
+// SetTableFunc records a table of fields fields nested in this one, in
+// place, as [TableBuilder.SetTable] nests a builder of them in the default
+// layout of this table's offset type, but without a builder of its own: fill
+// sets its fields, in order, on the [Item] that it's given, and each is
+// recorded straight among this builder's fields. The table is written into
+// this one, and padded to start at a multiple of its largest alignment, as
+// SetTable pads a builder, so the bytes are those that SetTable writes.
+//
+// fill sets the fields on the Item, not on this builder, and the Item is
+// valid only while fill runs.
+//
+// It fails with TooManyFields if this table holds all its fields already,
+// with HeaderTooLong if the nested table's offsets alone are too long for
+// the offset type, with Incomplete if fill leaves fields of the nested table
+// unset, with the error of a setter of the Item, or with TooLong if the
+// nested table makes this one too long, and returns what fill returns,
+// leaving the builder as it was in each case. It panics if fields is
+// negative. If fill panics, the builder is left recording the nested table,
+// and mustn't be used again.
+func (b *TableBuilder) SetTableFunc(fields int, fill func(table Item) error) error {
+	if len(b.values) == b.end {
+		return b.tooManyFields()
+	}
+	header, err := b.nestedHeader(fields)
+	if err != nil {
+		return err
+	}
+
+	parent := b.counters()
+	start := len(b.values)
+	b.values = append(b.values, field{length: fields, kind: tableInPlaceField})
+	b.startInPlace(fields, header)
+	err = fill(Item{builder: b})
+	if err == nil {
+		err = b.checkComplete()
+	}
+	if err != nil {
+		b.rollBack(parent, start)
+		return err
+	}
+
+	// Padded from this table's length, as a nested builder is
+	table := b.counters()
+	b.restore(parent)
+	length := uint64(b.length) + table.alignment.padding(uint64(b.length)) + uint64(table.length)
+	if err := b.checkLength(b.setAt(start), length); err != nil {
+		b.rollBack(parent, start)
+		return err
+	}
+
+	b.values[start].alignment = table.alignment
+	b.inPlace(start, length, table.alignment)
+	return nil
+}
+
+// SetVectorFunc records a vector of count tables of fields fields each, in
+// place, as [TableBuilder.SetTableFunc] records one: fill(index, item) sets
+// the fields of item index, for each in order. The vector's bytes are those
+// that [TableBuilder.SetVector] writes for builders of the items. Items
+// aren't padded, as SetVector doesn't pad them.
+//
+// It fails with TooLong before recording any item if the vector's count and
+// the ends of its items alone make the table too long, or after recording
+// them if the items do. It fails otherwise as SetTableFunc does, for each
+// item, and returns what fill returns, leaving the builder as it was in each
+// case. It panics if count or fields is negative. If fill panics, the
+// builder is left recording the item, and mustn't be used again.
+func (b *TableBuilder) SetVectorFunc(count, fields int, fill func(index int, item Item) error) error {
+	if count < 0 {
+		panic("tafla: a vector can't hold " + strconv.Itoa(count) + " items")
+	}
+	if len(b.values) == b.end {
+		return b.tooManyFields()
+	}
+
+	// The table's length with the count and the ends of the items, which
+	// fail before any item is recorded, as does a count past what any table
+	// holds
+	width := uint64(b.layout.offsetType.Size())
+	length := uint64(math.MaxUint64)
+	if uint64(count) < math.MaxUint32 {
+		length = uint64(b.length) + (uint64(count)+1)*width
+	}
+	if err := b.checkLength(b.set(), length); err != nil {
+		return err
+	}
+	// Only an item fails for its header, as its builder would
+	header, err := b.nestedHeader(fields)
+	if err != nil && count > 0 {
+		return err
+	}
+
+	parent := b.counters()
+	start := len(b.values)
+	b.values = append(b.values, field{length: count, bits: uint64(fields), kind: vectorInPlaceField})
+
+	for index := range count {
+		b.startInPlace(fields, header)
+		err := fill(index, Item{builder: b})
+		if err == nil {
+			err = b.checkComplete()
+		}
+		if err != nil {
+			b.rollBack(parent, start)
+			return err
+		}
+
+		length += uint64(b.length)
+		// Room for the other items, once the first shows what one records
+		if index == 0 {
+			b.reserveItems(count-1, len(b.values)-start-1, length)
+		}
+	}
+
+	b.restore(parent)
+	if err := b.checkLength(b.setAt(start), length); err != nil {
+		b.rollBack(parent, start)
+		return err
+	}
+
+	b.inPlace(start, length, Align1)
+	return nil
+}
+
 func (b *TableBuilder) setTable(table NestedTable, alignment Alignment) error {
 	if err := checkNested(table); err != nil {
 		return err
@@ -376,15 +523,14 @@ func setArray[T Element](b *TableBuilder, values []T) error {
 // offset, count, length and item end is at most the table's length, so
 // that's the one value to check.
 func (b *TableBuilder) addField(f field) error {
-	index := len(b.values)
-	if index == b.fields {
-		return &BuildError{Kind: TooManyFields, Fields: b.fields}
+	if len(b.values) == b.end {
+		return b.tooManyFields()
 	}
 
 	width := uint64(b.layout.offsetType.Size())
 	length := uint64(b.length) + f.padding(uint64(b.length), width) + f.byteLength(width)
 	if length > uint64(b.layout.offsetType.MaxValue()) || length > math.MaxInt {
-		return &BuildError{Kind: TooLong, Index: index, Length: length, OffsetType: b.layout.offsetType}
+		return b.tooLong(b.set(), length)
 	}
 
 	b.length = uint32(length)
@@ -394,20 +540,177 @@ func (b *TableBuilder) addField(f field) error {
 	return nil
 }
 
-func (b *TableBuilder) checkComplete() error {
-	if len(b.values) != b.fields {
-		return &BuildError{Kind: Incomplete, Set: len(b.values), Fields: b.fields}
+// set returns the number of the table's fields that are set
+func (b *TableBuilder) set() int {
+	return len(b.values) - b.end + int(b.fields)
+}
+
+// checkLength checks that the table's length with field index fits in its
+// offset type, and in an int
+func (b *TableBuilder) checkLength(index int, length uint64) error {
+	if length > uint64(b.layout.offsetType.MaxValue()) || length > math.MaxInt {
+		return b.tooLong(index, length)
 	}
 
 	return nil
 }
 
-// writeFields writes the fields into the table that writer is writing, each
-// at its index
-func (b *TableBuilder) writeFields(writer *TableWriter) {
+func (b *TableBuilder) tooManyFields() error {
+	return &BuildError{Kind: TooManyFields, Fields: int(b.fields)}
+}
+
+func (b *TableBuilder) tooLong(index int, length uint64) error {
+	return &BuildError{Kind: TooLong, Index: index, Length: length, OffsetType: b.layout.offsetType}
+}
+
+// counters are the counters of the table whose fields the builder is
+// setting, which it sets aside while it records a table in place
+type counters struct {
+	end       int
+	fields    uint32
+	length    uint32
+	alignment Alignment
+}
+
+func (b *TableBuilder) counters() counters {
+	return counters{end: b.end, fields: b.fields, length: b.length, alignment: b.alignment}
+}
+
+func (b *TableBuilder) restore(counters counters) {
+	b.end = counters.end
+	b.fields = counters.fields
+	b.length = counters.length
+	b.alignment = counters.alignment
+}
+
+// nestedHeader returns the length of the offsets of a table of fields fields
+// nested in this one in place, in the default layout of its offset type
+func (b *TableBuilder) nestedHeader(fields int) (uint32, error) {
+	return TableLayout{offsetType: b.layout.offsetType}.headerLength(fields)
+}
+
+// startInPlace starts counting the fields of a table of fields fields that
+// the builder records in place, after its offsets, of header bytes, rather
+// than this table's
+func (b *TableBuilder) startInPlace(fields int, header uint32) {
+	b.end = len(b.values) + fields
+	b.fields = uint32(fields)
+	b.length = header
+	b.alignment = Align1
+}
+
+// inPlace finishes recording the table or vector of tables in place whose
+// field is at start, once the builder counts this table's fields again: it
+// counts as one of them, and its tables' fields follow it
+func (b *TableBuilder) inPlace(start int, length uint64, alignment Alignment) {
+	b.end += len(b.values) - start - 1
+	b.length = uint32(length)
+	b.alignment = max(b.alignment, alignment)
+}
+
+// rollBack removes what was recorded from start, and counts the fields of
+// the table of counters again, leaving the builder as it was
+func (b *TableBuilder) rollBack(counters counters, start int) {
+	// Cleared, so that the builder doesn't keep their values
+	clear(b.values[start:])
+	b.values = b.values[:start]
+	b.restore(counters)
+}
+
+// setAt returns the number of the table's fields that were set when it had
+// start values
+func (b *TableBuilder) setAt(start int) int {
+	return start - b.end + int(b.fields)
+}
+
+// reserveItems makes room for count more items of a vector that record
+// values values each, as its first item did, so that recording them grows
+// the values once, unless they record more. Against room for one value per
+// field of each item, reserved before the first, which nested tables
+// recorded in place outgrow, the benchmarks' vector of 100 nested tables
+// took 8% less time and 26% fewer bytes. Each value takes an offset after
+// the table's length so far, so it never reserves more than a table that
+// fits in its offset type records.
+func (b *TableBuilder) reserveItems(count, values int, length uint64) {
+	width := uint64(b.layout.offsetType.Size())
+	room := (min(uint64(b.layout.offsetType.MaxValue()), math.MaxInt) - length) / width
+	b.values = slices.Grow(b.values, int(min(uint64(count)*uint64(values), room)))
+}
+
+func (b *TableBuilder) checkComplete() error {
+	if len(b.values) != b.end {
+		return &BuildError{Kind: Incomplete, Set: b.set(), Fields: int(b.fields)}
+	}
+
+	return nil
+}
+
+// valuePerField returns whether each field is one of the values, which they
+// are unless tables were recorded in place, or only tables of no fields were,
+// which writeValues writes too
+func (b *TableBuilder) valuePerField() bool {
+	return len(b.values) == int(b.fields)
+}
+
+// writeValues writes the fields into the table that writer is writing, each
+// at its index, when each is one of the values. Its callers check that
+// themselves, so that the loop inlines into them: through a function that
+// checked, which doesn't inline, the call for each nested builder made the
+// benchmarks' vector of 100 nested builders about 2% slower.
+func (b *TableBuilder) writeValues(writer *TableWriter) {
 	for index := range b.values {
 		b.values[index].write(writer, index, b.layout.offsetType)
 	}
+}
+
+// writeRecorded writes the fields of a table that recorded tables in place
+// into the table that writer is writing
+func (b *TableBuilder) writeRecorded(writer *TableWriter) {
+	writeFields(writer, b.values, 0, int(b.fields), b.layout.offsetType)
+}
+
+// writeFields writes fields fields of a table of offsetType offsets from
+// values[next:], each at its index, and returns the index after them. A
+// table recorded in place, and each item of a vector of them, is written
+// from the values after its field, as a nested builder is written from its
+// own.
+func writeFields(writer *TableWriter, values []field, next, fields int, offsetType OffsetType) int {
+	for index := range fields {
+		f := &values[next]
+		next++
+		if f.kind < tableInPlaceField {
+			f.write(writer, index, offsetType)
+			continue
+		}
+
+		next = f.writeInPlace(writer, index, values, next, offsetType)
+	}
+
+	return next
+}
+
+// writeInPlace writes field index, a table or a vector of tables recorded in
+// place, whose fields start at values[next], and returns the index after
+// them
+func (f *field) writeInPlace(writer *TableWriter, index int, values []field, next int, offsetType OffsetType) int {
+	if f.kind == tableInPlaceField {
+		writer.SetTable(index, f.alignment)
+		parent := writer.StartTable(f.length)
+		next = writeFields(writer, values, next, f.length, offsetType)
+		writer.EndTable(parent)
+		return next
+	}
+
+	vector := writer.SetVector(index, f.length)
+	fields := int(f.bits)
+	for item := range f.length {
+		parent := writer.StartTable(fields)
+		next = writeFields(writer, values, next, fields, offsetType)
+		writer.EndTable(parent)
+		writer.SetItemEnd(vector, item)
+	}
+
+	return next
 }
 
 // writeNested writes the table as a field or vector item of a table of
@@ -417,16 +720,24 @@ func (b *TableBuilder) writeFields(writer *TableWriter) {
 // parent, rather than into bytes of its own that are then copied.
 func (b *TableBuilder) writeNested(writer *TableWriter, offsetType OffsetType) {
 	if b.layout.offsetType == offsetType && !b.layout.sized && !b.layout.versioned {
-		parent := writer.StartTable(b.fields)
-		b.writeFields(writer)
+		parent := writer.StartTable(int(b.fields))
+		if b.valuePerField() {
+			b.writeValues(writer)
+		} else {
+			b.writeRecorded(writer)
+		}
 		writer.EndTable(parent)
 		return
 	}
 
 	start := writer.position
 	end := start + int(b.length)
-	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), b.fields, b.layout, b.version)
-	b.writeFields(&nested)
+	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), int(b.fields), b.layout, b.version)
+	if b.valuePerField() {
+		b.writeValues(&nested)
+	} else {
+		b.writeRecorded(&nested)
+	}
 	writer.position = end
 }
 
@@ -468,6 +779,18 @@ const (
 	bytesField
 	// data and length hold the items, a []NestedTable
 	vectorField
+
+	// The tables recorded in place come last, which writeFields tells from
+	// the others in one comparison.
+
+	// A table recorded in place, whose fields follow: length holds their
+	// number, and alignment the table's alignment. It's recorded without
+	// addField, once its fields are.
+	tableInPlaceField
+	// A vector of tables recorded in place, whose items' fields follow, item
+	// after item: length holds the number of items, and bits the number of
+	// each one's fields. It's recorded without addField, once they are.
+	vectorInPlaceField
 )
 
 // field is a field that a setter recorded, in 32 bytes: data points at its
@@ -586,6 +909,9 @@ func (f *field) write(writer *TableWriter, index int, offsetType OffsetType) {
 			writeNestedTable(writer, table, offsetType)
 			writer.SetItemEnd(vector, item)
 		}
+	case tableInPlaceField, vectorInPlaceField:
+		// Of no fields, when writeValues writes every field
+		f.writeInPlace(writer, index, nil, 0, offsetType)
 	}
 }
 
