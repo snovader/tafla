@@ -28,6 +28,14 @@ repository's first commits, for code built from its source before the release.
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
   caller's bytes rather than new ones.
+- `TableBuilder.setTableInPlace(fields, fill)` and
+  `setVectorInPlace(count, fields, fill)`, which record a nested table, or
+  each item of a vector, among the builder's own fields, through the
+  `TableItem` that `fill` sets its fields on, rather than from a builder of
+  its own. They write the bytes that nested builders write, and leave the
+  builder as it was if `fill` throws or leaves fields unset. The comparison
+  suite's vector of 100 nested tables took 11.5 µs rather than 13.7 µs, and
+  allocated 31 KB on V8's heap rather than 47 KB.
 
 ### Changed
 
