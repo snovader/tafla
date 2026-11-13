@@ -29,8 +29,9 @@ encoded sizes and what each library does with a truncated document.
 
 tafla is timed twice, and both write the same bytes:
 
-- **tafla** nests `TableBuilder`s by hand, a builder for each table, and reads
-  the tables with `ByteBuffer`'s getters.
+- **tafla** writes each table with a `TableBuilder` by hand, recording its
+  nested tables among the builder's fields with `setTableInPlace()` and
+  `setVectorInPlace()`, and reads the tables with `ByteBuffer`'s getters.
 - **tafla-gen** is the code that tafla-gen generates from
   `comparison/workloads.tafla`, in `comparison/generated/tafla/`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then writes
