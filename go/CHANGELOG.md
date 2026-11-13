@@ -24,6 +24,12 @@ first commits, for code built from its source before the release.
 - Bounds-checked reads, which fail on malformed input with a `*DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- `TableBuilder.SetTableFunc()` and `SetVectorFunc()` record a nested table,
+  or each item of a vector, in place among the builder's own fields, through
+  an `Item` that their function sets the fields on, rather than from a
+  builder of its own. They write the bytes that nested builders write, and
+  the benchmarks' vector of 100 nested tables takes about 5.8 µs so, in 6
+  allocations, rather than 10.3 µs and 204 from a builder per item.
 
 ### Changed
 

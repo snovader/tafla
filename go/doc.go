@@ -48,6 +48,9 @@
 // until the table is written, so their elements must not change in between.
 // Nesting a builder rather than bytes writes it straight into its parent,
 // so that the outermost table allocates and writes all the bytes once.
+// [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] record a
+// nested table, or each item of a vector, among the builder's own fields,
+// without a builder of its own.
 //
 // Readers share the bytes: [ArrayView] reads an array's elements in place,
 // at any alignment and in any host byte order, and [ArrayView.AsSlice]
@@ -80,8 +83,9 @@
 // Functions panic only for mistakes of the code that calls them, which no
 // bytes can cause: an index past an [ArrayView]'s or a [Vector]'s length, as
 // indexing a slice does, an offset type or alignment that isn't one of the
-// constants, a negative number of fields, a negative field index or struct
-// size, the version of a layout without one, or a nil nested table. A [TableWriter] given other fields than its
+// constants, a negative number of fields or of a vector's items, a negative
+// field index or struct size, the version of a layout without one, or a nil
+// nested table. A [TableWriter] given other fields than its
 // sizer counted panics for a write past the table's bytes, rather than
 // writing past them.
 package tafla

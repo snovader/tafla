@@ -106,6 +106,17 @@ with the code that tafla-gen generates.
   type and no header straight into its parent, so that the outermost table
   allocates and writes all the bytes once. A builder of another layout is
   written by a writer of its own into the bytes that it takes in its parent.
+- **Nested tables can be recorded in place.** `SetTableFunc()` and
+  `SetVectorFunc()` record a nested table, or each item of a vector,
+  straight among the builder's fields, through the `Item` that their
+  function sets the fields on, rather than from a builder of its own. They
+  write the bytes that nested builders write, and leave the builder as it
+  was if the function returns an error or leaves fields unset. The
+  benchmarks' vector of 100 nested tables took about 5.8 µs so, in 6
+  allocations, against 10.3 µs and 204 allocations from a builder per item,
+  and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
+  with `SetTable()` and `SetVector()`, is still what a table built
+  elsewhere, or reused, needs.
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
   `ArrayView[T]`, which reads elements from the bytes at any alignment and in
   any host byte order. `AsSlice()` returns them as a slice of the bytes when
@@ -159,8 +170,9 @@ write a table, and leaves the builder as it was:
   table too long for its offset type, and `SetStructArray()` with
   `NotWholeStructs` for bytes that aren't a whole number of structs.
   `Bytes()`, and nesting a builder, fail with `Incomplete` while fields are
-  left to set. A version that doesn't fit, or a header too long for its
-  offset type, fails the constructor.
+  left to set, as `SetTableFunc()` and `SetVectorFunc()` do for a table that
+  their function leaves incomplete. A version that doesn't fit, or a header
+  too long for its offset type, fails the constructor.
 
 Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
@@ -169,9 +181,9 @@ can cause, as Go's standard library panics for an index out of range:
 - a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
   struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
-- a negative number of fields, `NewTableBuilder()` of a versioned layout or
-  `NewVersionedTableBuilder()` of one without a version slot, and `Version()`
-  of a layout without one,
+- a negative number of fields or of a vector's items, `NewTableBuilder()`
+  of a versioned layout or `NewVersionedTableBuilder()` of one without a
+  version slot, and `Version()` of a layout without one,
 - a nil nested table, and
 - a `TableWriter` given other fields than its sizer counted, for a write past
   the table's bytes, rather than writing past them.
