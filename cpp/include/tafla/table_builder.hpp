@@ -138,7 +138,7 @@ public:
         }
 
         TableWriter writer(length_, fields_, sized_, version, offset_type_);
-        write_table(writer, 0, fields_);
+        write_fields(writer);
         return writer.finish();
     }
 
@@ -828,22 +828,106 @@ private:
     /// if it throws.
     void append_nested(NestedTable&& table, Alignment alignment);
 
-    /// Writes `fields` fields of a table, the first of which `values_` holds
-    /// at `at`, as the fields of the table that `writer` is writing, and
-    /// returns where its fields, and the tables written in place in them, end
-    std::size_t write_table(TableWriter& writer, std::size_t at, std::size_t fields) const;
+    /// A table, or a vector of tables, whose fields or items `write_fields()`
+    /// is writing
+    struct Level {
+        /// What a level holds: a table's fields, or a vector's items
+        enum class Holds : std::uint32_t { fields, items };
 
-    /// Writes a table nested in place of `fields` fields, the first at `at`,
-    /// after its parent's `set_table()` or `set_vector()`
-    std::size_t write_nested(TableWriter& writer, std::size_t at, std::size_t fields) const {
-        const auto parent = writer.start_table(fields);
-        at = write_table(writer, at, fields);
-        writer.end_table(parent);
-        return at;
-    }
+        /// The level of a table of `fields` fields, which started in the
+        /// table that `parent` holds
+        static Level table(WriterParent parent, std::size_t fields) noexcept {
+            Level level;
+            level.parent = parent;
+            level.count = fields;
+            level.next = 0;
+            level.holds = Holds::fields;
+            return level;
+        }
+
+        /// The level of a vector of `items` tables at `vector`
+        static Level vector_of(VectorPosition vector, std::size_t items) noexcept {
+            Level level;
+            level.vector = vector;
+            level.count = items;
+            level.next = 0;
+            level.holds = Holds::items;
+            return level;
+        }
+
+        // Without initializers, so that the stack of levels starts without
+        // writing any
+        union {
+            /// The table that a table was started in, where it ends
+            WriterParent parent;
+            /// A vector's position, from which its items' ends count
+            VectorPosition vector;
+        };
+        /// The number of a table's fields or a vector's items
+        std::size_t count;
+        /// The field or item to write next
+        std::uint32_t next;
+        /// 32 bits wide, so that a level has no padding, whose bytes copying
+        /// a level would copy as well
+        Holds holds;
+    };
+
+    /// The levels that `write_fields()` is within, outside the one that it's
+    /// writing: the first `Inline` within it, and any deeper in a vector,
+    /// which it allocates only for them
+    class Levels {
+    public:
+        static constexpr std::size_t Inline = 16;
+
+        [[nodiscard]] bool empty() const noexcept {
+            return size_ == 0;
+        }
+
+        void push(const Level& level) {
+            if (size_ < Inline) [[likely]] {
+                inline_[size_] = level;
+            } else {
+                spilled_.push_back(level);
+            }
+            ++size_;
+        }
+
+        Level pop() noexcept {
+            --size_;
+            if (size_ < Inline) [[likely]] {
+                return inline_[size_];
+            }
+
+            const Level level = spilled_.back();
+            spilled_.pop_back();
+            return level;
+        }
+
+    private:
+        std::array<Level, Inline> inline_;
+        std::vector<Level> spilled_;
+        std::size_t size_ = 0;
+    };
+
+    /// Writes the fields that were set, and the tables written in place in
+    /// them, in the order that `values_` holds them, as the fields of the
+    /// table that `writer` is writing.
+    ///
+    /// It walks the tables nested in place with a stack of its own, rather
+    /// than by recursing, so that it's inlined into `to_bytes()`, whose
+    /// writer nothing else sees. The writer's position then stays in
+    /// registers. A call that took the writer's address would leave it in
+    /// memory, where it's reloaded after each byte written, since the byte
+    /// may alias it. A profile of the recursive walk that it replaces, of
+    /// the benchmarks' vector of 100 nested tables, found the most time
+    /// spent on checks of a position just reloaded.
+    TAFLA_ALWAYS_INLINE void write_fields(TableWriter& writer) const;
+
+    /// Writes field `index`, of a kind that nests no table in place
+    TAFLA_ALWAYS_INLINE static void write_field(TableWriter& writer, std::size_t index, const Field& field) noexcept;
 
     /// Writes an array's elements after its count, little-endian
-    static void write_elements(TableWriter& writer, const Field& field) noexcept;
+    TAFLA_ALWAYS_INLINE static void write_elements(TableWriter& writer, const Field& field) noexcept;
 
     /// The fields that were set, and the fields of the tables nested in place
     /// in them
@@ -1384,69 +1468,104 @@ inline void TableBuilder::append_nested(NestedTable&& table, Alignment alignment
     values_.push_back({Kind::table_bytes, 0, alignment, static_cast<std::uint32_t>(bytes.size()), 0, 0, bytes.data()});
 }
 
-inline std::size_t TableBuilder::write_table(TableWriter& writer, std::size_t at, std::size_t fields) const {
-    for (std::size_t index = 0; index < fields; ++index) {
-        const Field field = values_[at++];
+TAFLA_ALWAYS_INLINE void TableBuilder::write_fields(TableWriter& writer) const {
+    const Field* values = values_.data();
+    Levels outer;
+    auto level = Level::table({}, fields_);
+
+    for (;;) {
+        // A table or vector that's written ends, and the walk goes on in the
+        // level that holds it, after the end of the item that it may be
+        if (level.next == level.count) {
+            if (outer.empty()) {
+                return;
+            }
+
+            if (level.holds == Level::Holds::fields) {
+                writer.end_table(level.parent);
+            }
+            level = outer.pop();
+            if (level.holds == Level::Holds::items) {
+                writer.set_item_end(level.vector, level.next - 1);
+            }
+            continue;
+        }
+
+        const Field& field = *values++;
+        const std::size_t index = level.next++;
+        if (level.holds == Level::Holds::items) {
+            if (field.kind == Kind::table) {
+                outer.push(level);
+                level = Level::table(writer.start_table(field.count), field.count);
+            } else {
+                writer.copy_table({static_cast<const std::uint8_t*>(field.data), field.count});
+                writer.set_item_end(level.vector, index);
+            }
+            continue;
+        }
 
         switch (field.kind) {
-            case Kind::scalar:
-                writer.set_offset(index);
-                switch (field.size) {
-                    case 1:
-                        writer.push_scalar(static_cast<std::uint8_t>(field.bits));
-                        break;
-                    case 2:
-                        writer.push_scalar(static_cast<std::uint16_t>(field.bits));
-                        break;
-                    case 4:
-                        writer.push_scalar(static_cast<std::uint32_t>(field.bits));
-                        break;
-                    default:
-                        writer.push_scalar(field.bits);
-                        break;
-                }
-                break;
-            case Kind::array:
-                writer.start_array(index, field.count, field.alignment);
-                write_elements(writer, field);
-                break;
-            case Kind::string:
-                writer.set_string(index, {static_cast<const char*>(field.data), field.count});
-                break;
-            case Kind::structure:
-                writer.set_struct(index, {static_cast<const std::uint8_t*>(field.data), field.count});
-                break;
-            case Kind::struct_array:
-                writer.start_array(index, field.structs, field.alignment);
-                writer.push(field.data, field.count);
-                break;
             case Kind::table:
                 writer.set_table(index, field.alignment);
-                at = write_nested(writer, at, field.count);
+                outer.push(level);
+                level = Level::table(writer.start_table(field.count), field.count);
                 break;
-            case Kind::table_bytes:
-                writer.set_table(index, field.alignment);
-                writer.copy_table({static_cast<const std::uint8_t*>(field.data), field.count});
+            case Kind::vector:
+                outer.push(level);
+                level = Level::vector_of(writer.set_vector(index, field.count), field.count);
                 break;
-            case Kind::vector: {
-                const auto vector = writer.set_vector(index, field.count);
-                for (std::size_t item = 0; item < field.count; ++item) {
-                    const Field table = values_[at++];
-                    if (table.kind == Kind::table) {
-                        at = write_nested(writer, at, table.count);
-                    } else {
-                        writer.copy_table({static_cast<const std::uint8_t*>(table.data), table.count});
-                    }
-                    writer.set_item_end(vector, item);
-                }
+            default:
+                write_field(writer, index, field);
                 break;
-            }
         }
     }
-    return at;
 }
 
-inline void TableBuilder::write_elements(TableWriter& writer, const Field& field) noexcept {
+TAFLA_ALWAYS_INLINE void TableBuilder::write_field(TableWriter& writer, std::size_t index,
+                                                   const Field& field) noexcept {
+    switch (field.kind) {
+        case Kind::scalar:
+            writer.set_offset(index);
+            switch (field.size) {
+                case 1:
+                    writer.push_scalar(static_cast<std::uint8_t>(field.bits));
+                    return;
+                case 2:
+                    writer.push_scalar(static_cast<std::uint16_t>(field.bits));
+                    return;
+                case 4:
+                    writer.push_scalar(static_cast<std::uint32_t>(field.bits));
+                    return;
+                default:
+                    writer.push_scalar(field.bits);
+                    return;
+            }
+        case Kind::array:
+            writer.start_array(index, field.count, field.alignment);
+            write_elements(writer, field);
+            return;
+        case Kind::string:
+            writer.set_string(index, {static_cast<const char*>(field.data), field.count});
+            return;
+        case Kind::structure:
+            writer.set_struct(index, {static_cast<const std::uint8_t*>(field.data), field.count});
+            return;
+        case Kind::struct_array:
+            writer.start_array(index, field.structs, field.alignment);
+            writer.push(field.data, field.count);
+            return;
+        case Kind::table_bytes:
+            writer.set_table(index, field.alignment);
+            writer.copy_table({static_cast<const std::uint8_t*>(field.data), field.count});
+            return;
+        case Kind::table:
+        case Kind::vector:
+            // `write_fields()` writes them, with the tables they nest
+            return;
+    }
+}
+
+TAFLA_ALWAYS_INLINE void TableBuilder::write_elements(TableWriter& writer, const Field& field) noexcept {
     const std::size_t byte_length = std::size_t{field.count} * field.size;
     if (detail::kHostOrder || field.size == 1) {
         writer.push(field.data, byte_length);
