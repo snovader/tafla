@@ -1,10 +1,10 @@
-import { describe, expect } from 'vitest';
+import { describe, expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
-import { alignmentOf, buildTable } from './conformance/tables.ts';
+import { alignmentOf, buildTable, buildTableInPlace, nestedInPlace } from './conformance/tables.ts';
 
 it('should reject a field beyond the number the table holds', () => {
     const builder = new TableBuilder(1);
@@ -248,6 +248,177 @@ describe('tables nested from their builders', () => {
         expect(read).toStrictEqual(new Float32Array([3, 2]));
     });
 });
+
+describe('tables recorded in place', () => {
+    // Every nested table is made one that a builder writes in place, so
+    // that it's recorded in place too, except those with an alignment of
+    // their own and vectors of items of different numbers of fields
+    it.prop([tables()])(
+        'should write the bytes of the builders that they replace, and fail as they fail',
+        table => {
+            const nested = nestedInPlace(table);
+
+            expect(outcomeOf(() => buildTableInPlace(nested).bytes())).toStrictEqual(
+                outcomeOf(() => buildTable(nested).bytes())
+            );
+        }
+    );
+
+    // The vector of nested tables that the benchmarks write: items of a
+    // float32 and a nested pair of float32s
+    const VALUES = [1, 2, 3];
+
+    function setItems(builder: TableBuilder): void {
+        builder.setVectorInPlace(VALUES.length, 2, (item, index) => {
+            item.setFloat32(VALUES[index]);
+            item.setTableInPlace(2, pair => {
+                pair.setFloat32(VALUES[index] + 1);
+                pair.setFloat32(VALUES[index] + 2);
+            });
+        });
+    }
+
+    function itemsFromBuilders(): Uint8Array {
+        const items = VALUES.map(value => {
+            const pair = new TableBuilder(2);
+            pair.setFloat32(value + 1);
+            pair.setFloat32(value + 2);
+
+            const item = new TableBuilder(2);
+            item.setFloat32(value);
+            item.setTable(pair);
+
+            return item;
+        });
+
+        const builder = new TableBuilder(1);
+        builder.setVector(items);
+
+        return builder.bytes();
+    }
+
+    const EXPECTED = itemsFromBuilders();
+
+    it("should pass on what fill throws, and leave the builder without the vector's items", () => {
+        const builder = new TableBuilder(1);
+        const thrown = new Error("The caller's");
+
+        expect(() =>
+            builder.setVectorInPlace(3, 2, (item, index) => {
+                item.setFloat32(1);
+                if (index === 2) {
+                    throw thrown;
+                }
+                item.setFloat32(2);
+            })
+        ).toThrow(thrown);
+
+        setItems(builder);
+        expect(builder.bytes()).toStrictEqual(EXPECTED);
+    });
+
+    it('should reject an item with fields left to set, and leave the builder as it was', () => {
+        const builder = new TableBuilder(1);
+
+        expect(() =>
+            builder.setVectorInPlace(3, 2, (item, index) => {
+                item.setFloat32(1);
+                if (index !== 1) {
+                    item.setFloat32(2);
+                }
+            })
+        ).toThrow(new RangeError("Only 1 of the table's 2 fields were set"));
+
+        setItems(builder);
+        expect(builder.bytes()).toStrictEqual(EXPECTED);
+    });
+
+    it('should reject a table with fields left to set within an item, and leave the builder as it was', () => {
+        const builder = new TableBuilder(1);
+
+        expect(() =>
+            builder.setVectorInPlace(3, 2, item => {
+                item.setFloat32(1);
+                item.setTableInPlace(2, pair => pair.setFloat32(2));
+            })
+        ).toThrow(new RangeError("Only 1 of the table's 2 fields were set"));
+
+        setItems(builder);
+        expect(builder.bytes()).toStrictEqual(EXPECTED);
+    });
+
+    it('should reject a field beyond the number a table recorded in place holds', () => {
+        const builder = new TableBuilder(1);
+
+        expect(() =>
+            builder.setTableInPlace(1, table => {
+                table.setUint8(1);
+                table.setUint8(2);
+            })
+        ).toThrow(new RangeError("Can't add field 2 to a table of 1"));
+
+        // The root's offset, and then the nested table's and its uint8
+        builder.setTableInPlace(1, table => table.setUint8(1));
+        expect(builder.bytes()).toStrictEqual(new Uint8Array([4, 0, 0, 0, 4, 0, 0, 0, 1]));
+    });
+
+    it("should reject a vector whose count, item ends and items' offsets make the table too long before recording any item", () => {
+        const layout = TableLayout.create({ offsetType: 'uint8' });
+        const fill = vi.fn();
+        const builder = new TableBuilder(1, layout);
+
+        // The table's offset and the vector's count and 254 ends
+        expect(() => builder.setVectorInPlace(254, 0, fill)).toThrow(
+            new RangeError('Field 1 makes the table 256 bytes, too long for uint8 offsets')
+        );
+        // The vector's count and 100 ends, and two offsets in each item
+        expect(() => builder.setVectorInPlace(100, 2, fill)).toThrow(
+            new RangeError('Field 1 makes the table 302 bytes, too long for uint8 offsets')
+        );
+        expect(fill).not.toHaveBeenCalled();
+
+        builder.setVectorInPlace(253, 0, fill);
+        expect(fill).toHaveBeenCalledTimes(253);
+        expect(builder.bytes()).toHaveLength(MAX_VALUES.uint8);
+    });
+
+    it('should reject finalizing or nesting a builder while it records a table in place', () => {
+        const builder = new TableBuilder(1);
+        const message =
+            "A table can't be finalized or nested while a table is recorded in place in it";
+
+        expect(() => builder.setTableInPlace(0, () => builder.finalize())).toThrow(
+            new TypeError(message)
+        );
+        expect(() =>
+            builder.setTableInPlace(0, () => new TableBuilder(1).setTable(builder))
+        ).toThrow(new TypeError(message));
+
+        builder.setTableInPlace(0, () => {});
+        expect(builder.bytes()).toStrictEqual(new Uint8Array([4, 0, 0, 0]));
+    });
+});
+
+/**
+ * What building a table gives: its bytes, or the class and message of its
+ * error. A vector recorded in place checks its count, its item ends and its
+ * items' offsets before its items, and fails with the table's length up to
+ * them, rather than with the items' whole lengths, so the length is left out
+ * of a message of a table too long.
+ */
+function outcomeOf(build: () => Uint8Array): unknown {
+    try {
+        return build();
+    } catch (error) {
+        const thrown = error as Error;
+        const message = thrown.message.replace(
+            / makes the table \d+ bytes,/,
+            ' makes the table too long,'
+        );
+
+        return [thrown.constructor, message];
+    }
+}
 
 /**
  * A table of a uint8[] of `length` zeros, which starts the next field at any

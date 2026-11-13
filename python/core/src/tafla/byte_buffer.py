@@ -5,7 +5,7 @@ from typing import Any, overload
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import from_little_endian
+from .elements import check_struct_size, from_little_endian, not_contiguous
 from .errors import DecodeError, describe_int
 from .fixed_fields import FixedFields
 from .layout import TableLayout
@@ -75,7 +75,7 @@ class ByteBuffer:
         # and every reader that tafla-gen generates constructs one
         view = memoryview(bytes)
         if not view.c_contiguous:
-            raise _not_contiguous()
+            raise not_contiguous()
 
         self.__view = view if view.format == "B" and view.ndim == 1 else view.cast("B")
         self.__length = len(self.__view)
@@ -464,6 +464,53 @@ class ByteBuffer:
 
         return vector
 
+    def get_vector_fields(
+        self, position: int, fields: FixedFields
+    ) -> list[tuple[Any, ...]] | None:
+        """Returns the values of every item of the vector at ``position``, a
+        table whose fields ``fields`` describes whole, each as
+        ``get_fields()`` returns them, or ``None`` when it returns ``None``
+        for any item, for the field getters to read them.
+
+        It's all the items or none: every implementation's writer writes such
+        a table at the offsets that ``get_fields()`` expects, so an item that
+        it can't read is corrupted or was written by hand, and the getters,
+        which check each read, then read the whole vector.
+
+        Raises ``DecodeError`` if the vector's count or an item's ends don't
+        lie within the buffer, as ``get_vector_offsets()`` does.
+
+        Generated code calls it to read every field of every item at once.
+        """
+        offsets = self.get_vector_offsets(position)
+        struct, header, check, expected, values, string = fields._readers[self.__size]
+        view, length = self.__view, self.__length
+
+        # get_fields() for each item, inline, which saves a call for each.
+        # Each offset lies within the buffer, so none is negative.
+        items: list[tuple[Any, ...]] = []
+        for offset in offsets:
+            start = offset + header
+            try:
+                unpacked = struct.unpack_from(view, start)
+                if check(unpacked) != expected:
+                    return None
+                if not string:
+                    items.append(values(unpacked))
+                    continue
+
+                begin = start + struct.size
+                end = begin + unpacked[-1]
+                if end > length:
+                    return None
+                text = str(view[begin:end], "utf-8")
+            except StructError, OverflowError, UnicodeDecodeError:
+                return None
+
+            items.append((*values(unpacked), text))
+
+        return items
+
     def __get_item_ends(self, position: int) -> memoryview[int]:
         """Returns the item ends of the vector at ``position``, once they're
         checked to lie within the buffer, before anything is allocated for
@@ -512,35 +559,3 @@ class ByteBuffer:
         except StructError, OverflowError:
             pass
         raise DecodeError.out_of_range(position, self.__size, self.__length)
-
-
-def check_struct_size(size: int) -> None:
-    """Raises ``ValueError`` if ``size`` is less than 1, which no struct's
-    size is. ``get_struct_array()`` checks the size it's given with it, and so
-    do the writers' ``set_struct_array()``."""
-    if size < 1:
-        raise ValueError(
-            f"A struct's size must be a positive integer, not {describe_int(size)}"
-        )
-
-
-def byte_view(buffer: Buffer) -> memoryview:
-    """Returns the bytes of a C-contiguous buffer, as a one-dimensional view.
-
-    Raises ``TypeError`` for a buffer that isn't C-contiguous, such as a slice
-    with a step, as ``memoryview.cast()`` does, and as ``bytearray`` does when
-    ``TableWriter`` appends it. A one-dimensional view of bytes needs no cast,
-    so it's checked here.
-    """
-    view = memoryview(buffer)
-    if not view.c_contiguous:
-        raise _not_contiguous()
-
-    return view if view.format == "B" and view.ndim == 1 else view.cast("B")
-
-
-def _not_contiguous() -> TypeError:
-    return TypeError(
-        "Can't view the bytes of a buffer that isn't C-contiguous, such as a "
-        "slice with a step"
-    )

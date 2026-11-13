@@ -1,0 +1,18 @@
+// The code generated for Go declares functions and constants beside each
+// message, in the package of the schema's declarations: `New<Message>`, which
+// reads it, and a versioned message's `<Message>VersionOf` and
+// `<Message>FormatVersion`, which no declaration can take
+
+message Point { x: uint8; }
+table NewPoint { x: uint8; }
+
+message Document (version: 1) { x: uint8; }
+struct DocumentVersionOf { x: uint8; }
+message DocumentFormatVersion { x: uint8; }
+
+// Valid: an unversioned message has no functions of its version, and a table
+// is read by its parent's getter
+message Frame { x: uint8; }
+table FrameVersionOf { x: uint8; }
+table Columns { x: uint8; }
+table NewColumns { x: uint8; }
