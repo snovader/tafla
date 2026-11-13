@@ -23,6 +23,14 @@ first commits, for code built from its source before the release.
 - Bounds-checked reads, which fail on malformed input with `DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- `TableBuilder::set_table_with()` and `set_vector_with()` record a nested
+  table, or each item of a vector of them, in place among the builder's own
+  fields, rather than from a builder of its own: a closure sets the fields on
+  an `InPlaceTable`, whose setters are the builder's. They write the bytes
+  that nested builders write, and leave the builder as it was if the closure
+  returns an error, leaves fields unset or panics. The benchmarks' vector of
+  100 nested tables took 4.4 µs so, rather than 8.8 µs from a builder per
+  item, in 4 allocations rather than 208.
 
 ### Changed
 

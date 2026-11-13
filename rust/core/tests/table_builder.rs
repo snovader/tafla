@@ -142,6 +142,23 @@ proptest! {
         let items = vector.iter().collect::<Result<Vec<_>, _>>()?;
         prop_assert_eq!(items, [bytes.as_slice(); 2]);
     }
+
+    /// Tables nested from builders and recorded in place, with
+    /// `set_table_with()` and `set_vector_with()`, write the bytes that their
+    /// builders write, and fail as they fail, for tables of any offset type
+    /// and of short ones, whose limits the fields reach. Nesting every table
+    /// as one that's written in place records most of them in place, and
+    /// the tables as they're generated mix them with tables from bytes and
+    /// builders of other layouts.
+    #[test]
+    fn test_tables_recorded_in_place_write_what_their_builders_write(
+        table in prop_oneof![strategy::table(), tables_of_short_offsets()],
+        nested_in_place in any::<bool>(),
+    ) {
+        let table = if nested_in_place { table.nested_in_place() } else { table };
+
+        prop_assert_eq!(table.to_bytes_in_place(), table.to_bytes());
+    }
 }
 
 /// A parent of `before` bytes in a `uint8[]`, the table at alignment 8, and a
@@ -475,5 +492,154 @@ fn test_reject_incomplete_nested_builder() {
     assert_eq!(
         vector.iter().collect::<Result<Vec<_>, _>>(),
         Ok(vec![&nested.to_bytes().unwrap()[..]])
+    );
+}
+
+/// The values of the items of the vector in the examples below
+const VALUES: [f32; 3] = [1.0, 2.0, 3.0];
+
+/// An error of the caller's, which a function that records items in place
+/// returns as well as a `BuildError`
+#[derive(Debug, PartialEq, Eq)]
+enum CallerError {
+    Build(BuildError),
+    Caller,
+}
+
+impl From<BuildError> for CallerError {
+    fn from(error: BuildError) -> Self {
+        Self::Build(error)
+    }
+}
+
+/// Writes a vector of the benchmarks' items, each a float32 and a pair of
+/// float32s, recorded in place
+fn items_in_place(values: &[f32], builder: &mut TableBuilder<'_>) -> Result<Vec<u8>, BuildError> {
+    builder.set_vector_with(values.len(), 2, |index, item| {
+        item.set_f32(values[index])?;
+        item.set_table_with(2, |pair| {
+            pair.set_f32(values[index] + 1.0)?;
+            pair.set_f32(values[index] + 2.0)
+        })
+    })?;
+
+    builder.to_bytes()
+}
+
+/// Writes the vector of [`items_in_place()`] from a builder per item
+fn items_from_builders(values: &[f32]) -> Vec<u8> {
+    let item = |value: f32| {
+        let mut pair = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+        pair.set_f32(value + 1.0).unwrap();
+        pair.set_f32(value + 2.0).unwrap();
+
+        let mut item = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+        item.set_f32(value).unwrap();
+        item.set_table(pair).unwrap();
+        item
+    };
+
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    builder
+        .set_vector(values.iter().copied().map(item))
+        .unwrap();
+    builder.to_bytes().unwrap()
+}
+
+/// An error that the caller returns while items are recorded leaves the
+/// builder as it was, with none of their fields, so the vector can be set
+/// again
+#[test]
+fn test_an_item_that_fails_leaves_the_builder_as_it_was() {
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let error = builder.set_vector_with(3, 2, |index, item| {
+        item.set_f32(1.0)?;
+        if index == 2 {
+            return Err(CallerError::Caller);
+        }
+        Ok(item.set_f32(2.0)?)
+    });
+
+    assert_eq!(error, Err(CallerError::Caller));
+    assert_eq!(
+        items_in_place(&VALUES, &mut builder),
+        Ok(items_from_builders(&VALUES))
+    );
+}
+
+/// An item, or a table nested in one, that's left with fields unset fails
+/// once its function returns, and leaves the builder as it was
+#[test]
+fn test_reject_incomplete_item() {
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let error = builder.set_vector_with(3, 2, |index, item| {
+        item.set_f32(1.0)?;
+        if index == 1 {
+            return Ok(());
+        }
+        item.set_f32(2.0)
+    });
+    assert_eq!(error, Err(BuildError::Incomplete { set: 1, fields: 2 }));
+
+    let error = builder.set_vector_with(3, 2, |_, item| {
+        item.set_f32(1.0)?;
+        item.set_table_with(2, |pair| pair.set_f32(2.0))
+    });
+    assert_eq!(error, Err(BuildError::Incomplete { set: 1, fields: 2 }));
+
+    assert_eq!(
+        items_in_place(&VALUES, &mut builder),
+        Ok(items_from_builders(&VALUES))
+    );
+}
+
+/// A panic while items are recorded leaves the builder as it was too, for a
+/// caller that catches it
+#[test]
+fn test_a_panic_while_items_are_recorded_leaves_the_builder_as_it_was() {
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        builder.set_vector_with(3, 2, |index, item| {
+            item.set_f32(1.0)?;
+            assert!(index < 2, "The caller's panic, which the test expects");
+            item.set_f32(2.0)
+        })
+    }));
+
+    assert!(panicked.is_err());
+    assert_eq!(
+        items_in_place(&VALUES, &mut builder),
+        Ok(items_from_builders(&VALUES))
+    );
+}
+
+#[test]
+fn test_reject_item_field_beyond_its_count() {
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let error = builder.set_table_with(1, |table| {
+        table.set_u8(1)?;
+        table.set_u8(2)
+    });
+    assert_eq!(error, Err(BuildError::TooManyFields { fields: 1 }));
+
+    builder.set_table_with(1, |table| table.set_u8(1)).unwrap();
+    assert_eq!(builder.to_bytes(), Ok(vec![4, 0, 0, 0, 4, 0, 0, 0, 1]));
+}
+
+/// The vector's count and its items' ends are checked before any item is
+/// recorded, so the error's length is theirs alone
+#[test]
+fn test_reject_vector_count_too_long_before_recording_items() {
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+    let mut builder = TableBuilder::new(1, layout).unwrap();
+    let error = builder.set_vector_with(300, 1, |_, item| item.set_u8(1));
+
+    assert_eq!(
+        error,
+        Err(BuildError::TooLong {
+            index: 0,
+            length: 1 + 301,
+            offset_type: OffsetType::Uint8
+        })
     );
 }
