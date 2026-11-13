@@ -147,7 +147,12 @@ type, offset size, vector, builder and decode error.
   `TableBuilder`'s setters inline their check of the field and its record,
   with their errors thrown from cold functions, which made the builder
   write the record 12% faster and the vector of 100 nested tables 7% faster
-  than calls did.
+  than calls did. Its `to_bytes()` walks the tables nested in place with a
+  stack of its own, rather than a function that calls itself, so that its
+  writer stays in registers too, and a writer zeroes up to 16 bytes, such as
+  a nested table's offsets, with stores rather than a call to `memset()`.
+  Together they made `to_bytes()` of the vector of 100 nested tables 28%
+  faster, 1.45 µs against 2.02 µs, and building and writing it 13% faster.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The

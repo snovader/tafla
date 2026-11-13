@@ -372,6 +372,50 @@ TEST(TableBuilder, RejectsAnItemFieldBeyondItsCount) {
     EXPECT_EQ(builder.to_bytes().to_vector(), (std::vector<std::uint8_t>{4, 0, 0, 0, 4, 0, 0, 0, 1}));
 }
 
+/// Sets the fields of a table `depth` deep: its depth, and the table nested
+/// in it, in a field or as a vector's one item, or 0 for the deepest
+void nest_in_place(TableBuilder::Item& table, std::uint32_t depth, bool in_vector) {
+    table.set_uint32(depth);
+    if (depth == 0) {
+        table.set_uint32(0);
+    } else if (in_vector) {
+        table.set_vector(1, 2, [&](std::size_t, TableBuilder::Item& item) { nest_in_place(item, depth - 1, true); });
+    } else {
+        table.set_table(2, [&](TableBuilder::Item& nested) { nest_in_place(nested, depth - 1, false); });
+    }
+}
+
+/// The table that `nest_in_place()` records, with each nested table written
+/// into bytes of its own first
+Bytes nest_as_bytes(std::uint32_t depth, bool in_vector) {
+    TableBuilder table(2, TableLayout());
+    table.set_uint32(depth);
+    if (depth == 0) {
+        table.set_uint32(0);
+    } else if (in_vector) {
+        std::vector<NestedTable> items;
+        items.emplace_back(nest_as_bytes(depth - 1, true));
+        table.set_vector(std::move(items));
+    } else {
+        table.set_table(nest_as_bytes(depth - 1, false), Alignment::one);
+    }
+    return table.to_bytes();
+}
+
+/// Tables nested in place, however deep, write what they write as bytes
+TEST(TableBuilder, WritesTablesNestedInPlaceAtAnyDepth) {
+    constexpr std::uint32_t depth = 40;
+    for (const bool in_vector : {false, true}) {
+        TableBuilder in_place(1, TableLayout());
+        in_place.set_table(2, [&](TableBuilder::Item& table) { nest_in_place(table, depth, in_vector); });
+
+        TableBuilder as_bytes(1, TableLayout());
+        as_bytes.set_table(nest_as_bytes(depth, in_vector), Alignment::one);
+
+        EXPECT_EQ(in_place.to_bytes(), as_bytes.to_bytes()) << "in a vector: " << in_vector;
+    }
+}
+
 TEST(TableBuilder, RejectsAFieldBeyondItsCount) {
     TableBuilder builder(1, TableLayout());
     builder.set_uint8(1);
