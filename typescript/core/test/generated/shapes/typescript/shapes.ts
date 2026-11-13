@@ -302,7 +302,7 @@ export class ItemList {
         this.#buffer = new ByteBuffer(bytes, ItemList.#LAYOUT);
     }
 
-    /** Writes a `ItemList` with every field */
+    /** Writes an `ItemList` with every field */
     static serialize(fields: ItemListFields): Uint8Array {
         const sizer = new TableSizer(1, ItemList.#LAYOUT);
         sizer.addVector(fields.items.length);
@@ -321,7 +321,7 @@ export class ItemList {
     }
 
     /**
-     * Writes a `ItemList` with every field into the start of `bytes`,
+     * Writes an `ItemList` with every field into the start of `bytes`,
      * rather than into new bytes, and returns the view of them that holds
      * it. The view, and what's read from it, change when the bytes are
      * written again. Reusing bytes saves allocating and zeroing new ones,
@@ -369,7 +369,7 @@ export class ItemList {
     }
 }
 
-/** The fields of a `ItemList`, to write */
+/** The fields of an `ItemList`, to write */
 export interface ItemListFields {
     items: readonly ItemFields[];
 }
@@ -428,7 +428,7 @@ export class Item {
     }
 }
 
-/** The fields of a `Item`, to write */
+/** The fields of an `Item`, to write */
 export interface ItemFields {
     value: number;
     pair: PairFields;

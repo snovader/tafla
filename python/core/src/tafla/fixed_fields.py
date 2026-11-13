@@ -1,9 +1,11 @@
+import sys
 from collections.abc import Callable
 from functools import partial
 from operator import itemgetter
-from struct import Struct, calcsize
+from struct import Struct, calcsize, error as StructError
 from typing import Any, cast
 
+from .errors import describe_int
 from .layout import TableLayout
 from .types import OffsetSize
 
@@ -45,7 +47,10 @@ class FixedFields:
     and are prepared for each offset type, since the root's sets theirs.
 
     Like ``TableWriter``, it's the target of generated code, which describes
-    a table's fields as the schema declares them, so it doesn't check them.
+    a table's fields as the schema declares them, so it checks only that it
+    can describe them: it raises ``ValueError`` for fewer ``fields`` than it
+    describes, and ``struct.error`` for fields whose bytes from the first slot
+    pass a C ``ssize_t``, as ``struct`` does.
     """
 
     __slots__ = ("_fields", "_formats", "_packers", "_readers", "_string")
@@ -57,6 +62,17 @@ class FixedFields:
         string: bool = False,
         layout: TableLayout | None = None,
     ) -> None:
+        leading = len(formats) + (1 if string else 0)
+        if fields < leading:
+            raise ValueError(
+                f"A table of {describe_int(fields)} fields can't start with "
+                f"{leading} of them"
+            )
+        # Slots that no Struct describes, raised before their count is
+        # formatted, which may have more digits than Python converts
+        if fields > sys.maxsize:
+            raise StructError("total struct size too long")
+
         self._fields = fields
         self._formats = formats
         self._string = string

@@ -143,10 +143,42 @@ export function headerLength(
         );
     }
 
-    const length = layout.headerSize() + fields * size;
+    return fittedHeaderLength(layout.headerSize(), fields, layout);
+}
+
+/**
+ * The byte length of the header of a table of `fields` fields nested in
+ * place in a table of `layout`: only the offsets of its fields, of the
+ * layout's offset type
+ *
+ * @throws {RangeError} If `fields` isn't a non-negative integer, or the
+ * offsets alone are longer than the layout addresses.
+ */
+export function nestedHeaderLength(
+    fields: number,
+    layout: TableLayout
+): number {
+    assertCount(fields);
+    return fittedHeaderLength(0, fields, layout);
+}
+
+/**
+ * The byte length of a header of `slots` bytes before the offsets of
+ * `fields` fields
+ *
+ * @throws {RangeError} If it's longer than the layout addresses.
+ */
+function fittedHeaderLength(
+    slots: number,
+    fields: number,
+    layout: TableLayout
+): number {
+    const size = layout.offsetSize();
+
+    const length = slots + fields * size;
     if (!(length <= maxLength(size))) {
         throw new RangeError(
-            `A header of ${fields} fields doesn't fit in ${offsetType} offsets`
+            `A header of ${fields} fields doesn't fit in ${layout.offsetType()} offsets`
         );
     }
 

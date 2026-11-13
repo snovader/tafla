@@ -298,6 +298,155 @@ class TestFields(unittest.TestCase):
         )
 
 
+class TestValues(unittest.TestCase):
+    # field_values() reads the fields of a table of scalars and a string into a
+    # tuple, as fields() reads them into a dict, and serialize_values() writes
+    # a message from them. A view's fields() reads every item's fields as each
+    # item's fields() does.
+
+    @SETTINGS
+    @given(point_fields, slices)
+    def test_reads_a_points_values_as_its_getters_read_them_and_writes_them_back(
+        self, fields: PointFields, where: Slice
+    ) -> None:
+        data = Point.serialize(**fields)
+        point = Point(where.of(data))
+
+        self.assertEqual(
+            fields_or_decode_error(point.field_values),
+            fields_or_decode_error(partial(_point_values, point)),
+        )
+        written = Point.serialize_values(*point.field_values())
+        self.assertEqual(bytes(written), bytes(data))
+
+    @SETTINGS
+    @given(point_fields, corruptions)
+    def test_reads_a_corrupted_points_values_as_its_getters_do(
+        self, fields: PointFields, corruption: Truncation | Overwrite
+    ) -> None:
+        point = Point(corruption.apply(bytes(Point.serialize(**fields))))
+
+        self.assertEqual(
+            fields_or_decode_error(point.field_values),
+            fields_or_decode_error(partial(_point_values, point)),
+        )
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_the_values_of_arbitrary_bytes_as_the_getters_do(
+        self, data: bytes
+    ) -> None:
+        point = Point(data)
+
+        self.assertEqual(
+            fields_or_decode_error(point.field_values),
+            fields_or_decode_error(partial(_point_values, point)),
+        )
+
+    @SETTINGS
+    @given(item_list_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_every_items_fields_and_pairs_values_as_each_item_does(
+        self, fields: ItemListFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        data = bytes(ItemList.serialize(**fields))
+        if not isinstance(corruption, bytes):
+            data = corruption.apply(data)
+        try:
+            view = ItemList(data).items_view()
+        except DecodeError:
+            return
+
+        self.assertEqual(
+            fields_or_decode_error(view.fields),
+            fields_or_decode_error(partial(_fields_of_each, view)),
+        )
+        for index in range(len(view)):
+            self.assertEqual(
+                fields_or_decode_error(partial(_pair_values, view, index)),
+                fields_or_decode_error(partial(_pair_getters, view, index)),
+                f"item {index}",
+            )
+
+    @SETTINGS
+    @given(item_list_fields)
+    def test_reads_back_every_items_fields_as_they_were_written(
+        self, fields: ItemListFields
+    ) -> None:
+        view = ItemList(ItemList.serialize(**fields)).items_view()
+
+        self.assertEqual(
+            fields_or_decode_error(view.fields),
+            fields_or_decode_error(lambda: list(fields["items"])),
+        )
+
+    @SETTINGS
+    @given(samples, binary(max_size=8), binary(max_size=8))
+    def test_reads_and_writes_a_samples_values_as_the_sample_holds_them(
+        self, sample: Sample, before: bytes, after: bytes
+    ) -> None:
+        data = before + sample.serialize() + after
+        values = (sample.key, sample.a, sample.b)
+
+        self.assertEqual(
+            fields_or_decode_error(partial(Sample.read_values, data, len(before))),
+            fields_or_decode_error(lambda: values),
+        )
+        self.assertEqual(Sample.serialize_values(*values), sample.serialize())
+
+    @SETTINGS
+    @given(binary(max_size=40), one_of(integers(-40, 40), _BEYOND_THE_DIGIT_LIMIT))
+    def test_reads_a_samples_values_or_raises_as_read_does(
+        self, data: bytes, offset: int
+    ) -> None:
+        self.assertEqual(
+            fields_or_decode_error(partial(Sample.read_values, data, offset)),
+            fields_or_decode_error(partial(_sample_values, data, offset)),
+        )
+        self.assertEqual(
+            fields_or_decode_error(partial(Sample.read_array_values, data)),
+            fields_or_decode_error(partial(_array_values, data)),
+        )
+
+    def test_raises_type_error_and_value_error_as_read_and_serialize_do(
+        self,
+    ) -> None:
+        strided = memoryview(Sample(1, 0.5, -0.5).serialize() * 2)[::2]
+        with self.assertRaises(TypeError):
+            Sample.read_values(strided)
+        with self.assertRaises(TypeError):
+            Sample.read_array_values(strided)
+
+        for values in [(2**32, 0.0, 0.0), (-1, 0.0, 0.0), (0, 1e300, 0.0)]:
+            with self.subTest(values=values), self.assertRaises(ValueError):
+                Sample.serialize_values(*values)
+
+
+def _point_values(point: Point) -> tuple[float, float, int, str]:
+    return (point.x(), point.y(), point.id(), point.name())
+
+
+def _fields_of_each(view: ItemVector) -> list[ItemFields]:
+    return [item.fields() for item in view]
+
+
+def _pair_values(view: ItemVector, index: int) -> tuple[float, float]:
+    return view[index].pair().field_values()
+
+
+def _pair_getters(view: ItemVector, index: int) -> tuple[float, float]:
+    pair = view[index].pair()
+    return (pair.first(), pair.second())
+
+
+def _sample_values(data: bytes, offset: int) -> tuple[int, float, float]:
+    sample = Sample.read(data, offset)
+    return (sample.key, sample.a, sample.b)
+
+
+def _array_values(data: bytes) -> list[tuple[int, float, float]]:
+    return [(sample.key, sample.a, sample.b) for sample in Sample.read_array(data)]
+
+
 class TestReadingInPlace(unittest.TestCase):
     def test_reads_an_item_in_place_past_its_end_within_the_bytes_of_its_item_list(
         self,

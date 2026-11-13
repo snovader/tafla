@@ -69,6 +69,10 @@ benchmark's call allocates.
   has only a call per element, which is all it has for a vector of structs.
 - msgpack's columns are extension types of their arrays' bytes, which this
   suite defines, as msgpackr's typed arrays are msgpackr's own.
+- protobufjs, and msgpackr's plain JavaScript entry point, which the
+  TypeScript comparison uses, are JavaScript, so the pure-Python builds of
+  protobuf and msgpack are arguably their closer analogues. Their C builds are
+  what their wheels import by default, so the suite times both.
 - flatbuffers' latest Python release is 25.12.19, where the TypeScript
   comparison uses flatbuffers 25.9.23.
 - `yarn bench`'s benchmarks of each getter and setter aren't ported.
@@ -83,7 +87,9 @@ benchmark's call allocates.
 | tafla-gen's code                           | tafla's tables, written and read by the code that tafla-gen generates.                                                                     |
 | `flatbuffers` 25.12.19, with `numpy` 2.5.4 | Zero-copy tables with offsets and vectors, like tafla.                                                                                     |
 | `protobuf` 7.36.2                          | The most used schema-based codec, with packed repeated floats. Its wheels parse and serialize in C, with upb.                              |
+| `protobuf` 7.36.2 in pure Python           | The same wheels' pure-Python implementation, which `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python` selects. It writes upb's bytes.         |
 | `msgpack` 1.2.4                            | MessagePack's Python implementation, with a C extension: a schemaless format, whose tables are maps with their keys.                       |
+| `msgpack` 1.2.4 in pure Python             | The same wheels' pure-Python build, `msgpack.fallback`, which msgpack imports where its C extension isn't built. It packs the same bytes.  |
 | `struct` (the standard library's)          | For the fixed-size record only: fields at fixed offsets, packed and unpacked in one call, which tafla's documentation recommends for them. |
 
 Each library is used as its documentation shows, and as the TypeScript
@@ -99,19 +105,22 @@ comparison uses its counterpart:
 - **tafla-gen** is the code that tafla-gen generates from
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a
-  `TableWriter`'s `bytearray` in one call, and returns a view of it. It
-  reads the record and the vector's items with `fields()`, which reads a
-  table of fixed layout at once into the `TypedDict` that it's written from,
-  and the document with the getters, columns as views. It takes the
-  workloads' dataclasses, as the other codecs do, so it creates the
-  generated fields' dicts, and the frozen `Sample` dataclass that the
-  generated struct is, from them in each call, as the protobuf codec builds
-  its messages. The array of structs is written from the workload's own
-  items, whose attributes `TripleFields`, the struct's protocol of fields,
-  types, as an application's objects would be. Reading creates the
-  workloads' dataclasses from what the generated code reads, after the
-  generated reader of the array of structs creates a `Triple` for each. Every
-  suite has a copy of the schema; after changing them, regenerate the code as
+  `TableWriter`'s `bytearray` in one call, and returns a view of it, and
+  writes a vector of tables of fixed layout in one call too. The record and
+  the fixed-size `Sample` are written from their values, as positional
+  arguments, with `serialize_values()`, and read into tuples of them with
+  `field_values()` and `read_values()`. The document is written from the
+  generated fields' dicts, and read with the getters, columns as views. The
+  vector is written from its items' dicts, and read into them with its
+  view's `fields()`, which reads every item at once. The array of structs is
+  written from the workload's own items, whose attributes `TripleFields`, the
+  struct's protocol of fields, types, as an application's objects would be,
+  and read with its view's `field_values()`, into a tuple of each struct's
+  values. It takes the workloads' dataclasses, as the other codecs do, so it
+  creates the dicts of the document and the vector from them in each call,
+  as the protobuf codec builds its messages, and reading creates the
+  workloads' dataclasses from the generated readers' values. Every suite has
+  a copy of the schema; after changing them, regenerate the code as
   `rust/gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `Builder` of the default
   size, adding fields one by one with the generated functions, and reads them
@@ -135,6 +144,13 @@ comparison uses its counterpart:
   array of them is a repeated message of the three floats, which protobuf
   writes as fixed32s; packed repeated floats would make a column of each field,
   which the documents time already.
+- **protobuf (pure)** is the same codec in protobuf's pure-Python
+  implementation. protobuf selects its implementation from
+  `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION` when a process first imports it, so
+  the codec takes its name from the implementation that its process imported;
+  see [Method](#method). On free-threaded builds of CPython, for which protobuf
+  publishes no upb wheels, uv installs its pure-Python wheel, and the codec
+  runs in pure Python without the variable.
 - **MessagePack** packs a table as a map with its keys, and a document as one
   map without a nested one for its columns, as msgpackr packs them. Floats pack
   as float64s, as msgpack packs Python's floats and msgpackr packs numbers. One
@@ -146,6 +162,10 @@ comparison uses its counterpart:
   `array` for 100,000 rows. The array of structs packs each struct, and the
   table that holds them, as an array of its fields in order, without their
   keys, as rmp-serde's `to_vec()` packs them.
+- **msgpack (pure)** is the same codec with msgpack's pure-Python build, the
+  `Packer` and `unpackb()` of `msgpack.fallback`, which msgpack imports where
+  its C extension isn't built. They have the C extension's API, and importing
+  them from `fallback` puts both builds in one process.
 - **struct** packs and unpacks the fixed-size record with one precompiled
   `Struct("<Iff")`.
 
@@ -169,7 +189,14 @@ the fastest round, since load from other processes only slows values down.
 - A worker prepares its benchmark's input when it first times it, after
   checking that the codec reads back exactly what it wrote, with floats
   compared by their bits. `tests/test_round_trips.py` checks every codec on
-  every workload.
+  every workload, and runs again in a process of its own to check protobuf's
+  pure-Python implementation.
+- protobuf selects its implementation for the whole process, so each run
+  invokes the suite a second time for its pure-Python implementation, which
+  times only that codec, after the others. The suite passes
+  `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION` on to its workers, which pyperf
+  otherwise wouldn't, and each worker names the codec after the implementation
+  that it imported, so `protobuf (pure)`'s values were timed in pure Python.
 - Every deserialization creates the same dataclasses from the values it read,
   from positional arguments, which took 65 ns for the fixed-size record,
   against 190 ns from keywords.
@@ -196,9 +223,11 @@ with pyperf's means, which the report summarizes.
 uptime
 for order in "" --reverse "" --reverse; do
     uv run --python 3.14+gil python -m tafla_benchmarks --processes 5 --append results.json $order
+    PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m tafla_benchmarks --codec protobuf --processes 5 --append results.json $order
 done
 uv run --python 3.14+gil python -m tafla_benchmarks.report results.json
 uv run --python 3.14+gil python -m tafla_benchmarks.allocation
+PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m tafla_benchmarks.allocation --codec protobuf
 ```
 
 The full run takes about 30 minutes, and the allocation report about 10
@@ -216,6 +245,14 @@ test, on Python 3.14. Its numbers mean little.
 
 ```sh
 uv run python -m tafla_benchmarks --debug-single-value --quiet
+```
+
+Pure protobuf's invocations set `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`,
+and `--codec <regex>` runs only the codecs whose name matches, in the suite and
+in `tafla_benchmarks.allocation`. Pure protobuf's quick run, which CI runs too:
+
+```sh
+PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run python -m tafla_benchmarks --codec protobuf --debug-single-value --quiet
 ```
 
 ## Generated code
@@ -254,24 +291,18 @@ generated code:
 - Only CPython 3.14's build with the GIL was timed. CI runs the tests on 3.14
   and 3.15, and uv picks free-threaded builds on some machines, which these
   numbers don't describe.
-- protobuf's wheels use upb. Its pure-Python implementation, which
-  `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python` selects, would be much slower,
-  and isn't timed.
+- protobuf's pure-Python implementation runs in invocations of the suite of
+  its own, so its workers follow every other codec's in each run, rather than
+  running among them. The 4 runs still spread them over the whole run.
 - msgpack's column extensions are in the host's byte order, as msgpackr's are,
   and are this suite's own, so another MessagePack reader would see them as
   unknown extensions.
 - FlatBuffers' builder starts at 1 KiB and doubles by copying. Reusing a
   `Builder` with `Clear()` would make small messages cheaper, but the
   TypeScript comparison doesn't reuse it either.
-- tafla-gen's codec converts the workloads' values in each call, which a
-  caller that holds them in the generated types wouldn't. It writes the
-  record, the documents and the array of structs from them directly, but
-  creates a dict for each of the vector's items and its pair, and a frozen
-  `Sample` for the fixed-size record. Reading, it creates the workloads'
-  dataclasses from `fields()`' dicts for the record and the vector's items,
-  and from the `Triple` that the generated reader creates for each struct.
-  Creating a generated struct takes about twice as long as creating the
-  workloads' own dataclasses, which aren't frozen.
+- tafla-gen's codec creates the generated fields' dicts of the document and
+  the vector from the workloads' dataclasses in each call, which a caller
+  that holds its values in them wouldn't.
 - The peak bytes aren't the bytes that a call allocates in all, which
   tracemalloc doesn't count: CPython frees most temporary objects as soon as
   they're unused, so a call that creates many in turn holds few at once.

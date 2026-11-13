@@ -34,7 +34,7 @@ pub struct GoldenRoot {
 /// target's language, whose tests run them against its runtime and whose
 /// checks type-check, lint and format-check them; `tests/wasm/check.mjs`
 /// keeps the same table.
-pub const GOLDEN_ROOTS: [GoldenRoot; 5] = [
+pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
     GoldenRoot {
         target: "typescript",
         root: "typescript/core/test/generated",
@@ -60,6 +60,18 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 5] = [
         target: "rust",
         root: "rust/gen/tests/golden",
         subdirectory: Some("rust"),
+    },
+    // A package of each schema, which the tests beside them run
+    GoldenRoot {
+        target: "go",
+        root: "go/tests/generated",
+        subdirectory: None,
+    },
+    // cpp/tests/generated compiles and runs these
+    GoldenRoot {
+        target: "cpp",
+        root: "cpp/tests/generated",
+        subdirectory: None,
     },
 ];
 
@@ -138,7 +150,7 @@ pub struct BenchmarkSchema {
 /// Every suite's schema, which are copies of one schema, since the suites
 /// run the same workloads. Each directory holds the generated code and
 /// nothing else.
-pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 4] = [
+pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 6] = [
     BenchmarkSchema {
         target: "typescript",
         schema: "typescript/benchmarks/comparison/workloads.tafla",
@@ -161,6 +173,18 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 4] = [
         target: "rust",
         schema: "rust/benchmarks/workloads.tafla",
         directory: "rust/benchmarks/src/codecs/tafla_gen",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "go",
+        schema: "go/benchmarks/workloads.tafla",
+        directory: "go/benchmarks/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "cpp",
+        schema: "cpp/benchmarks/workloads.tafla",
+        directory: "cpp/benchmarks/generated/tafla",
         package: None,
     },
 ];

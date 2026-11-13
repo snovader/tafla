@@ -50,8 +50,6 @@ jobs:
               - "biome.jsonc"
               - "conformance/**"
               - "typescript/**"
-              # The example schemas, whose generated code the tests run
-              - "schemas/**"
 
   verify:
     name: Verify

@@ -3,8 +3,10 @@ import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { utf8Length } from './encoding.ts';
 import {
     assertAlignment,
+    assertCount,
     headerLength,
     maxLength,
+    nestedHeaderLength,
     padding,
     TableLayout
 } from './layout.ts';
@@ -42,6 +44,21 @@ const TABLE = 21;
 const VECTOR = 22;
 const STRUCT = 23;
 const STRUCT_ARRAY = 24;
+/** A table recorded in place, whose fields' records follow its own */
+const TABLE_IN_PLACE = 25;
+/** A vector recorded in place, whose items' fields' records follow its own */
+const VECTOR_IN_PLACE = 26;
+
+/** The longest that an array can be, 2^32 - 1 */
+const MAX_ARRAY_LENGTH = 0xffff_ffff;
+
+/**
+ * The fields of a table that a {@link TableBuilder} records in place, which
+ * its `setTableInPlace()` and `setVectorInPlace()` give to `fill`: the
+ * builder itself, without `bytes()` and `finalize()`, whose setters set the
+ * nested table's fields while `fill` runs.
+ */
+export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize'>;
 
 /**
  * Builds a table: a header with one offset per field, after the table's total
@@ -57,7 +74,10 @@ const STRUCT_ARRAY = 24;
  * lengths changed so that the fields no longer fit the table, or no longer
  * fill it, make it throw a `RangeError` and leave the builder unfinalized.
  * Tables nested from their builders are written by the same writer, straight
- * into this one. A setter throws a `RangeError`, and leaves the builder as it
+ * into this one. `setTableInPlace()` and `setVectorInPlace()` record a
+ * nested table, or each item of a vector, among this builder's own fields
+ * instead, without a builder of its own, and write the same bytes as nested
+ * builders. A setter throws a `RangeError`, and leaves the builder as it
  * was, when its field would make the table longer than the layout's
  * `offsetType` addresses: 255 bytes, 64 KiB or 4 GiB. Typed arrays of a
  * field's element type are copied as bytes; any other array-like, such as a
@@ -75,9 +95,15 @@ export class TableBuilder {
     readonly #version: number | undefined;
     /** The offset size, the width of offsets, lengths and header slots */
     readonly #size: OffsetSize;
-    readonly #fields: number;
     /** The longest table that the layout's offsets and lengths address */
     readonly #maxLength: number;
+
+    // What the builder counts of the table whose fields it's recording: its
+    // own, or, while a `fill` runs, those of the table that it records in
+    // place, until it restores its own
+    #fields: number;
+    /** The number of fields set so far */
+    #count = 0;
     /** The table's length so far, which is where the next field goes */
     #offset: number;
     /**
@@ -85,16 +111,31 @@ export class TableBuilder {
      * a parent pads this table to when it nests it
      */
     #alignment: ElementSize = SIZEOF_8;
+    /** The number of tables being recorded in place, one in another */
+    #nesting = 0;
 
-    // A record of three slots per field, in one plain array sized up front:
-    // its kind, the alignment that it's padded to or 0, and its value. The
-    // writer pads each field and writes its offset as it reaches it, so the
-    // record needn't hold either. Small typed arrays took four times as long
-    // to allocate, and an array per slot made setting a small table's fields
-    // take twice as long. The slots are literals, since named constants made
-    // building a small table 5-9% slower in d8.
-    #count = 0;
+    // A record of three slots per field, in one plain array sized up front
+    // for the table's own fields: its kind, the alignment that it's padded
+    // to or 0, and its value. The writer pads each field and writes its
+    // offset as it reaches it, so the record needn't hold either. A table
+    // recorded in place holds its number of fields, and its fields' records
+    // follow, and a vector recorded in place holds its count, and its items'
+    // number of fields in place of an alignment, since items aren't padded,
+    // and each item's records follow. Small typed arrays took four times as
+    // long to allocate, and an array per slot made setting a small table's
+    // fields take twice as long. The slots are literals, since named
+    // constants made building a small table 5-9% slower in d8.
     #records: unknown[];
+    /** The number of slots recorded, where the next record goes */
+    #recorded = 0;
+    /**
+     * The slots that the records have room for, at least: those recorded,
+     * and three for each field that the tables being recorded have left to
+     * set. Every record is stored within them, so that a store never grows
+     * the array: once one did, V8 slowed every builder's stores, and a small
+     * table took a third longer to build.
+     */
+    #reserved: number;
 
     /**
      * @param fields - The number of fields that the table will hold.
@@ -121,11 +162,12 @@ export class TableBuilder {
         this.#layout = layout;
         this.#version = version;
         this.#size = size;
-        this.#fields = fields;
         this.#maxLength = maxLength(size);
+        this.#fields = fields;
         this.#offset = headerLength(fields, layout, version);
 
         this.#records = new Array(fields * 3);
+        this.#reserved = fields * 3;
     }
 
     /**
@@ -435,6 +477,222 @@ export class TableBuilder {
         this.#addField(VECTOR, vector, byteLength, 0, 0);
     }
 
+    /**
+     * Records a table of `fields` fields nested in this one, in place,
+     * without a builder of its own: `fill` sets its fields, in order, on the
+     * {@link TableItem} that it's given, and each is recorded straight among
+     * this builder's fields. It's written as a nested builder of this
+     * table's offset type and no header is: padded to start at a multiple of
+     * its largest alignment, as `setTable()` pads a builder by default, and
+     * into the same bytes.
+     *
+     * The item is this builder, whose setters set the nested table's fields
+     * until `fill` returns. The table can't be finalized or nested meanwhile.
+     *
+     * @throws {RangeError} If `fields` isn't a non-negative integer, `fill`
+     * leaves fields of the table unset, or as the other setters throw.
+     * @throws What `fill` throws. Either way, the builder is left as it was.
+     */
+    setTableInPlace(fields: number, fill: (table: TableItem) => void): void {
+        this.#recordTable(fields, fill);
+    }
+
+    /**
+     * Records a vector of `count` tables of `fields` fields each, in place,
+     * as `setTableInPlace()` records one: `fill(item, index)` sets the fields
+     * of item `index`, for each in order. Items aren't padded, as
+     * `setVector()` doesn't pad them.
+     *
+     * @throws {RangeError} If `count` or `fields` isn't a non-negative
+     * integer, the vector's count and item ends and its items' offsets make
+     * the table too long, before any item is recorded, `fill` leaves fields
+     * of an item unset, or as the other setters throw.
+     * @throws What `fill` throws. Either way, the builder is left as it was.
+     */
+    setVectorInPlace(
+        count: number,
+        fields: number,
+        fill: (item: TableItem, index: number) => void
+    ): void {
+        this.#recordVector(count, fields, fill);
+    }
+
+    /** `setTableInPlace()` */
+    #recordTable(fields: number, fill: (table: TableItem) => void): void {
+        this.#assertRoom();
+        const header = nestedHeaderLength(fields, this.#layout);
+
+        const parentFields = this.#fields;
+        const count = this.#count;
+        const offset = this.#offset;
+        const alignment = this.#alignment;
+        const record = this.#recorded;
+        const reserved = this.#reserved;
+
+        this.#startInPlace(TABLE_IN_PLACE, 0, fields);
+        try {
+            this.#startTable(fields, header);
+            fill(this);
+            this.#assertSet();
+        } catch (error) {
+            this.#restore(parentFields, count, offset, alignment);
+            this.#truncate(record, reserved);
+            throw error;
+        }
+
+        const length = this.#offset;
+        const tableAlignment = this.#alignment;
+        this.#restore(parentFields, count, offset, alignment);
+
+        // Padded from this table's length, as a nested builder is
+        const total = offset + padding(offset, tableAlignment) + length;
+        if (!(total <= this.#maxLength)) {
+            this.#truncate(record, reserved);
+            throw tooLong(count, total, this.#layout.offsetType());
+        }
+
+        this.#records[record + 1] = tableAlignment;
+        this.#offset = total;
+        this.#count = count + 1;
+        this.#alignTo(tableAlignment);
+    }
+
+    /** `setVectorInPlace()` */
+    #recordVector(
+        count: number,
+        fields: number,
+        fill: (item: TableItem, index: number) => void
+    ): void {
+        assertCount(count);
+        this.#assertRoom();
+
+        // The count, the items' ends and their offsets, which fail before
+        // any item is recorded, rather than after a `fill` for each
+        const header = nestedHeaderLength(fields, this.#layout);
+        const index = this.#count;
+        const offset = this.#offset;
+        const start = offset + this.#size + count * this.#size;
+        const headers = start + count * header;
+        if (!(headers <= this.#maxLength)) {
+            throw tooLong(index, headers, this.#layout.offsetType());
+        }
+
+        const parentFields = this.#fields;
+        const alignment = this.#alignment;
+        const record = this.#recorded;
+        const reserved = this.#reserved;
+
+        // Room for the fewest records that the items record, one for each
+        // of their fields, which is all of them unless they nest tables of
+        // their own. Their offsets fit in the table, so there are at most a
+        // few slots for each of its bytes.
+        const fewest = reserved + count * fields * 3;
+        if (fewest > this.#records.length) {
+            this.#records.length = fewest;
+        }
+
+        let length = start;
+        this.#startInPlace(VECTOR_IN_PLACE, fields, count);
+        try {
+            for (let item = 0; item < count; item++) {
+                this.#startTable(fields, header);
+                fill(this, item);
+                this.#assertSet();
+
+                length += this.#offset;
+            }
+        } catch (error) {
+            this.#restore(parentFields, index, offset, alignment);
+            this.#truncate(record, reserved);
+            throw error;
+        }
+
+        this.#restore(parentFields, index, offset, alignment);
+        if (!(length <= this.#maxLength)) {
+            this.#truncate(record, reserved);
+            throw tooLong(index, length, this.#layout.offsetType());
+        }
+
+        this.#offset = length;
+        this.#count = index + 1;
+    }
+
+    /**
+     * Records a table or vector in place, as a field of the table being
+     * recorded, whose fields' or items' records follow, and starts counting
+     * their fields rather than this table's
+     */
+    #startInPlace(kind: number, alignment: number, value: number): void {
+        const records = this.#records;
+        const record = this.#recorded;
+        records[record] = kind;
+        records[record + 1] = alignment;
+        records[record + 2] = value;
+
+        this.#recorded = record + 3;
+        this.#nesting++;
+    }
+
+    /**
+     * Counts the fields of a table of `fields` fields recorded in place,
+     * whose header of `header` bytes holds only their offsets
+     */
+    #startTable(fields: number, header: number): void {
+        const reserved = this.#reserved + fields * 3;
+        if (reserved > this.#records.length) {
+            this.#grow(reserved);
+        }
+        this.#reserved = reserved;
+
+        this.#fields = fields;
+        this.#count = 0;
+        this.#offset = header;
+        this.#alignment = SIZEOF_8;
+    }
+
+    /**
+     * Counts the table's own fields again, or its parent's, after recording
+     * one in place: those set so far, its length and its alignment
+     */
+    #restore(
+        fields: number,
+        count: number,
+        offset: number,
+        alignment: ElementSize
+    ): void {
+        this.#fields = fields;
+        this.#count = count;
+        this.#offset = offset;
+        this.#alignment = alignment;
+        this.#nesting--;
+    }
+
+    /**
+     * Grows the records to at least `slots` slots, at least doubling them
+     * up to the longest array, so that recording many tables in place grows
+     * them a few times
+     *
+     * @throws {RangeError} If `slots` is longer than an array can be.
+     */
+    #grow(slots: number): void {
+        const records = this.#records;
+        records.length = Math.max(
+            slots,
+            Math.min(2 * records.length, MAX_ARRAY_LENGTH)
+        );
+    }
+
+    /**
+     * Removes the records from `recorded` on, which leaves the builder as it
+     * was before a table that failed, with room for `reserved` slots, and
+     * releases their values, which may be large arrays
+     */
+    #truncate(recorded: number, reserved: number): void {
+        this.#records.fill(undefined, recorded, this.#recorded);
+        this.#recorded = recorded;
+        this.#reserved = reserved;
+    }
+
     /** Pads the array so that its elements, after the length, are aligned */
     #addArray(
         kind: number,
@@ -473,11 +731,44 @@ export class TableBuilder {
         return table.#offset;
     }
 
+    /**
+     * @throws {TypeError} If a table is being recorded in place, whose fields
+     * the builder is counting rather than its own.
+     * @throws {RangeError} If the table has fields left to set.
+     */
     #assertComplete(): void {
+        if (this.#nesting !== 0) {
+            throw new TypeError(
+                "A table can't be finalized or nested while a table is recorded in place in it"
+            );
+        }
+
+        this.#assertSet();
+    }
+
+    /** @throws {RangeError} If the table being counted has fields left to set. */
+    #assertSet(): void {
         if (this.#count !== this.#fields) {
             throw new RangeError(
                 `Only ${this.#count} of the table's ${this.#fields} fields were set`
             );
+        }
+    }
+
+    /**
+     * Checks that a field can be added, as `#addField()` does, before
+     * recording a table in place
+     *
+     * @throws {RangeError} If the table already holds all its fields.
+     * @throws {TypeError} If the table is already written.
+     */
+    #assertRoom(): void {
+        if (this.#written !== undefined) {
+            throw new TypeError('The table was already finalized');
+        }
+
+        if (this.#count === this.#fields) {
+            throw tooManyFields(this.#fields);
         }
     }
 
@@ -514,11 +805,12 @@ export class TableBuilder {
         }
 
         const records = this.#records;
-        const record = index * 3;
+        const record = this.#recorded;
         records[record] = kind;
         records[record + 1] = alignment;
         records[record + 2] = value;
 
+        this.#recorded = record + 3;
         this.#offset = length;
         this.#count = index + 1;
     }
@@ -538,7 +830,7 @@ export class TableBuilder {
             this.#layout,
             this.#version
         );
-        this.#writeFields(writer);
+        this.#writeFields(writer, 0, this.#fields);
         const bytes = writer.bytes();
 
         // Release the values, which may be large arrays
@@ -548,15 +840,20 @@ export class TableBuilder {
         return bytes;
     }
 
-    /** Writes the fields in order, each with its index in this table */
-    #writeFields(writer: TableWriter): void {
+    /**
+     * Writes the `fields` fields of a table, whose records start at slot
+     * `start`, in order, each with its index in the table, and returns where
+     * their records, and those of the tables recorded in place in them, end
+     */
+    #writeFields(writer: TableWriter, start: number, fields: number): number {
         const records = this.#records;
+        let record = start;
 
-        for (let index = 0; index < this.#count; index++) {
-            const record = index * 3;
+        for (let index = 0; index < fields; index++) {
             const kind = records[record] as number;
             const alignment = records[record + 1] as ElementSize;
             const value = records[record + 2];
+            record += 3;
 
             if (kind === TABLE) {
                 writer.setTable(index, alignment);
@@ -567,10 +864,35 @@ export class TableBuilder {
                     index,
                     value as ReadonlyArray<TableBuilder | Uint8Array>
                 );
+            } else if (kind === TABLE_IN_PLACE) {
+                writer.setTable(index, alignment);
+                record = this.#writeInPlace(writer, record, value as number);
+            } else if (kind === VECTOR_IN_PLACE) {
+                // A vector recorded in place holds its items' fields in
+                // place of an alignment
+                const vector = writer.setVector(index, value as number);
+                for (let item = 0; item < (value as number); item++) {
+                    record = this.#writeInPlace(writer, record, alignment);
+                    writer.setItemEnd(vector, item);
+                }
             } else {
                 writeField(writer, index, kind, value, alignment);
             }
         }
+
+        return record;
+    }
+
+    /**
+     * Writes a table recorded in place, of `fields` fields whose records
+     * start at slot `start`, and returns where they end
+     */
+    #writeInPlace(writer: TableWriter, start: number, fields: number): number {
+        const parent = writer.startTable(fields);
+        const end = this.#writeFields(writer, start, fields);
+        writer.endTable(parent);
+
+        return end;
     }
 
     #writeVector(
@@ -601,7 +923,7 @@ export class TableBuilder {
             table.#layout.headerSize() === 0
         ) {
             const parent = writer.startTable(table.#fields);
-            table.#writeFields(writer);
+            table.#writeFields(writer, 0, table.#fields);
             writer.endTable(parent);
         } else {
             copyTable(writer, table.bytes());
