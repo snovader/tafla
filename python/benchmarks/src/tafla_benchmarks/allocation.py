@@ -9,11 +9,10 @@ buffer before allocating the next counts only the larger.
 """
 
 import argparse
-import re
 import tracemalloc
 from typing import Any
 
-from tafla_benchmarks.suite import Call, groups
+from tafla_benchmarks.suite import Call, selected_groups
 
 _WARMUP_CALLS = 20
 """Calls before tracing, so that CPython has specialized the codec's code and
@@ -30,14 +29,16 @@ def main() -> None:
         metavar="REGEX",
         help="measure only the groups whose name matches",
     )
+    parser.add_argument(
+        "--codec",
+        default="",
+        metavar="REGEX",
+        help="measure only the codecs whose name matches",
+    )
     args = parser.parse_args()
-    pattern = re.compile(args.filter)
 
     print("Peak bytes allocated per call, as tracemalloc traces them")
-    for group in groups():
-        if not pattern.search(group.name):
-            continue
-
+    for group in selected_groups(group=args.filter, codec=args.codec):
         print(f"\n{group.name}")
         for variant in group.variants:
             peak = peak_bytes(variant.prepare())

@@ -5,6 +5,13 @@
 //! Each generator has a Cargo feature, which the default features enable. A
 //! build without a generator's feature doesn't know its target.
 
+#[cfg(feature = "cpp")]
+mod cpp;
+// The fields that Go's and C++'s generated code lays out itself
+#[cfg(any(feature = "go", feature = "cpp"))]
+mod fixed;
+#[cfg(feature = "go")]
+mod go;
 #[cfg(feature = "java")]
 mod java;
 // Options name a Java package in every build
@@ -13,7 +20,9 @@ mod java_package;
     feature = "typescript",
     feature = "python",
     feature = "java",
-    feature = "rust"
+    feature = "rust",
+    feature = "go",
+    feature = "cpp"
 ))]
 mod prose;
 #[cfg(feature = "python")]
@@ -28,8 +37,21 @@ mod typescript;
     feature = "typescript",
     feature = "python",
     feature = "java",
-    feature = "rust"
+    feature = "rust",
+    feature = "go",
+    feature = "cpp"
 ))]
+// Go's and C++'s generators write their lines without the others'
+// expressions
+#[cfg_attr(
+    not(any(
+        feature = "typescript",
+        feature = "python",
+        feature = "java",
+        feature = "rust"
+    )),
+    allow(dead_code)
+)]
 mod writer;
 
 pub use java_package::{InvalidJavaPackage, JavaPackage};
@@ -50,6 +72,11 @@ pub enum Target {
     Java,
     #[cfg(feature = "rust")]
     Rust,
+    #[cfg(feature = "go")]
+    Go,
+    /// A header of C++20
+    #[cfg(feature = "cpp")]
+    Cpp,
 }
 
 impl Target {
@@ -65,6 +92,10 @@ impl Target {
         (&["java"], Self::Java),
         #[cfg(feature = "rust")]
         (&["rust", "rs"], Self::Rust),
+        #[cfg(feature = "go")]
+        (&["go"], Self::Go),
+        #[cfg(feature = "cpp")]
+        (&["cpp"], Self::Cpp),
     ];
 
     /// The target of a name or its abbreviation, if this build generates it
@@ -108,13 +139,15 @@ pub struct GeneratedFile {
 
 /// Generates code for a checked schema from the file `file_name`, which the
 /// generated files' header names
-// A build without generators has no target to call this with
+// A build without generators has no target to call this with, and Go's
+// generator writes a header of its own
 #[cfg_attr(
     not(any(
         feature = "typescript",
         feature = "python",
         feature = "java",
-        feature = "rust"
+        feature = "rust",
+        feature = "cpp"
     )),
     allow(unused_variables)
 )]
@@ -142,6 +175,10 @@ pub fn generate(
         Target::Java => java::generate(schema, &header, options),
         #[cfg(feature = "rust")]
         Target::Rust => rust::generate(schema, stem(file_name), &header, options),
+        #[cfg(feature = "go")]
+        Target::Go => go::generate(schema, stem(file_name), &comment_text(file_name), options),
+        #[cfg(feature = "cpp")]
+        Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
     }
 }
 
@@ -165,7 +202,13 @@ fn comment_text(file_name: &str) -> String {
 /// the file of the generators that write one per schema. Java's writes one
 /// per class. On Windows, the directory may end with `\` or a drive's `:`,
 /// either of which would take the file out of the output directory.
-#[cfg(any(feature = "typescript", feature = "python", feature = "rust"))]
+#[cfg(any(
+    feature = "typescript",
+    feature = "python",
+    feature = "rust",
+    feature = "go",
+    feature = "cpp"
+))]
 fn stem(file_name: &str) -> &str {
     let name = file_name
         .rsplit(['/', '\\', ':'])

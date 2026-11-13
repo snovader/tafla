@@ -6,6 +6,7 @@ that its codec reads back what it wrote, so that each worker prepares only the
 variant that it runs.
 """
 
+import re
 from collections.abc import Buffer, Callable, Sequence
 from dataclasses import dataclass
 from functools import cache, partial
@@ -76,6 +77,25 @@ def groups() -> list[Group]:
         ),
         *(_document_lists_group(rows) for rows in DOCUMENT_ROWS),
     ]
+
+
+def selected_groups(*, group: str = "", codec: str = "") -> list[Group]:
+    """Returns the groups whose name matches the regular expression ``group``,
+    with their variants whose codec matches ``codec``, leaving out the groups
+    with none"""
+    group_pattern = re.compile(group)
+    codec_pattern = re.compile(codec)
+
+    selected: list[Group] = []
+    for candidate in groups():
+        if not group_pattern.search(candidate.name):
+            continue
+
+        variants = [v for v in candidate.variants if codec_pattern.search(v.codec)]
+        if variants:
+            selected.append(Group(candidate.name, tuple(variants)))
+
+    return selected
 
 
 def _round_trip_groups[I](

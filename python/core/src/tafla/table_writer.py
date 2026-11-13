@@ -1,12 +1,11 @@
 import builtins
-from collections.abc import Buffer, Iterable, Iterator
+from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
 from typing import Any, Literal, Self, overload
 
 from . import structs
-from .byte_buffer import check_struct_size
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, little_endian_bytes
+from .elements import as_elements, little_endian_bytes, struct_count
 from .errors import describe_int
 from .fixed_fields import FixedFields
 from .layout import (
@@ -78,11 +77,12 @@ class TableWriter:
     Hand-written tables use ``TableBuilder``, which checks every field.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
-    them, without copying them. A table too long for the layout's
-    ``offset_type`` raises ``ValueError``, from the setter whose offset or count
-    doesn't fit or from ``bytes()``. A scalar setter that raised wrote nothing,
-    but another setter that raised may have written part of its field, after
-    which the writer is of no further use.
+    them, without copying them. While the view is held, a field that would
+    change their length raises ``BufferError``. A table too long for the
+    layout's ``offset_type`` raises ``ValueError``, from the setter whose
+    offset or count doesn't fit or from ``bytes()``. A scalar setter that
+    raised wrote nothing, but another setter that raised may have written part
+    of its field, after which the writer is of no further use.
     """
 
     __slots__ = [
@@ -171,8 +171,10 @@ class TableWriter:
         return writer
 
     def bytes(self) -> memoryview[int]:
-        """Returns a view of the table's bytes, after which it takes no more
-        fields.
+        """Returns a view of the table's bytes, without copying them. While
+        it's held, a field that would change their length raises
+        ``BufferError``, as a ``bytearray``'s does. ``memoryview(writer)``
+        returns the same view.
 
         Raises ``ValueError`` if the table is longer than its layout addresses.
         """
@@ -184,6 +186,11 @@ class TableWriter:
             self.__length.pack_into(data, 0, len(data))
 
         return memoryview(data)
+
+    def __buffer__(self, flags: int, /) -> memoryview[int]:
+        """Exports the view that ``bytes()`` returns, so that
+        ``memoryview(writer)`` is ``writer.bytes()``"""
+        return self.bytes()
 
     def _copy_table(self, table: Buffer) -> None:
         """Writes a table that was written already, from its bytes as they
@@ -554,6 +561,53 @@ class TableWriter:
         except _PACK_ERRORS as error:
             raise self.__slot_error(len(data) - vector, error) from error
 
+    def set_vector_tables(
+        self, index: int, fields: FixedFields, items: Sequence[tuple[Any, ...]]
+    ) -> None:
+        """Writes field ``index`` as a vector of tables whose fields ``fields``
+        describes whole, one for each of ``items``, as ``set_vector()``,
+        ``write_table()`` for each item and ``set_item_end()`` write it. Each
+        item is a table's values as ``write_table()`` takes them, followed by
+        its string when ``fields`` ends with one: the tuple that
+        ``ByteBuffer.get_fields()`` returns.
+
+        Raises ``ValueError`` if iterating ``items`` gives more or fewer than
+        their ``len()``, after which the table is undefined.
+
+        Generated code calls it to write a vector of such tables."""
+        count = len(items)
+        vector = self.set_vector(index, count)
+        has_string = fields._string
+        pack = fields._packers[self.__size]
+        data = self.__data
+
+        # write_table()'s packing, inline, which saves a call for each item
+        item = -1
+        for item, values in enumerate(items):
+            if has_string:
+                table, string = values[:-1], values[-1]
+            else:
+                table, string = values, ""
+            try:
+                if has_string:
+                    encoded = string.encode()
+                    packed = pack(*table, len(encoded))
+                else:
+                    encoded = b""
+                    packed = pack(*table)
+            except _FIELD_ERRORS:
+                self.write_table(fields, table, string)
+            else:
+                data += packed
+                data += encoded
+
+            self.set_item_end(vector, item)
+
+        # A sequence whose len() isn't its number of items has ends over its
+        # items, or ends left at 0, and the table is undefined
+        if item + 1 != count:
+            raise _items_error(count, item + 1)
+
     def __set_array(
         self,
         index: int,
@@ -631,6 +685,12 @@ class TableWriter:
         )
 
 
+def _items_error(length: int, count: int) -> ValueError:
+    """The error of items whose ``len()`` was ``length``, but which iterating
+    gave ``count`` of"""
+    return ValueError(f"The items' len() is {length}, but iterating them gave {count}")
+
+
 # The setter of each scalar's struct format code, which FixedFields describes
 # a field by
 _SETTERS = {
@@ -645,17 +705,3 @@ _SETTERS = {
     "f": TableWriter.set_float32,
     "d": TableWriter.set_float64,
 }
-
-
-def struct_count(byte_length: int, size: int) -> int:
-    """Returns the number of structs of ``size`` bytes in ``byte_length``
-    bytes. Raises ``ValueError`` if ``size`` is less than 1, or the bytes
-    aren't a whole number of structs."""
-    check_struct_size(size)
-    if byte_length % size != 0:
-        raise ValueError(
-            f"{byte_length} bytes aren't a whole number of "
-            f"{describe_int(size)}-byte structs"
-        )
-
-    return byte_length // size

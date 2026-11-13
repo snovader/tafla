@@ -1,3 +1,5 @@
+import copy
+import pickle
 import unittest
 from typing import Any, cast
 
@@ -78,6 +80,25 @@ class TestTableLayout(unittest.TestCase):
             repr(layout),
             "TableLayout(sized=True, versioned=False, offset_type='uint16')",
         )
+
+    def test_pickles_and_copies_as_a_layout_of_the_same_header_and_offset_type(
+        self,
+    ) -> None:
+        layouts = [
+            TableLayout.DEFAULT,
+            TableLayout(sized=True, versioned=True, offset_type="uint16"),
+        ]
+        for layout in layouts:
+            copies = [
+                pickle.loads(pickle.dumps(layout)),
+                copy.copy(layout),
+                copy.deepcopy(layout),
+            ]
+            for copied in copies:
+                with self.subTest(layout=layout, copied=copied):
+                    self.assertIs(type(copied), type(layout))
+                    self.assertEqual(repr(copied), repr(layout))
+                    self.assertEqual(copied.header_size(), layout.header_size())
 
 
 if __name__ == "__main__":
