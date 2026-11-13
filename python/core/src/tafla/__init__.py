@@ -49,6 +49,20 @@ little-endian, without padding:
 >>> list(POINT.iter_unpack(points))
 [(1, 2.5), (2, -0.5)]
 
+A nested table, or each item of a vector, can be recorded in place, among its
+parent's fields, by a function that sets its fields on the parent's builder,
+rather than from a builder of its own:
+
+>>> def set_reading(item, reading):
+...     item.set_uint32(reading[0])
+...     item.set_float32(reading[1])
+>>> log = TableBuilder(1)
+>>> log.set_vector_in_place([(0, 21.75), (86400, 18.5)], set_reading, fields=2)
+>>> buffer = log.finalize()
+>>> items = buffer.get_vector_offsets(buffer.root_offset(0))
+>>> [buffer.get_float32(buffer.field_offset(item, 1)) for item in items]
+[21.75, 18.5]
+
 Records at fixed offsets without a header or offsets, such as stream frames,
 are better written and read with ``struct`` alone.
 
@@ -146,6 +160,12 @@ and the pure-Python classes:
   another offset type. A vector of 100 tables that each nest another took
   0.27 ms to build from builders and 0.42 ms from bytes, and a table nesting
   27,028 rows of three columns took 16 µs and 31 µs.
+- **Record vectors of small tables in place.** ``set_vector_in_place()`` and
+  ``set_table_in_place()`` record nested tables among their parent's fields,
+  from a function that sets them, rather than from a builder for each. The
+  vector of 100 tables that each nest another took 0.19 ms so, against
+  0.25 ms from builders, and held 18 KB at its peak rather than 39 KB. A
+  table built elsewhere, or nested more than once, still needs a builder.
 - **Small tables cost their calls.** Each field is a few Python calls to set
   and to write, so a table of two float64s, an int64 and a 16-byte string took
   2.6 µs, far more than allocating and copying its 60 bytes.

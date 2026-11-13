@@ -32,6 +32,13 @@ repository's first commits, for code built from its source before the release.
 - `ByteBuffer.get_fields()`, which reads every field of a table at once, when
   its offsets are those that `TableWriter` writes, for the code that tafla-gen
   generates.
+- `TableBuilder.set_table_in_place()` and `set_vector_in_place()`, which
+  record a nested table, or each item of a vector, among the builder's own
+  fields, from a function that sets them on the builder, rather than from a
+  builder of its own. They write the bytes that nested builders write, and
+  the benchmarks' vector of 100 nested tables took 28% to 30% less time so
+  with the native classes, and 23% less with the pure-Python ones, holding
+  half the memory at its peak.
 
 ### Changed
 
