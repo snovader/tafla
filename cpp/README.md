@@ -86,10 +86,11 @@ type, offset size, vector, builder and decode error.
   `TableBuilder::Item` that `fill` sets the fields on, rather than from a
   builder of its own. They write the bytes that nested builders write, and
   leave the builder as it was if `fill` throws or leaves fields unset. The
-  benchmarks' vector of 100 nested tables took about 4.0 µs so, against
-  7.5 µs from a builder per item and 3.0 µs through FlatBuffers. A table nested
-  from a builder or bytes, with `set_table(table)` and `set_vector(items)`,
-  is still what a table built elsewhere, or reused, needs.
+  benchmarks' vector of 100 nested tables took about 3.2 µs so, against
+  6.9 µs from a builder per item and 3.0 µs through FlatBuffers. A table
+  nested from a builder or bytes, with `set_table(table)` and
+  `set_vector(items)`, is still what a table built elsewhere, or reused,
+  needs.
 - **`Bytes` aren't zeroed.** A writer allocates a table's bytes at its exact
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
