@@ -132,7 +132,11 @@ type, offset size, vector, builder and decode error.
 - **`TableWriter` checks its calls**, as Rust's does: it never writes past the
   table's length, whatever it's given, and `finish()` throws the `BuildError`
   of fields other than those its `TableSizer` counted, of an index past a
-  table's fields, or of an item past its vector's count.
+  table's fields, or of an item past its vector's count. It's
+  `BasicTableWriter<true>`. `TableBuilder`, whose setters check each field
+  as they record it, writes through a `BasicTableWriter<false>`, which skips
+  those checks of room, indexes and items, and whose `finish()` still checks
+  the length that it wrote.
 - **Reads and writes inline.** `ByteBuffer`'s, `Vector`'s, `TableSizer`'s and
   `TableWriter`'s functions are `TAFLA_ALWAYS_INLINE`, and their failures
   are values or static functions, so that no call takes a reader's or
@@ -153,6 +157,9 @@ type, offset size, vector, builder and decode error.
   a nested table's offsets, with stores rather than a call to `memset()`.
   Together they made `to_bytes()` of the vector of 100 nested tables 28%
   faster, 1.45 µs against 2.02 µs, and building and writing it 13% faster.
+  Writing through a `BasicTableWriter<false>` then made `to_bytes()` of that
+  vector a further 13% faster, 1.27 µs against 1.45 µs, with half the
+  machine code.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
