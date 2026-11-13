@@ -18,6 +18,8 @@ import java.util.*;
 public final class TableLayout {
     /** No header slots, and offsets and lengths of the offset type {@code uint32} */
     public static final TableLayout DEFAULT = new TableLayout(false, false, OffsetType.UINT32);
+    private static final TableLayout HEADERLESS_UINT8 = new TableLayout(false, false, OffsetType.UINT8);
+    private static final TableLayout HEADERLESS_UINT16 = new TableLayout(false, false, OffsetType.UINT16);
 
     /**
      * The longest array that the JDK's own collections allocate, which limits a table of
@@ -73,6 +75,18 @@ public final class TableLayout {
     }
 
     // The rules of the layout that TableBuilder, TableSizer and TableWriter share
+
+    /**
+     * {@return the layout without a header of {@code offsetType}}, which the tables that a
+     * {@link TableBuilder} records in place have
+     */
+    static TableLayout headerless(OffsetType offsetType) {
+        return switch (offsetType) {
+            case UINT8 -> HEADERLESS_UINT8;
+            case UINT16 -> HEADERLESS_UINT16;
+            case UINT32 -> DEFAULT;
+        };
+    }
 
     /**
      * {@return the longest table that the offsets address and a Java array holds}: 255 bytes, 64 KiB,
