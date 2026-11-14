@@ -143,12 +143,13 @@ fn fixed_tables_after_other_fields_read_back_alone_and_in_a_vector() -> Result<(
     assert_eq!((read.range()?.start()?, read.range()?.end()?), (5, 6));
     assert_eq!(read.frame()?.flags()?, 0xa5a5);
     let mut starts = Vec::new();
-    for range in read.ranges()? {
+    for range in read.ranges()?.iter() {
+        let range = range?;
         starts.push((range.start()?, range.end()?));
     }
     assert_eq!(starts, [(1, 2), (3, 4)]);
 
-    let view = read.ranges_view()?;
+    let view = read.ranges()?;
     assert_eq!(view.len(), 2);
     let last = view.get(1).expect("an item")?;
     assert_eq!((last.start()?, last.end()?), (3, 4));

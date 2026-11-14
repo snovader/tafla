@@ -1,8 +1,9 @@
-//! Rust for `tafla`. Messages and tables are `Copy` views that read
-//! fields lazily, borrowing strings and arrays from the bytes; they're written
-//! from structs of their fields, which a `TableSizer` sizes and a
-//! `TableWriter` writes, nested tables in place. Structs are plain structs
-//! read and written at fixed offsets.
+//! Rust for `tafla`. Messages and tables are `Copy` views that read fields
+//! lazily, borrowing strings and arrays from the bytes, and vectors and
+//! arrays of structs as views that read each item when it's asked for;
+//! they're written from structs of their fields, which a `TableSizer` sizes
+//! and a `TableWriter` writes, nested tables in place. Structs are plain
+//! structs read and written at fixed offsets.
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -979,12 +980,7 @@ impl Generator<'_> {
                 format!("buffer.field_offset(self.position, {})?", integer(&index))
             };
 
-            let mut docs = field.docs.clone();
-            docs.extend(errors_doc("if the field lies outside the bytes"));
-            if field.docs.is_empty() {
-                docs.remove(0);
-            }
-
+            let docs = self.getter_docs(field);
             writer.blank();
             rust_doc(writer, &docs);
             let name = identifier(&field.name);
@@ -1045,98 +1041,56 @@ impl Generator<'_> {
                         "let (structs, _) = bytes.as_chunks::<{{ {structure}::SIZE }}>();"
                     ));
                     writer.blank();
-                    writer.line(format!("Ok(structs.iter().map({structure}::from_bytes))"));
+                    writer.line(format!("Ok({structure}Array {{ structs }})"));
                 }
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
-                    writer.line("let vector = buffer.get_vector(position)?;");
-                    // Collecting into a `Result` would grow the items from
-                    // nothing, since its size hint starts at zero
-                    writer.line("let mut items = Vec::with_capacity(vector.len());");
-                    writer.open("for item in vector.iter_in_place() {");
-                    // Each item is read in place, from its bytes and those
-                    // after it in the message
-                    writer.line(format!("items.push({table}::new(item?, 0));"));
-                    writer.close("}");
-                    writer.blank();
-                    writer.line("Ok(items)");
+                    writer.open(format!("Ok({table}Vector {{"));
+                    writer.line("vector: buffer.get_vector(position)?,");
+                    writer.close("})");
                 }
             }
             writer.close("}");
-
-            if matches!(
-                field.field_type,
-                FieldType::Vector(_) | FieldType::StructArray(_)
-            ) {
-                self.view_getter(writer, field, buffer, &offset);
-            }
         }
     }
 
-    /// The getter of a view of a vector or an array of structs, which reads
-    /// each item when it's asked for, rather than all of them as the
-    /// field's own getter does. It finds the field as the field's getter
-    /// does, with `buffer`'s line and the `offset` it reads.
-    fn view_getter(&self, writer: &mut CodeWriter, field: &Field, buffer: &str, offset: &str) {
+    /// The documentation of a field's getter: the field's own, and for a
+    /// vector or an array of structs, the view that it returns, and then its
+    /// errors
+    fn getter_docs(&self, field: &Field) -> Vec<String> {
+        let name = |index: usize| &self.schema.definition(index).name;
         let (view, errors) = match field.field_type {
             FieldType::Vector(index) => (
-                format!("{}Vector", self.schema.definition(index).name),
+                vec![
+                    format!(
+                        "A view of the items, which reads each [`{}`] when it's asked for, and",
+                        name(index)
+                    ),
+                    "fails then if its bytes are corrupt".to_owned(),
+                ],
                 "if the field, or the vector's count or the ends of its items, lie outside the bytes",
             ),
             FieldType::StructArray(index) => (
-                format!("{}Array", self.schema.definition(index).name),
+                vec![format!(
+                    "A view of the structs, which reads each [`{}`] when it's asked for",
+                    name(index)
+                )],
                 "if the field or its structs lie outside the bytes",
             ),
-            _ => unreachable!("only vectors and arrays of structs have views"),
+            _ => (vec![], "if the field lies outside the bytes"),
         };
 
         let mut docs = field.docs.clone();
-        if !docs.is_empty() {
+        if !docs.is_empty() && !view.is_empty() {
             docs.push(String::new());
         }
-        docs.push(format!(
-            "Views the items of `{}()`, reading each one when it's asked for",
-            identifier(&field.name)
-        ));
+        docs.extend(view);
         docs.extend(errors_doc(errors));
-
-        writer.blank();
-        rust_doc(writer, &docs);
-        open_method(
-            writer,
-            &format!("pub fn {}_view", field.name),
-            &["&self"],
-            &format!("Result<{view}<'a>, DecodeError>"),
-        );
-        writer.line(buffer);
-        writer.line(format!("let position = {offset};"));
-        match field.field_type {
-            FieldType::Vector(_) => {
-                writer.open(format!("Ok({view} {{"));
-                writer.line("vector: buffer.get_vector(position)?,");
-                writer.close("})");
-            }
-            FieldType::StructArray(index) => {
-                let structure = &self.schema.definition(index).name;
-                writer.statement(
-                    &STYLE,
-                    "let bytes = ",
-                    &call(
-                        "buffer.get_struct_array",
-                        vec![text("position"), text(format!("{structure}::SIZE"))],
-                    ),
-                    "?;",
-                );
-                // The bytes are a whole number of structs
-                writer.line(format!(
-                    "let (structs, _) = bytes.as_chunks::<{{ {structure}::SIZE }}>();"
-                ));
-                writer.blank();
-                writer.line(format!("Ok({view} {{ structs }})"));
-            }
-            _ => unreachable!("only vectors and arrays of structs have views"),
+        // The errors' heading follows a blank line only after a summary
+        if docs.first().is_some_and(String::is_empty) {
+            docs.remove(0);
         }
-        writer.close("}");
+        docs
     }
 
     fn value_type(&self, field_type: FieldType) -> String {
@@ -1146,12 +1100,11 @@ impl Generator<'_> {
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
-            FieldType::StructArray(index) => format!(
-                "impl ExactSizeIterator<Item = {}> + use<'a>",
-                self.schema.definition(index).name
-            ),
+            FieldType::StructArray(index) => {
+                format!("{}Array<'a>", self.schema.definition(index).name)
+            }
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
-            FieldType::Vector(index) => format!("Vec<{}<'a>>", self.schema.definition(index).name),
+            FieldType::Vector(index) => format!("{}Vector<'a>", self.schema.definition(index).name),
         }
     }
 

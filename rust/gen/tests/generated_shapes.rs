@@ -380,8 +380,44 @@ fn an_item_is_read_in_place_past_its_end_within_the_bytes_of_its_item_list()
         read_item_list(&item_list),
         expected(describe_item_list(&fields))
     );
-    let item = item_list.items_view()?.get(0).ok_or("no item")??;
+    let item = item_list.items()?.get(0).ok_or("no item")??;
     assert_eq!(read_item(&item), expected(describe_item(&items[0])));
 
+    Ok(())
+}
+
+#[test]
+fn the_getter_of_a_vector_returns_its_view_and_a_corrupt_item_fails_when_it_is_read()
+-> Result<(), Box<dyn std::error::Error>> {
+    let item = |value| ItemFields {
+        value,
+        pair: PairFields {
+            first: 2.5,
+            second: 3.5,
+        },
+    };
+    let items = [item(1.5), item(4.5)];
+    let mut bytes = ItemListFields { items: &items }.serialize()?;
+    // The vector at 4 holds its count and the items' ends, at 8 and 12. A
+    // second end before the first has the second item end before it starts.
+    let first_end = u32::from_le_bytes(bytes[8..12].try_into()?);
+    bytes[12..16].copy_from_slice(&(first_end - 1).to_le_bytes());
+
+    let view = ItemList::new(&bytes).items()?;
+    assert_eq!(view.len(), 2);
+    let first = view.get(0).ok_or("no item")??;
+    assert_eq!(read_item(&first), expected(describe_item(&items[0])));
+    let second = view.get(1).ok_or("no item")?;
+    assert!(
+        matches!(second, Err(DecodeError::ItemEndsBeforeStart { .. })),
+        "{second:?}"
+    );
+
+    let mut iterated = view.iter();
+    assert!(iterated.next().is_some_and(|item| item.is_ok()));
+    assert!(matches!(
+        iterated.next(),
+        Some(Err(DecodeError::ItemEndsBeforeStart { .. }))
+    ));
     Ok(())
 }

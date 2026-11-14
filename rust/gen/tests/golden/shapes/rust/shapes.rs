@@ -303,27 +303,13 @@ impl<'a> ItemList<'a> {
         Self { bytes }
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn items(&self) -> Result<Vec<Item<'a>>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(0)?;
-        let vector = buffer.get_vector(position)?;
-        let mut items = Vec::with_capacity(vector.len());
-        for item in vector.iter_in_place() {
-            items.push(Item::new(item?, 0));
-        }
-
-        Ok(items)
-    }
-
-    /// Views the items of `items()`, reading each one when it's asked for
+    /// A view of the items, which reads each [`Item`] when it's asked for, and
+    /// fails then if its bytes are corrupt
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
-    pub fn items_view(&self) -> Result<ItemVector<'a>, DecodeError> {
+    pub fn items(&self) -> Result<ItemVector<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(0)?;
         Ok(ItemVector {
