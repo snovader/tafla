@@ -216,7 +216,7 @@ fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Defini
     writer.open(format!("public {structure} get(int index) {{"));
     writer.line("Objects.checkIndex(index, size);");
     writer.line(format!(
-        "return {structure}.read(view, index * {structure}.SIZE);"
+        "return {structure}.readUnchecked(view, index * {structure}.SIZE);"
     ));
     writer.close("}");
     writer.close("}");
@@ -636,6 +636,26 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         "public static {name} read(ByteBuffer view, int offset) {{"
     ));
     struct_bounds_check(writer, "view.limit()");
+    writer.line("return readUnchecked(view, offset);");
+    writer.close("}");
+    writer.blank();
+
+    // The view of an array reads its structs without checking them again,
+    // since it checks their index, and the array's bounds hold every struct
+    // below its count. Checking each struct too made reading every struct of
+    // an array of 100 3% slower.
+    writer.lines(&javadoc(&[
+        format!(
+            "Reads {} at `offset` in a little-endian view, without checking",
+            article(name)
+        ),
+        "that the view holds it, as its caller has: `read()` by its bounds, and an array's"
+            .to_owned(),
+        "view by its index".to_owned(),
+    ]));
+    writer.open(format!(
+        "static {name} readUnchecked(ByteBuffer view, int offset) {{"
+    ));
     let reads = fields
         .iter()
         .map(|(_, field_type, at)| {
@@ -643,7 +663,10 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             text(match field_type {
                 FieldType::Scalar(scalar) => view_read(*scalar, &at),
                 FieldType::Struct(index) => {
-                    format!("{}.read(view, {at})", schema.definition(*index).name)
+                    format!(
+                        "{}.readUnchecked(view, {at})",
+                        schema.definition(*index).name
+                    )
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             })

@@ -63,6 +63,15 @@ public record Sample(long key, float a, float b) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Sample} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Sample readUnchecked(ByteBuffer view, int offset) {
         return new Sample(
             Integer.toUnsignedLong(view.getInt(offset)),
             view.getFloat(offset + 4),

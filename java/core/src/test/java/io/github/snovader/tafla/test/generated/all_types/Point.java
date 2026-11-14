@@ -59,6 +59,15 @@ public record Point(float x, float y) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Point} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Point readUnchecked(ByteBuffer view, int offset) {
         return new Point(view.getFloat(offset), view.getFloat(offset + 4));
     }
 
