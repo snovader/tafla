@@ -86,9 +86,17 @@ public record Vec2(float x, float y) {
         return bytes;
     }
 
-    /** Writes the {@code Vec2} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Vec2} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(byte[] bytes, int offset, float x, float y) {
         FLOAT32.set(bytes, offset, x);
         FLOAT32.set(bytes, offset + 4, y);
+    }
+
+    /** Writes the {@code Vec2} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, x, y);
     }
 }

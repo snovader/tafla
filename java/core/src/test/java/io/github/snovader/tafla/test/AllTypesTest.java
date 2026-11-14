@@ -480,6 +480,68 @@ public class AllTypesTest {
     }
 
     @Property
+    void a_structs_static_write_of_its_values_writes_what_the_struct_writes(
+        @ForAll("packeds") Packed packed,
+        @ForAll("documenteds") Documented documented,
+        @ForAll("segments") Segment segment,
+        @ForAll("points") Point point,
+        @ForAll @IntRange(max = 16) int offset,
+        @ForAll byte fill
+    ) {
+        assertWritten(Packed.SIZE, offset, fill, packed::write, (bytes, at) -> Packed.write(
+            bytes,
+            at,
+            packed.int8(),
+            packed.uint8(),
+            packed.int16(),
+            packed.uint16(),
+            packed.int32(),
+            packed.uint32(),
+            packed.int64(),
+            packed.uint64(),
+            packed.float32(),
+            packed.float64(),
+            packed.bool()
+        ));
+        assertWritten(Documented.SIZE, offset, fill, documented::write, (bytes, at) -> Documented.write(
+            bytes,
+            at,
+            documented.one(),
+            documented.two(),
+            documented.undocumented()
+        ));
+        assertWritten(Segment.SIZE, offset, fill, segment::write, (bytes, at) -> Segment.write(
+            bytes,
+            at,
+            segment.start(),
+            segment.end()
+        ));
+        assertWritten(Point.SIZE, offset, fill, point::write, (bytes, at) -> Point.write(bytes, at, point.x(), point.y()));
+    }
+
+    /**
+     * Asserts that two writes of a struct at {@code offset} in bytes of {@code fill}, longer than it,
+     * write the same bytes
+     */
+    private static void assertWritten(int size, int offset, byte fill, StructWrite expected, StructWrite actual) {
+        var expectedBytes = new byte[offset + size + 8];
+        java.util.Arrays.fill(expectedBytes, fill);
+        expected.write(expectedBytes, offset);
+
+        var actualBytes = new byte[offset + size + 8];
+        java.util.Arrays.fill(actualBytes, fill);
+        actual.write(actualBytes, offset);
+
+        assertArrayEquals(expectedBytes, actualBytes);
+    }
+
+    /** A write of a struct at {@code offset} in {@code bytes} */
+    @FunctionalInterface
+    private interface StructWrite {
+        void write(byte[] bytes, int offset);
+    }
+
+    @Property
     void serializeArray_writes_each_structs_serialized_bytes_one_after_another(
         @ForAll @Size(max = 4) List<@From("packeds") Packed> packeds,
         @ForAll @Size(max = 4) List<@From("documenteds") Documented> documenteds,

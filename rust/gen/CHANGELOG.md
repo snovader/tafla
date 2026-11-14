@@ -35,6 +35,13 @@ first commits, for code built from its source before the release.
   each item with the runtime's `getVectorItemOffset()`
   (`get_vector_item_offset()` in Python), from the count that they read and
   check once.
+- A generated static `write(bytes, offset, ...)` on Java's structs, which
+  writes a struct's values without creating its record, and a generated
+  `serialize(count, fill)` on Java's messages of an array of structs alone,
+  whose fill writes each struct straight into the table with it, from what
+  the caller holds, rather than from an array of records. Java's comparison
+  suite wrote its array of 100 structs so in 0.109 µs rather than 0.338 µs,
+  allocating 1.2 KB rather than 4.0 KB.
 - A generated `serializeInto(fields, bytes)` on Java's messages, which writes
   the message into the start of bytes that the caller owns and reuses, and
   returns the message's length.

@@ -94,10 +94,18 @@ public record Triple(float value, float first, float second) {
         return bytes;
     }
 
-    /** Writes the {@code Triple} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Triple} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(byte[] bytes, int offset, float value, float first, float second) {
         FLOAT32.set(bytes, offset, value);
         FLOAT32.set(bytes, offset + 4, first);
         FLOAT32.set(bytes, offset + 8, second);
+    }
+
+    /** Writes the {@code Triple} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, value, first, second);
     }
 }

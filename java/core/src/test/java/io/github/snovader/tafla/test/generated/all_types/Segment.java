@@ -85,9 +85,17 @@ public record Segment(Point start, Point end) {
         return bytes;
     }
 
-    /** Writes the {@code Segment} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Segment} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(byte[] bytes, int offset, Point start, Point end) {
         start.write(bytes, offset);
         end.write(bytes, offset + 8);
+    }
+
+    /** Writes the {@code Segment} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, start, end);
     }
 }

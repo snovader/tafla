@@ -10,6 +10,7 @@ use super::java_package::KEYWORDS;
 use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
+use crate::check::{MAX_JAVA_PARAMETER_SLOTS, java_parameter_slots};
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
@@ -73,11 +74,11 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
 
         match definition.kind {
             Kind::Message(layout) => {
-                imports(&mut writer, runtime, definition, Some(layout));
+                imports(&mut writer, runtime, schema, definition, Some(layout));
                 message(&mut writer, schema, definition, layout);
             }
             Kind::Table => {
-                imports(&mut writer, runtime, definition, None);
+                imports(&mut writer, runtime, schema, definition, None);
                 table(&mut writer, schema, index);
             }
             Kind::Struct(_) => {
@@ -287,6 +288,7 @@ fn view_size(writer: &mut CodeWriter, items: &str) {
 fn imports(
     writer: &mut CodeWriter,
     runtime: &str,
+    schema: &Schema,
     definition: &Definition,
     layout: Option<Layout>,
 ) {
@@ -314,7 +316,9 @@ fn imports(
         names.push("TableLayout");
     }
     names.push("TableSizer");
-    if layout.is_none() {
+    // Tables take a writer, and a message of an array of structs alone takes
+    // its fill
+    if layout.is_none() || struct_fill(schema, definition).is_some() {
         names.push("TableWriter");
     }
     for name in names {
@@ -431,9 +435,77 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     serialize_body(writer, schema, definition, layout, Output::GivenBytes);
     writer.close("}");
 
+    if let Some(structure) = struct_fill(schema, definition) {
+        writer.blank();
+        serialize_structs(writer, name, &structure.name, layout);
+    }
+
     getters(writer, schema, definition, true);
     writer.blank();
     fields_record(writer, schema, definition);
+    writer.close("}");
+}
+
+/// The struct of a message's `serialize(count, fill)`: the struct of its
+/// only field, an array of structs, if it has a static `write()` to fill it
+/// with
+fn struct_fill<'a>(schema: &'a Schema, definition: &Definition) -> Option<&'a Definition> {
+    let [field] = definition.fields.as_slice() else {
+        return None;
+    };
+    let FieldType::StructArray(index) = field.field_type else {
+        return None;
+    };
+
+    let structure = schema.definition(index);
+    has_static_write(structure).then_some(structure)
+}
+
+/// A message of an array of structs alone also has `serialize(count, fill)`,
+/// named after `TableBuilder.setVector(count, fields, fill)`, whose `fill`
+/// writes each struct straight into the table with the struct's static
+/// `write()`, from whatever the caller holds, rather than from records of the
+/// structs in an array
+fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layout: Layout) {
+    writer.lines(&javadoc(&[
+        format!(
+            "Writes {} of `count` structs, each of which `fill` writes straight into",
+            article(name)
+        ),
+        format!("the table with `{structure}.write(bytes, offset, ...)`, without records of them:"),
+        String::new(),
+        "{@snippet :".to_owned(),
+        format!("{name}.serialize(items.size(), (index, bytes, offset) -> {{"),
+        "    var item = items.get(index);".to_owned(),
+        format!("    {structure}.write(bytes, offset, ...); // the item's values"),
+        "});".to_owned(),
+        "}".to_owned(),
+        String::new(),
+        "@param fill writes struct `index` at `offset` in the table's `bytes`, which may not be zero"
+            .to_owned(),
+        "@throws IllegalArgumentException if `count` is negative".to_owned(),
+    ]));
+    writer.open("public static byte[] serialize(int count, TableWriter.StructFill fill) {");
+    let mut arguments = vec![text("1"), text("LAYOUT")];
+    if layout.version.is_some() {
+        arguments.push(text("FORMAT_VERSION"));
+    }
+    writer.statement(
+        &STYLE,
+        "var sizer = ",
+        &call("new TableSizer", arguments),
+        ";",
+    );
+    writer.line(format!(
+        "sizer.addStructArray(count, {structure}.SIZE, {structure}.ALIGNMENT);"
+    ));
+    writer.blank();
+    writer.line("var writer = sizer.writer();");
+    writer.line(format!(
+        "writer.setStructs(0, count, {structure}.SIZE, {structure}.ALIGNMENT, fill);"
+    ));
+    writer.blank();
+    writer.line("return writer.bytes();");
     writer.close("}");
 }
 
@@ -749,22 +821,81 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.close("}");
     writer.blank();
 
+    // The scalars' writes, at their offsets
+    let write_scalars = |writer: &mut CodeWriter| {
+        for (field, field_type, at) in &fields {
+            let at = offset_expression("offset", *at);
+            match field_type {
+                FieldType::Scalar(scalar) => {
+                    writer.line(format!("{};", struct_write(*scalar, &at, field)));
+                }
+                FieldType::Struct(_) => writer.line(format!("{field}.write(bytes, {at});")),
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+    };
+
+    // A static write of the struct's values, from which a caller writes
+    // what it holds, such as in a message's fill, without creating a record,
+    // and which the record's write calls
+    let static_write = has_static_write(definition);
+    if static_write {
+        writer.lines(&javadoc(&[
+            format!(
+                "Writes {} of these values at `offset` in `bytes`, which must hold it,",
+                article(name)
+            ),
+            "without creating one".to_owned(),
+        ]));
+        let parameters = ["byte[] bytes".to_owned(), "int offset".to_owned()]
+            .into_iter()
+            .chain(fields.iter().map(|(field, field_type, _)| {
+                format!("{} {field}", value_type(*field_type, schema))
+            }))
+            .map(text)
+            .collect();
+        writer.statement(
+            &STYLE,
+            "public ",
+            &call("static void write", parameters),
+            " {",
+        );
+        writer.indent();
+        write_scalars(writer);
+        writer.close("}");
+        writer.blank();
+    }
+
     writer.lines(&javadoc(&[format!(
         "Writes the `{name}` at `offset` in `bytes`, which must hold it"
     )]));
     writer.open("public void write(byte[] bytes, int offset) {");
-    for (field, field_type, at) in &fields {
-        let at = offset_expression("offset", *at);
-        match field_type {
-            FieldType::Scalar(scalar) => {
-                writer.line(format!("{};", struct_write(*scalar, &at, field)));
-            }
-            FieldType::Struct(_) => writer.line(format!("{field}.write(bytes, {at});")),
-            _ => unreachable!("structs hold scalars and structs only"),
-        }
+    if static_write {
+        let values = ["bytes".to_owned(), "offset".to_owned()]
+            .into_iter()
+            .chain(fields.iter().map(|(field, _, _)| field.clone()))
+            .map(text)
+            .collect();
+        writer.statement(&STYLE, "", &call("write", values), ";");
+    } else {
+        write_scalars(writer);
     }
     writer.close("}");
     writer.close("}");
+}
+
+/// Whether a struct declares a static `write()` of its values, which take
+/// a Java method's parameter slots after the bytes and the offset: the JVM's
+/// 255, which a record's constructor shares with `this`, as the checker
+/// counts them
+fn has_static_write(definition: &Definition) -> bool {
+    let slots: usize = definition
+        .fields
+        .iter()
+        .map(|field| java_parameter_slots(field.field_type))
+        .sum();
+
+    slots + 2 <= MAX_JAVA_PARAMETER_SLOTS + 1
 }
 
 fn fields_record(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {

@@ -97,9 +97,12 @@ comparison uses its counterpart:
   so it sums a column through the column's view, `aView()`, which reads the
   elements in place, as the other languages' generated getters return them. It
   takes the workloads' records, as the other codecs do, so it creates the
-  generated `Fields` records, and the `Triple` and `Sample` records, from them
-  in each call, as the protobuf codec builds its messages, and creates the
-  workloads' records from the generated readers. Every suite has a copy of the
+  generated `Fields` records, and the `Sample` record, from them in each call,
+  as the protobuf codec builds its messages, and creates the workloads'
+  records from the generated readers. It writes the array of structs with
+  `Triples.serialize(count, fill)`, whose fill writes each item's values
+  straight into the table with the static `Triple.write()`, rather than
+  creating a `Triple` of each. Every suite has a copy of the
   schema; after changing them, regenerate the code as `rust/gen/README.md`
   describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the

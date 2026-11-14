@@ -5,6 +5,7 @@ import io.github.snovader.tafla.ByteBuffer;
 import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 /** A table holding the items as an array of structs */
 public final class Triples {
@@ -46,6 +47,30 @@ public final class Triples {
         writer.setStructs(0, fields.items(), Triple.SIZE, Triple.ALIGNMENT, Triple::write);
 
         return writer.byteLength();
+    }
+
+    /**
+     * Writes a {@code Triples} of {@code count} structs, each of which {@code fill} writes straight into
+     * the table with {@code Triple.write(bytes, offset, ...)}, without records of them:
+     *
+     * {@snippet :
+     * Triples.serialize(items.size(), (index, bytes, offset) -> {
+     *     var item = items.get(index);
+     *     Triple.write(bytes, offset, ...); // the item's values
+     * });
+     * }
+     *
+     * @param fill writes struct {@code index} at {@code offset} in the table's {@code bytes}, which may not be zero
+     * @throws IllegalArgumentException if {@code count} is negative
+     */
+    public static byte[] serialize(int count, TableWriter.StructFill fill) {
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addStructArray(count, Triple.SIZE, Triple.ALIGNMENT);
+
+        var writer = sizer.writer();
+        writer.setStructs(0, count, Triple.SIZE, Triple.ALIGNMENT, fill);
+
+        return writer.bytes();
     }
 
     /**

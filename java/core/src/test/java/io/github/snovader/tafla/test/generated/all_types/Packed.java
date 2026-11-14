@@ -133,8 +133,25 @@ public record Packed(
         return bytes;
     }
 
-    /** Writes the {@code Packed} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Packed} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(
+        byte[] bytes,
+        int offset,
+        byte int8,
+        short uint8,
+        short int16,
+        int uint16,
+        int int32,
+        long uint32,
+        long int64,
+        long uint64,
+        float float32,
+        double float64,
+        boolean bool
+    ) {
         bytes[offset] = int8;
         bytes[offset + 1] = (byte) uint8;
         INT16.set(bytes, offset + 2, int16);
@@ -146,5 +163,24 @@ public record Packed(
         FLOAT32.set(bytes, offset + 30, float32);
         FLOAT64.set(bytes, offset + 34, float64);
         bytes[offset + 42] = (byte) (bool ? 1 : 0);
+    }
+
+    /** Writes the {@code Packed} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(
+            bytes,
+            offset,
+            int8,
+            uint8,
+            int16,
+            uint16,
+            int32,
+            uint32,
+            int64,
+            uint64,
+            float32,
+            float64,
+            bool
+        );
     }
 }

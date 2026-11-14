@@ -107,10 +107,18 @@ public record Documented(short one, int two, long undocumented) {
         return bytes;
     }
 
-    /** Writes the {@code Documented} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Documented} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(byte[] bytes, int offset, short one, int two, long undocumented) {
         bytes[offset] = (byte) one;
         INT16.set(bytes, offset + 1, (short) two);
         INT32.set(bytes, offset + 3, (int) undocumented);
+    }
+
+    /** Writes the {@code Documented} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, one, two, undocumented);
     }
 }
