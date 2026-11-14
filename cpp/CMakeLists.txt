@@ -20,6 +20,7 @@ option(TAFLA_BUILD_TESTS "Build the tests" ${PROJECT_IS_TOP_LEVEL})
 option(TAFLA_BUILD_BENCHMARKS "Build the comparison benchmarks, which need FlatBuffers, protobuf and msgpack-cxx" OFF)
 option(TAFLA_BUILD_FUZZERS "Build the libFuzzer targets, which need a Clang with libFuzzer" OFF)
 option(TAFLA_WARNINGS_AS_ERRORS "Treat the warnings of tafla's own code as errors" OFF)
+option(TAFLA_BUILD_PROTOTYPE "Build the prototype of a builder that writes each field when it's set" OFF)
 option(TAFLA_FORCE_BYTE_SWAP "Read and write arrays element by element, as a big-endian host does" OFF)
 set(TAFLA_SANITIZERS "" CACHE STRING "Sanitizers to build the tests with, such as address,undefined")
 
@@ -73,6 +74,10 @@ endif()
 
 if(TAFLA_BUILD_FUZZERS)
     add_subdirectory(fuzz)
+endif()
+
+if(TAFLA_BUILD_PROTOTYPE)
+    add_subdirectory(prototype)
 endif()
 
 # `cmake --install` installs the headers and a package, which
