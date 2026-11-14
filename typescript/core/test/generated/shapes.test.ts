@@ -10,7 +10,7 @@ import {
 } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
-import { expectValuesOrDecodeError } from './expectations.ts';
+import { expectValuesOrDecodeError, withPlainArrays } from './expectations.ts';
 import {
     DOCUMENT_FIELDS,
     DOCUMENT_LAYOUT,
@@ -254,6 +254,89 @@ describe.each(SHAPES)('%s', (_, shapes) => {
         });
     });
 
+    describe('whole reads', () => {
+        it.prop([POINT_FIELDS, DOCUMENT_FIELDS, ITEM_LIST_FIELDS, SLICES])(
+            'should read every field of a message in one call, as its getters read them, wherever its bytes lie',
+            (pointFields, documentFields, itemListFields, slice) => {
+                const point = new shapes.Point(sliceOf(shapes.Point.serialize(pointFields), slice));
+                const document = new shapes.Document(
+                    sliceOf(shapes.Document.serialize(documentFields), slice)
+                );
+                const itemList = new shapes.ItemList(
+                    sliceOf(shapes.ItemList.serialize(itemListFields), slice)
+                );
+
+                expect(point.fields()).toEqual(readPoint(point));
+                expect(withPlainArrays(document.fields())).toEqual(readDocument(document));
+                expect(itemList.fields()).toEqual(readItemList(itemList));
+            }
+        );
+
+        it.prop([ITEM_LIST_FIELDS])(
+            "should read every Item's fields through the view, as each Item's reader reads them",
+            fields => {
+                const itemList = new shapes.ItemList(shapes.ItemList.serialize(fields));
+                const items = itemList.items();
+
+                expect(items.fields()).toEqual(fields.items);
+                for (let i = 0; i < items.length(); i++) {
+                    expect(items.get(i).fields()).toEqual(readItem(items.get(i)));
+                }
+            }
+        );
+
+        it.prop([POINT_FIELDS, DOCUMENT_FIELDS, ITEM_LIST_FIELDS, CORRUPTIONS])(
+            'should read every field of a corrupted message in one call as values or throw DecodeError',
+            (pointFields, documentFields, itemListFields, corruption) => {
+                const corrupted = (bytes: Uint8Array): Uint8Array =>
+                    corrupt(bytes, corruptionOf(corruption, bytes.length));
+
+                expectValuesOrDecodeError(() =>
+                    new shapes.Point(corrupted(shapes.Point.serialize(pointFields))).fields()
+                );
+                expectValuesOrDecodeError(() =>
+                    new shapes.Document(
+                        corrupted(shapes.Document.serialize(documentFields))
+                    ).fields()
+                );
+                expectValuesOrDecodeError(() =>
+                    new shapes.ItemList(corrupted(shapes.ItemList.serialize(itemListFields)))
+                        .items()
+                        .fields()
+                );
+            }
+        );
+
+        it.prop([fc.uint8Array({ maxLength: 64 })])(
+            'should read every field of arbitrary bytes as any message in one call or throw DecodeError',
+            bytes => {
+                expectValuesOrDecodeError(() => new shapes.Point(bytes).fields());
+                expectValuesOrDecodeError(() => new shapes.Document(bytes).fields());
+                expectValuesOrDecodeError(() => new shapes.ItemList(bytes).fields());
+            }
+        );
+
+        it.prop([SAMPLE_FIELDS, fc.nat({ max: 16 }), fc.nat({ max: 8 }), fc.nat({ max: 0xff })])(
+            'should read the fields of a Sample at any offset in longer bytes, without creating it',
+            (fields, offset, after, fill) => {
+                const bytes = new Uint8Array(offset + 12 + after).fill(fill);
+                bytes.set(sampleBytes(fields), offset);
+
+                expect(shapes.Sample.read(bytes, offset)).toEqual(fields);
+                expect(shapes.Sample.read(bytes.subarray(offset))).toEqual(fields);
+            }
+        );
+
+        it.prop([fc.uint8Array({ maxLength: 24 }), fc.integer({ min: -16, max: 16 })])(
+            "should throw DecodeError reading the fields of a Sample that the bytes don't hold",
+            (bytes, offset) => {
+                fc.pre(offset < 0 || offset + 12 > bytes.length);
+
+                expect(() => shapes.Sample.read(bytes, offset)).toThrow(DecodeError);
+            }
+        );
+    });
+
     describe('reading in place', () => {
         it('should read an Item in place, past its end, within the bytes of its ItemList', () => {
             const item = { value: 1.5, pair: { first: 2.5, second: 3.5 } };
@@ -438,14 +521,19 @@ function readItemsView(itemList: ItemList): unknown[] {
 
     const items: unknown[] = [];
     for (let i = 0; i < view.length(); i++) {
-        try {
-            items.push(readItem(view.get(i)));
-        } catch (error) {
-            // Neither a RangeError, which DecodeError extends, nor any other error
-            expect(error).toBeInstanceOf(DecodeError);
-            items.push(error);
-        }
+        items.push(readOrDecodeError(() => readItem(view.get(i))));
     }
 
     return items;
+}
+
+/** What `read` returns, or the DecodeError that it throws */
+function readOrDecodeError(read: () => unknown): unknown {
+    try {
+        return read();
+    } catch (error) {
+        // Neither a RangeError, which DecodeError extends, nor any other error
+        expect(error).toBeInstanceOf(DecodeError);
+        return error;
+    }
 }

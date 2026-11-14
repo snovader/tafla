@@ -173,6 +173,28 @@ export class Scalars {
     bool() {
         return this.#buffer.getUint8(this.#buffer.rootOffset(10)) !== 0;
     }
+
+    /**
+     * Reads every field into the `ScalarsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {ScalarsFields}
+     */
+    fields() {
+        return {
+            int8: this.#buffer.getInt8(this.#buffer.rootOffset(0)),
+            uint8: this.#buffer.getUint8(this.#buffer.rootOffset(1)),
+            int16: this.#buffer.getInt16(this.#buffer.rootOffset(2)),
+            uint16: this.#buffer.getUint16(this.#buffer.rootOffset(3)),
+            int32: this.#buffer.getInt32(this.#buffer.rootOffset(4)),
+            uint32: this.#buffer.getUint32(this.#buffer.rootOffset(5)),
+            int64: this.#buffer.getInt64(this.#buffer.rootOffset(6)),
+            uint64: this.#buffer.getUint64(this.#buffer.rootOffset(7)),
+            float32: this.#buffer.getFloat32(this.#buffer.rootOffset(8)),
+            float64: this.#buffer.getFloat64(this.#buffer.rootOffset(9)),
+            bool: this.#buffer.getUint8(this.#buffer.rootOffset(10)) !== 0
+        };
+    }
 }
 
 /**
@@ -328,6 +350,27 @@ export class Arrays {
     float64() {
         return this.#buffer.getFloat64Array(this.#buffer.rootOffset(9));
     }
+
+    /**
+     * Reads every field into the `ArraysFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {ArraysFields}
+     */
+    fields() {
+        return {
+            int8: this.#buffer.getInt8Array(this.#buffer.rootOffset(0)),
+            uint8: this.#buffer.getUint8Array(this.#buffer.rootOffset(1)),
+            int16: this.#buffer.getInt16Array(this.#buffer.rootOffset(2)),
+            uint16: this.#buffer.getUint16Array(this.#buffer.rootOffset(3)),
+            int32: this.#buffer.getInt32Array(this.#buffer.rootOffset(4)),
+            uint32: this.#buffer.getUint32Array(this.#buffer.rootOffset(5)),
+            int64: this.#buffer.getInt64Array(this.#buffer.rootOffset(6)),
+            uint64: this.#buffer.getUint64Array(this.#buffer.rootOffset(7)),
+            float32: this.#buffer.getFloat32Array(this.#buffer.rootOffset(8)),
+            float64: this.#buffer.getFloat64Array(this.#buffer.rootOffset(9))
+        };
+    }
 }
 
 /**
@@ -478,6 +521,21 @@ export class Outer {
     }
 
     /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {OuterFields}
+     */
+    static read(buffer, position) {
+        return {
+            count: buffer.getUint32(buffer.fieldOffset(position, 0)),
+            inner: Inner.read(buffer, buffer.fieldOffset(position, 1))
+        };
+    }
+
+    /**
      * Adds an `Outer` to its parent's sizer, after the field or
      * vector that holds it
      *
@@ -523,6 +581,16 @@ export class Outer {
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
+
+    /**
+     * Reads every field into the `OuterFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {OuterFields}
+     */
+    fields() {
+        return Outer.read(this.#buffer, this.#position);
+    }
 }
 
 /**
@@ -556,6 +624,21 @@ export class Inner {
     constructor(buffer, position) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {InnerFields}
+     */
+    static read(buffer, position) {
+        return {
+            name: buffer.getString(buffer.fieldOffset(position, 0)),
+            values: buffer.getFloat64Array(buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -600,6 +683,16 @@ export class Inner {
         return this.#buffer.getFloat64Array(
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `InnerFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {InnerFields}
+     */
+    fields() {
+        return Inner.read(this.#buffer, this.#position);
     }
 }
 
@@ -776,6 +869,25 @@ export class Keywords {
     }
 
     /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {KeywordsFields}
+     */
+    static read(buffer, position) {
+        return {
+            class: buffer.getUint8(buffer.fieldOffset(position, 0)),
+            default: buffer.getUint8(buffer.fieldOffset(position, 1)),
+            in: buffer.getUint8(buffer.fieldOffset(position, 2)),
+            match: buffer.getUint8(buffer.fieldOffset(position, 3)),
+            self: buffer.getUint8(buffer.fieldOffset(position, 4)),
+            type: buffer.getString(buffer.fieldOffset(position, 5))
+        };
+    }
+
+    /**
      * Adds a `Keywords` to its parent's sizer, after the field or
      * vector that holds it
      *
@@ -854,6 +966,16 @@ export class Keywords {
             this.#buffer.fieldOffset(this.#position, 5)
         );
     }
+
+    /**
+     * Reads every field into the `KeywordsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {KeywordsFields}
+     */
+    fields() {
+        return Keywords.read(this.#buffer, this.#position);
+    }
 }
 
 /**
@@ -926,6 +1048,18 @@ export class Reserved {
     /** @returns {Keywords} */
     keywords() {
         return new Keywords(this.#buffer, this.#buffer.rootOffset(0));
+    }
+
+    /**
+     * Reads every field into the `ReservedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {ReservedFields}
+     */
+    fields() {
+        return {
+            keywords: Keywords.read(this.#buffer, this.#buffer.rootOffset(0))
+        };
     }
 }
 
@@ -1078,6 +1212,34 @@ export class Structs {
     path() {
         return new Path(this.#buffer, this.#buffer.rootOffset(4));
     }
+
+    /**
+     * Reads every field into the `StructsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {StructsFields}
+     */
+    fields() {
+        return {
+            packed: Packed.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(0)
+            ),
+            documented: new DocumentedArray(
+                this.#buffer,
+                this.#buffer.rootOffset(1)
+            ).fields(),
+            segment: Segment.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(2)
+            ),
+            segments: new SegmentArray(
+                this.#buffer,
+                this.#buffer.rootOffset(3)
+            ).fields(),
+            path: Path.read(this.#buffer, this.#buffer.rootOffset(4))
+        };
+    }
 }
 
 /**
@@ -1114,6 +1276,24 @@ export class Path {
     constructor(buffer, position) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {PathFields}
+     */
+    static read(buffer, position) {
+        return {
+            start: Point.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
+            points: new PointArray(
+                buffer,
+                buffer.fieldOffset(position, 1)
+            ).fields()
+        };
     }
 
     /**
@@ -1166,6 +1346,16 @@ export class Path {
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
+
+    /**
+     * Reads every field into the `PathFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {PathFields}
+     */
+    fields() {
+        return Path.read(this.#buffer, this.#position);
+    }
 }
 
 /**
@@ -1204,6 +1394,22 @@ export class Segment {
     constructor(bytes, offset = 0) {
         this.#start = new Point(bytes, offset);
         this.#end = new Point(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Segment` at `offset` in `bytes`,
+     * without creating a `Segment`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {SegmentFields}
+     * @throws {DecodeError} If `bytes` end before the `Segment` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            start: Point.read(bytes, offset),
+            end: Point.read(bytes, offset + 8)
+        };
     }
 
     /**
@@ -1280,7 +1486,12 @@ export class Segment {
  * @property {PointFields} end
  */
 
-/** An array of `Segment`s, which reads each struct when it's asked for */
+/**
+ * An array of `Segment`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class SegmentArray {
     /** @type {Uint8Array} */
     #bytes;
@@ -1309,16 +1520,52 @@ export class SegmentArray {
      *
      * @param {number} index
      * @returns {Segment}
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index) {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Segment(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `start` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    start(index) {
+        return new Point(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `end` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    end(index) {
+        return new Point(this.#bytes, index * 16 + 8);
+    }
+
+    /**
+     * Reads the `SegmentFields` of every item, from the first to the last
+     *
+     * @returns {SegmentFields[]}
+     */
+    fields() {
+        const bytes = this.#bytes;
+        const items = new Array(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 16;
+            items[i] = {
+                start: Point.read(bytes, offset),
+                end: Point.read(bytes, offset + 8)
+            };
         }
 
-        return new Segment(this.#bytes, index * Segment.SIZE);
+        return items;
     }
 }
 
@@ -1349,6 +1596,22 @@ export class Point {
     constructor(bytes, offset = 0) {
         this.#x = readFloat32(bytes, offset);
         this.#y = readFloat32(bytes, offset + 4);
+    }
+
+    /**
+     * Reads the fields of a `Point` at `offset` in `bytes`,
+     * without creating a `Point`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {PointFields}
+     * @throws {DecodeError} If `bytes` end before the `Point` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            x: readFloat32(bytes, offset),
+            y: readFloat32(bytes, offset + 4)
+        };
     }
 
     /**
@@ -1425,7 +1688,12 @@ export class Point {
  * @property {number} y
  */
 
-/** An array of `Point`s, which reads each struct when it's asked for */
+/**
+ * An array of `Point`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class PointArray {
     /** @type {Uint8Array} */
     #bytes;
@@ -1454,16 +1722,52 @@ export class PointArray {
      *
      * @param {number} index
      * @returns {Point}
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index) {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Point(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `x` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    x(index) {
+        return readFloat32(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `y` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    y(index) {
+        return readFloat32(this.#bytes, index * 8 + 4);
+    }
+
+    /**
+     * Reads the `PointFields` of every item, from the first to the last
+     *
+     * @returns {PointFields[]}
+     */
+    fields() {
+        const bytes = this.#bytes;
+        const items = new Array(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 8;
+            items[i] = {
+                x: readFloat32(bytes, offset),
+                y: readFloat32(bytes, offset + 4)
+            };
         }
 
-        return new Point(this.#bytes, index * Point.SIZE);
+        return items;
     }
 }
 
@@ -1525,6 +1829,31 @@ export class Packed {
         this.#float32 = readFloat32(bytes, offset + 30);
         this.#float64 = readFloat64(bytes, offset + 34);
         this.#bool = readUint8(bytes, offset + 42) !== 0;
+    }
+
+    /**
+     * Reads the fields of a `Packed` at `offset` in `bytes`,
+     * without creating a `Packed`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {PackedFields}
+     * @throws {DecodeError} If `bytes` end before the `Packed` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            int8: readInt8(bytes, offset),
+            uint8: readUint8(bytes, offset + 1),
+            int16: readInt16(bytes, offset + 2),
+            uint16: readUint16(bytes, offset + 4),
+            int32: readInt32(bytes, offset + 6),
+            uint32: readUint32(bytes, offset + 10),
+            int64: readInt64(bytes, offset + 14),
+            uint64: readUint64(bytes, offset + 22),
+            float32: readFloat32(bytes, offset + 30),
+            float64: readFloat64(bytes, offset + 34),
+            bool: readUint8(bytes, offset + 42) !== 0
+        };
     }
 
     /**
@@ -1718,6 +2047,23 @@ export class Documented {
     }
 
     /**
+     * Reads the fields of a `Documented` at `offset` in `bytes`,
+     * without creating a `Documented`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {DocumentedFields}
+     * @throws {DecodeError} If `bytes` end before the `Documented` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            one: readUint8(bytes, offset),
+            two: readUint16(bytes, offset + 1),
+            undocumented: readUint32(bytes, offset + 3)
+        };
+    }
+
+    /**
      * Writes a `Documented`
      *
      * @param {DocumentedFields} fields
@@ -1804,7 +2150,12 @@ export class Documented {
  * @property {number} undocumented
  */
 
-/** An array of `Documented`s, which reads each struct when it's asked for */
+/**
+ * An array of `Documented`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class DocumentedArray {
     /** @type {Uint8Array} */
     #bytes;
@@ -1833,15 +2184,68 @@ export class DocumentedArray {
      *
      * @param {number} index
      * @returns {Documented}
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index) {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Documented(this.#bytes, index * 7);
+    }
+
+    /**
+     * A field's documentation, of one line
+     *
+     * Reads `one` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    one(index) {
+        return readUint8(this.#bytes, index * 7);
+    }
+
+    /**
+     * A field's documentation,
+     * of two lines
+     *
+     * Reads `two` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    two(index) {
+        return readUint16(this.#bytes, index * 7 + 1);
+    }
+
+    /**
+     * Reads `undocumented` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    undocumented(index) {
+        return readUint32(this.#bytes, index * 7 + 3);
+    }
+
+    /**
+     * Reads the `DocumentedFields` of every item, from the first to the last
+     *
+     * @returns {DocumentedFields[]}
+     */
+    fields() {
+        const bytes = this.#bytes;
+        const items = new Array(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 7;
+            items[i] = {
+                one: readUint8(bytes, offset),
+                two: readUint16(bytes, offset + 1),
+                undocumented: readUint32(bytes, offset + 3)
+            };
         }
 
-        return new Documented(this.#bytes, index * Documented.SIZE);
+        return items;
     }
 }

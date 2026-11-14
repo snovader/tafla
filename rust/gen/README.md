@@ -257,6 +257,23 @@ reads the same fields from the same bytes as the others, even where a
 corrupted item's offsets lead past its end. Each struct writes an array of
 them with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
 
+In TypeScript and JavaScript, `fields()` reads every field of a message or a
+table at once into the `<Name>Fields` that it's written from, nested tables
+and the items of its vectors and arrays of structs included, without a reader
+for each, which a nested table's static `read(buffer, position)` reads. A
+view's `fields()` reads every item's, and a struct's static
+`read(bytes, offset)` reads its fields without creating it. One call reads
+each nested table once, and allocates in proportion to the bytes: a table has
+`fields()` only when its vectors hold tables of scalars, structs and such
+tables, since an item that holds a string, an array or a vector would read
+it again for each item that corrupted offsets point at it, and a vector of
+its own type, as a tree's, at itself. The view of an array of structs also
+has a getter of each field of its structs, such as `triples.value(i)`, which
+reads that field of struct `i` without creating the struct; one named after
+the view's own members, `length`, `get` or `fields`, takes a `_`. The view of
+a vector has none, since each would find the item again, which takes longer
+than finding it once for `get(i)`.
+
 ### Views
 
 A view of a vector or an array of structs reads an item only when it's asked
@@ -275,7 +292,10 @@ end for each item, or the array's structs, so that its length is never more
 than the bytes can hold. It reads each item when it's asked for, which fails
 with the decode error if the item's bytes are corrupt. So a getter that
 returns a view succeeds although an item's bytes are corrupt, and the item
-fails when it's read.
+fails when it's read. In TypeScript and JavaScript, an array of structs
+checks an index only by reading within its bytes, so an index outside the
+array throws `DecodeError`, which is a `RangeError`, and the index must be an
+integer.
 
 Since a view reads an item without the items before it, it reads an item
 that corrupted ends start at the vector's count, where a getter that reads
@@ -287,7 +307,7 @@ how deep it walks.
 
 | Target                 | Length                | Item `i`                                                                                    | Every item                                             |
 | ---------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`                                                                 | A loop of `get(i)`                                     |
+| TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`, a `DecodeError` outside an array of structs                    | A loop of `get(i)`, or `fields()`                      |
 | Python                 | `len(view)`           | `view[i]`, from the end if `i` is negative, or an `IndexError`                              | `for item in view`, which reads every item's end first |
 | Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`                                |
 | Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
@@ -327,7 +347,7 @@ Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
-`constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
+`constructor_`, `toString_` and `fields_` in TypeScript, `serialize_`, `int_`, `bool_`
 and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
 `version_of_` in Rust, `MarshalBinary_` in Go, as Go exports every name of a
 schema in `PascalCase`, which keywords don't clash with, and `serialize_`,

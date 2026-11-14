@@ -81,6 +81,19 @@ export class Record {
     name(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `RecordFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): RecordFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            id: this.#buffer.getInt64(this.#buffer.rootOffset(2)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Record`, to write */
@@ -204,6 +217,19 @@ export class Document {
     columns(): Columns {
         return new Columns(this.#buffer, this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `DocumentFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): DocumentFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(2)),
+            columns: Columns.read(this.#buffer, this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Document`, to write */
@@ -229,6 +255,19 @@ export class Columns {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ColumnsFields {
+        return {
+            base: buffer.getInt64(buffer.fieldOffset(position, 0)),
+            keys: buffer.getUint32Array(buffer.fieldOffset(position, 1)),
+            a: buffer.getFloat32Array(buffer.fieldOffset(position, 2)),
+            b: buffer.getFloat32Array(buffer.fieldOffset(position, 3))
+        };
     }
 
     /**
@@ -279,6 +318,14 @@ export class Columns {
         return this.#buffer.getFloat32Array(
             this.#buffer.fieldOffset(this.#position, 3)
         );
+    }
+
+    /**
+     * Reads every field into the `ColumnsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ColumnsFields {
+        return Columns.read(this.#buffer, this.#position);
     }
 }
 
@@ -351,6 +398,19 @@ export class ItemList {
     items(): ItemVector {
         return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
+
+    /**
+     * Reads every field into the `ItemListFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemListFields {
+        return {
+            items: new ItemVector(
+                this.#buffer,
+                this.#buffer.rootOffset(0)
+            ).fields()
+        };
+    }
 }
 
 /** The fields of an `ItemList`, to write */
@@ -373,6 +433,17 @@ export class Item {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ItemFields {
+        return {
+            value: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            pair: Pair.read(buffer, buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -410,6 +481,14 @@ export class Item {
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `ItemFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemFields {
+        return Item.read(this.#buffer, this.#position);
     }
 }
 
@@ -458,6 +537,22 @@ export class ItemVector {
             )
         );
     }
+
+    /**
+     * Reads the `ItemFields` of every item, from the first to the last
+     *
+     * @throws {DecodeError} If an item lies outside the bytes.
+     */
+    fields(): ItemFields[] {
+        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const items = new Array<ItemFields>(offsets.length);
+
+        for (let i = 0; i < offsets.length; i++) {
+            items[i] = Item.read(this.#buffer, offsets[i]);
+        }
+
+        return items;
+    }
 }
 
 export class Pair {
@@ -474,6 +569,17 @@ export class Pair {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): PairFields {
+        return {
+            first: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            second: buffer.getFloat32(buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -508,6 +614,14 @@ export class Pair {
         return this.#buffer.getFloat32(
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `PairFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PairFields {
+        return Pair.read(this.#buffer, this.#position);
     }
 }
 
@@ -579,6 +693,19 @@ export class Triples {
     items(): TripleArray {
         return new TripleArray(this.#buffer, this.#buffer.rootOffset(0));
     }
+
+    /**
+     * Reads every field into the `TriplesFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): TriplesFields {
+        return {
+            items: new TripleArray(
+                this.#buffer,
+                this.#buffer.rootOffset(0)
+            ).fields()
+        };
+    }
 }
 
 /** The fields of a `Triples`, to write */
@@ -608,6 +735,20 @@ export class Triple {
         this.#value = readFloat32(bytes, offset);
         this.#first = readFloat32(bytes, offset + 4);
         this.#second = readFloat32(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Triple` at `offset` in `bytes`,
+     * without creating a `Triple`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Triple` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): TripleFields {
+        return {
+            value: readFloat32(bytes, offset),
+            first: readFloat32(bytes, offset + 4),
+            second: readFloat32(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Triple` */
@@ -671,7 +812,12 @@ export interface TripleFields {
     second: number;
 }
 
-/** An array of `Triple`s, which reads each struct when it's asked for */
+/**
+ * An array of `Triple`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class TripleArray {
     readonly #bytes: Uint8Array;
     readonly #length: number;
@@ -694,16 +840,54 @@ export class TripleArray {
     /**
      * Reads struct `index`
      *
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Triple {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Triple(this.#bytes, index * 12);
+    }
+
+    /**
+     * Reads `value` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    value(index: number): number {
+        return readFloat32(this.#bytes, index * 12);
+    }
+
+    /**
+     * Reads `first` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    first(index: number): number {
+        return readFloat32(this.#bytes, index * 12 + 4);
+    }
+
+    /**
+     * Reads `second` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    second(index: number): number {
+        return readFloat32(this.#bytes, index * 12 + 8);
+    }
+
+    /** Reads the `TripleFields` of every item, from the first to the last */
+    fields(): TripleFields[] {
+        const bytes = this.#bytes;
+        const items = new Array<TripleFields>(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 12;
+            items[i] = {
+                value: readFloat32(bytes, offset),
+                first: readFloat32(bytes, offset + 4),
+                second: readFloat32(bytes, offset + 8)
+            };
         }
 
-        return new Triple(this.#bytes, index * Triple.SIZE);
+        return items;
     }
 }
 
@@ -729,6 +913,20 @@ export class Sample {
         this.#key = readUint32(bytes, offset);
         this.#a = readFloat32(bytes, offset + 4);
         this.#b = readFloat32(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Sample` at `offset` in `bytes`,
+     * without creating a `Sample`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Sample` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): SampleFields {
+        return {
+            key: readUint32(bytes, offset),
+            a: readFloat32(bytes, offset + 4),
+            b: readFloat32(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Sample` */

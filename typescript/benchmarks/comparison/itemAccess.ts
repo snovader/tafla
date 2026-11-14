@@ -135,19 +135,20 @@ export const getterAccess: ItemAccess = {
 
         return sum;
     },
+    // Through the array's getter of each field, which reads it without
+    // creating the struct
     lastStruct(bytes) {
         const triples = new Triples(bytes).items();
-        const triple = triples.get(triples.length() - 1);
+        const last = triples.length() - 1;
 
-        return triple.value() + triple.first() + triple.second();
+        return triples.value(last) + triples.first(last) + triples.second(last);
     },
     everyStruct(bytes) {
         const triples = new Triples(bytes).items();
 
         let sum = 0;
         for (let i = 0; i < triples.length(); i++) {
-            const triple = triples.get(i);
-            sum += triple.value() + triple.first() + triple.second();
+            sum += triples.value(i) + triples.first(i) + triples.second(i);
         }
 
         return sum;
