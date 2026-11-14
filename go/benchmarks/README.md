@@ -27,8 +27,20 @@ summed through each library's per-element accessor. `workloads/` ports the
 TypeScript generator, so the inputs are the same values, which its test
 checks against values that the TypeScript generator printed.
 
+The document of 100,000 rows is also **serialized into reused bytes**, by
+tafla-gen's `AppendBinary()`, into the capacity of bytes that the benchmark
+keeps between calls, as long as the document. Its write into new bytes is
+bound by the allocation of its 1.2 MB, which Go zeroes, or maps fresh from
+the system, before the columns are copied into them, since Go has no public
+allocation of bytes that it doesn't zero. Into reused bytes, the write is
+the copy of the columns. The other libraries can write into reused bytes too, with FlatBuffers'
+`Builder.Reset()`, protobuf's `MarshalOptions.MarshalAppend()` and
+vtprotobuf's `MarshalToSizedBufferVT()`, but their codecs write into new
+bytes, as their documentation's examples do, and this row times tafla-gen's
+alone.
+
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as float64s, rather than
 collecting items of its own, and `itemaccess/` holds them:
@@ -36,13 +48,14 @@ collecting items of its own, and `itemaccess/` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector.GetInPlace()` of the last item or `Vector.ItemsInPlace()`, and
   `GetStructArray()`'s bytes.
-- **tafla-gen** reads with the generated getters, `Items()`, which collect
-  the vector's items into a slice of readers first, and the array's structs
-  into a slice of structs.
-- **tafla-gen view** reads with the generated views, `ItemsView()`, whose
-  `Get(i)` reads one item and whose `All()` reads every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `Items()`, which return
+  views of the vector and of the array, whose `Get(i)` reads one item. It
+  reads every item of the vector through its view's `All()`, each whole, with
+  its generated `Fields()`, and every struct of the array at once, with its
+  view's `Slice()`, which returns them in place where the bytes are aligned
+  to them in memory, as they are here.
+- **tafla-gen A/A** reads with the generated getters again, an A/A pair that
+  shows the harness's noise.
 
 `go run ./cmd/encoding` prints each library's encoded sizes and what it does
 with a truncated document, as the other comparisons do. The comparison prints
@@ -86,15 +99,12 @@ what each benchmark's call allocates too.
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders, which keep the columns and
-  write each array in bulk into a table of its exact size. Readers check the
-  document's version, return each read's error as it comes, as the runtime's
-  examples do, and read columns as `ArrayView`s, whose `Slice()` shares the
-  bytes. The vector's items are nested from builders, a builder for each
-  item and each item's pair, as every language's comparison nests them,
-  rather than recorded in place with `SetVectorFunc()` and
-  `SetTableFunc()`, which `../README.md` compares with them. The array
-  of structs is written with `encoding/binary` into a slice, which the
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `SetTableFunc()` and `SetVectorFunc()`. The builders keep the
+  columns and write each array in bulk into a table of its exact size.
+  Readers check the document's version, return each read's error as it
+  comes, as the runtime's examples do, and read columns as `ArrayView`s, whose
+  `Slice()` shares the bytes. The array of structs is written with `encoding/binary` into a slice, which the
   builder takes with `SetStructArray()`, and read from `GetStructArray()`'s
   bytes with `encoding/binary`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
@@ -105,14 +115,18 @@ comparison uses its counterpart:
   `tafla.AppendTable()` returns, without a sizer and a writer. The others it
   counts with a `TableSizer` and writes with a `TableWriter`, which take the
   document's first scalars together and each of the vector's items, a table
-  of only such fields, whole. Its readers share strings and columns with the bytes, as
-  tafla's do. It takes the workloads' types, as the other codecs do, so it
-  collects the generated fields of the vector's items and the generated
-  structs of the array into a slice in each call, as the protobuf codecs
-  collect their messages. The generated getter of the vector collects its
-  items' readers into a slice, and the array of structs is read through its
-  view. Every suite has a copy of the schema; after changing them,
-  regenerate the code as `rust/gen/README.md` describes.
+  of only such fields, whole. It reads the record, the document and each of
+  the vector's items whole, with their generated `Fields()`, which shares
+  strings and columns with the bytes, as tafla's readers do. It takes the
+  workloads' types, as the other codecs do, so it collects the generated
+  fields of the vector's items into a slice in each call, as the protobuf
+  codecs collect their messages. The generated getters of the vector and of
+  the array of structs return views, which read each item when it's asked for.
+  The codec reads every item of the vector through its view's `All()`, and the
+  structs of the array at once with its view's `Slice()`, which returns them
+  in place where the bytes are aligned to them in memory, as they are here.
+  Every suite has a copy of the schema; after changing them, regenerate the
+  code as `rust/gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `Builder`, which starts
   empty and doubles as it grows, and each table with the functions that
   `flatc --go` generates from `schemas/workloads.fbs`, in `generated/fbs/`.

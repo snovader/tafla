@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
@@ -87,24 +88,15 @@ public final class Structs {
         return Packed.read(buffer.bytes(), buffer.rootOffset(0));
     }
 
-    /** An array of structs of 7 bytes, aligned to 4 */
-    public Documented[] documented() {
-        var view = buffer.getStructArray(buffer.rootOffset(1), Documented.SIZE);
-        var items = new Documented[view.remaining() / Documented.SIZE];
-
-        for (int i = 0; i < items.length; i++) {
-            items[i] = Documented.read(view, i * Documented.SIZE);
-        }
-
-        return items;
-    }
-
     /**
      * An array of structs of 7 bytes, aligned to 4
      *
-     * Views the items of {@code documented()}, reading each one when it's asked for
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
      */
-    public DocumentedArray documentedView() {
+    public DocumentedArray documented() {
         return new DocumentedArray(buffer, buffer.rootOffset(1));
     }
 
@@ -113,19 +105,13 @@ public final class Structs {
         return Segment.read(buffer.bytes(), buffer.rootOffset(2));
     }
 
-    public Segment[] segments() {
-        var view = buffer.getStructArray(buffer.rootOffset(3), Segment.SIZE);
-        var items = new Segment[view.remaining() / Segment.SIZE];
-
-        for (int i = 0; i < items.length; i++) {
-            items[i] = Segment.read(view, i * Segment.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of {@code segments()}, reading each one when it's asked for */
-    public SegmentArray segmentsView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
+     */
+    public SegmentArray segments() {
         return new SegmentArray(buffer, buffer.rootOffset(3));
     }
 

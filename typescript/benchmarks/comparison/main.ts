@@ -3,7 +3,7 @@ import { taflaGen } from './codecs/taflaGen.ts';
 import { flatbuffers } from './codecs/flatbuffers.ts';
 import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
-import { byteBufferAccess, getterAccess, viewAccess } from './itemAccess.ts';
+import { byteBufferAccess, getterAccess } from './itemAccess.ts';
 import { runSuite } from './suite.ts';
 
 const args = process.argv.slice(2);
@@ -13,12 +13,11 @@ console.log(
     `Node ${process.version}, V8 ${process.versions.v8}; minimum of ${rounds} interleaved rounds, and bytes allocated on V8's heap per call`
 );
 
-// The views twice, an A/A pair that shows the harness's noise
+// The getters twice, an A/A pair that shows the harness's noise
 const accesses = [
     byteBufferAccess,
     getterAccess,
-    viewAccess,
-    { ...viewAccess, name: 'tafla-gen view A/A' }
+    { ...getterAccess, name: 'tafla-gen A/A' }
 ];
 
 runSuite([tafla, taflaGen, flatbuffers, protobufjs, msgpackr], accesses, {

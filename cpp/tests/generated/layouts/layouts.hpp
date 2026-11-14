@@ -46,13 +46,13 @@ public:
     explicit constexpr Uint8Offsets(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -88,13 +88,13 @@ public:
     explicit constexpr Uint8OffsetsSized(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -142,13 +142,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -197,13 +197,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -239,13 +239,13 @@ public:
     explicit constexpr Uint16Offsets(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -281,13 +281,13 @@ public:
     explicit constexpr Uint16OffsetsSized(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -335,13 +335,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -390,13 +390,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -432,13 +432,13 @@ public:
     explicit constexpr Uint32Offsets(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -474,13 +474,13 @@ public:
     explicit constexpr Uint32OffsetsSized(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -528,13 +528,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -582,13 +582,13 @@ public:
     [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t id() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t id() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;

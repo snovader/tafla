@@ -29,8 +29,19 @@ generator printed. Each of these benchmarks also times tafla's codec again,
 as **tafla A/A**, an A/A pair whose ratio to tafla's shows the harness's
 noise.
 
+**document of 100,000 rows: serialize into reused bytes** times tafla-gen's
+`serialize_into()`, which writes the document into the start of bytes that
+the caller keeps, here a `std::vector` that each call writes over, as a
+caller that sends each document before writing the next would, rather than
+into new bytes, as the serialize rows do. It times it again as **tafla-gen
+A/A**. Its time compares with tafla-gen's in the document's serialize row. No
+other codec here reuses a buffer: FlatBuffers' builder, protobuf's string and
+msgpack-cxx's `sbuffer` are new for each message, though a builder's
+`Clear()`, `SerializeToArray()` and an `sbuffer`'s `clear()` would reuse
+theirs.
+
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as doubles, rather than
 collecting items of its own, and `src/item_access.hpp` holds them:
@@ -38,12 +49,13 @@ collecting items of its own, and `src/item_access.hpp` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `items_in_place()`, and
   `get_struct_array()`'s bytes with `load_le()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into a `std::vector` first.
-- **tafla-gen view** reads with the generated views, `items_view()`, whose
-  `get(i)` or `at(i)` reads one item and whose iterators read every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views: a vector's `get(i)` reads one item, an array's `operator[]` reads
+  one struct without checking its index, as the read by hand does, and their
+  iterators read every item. The generated readers are passed by value, as
+  `ByteBuffer`'s spans are by hand.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
+  harness's noise.
 
 `tafla_encoding` prints each library's encoded sizes and what it does with a
 truncated document, as the TypeScript comparison does, and
@@ -55,9 +67,10 @@ truncated document, as the TypeScript comparison does, and
 - tafla's columns are read as views of the bytes, through
   `ArrayView::as_span()`, when they're aligned on a little-endian host, and so
   are FlatBuffers', through `Vector::data()`, as C++'s FlatBuffers reads them.
-  protobuf's are views of the repeated fields that it decodes them into,
-  which the output keeps, and MessagePack copies its into vectors. Summing a
-  column shows each library's per-element access.
+  protobuf's are views of the repeated fields that it decodes them into, and
+  its document is returned in a `Kept` with the message, so that only its
+  reads pay for keeping what they view. MessagePack copies its columns into
+  vectors. Summing a column shows each library's per-element access.
 - tafla's C++ runtime has no `StructWriter`. The tafla codec writes the
   fixed-size record with `store_le()` and reads it with `ByteBuffer`'s
   getters. tafla-gen's struct writes and reads it with the generated
@@ -87,15 +100,14 @@ truncated document, as the TypeScript comparison does, and
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders, which view the columns and
-  write each array in bulk into a table of its exact size. A builder records
-  its first fields within itself, and a builder nested in place records its
-  fields among its parent's, so a small table allocates nothing until it's
-  written. Readers check the document's version, and read columns as
-  `ArrayView`s, whose `as_span()` views them. The vector's items are nested
-  from builders, collected into a `std::vector` of `NestedTable`s first. The
-  array of structs is written with `store_le()` into a vector, which the
-  builder owns through `set_struct_array()`, and read from
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `set_table(fields, fill)` and `set_vector(count, fields,
+  fill)`. The builders view the columns and write each array in bulk into a
+  table of its exact size. A builder records its first fields within itself,
+  so a small table allocates nothing until it's written. Readers check the
+  document's version, and read columns as `ArrayView`s, whose `as_span()`
+  views them. The array of structs is written with `store_le()` into a vector, which the
+  builder views through `set_struct_array()` until it writes the table, and read from
   `get_struct_array()`'s bytes with `load_le()`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `generated/tafla/`. A message's `serialize()` counts the table's length
@@ -108,9 +120,9 @@ comparison uses its counterpart:
   It takes the workloads' types, as the other codecs do, so it collects the
   generated fields of the vector's items and the generated structs of the
   array into a `std::vector` in each call, since the generated code writes
-  them from spans. The generated getter of the vector reads its items' readers
-  into a `std::vector`, which the codec reads into the workload's items, and
-  the array of structs is read through its view.
+  them from spans. The generated getters of the vector and of the array of
+  structs return views of their items, which the codec iterates into the
+  workload's items, reading each item once.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, which grows by doubling, and each table with flatc's
   `Create*()` functions. Columns are written from spans with
@@ -124,8 +136,9 @@ comparison uses its counterpart:
   `ParseFromArray()`. Its messages own their strings and repeated fields, so
   building one copies its columns, as a caller that keeps its values would.
   Reading decodes the columns into the message's repeated fields, which the
-  output views and keeps the message for, as tafla's and FlatBuffers'
-  outputs view their bytes, and moves its strings. protobuf has no structs,
+  document views, as tafla's and FlatBuffers' documents view their bytes,
+  and returns it in a `Kept` with a `shared_ptr` to the message. It moves its
+  strings. protobuf has no structs,
   so the array of them is a repeated message of the three floats.
 - **msgpack-cxx** packs the workloads' values with its `packer` into an
   `sbuffer`, a table as a map with its field names, as msgpackr packs an

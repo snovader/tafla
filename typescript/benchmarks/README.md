@@ -27,26 +27,41 @@ arrays. Documents are also serialized from `number[]` columns, and a column is
 summed through each library's per-element accessor. The suite also prints
 encoded sizes and what each library does with a truncated document.
 
+**document of 100,000 rows: serialize into reused bytes** writes the large
+document into bytes kept between calls, with the libraries that can:
+tafla-gen's `serializeInto()` writes it into the start of bytes made once, as
+long as its table, rather than into new bytes, and msgpackr's `pack()` is
+timed again beside it, since it reuses its `Packr`'s buffer in every call,
+the serialize row's too. The other libraries write each message into a
+buffer of its own.
+
 tafla is timed twice, and both write the same bytes:
 
-- **tafla** nests `TableBuilder`s by hand, a builder for each table, and reads
-  the tables with `ByteBuffer`'s getters.
+- **tafla** writes each table with a `TableBuilder` by hand, recording its
+  nested tables among the builder's fields with `setTableInPlace()` and
+  `setVectorInPlace()`, and reads the tables with `ByteBuffer`'s getters.
 - **tafla-gen** is the code that tafla-gen generates from
   `comparison/workloads.tafla`, in `comparison/generated/tafla/`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then writes
   every field, nested tables included, into bytes of that length with a
-  `TableWriter`. Its readers read each field with a getter. It takes the
-  workloads' inputs, as the other codecs do, so it creates the generated
-  fields of the document and of each item of the vector in each call, as the
-  protobufjs codec creates its messages, and creates the workloads' outputs
-  from the generated readers. The workloads' items and records have the
-  generated structs' fields already, so they're passed as they are.
+  `TableWriter`. Its readers read each field with a getter, and the getters
+  of the vector and of the array of structs return views of their items,
+  which read each item when `get(i)` asks for it. Where the generated fields
+  are the workload's output, it reads them whole instead, without a reader
+  for each struct: the record with `fields()`, the array of structs with its
+  view's `fields()`, and the fixed-size record with the struct's static
+  `read()`. It takes the workloads' inputs, as the other codecs do, so it
+  creates the generated fields of the document and of each item of the
+  vector in each call, as the protobufjs codec creates its messages, and
+  creates their outputs from the generated readers. The workloads' items and
+  records have the generated structs' fields already, so they're passed as
+  they are.
 
 Every language's suite has a copy of the schema. After changing them,
 regenerate the code as `rust/gen/README.md` describes.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
 of its own, and `comparison/itemAccess.ts` holds them:
@@ -54,12 +69,12 @@ of its own, and `comparison/itemAccess.ts` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`
   with `readFloat32()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into an array first.
-- **tafla-gen view** reads with the generated views, `itemsView()`, whose
-  `get(i)` reads one item, in a loop of `get(i)` for every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views: the vector's `get(i)` reads one item, and the array of structs'
+  getter of each field, such as `value(i)`, reads that field of one struct
+  without creating the struct. A loop reads every item.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
+  harness's noise.
 
 Each library writes the array of structs in its own fixed-size encoding:
 FlatBuffers as a vector of structs, protobuf as a repeated message of the three
@@ -129,8 +144,9 @@ a high load from other processes makes even the minimum unreliable.
   objects, arrays and small buffers, not all the memory a call takes.
 - tafla-gen's codec creates the generated fields from the workloads' flat
   inputs in each call, which a caller that holds its values in the generated
-  shape wouldn't, and reads its outputs from the generated readers, objects
-  of their own that the builder codec doesn't create.
+  shape wouldn't, and reads the document's and the vector's outputs from the
+  generated readers, objects of their own that the builder codec doesn't
+  create.
 
 ### Results
 

@@ -35,6 +35,19 @@ export class Vec2 {
         this.#y = readFloat32(bytes, offset + 4);
     }
 
+    /**
+     * Reads the fields of a `Vec2` at `offset` in `bytes`,
+     * without creating a `Vec2`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Vec2` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): Vec2Fields {
+        return {
+            x: readFloat32(bytes, offset),
+            y: readFloat32(bytes, offset + 4)
+        };
+    }
+
     /** Writes a `Vec2` */
     static serialize(fields: Vec2Fields): Uint8Array {
         const bytes = new Uint8Array(Vec2.SIZE);
@@ -121,6 +134,25 @@ export class Quad {
         this.#f = readFloat64(bytes, offset + 40);
         this.#g = readFloat64(bytes, offset + 48);
         this.#h = readFloat64(bytes, offset + 56);
+    }
+
+    /**
+     * Reads the fields of a `Quad` at `offset` in `bytes`,
+     * without creating a `Quad`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Quad` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): QuadFields {
+        return {
+            a: readFloat64(bytes, offset),
+            b: readFloat64(bytes, offset + 8),
+            c: readFloat64(bytes, offset + 16),
+            d: readFloat64(bytes, offset + 24),
+            e: readFloat64(bytes, offset + 32),
+            f: readFloat64(bytes, offset + 40),
+            g: readFloat64(bytes, offset + 48),
+            h: readFloat64(bytes, offset + 56)
+        };
     }
 
     /** Writes a `Quad` */
@@ -245,6 +277,21 @@ export class Block {
         this.#fourth = new Quad(bytes, offset + 192);
     }
 
+    /**
+     * Reads the fields of a `Block` at `offset` in `bytes`,
+     * without creating a `Block`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Block` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): BlockFields {
+        return {
+            first: Quad.read(bytes, offset),
+            second: Quad.read(bytes, offset + 64),
+            third: Quad.read(bytes, offset + 128),
+            fourth: Quad.read(bytes, offset + 192)
+        };
+    }
+
     /** Writes a `Block` */
     static serialize(fields: BlockFields): Uint8Array {
         const bytes = new Uint8Array(Block.SIZE);
@@ -331,6 +378,17 @@ export class Range {
     }
 
     /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): RangeFields {
+        return {
+            start: buffer.getUint32(buffer.fieldOffset(position, 0)),
+            end: buffer.getUint32(buffer.fieldOffset(position, 1))
+        };
+    }
+
+    /**
      * Adds a `Range` to its parent's sizer, after the field or
      * vector that holds it
      */
@@ -362,6 +420,14 @@ export class Range {
         return this.#buffer.getUint32(
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `RangeFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): RangeFields {
+        return Range.read(this.#buffer, this.#position);
     }
 }
 
@@ -410,6 +476,22 @@ export class RangeVector {
             )
         );
     }
+
+    /**
+     * Reads the `RangeFields` of every item, from the first to the last
+     *
+     * @throws {DecodeError} If an item lies outside the bytes.
+     */
+    fields(): RangeFields[] {
+        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const items = new Array<RangeFields>(offsets.length);
+
+        for (let i = 0; i < offsets.length; i++) {
+            items[i] = Range.read(this.#buffer, offsets[i]);
+        }
+
+        return items;
+    }
 }
 
 /**
@@ -430,6 +512,18 @@ export class Frame {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): FrameFields {
+        return {
+            origin: Vec2.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
+            range: Range.read(buffer, buffer.fieldOffset(position, 1)),
+            flags: buffer.getUint16(buffer.fieldOffset(position, 2))
+        };
     }
 
     /**
@@ -476,6 +570,14 @@ export class Frame {
         return this.#buffer.getUint16(
             this.#buffer.fieldOffset(this.#position, 2)
         );
+    }
+
+    /**
+     * Reads every field into the `FrameFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): FrameFields {
+        return Frame.read(this.#buffer, this.#position);
     }
 }
 
@@ -543,6 +645,17 @@ export class Tiny {
 
     kind(): number {
         return this.#buffer.getUint8(this.#buffer.rootOffset(1));
+    }
+
+    /**
+     * Reads every field into the `TinyFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): TinyFields {
+        return {
+            id: this.#buffer.getUint16(this.#buffer.rootOffset(0)),
+            kind: this.#buffer.getUint8(this.#buffer.rootOffset(1))
+        };
     }
 }
 
@@ -643,6 +756,21 @@ export class Tagged {
     label(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `TaggedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): TaggedFields {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            position: Vec2.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(1)
+            ),
+            label: this.#buffer.getString(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /** The fields of a `Tagged`, to write */
@@ -711,6 +839,18 @@ export class Header {
 
     values(): Uint8Array {
         return this.#buffer.getUint8Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `HeaderFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): HeaderFields {
+        return {
+            kind: this.#buffer.getUint8(this.#buffer.rootOffset(0)),
+            length: this.#buffer.getUint16(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint8Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -804,6 +944,20 @@ export class Pixel {
     color(): number {
         return this.#buffer.getUint32(this.#buffer.rootOffset(1));
     }
+
+    /**
+     * Reads every field into the `PixelFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PixelFields {
+        return {
+            position: Vec2.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(0)
+            ),
+            color: this.#buffer.getUint32(this.#buffer.rootOffset(1))
+        };
+    }
 }
 
 /** The fields of a `Pixel`, to write */
@@ -871,6 +1025,18 @@ export class Strip {
 
     values(): Uint16Array {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `StripFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): StripFields {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            origin: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -969,6 +1135,18 @@ export class Box {
     range(): Range {
         return new Range(this.#buffer, this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `BoxFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): BoxFields {
+        return {
+            min: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(0)),
+            max: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
+            range: Range.read(this.#buffer, this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /** The fields of a `Box`, to write */
@@ -1061,6 +1239,20 @@ export class Track {
     name(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(4));
     }
+
+    /**
+     * Reads every field into the `TrackFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): TrackFields {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            origin: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
+            frame: Frame.read(this.#buffer, this.#buffer.rootOffset(2)),
+            points: this.#buffer.getFloat32Array(this.#buffer.rootOffset(3)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(4))
+        };
+    }
 }
 
 /** The fields of a `Track`, to write */
@@ -1115,6 +1307,16 @@ export class Label {
 
     text(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(0));
+    }
+
+    /**
+     * Reads every field into the `LabelFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): LabelFields {
+        return {
+            text: this.#buffer.getString(this.#buffer.rootOffset(0))
+        };
     }
 }
 
@@ -1210,22 +1412,24 @@ export class Span {
         return new Frame(this.#buffer, this.#buffer.rootOffset(2));
     }
 
-    ranges(): Range[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(3)
-        );
-        const items = new Array<Range>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Range(this.#buffer, offsets[i]);
-        }
-
-        return items;
+    ranges(): RangeVector {
+        return new RangeVector(this.#buffer, this.#buffer.rootOffset(3));
     }
 
-    /** Views the items of `ranges()`, reading each one when it's asked for */
-    rangesView(): RangeVector {
-        return new RangeVector(this.#buffer, this.#buffer.rootOffset(3));
+    /**
+     * Reads every field into the `SpanFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): SpanFields {
+        return {
+            name: this.#buffer.getString(this.#buffer.rootOffset(0)),
+            range: Range.read(this.#buffer, this.#buffer.rootOffset(1)),
+            frame: Frame.read(this.#buffer, this.#buffer.rootOffset(2)),
+            ranges: new RangeVector(
+                this.#buffer,
+                this.#buffer.rootOffset(3)
+            ).fields()
+        };
     }
 }
 
@@ -1294,6 +1498,17 @@ export class Overflow {
 
     block(): Block {
         return new Block(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+    }
+
+    /**
+     * Reads every field into the `OverflowFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): OverflowFields {
+        return {
+            id: this.#buffer.getUint8(this.#buffer.rootOffset(0)),
+            block: Block.read(this.#buffer.bytes(), this.#buffer.rootOffset(1))
+        };
     }
 }
 
