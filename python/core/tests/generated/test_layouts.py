@@ -27,6 +27,7 @@ from tests.generated.layouts_tables import (
     MESSAGES,
     Fields,
     LayoutsMessage,
+    MessageLayout,
     fields_of_every_message,
 )
 from tests.tables import build_table
@@ -76,6 +77,13 @@ class TestValues(unittest.TestCase):
     ) -> None:
         for layout in MESSAGES:
             data = corruption.apply(bytes(layout.message.serialize(**fields)))
+            # Without a reader, raising for another version as its
+            # constructor does
+            self.assertEqual(
+                fields_or_decode_error(partial(_plain_static_values, layout, data)),
+                fields_or_decode_error(partial(_plain_reader_values, layout, data)),
+                layout.message.__name__,
+            )
             try:
                 message = layout.message(data)
             except DecodeError:
@@ -96,6 +104,14 @@ class TestValues(unittest.TestCase):
 
 def _plain_values(message: LayoutsMessage) -> object:
     return plain(message.field_values())
+
+
+def _plain_static_values(layout: MessageLayout, data: bytes) -> object:
+    return plain(layout.message.read_values(data))
+
+
+def _plain_reader_values(layout: MessageLayout, data: bytes) -> object:
+    return plain(layout.message(data).field_values())
 
 
 def _plain_fields(message: LayoutsMessage) -> object:

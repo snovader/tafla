@@ -24,10 +24,9 @@ class Scalars:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[ScalarsFields]) -> memoryview:
-        """Writes a ``Scalars`` with every field"""
-        writer = TableWriter(11, cls._LAYOUT)
-        writer.set_fields(
+    def serialize(cls, **fields: Unpack[ScalarsFields]) -> bytes:
+        """Writes a ``Scalars`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS,
             (
                 fields["int8"],
@@ -44,8 +43,6 @@ class Scalars:
             ),
         )
 
-        return writer.bytes()
-
     @classmethod
     def serialize_values(
         cls,
@@ -61,12 +58,11 @@ class Scalars:
         float64: float,
         bool_: bool,
         /,
-    ) -> memoryview:
+    ) -> bytes:
         """Writes a ``Scalars`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(11, cls._LAYOUT)
-        writer.set_fields(
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS,
             (
                 int8,
@@ -82,8 +78,6 @@ class Scalars:
                 bool_,
             ),
         )
-
-        return writer.bytes()
 
     def int8(self) -> int:
         return self._buffer.get_int8(self._buffer.root_offset(0))
@@ -178,6 +172,20 @@ class Scalars:
                 self.float64(),
                 self.bool_(),
             )
+
+        return values
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> ScalarsFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return values
 
@@ -332,6 +340,28 @@ class Arrays:
             buffer.get_float64_array(buffer.root_offset(9)),
         )
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> ArraysFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        return (
+            buffer.get_int8_array(buffer.root_offset(0)),
+            buffer.get_uint8_array(buffer.root_offset(1)),
+            buffer.get_int16_array(buffer.root_offset(2)),
+            buffer.get_uint16_array(buffer.root_offset(3)),
+            buffer.get_int32_array(buffer.root_offset(4)),
+            buffer.get_uint32_array(buffer.root_offset(5)),
+            buffer.get_int64_array(buffer.root_offset(6)),
+            buffer.get_uint64_array(buffer.root_offset(7)),
+            buffer.get_float32_array(buffer.root_offset(8)),
+            buffer.get_float64_array(buffer.root_offset(9)),
+        )
+
 
 class ArraysFields(TypedDict):
     """The fields of an ``Arrays``, to write"""
@@ -407,6 +437,31 @@ class Nested:
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
         buffer = self._buffer
+        label = buffer.get_string(buffer.root_offset(0))
+        outer = buffer.root_offset(1)
+        count = buffer.get_uint32(buffer.field_offset(outer, 0))
+        inner = buffer.field_offset(outer, 1)
+        return (
+            label,
+            (
+                count,
+                (
+                    buffer.get_string(buffer.field_offset(inner, 0)),
+                    buffer.get_float64_array(buffer.field_offset(inner, 1)),
+                ),
+            ),
+            TreeVector(buffer, buffer.root_offset(2)),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> NestedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
         label = buffer.get_string(buffer.root_offset(0))
         outer = buffer.root_offset(1)
         count = buffer.get_uint32(buffer.field_offset(outer, 0))
@@ -860,6 +915,17 @@ class Reserved:
         buffer = self._buffer
         return (*Keywords(buffer, buffer.root_offset(0)).field_values(),)
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> ReservedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        return (*Keywords(buffer, buffer.root_offset(0)).field_values(),)
+
 
 class ReservedFields(TypedDict):
     """The fields of a ``Reserved``, to write"""
@@ -969,6 +1035,31 @@ class Structs:
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
         buffer = self._buffer
+        packed = Packed.read(buffer.get_struct(buffer.root_offset(0), Packed.SIZE))
+        documented = DocumentedArray(buffer, buffer.root_offset(1))
+        segment = Segment.read(buffer.get_struct(buffer.root_offset(2), Segment.SIZE))
+        segments = SegmentArray(buffer, buffer.root_offset(3))
+        path = buffer.root_offset(4)
+        return (
+            packed,
+            documented,
+            segment,
+            segments,
+            (
+                Point.read(buffer.get_struct(buffer.field_offset(path, 0), Point.SIZE)),
+                PointArray(buffer, buffer.field_offset(path, 1)),
+            ),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> StructsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
         packed = Packed.read(buffer.get_struct(buffer.root_offset(0), Packed.SIZE))
         documented = DocumentedArray(buffer, buffer.root_offset(1))
         segment = Segment.read(buffer.get_struct(buffer.root_offset(2), Segment.SIZE))

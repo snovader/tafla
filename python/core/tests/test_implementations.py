@@ -418,6 +418,98 @@ class TestImplementations(unittest.TestCase):
             ]
             self.assertEqual(read[1], read[0])
 
+    @given(
+        layout_arguments(),
+        descriptions(),
+        lists(VALUES, max_size=12),
+        one_of(text(max_size=4), sampled_from(["\ud800", "é" * 300])),
+        one_of(none(), integers(0, 2**16), integers(-1, 1), INTEGERS),
+        tuples(integers(0, 2**16), integers(0, 255)),
+    )
+    def test_write_and_read_messages_of_fixed_fields_as_each_other_in_one_call(
+        self,
+        arguments: dict[str, Any],
+        description: tuple[int, list[Any], bool],
+        values: list[Any],
+        string: str,
+        version: int | None,
+        corruption: tuple[int, int],
+    ) -> None:
+        """write_fields() of any values and version, which fall back to the
+        writer's calls, and read_fields() of what it wrote, and of it with a
+        byte replaced, with its version, another and none"""
+        values = values[: value_count(description)]
+        written = [
+            outcome(
+                partial(
+                    _write_message,
+                    implementation,
+                    arguments,
+                    description,
+                    tuple(values),
+                    string,
+                    version,
+                )
+            )
+            for implementation in (PURE, self.native)
+        ]
+        self.assertEqual(written[1], written[0])
+
+        if not isinstance(written[0], Written):
+            return
+        data = written[0].data
+        at, byte = corruption
+        corrupted = bytearray(data)
+        if corrupted:
+            corrupted[at % len(corrupted)] = byte
+
+        for table in [data, bytes(corrupted)]:
+            for expected in [version, None, 0 if version is None else version + 1]:
+                read = [
+                    outcome(
+                        partial(
+                            _read_message,
+                            implementation,
+                            arguments,
+                            description,
+                            table,
+                            expected,
+                        )
+                    )
+                    for implementation in (PURE, self.native)
+                ]
+                self.assertEqual(read[1], read[0])
+
+
+def _write_message(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    description: tuple[int, list[Any], bool],
+    values: tuple[Any, ...],
+    string: str,
+    version: int | None,
+) -> object:
+    """Writes a message with ``write_fields()``, with fields of a layout of
+    ``arguments``"""
+    layout = implementation.TableLayout(**arguments)
+    fields = fixed_fields_of(implementation, description, layout)
+    data = implementation.TableWriter.write_fields(fields, values, string, version)
+    # Bytes, which the writer's bytes() would be a view of
+    assert type(data) is bytes
+    return Written(data)
+
+
+def _read_message(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    description: tuple[int, list[Any], bool],
+    data: bytes,
+    version: int | None,
+) -> object:
+    layout = implementation.TableLayout(**arguments)
+    fields = fixed_fields_of(implementation, description, layout)
+    return implementation.ByteBuffer.read_fields(data, fields, version)
+
 
 # Imports tafla with a finder that the module tafla._native finds first,
 # which raises the error that a missing or a broken module raises, of the

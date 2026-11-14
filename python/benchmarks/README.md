@@ -109,12 +109,16 @@ comparison uses its counterpart:
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a
   `TableWriter`'s `bytearray` in one call, and returns a view of it, and
-  writes a vector of tables of fixed layout in one call too. The record and
-  the fixed-size `Sample` are written from their values, as positional
+  writes a vector of tables of fixed layout in one call too. A message of
+  only fixed fields and a string, as the record is, is written into bytes of
+  its own in one call instead, with the runtime's
+  `TableWriter.write_fields()`, without a writer. The record and the
+  fixed-size `Sample` are written from their values, as positional
   arguments, with `serialize_values()`, and read into tuples of them with
-  `field_values()` and `read_values()`. The document is written from the
-  generated fields' dicts, and read into a tuple of its values with
-  `field_values()`, its columns' in a tuple of their own, as views. The
+  `read_values()`, without a reader: the record in one call, with
+  `ByteBuffer.read_fields()`. The document is written from the generated
+  fields' dicts, and read into a tuple of its values with `read_values()`,
+  its columns' in a tuple of their own, as views. The
   vector is written from a tuple of each item's values, each pair's in place
   of it, with `serialize_values()`, and read into them with the
   `field_values()` of the view that its getter returns, which reads every

@@ -359,6 +359,59 @@ class ByteBuffer:
 
         return None
 
+    @staticmethod
+    def read_fields(
+        data: Buffer, fields: FixedFields, version: int | None = None
+    ) -> tuple[Any, ...] | None:
+        """Returns the values of the fields that ``fields`` describes whole, a
+        message's, of the message in ``data``, in the layout that ``fields``
+        was created with, as ``ByteBuffer(data, layout).get_fields(0,
+        fields)`` returns them, or ``None`` as it does, without creating a
+        ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+        that the header holds, for the reader's constructor to raise for.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
+        no layout, as a nested table's doesn't, and if ``version`` is given
+        for a layout without a version.
+
+        Generated code calls it to read every field of a message of only such
+        fields at once, without a reader."""
+        # The constructor's view, without the ByteBuffer
+        view = memoryview(data)
+        if not view.c_contiguous:
+            raise not_contiguous()
+        if view.format != "B" or view.ndim != 1:
+            view = view.cast("B")
+
+        header = fields._header
+        if header is None:
+            raise TypeError("A nested table's fields have no layout to read")
+        size, _, sized, versioned = header
+        if version is not None and not versioned:
+            raise TypeError("The table has no version")
+
+        struct, start, check, expected, values, string = fields._readers[size]
+        try:
+            if version is not None:
+                position = size if sized else 0
+                if OFFSET_STRUCTS[size].unpack_from(view, position)[0] != version:
+                    return None
+
+            # get_fields() of the root, inline
+            unpacked = struct.unpack_from(view, start)
+            if check(unpacked) == expected:
+                if not string:
+                    return values(unpacked)
+
+                begin = start + struct.size
+                end = begin + unpacked[-1]
+                if end <= len(view):
+                    return (*values(unpacked), str(view[begin:end], "utf-8"))
+        except StructError, OverflowError, UnicodeDecodeError:
+            pass
+
+        return None
+
     def get_vector_length(self, position: int) -> int:
         """Returns the number of items of the vector at ``position``.
 

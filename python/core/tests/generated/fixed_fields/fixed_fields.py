@@ -957,22 +957,18 @@ class Tiny:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[TinyFields]) -> memoryview:
-        """Writes a ``Tiny`` with every field"""
-        writer = TableWriter(2, cls._LAYOUT)
-        writer.set_fields(cls._FIXED_FIELDS, (fields["id"], fields["kind"]))
-
-        return writer.bytes()
+    def serialize(cls, **fields: Unpack[TinyFields]) -> bytes:
+        """Writes a ``Tiny`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
+            cls._FIXED_FIELDS, (fields["id"], fields["kind"])
+        )
 
     @classmethod
-    def serialize_values(cls, id: int, kind: int, /) -> memoryview:
+    def serialize_values(cls, id: int, kind: int, /) -> bytes:
         """Writes a ``Tiny`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(2, cls._LAYOUT)
-        writer.set_fields(cls._FIXED_FIELDS, (id, kind))
-
-        return writer.bytes()
+        return TableWriter.write_fields(cls._FIXED_FIELDS, (id, kind))
 
     def id(self) -> int:
         return self._buffer.get_uint16(self._buffer.root_offset(0))
@@ -1004,6 +1000,20 @@ class Tiny:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.kind())
+
+        return values
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> TinyFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return values
 
@@ -1055,16 +1065,14 @@ class Tagged:
         return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
-    def serialize(cls, **fields: Unpack[TaggedFields]) -> memoryview:
-        """Writes a ``Tagged`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_fields(
+    def serialize(cls, **fields: Unpack[TaggedFields]) -> bytes:
+        """Writes a ``Tagged`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS,
             (fields["id"], fields["position"].serialize()),
             fields["label"],
+            version=cls.FORMAT_VERSION,
         )
-
-        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
@@ -1101,6 +1109,20 @@ class Tagged:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.position(), self.label())
+
+        return (values[0], Vec2.read(values[1]), values[2])
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> TaggedFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], Vec2.read(values[1]), values[2])
 
@@ -1196,6 +1218,21 @@ class Header:
 
         return (values[0], values[1], buffer.get_uint8_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> HeaderFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint8_array(buffer.root_offset(2)))
+
 
 class HeaderFields(TypedDict):
     """The fields of a ``Header``, to write"""
@@ -1245,14 +1282,13 @@ class Pixel:
         return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
-    def serialize(cls, **fields: Unpack[PixelFields]) -> memoryview:
-        """Writes a ``Pixel`` with every field"""
-        writer = TableWriter(2, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_fields(
-            cls._FIXED_FIELDS, (fields["position"].serialize(), fields["color"])
+    def serialize(cls, **fields: Unpack[PixelFields]) -> bytes:
+        """Writes a ``Pixel`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
+            cls._FIXED_FIELDS,
+            (fields["position"].serialize(), fields["color"]),
+            version=cls.FORMAT_VERSION,
         )
-
-        return writer.bytes()
 
     def position(self) -> Vec2:
         return Vec2.read(
@@ -1286,6 +1322,20 @@ class Pixel:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.position(), self.color())
+
+        return (Vec2.read(values[0]), values[1])
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> PixelFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        if values is None:
+            return cls(data).field_values()
 
         return (Vec2.read(values[0]), values[1])
 
@@ -1371,6 +1421,25 @@ class Strip:
             buffer.get_uint16_array(buffer.root_offset(2)),
         )
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> StripFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (
+            values[0],
+            Vec2.read(values[1]),
+            buffer.get_uint16_array(buffer.root_offset(2)),
+        )
+
 
 class StripFields(TypedDict):
     """The fields of a ``Strip``, to write"""
@@ -1420,10 +1489,9 @@ class Box:
         return ByteBuffer(data, cls._LAYOUT).get_version()
 
     @classmethod
-    def serialize(cls, **fields: Unpack[BoxFields]) -> memoryview:
-        """Writes a ``Box`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
-        writer.set_fields(
+    def serialize(cls, **fields: Unpack[BoxFields]) -> bytes:
+        """Writes a ``Box`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS,
             (
                 fields["min"].serialize(),
@@ -1431,9 +1499,8 @@ class Box:
                 fields["range"]["start"],
                 fields["range"]["end"],
             ),
+            version=cls.FORMAT_VERSION,
         )
-
-        return writer.bytes()
 
     def min(self) -> Vec2:
         return Vec2.read(
@@ -1482,6 +1549,20 @@ class Box:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.min(), self.max(), *self.range().field_values())
+
+        return (Vec2.read(values[0]), Vec2.read(values[1]), values[2], values[3])
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> BoxFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        if values is None:
+            return cls(data).field_values()
 
         return (Vec2.read(values[0]), Vec2.read(values[1]), values[2], values[3])
 
@@ -1616,6 +1697,30 @@ class Track:
             buffer.get_string(buffer.root_offset(4)),
         )
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> TrackFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (
+            values[0],
+            Vec2.read(values[1]),
+            Vec2.read(values[2]),
+            values[3],
+            values[4],
+            values[5],
+            buffer.get_float32_array(buffer.root_offset(3)),
+            buffer.get_string(buffer.root_offset(4)),
+        )
+
 
 class TrackFields(TypedDict):
     """The fields of a ``Track``, to write"""
@@ -1677,6 +1782,17 @@ class Label:
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
         buffer = self._buffer
+        return (buffer.get_string(buffer.root_offset(0)),)
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> LabelFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
         return (buffer.get_string(buffer.root_offset(0)),)
 
 
@@ -1756,6 +1872,22 @@ class Span:
             RangeVector(buffer, buffer.root_offset(3)),
         )
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> SpanFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        return (
+            buffer.get_string(buffer.root_offset(0)),
+            *Range(buffer, buffer.root_offset(1)).field_values(),
+            *Frame(buffer, buffer.root_offset(2)).field_values(),
+            RangeVector(buffer, buffer.root_offset(3)),
+        )
+
 
 class SpanFields(TypedDict):
     """The fields of a ``Span``, to write"""
@@ -1784,14 +1916,11 @@ class Overflow:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[OverflowFields]) -> memoryview:
-        """Writes an ``Overflow`` with every field"""
-        writer = TableWriter(2, cls._LAYOUT)
-        writer.set_fields(
+    def serialize(cls, **fields: Unpack[OverflowFields]) -> bytes:
+        """Writes an ``Overflow`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS, (fields["id"], fields["block"].serialize())
         )
-
-        return writer.bytes()
 
     def id(self) -> int:
         return self._buffer.get_uint8(self._buffer.root_offset(0))
@@ -1825,6 +1954,20 @@ class Overflow:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.block())
+
+        return (values[0], Block.read(values[1]))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> OverflowFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], Block.read(values[1]))
 

@@ -3,15 +3,16 @@ use std::fmt::Display;
 use std::ptr::{self, NonNull};
 
 use pyo3::exceptions::{
-    PyBufferError, PyIndexError, PyMemoryError, PyOverflowError, PyStopIteration, PyValueError,
+    PyBufferError, PyIndexError, PyMemoryError, PyOverflowError, PyStopIteration,
+    PyUnicodeEncodeError, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PySlice, PyString, PyTuple, PyType};
+use pyo3::types::{PyBytes, PySlice, PyString, PyTuple, PyType};
 use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
 use crate::layout::{Layout, Shape, shape_of};
-use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
+use crate::python::{Int, objects, small, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
 
@@ -686,9 +687,7 @@ impl TableWriter {
         let encoded = match (plan.string_length, string) {
             (Some(_), Some(string)) => match utf8(string) {
                 Ok(encoded) => encoded,
-                Err(error)
-                    if error.is_instance_of::<pyo3::exceptions::PyUnicodeEncodeError>(py) =>
-                {
+                Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => {
                     return Ok(false);
                 }
                 Err(error) => return Err(error),
@@ -864,6 +863,82 @@ impl TableWriter {
             ),
         }
     }
+}
+
+/// The bytes of a message of only the fields of `fixed`, in the layout of
+/// `shape`, packed into new bytes at once, or `None` when a value doesn't
+/// fit, the version isn't as the layout needs or the message is longer than
+/// it addresses, for the writer's calls to raise for
+fn pack_message<'py>(
+    fixed: &FixedFields,
+    shape: Shape,
+    values: &Bound<'py, PyTuple>,
+    string: Option<&Bound<'py, PyString>>,
+    version: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Option<Bound<'py, PyBytes>>> {
+    let py = values.py();
+    let size = shape.size();
+    let plan = fixed.plan(size)?;
+    if values.len() != plan.values.len() || !plan.fits || shape.versioned != version.is_some() {
+        return Ok(None);
+    }
+    // Any version but an int that fits is the writer's to raise for
+    let version = match version {
+        None => None,
+        Some(version) => match small(version)
+            .ok()
+            .flatten()
+            .and_then(|version| usize::try_from(version).ok())
+        {
+            Some(version) if version <= shape.max_length() => Some(version),
+            _ => return Ok(None),
+        },
+    };
+    let encoded = match (plan.string_length, string) {
+        (Some(_), Some(string)) => match utf8(string) {
+            Ok(encoded) => encoded,
+            Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => return Ok(None),
+            Err(error) => return Err(error),
+        },
+        _ => &[],
+    };
+    let header = shape.header_size();
+    let length = header + plan.len + encoded.len();
+    if length > shape.max_length() {
+        return Ok(None);
+    }
+
+    // new_with() zeroes the bytes, which the header, the plan and the
+    // string fill, before Python sees them
+    let mut fits = true;
+    let bytes = PyBytes::new_with(py, length, |bytes| {
+        if shape.sized {
+            bytes[..size].copy_from_slice(&slot(length)[..size]);
+        }
+        if let Some(version) = version {
+            let at = if shape.sized { size } else { 0 };
+            bytes[at..at + size].copy_from_slice(&slot(version)[..size]);
+        }
+
+        let block = &mut bytes[header..];
+        for &(at, offset) in &plan.slots {
+            block[at..at + size].copy_from_slice(&slot(offset)[..size]);
+        }
+        for (index, &(at, kind)) in plan.values.iter().enumerate() {
+            let value = tuple_item(values, index);
+            if !values::write(kind, &value, &mut block[at..at + kind.size()])? {
+                fits = false;
+                return Ok(());
+            }
+        }
+        if let Some(at) = plan.string_length {
+            block[at..at + size].copy_from_slice(&slot(encoded.len())[..size]);
+            block[plan.len..].copy_from_slice(encoded);
+        }
+        Ok(())
+    })?;
+
+    Ok(fits.then_some(bytes))
 }
 
 /// The little-endian bytes of a value that fits in its offset type, the
@@ -1208,6 +1283,48 @@ impl TableWriter {
 
         let mut values = Values::all(&values);
         self.set_each(fields.description(), &mut values, string)
+    }
+
+    /// Writes a table of only the fields that ``fields`` describes, a
+    /// message's, in the layout that it was created with, from their
+    /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
+    /// end with one, and returns its bytes, in one call. They're the bytes
+    /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
+    /// ``bytes()`` write, and it raises as they do.
+    ///
+    /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
+    /// doesn't.
+    ///
+    /// Generated code calls it to write a message of only such fields.
+    #[staticmethod]
+    #[pyo3(signature = (fields, values, string = None, version = None))]
+    fn write_fields<'py>(
+        fields: &Bound<'py, FixedFields>,
+        values: &Bound<'py, PyAny>,
+        string: Option<&Bound<'py, PyString>>,
+        version: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let py = fields.py();
+        let fixed = fields.get();
+        let shape = fixed.shape()?;
+        let tuple = Self::fixed_values(values)?;
+        if let Some(bytes) = pack_message(fixed, shape, &tuple, string, version)? {
+            return Ok(bytes);
+        }
+
+        // The writer's calls, which raise for what doesn't fit
+        let version = version.map(Int::new).transpose()?;
+        let fields_count = Int::from(fixed.description().fields);
+        let length = header_length(shape, &fields_count, version.as_ref())?;
+        let writer = Bound::new(py, Self::create(shape, length, version.as_ref())?)?;
+        writer.borrow_mut().set_fields(fields, &tuple, string)?;
+        let view = Self::bytes(&writer)?;
+        unsafe {
+            Ok(
+                Bound::from_owned_ptr_or_err(py, ffi::PyBytes_FromObject(view.as_ptr()))?
+                    .cast_into_unchecked(),
+            )
+        }
     }
 
     /// Writes a nested table whose fields ``fields`` describes whole, from

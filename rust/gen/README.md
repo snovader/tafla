@@ -212,7 +212,14 @@ structs has `serialize_values()`, which writes it from its values as
 positional arguments, each vector's as its items' values, as its view's
 `field_values()` reads them. A struct of scalars has
 `read_values()`, `read_array_values()` and `serialize_values()`, which do
-the same for its values without creating its dataclass. A view of a vector
+the same for its values without creating its dataclass. A message of only
+fields of fixed size, and a string after them, is written in one call into
+bytes of its own, which its `serialize()` and `serialize_values()` return
+rather than a view of a writer's, through the runtime's
+`TableWriter.write_fields()`. Every message has a static
+`read_values(data)`, which reads its values as `field_values()` does without
+creating a reader: those of a message of only such fields in one call,
+through `ByteBuffer.read_fields()`. A view of a vector
 has `field_values()`, which reads every item's values, at once when the
 table is of fixed size, `iter_field_values()`, which iterates over them,
 reading each item when it reaches it, and `item_field_values(index)`, which

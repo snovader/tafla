@@ -111,6 +111,16 @@ first commits, for code built from its source before the release.
   structs, through the runtime's `ByteBuffer.iter_vector_fields()`, which
   reads each item's end when it reaches the item, without creating the
   items' readers, nor a list of their values.
+- Generated Python messages of only fields of fixed size, and a string
+  after them, are written in one call into bytes of their own, through the
+  runtime's `TableWriter.write_fields()`: their `serialize()` and
+  `serialize_values()` return `bytes` rather than a view of a writer's
+  `bytearray`, which other messages' still return.
+- Every generated Python message has a static `read_values(data)`, which
+  reads every field's value as `field_values()` reads them, without creating
+  a reader, and raises the reader's `DecodeError` for another format
+  version: a message of only fields of fixed size in one call, through
+  `ByteBuffer.read_fields()`, and any other from a `ByteBuffer` of its own.
 - Generated Python messages of scalars, strings, arrays and vectors of
   tables of fixed size without structs have `serialize_values()`, which
   writes the message from its fields' values as positional arguments, each

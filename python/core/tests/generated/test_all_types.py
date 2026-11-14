@@ -282,9 +282,11 @@ class TestEveryField(unittest.TestCase):
     def test_reads_nested_tables_values_as_their_getters_do(
         self, fields: NestedFields, corruption: Truncation | Overwrite | bytes
     ) -> None:
-        nested = Nested(_corrupted(Nested.serialize(**fields), corruption))
+        data = _corrupted(Nested.serialize(**fields), corruption)
+        nested = Nested(data)
 
         _assert_same(self, nested.field_values, partial(_nested_values, nested))
+        _assert_same(self, partial(Nested.read_values, data), nested.field_values)
         _assert_same(
             self, lambda: nested.outer().fields(), partial(_outer_fields, nested)
         )
@@ -307,10 +309,12 @@ class TestEveryField(unittest.TestCase):
     def test_reads_structs_fields_and_values_as_their_getters_do(
         self, fields: StructsFields, corruption: Truncation | Overwrite | bytes
     ) -> None:
-        structs = Structs(_corrupted(Structs.serialize(**fields), corruption))
+        data = _corrupted(Structs.serialize(**fields), corruption)
+        structs = Structs(data)
 
         _assert_same(self, structs.fields, partial(read_structs, structs))
         _assert_same(self, structs.field_values, partial(_structs_values, structs))
+        _assert_same(self, partial(Structs.read_values, data), structs.field_values)
 
     @SETTINGS
     @given(reserved_fields, one_of(corruptions, binary(max_size=0)))
