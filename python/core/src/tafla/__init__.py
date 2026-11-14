@@ -146,33 +146,33 @@ and the pure-Python classes:
 - **Buffers of the field's element type are copied as bytes.** That includes
   an ``array`` of the type code and a numpy array of the type. Anything else,
   such as a list or an array of another type, is converted as ``array()``
-  converts an iterable, at about 13 ns per element: a table of 27,028 floats
-  took 5 µs to write from an ``array("f")`` and 0.36 ms from a list.
+  converts an iterable, at about 10 ns per element: a table of 27,028 floats
+  took 3.6 µs to write from an ``array("f")`` and 0.27 ms from a list.
 - **Array reads return views.** A view shares the bytes' storage, so it's free
   and reflects later changes to the bytes. Unlike typed arrays in JavaScript,
   a ``memoryview`` reads elements at any alignment, so arrays received at an
   odd offset are views too. On a big-endian host, arrays of multi-byte
   elements are copies, with each element's bytes swapped to the host's order.
 - **Read arrays whole.** Each scalar getter is a call with a range check:
-  summing a 27,028-element float32 array with ``get_float32()`` took 3.4 ms,
-  against 0.24 ms through the array's view.
+  summing a 27,028-element float32 array with ``get_float32()`` took 2.4 ms,
+  against 0.30 ms with ``sum()`` of the array's view.
 - **Nest builders rather than bytes.** ``set_table()`` and ``set_vector()``
   write a ``TableBuilder`` straight into its parent when the parent is
   finalized, so the outermost table allocates and writes all the bytes once.
   A table nested as bytes was built into a buffer of its own and is copied, as
   is a builder that was finalized already or whose layout has a header or
   another offset type. A vector of 100 tables that each nest another took
-  0.27 ms to build from builders and 0.42 ms from bytes, and a table nesting
-  27,028 rows of three columns took 16 µs and 31 µs.
+  0.24 ms to build from builders and 0.34 ms from bytes, and a table nesting
+  27,028 rows of three columns took 10 µs and 16 µs.
 - **Record vectors of small tables in place.** ``set_vector_in_place()`` and
   ``set_table_in_place()`` record nested tables among their parent's fields,
   from a function that sets them, rather than from a builder for each. The
-  vector of 100 tables that each nest another took 0.19 ms so, against
-  0.25 ms from builders, and held 18 KB at its peak rather than 39 KB. A
+  vector of 100 tables that each nest another took 0.18 ms so, against
+  0.24 ms from builders, and held 18 KB at its peak rather than 39 KB. A
   table built elsewhere, or nested more than once, still needs a builder.
 - **Small tables cost their calls.** Each field is a few Python calls to set
   and to write, so a table of two float64s, an int64 and a 16-byte string took
-  2.6 µs, far more than allocating and copying its 60 bytes.
+  2.0 µs, far more than allocating and copying its 60 bytes.
 
 Conversions
 -----------
