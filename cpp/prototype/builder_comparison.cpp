@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
         const auto measurements = measure(benchmark.variants, options);
         std::printf("%s\n", benchmark.name.c_str());
         for (const auto& measurement : measurements) {
-            std::printf("  %-18s %10.4f µs (%.3f×), median %10.4f µs (+%ld%%)\n", measurement.name.c_str(),
+            std::printf("  %-26s %10.4f µs (%.3f×), median %10.4f µs (+%ld%%)\n", measurement.name.c_str(),
                         measurement.fastest / 1000, measurement.fastest / measurements.front().fastest,
                         measurement.median / 1000, std::lround((measurement.median / measurement.fastest - 1) * 100));
         }

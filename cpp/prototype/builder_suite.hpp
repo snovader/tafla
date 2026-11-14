@@ -109,6 +109,8 @@ Benchmark row(std::string name, const Input& input, Expected expected, Write wri
     check(write(HandWritten<DirectTableBuilder>(), input), "the direct builder");
     check(write(HandWritten<CopyingTableBuilder>(), input), "the copying builder");
     check(write(HandWritten<InliningTableBuilder>(), input), "the inlining builder");
+    check(write(HandWritten<ReallocatingTableBuilder>(), input), "the reallocating builder");
+    check(write(HandWritten<CopyingReallocatingTableBuilder>(), input), "the copying, reallocating builder");
 
     const auto* value = &input;
     Benchmark benchmark{std::move(name), {}};
@@ -122,6 +124,11 @@ Benchmark row(std::string name, const Input& input, Expected expected, Write wri
         "direct, copying", [write, value] { return write(HandWritten<CopyingTableBuilder>(), *opaque(value)); }));
     benchmark.variants.push_back(variant("direct, fills inlined", [write, value] {
         return write(HandWritten<InliningTableBuilder>(), *opaque(value));
+    }));
+    benchmark.variants.push_back(variant(
+        "direct, realloc", [write, value] { return write(HandWritten<ReallocatingTableBuilder>(), *opaque(value)); }));
+    benchmark.variants.push_back(variant("direct, copying, realloc", [write, value] {
+        return write(HandWritten<CopyingReallocatingTableBuilder>(), *opaque(value));
     }));
     return benchmark;
 }

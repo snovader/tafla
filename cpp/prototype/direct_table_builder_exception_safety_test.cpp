@@ -262,6 +262,9 @@ void check_every_allocation() {
 TEST(DirectTableBuilderExceptionSafety, ASetterWhoseAllocationFailsLeavesTheBuilderAsItWas) {
     check_every_allocation<DirectTableBuilder>();
     check_every_allocation<CopyingTableBuilder>();
+    // Their bytes grow with `std::realloc()`, which this allocator doesn't
+    // fail, but their segments and owned values are allocated with `new`
+    check_every_allocation<ReallocatingTableBuilder>();
 }
 
 }  // namespace
