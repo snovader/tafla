@@ -74,5 +74,16 @@ repository's first commits, for code built from its source before the release.
 - The runtime rejects an alignment other than 1, 2, 4 or 8, as Java's does,
   rather than padding to it or dividing by zero.
 - The runtime raises `ValueError` for a float32 too large for its type.
+- While a view of a `TableWriter`'s bytes is held, the native writer raises
+  `BufferError` only for a call that would change their length, as the
+  pure-Python one does, rather than for any call that appends, even nothing:
+  `start_table(0)`, an empty struct's `set_struct()`, or `set_fields()` and
+  `write_table()` for no leading fields write in place. `set_fields()` and
+  `write_table()` pack their values before the view fails them, so a value
+  that can't be written raises the setter's error in both.
+- `TableWriter.start_table()` raises `ValueError` for a nested table whose
+  slots alone are longer than the offset type addresses, as the constructor
+  does for the root's header, rather than `MemoryError` or `OverflowError`
+  from allocating them, which differed by the count and the implementation.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/python

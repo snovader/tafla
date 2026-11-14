@@ -77,12 +77,20 @@ class TableWriter:
     Hand-written tables use ``TableBuilder``, which checks every field.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
-    them, without copying them. While the view is held, a field that would
-    change their length raises ``BufferError``. A table too long for the
-    layout's ``offset_type`` raises ``ValueError``, from the setter whose
-    offset or count doesn't fit or from ``bytes()``. A scalar setter that
-    raised wrote nothing, but another setter that raised may have written part
-    of its field, after which the writer is of no further use.
+    them, without copying them. While the view is held, a call that would
+    change their length raises ``BufferError``, as a ``bytearray``'s does,
+    and one that wouldn't writes as it would without the view, such as
+    ``start_table(0)``, an empty struct's ``set_struct()``, or
+    ``set_fields()`` for no leading fields. ``set_fields()`` and
+    ``write_table()`` pack every value before they write any, and raise
+    ``BufferError`` only once they have, so for values that can't be
+    written they raise what the calls that they replace would.
+
+    A table too long for the layout's ``offset_type`` raises ``ValueError``,
+    from the setter whose offset or count doesn't fit, from ``start_table()``
+    for slots that don't, or from ``bytes()``. A scalar setter that raised
+    wrote nothing, but another setter that raised may have written part of
+    its field, after which the writer is of no further use.
     """
 
     __slots__ = [
@@ -261,15 +269,30 @@ class TableWriter:
     def start_table(self, fields: int) -> int:
         """Starts the fields of a nested table or vector item of ``fields``
         fields, after its parent's ``set_table()`` or ``set_vector()``, and
-        returns the parent's start, which ``end_table()`` takes back."""
+        returns the parent's start, which ``end_table()`` takes back.
+
+        Raises ``ValueError`` if the table's slots alone are longer than the
+        layout addresses, as the constructor raises for the root's header,
+        rather than allocating them.
+        """
         parent = self.__table
         data = self.__data
 
         self.__table = self.__slots = len(data)
         slots = fields * self.__size
-        data += _ZEROS[slots] if slots < len(_ZEROS) else bytes(slots)
+        data += _ZEROS[slots] if slots < len(_ZEROS) else self.__zeros(slots)
 
         return parent
+
+    def __zeros(self, slots: int) -> builtins.bytes:
+        """The zeros of ``slots`` bytes of a table's slots, more than
+        ``_ZEROS`` holds, unless they're longer than the offset type
+        addresses. Without the check, how bytes() fails for a count that
+        no offset type addresses depends on the allocator and the count."""
+        if slots > self.__max_length:
+            raise self.__too_long(len(self.__data) + slots)
+
+        return bytes(slots)
 
     def end_table(self, parent: int) -> None:
         """Ends the fields of the table that ``start_table()`` started"""
