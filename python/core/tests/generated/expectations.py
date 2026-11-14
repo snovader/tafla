@@ -3,6 +3,7 @@ descriptions of ``tests/tables.py``, and read bytes that may be corrupted."""
 
 from collections.abc import Callable, Sequence
 from contextlib import suppress
+from dataclasses import astuple, is_dataclass
 from struct import pack
 from typing import Any
 from unittest import TestCase
@@ -71,5 +72,28 @@ def _bits(value: Any) -> Any:
 
     if isinstance(value, float):
         return pack("<d", value)
+
+    return value
+
+
+def plain(value: object) -> object:
+    """``value`` with what a reader returns as plain values, to compare what
+    two readers read: each memoryview as a list of its elements, each struct as
+    a tuple of its values, and each view of a vector or an array of structs,
+    whose items aren't read, as its class's name and its length"""
+    if isinstance(value, memoryview):
+        return value.tolist()
+
+    if isinstance(value, dict):
+        return {key: plain(item) for key, item in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return type(value)(plain(item) for item in value)
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return astuple(value)
+
+    if hasattr(value, "__len__") and not isinstance(value, (str, bytes)):
+        return (type(value).__name__, len(value))  # ty: ignore[invalid-argument-type]
 
     return value

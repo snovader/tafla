@@ -22,6 +22,7 @@ from tests.generated.expectations import (
     assert_same_table,
     assert_values_or_decode_error,
     fields_or_decode_error,
+    plain,
 )
 from tests.generated.shapes.shapes import (
     Document,
@@ -298,6 +299,75 @@ class TestFields(unittest.TestCase):
         )
 
 
+class TestEveryField(unittest.TestCase):
+    # A document's fields() and field_values() read its leading fields of fixed
+    # size in one call, and the rest, its nested columns included, as the
+    # getters do, so they return what the getters read or raise DecodeError as
+    # they do
+
+    @SETTINGS
+    @given(document_fields, slices)
+    def test_reads_a_documents_fields_and_values_as_its_getters_and_writes_them_back(
+        self, fields: DocumentFields, where: Slice
+    ) -> None:
+        data = Document.serialize(**fields)
+        document = Document(where.of(data))
+
+        _assert_document_as_its_getters(self, document)
+        written = Document.serialize(**document.fields())
+        self.assertEqual(bytes(written), bytes(data))
+
+    @SETTINGS
+    @given(document_fields, corruptions)
+    def test_reads_a_corrupted_documents_fields_and_values_as_its_getters_do(
+        self, fields: DocumentFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(Document.serialize(**fields)))
+        try:
+            document = Document(data)
+        except DecodeError:
+            return
+
+        _assert_document_as_its_getters(self, document)
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_the_fields_and_values_of_arbitrary_bytes_as_the_getters_do(
+        self, data: bytes
+    ) -> None:
+        try:
+            document = Document(data)
+        except DecodeError:
+            return
+
+        _assert_document_as_its_getters(self, document)
+
+
+def _assert_document_as_its_getters(
+    test: unittest.TestCase, document: Document
+) -> None:
+    test.assertEqual(
+        fields_or_decode_error(lambda: plain(document.fields())),
+        fields_or_decode_error(lambda: plain(read_document(document))),
+    )
+    test.assertEqual(
+        fields_or_decode_error(lambda: plain(document.field_values())),
+        fields_or_decode_error(lambda: plain(_document_values(document))),
+    )
+
+
+def _document_values(document: Document) -> tuple[object, ...]:
+    """A document's values, read in the fields' order, as the getters read them"""
+    x, y, name, columns = (
+        document.x(),
+        document.y(),
+        document.name(),
+        document.columns(),
+    )
+    nested = (columns.base(), columns.keys(), columns.a(), columns.b())
+    return (x, y, name, nested)
+
+
 class TestValues(unittest.TestCase):
     # field_values() reads the fields of a table of scalars and a string into a
     # tuple, as fields() reads them into a dict, and serialize_values() writes
@@ -360,7 +430,22 @@ class TestValues(unittest.TestCase):
             fields_or_decode_error(view.fields),
             fields_or_decode_error(partial(_fields_of_each, view)),
         )
+        self.assertEqual(
+            fields_or_decode_error(view.field_values),
+            fields_or_decode_error(lambda: [_item_getters(item) for item in view]),
+        )
         for index in range(len(view)):
+            item = partial(_item_getters_at, view, index)
+            self.assertEqual(
+                fields_or_decode_error(partial(view.item_field_values, index)),
+                fields_or_decode_error(item),
+                f"item {index}",
+            )
+            self.assertEqual(
+                fields_or_decode_error(lambda index=index: view[index].field_values()),
+                fields_or_decode_error(item),
+                f"item {index}",
+            )
             self.assertEqual(
                 fields_or_decode_error(partial(_pair_values, view, index)),
                 fields_or_decode_error(partial(_pair_getters, view, index)),
@@ -427,6 +512,15 @@ def _point_values(point: Point) -> tuple[float, float, int, str]:
 
 def _fields_of_each(view: ItemVector) -> list[ItemFields]:
     return [item.fields() for item in view]
+
+
+def _item_getters(item: Item) -> tuple[float, float, float]:
+    pair = item.pair()
+    return (item.value(), pair.first(), pair.second())
+
+
+def _item_getters_at(view: ItemVector, index: int) -> tuple[float, float, float]:
+    return _item_getters(view[index])
 
 
 def _pair_values(view: ItemVector, index: int) -> tuple[float, float]:

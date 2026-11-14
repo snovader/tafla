@@ -36,6 +36,39 @@ class Uint8Offsets:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint8OffsetsFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint8OffsetsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsFields(TypedDict):
     """The fields of a ``Uint8Offsets``, to write"""
@@ -43,6 +76,9 @@ class Uint8OffsetsFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint8OffsetsFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint8OffsetsSized:
@@ -75,6 +111,39 @@ class Uint8OffsetsSized:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint8OffsetsSizedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint8OffsetsSizedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsSizedFields(TypedDict):
     """The fields of a ``Uint8OffsetsSized``, to write"""
@@ -82,6 +151,9 @@ class Uint8OffsetsSizedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint8OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint8OffsetsVersioned:
@@ -136,6 +208,39 @@ class Uint8OffsetsVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint8OffsetsVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint8OffsetsVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsVersionedFields(TypedDict):
     """The fields of a ``Uint8OffsetsVersioned``, to write"""
@@ -143,6 +248,9 @@ class Uint8OffsetsVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint8OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint8OffsetsSizedVersioned:
@@ -199,6 +307,39 @@ class Uint8OffsetsSizedVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint8OffsetsSizedVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint8OffsetsSizedVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsSizedVersionedFields(TypedDict):
     """The fields of a ``Uint8OffsetsSizedVersioned``, to write"""
@@ -206,6 +347,9 @@ class Uint8OffsetsSizedVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint8OffsetsSizedVersionedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint16Offsets:
@@ -238,6 +382,39 @@ class Uint16Offsets:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint16OffsetsFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint16OffsetsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsFields(TypedDict):
     """The fields of a ``Uint16Offsets``, to write"""
@@ -245,6 +422,9 @@ class Uint16OffsetsFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint16OffsetsFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint16OffsetsSized:
@@ -277,6 +457,39 @@ class Uint16OffsetsSized:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint16OffsetsSizedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint16OffsetsSizedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsSizedFields(TypedDict):
     """The fields of a ``Uint16OffsetsSized``, to write"""
@@ -284,6 +497,9 @@ class Uint16OffsetsSizedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint16OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint16OffsetsVersioned:
@@ -338,6 +554,39 @@ class Uint16OffsetsVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint16OffsetsVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint16OffsetsVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsVersionedFields(TypedDict):
     """The fields of a ``Uint16OffsetsVersioned``, to write"""
@@ -345,6 +594,9 @@ class Uint16OffsetsVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint16OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint16OffsetsSizedVersioned:
@@ -401,6 +653,39 @@ class Uint16OffsetsSizedVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint16OffsetsSizedVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint16OffsetsSizedVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsSizedVersionedFields(TypedDict):
     """The fields of a ``Uint16OffsetsSizedVersioned``, to write"""
@@ -408,6 +693,9 @@ class Uint16OffsetsSizedVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint16OffsetsSizedVersionedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint32Offsets:
@@ -440,6 +728,39 @@ class Uint32Offsets:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint32OffsetsFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint32OffsetsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsFields(TypedDict):
     """The fields of a ``Uint32Offsets``, to write"""
@@ -447,6 +768,9 @@ class Uint32OffsetsFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint32OffsetsFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint32OffsetsSized:
@@ -479,6 +803,39 @@ class Uint32OffsetsSized:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint32OffsetsSizedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint32OffsetsSizedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsSizedFields(TypedDict):
     """The fields of a ``Uint32OffsetsSized``, to write"""
@@ -486,6 +843,9 @@ class Uint32OffsetsSizedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint32OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint32OffsetsVersioned:
@@ -540,6 +900,39 @@ class Uint32OffsetsVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint32OffsetsVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint32OffsetsVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsVersionedFields(TypedDict):
     """The fields of a ``Uint32OffsetsVersioned``, to write"""
@@ -547,6 +940,9 @@ class Uint32OffsetsVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint32OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 
 
 class Uint32OffsetsSizedVersioned:
@@ -603,6 +999,39 @@ class Uint32OffsetsSizedVersioned:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> Uint32OffsetsSizedVersionedFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "name": self.name(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "name": values[1],
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> Uint32OffsetsSizedVersionedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsSizedVersionedFields(TypedDict):
     """The fields of a ``Uint32OffsetsSizedVersioned``, to write"""
@@ -610,3 +1039,6 @@ class Uint32OffsetsSizedVersionedFields(TypedDict):
     id: int
     name: str
     values: Buffer | Iterable[int]
+
+
+type Uint32OffsetsSizedVersionedFieldValues = tuple[int, str, memoryview[int]]

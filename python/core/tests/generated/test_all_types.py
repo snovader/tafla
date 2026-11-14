@@ -2,7 +2,7 @@
 writes and reads tables with tafla."""
 
 import unittest
-from collections.abc import Callable, Iterable
+from collections.abc import Buffer, Callable, Iterable
 from dataclasses import FrozenInstanceError, astuple, fields, replace
 from functools import partial
 from typing import Any, NamedTuple
@@ -73,6 +73,7 @@ from tests.generated.expectations import (
     assert_same_table,
     assert_values_or_decode_error,
     fields_or_decode_error,
+    plain,
 )
 from tests.tables import Description, build_table
 
@@ -268,6 +269,117 @@ class TestDecodeErrors(unittest.TestCase):
         assert_values_or_decode_error(lambda: read_nested(Nested(data)))
         assert_values_or_decode_error(lambda: read_reserved(Reserved(data)))
         assert_values_or_decode_error(lambda: read_structs(Structs(data)))
+
+
+class TestEveryField(unittest.TestCase):
+    # fields() and field_values() read nested tables in the same call, and
+    # return what the getters read or raise DecodeError as they do. A nested
+    # table of fixed size has its values in place of it, and vectors and
+    # arrays of structs are their views in field_values().
+
+    @SETTINGS
+    @given(nested_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_nested_tables_values_as_their_getters_do(
+        self, fields: NestedFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        nested = Nested(_corrupted(Nested.serialize(**fields), corruption))
+
+        _assert_same(self, nested.field_values, partial(_nested_values, nested))
+        _assert_same(
+            self, lambda: nested.outer().fields(), partial(_outer_fields, nested)
+        )
+
+    @SETTINGS
+    @given(structs_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_structs_fields_and_values_as_their_getters_do(
+        self, fields: StructsFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        structs = Structs(_corrupted(Structs.serialize(**fields), corruption))
+
+        _assert_same(self, structs.fields, partial(read_structs, structs))
+        _assert_same(self, structs.field_values, partial(_structs_values, structs))
+
+    @SETTINGS
+    @given(reserved_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_a_nested_table_of_fixed_size_in_place_as_its_getters_do(
+        self, fields: ReservedFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        reserved = Reserved(_corrupted(Reserved.serialize(**fields), corruption))
+
+        _assert_same(self, reserved.fields, partial(read_reserved, reserved))
+        _assert_same(self, reserved.field_values, partial(_reserved_values, reserved))
+
+    @SETTINGS
+    @given(scalars_fields, arrays_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_scalars_and_arrays_values_as_their_getters_do(
+        self,
+        scalars_fields: ScalarsFields,
+        arrays_fields: ArraysFields,
+        corruption: Truncation | Overwrite | bytes,
+    ) -> None:
+        scalars = Scalars(_corrupted(Scalars.serialize(**scalars_fields), corruption))
+        arrays = Arrays(_corrupted(Arrays.serialize(**arrays_fields), corruption))
+
+        _assert_same(
+            self, scalars.field_values, lambda: tuple(read_scalars(scalars).values())
+        )
+        _assert_same(self, arrays.fields, partial(read_arrays, arrays))
+        _assert_same(
+            self, arrays.field_values, lambda: tuple(read_arrays(arrays).values())
+        )
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_arbitrary_bytes_values_as_the_getters_do(self, data: bytes) -> None:
+        nested, structs = Nested(data), Structs(data)
+
+        _assert_same(self, nested.field_values, partial(_nested_values, nested))
+        _assert_same(self, structs.fields, partial(read_structs, structs))
+        _assert_same(self, structs.field_values, partial(_structs_values, structs))
+
+
+def _corrupted(data: Buffer, corruption: Truncation | Overwrite | bytes) -> bytes:
+    """The bytes of a table, corrupted unless ``corruption`` is bytes"""
+    if isinstance(corruption, bytes):
+        return bytes(data)
+    return corruption.apply(bytes(data))
+
+
+def _assert_same(
+    test: unittest.TestCase, read: Callable[[], object], expected: Callable[[], object]
+) -> None:
+    """Asserts that ``read`` returns what ``expected`` reads through the getters,
+    or raises the same DecodeError"""
+    test.assertEqual(
+        fields_or_decode_error(lambda: plain(read())),
+        fields_or_decode_error(lambda: plain(expected())),
+    )
+
+
+def _outer_fields(nested: Nested) -> object:
+    outer = nested.outer()
+    count, inner = outer.count(), outer.inner()
+    return {"count": count, "inner": {"name": inner.name(), "values": inner.values()}}
+
+
+# The values of each table, read in the fields' order, as the getters read them
+
+
+def _nested_values(nested: Nested) -> tuple[object, ...]:
+    label, outer = nested.label(), nested.outer()
+    count, inner = outer.count(), outer.inner()
+    values = (count, (inner.name(), inner.values()))
+    return (label, values, nested.trees())
+
+
+def _structs_values(structs: Structs) -> tuple[object, ...]:
+    packed, documented = structs.packed(), structs.documented()
+    segment, segments, path = structs.segment(), structs.segments(), structs.path()
+    return (packed, documented, segment, segments, (path.start(), path.points()))
+
+
+def _reserved_values(reserved: Reserved) -> tuple[object, ...]:
+    return tuple(read_reserved(reserved)["keywords"].values())
 
 
 class TestViews(unittest.TestCase):

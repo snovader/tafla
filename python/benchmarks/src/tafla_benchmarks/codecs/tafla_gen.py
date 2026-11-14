@@ -41,18 +41,11 @@ def serialize_document(input: DocumentInput) -> memoryview:
 
 
 def deserialize_document(data: Buffer) -> DocumentOutput:
-    document = Document(data)
-    columns = document.columns()
+    """Reads every field's value at once with ``field_values()``, the nested
+    columns' as a tuple of their own"""
+    x, y, name, (base, keys, a, b) = Document(data).field_values()
 
-    return DocumentOutput(
-        document.x(),
-        document.y(),
-        document.name(),
-        columns.base(),
-        columns.keys(),
-        columns.a(),
-        columns.b(),
-    )
+    return DocumentOutput(x, y, name, base, keys, a, b)
 
 
 def sum_a(data: Buffer) -> float:
@@ -75,13 +68,11 @@ def _item_fields(item: ItemInput) -> ItemFields:
 
 
 def deserialize_list(data: Buffer) -> ListInput:
-    """Reads every item's fields at once with the view's ``fields()``"""
-    items: list[ItemInput] = []
-    for fields in ItemList(data).items().fields():
-        pair = fields["pair"]
-        items.append(ItemInput(fields["value"], pair["first"], pair["second"]))
+    """Reads every item's values at once with the view's ``field_values()``,
+    each nested pair's in place of it"""
+    values = ItemList(data).items().field_values()
 
-    return ListInput(items)
+    return ListInput([ItemInput(*item) for item in values])
 
 
 def serialize_structs(input: ListInput) -> memoryview:
@@ -122,10 +113,11 @@ call too.
 The record and the fixed-size record are written from their values, as
 positional arguments, and read into tuples of them, with ``serialize_values()``,
 ``field_values()`` and ``read_values()``. The document is written from a
-``TypedDict`` of each table's fields, and read with the getters, columns as
-views. The vector is written from its items' ``TypedDict``s, and read into
-them with the ``fields()`` of the view that its getter returns, which reads
-every item's fields at once. The array of structs is written from the
+``TypedDict`` of each table's fields, and read into a tuple of its values with
+``field_values()``, its columns' in a tuple of their own, as views. The vector
+is written from its items' ``TypedDict``s, and read with the
+``field_values()`` of the view that its getter returns, which reads every
+item's values at once, each pair's in place of it. The array of structs is written from the
 workload's own items, which the struct's protocol of fields types, and read
 with its view's ``iter_field_values()``, into a tuple of each struct's values
 rather than a struct.

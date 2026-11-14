@@ -38,11 +38,11 @@ of its own, and `item_access.py` holds them:
   of the last item or `get_vector_offsets()` of every item, and
   `get_struct_array()` with `Struct("<fff")`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
-  views that read each item when it's asked for. The vector's `[-1]` reads
-  the last item alone, and `for` iterates over every item, creating its
-  reader as it reaches it. The array's `item_field_values(-1)` reads the last
-  struct's values alone, and `iter_field_values()` every struct's, as tuples,
-  as `Struct("<fff")` unpacks them by hand.
+  views that read each item when it's asked for. `item_field_values(-1)`
+  reads the last item's values alone, as a tuple: the vector's in one call,
+  and the array's as `Struct("<fff")` unpacks them by hand. `for` iterates
+  over every item of the vector, creating its reader as it reaches it, and
+  `iter_field_values()` over every struct's values.
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
   harness's noise.
 
@@ -112,10 +112,11 @@ comparison uses its counterpart:
   the fixed-size `Sample` are written from their values, as positional
   arguments, with `serialize_values()`, and read into tuples of them with
   `field_values()` and `read_values()`. The document is written from the
-  generated fields' dicts, and read with the getters, columns as views. The
-  vector is written from its items' dicts, and read into them with the
-  `fields()` of the view that its getter returns, which reads every item at
-  once. The array of structs is
+  generated fields' dicts, and read into a tuple of its values with
+  `field_values()`, its columns' in a tuple of their own, as views. The
+  vector is written from its items' dicts, and read with the `field_values()`
+  of the view that its getter returns, which reads every item's values at
+  once, each pair's in place of it. The array of structs is
   written from the workload's own items, whose attributes `TripleFields`, the
   struct's protocol of fields, types, as an application's objects would be,
   and read with its view's `iter_field_values()`, into a tuple of each

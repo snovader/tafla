@@ -160,13 +160,16 @@ def _read_keywords(keywords: Keywords) -> KeywordsFields:
 
 
 def read_structs(structs: Structs, items: ViewItems = in_order) -> StructsFields:
+    # In the fields' order, so that corrupted bytes raise the first field's error
+    packed, documented = structs.packed(), items(structs.documented())
+    segment, segments = structs.segment(), items(structs.segments())
     path = structs.path()
 
     return {
-        "packed": structs.packed(),
-        "documented": items(structs.documented()),
-        "segment": structs.segment(),
-        "segments": items(structs.segments()),
+        "packed": packed,
+        "documented": documented,
+        "segment": segment,
+        "segments": segments,
         "path": {"start": path.start(), "points": items(path.points())},
     }
 
