@@ -494,7 +494,7 @@ public final class DirectTableBuilder {
         var offset = position - tableStart;
         var fewest = offset + slotBytes + (long) count * header;
         if (fewest > maxLength) {
-            throw new IllegalArgumentException(tooLong(index, fewest));
+            throw tooLong(index, fewest);
         }
 
         var parentStart = tableStart;
@@ -505,28 +505,25 @@ public final class DirectTableBuilder {
         var start = position;
         var startSegments = segmentCount;
         try {
-            ensure((int) slotBytes);
-            store(buffer, vector, offsetSize, count);
-            length += (int) slotBytes;
-            position += slotBytes;
+            startVector(count, (int) slotBytes);
 
+            // The first item, after which the others have room as long as it, if the table does
             var item = new Item();
-            for (int i = 0; i < count; i++) {
+            if (count > 0) {
                 var itemLength = length;
-                startInPlace(fields, header);
-                fill.accept(item, i);
-                checkComplete();
-                endInPlace(parentStart, parentSlots, parentFields, index, parentAlignment);
-
-                store(buffer, vector + (i + 1) * offsetSize, offsetSize, position - start);
-                if (i == 0 && RESERVE_ITEMS) {
-                    reserveItems(count - 1, length - itemLength);
+                writeItem(item, 0, fill, fields, header, vector, start);
+                if (RESERVE_ITEMS) {
+                    reserveItems(count - 1, length - itemLength, parentStart);
                 }
             }
+            for (int i = 1; i < count; i++) {
+                writeItem(item, i, fill, fields, header, vector, start);
+            }
+            endInPlace(parentStart, parentSlots, parentFields, index, parentAlignment);
 
             var end = offset + (position - start);
             if (end > maxLength) {
-                throw new IllegalArgumentException(tooLong(index, end));
+                throw tooLong(index, end);
             }
 
             setOffset(index, offset);
@@ -536,6 +533,34 @@ public final class DirectTableBuilder {
             truncate(vector, start, startSegments);
             throw failure;
         }
+    }
+
+    /** Writes a vector's count, and makes room for its items' ends */
+    private void startVector(int count, int slotBytes) {
+        ensure(slotBytes);
+        store(buffer, length, offsetSize, count);
+        length += slotBytes;
+        position += slotBytes;
+    }
+
+    /**
+     * Writes item {@code i} of a vector of tables in place, whose count is at {@code vector} in the
+     * bytes, and {@code start} in the table, and then its end
+     */
+    private void writeItem(
+        Item item,
+        int i,
+        ObjIntConsumer<Item> fill,
+        int fields,
+        int header,
+        int vector,
+        long start
+    ) {
+        startInPlace(fields, header);
+        fill.accept(item, i);
+        checkComplete();
+
+        store(buffer, vector + (i + 1) * offsetSize, offsetSize, position - start);
     }
 
     /**
@@ -554,7 +579,7 @@ public final class DirectTableBuilder {
         var offset = position - tableStart + padding;
         var end = offset + byteLength;
         if (end > maxLength) {
-            throw new IllegalArgumentException(tooLong(index, end));
+            throw tooLong(index, end);
         }
 
         // The field fits in the table, which fits in an array
@@ -562,8 +587,8 @@ public final class DirectTableBuilder {
         ensure(room);
 
         var at = length;
-        for (int i = 0; i < padding; i++) {
-            buffer[at + i] = 0;
+        if (padding != 0) {
+            Arrays.fill(buffer, at, at + padding, (byte) 0);
         }
         setOffset(index, offset);
         fieldsSet = index + 1;
@@ -613,7 +638,7 @@ public final class DirectTableBuilder {
         var byteLength = offsetSize + utf8Length;
         var end = offset + byteLength;
         if (end > maxLength) {
-            throw new IllegalArgumentException(tooLong(index, end));
+            throw tooLong(index, end);
         }
 
         setOffset(index, offset);
@@ -764,7 +789,7 @@ public final class DirectTableBuilder {
         var offset = start - tableStart + padding;
         var end = offset + (position - start);
         if (end > maxLength) {
-            throw new IllegalArgumentException(tooLong(index, end));
+            throw tooLong(index, end);
         }
 
         if (padding != 0) {
@@ -797,8 +822,8 @@ public final class DirectTableBuilder {
      * Makes room for {@code count} more items of a vector of tables in place, each of
      * {@code itemLength} bytes, as long as its first, up to what the table can address
      */
-    private void reserveItems(int count, int itemLength) {
-        var room = maxLength - (position - tableStart);
+    private void reserveItems(int count, int itemLength, long parentStart) {
+        var room = maxLength - (position - parentStart);
         ensure((int) Math.max(0, Math.min((long) count * itemLength, room)));
     }
 
@@ -889,35 +914,38 @@ public final class DirectTableBuilder {
      * @throws IllegalStateException if the table is already written, or holds all its fields
      */
     private int nextField() {
-        if (written != null) {
-            throw new IllegalStateException("The table was already written");
-        }
-
         var index = fieldsSet;
-        if (index == fields) {
-            throw new IllegalStateException(
-                String.format("Can't add field %d to a table of %d", fields + 1, fields)
-            );
+        if (index == fields || written != null) {
+            throw full();
         }
 
         return index;
     }
 
-    private String tooLong(int index, long length) {
+    /** {@return why the table takes no more fields}: it's written, or holds all its fields */
+    private IllegalStateException full() {
+        if (written != null) {
+            return new IllegalStateException("The table was already written");
+        }
+
+        return new IllegalStateException(String.format("Can't add field %d to a table of %d", fields + 1, fields));
+    }
+
+    private IllegalArgumentException tooLong(int index, long length) {
         if (maxLength == TableLayout.MAX_ARRAY_LENGTH) {
-            return String.format(
+            return new IllegalArgumentException(String.format(
                 "Field %d makes the table %d bytes, longer than a Java array can be",
                 index + 1,
                 length
-            );
+            ));
         }
 
-        return String.format(
+        return new IllegalArgumentException(String.format(
             "Field %d makes the table %d bytes, too long for %s offsets",
             index + 1,
             length,
             layout.offsetType()
-        );
+        ));
     }
 
     /**
