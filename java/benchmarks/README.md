@@ -29,6 +29,17 @@ The benchmark classes are named after the TypeScript code's workloads:
 `RecordBenchmark`, `DocumentBenchmark`, `ListBenchmark` for the vector of
 nested tables, `StructsBenchmark` for the array of structs and
 `SampleBenchmark` for the fixed-size record.
+
+`ReusedBytesBenchmark` times the document of 100,000 rows written into the
+start of the same bytes in every call, rather than into new bytes, by the
+codecs that can: tafla-gen's `Document.serializeInto()`, whose bytes the
+benchmark owns and keeps. The other libraries write into new bytes, as the
+document's `serialize` times them. msgpack's packer reuses its buffer, but
+copies each message out of it with `toByteArray()`, and FlatBuffers'
+builder could be reused with `clear()`, though the comparison doesn't, as
+Limitations describes. Before timing, the check that the codec writes into
+the bytes what `serialize()` writes into new ones starts from bytes of
+`0xff`.
 `./gradlew :benchmarks:encodingReport` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 

@@ -217,7 +217,8 @@ fun printFastestIterations(results: File) {
 
 /**
  * Prints a table of a value per benchmark and codec, which `format` formats with the first codec's
- * value of the benchmark, or null for the first codec's own
+ * value of the benchmark, or null for the first codec's own and for a benchmark that the first
+ * codec doesn't run, such as writing into reused bytes
  */
 fun printTable(title: String, rows: Map<String, Map<String, Double>>, format: (Double, Double?) -> String) {
     val codecs = rows.values.flatMap { it.keys }.distinct()
@@ -227,7 +228,7 @@ fun printTable(title: String, rows: Map<String, Map<String, Double>>, format: (D
     println("| ${"Benchmark".padEnd(width)} | ${codecs.joinToString(" | ") { it.padStart(16) }} |")
     println("| ${"-".repeat(width)} | ${codecs.joinToString(" | ") { "-".repeat(15) + ":" }} |")
     for ((row, values) in rows) {
-        val first = values.getValue(codecs.first())
+        val first = values[codecs.first()]
         val cells = codecs.map { codec ->
             val value = values[codec] ?: return@map ""
             format(value, if (codec == codecs.first()) null else first)
