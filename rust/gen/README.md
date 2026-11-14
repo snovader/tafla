@@ -580,6 +580,41 @@ assert_eq!(item.pair()?.second()?, 1.5);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+In C++, beside the `<Name>Fields` of a message or table with such vectors or
+arrays of structs, which takes spans of the generated types, a template,
+`generic::<Name>Fields`, takes each of them as a view of any items that
+convert into the vector's `<Table>Fields` or the array's struct:
+`std::views::transform()` of the caller's items, say, or a `std::span` of
+items that convert themselves. Each has a type parameter, `T`, `U` and so on,
+as in Rust, whose default is a span of the generated type. A view knows its
+size and can be iterated more than once, since the items are sized before
+they're written, which `tafla::ViewOf` checks, so a `std::vector`, which the
+fields struct would hold a copy of, fails to compile. The templates lie in
+the namespace `generic`, so that their names can't clash with the schema's,
+which are `PascalCase`. Their items convert into the plain `<Table>Fields`,
+and their nested tables' fields are plain too, so that no template names
+another, whose iterators' functions Clang looks up through every type in
+their template arguments: tables that held the next one's views twice, as
+deep as tables nest, took time that doubled with each level to compile. So
+unlike Rust's, they take every vector as a view, a tree's children too,
+since their defaults never name themselves.
+
+```cpp
+/// An item as the application holds it, with its pair's values in place
+struct Row {
+    float value;
+    float first;
+    float second;
+};
+
+const std::vector<Row> rows{{.value = 1, .first = 0.5, .second = 1.5}};
+const auto fields_of = [](const Row& row) {
+    return shapes::ItemFields{.value = row.value, .pair = {.first = row.first, .second = row.second}};
+};
+const auto items = rows | std::views::transform(fields_of);
+const auto bytes = shapes::generic::ItemListFields{.items = items}.serialize();
+```
+
 TypeScript's and JavaScript's fields are interfaces, which any object with
 their properties satisfies, so they take the caller's objects as they are.
 

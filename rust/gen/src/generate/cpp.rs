@@ -2,8 +2,11 @@
 //! tables are views that read fields lazily from bytes that the caller owns,
 //! as `std::string_view`s and `tafla::ArrayView`s of strings and arrays;
 //! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Structs are aggregates
-//! read and written at fixed offsets.
+//! and a `TableWriter` writes, nested tables in place. Beside the fields
+//! struct of a table with vectors or arrays of structs, a template in the
+//! namespace `generic` takes them as views of any items that convert into
+//! theirs, rather than as spans of their own.
+//! Structs are aggregates read and written at fixed offsets.
 //!
 //! The fields whose sizes the schema fixes, scalars, structs and nested
 //! tables of only such fields, the generated code lays out itself, as Go's
@@ -17,6 +20,8 @@
 //! including through vectors that hold their own table. Structs, and the
 //! structs of tables' fields, which hold others by value, come after those
 //! that they hold.
+
+use std::collections::HashSet;
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
@@ -241,6 +246,8 @@ pub fn generate(
         schema,
         inlined: inlined_tables(schema, &recursive),
         fixed: FixedSizes::new(schema, MAX_LAID_OUT),
+        generic: generic_fields(schema, &namespace),
+        namespace: namespace.clone(),
     };
 
     let mut writer = CodeWriter::new(INDENT);
@@ -256,22 +263,7 @@ pub fn generate(
     writer.blank();
     writer.line("#pragma once");
     writer.blank();
-    // `std::memcpy()` copies the string of a message written whole
-    let copies_strings = generator.writes_whole_strings();
-    for include in [
-        "cstddef",
-        "cstdint",
-        "cstring",
-        "span",
-        "string_view",
-        "vector",
-    ] {
-        if include != "cstring" || copies_strings {
-            writer.line(format!("#include <{include}>"));
-        }
-    }
-    writer.blank();
-    writer.line(format!("#include <{runtime}>"));
+    generator.includes(&mut writer, runtime);
     writer.blank();
     writer.line(format!("namespace {namespace} {{"));
 
@@ -312,22 +304,15 @@ pub fn generate(
             Kind::Struct(_) => unreachable!("structs are written before tables"),
         }
         writer.blank();
-        generator.fields_struct(&mut writer, index);
+        generator.fields_struct(&mut writer, index, false);
+        if generator.is_generic(index) {
+            writer.blank();
+            generator.fields_struct(&mut writer, index, true);
+        }
     }
 
     for &index in &tables {
-        let definition = schema.definition(index);
-        generator.getter_definitions(&mut writer, definition);
-        match definition.kind {
-            Kind::Message(layout) => generator.serialize(&mut writer, definition, layout),
-            Kind::Table => {
-                generator.size_and_write(&mut writer, definition);
-                if generator.fixed.table(index).is_some() {
-                    generator.table_to_bytes(&mut writer, definition);
-                }
-            }
-            Kind::Struct(_) => unreachable!("structs are written before tables"),
-        }
+        generator.definitions(&mut writer, index);
     }
 
     writer.blank();
@@ -347,6 +332,28 @@ struct Generator<'a> {
     /// The byte length of each nested table whose fields' sizes the schema
     /// fixes, which a message written whole writes with its `to_bytes()`
     fixed: FixedSizes,
+    /// The fields of each definition that a generic fields struct takes as
+    /// views of any items, by their position: its vectors and arrays of
+    /// structs
+    generic: Vec<Vec<Option<GenericField>>>,
+    /// The namespace of the schema's code, in which a generic fields struct
+    /// names the fields structs of the tables that it holds
+    namespace: String,
+}
+
+/// A vector or an array of structs of a generic fields struct, which takes a
+/// view of any items that convert into its item, through a type parameter
+/// whose default is a span of the item, as Rust's generic fields take a slice
+/// of any type that converts into it
+struct GenericField {
+    /// The type parameter: `T`, `U`, `V`, `W`, `T5`, `T6` and so on, but
+    /// for the schema's names
+    parameter: String,
+    /// What its items convert into, as the generic fields struct names it:
+    /// the struct, or the table's fields struct
+    item: String,
+    /// The documentation of the field's type, after the field's own
+    doc: String,
 }
 
 /// A message that the generated code writes whole, into bytes of its length,
@@ -376,6 +383,58 @@ impl Whole<'_> {
 }
 
 impl Generator<'_> {
+    /// The standard headers that the code includes, and the runtime's.
+    /// `std::memcpy()` copies the string of a message written whole, and
+    /// `std::ranges::size()` counts the items of a generic fields struct's
+    /// views.
+    fn includes(&self, writer: &mut CodeWriter, runtime: &str) {
+        let copies_strings = self.writes_whole_strings();
+        let any_generic = (0..self.schema.definitions.len()).any(|index| self.is_generic(index));
+        for include in [
+            "cstddef",
+            "cstdint",
+            "cstring",
+            "ranges",
+            "span",
+            "string_view",
+            "vector",
+        ] {
+            let included = match include {
+                "cstring" => copies_strings,
+                "ranges" => any_generic,
+                _ => true,
+            };
+            if included {
+                writer.line(format!("#include <{include}>"));
+            }
+        }
+        writer.blank();
+        writer.line(format!("#include <{runtime}>"));
+    }
+
+    /// The definitions of a table's getters and of the functions that write
+    /// it, from its plain fields struct and from its generic one
+    fn definitions(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
+        self.getter_definitions(writer, definition);
+
+        let forms: &[bool] = if self.is_generic(index) {
+            &[false, true]
+        } else {
+            &[false]
+        };
+        for &in_generic in forms {
+            match definition.kind {
+                Kind::Message(layout) => self.serialize(writer, index, layout, in_generic),
+                Kind::Table => self.size_and_write(writer, index, in_generic),
+                Kind::Struct(_) => unreachable!("structs are written before tables"),
+            }
+        }
+        if definition.kind == Kind::Table && self.fixed.table(index).is_some() {
+            self.table_to_bytes(writer, definition);
+        }
+    }
+
     fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
         let name = &type_name(&definition.name);
 
@@ -606,7 +665,7 @@ impl Generator<'_> {
             cpp_doc(writer, &field.docs);
             writer.line(format!(
                 "{} {}{{}};",
-                self.input_type(field.field_type),
+                self.input_type(field.field_type, false),
                 identifier(&field.name)
             ));
         }
@@ -721,18 +780,58 @@ impl Generator<'_> {
     }
 
     /// The struct of the values that write a message or table, and the
-    /// declarations of the functions that write it
-    fn fields_struct(&self, writer: &mut CodeWriter, index: usize) {
+    /// declarations of the functions that write it, or, `in_generic`, its
+    /// generic fields struct beside it: a template in the namespace
+    /// `generic`, which takes its vectors and arrays of structs as views of
+    /// any items that convert into theirs. A generic fields struct's
+    /// defaults, the items it converts into and its nested tables are the
+    /// plain fields structs, so that no type names a generic one's type
+    /// parameters within its own: Clang finds the functions of a type's
+    /// iterators through every type in its template arguments, which, where
+    /// a table holds the next one's views twice, as deep as tables nest,
+    /// took time that doubled with each level.
+    fn fields_struct(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
         let definition = self.schema.definition(index);
         let name = &type_name(&definition.name);
 
-        cpp_doc(
-            writer,
-            &[format!("The fields of {}, to write", article(name))],
-        );
+        if in_generic {
+            writer.line("namespace generic {");
+            writer.blank();
+            let (fields, plural) = self.generic_prose(index);
+            let (views, spans, their) = if plural {
+                ("views", "spans", "their")
+            } else {
+                ("a view", "a span", "its")
+            };
+            cpp_doc(
+                writer,
+                &[format!(
+                    "The fields of {}, to write, as `{name}Fields` holds them, but whose {fields} \
+                     can be {views} of any items that convert into {their} items rather than \
+                     {spans} of them",
+                    article(name)
+                )],
+            );
+            let parameters: Vec<String> = self.generic[index]
+                .iter()
+                .flatten()
+                .map(|field| {
+                    format!(
+                        "class {} = std::span<const {}>",
+                        field.parameter, field.item
+                    )
+                })
+                .collect();
+            writer.line(format!("template <{}>", parameters.join(", ")));
+        } else {
+            cpp_doc(
+                writer,
+                &[format!("The fields of {}, to write", article(name))],
+            );
+        }
         writer.line(format!("struct {name}Fields {{"));
         writer.indent();
-        for field in &definition.fields {
+        for (position, field) in definition.fields.iter().enumerate() {
             // A nested table's fields struct initializes its own fields, so
             // it takes no `{}`, which Clang checks again for each struct
             // that holds it, in time that doubled with each level of nesting
@@ -741,15 +840,39 @@ impl Generator<'_> {
             } else {
                 "{}"
             };
-            cpp_doc(writer, &field.docs);
+            let field_type =
+                if let Some(generic_field) = self.generic_field(index, position, in_generic) {
+                    let mut docs = field.docs.clone();
+                    if !docs.is_empty() {
+                        docs.push(String::new());
+                    }
+                    docs.push(generic_field.doc.clone());
+                    cpp_doc(writer, &docs);
+                    generic_field.parameter.clone()
+                } else {
+                    cpp_doc(writer, &field.docs);
+                    self.input_type(field.field_type, in_generic)
+                };
             writer.line(format!(
-                "{} {}{initializer};",
-                self.input_type(field.field_type),
+                "{field_type} {}{initializer};",
                 identifier(&field.name)
             ));
         }
         writer.blank();
+        self.writer_declarations(writer, index);
+        writer.dedent();
+        writer.line("};");
+        if in_generic {
+            writer.blank();
+            writer.line("}  // namespace generic");
+        }
+    }
 
+    /// The declarations of the functions with which a fields struct writes
+    /// its message, or with which a parent writes its table
+    fn writer_declarations(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
+        let name = &type_name(&definition.name);
         match definition.kind {
             Kind::Message(layout) => {
                 cpp_doc(
@@ -830,52 +953,169 @@ impl Generator<'_> {
             }
             Kind::Struct(_) => unreachable!("structs are written by their own functions"),
         }
-        writer.dedent();
-        writer.line("};");
+    }
+
+    /// The generic fields of a definition, as its documentation names them,
+    /// and whether they're more than one
+    fn generic_prose(&self, index: usize) -> (String, bool) {
+        let names: Vec<String> = self
+            .schema
+            .definition(index)
+            .fields
+            .iter()
+            .zip(&self.generic[index])
+            .filter(|(_, generic)| generic.is_some())
+            .map(|(field, _)| format!("`{}`", identifier(&field.name)))
+            .collect();
+
+        let fields = match names.split_last() {
+            Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+            _ => names.concat(),
+        };
+        (fields, names.len() > 1)
+    }
+
+    /// The field at `position` of a definition's generic fields struct, when
+    /// `in_generic` and it takes a view of any items
+    fn generic_field(
+        &self,
+        index: usize,
+        position: usize,
+        in_generic: bool,
+    ) -> Option<&GenericField> {
+        if in_generic {
+            self.generic[index][position].as_ref()
+        } else {
+            None
+        }
+    }
+
+    /// Whether a definition has a generic fields struct: whether any of its
+    /// fields takes a view of any items
+    fn is_generic(&self, index: usize) -> bool {
+        self.generic[index].iter().any(Option::is_some)
+    }
+
+    /// The type parameters of a generic fields struct, as the definitions of
+    /// its members declare them
+    fn type_parameters(&self, index: usize) -> String {
+        self.generic[index]
+            .iter()
+            .flatten()
+            .map(|field| format!("class {}", field.parameter))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// A fields struct's name, as the definitions of its members qualify it:
+    /// a generic one's with its namespace and its type parameters
+    fn fields_class(&self, index: usize, in_generic: bool) -> String {
+        let name = type_name(&self.schema.definition(index).name);
+        if !in_generic {
+            return format!("{name}Fields");
+        }
+
+        let parameters: Vec<&str> = self.generic[index]
+            .iter()
+            .flatten()
+            .map(|field| field.parameter.as_str())
+            .collect();
+        format!("generic::{name}Fields<{}>", parameters.join(", "))
+    }
+
+    /// The `template <...>` that the definition of a generic fields struct's
+    /// member starts with
+    fn member_template(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
+        if in_generic {
+            writer.line(format!("template <{}>", self.type_parameters(index)));
+        }
+    }
+
+    /// The checks of a generic fields struct's views, at the start of each
+    /// of its members' bodies, and a blank line after them. A view that isn't
+    /// one, such as a `std::vector`, which the fields struct would hold a
+    /// copy of, fails them, rather than an expression of the body. The type
+    /// parameters aren't constrained instead, since the defaults would be
+    /// checked where they're declared, before the items are complete.
+    fn view_checks(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
+        if !in_generic {
+            return;
+        }
+        for field in self.generic[index].iter().flatten() {
+            writer.line(format!(
+                "static_assert(::tafla::ViewOf<{}, {}>);",
+                field.parameter, field.item
+            ));
+        }
+        writer.blank();
+    }
+
+    /// A table's plain fields struct, as a fields struct names it: qualified
+    /// within the namespace `generic`, where the name of the table's generic
+    /// fields struct would hide it
+    fn fields_type(&self, table: usize, in_generic: bool) -> String {
+        fields_type(
+            &type_name(&self.schema.definition(table).name),
+            &self.namespace,
+            in_generic && self.is_generic(table),
+        )
     }
 
     /// A message's `serialize()` and `serialize_into()`, each of which sizes
     /// its fields and then writes them, into new bytes of that length or the
     /// start of the caller's, or writes them whole
-    fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
-        let name = &type_name(&definition.name);
+    fn serialize(&self, writer: &mut CodeWriter, index: usize, layout: Layout, in_generic: bool) {
+        let definition = self.schema.definition(index);
+        let class = self.fields_class(index, in_generic);
+        // A generic fields struct has vectors or arrays of structs, so its
+        // message is never written whole
         let whole = self.whole(definition, layout);
         // A message written whole writes through its own `bytes_`, a pointer
         let given = if whole.is_some() { "given_" } else { "bytes_" };
 
         writer.blank();
+        self.member_template(writer, index, in_generic);
         writer.line(format!(
-            "inline ::tafla::Bytes {name}Fields::serialize() const {{"
-        ));
-        self.serialize_body(writer, definition, layout, whole.as_ref(), Output::NewBytes);
-        writer.line("}");
-
-        writer.blank();
-        writer.line(format!(
-            "inline std::size_t {name}Fields::serialize_into(std::span<std::uint8_t> {given}) const {{"
+            "inline ::tafla::Bytes {class}::serialize() const {{"
         ));
         self.serialize_body(
             writer,
-            definition,
+            index,
             layout,
             whole.as_ref(),
-            Output::GivenBytes,
+            (Output::NewBytes, in_generic),
+        );
+        writer.line("}");
+
+        writer.blank();
+        self.member_template(writer, index, in_generic);
+        writer.line(format!(
+            "inline std::size_t {class}::serialize_into(std::span<std::uint8_t> {given}) const {{"
+        ));
+        self.serialize_body(
+            writer,
+            index,
+            layout,
+            whole.as_ref(),
+            (Output::GivenBytes, in_generic),
         );
         writer.line("}");
     }
 
-    /// The body of a message's `serialize()` or `serialize_into()`: the
-    /// sizer, the writer into its output, the fields, and what it returns.
-    /// Each is written whole, rather than calling a function that the other
-    /// shares, so that `serialize()` stays as it was.
+    /// The body of a message's `serialize()` or `serialize_into()`, of its
+    /// plain fields struct or, `in_generic`, its generic one: the sizer, the
+    /// writer into its output, the fields, and what it returns. Each is
+    /// written whole, rather than calling a function that the other shares,
+    /// so that `serialize()` stays as it was.
     fn serialize_body(
         &self,
         writer: &mut CodeWriter,
-        definition: &Definition,
+        index: usize,
         layout: Layout,
         whole: Option<&Whole>,
-        output: Output,
+        (output, in_generic): (Output, bool),
     ) {
+        let definition = self.schema.definition(index);
         let name = &type_name(&definition.name);
         let fields = definition.fields.len();
 
@@ -886,6 +1126,7 @@ impl Generator<'_> {
             return;
         }
 
+        self.view_checks(writer, index, in_generic);
         if layout.version.is_some() {
             writer.line(format!(
                 "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT, {name}::FORMAT_VERSION);"
@@ -895,13 +1136,13 @@ impl Generator<'_> {
                 "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT);"
             ));
         }
-        self.sizes(writer, definition);
+        self.sizes(writer, index, in_generic);
         writer.blank();
         writer.line(match output {
             Output::NewBytes => "auto writer_ = sizer_.writer();",
             Output::GivenBytes => "auto writer_ = sizer_.writer(bytes_);",
         });
-        self.writes(writer, definition);
+        self.writes(writer, index, in_generic);
         writer.blank();
         writer.line(match output {
             Output::NewBytes => "return writer_.finish();",
@@ -990,41 +1231,52 @@ impl Generator<'_> {
     }
 
     /// The functions with which a nested table's parent sizes and writes it
-    fn size_and_write(&self, writer: &mut CodeWriter, definition: &Definition) {
-        let name = &type_name(&definition.name);
-        let fields = definition.fields.len();
+    fn size_and_write(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
+        let class = self.fields_class(index, in_generic);
+        let fields = self.schema.definition(index).fields.len();
 
         writer.blank();
+        self.member_template(writer, index, in_generic);
         writer.line(format!(
-            "inline void {name}Fields::size(::tafla::TableSizer& sizer_) const {{"
+            "inline void {class}::size(::tafla::TableSizer& sizer_) const {{"
         ));
         writer.indent();
+        self.view_checks(writer, index, in_generic);
         writer.line(format!(
             "const auto parent_ = sizer_.start_table({fields});"
         ));
-        self.sizes(writer, definition);
+        self.sizes(writer, index, in_generic);
         writer.line("sizer_.end_table(parent_);");
         writer.dedent();
         writer.line("}");
 
         writer.blank();
+        self.member_template(writer, index, in_generic);
         writer.line(format!(
-            "inline void {name}Fields::write(::tafla::TableWriter& writer_) const {{"
+            "inline void {class}::write(::tafla::TableWriter& writer_) const {{"
         ));
         writer.indent();
+        self.view_checks(writer, index, in_generic);
         writer.line(format!(
             "const auto parent_ = writer_.start_table({fields});"
         ));
-        self.writes(writer, definition);
+        self.writes(writer, index, in_generic);
         writer.line("writer_.end_table(parent_);");
         writer.dedent();
         writer.line("}");
     }
 
-    /// The calls that add a table's fields to `sizer_`, in order. The locals
-    /// and parameters end with a `_`, which no field's name does.
-    fn sizes(&self, writer: &mut CodeWriter, definition: &Definition) {
-        for field in &definition.fields {
+    /// The calls that add a table's fields to `sizer_`, in order, from its
+    /// plain fields struct or, `in_generic`, its generic one. The locals and
+    /// parameters end with a `_`, which no field's name does. A generic
+    /// field's view is counted with `std::ranges::size()`, and each of its
+    /// items converted into the vector's table's fields as it's sized, by a
+    /// reference of its own rather than the loop's, which GCC's
+    /// `-Wrange-loop-construct` warns of when it binds a converted item.
+    fn sizes(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
+        let definition = self.schema.definition(index);
+        for (position, field) in definition.fields.iter().enumerate() {
+            let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
                 FieldType::Scalar(scalar) => {
@@ -1037,24 +1289,35 @@ impl Generator<'_> {
                     ));
                 }
                 FieldType::String => writer.line(format!("sizer_.add_string({value});")),
-                FieldType::Struct(index) => {
-                    let structure = &type_name(&self.schema.definition(index).name);
+                FieldType::Struct(structure) => {
+                    let structure = &type_name(&self.schema.definition(structure).name);
                     writer.line(format!("sizer_.add_struct({structure}::SIZE);"));
                 }
-                FieldType::StructArray(index) => {
-                    let structure = &type_name(&self.schema.definition(index).name);
+                FieldType::StructArray(structure) => {
+                    let structure = &type_name(&self.schema.definition(structure).name);
+                    let count = if generic.is_some() {
+                        format!("std::ranges::size({value})")
+                    } else {
+                        format!("{value}.size()")
+                    };
                     writer.line(format!(
-                        "sizer_.add_struct_array({value}.size(), {structure}::SIZE, {structure}::ALIGNMENT);"
+                        "sizer_.add_struct_array({count}, {structure}::SIZE, {structure}::ALIGNMENT);"
                     ));
                 }
-                FieldType::Table(index) => {
-                    let table = &type_name(&self.schema.definition(index).name);
-                    writer.line(format!("sizer_.add_table({table}Fields::ALIGNMENT);"));
+                FieldType::Table(table) => {
+                    let table = self.fields_type(table, in_generic);
+                    writer.line(format!("sizer_.add_table({table}::ALIGNMENT);"));
                     writer.line(format!("{value}.size(sizer_);"));
                 }
                 FieldType::Vector(_) => {
-                    writer.line(format!("sizer_.add_vector({value}.size());"));
-                    writer.line(format!("for (const auto& item_ : {value}) {{"));
+                    if let Some(generic) = generic {
+                        writer.line(format!("sizer_.add_vector(std::ranges::size({value}));"));
+                        writer.line(format!("for (const auto& element_ : {value}) {{"));
+                        writer.line(format!("{INDENT}const {}& item_ = element_;", generic.item));
+                    } else {
+                        writer.line(format!("sizer_.add_vector({value}.size());"));
+                        writer.line(format!("for (const auto& item_ : {value}) {{"));
+                    }
                     writer.line(format!("{INDENT}item_.size(sizer_);"));
                     writer.line("}");
                 }
@@ -1063,48 +1326,79 @@ impl Generator<'_> {
     }
 
     /// The calls that write a table's fields with `writer_`, each with its
-    /// index, in the order that `sizes()` added them
-    fn writes(&self, writer: &mut CodeWriter, definition: &Definition) {
-        for (index, field) in definition.fields.iter().enumerate() {
+    /// index, in the order that `sizes()` added them, from its plain fields
+    /// struct or, `in_generic`, its generic one. A generic field's view is
+    /// iterated rather than indexed, with the items' index beside it, so that
+    /// any view that can be iterated more than once will do.
+    fn writes(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
+        let definition = self.schema.definition(index);
+        for (position, field) in definition.fields.iter().enumerate() {
+            let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => writer.line(format!(
-                    "writer_.set_uint8({index}, static_cast<std::uint8_t>({value}));"
+                    "writer_.set_uint8({position}, static_cast<std::uint8_t>({value}));"
                 )),
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("writer_.set_{}({index}, {value});", scalar.name()));
+                    writer.line(format!(
+                        "writer_.set_{}({position}, {value});",
+                        scalar.name()
+                    ));
                 }
                 FieldType::Array(scalar) => writer.line(format!(
-                    "writer_.set_{}_array({index}, {value});",
+                    "writer_.set_{}_array({position}, {value});",
                     scalar.name()
                 )),
-                FieldType::String => writer.line(format!("writer_.set_string({index}, {value});")),
-                FieldType::Struct(_) => {
-                    writer.line(format!("writer_.set_struct({index}, {value});"));
+                FieldType::String => {
+                    writer.line(format!("writer_.set_string({position}, {value});"));
                 }
-                FieldType::StructArray(_) => {
-                    writer.line(format!("writer_.set_structs({index}, {value});"));
+                FieldType::Struct(_) => {
+                    writer.line(format!("writer_.set_struct({position}, {value});"));
+                }
+                FieldType::StructArray(structure) => {
+                    if generic.is_some() {
+                        let structure = &type_name(&self.schema.definition(structure).name);
+                        writer.line(format!(
+                            "writer_.set_structs<{structure}>({position}, {value});"
+                        ));
+                    } else {
+                        writer.line(format!("writer_.set_structs({position}, {value});"));
+                    }
                 }
                 FieldType::Table(table) => {
-                    let table = &type_name(&self.schema.definition(table).name);
+                    let table = self.fields_type(table, in_generic);
                     writer.line(format!(
-                        "writer_.set_table({index}, {table}Fields::ALIGNMENT);"
+                        "writer_.set_table({position}, {table}::ALIGNMENT);"
                     ));
                     writer.line(format!("{value}.write(writer_);"));
                 }
                 FieldType::Vector(_) => {
-                    // Named by the field's index, so that the vectors of a
+                    // Named by the field's position, so that the vectors of a
                     // table don't clash
-                    let vector = format!("vector{index}_");
-                    writer.line(format!(
-                        "const auto {vector} = writer_.set_vector({index}, {value}.size());"
-                    ));
-                    writer.line(format!(
-                        "for (std::size_t index_ = 0; index_ < {value}.size(); ++index_) {{"
-                    ));
-                    writer.indent();
-                    writer.line(format!("{value}[index_].write(writer_);"));
-                    writer.line(format!("writer_.set_item_end({vector}, index_);"));
+                    let vector = format!("vector{position}_");
+                    if let Some(generic) = generic {
+                        writer.line(format!(
+                            "const auto {vector} = writer_.set_vector({position}, std::ranges::size({value}));"
+                        ));
+                        writer.line(format!(
+                            "for (std::size_t index_ = 0; const auto& element_ : {value}) {{"
+                        ));
+                        writer.indent();
+                        writer.line(format!("const {}& item_ = element_;", generic.item));
+                        writer.line("item_.write(writer_);");
+                        writer.line(format!("writer_.set_item_end({vector}, index_);"));
+                        writer.line("++index_;");
+                    } else {
+                        writer.line(format!(
+                            "const auto {vector} = writer_.set_vector({position}, {value}.size());"
+                        ));
+                        writer.line(format!(
+                            "for (std::size_t index_ = 0; index_ < {value}.size(); ++index_) {{"
+                        ));
+                        writer.indent();
+                        writer.line(format!("{value}[index_].write(writer_);"));
+                        writer.line(format!("writer_.set_item_end({vector}, index_);"));
+                    }
                     writer.dedent();
                     writer.line("}");
                 }
@@ -1135,9 +1429,19 @@ impl Generator<'_> {
         }
     }
 
-    /// The type of a field of a struct or of a fields struct
-    fn input_type(&self, field_type: FieldType) -> String {
+    /// The type of a field of a struct or of a fields struct, which names a
+    /// table's fields struct as a generic fields struct does when
+    /// `in_generic`. The arrays of structs of a fields struct are generic, and
+    /// take their type parameters' names instead.
+    fn input_type(&self, field_type: FieldType, in_generic: bool) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
+        let fields = |index: usize| {
+            fields_type(
+                &name(index),
+                &self.namespace,
+                in_generic && self.is_generic(index),
+            )
+        };
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
@@ -1145,9 +1449,93 @@ impl Generator<'_> {
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) => name(index),
             FieldType::StructArray(index) => format!("std::span<const {}>", name(index)),
-            FieldType::Table(index) => format!("{}Fields", name(index)),
-            FieldType::Vector(index) => format!("std::span<const {}Fields>", name(index)),
+            FieldType::Table(index) => fields(index),
+            FieldType::Vector(index) => format!("std::span<const {}>", fields(index)),
         }
+    }
+}
+
+/// The fields of each definition that its generic fields struct takes as
+/// views of any items, by their position: its vectors and arrays of structs.
+/// Each converts its items into the vector's table's plain fields struct,
+/// which the namespace `namespace` qualifies when that table has a generic
+/// one too, whose name hides it within the namespace `generic`.
+fn generic_fields(schema: &Schema, namespace: &str) -> Vec<Vec<Option<GenericField>>> {
+    let takes_view = |field: &Field| {
+        matches!(
+            field.field_type,
+            FieldType::StructArray(_) | FieldType::Vector(_)
+        )
+    };
+    let generic: Vec<bool> = schema
+        .definitions
+        .iter()
+        .map(|definition| definition.fields.iter().any(takes_view))
+        .collect();
+    // The type parameters don't take a name of the schema's, which a
+    // generic fields struct's members name
+    let declared: HashSet<String> = schema
+        .definitions
+        .iter()
+        .map(|definition| type_name(&definition.name))
+        .collect();
+
+    schema
+        .definitions
+        .iter()
+        .map(|definition| {
+            let mut names = ["T", "U", "V", "W"]
+                .into_iter()
+                .map(str::to_owned)
+                .chain((5_usize..).map(|number| format!("T{number}")))
+                .filter(|name| !declared.contains(name));
+
+            definition
+                .fields
+                .iter()
+                .map(|field| {
+                    if !takes_view(field) {
+                        return None;
+                    }
+
+                    let parameter = names.next().expect("the names never run out");
+                    let (item, items) = match field.field_type {
+                        FieldType::StructArray(structure) => {
+                            let structure = type_name(&schema.definition(structure).name);
+                            let items = format!("`{structure}`s");
+                            (structure, items)
+                        }
+                        FieldType::Vector(table) => {
+                            let name = type_name(&schema.definition(table).name);
+                            let items = format!("`{name}Fields`");
+                            (fields_type(&name, namespace, generic[table]), items)
+                        }
+                        _ => unreachable!("only vectors and arrays of structs take views"),
+                    };
+                    let doc = format!(
+                        "A view of {items}, or of any items that convert into them, such as \
+                         `std::views::transform()` of the caller's own: a `std::span` of {items} \
+                         unless `{parameter}` is another"
+                    );
+                    Some(GenericField {
+                        parameter,
+                        item,
+                        doc,
+                    })
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The name of a table's plain fields struct, `<Name>Fields`, qualified by
+/// `namespace` when `qualified`: within the namespace `generic`, where the
+/// table's generic fields struct hides it
+fn fields_type(name: &str, namespace: &str, qualified: bool) -> String {
+    if qualified {
+        format!("::{namespace}::{name}Fields")
+    } else {
+        format!("{name}Fields")
     }
 }
 

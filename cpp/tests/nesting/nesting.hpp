@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -426,6 +427,37 @@ struct Level62Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level62`, to write, as `Level62Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const LeafFields>, class U = std::span<const LeafFields>>
+struct Level62Fields {
+    LeafFields level;
+    /**
+     * A view of `LeafFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `LeafFields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `LeafFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `LeafFields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level62` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level62` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level62` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level61 {
 public:
     /**
@@ -477,6 +509,37 @@ struct Level61Fields {
     /** Writes a `Level61` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level61`, to write, as `Level61Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level62Fields>, class U = std::span<const ::nesting::Level62Fields>>
+struct Level61Fields {
+    ::nesting::Level62Fields level;
+    /**
+     * A view of `Level62Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level62Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level62Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level62Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level61` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level61` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level61` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level60 {
 public:
@@ -530,6 +593,37 @@ struct Level60Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level60`, to write, as `Level60Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level61Fields>, class U = std::span<const ::nesting::Level61Fields>>
+struct Level60Fields {
+    ::nesting::Level61Fields level;
+    /**
+     * A view of `Level61Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level61Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level61Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level61Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level60` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level60` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level60` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level59 {
 public:
     /**
@@ -581,6 +675,37 @@ struct Level59Fields {
     /** Writes a `Level59` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level59`, to write, as `Level59Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level60Fields>, class U = std::span<const ::nesting::Level60Fields>>
+struct Level59Fields {
+    ::nesting::Level60Fields level;
+    /**
+     * A view of `Level60Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level60Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level60Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level60Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level59` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level59` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level59` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level58 {
 public:
@@ -634,6 +759,37 @@ struct Level58Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level58`, to write, as `Level58Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level59Fields>, class U = std::span<const ::nesting::Level59Fields>>
+struct Level58Fields {
+    ::nesting::Level59Fields level;
+    /**
+     * A view of `Level59Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level59Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level59Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level59Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level58` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level58` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level58` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level57 {
 public:
     /**
@@ -685,6 +841,37 @@ struct Level57Fields {
     /** Writes a `Level57` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level57`, to write, as `Level57Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level58Fields>, class U = std::span<const ::nesting::Level58Fields>>
+struct Level57Fields {
+    ::nesting::Level58Fields level;
+    /**
+     * A view of `Level58Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level58Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level58Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level58Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level57` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level57` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level57` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level56 {
 public:
@@ -738,6 +925,37 @@ struct Level56Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level56`, to write, as `Level56Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level57Fields>, class U = std::span<const ::nesting::Level57Fields>>
+struct Level56Fields {
+    ::nesting::Level57Fields level;
+    /**
+     * A view of `Level57Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level57Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level57Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level57Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level56` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level56` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level56` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level55 {
 public:
     /**
@@ -789,6 +1007,37 @@ struct Level55Fields {
     /** Writes a `Level55` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level55`, to write, as `Level55Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level56Fields>, class U = std::span<const ::nesting::Level56Fields>>
+struct Level55Fields {
+    ::nesting::Level56Fields level;
+    /**
+     * A view of `Level56Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level56Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level56Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level56Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level55` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level55` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level55` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level54 {
 public:
@@ -842,6 +1091,37 @@ struct Level54Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level54`, to write, as `Level54Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level55Fields>, class U = std::span<const ::nesting::Level55Fields>>
+struct Level54Fields {
+    ::nesting::Level55Fields level;
+    /**
+     * A view of `Level55Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level55Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level55Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level55Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level54` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level54` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level54` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level53 {
 public:
     /**
@@ -893,6 +1173,37 @@ struct Level53Fields {
     /** Writes a `Level53` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level53`, to write, as `Level53Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level54Fields>, class U = std::span<const ::nesting::Level54Fields>>
+struct Level53Fields {
+    ::nesting::Level54Fields level;
+    /**
+     * A view of `Level54Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level54Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level54Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level54Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level53` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level53` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level53` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level52 {
 public:
@@ -946,6 +1257,37 @@ struct Level52Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level52`, to write, as `Level52Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level53Fields>, class U = std::span<const ::nesting::Level53Fields>>
+struct Level52Fields {
+    ::nesting::Level53Fields level;
+    /**
+     * A view of `Level53Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level53Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level53Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level53Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level52` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level52` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level52` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level51 {
 public:
     /**
@@ -997,6 +1339,37 @@ struct Level51Fields {
     /** Writes a `Level51` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level51`, to write, as `Level51Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level52Fields>, class U = std::span<const ::nesting::Level52Fields>>
+struct Level51Fields {
+    ::nesting::Level52Fields level;
+    /**
+     * A view of `Level52Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level52Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level52Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level52Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level51` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level51` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level51` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level50 {
 public:
@@ -1050,6 +1423,37 @@ struct Level50Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level50`, to write, as `Level50Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level51Fields>, class U = std::span<const ::nesting::Level51Fields>>
+struct Level50Fields {
+    ::nesting::Level51Fields level;
+    /**
+     * A view of `Level51Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level51Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level51Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level51Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level50` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level50` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level50` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level49 {
 public:
     /**
@@ -1101,6 +1505,37 @@ struct Level49Fields {
     /** Writes a `Level49` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level49`, to write, as `Level49Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level50Fields>, class U = std::span<const ::nesting::Level50Fields>>
+struct Level49Fields {
+    ::nesting::Level50Fields level;
+    /**
+     * A view of `Level50Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level50Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level50Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level50Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level49` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level49` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level49` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level48 {
 public:
@@ -1154,6 +1589,37 @@ struct Level48Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level48`, to write, as `Level48Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level49Fields>, class U = std::span<const ::nesting::Level49Fields>>
+struct Level48Fields {
+    ::nesting::Level49Fields level;
+    /**
+     * A view of `Level49Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level49Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level49Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level49Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level48` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level48` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level48` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level47 {
 public:
     /**
@@ -1205,6 +1671,37 @@ struct Level47Fields {
     /** Writes a `Level47` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level47`, to write, as `Level47Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level48Fields>, class U = std::span<const ::nesting::Level48Fields>>
+struct Level47Fields {
+    ::nesting::Level48Fields level;
+    /**
+     * A view of `Level48Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level48Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level48Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level48Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level47` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level47` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level47` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level46 {
 public:
@@ -1258,6 +1755,37 @@ struct Level46Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level46`, to write, as `Level46Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level47Fields>, class U = std::span<const ::nesting::Level47Fields>>
+struct Level46Fields {
+    ::nesting::Level47Fields level;
+    /**
+     * A view of `Level47Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level47Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level47Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level47Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level46` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level46` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level46` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level45 {
 public:
     /**
@@ -1309,6 +1837,37 @@ struct Level45Fields {
     /** Writes a `Level45` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level45`, to write, as `Level45Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level46Fields>, class U = std::span<const ::nesting::Level46Fields>>
+struct Level45Fields {
+    ::nesting::Level46Fields level;
+    /**
+     * A view of `Level46Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level46Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level46Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level46Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level45` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level45` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level45` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level44 {
 public:
@@ -1362,6 +1921,37 @@ struct Level44Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level44`, to write, as `Level44Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level45Fields>, class U = std::span<const ::nesting::Level45Fields>>
+struct Level44Fields {
+    ::nesting::Level45Fields level;
+    /**
+     * A view of `Level45Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level45Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level45Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level45Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level44` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level44` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level44` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level43 {
 public:
     /**
@@ -1413,6 +2003,37 @@ struct Level43Fields {
     /** Writes a `Level43` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level43`, to write, as `Level43Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level44Fields>, class U = std::span<const ::nesting::Level44Fields>>
+struct Level43Fields {
+    ::nesting::Level44Fields level;
+    /**
+     * A view of `Level44Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level44Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level44Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level44Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level43` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level43` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level43` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level42 {
 public:
@@ -1466,6 +2087,37 @@ struct Level42Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level42`, to write, as `Level42Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level43Fields>, class U = std::span<const ::nesting::Level43Fields>>
+struct Level42Fields {
+    ::nesting::Level43Fields level;
+    /**
+     * A view of `Level43Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level43Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level43Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level43Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level42` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level42` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level42` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level41 {
 public:
     /**
@@ -1517,6 +2169,37 @@ struct Level41Fields {
     /** Writes a `Level41` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level41`, to write, as `Level41Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level42Fields>, class U = std::span<const ::nesting::Level42Fields>>
+struct Level41Fields {
+    ::nesting::Level42Fields level;
+    /**
+     * A view of `Level42Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level42Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level42Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level42Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level41` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level41` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level41` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level40 {
 public:
@@ -1570,6 +2253,37 @@ struct Level40Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level40`, to write, as `Level40Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level41Fields>, class U = std::span<const ::nesting::Level41Fields>>
+struct Level40Fields {
+    ::nesting::Level41Fields level;
+    /**
+     * A view of `Level41Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level41Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level41Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level41Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level40` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level40` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level40` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level39 {
 public:
     /**
@@ -1621,6 +2335,37 @@ struct Level39Fields {
     /** Writes a `Level39` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level39`, to write, as `Level39Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level40Fields>, class U = std::span<const ::nesting::Level40Fields>>
+struct Level39Fields {
+    ::nesting::Level40Fields level;
+    /**
+     * A view of `Level40Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level40Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level40Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level40Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level39` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level39` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level39` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level38 {
 public:
@@ -1674,6 +2419,37 @@ struct Level38Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level38`, to write, as `Level38Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level39Fields>, class U = std::span<const ::nesting::Level39Fields>>
+struct Level38Fields {
+    ::nesting::Level39Fields level;
+    /**
+     * A view of `Level39Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level39Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level39Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level39Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level38` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level38` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level38` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level37 {
 public:
     /**
@@ -1725,6 +2501,37 @@ struct Level37Fields {
     /** Writes a `Level37` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level37`, to write, as `Level37Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level38Fields>, class U = std::span<const ::nesting::Level38Fields>>
+struct Level37Fields {
+    ::nesting::Level38Fields level;
+    /**
+     * A view of `Level38Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level38Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level38Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level38Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level37` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level37` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level37` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level36 {
 public:
@@ -1778,6 +2585,37 @@ struct Level36Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level36`, to write, as `Level36Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level37Fields>, class U = std::span<const ::nesting::Level37Fields>>
+struct Level36Fields {
+    ::nesting::Level37Fields level;
+    /**
+     * A view of `Level37Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level37Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level37Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level37Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level36` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level36` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level36` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level35 {
 public:
     /**
@@ -1829,6 +2667,37 @@ struct Level35Fields {
     /** Writes a `Level35` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level35`, to write, as `Level35Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level36Fields>, class U = std::span<const ::nesting::Level36Fields>>
+struct Level35Fields {
+    ::nesting::Level36Fields level;
+    /**
+     * A view of `Level36Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level36Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level36Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level36Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level35` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level35` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level35` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level34 {
 public:
@@ -1882,6 +2751,37 @@ struct Level34Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level34`, to write, as `Level34Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level35Fields>, class U = std::span<const ::nesting::Level35Fields>>
+struct Level34Fields {
+    ::nesting::Level35Fields level;
+    /**
+     * A view of `Level35Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level35Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level35Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level35Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level34` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level34` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level34` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level33 {
 public:
     /**
@@ -1933,6 +2833,37 @@ struct Level33Fields {
     /** Writes a `Level33` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level33`, to write, as `Level33Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level34Fields>, class U = std::span<const ::nesting::Level34Fields>>
+struct Level33Fields {
+    ::nesting::Level34Fields level;
+    /**
+     * A view of `Level34Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level34Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level34Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level34Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level33` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level33` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level33` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level32 {
 public:
@@ -1986,6 +2917,37 @@ struct Level32Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level32`, to write, as `Level32Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level33Fields>, class U = std::span<const ::nesting::Level33Fields>>
+struct Level32Fields {
+    ::nesting::Level33Fields level;
+    /**
+     * A view of `Level33Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level33Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level33Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level33Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level32` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level32` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level32` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level31 {
 public:
     /**
@@ -2037,6 +2999,37 @@ struct Level31Fields {
     /** Writes a `Level31` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level31`, to write, as `Level31Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level32Fields>, class U = std::span<const ::nesting::Level32Fields>>
+struct Level31Fields {
+    ::nesting::Level32Fields level;
+    /**
+     * A view of `Level32Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level32Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level32Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level32Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level31` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level31` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level31` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level30 {
 public:
@@ -2090,6 +3083,37 @@ struct Level30Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level30`, to write, as `Level30Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level31Fields>, class U = std::span<const ::nesting::Level31Fields>>
+struct Level30Fields {
+    ::nesting::Level31Fields level;
+    /**
+     * A view of `Level31Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level31Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level31Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level31Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level30` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level30` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level30` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level29 {
 public:
     /**
@@ -2141,6 +3165,37 @@ struct Level29Fields {
     /** Writes a `Level29` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level29`, to write, as `Level29Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level30Fields>, class U = std::span<const ::nesting::Level30Fields>>
+struct Level29Fields {
+    ::nesting::Level30Fields level;
+    /**
+     * A view of `Level30Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level30Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level30Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level30Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level29` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level29` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level29` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level28 {
 public:
@@ -2194,6 +3249,37 @@ struct Level28Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level28`, to write, as `Level28Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level29Fields>, class U = std::span<const ::nesting::Level29Fields>>
+struct Level28Fields {
+    ::nesting::Level29Fields level;
+    /**
+     * A view of `Level29Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level29Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level29Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level29Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level28` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level28` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level28` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level27 {
 public:
     /**
@@ -2245,6 +3331,37 @@ struct Level27Fields {
     /** Writes a `Level27` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level27`, to write, as `Level27Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level28Fields>, class U = std::span<const ::nesting::Level28Fields>>
+struct Level27Fields {
+    ::nesting::Level28Fields level;
+    /**
+     * A view of `Level28Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level28Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level28Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level28Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level27` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level27` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level27` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level26 {
 public:
@@ -2298,6 +3415,37 @@ struct Level26Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level26`, to write, as `Level26Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level27Fields>, class U = std::span<const ::nesting::Level27Fields>>
+struct Level26Fields {
+    ::nesting::Level27Fields level;
+    /**
+     * A view of `Level27Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level27Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level27Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level27Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level26` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level26` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level26` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level25 {
 public:
     /**
@@ -2349,6 +3497,37 @@ struct Level25Fields {
     /** Writes a `Level25` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level25`, to write, as `Level25Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level26Fields>, class U = std::span<const ::nesting::Level26Fields>>
+struct Level25Fields {
+    ::nesting::Level26Fields level;
+    /**
+     * A view of `Level26Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level26Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level26Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level26Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level25` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level25` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level25` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level24 {
 public:
@@ -2402,6 +3581,37 @@ struct Level24Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level24`, to write, as `Level24Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level25Fields>, class U = std::span<const ::nesting::Level25Fields>>
+struct Level24Fields {
+    ::nesting::Level25Fields level;
+    /**
+     * A view of `Level25Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level25Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level25Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level25Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level24` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level24` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level24` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level23 {
 public:
     /**
@@ -2453,6 +3663,37 @@ struct Level23Fields {
     /** Writes a `Level23` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level23`, to write, as `Level23Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level24Fields>, class U = std::span<const ::nesting::Level24Fields>>
+struct Level23Fields {
+    ::nesting::Level24Fields level;
+    /**
+     * A view of `Level24Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level24Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level24Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level24Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level23` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level23` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level23` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level22 {
 public:
@@ -2506,6 +3747,37 @@ struct Level22Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level22`, to write, as `Level22Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level23Fields>, class U = std::span<const ::nesting::Level23Fields>>
+struct Level22Fields {
+    ::nesting::Level23Fields level;
+    /**
+     * A view of `Level23Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level23Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level23Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level23Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level22` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level22` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level22` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level21 {
 public:
     /**
@@ -2557,6 +3829,37 @@ struct Level21Fields {
     /** Writes a `Level21` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level21`, to write, as `Level21Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level22Fields>, class U = std::span<const ::nesting::Level22Fields>>
+struct Level21Fields {
+    ::nesting::Level22Fields level;
+    /**
+     * A view of `Level22Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level22Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level22Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level22Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level21` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level21` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level21` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level20 {
 public:
@@ -2610,6 +3913,37 @@ struct Level20Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level20`, to write, as `Level20Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level21Fields>, class U = std::span<const ::nesting::Level21Fields>>
+struct Level20Fields {
+    ::nesting::Level21Fields level;
+    /**
+     * A view of `Level21Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level21Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level21Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level21Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level20` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level20` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level20` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level19 {
 public:
     /**
@@ -2661,6 +3995,37 @@ struct Level19Fields {
     /** Writes a `Level19` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level19`, to write, as `Level19Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level20Fields>, class U = std::span<const ::nesting::Level20Fields>>
+struct Level19Fields {
+    ::nesting::Level20Fields level;
+    /**
+     * A view of `Level20Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level20Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level20Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level20Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level19` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level19` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level19` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level18 {
 public:
@@ -2714,6 +4079,37 @@ struct Level18Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level18`, to write, as `Level18Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level19Fields>, class U = std::span<const ::nesting::Level19Fields>>
+struct Level18Fields {
+    ::nesting::Level19Fields level;
+    /**
+     * A view of `Level19Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level19Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level19Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level19Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level18` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level18` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level18` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level17 {
 public:
     /**
@@ -2765,6 +4161,37 @@ struct Level17Fields {
     /** Writes a `Level17` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level17`, to write, as `Level17Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level18Fields>, class U = std::span<const ::nesting::Level18Fields>>
+struct Level17Fields {
+    ::nesting::Level18Fields level;
+    /**
+     * A view of `Level18Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level18Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level18Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level18Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level17` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level17` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level17` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level16 {
 public:
@@ -2818,6 +4245,37 @@ struct Level16Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level16`, to write, as `Level16Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level17Fields>, class U = std::span<const ::nesting::Level17Fields>>
+struct Level16Fields {
+    ::nesting::Level17Fields level;
+    /**
+     * A view of `Level17Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level17Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level17Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level17Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level16` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level16` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level16` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level15 {
 public:
     /**
@@ -2869,6 +4327,37 @@ struct Level15Fields {
     /** Writes a `Level15` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level15`, to write, as `Level15Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level16Fields>, class U = std::span<const ::nesting::Level16Fields>>
+struct Level15Fields {
+    ::nesting::Level16Fields level;
+    /**
+     * A view of `Level16Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level16Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level16Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level16Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level15` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level15` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level15` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level14 {
 public:
@@ -2922,6 +4411,37 @@ struct Level14Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level14`, to write, as `Level14Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level15Fields>, class U = std::span<const ::nesting::Level15Fields>>
+struct Level14Fields {
+    ::nesting::Level15Fields level;
+    /**
+     * A view of `Level15Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level15Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level15Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level15Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level14` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level14` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level14` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level13 {
 public:
     /**
@@ -2973,6 +4493,37 @@ struct Level13Fields {
     /** Writes a `Level13` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level13`, to write, as `Level13Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level14Fields>, class U = std::span<const ::nesting::Level14Fields>>
+struct Level13Fields {
+    ::nesting::Level14Fields level;
+    /**
+     * A view of `Level14Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level14Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level14Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level14Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level13` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level13` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level13` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level12 {
 public:
@@ -3026,6 +4577,37 @@ struct Level12Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level12`, to write, as `Level12Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level13Fields>, class U = std::span<const ::nesting::Level13Fields>>
+struct Level12Fields {
+    ::nesting::Level13Fields level;
+    /**
+     * A view of `Level13Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level13Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level13Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level13Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level12` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level12` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level12` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level11 {
 public:
     /**
@@ -3077,6 +4659,37 @@ struct Level11Fields {
     /** Writes a `Level11` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level11`, to write, as `Level11Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level12Fields>, class U = std::span<const ::nesting::Level12Fields>>
+struct Level11Fields {
+    ::nesting::Level12Fields level;
+    /**
+     * A view of `Level12Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level12Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level12Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level12Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level11` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level11` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level11` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level10 {
 public:
@@ -3130,6 +4743,37 @@ struct Level10Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level10`, to write, as `Level10Fields` holds them, but whose `first` and `second` can be views of
+ * any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level11Fields>, class U = std::span<const ::nesting::Level11Fields>>
+struct Level10Fields {
+    ::nesting::Level11Fields level;
+    /**
+     * A view of `Level11Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level11Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level11Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level11Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level10` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level10` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level10` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level9 {
 public:
     /**
@@ -3181,6 +4825,37 @@ struct Level9Fields {
     /** Writes a `Level9` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level9`, to write, as `Level9Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level10Fields>, class U = std::span<const ::nesting::Level10Fields>>
+struct Level9Fields {
+    ::nesting::Level10Fields level;
+    /**
+     * A view of `Level10Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level10Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level10Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level10Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level9` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level9` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level9` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level8 {
 public:
@@ -3234,6 +4909,37 @@ struct Level8Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level8`, to write, as `Level8Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level9Fields>, class U = std::span<const ::nesting::Level9Fields>>
+struct Level8Fields {
+    ::nesting::Level9Fields level;
+    /**
+     * A view of `Level9Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level9Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level9Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level9Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level8` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level8` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level8` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level7 {
 public:
     /**
@@ -3285,6 +4991,37 @@ struct Level7Fields {
     /** Writes a `Level7` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level7`, to write, as `Level7Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level8Fields>, class U = std::span<const ::nesting::Level8Fields>>
+struct Level7Fields {
+    ::nesting::Level8Fields level;
+    /**
+     * A view of `Level8Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level8Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level8Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level8Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level7` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level7` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level7` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level6 {
 public:
@@ -3338,6 +5075,37 @@ struct Level6Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level6`, to write, as `Level6Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level7Fields>, class U = std::span<const ::nesting::Level7Fields>>
+struct Level6Fields {
+    ::nesting::Level7Fields level;
+    /**
+     * A view of `Level7Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level7Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level7Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level7Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level6` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level6` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level6` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level5 {
 public:
     /**
@@ -3389,6 +5157,37 @@ struct Level5Fields {
     /** Writes a `Level5` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level5`, to write, as `Level5Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level6Fields>, class U = std::span<const ::nesting::Level6Fields>>
+struct Level5Fields {
+    ::nesting::Level6Fields level;
+    /**
+     * A view of `Level6Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level6Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level6Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level6Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level5` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level5` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level5` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level4 {
 public:
@@ -3442,6 +5241,37 @@ struct Level4Fields {
     void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level4`, to write, as `Level4Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level5Fields>, class U = std::span<const ::nesting::Level5Fields>>
+struct Level4Fields {
+    ::nesting::Level5Fields level;
+    /**
+     * A view of `Level5Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level5Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level5Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level5Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level4` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level4` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level4` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level3 {
 public:
     /**
@@ -3493,6 +5323,37 @@ struct Level3Fields {
     /** Writes a `Level3` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Level3`, to write, as `Level3Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level4Fields>, class U = std::span<const ::nesting::Level4Fields>>
+struct Level3Fields {
+    ::nesting::Level4Fields level;
+    /**
+     * A view of `Level4Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level4Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level4Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level4Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level3` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level3` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level3` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 class Level2 {
 public:
@@ -3546,6 +5407,37 @@ struct Level2Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level2`, to write, as `Level2Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level3Fields>, class U = std::span<const ::nesting::Level3Fields>>
+struct Level2Fields {
+    ::nesting::Level3Fields level;
+    /**
+     * A view of `Level3Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level3Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level3Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level3Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level2` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level2` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level2` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Level1 {
 public:
     /**
@@ -3598,6 +5490,37 @@ struct Level1Fields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Level1`, to write, as `Level1Fields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level2Fields>, class U = std::span<const ::nesting::Level2Fields>>
+struct Level1Fields {
+    ::nesting::Level2Fields level;
+    /**
+     * A view of `Level2Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level2Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level2Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level2Fields` unless `U` is another
+     */
+    U second{};
+
+    /** The alignment that a parent pads a `Level1` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Level1` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Level1` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 class Root {
 public:
     /** The layout of the table, which its writer writes and its reader reads */
@@ -3646,6 +5569,41 @@ struct RootFields {
      */
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Root`, to write, as `RootFields` holds them, but whose `first` and `second` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const ::nesting::Level1Fields>, class U = std::span<const ::nesting::Level1Fields>>
+struct RootFields {
+    ::nesting::Level1Fields level;
+    /**
+     * A view of `Level1Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level1Fields` unless `T` is another
+     */
+    T first{};
+    /**
+     * A view of `Level1Fields`, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Level1Fields` unless `U` is another
+     */
+    U second{};
+
+    /**
+     * Writes a `Root` with every field, or throws a `tafla::BuildError` if it's longer than its offset type, `uint32`,
+     * addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Root` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns its
+     * length, the number of bytes that hold it, leaving the bytes after it as they were. Throws `std::invalid_argument`
+     * if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
 
 inline std::uint8_t Leaf::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
@@ -3720,6 +5678,52 @@ inline void Level62Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level62Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, LeafFields>);
+    static_assert(::tafla::ViewOf<U, LeafFields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(LeafFields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const LeafFields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const LeafFields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level62Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, LeafFields>);
+    static_assert(::tafla::ViewOf<U, LeafFields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, LeafFields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const LeafFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const LeafFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level62 Level61::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -3766,6 +5770,52 @@ inline void Level61Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level61Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level62Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level62Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level62Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level62Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level62Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level61Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level62Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level62Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level62Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level62Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level62Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -3820,6 +5870,52 @@ inline void Level60Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level60Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level61Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level61Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level61Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level61Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level61Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level60Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level61Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level61Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level61Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level61Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level61Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level60 Level59::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -3866,6 +5962,52 @@ inline void Level59Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level59Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level60Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level60Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level60Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level60Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level60Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level59Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level60Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level60Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level60Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level60Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level60Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -3920,6 +6062,52 @@ inline void Level58Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level58Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level59Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level59Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level59Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level59Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level59Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level58Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level59Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level59Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level59Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level59Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level59Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level58 Level57::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -3966,6 +6154,52 @@ inline void Level57Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level57Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level58Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level58Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level58Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level58Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level58Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level57Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level58Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level58Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level58Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level58Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level58Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4020,6 +6254,52 @@ inline void Level56Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level56Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level57Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level57Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level57Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level57Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level57Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level56Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level57Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level57Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level57Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level57Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level57Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level56 Level55::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4066,6 +6346,52 @@ inline void Level55Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level55Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level56Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level56Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level56Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level56Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level56Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level55Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level56Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level56Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level56Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level56Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level56Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4120,6 +6446,52 @@ inline void Level54Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level54Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level55Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level55Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level55Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level55Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level55Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level54Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level55Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level55Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level55Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level55Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level55Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level54 Level53::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4166,6 +6538,52 @@ inline void Level53Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level53Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level54Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level54Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level54Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level54Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level54Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level53Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level54Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level54Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level54Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level54Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level54Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4220,6 +6638,52 @@ inline void Level52Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level52Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level53Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level53Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level53Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level53Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level53Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level52Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level53Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level53Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level53Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level53Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level53Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level52 Level51::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4266,6 +6730,52 @@ inline void Level51Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level51Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level52Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level52Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level52Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level52Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level52Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level51Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level52Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level52Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level52Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level52Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level52Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4320,6 +6830,52 @@ inline void Level50Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level50Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level51Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level51Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level51Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level51Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level51Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level50Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level51Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level51Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level51Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level51Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level51Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level50 Level49::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4366,6 +6922,52 @@ inline void Level49Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level49Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level50Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level50Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level50Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level50Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level50Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level49Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level50Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level50Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level50Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level50Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level50Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4420,6 +7022,52 @@ inline void Level48Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level48Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level49Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level49Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level49Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level49Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level49Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level48Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level49Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level49Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level49Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level49Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level49Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level48 Level47::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4466,6 +7114,52 @@ inline void Level47Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level47Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level48Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level48Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level48Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level48Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level48Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level47Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level48Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level48Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level48Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level48Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level48Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4520,6 +7214,52 @@ inline void Level46Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level46Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level47Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level47Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level47Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level47Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level47Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level46Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level47Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level47Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level47Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level47Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level47Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level46 Level45::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4566,6 +7306,52 @@ inline void Level45Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level45Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level46Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level46Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level46Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level46Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level46Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level45Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level46Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level46Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level46Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level46Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level46Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4620,6 +7406,52 @@ inline void Level44Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level44Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level45Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level45Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level45Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level45Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level45Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level44Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level45Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level45Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level45Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level45Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level45Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level44 Level43::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4666,6 +7498,52 @@ inline void Level43Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level43Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level44Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level44Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level44Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level44Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level44Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level43Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level44Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level44Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level44Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level44Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level44Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4720,6 +7598,52 @@ inline void Level42Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level42Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level43Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level43Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level43Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level43Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level43Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level42Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level43Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level43Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level43Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level43Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level43Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level42 Level41::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4766,6 +7690,52 @@ inline void Level41Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level41Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level42Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level42Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level42Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level42Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level42Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level41Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level42Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level42Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level42Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level42Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level42Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4820,6 +7790,52 @@ inline void Level40Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level40Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level41Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level41Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level41Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level41Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level41Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level40Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level41Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level41Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level41Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level41Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level41Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level40 Level39::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4866,6 +7882,52 @@ inline void Level39Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level39Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level40Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level40Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level40Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level40Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level40Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level39Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level40Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level40Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level40Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level40Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level40Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -4920,6 +7982,52 @@ inline void Level38Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level38Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level39Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level39Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level39Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level39Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level39Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level38Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level39Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level39Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level39Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level39Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level39Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level38 Level37::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -4966,6 +8074,52 @@ inline void Level37Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level37Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level38Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level38Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level38Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level38Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level38Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level37Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level38Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level38Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level38Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level38Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level38Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5020,6 +8174,52 @@ inline void Level36Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level36Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level37Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level37Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level37Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level37Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level37Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level36Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level37Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level37Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level37Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level37Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level37Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level36 Level35::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5066,6 +8266,52 @@ inline void Level35Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level35Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level36Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level36Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level36Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level36Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level36Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level35Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level36Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level36Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level36Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level36Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level36Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5120,6 +8366,52 @@ inline void Level34Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level34Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level35Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level35Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level35Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level35Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level35Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level34Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level35Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level35Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level35Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level35Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level35Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level34 Level33::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5166,6 +8458,52 @@ inline void Level33Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level33Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level34Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level34Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level34Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level34Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level34Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level33Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level34Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level34Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level34Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level34Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level34Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5220,6 +8558,52 @@ inline void Level32Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level32Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level33Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level33Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level33Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level33Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level33Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level32Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level33Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level33Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level33Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level33Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level33Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level32 Level31::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5266,6 +8650,52 @@ inline void Level31Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level31Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level32Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level32Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level32Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level32Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level32Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level31Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level32Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level32Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level32Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level32Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level32Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5320,6 +8750,52 @@ inline void Level30Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level30Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level31Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level31Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level31Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level31Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level31Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level30Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level31Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level31Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level31Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level31Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level31Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level30 Level29::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5366,6 +8842,52 @@ inline void Level29Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level29Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level30Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level30Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level30Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level30Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level30Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level29Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level30Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level30Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level30Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level30Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level30Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5420,6 +8942,52 @@ inline void Level28Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level28Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level29Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level29Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level29Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level29Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level29Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level28Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level29Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level29Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level29Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level29Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level29Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level28 Level27::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5466,6 +9034,52 @@ inline void Level27Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level27Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level28Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level28Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level28Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level28Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level28Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level27Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level28Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level28Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level28Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level28Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level28Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5520,6 +9134,52 @@ inline void Level26Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level26Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level27Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level27Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level27Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level27Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level27Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level26Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level27Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level27Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level27Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level27Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level27Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level26 Level25::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5566,6 +9226,52 @@ inline void Level25Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level25Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level26Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level26Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level26Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level26Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level26Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level25Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level26Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level26Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level26Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level26Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level26Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5620,6 +9326,52 @@ inline void Level24Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level24Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level25Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level25Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level25Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level25Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level25Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level24Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level25Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level25Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level25Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level25Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level25Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level24 Level23::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5666,6 +9418,52 @@ inline void Level23Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level23Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level24Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level24Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level24Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level24Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level24Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level23Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level24Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level24Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level24Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level24Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level24Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5720,6 +9518,52 @@ inline void Level22Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level22Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level23Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level23Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level23Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level23Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level23Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level22Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level23Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level23Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level23Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level23Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level23Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level22 Level21::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5766,6 +9610,52 @@ inline void Level21Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level21Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level22Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level22Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level22Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level22Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level22Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level21Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level22Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level22Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level22Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level22Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level22Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5820,6 +9710,52 @@ inline void Level20Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level20Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level21Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level21Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level21Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level21Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level21Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level20Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level21Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level21Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level21Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level21Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level21Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level20 Level19::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5866,6 +9802,52 @@ inline void Level19Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level19Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level20Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level20Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level20Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level20Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level20Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level19Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level20Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level20Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level20Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level20Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level20Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -5920,6 +9902,52 @@ inline void Level18Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level18Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level19Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level19Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level19Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level19Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level19Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level18Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level19Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level19Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level19Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level19Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level19Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level18 Level17::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -5966,6 +9994,52 @@ inline void Level17Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level17Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level18Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level18Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level18Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level18Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level18Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level17Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level18Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level18Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level18Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level18Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level18Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6020,6 +10094,52 @@ inline void Level16Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level16Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level17Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level17Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level17Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level17Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level17Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level16Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level17Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level17Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level17Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level17Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level17Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level16 Level15::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6066,6 +10186,52 @@ inline void Level15Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level15Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level16Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level16Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level16Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level16Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level16Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level15Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level16Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level16Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level16Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level16Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level16Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6120,6 +10286,52 @@ inline void Level14Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level14Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level15Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level15Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level15Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level15Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level15Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level14Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level15Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level15Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level15Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level15Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level15Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level14 Level13::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6166,6 +10378,52 @@ inline void Level13Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level13Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level14Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level14Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level14Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level14Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level14Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level13Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level14Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level14Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level14Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level14Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level14Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6220,6 +10478,52 @@ inline void Level12Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level12Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level13Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level13Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level13Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level13Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level13Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level12Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level13Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level13Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level13Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level13Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level13Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level12 Level11::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6266,6 +10570,52 @@ inline void Level11Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level11Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level12Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level12Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level12Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level12Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level12Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level11Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level12Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level12Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level12Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level12Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level12Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6320,6 +10670,52 @@ inline void Level10Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level10Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level11Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level11Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level11Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level11Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level11Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level10Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level11Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level11Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level11Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level11Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level11Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level10 Level9::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6366,6 +10762,52 @@ inline void Level9Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level9Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level10Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level10Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level10Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level10Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level10Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level9Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level10Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level10Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level10Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level10Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level10Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6420,6 +10862,52 @@ inline void Level8Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level8Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level9Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level9Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level9Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level9Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level9Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level8Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level9Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level9Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level9Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level9Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level9Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level8 Level7::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6466,6 +10954,52 @@ inline void Level7Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level7Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level8Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level8Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level8Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level8Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level8Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level7Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level8Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level8Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level8Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level8Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level8Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6520,6 +11054,52 @@ inline void Level6Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level6Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level7Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level7Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level7Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level7Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level7Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level6Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level7Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level7Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level7Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level7Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level7Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level6 Level5::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6566,6 +11146,52 @@ inline void Level5Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level5Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level6Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level6Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level6Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level6Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level6Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level5Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level6Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level6Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level6Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level6Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level6Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6620,6 +11246,52 @@ inline void Level4Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level4Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level5Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level5Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level5Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level5Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level5Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level4Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level5Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level5Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level5Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level5Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level5Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level4 Level3::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6666,6 +11338,52 @@ inline void Level3Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level3Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level4Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level4Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level4Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level4Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level4Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level3Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level4Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level4Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level4Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level4Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level4Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6720,6 +11438,52 @@ inline void Level2Fields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T, class U>
+inline void generic::Level2Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level3Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level3Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level3Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level3Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level3Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level2Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level3Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level3Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level3Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level3Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level3Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+    writer_.end_table(parent_);
+}
+
 inline Level2 Level1::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -6766,6 +11530,52 @@ inline void Level1Fields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level1Fields<T, U>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level2Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level2Fields>);
+
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_table(::nesting::Level2Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level2Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level2Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T, class U>
+inline void generic::Level1Fields<T, U>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level2Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level2Fields>);
+
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_table(0, ::nesting::Level2Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level2Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level2Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -6843,6 +11653,86 @@ inline std::size_t RootFields::serialize_into(std::span<std::uint8_t> bytes_) co
     for (std::size_t index_ = 0; index_ < second.size(); ++index_) {
         second[index_].write(writer_);
         writer_.set_item_end(vector2_, index_);
+    }
+
+    return writer_.finish_into();
+}
+
+template <class T, class U>
+inline ::tafla::Bytes generic::RootFields<T, U>::serialize() const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level1Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level1Fields>);
+
+    ::tafla::TableSizer sizer_(3, Root::LAYOUT);
+    sizer_.add_table(::nesting::Level1Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_table(0, ::nesting::Level1Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+
+    return writer_.finish();
+}
+
+template <class T, class U>
+inline std::size_t generic::RootFields<T, U>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, ::nesting::Level1Fields>);
+    static_assert(::tafla::ViewOf<U, ::nesting::Level1Fields>);
+
+    ::tafla::TableSizer sizer_(3, Root::LAYOUT);
+    sizer_.add_table(::nesting::Level1Fields::ALIGNMENT);
+    level.size(sizer_);
+    sizer_.add_vector(std::ranges::size(first));
+    for (const auto& element_ : first) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.add_vector(std::ranges::size(second));
+    for (const auto& element_ : second) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_table(0, ::nesting::Level1Fields::ALIGNMENT);
+    level.write(writer_);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(first));
+    for (std::size_t index_ = 0; const auto& element_ : first) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
+    }
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(second));
+    for (std::size_t index_ = 0; const auto& element_ : second) {
+        const ::nesting::Level1Fields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
     }
 
     return writer_.finish_into();
