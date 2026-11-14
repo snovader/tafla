@@ -207,27 +207,6 @@ fn declarations_cant_take_a_name_that_the_generated_code_imports() {
     }
 }
 
-/// C++'s generated code names the runtime and the standard library in full,
-/// so it imports no names, but the headers that it includes define macros
-#[test]
-fn declarations_cant_take_a_macro_of_the_c_standard_library() {
-    for name in ["NULL", "EOF", "NAN", "SIGINT"] {
-        let source = format!("message {name} {{ x: uint8; }}");
-        let messages: Vec<String> = parse(&source)
-            .unwrap_err()
-            .into_iter()
-            .map(|diagnostic| diagnostic.message)
-            .collect();
-
-        assert_eq!(
-            messages,
-            [format!(
-                "`{name}` clashes with a name of the generated code"
-            )]
-        );
-    }
-}
-
 /// The names that a generated file imports which a declaration could take,
 /// those that start with a capital letter, from each target's imports:
 /// lists in braces or parentheses, on one line or several, and Java's

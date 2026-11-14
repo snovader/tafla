@@ -12,9 +12,55 @@
 
 namespace linux_::EOF_::schema_Upper::b_c {
 class Interface;
+class EOF_;
 class Macros;
 struct InterfaceFields;
+struct EOF_Fields;
 struct MacrosFields;
+
+struct NULL_ {
+    double x{};
+
+    /** The byte length of a `NULL_` */
+    static constexpr std::size_t SIZE = 8;
+
+    /** The alignment of an array of a `NULL_`: its largest scalar's size */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::eight;
+
+    /** Reads a `NULL_` from the start of `bytes`, or throws a `tafla::DecodeError` if they're shorter than `SIZE` */
+    [[nodiscard]] static NULL_ read(std::span<const std::uint8_t> bytes) {
+        if (bytes.size() < SIZE) {
+            throw ::tafla::DecodeError::out_of_range(0, SIZE, bytes.size());
+        }
+        return from_bytes(bytes.data());
+    }
+
+    /** Reads a `NULL_` from its `SIZE` bytes at `bytes`, such as those of an array of them */
+    [[nodiscard]] static NULL_ from_bytes(const std::uint8_t* bytes) noexcept {
+        return {
+            .x = ::tafla::load_le<double>(bytes),
+        };
+    }
+
+    /** Writes the `SIZE` bytes of a `NULL_` at `bytes_` */
+    void to_bytes(std::uint8_t* bytes_) const noexcept {
+        ::tafla::store_le(bytes_, x);
+    }
+
+    /** Writes `NULL_`s one after another, as an array of them holds them */
+    [[nodiscard]] static std::vector<std::uint8_t> array_to_bytes(std::span<const NULL_> items) {
+        std::vector<std::uint8_t> bytes(items.size() * SIZE);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            items[index].to_bytes(bytes.data() + index * SIZE);
+        }
+        return bytes;
+    }
+
+    friend bool operator==(const NULL_&, const NULL_&) = default;
+};
+
+/** An array of `NULL_`s, which reads each struct when it's asked for */
+using NULL_Array = ::tafla::StructArray<NULL_>;
 
 class Interface {
 public:
@@ -55,6 +101,40 @@ struct InterfaceFields {
     TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
 
     /** Writes an `Interface` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+class EOF_ {
+public:
+    /** Reads the table at `position` in `bytes`, as its parent's getter finds it */
+    constexpr EOF_(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
+        : bytes_(bytes), position_(position) {}
+
+    /**
+     * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
+     * before they're read
+     */
+    constexpr EOF_() noexcept = default;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] std::uint8_t x() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+    std::size_t position_ = 0;
+};
+
+/** The fields of an `EOF_`, to write */
+struct EOF_Fields {
+    std::uint8_t x{};
+
+    /** The alignment that a parent pads an `EOF_` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds an `EOF_` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes an `EOF_` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
@@ -105,6 +185,18 @@ public:
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
     [[nodiscard]] Interface interface_() const;
 
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] EOF_ eof() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] std::vector<NULL_> nulls() const;
+
+    /**
+     * Views the items of `nulls()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the field
+     * or its structs lie outside the bytes
+     */
+    [[nodiscard]] NULL_Array nulls_view() const;
+
 private:
     std::span<const std::uint8_t> bytes_;
 };
@@ -124,6 +216,8 @@ struct MacrosFields {
     std::uint8_t far_{};
     std::uint8_t small_{};
     InterfaceFields interface_;
+    EOF_Fields eof;
+    std::span<const NULL_> nulls{};
 
     /**
      * Writes a `Macros` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
@@ -162,6 +256,24 @@ inline void InterfaceFields::write(::tafla::TableWriter& writer_) const {
     const auto parent_ = writer_.start_table(2);
     writer_.set_float32_array(0, min_);
     writer_.set_float32_array(1, max_);
+    writer_.end_table(parent_);
+}
+
+inline std::uint8_t EOF_::x() const {
+    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
+    const auto position = buffer.field_offset(position_, 0);
+    return buffer.get_uint8(position);
+}
+
+inline void EOF_Fields::size(::tafla::TableSizer& sizer_) const {
+    const auto parent_ = sizer_.start_table(1);
+    sizer_.add_uint8();
+    sizer_.end_table(parent_);
+}
+
+inline void EOF_Fields::write(::tafla::TableWriter& writer_) const {
+    const auto parent_ = writer_.start_table(1);
+    writer_.set_uint8(0, x);
     writer_.end_table(parent_);
 }
 
@@ -243,8 +355,24 @@ inline Interface Macros::interface_() const {
     return Interface(bytes_, position);
 }
 
+inline EOF_ Macros::eof() const {
+    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
+    const auto position = buffer.root_offset(13);
+    return EOF_(bytes_, position);
+}
+
+inline std::vector<NULL_> Macros::nulls() const {
+    return nulls_view().to_vector();
+}
+
+inline NULL_Array Macros::nulls_view() const {
+    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
+    const auto position = buffer.root_offset(14);
+    return NULL_Array(buffer.get_struct_array(position, NULL_::SIZE));
+}
+
 inline ::tafla::Bytes MacrosFields::serialize() const {
-    ::tafla::TableSizer sizer_(13, Macros::LAYOUT);
+    ::tafla::TableSizer sizer_(15, Macros::LAYOUT);
     sizer_.add_uint8();
     sizer_.add_uint8();
     sizer_.add_uint8();
@@ -259,6 +387,9 @@ inline ::tafla::Bytes MacrosFields::serialize() const {
     sizer_.add_uint8();
     sizer_.add_table(InterfaceFields::ALIGNMENT);
     interface_.size(sizer_);
+    sizer_.add_table(EOF_Fields::ALIGNMENT);
+    eof.size(sizer_);
+    sizer_.add_struct_array(nulls.size(), NULL_::SIZE, NULL_::ALIGNMENT);
 
     auto writer_ = sizer_.writer();
     writer_.set_uint8(0, linux_);
@@ -275,6 +406,9 @@ inline ::tafla::Bytes MacrosFields::serialize() const {
     writer_.set_uint8(11, small_);
     writer_.set_table(12, InterfaceFields::ALIGNMENT);
     interface_.write(writer_);
+    writer_.set_table(13, EOF_Fields::ALIGNMENT);
+    eof.write(writer_);
+    writer_.set_structs(14, nulls);
 
     return writer_.finish();
 }

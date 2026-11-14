@@ -115,10 +115,11 @@ or read its tables, or a target couldn't generate its code:
   such as `ByteBuffer` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java and `Option`
-  in Rust, `Fields`, the record of a Java class's fields, keywords, such as
-  `None` in Python and `Self` in Rust, and the macros of the C standard
-  library that a C++ header may define, such as `NULL` and `EOF`; C++ names
-  everything else in full. `src/generate/reserved.rs` lists them.
+  in Rust, `Fields`, the record of a Java class's fields, and keywords, such
+  as `None` in Python and `Self` in Rust. `src/generate/reserved.rs` lists
+  them. Go names what it imports by its package and C++ names everything in
+  full, so neither adds any. C++ renames a type named after a macro of C's
+  headers itself, such as `EOF` to `EOF_`.
 - A definition's fields have distinct names in `camelCase` too, which
   TypeScript, JavaScript and Java name them in. It drops the underscores, so
   `a_1` and `a1` are both `a1`.
