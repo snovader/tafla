@@ -1,0 +1,144 @@
+// The comparison's tafla serializers, as codecs.TaflaPrototype writes them,
+// which variants.sh copies into each variant of the prototype, with the
+// prototype's identifiers unqualified.
+package template
+
+import (
+	"encoding/binary"
+	"errors"
+	"math"
+
+	tafla "github.com/snovader/tafla/go"
+	"github.com/snovader/tafla/go/benchmarks/workloads"
+	direct "github.com/snovader/tafla/go/prototype"
+)
+
+var documentLayout = tafla.TableLayout{}.Sized().Versioned()
+
+const (
+	documentVersion = 1
+	tripleSize      = 12
+)
+
+func SerializeRecord(record workloads.Record) ([]byte, error) {
+	builder, err := direct.NewTableBuilder(4, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+
+	err = errors.Join(
+		builder.SetFloat64(record.X),
+		builder.SetFloat64(record.Y),
+		builder.SetInt64(record.ID),
+		builder.SetString(record.Name),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func SerializeDocument(document workloads.Document) ([]byte, error) {
+	builder, err := direct.NewVersionedTableBuilder(4, documentLayout, documentVersion)
+	if err != nil {
+		return nil, err
+	}
+	err = errors.Join(
+		builder.SetFloat64(document.X),
+		builder.SetFloat64(document.Y),
+		builder.SetString(document.Name),
+		builder.SetTableFunc(4, func(columns direct.Item) error {
+			return errors.Join(
+				columns.SetInt64(document.Base),
+				columns.SetUint32Array(document.Keys),
+				columns.SetFloat32Array(document.A),
+				columns.SetFloat32Array(document.B),
+			)
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func SerializeList(list workloads.List) ([]byte, error) {
+	builder, err := direct.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	err = builder.SetVectorFunc(len(list.Items), 2, func(index int, item direct.Item) error {
+		return setListItem(item, list.Items[index])
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+func setListItem(table direct.Item, item workloads.Item) error {
+	return errors.Join(
+		table.SetFloat32(item.Value),
+		table.SetTableFunc(2, func(pair direct.Item) error {
+			return errors.Join(pair.SetFloat32(item.First), pair.SetFloat32(item.Second))
+		}),
+	)
+}
+
+func SerializeStructs(list workloads.List) ([]byte, error) {
+	structs := make([]byte, 0, len(list.Items)*tripleSize)
+	for _, item := range list.Items {
+		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.Value))
+		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.First))
+		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.Second))
+	}
+
+	builder, err := direct.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	if err := builder.SetStructArray(structs, tripleSize, tafla.Align4); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
+
+// SerializeListOfBuilders writes the vector of nested tables from a builder
+// of each item and of its pair, rather than in place, into the same bytes.
+func SerializeListOfBuilders(list workloads.List) ([]byte, error) {
+	items := make([]direct.NestedTable, len(list.Items))
+	for index, item := range list.Items {
+		pair, err := direct.NewTableBuilder(2, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		table, err := direct.NewTableBuilder(2, tafla.TableLayout{})
+		if err != nil {
+			return nil, err
+		}
+		err = errors.Join(
+			pair.SetFloat32(item.First),
+			pair.SetFloat32(item.Second),
+			table.SetFloat32(item.Value),
+			table.SetTable(pair),
+		)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = table
+	}
+
+	builder, err := direct.NewTableBuilder(1, tafla.TableLayout{})
+	if err != nil {
+		return nil, err
+	}
+	if err := builder.SetVector(items...); err != nil {
+		return nil, err
+	}
+
+	return builder.Bytes()
+}
