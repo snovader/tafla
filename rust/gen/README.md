@@ -234,38 +234,45 @@ when the bytes are in another version.
 | Go         | `<package>.go`, a package of its name    | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 | C++        | `<schema>.hpp`, a header of C++20        | Views of their bytes, written from aggregates, `<Name>Fields`            | Aggregates, read and written at their offsets        |
 
-A table's getter of a vector or an array of structs reads every item at once.
-Vectors return an array of tables in TypeScript and JavaScript, a `List` in
-Java, a `list` in Python, a `Vec` in Rust, a slice in Go and a `std::vector` in C++. Every target reads a vector's
-tables in place, within the message's bytes, as `SPEC.md` describes, so that
-it reads the same fields from the same bytes as the others, even where a
-corrupted item's offsets lead past its end. Arrays of structs return an
-array of structs in TypeScript, JavaScript and Java, as Java's getters of
-arrays of scalars return Java arrays, a `list` in Python, an iterator
-that reads each from the bytes in Rust, a slice in Go, and a `std::vector` in
-C++. Each struct writes an array of them
-with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+A table's getter of a vector or an array of structs returns a view of its
+items, which reads an item only when it's asked for, as [Views](#views)
+describes, and a caller that wants every item at once collects the view, as
+with `iter().collect()` in Rust. TypeScript's, JavaScript's, Python's,
+Java's, Go's and C++'s getters read every item at once instead, and a getter
+beside each returns its view. Their vectors return an array of tables in
+TypeScript and JavaScript, a `List` in Java, a `list` in Python, a slice in
+Go and a `std::vector` in C++, and their arrays of structs an array of
+structs in TypeScript, JavaScript and Java, as Java's getters of arrays of
+scalars return Java arrays, a `list` in Python, a slice in Go, and a
+`std::vector` in C++. Every target reads a vector's tables in place, within
+the message's bytes, as `SPEC.md` describes, so that it reads the same fields
+from the same bytes as the others, even where a corrupted item's offsets lead
+past its end. Each struct writes an array of them with `serializeArray()`,
+`serialize_array()` or `array_to_bytes()`.
 
 ### Views
 
-Beside each getter of a vector or an array of structs, `<field>View()`, or
-`<field>_view()` in Python and Rust and `<Field>View()` in Go, returns a view of its items, which reads
-an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
-which the generated code declares for each table that a vector holds and
-each struct that an array holds. A view finds item `i` without reading the
+A view of a vector or an array of structs reads an item only when it's asked
+for: a `<Table>Vector` or a `<Struct>Array`, which the generated code
+declares for each table that a vector holds and each struct that an array
+holds. The field's getter returns it in Rust. Where a getter reads every item
+at once, `<field>View()` beside it returns the view, or `<field>_view()` in
+Python and `<Field>View()` in Go. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
 runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
 view read in Java, TypeScript and JavaScript, `Vector::get_in_place()` in
-Rust or `Vector.GetInPlace()` in Go, and an array's at `i` times its struct's size. When it's made, it checks that the
-bytes hold the vector's count and an end for each item, or the array's
-structs, so that its length is never more than the bytes can hold. It reads
-each item when it's asked for, which fails with the decode error if the
-item's bytes are corrupt.
+Rust or `Vector.GetInPlace()` in Go, and an array's at `i` times its struct's
+size. When it's made, it checks that the bytes hold the vector's count and an
+end for each item, or the array's structs, so that its length is never more
+than the bytes can hold. It reads each item when it's asked for, which fails
+with the decode error if the item's bytes are corrupt. So a getter that
+returns a view succeeds although an item's bytes are corrupt, and the item
+fails when it's read.
 
 Since a view reads an item without the items before it, it reads an item
-that corrupted ends start at the vector's count, where the getter fails at
-an item before it. Such an item can hold itself, when its table holds a
-vector of its own type, as
+that corrupted ends start at the vector's count, where a getter that reads
+every item at once fails at an item before it. Such an item can hold itself,
+when its table holds a vector of its own type, as
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#validation)
 describes, so a caller that walks a tree recursively through views bounds
 how deep it walks.
@@ -279,11 +286,12 @@ how deep it walks.
 | Go                     | `Len()`               | `Get(i)`, with an error for a vector's table, or a panic past the end, as indexing a slice  | `range view.All()`, which reads each item's end once   |
 | C++                    | `size()`, `empty()`   | `get(i)` of a vector, `at(i)` of an array, or a `std::out_of_range`                         | `for (auto item : view)`, reading each item's end once |
 
-A view creates the reader of each item that it reads, as the getter does, but
-not those of the items it skips, nor an array of them. TypeScript's views
-aren't iterable, since a loop of `for...of` over them took twice as long as a
-loop of `get(i)` in V8. The comparison suites time reading the last item and
-every item through views, against the getters and `ByteBuffer` by hand.
+A view creates the reader of each item that it reads, but not those of the
+items it skips, nor an array of them. TypeScript's views aren't iterable,
+since a loop of `for...of` over them took twice as long as a loop of `get(i)`
+in V8. The comparison suites time reading the last item and every item
+through views, against `ByteBuffer` by hand, and through the getters that
+read every item at once.
 
 Java's getter of an array of scalars returns a copy, a Java array, where the
 other targets return the array in place. So beside it, `<field>View()`
@@ -301,7 +309,7 @@ use shapes::{ItemFields, ItemList, ItemListFields, PairFields};
 let item = |value| ItemFields { value, pair: PairFields { first: 0.5, second: 1.5 } };
 let bytes = ItemListFields { items: &[item(1.0), item(2.0), item(3.0)] }.serialize()?;
 
-let items = ItemList::new(&bytes).items_view()?; // an ItemVector
+let items = ItemList::new(&bytes).items()?; // an ItemVector
 let last = items.get(items.len() - 1).ok_or("no items")??; // reads the last item alone
 assert_eq!(last.value()?, 3.0);
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -518,7 +526,8 @@ impl From<&Row> for ItemFields {
 
 let rows = [Row { value: 1.0, first: 0.5, second: 1.5 }];
 let bytes = ItemListFields { items: &rows }.serialize()?; // a slice of Row
-assert_eq!(ItemList::new(&bytes).items()?[0].pair()?.second()?, 1.5);
+let item = ItemList::new(&bytes).items()?.get(0).ok_or("no item")??;
+assert_eq!(item.pair()?.second()?, 1.5);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 

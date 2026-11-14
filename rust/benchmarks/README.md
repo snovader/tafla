@@ -27,7 +27,7 @@ values, which `tests/workloads.rs` checks against values that the TypeScript
 generator printed.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as `f64`s, rather than
 collecting items of its own, and `item_access.rs` holds them:
@@ -35,12 +35,9 @@ collecting items of its own, and `item_access.rs` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `Vector::iter_in_place()`,
   and `get_struct_array()`'s bytes with `as_chunks()`.
-- **tafla-gen** reads with the generated getters, `items()`, which collect
-  the vector's items into a `Vec` first, and iterate over the array's
-  structs, whose `last()` the compiler finds without reading the others.
-- **tafla-gen view** reads with the generated views, `items_view()`, whose
-  `get(i)` reads one item and whose `iter()` reads every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+- **tafla-gen** reads with the views that the generated getters, `items()`,
+  return, whose `get(i)` reads one item and whose `iter()` reads every item.
+- **tafla-gen A/A** reads with the views again, an A/A pair that shows
   Criterion's noise.
 
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
@@ -113,10 +110,10 @@ comparison uses its counterpart:
   the workloads' types, as the other codecs do, so it collects the generated
   fields of the vector's items and the generated structs of the array into a
   `Vec` in each call, as the prost codec collects its messages, since the
-  generated code writes them from slices. The generated reader of the vector
-  collects its items' readers into a `Vec`, which the codec reads into the
-  workload's items. Every suite has a copy of the schema; after changing them,
-  regenerate the code as `gen/README.md` describes.
+  generated code writes them from slices. The generated getters of the
+  vector and of the array return views, whose `iter()` the codec reads into
+  the workload's items. Every suite has a copy of the schema; after changing
+  them, regenerate the code as `gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with

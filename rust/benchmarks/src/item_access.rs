@@ -126,8 +126,8 @@ pub fn check<A: ItemAccess>(access: A, list: &List, bytes: &ItemBytes) -> Result
 }
 
 /// Expands `$body` once for each way of reading the items, in the order that
-/// results list them, with `$name` bound to the name that it's timed by: the
-/// views twice, an A/A pair that shows the harness's noise
+/// results list them, with `$name` bound to the name it's timed by:
+/// tafla-gen's twice, an A/A pair that shows the harness's noise
 #[macro_export]
 macro_rules! for_each_item_access {
     (|$access:ident, $name:ident| $body:expr) => {{
@@ -142,13 +142,8 @@ macro_rules! for_each_item_access {
             $body;
         }
         {
-            let $access = $crate::codecs::TaflaGenView;
-            let $name = <$crate::codecs::TaflaGenView as $crate::item_access::ItemAccess>::NAME;
-            $body;
-        }
-        {
-            let $access = $crate::codecs::TaflaGenView;
-            let $name = "tafla-gen view A/A";
+            let $access = $crate::codecs::TaflaGen;
+            let $name = "tafla-gen A/A";
             $body;
         }
     }};

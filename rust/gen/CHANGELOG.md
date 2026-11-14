@@ -67,6 +67,13 @@ first commits, for code built from its source before the release.
   type whose reference converts into the item's fields or struct, through a
   type parameter that defaults to the generated type, so that an application
   writes the items it holds without collecting them first.
+- A generated Rust getter of a vector or an array of structs returns the view
+  of its items, a `<Table>Vector` or a `<Struct>Array`, which reads each item
+  when it's asked for, rather than a `Vec` of every item's reader or an
+  iterator over the structs, and the `<field>_view()` getter beside it is
+  gone. An item whose bytes are corrupt fails when it's read, rather than
+  when the getter is called. A caller that wants every item at once collects
+  the view's `iter()`.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,
