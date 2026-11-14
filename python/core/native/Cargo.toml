@@ -29,6 +29,9 @@ test-hooks = []
 # DirectTableBuilder, which python/prototype/README.md describes. Only the
 # prototype's own builds enable it.
 prototype = []
+# Counts the Rust heap's allocations, for the prototype's allocation report,
+# in a build of its own that isn't timed
+count-allocations = ["prototype"]
 
 [build-dependencies]
 pyo3-build-config = "=0.30.1"
