@@ -564,6 +564,22 @@ assert_eq!(item.pair()?.second()?, 1.5);
 TypeScript's and JavaScript's fields are interfaces, which any object with
 their properties satisfies, so they take the caller's objects as they are.
 
+In Java, a struct also has a static `write(bytes, offset, ...)` of its
+values, unless they take more than 253 of a method's parameter slots, and a
+message whose only field is an array of such structs also has
+`serialize(count, fill)`, named after `TableBuilder.setVector(count, fields,
+fill)`. Its fill writes each struct straight into the table with the static
+`write()`, from the items that the caller holds, without creating a record
+of each struct and an array of them, such as for a message `Triples` of an
+array `items` of `Triple`s of three floats:
+
+```java
+var bytes = Triples.serialize(items.size(), (index, bytes, offset) -> {
+    var item = items.get(index);
+    Triple.write(bytes, offset, item.value(), item.first(), item.second());
+});
+```
+
 ### Versions
 
 A versioned message has a `FORMAT_VERSION`, which its writer writes and its

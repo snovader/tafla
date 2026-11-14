@@ -21,11 +21,12 @@ import java.util.Arrays;
  *
  * <p>The generated code writes from records of each table's fields and of the structs, which
  * {@code serialize()} creates from the workloads' inputs in each call, as the protobuf codec
- * creates its messages. Reading creates the workloads' records from the generated readers' values.
- * The getters of the vector and of the array of structs return views, which read each item, a
- * reader or a record, as it's asked for. Its getters of arrays of scalars return copies, so it sums
- * a column through the column's view, {@code aView()}, which reads the elements in place, as the
- * other languages' generated getters return them.</p>
+ * creates its messages, except for the array of structs, whose {@code serialize(count, fill)}
+ * writes each item's values straight into the table. Reading creates the workloads' records from
+ * the generated readers' values. The getters of the vector and of the array of structs return
+ * views, which read each item, a reader or a record, as it's asked for. Its getters of arrays of
+ * scalars return copies, so it sums a column through the column's view, {@code aView()}, which
+ * reads the elements in place, as the other languages' generated getters return them.</p>
  */
 public final class TaflaGenCodec {
     private TaflaGenCodec() {}
@@ -116,14 +117,13 @@ public final class TaflaGenCodec {
     private static final class Structs implements Workload<ListInput> {
         @Override
         public byte[] serialize(ListInput input) {
+            // Each item's values straight into the table, without a Triple of them
             var items = input.items();
-            var triples = new Triple[items.size()];
-            for (int i = 0; i < triples.length; i++) {
-                var item = items.get(i);
-                triples[i] = new Triple(item.value(), item.first(), item.second());
-            }
 
-            return Triples.serialize(new Triples.Fields(triples));
+            return Triples.serialize(items.size(), (index, bytes, offset) -> {
+                var item = items.get(index);
+                Triple.write(bytes, offset, item.value(), item.first(), item.second());
+            });
         }
 
         @Override

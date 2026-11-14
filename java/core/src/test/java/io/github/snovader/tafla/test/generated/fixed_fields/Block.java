@@ -92,11 +92,26 @@ public record Block(Quad first, Quad second, Quad third, Quad fourth) {
         return bytes;
     }
 
-    /** Writes the {@code Block} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Block} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(
+        byte[] bytes,
+        int offset,
+        Quad first,
+        Quad second,
+        Quad third,
+        Quad fourth
+    ) {
         first.write(bytes, offset);
         second.write(bytes, offset + 64);
         third.write(bytes, offset + 128);
         fourth.write(bytes, offset + 192);
+    }
+
+    /** Writes the {@code Block} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, first, second, third, fourth);
     }
 }

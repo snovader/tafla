@@ -104,8 +104,22 @@ public record Quad(double a, double b, double c, double d, double e, double f, d
         return bytes;
     }
 
-    /** Writes the {@code Quad} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Quad} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(
+        byte[] bytes,
+        int offset,
+        double a,
+        double b,
+        double c,
+        double d,
+        double e,
+        double f,
+        double g,
+        double h
+    ) {
         FLOAT64.set(bytes, offset, a);
         FLOAT64.set(bytes, offset + 8, b);
         FLOAT64.set(bytes, offset + 16, c);
@@ -114,5 +128,10 @@ public record Quad(double a, double b, double c, double d, double e, double f, d
         FLOAT64.set(bytes, offset + 40, f);
         FLOAT64.set(bytes, offset + 48, g);
         FLOAT64.set(bytes, offset + 56, h);
+    }
+
+    /** Writes the {@code Quad} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, a, b, c, d, e, f, g, h);
     }
 }

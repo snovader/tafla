@@ -270,7 +270,7 @@ fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Ve
 
 /// The most parameter slots that a Java constructor takes: the JVM's 255,
 /// less the one that `this` takes
-const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
+pub const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
 
 /// Checks that Java can declare a record of a definition's fields: it reads a
 /// struct into a record of its fields, and writes a message or table from a
@@ -303,7 +303,7 @@ fn check_java_parameters(
 
 /// The parameter slots of a field in Java, where a `long` or a `double` takes
 /// two: 64-bit scalars, and `uint32`, which Java widens to a `long`
-const fn java_parameter_slots(field_type: FieldType) -> usize {
+pub const fn java_parameter_slots(field_type: FieldType) -> usize {
     match field_type {
         FieldType::Scalar(Scalar::Uint32 | Scalar::Int64 | Scalar::Uint64 | Scalar::Float64) => 2,
         _ => 1,

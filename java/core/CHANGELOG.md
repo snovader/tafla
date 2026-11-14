@@ -37,6 +37,11 @@ repository's first commits, for code built from its source before the release.
   in 0.427 µs, against 0.490 µs with `getVectorItemOffset()`.
 - `TableSizer.writer(byte[])`, which writes a table into the start of bytes
   that the caller owns and reuses rather than into new bytes.
+- `TableWriter.setStructs(int, int, int, int, StructFill)`, which writes an
+  array of a count of structs straight into the table, each with a fill that
+  writes struct `index` at an offset in the table's bytes, without an array
+  of the structs. The generated code of the benchmarks' array of 100
+  structs wrote it so in 0.109 µs rather than 0.338 µs from records.
 - `TableBuilder.setTable(int, Consumer)` and
   `setVector(int, int, ObjIntConsumer)`, which record a nested table, or each
   item of a vector, straight among the builder's own fields, through the

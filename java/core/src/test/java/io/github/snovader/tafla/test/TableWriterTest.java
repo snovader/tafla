@@ -121,6 +121,7 @@ public class TableWriterTest {
         var whole = before.withField(structs);
 
         assertEquals(outcomeOf(() -> Tables.write(whole)), outcomeOf(() -> writeInPlace(before, structs)));
+        assertEquals(outcomeOf(() -> Tables.write(whole)), outcomeOf(() -> fillInPlace(before, structs)));
     }
 
     @Property
@@ -624,6 +625,26 @@ public class TableWriterTest {
             (index, bytes, offset) -> {
                 StructBytes.write(structs.fields(), structs.items().get(index), bytes, offset);
             }
+        );
+
+        return writer.bytes();
+    }
+
+    /**
+     * {@return the bytes of the table's fields and then the structs}, written with
+     * {@link TableWriter#setStructs(int, int, int, int, TableWriter.StructFill)}, whose fill writes
+     * each struct's values by its index, as a generated message's {@code serialize(count, fill)} does
+     */
+    private static byte[] fillInPlace(TableDescription table, StructArrayField structs) {
+        var writer = Tables.size(table.withField(structs)).writer();
+        Tables.writeFields(writer, table);
+
+        writer.setStructs(
+            table.fields().size(),
+            structs.items().size(),
+            StructBytes.size(structs.fields()),
+            StructBytes.alignment(structs.fields()),
+            (index, bytes, offset) -> StructBytes.write(structs.fields(), structs.items().get(index), bytes, offset)
         );
 
         return writer.bytes();
