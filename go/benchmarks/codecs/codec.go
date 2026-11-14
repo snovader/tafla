@@ -33,6 +33,15 @@ type DocumentCodec interface {
 	SumA(bytes []byte) (float64, error)
 }
 
+// DocumentIntoCodec writes the documents into bytes that the caller keeps
+// between calls, rather than into new bytes.
+type DocumentIntoCodec interface {
+	Codec
+	// SerializeDocumentInto writes document from the start of bytes, into
+	// their capacity when it has room, and returns the bytes that hold it.
+	SerializeDocumentInto(document workloads.Document, bytes []byte) ([]byte, error)
+}
+
 // ListCodec encodes the vector of nested tables.
 type ListCodec interface {
 	Codec
