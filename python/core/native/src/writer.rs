@@ -1,5 +1,6 @@
 use std::ffi::c_int;
 use std::fmt::Display;
+use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
 
 use pyo3::exceptions::{
@@ -118,6 +119,45 @@ impl Bytes {
         self.resize(self.len.checked_add(count).ok_or_else(memory_error)?)
     }
 
+    /// The `length` bytes of the capacity from `start`, which is at least the
+    /// length, grown to hold them, for bytes that `extend_written()` adds to
+    /// the length once they're written. Returns `None` if they don't fit in
+    /// memory, or if the bytes are exported and would have to grow.
+    #[inline]
+    fn spare(&mut self, start: usize, length: usize) -> Option<&mut [MaybeUninit<u8>]> {
+        assert!(
+            start >= self.len,
+            "the spare capacity starts after the length"
+        );
+        let end = start.checked_add(length)?;
+        if end > self.capacity {
+            if self.exports > 0 {
+                return None;
+            }
+            self.grow(end).ok()?;
+        }
+
+        let spare = unsafe { self.pointer.as_ptr().add(start) };
+        Some(unsafe { std::slice::from_raw_parts_mut(spare.cast(), length) })
+    }
+
+    /// Adds the `length` bytes after the length to it, as `extend_from_slice()`
+    /// would append them. Raises `BufferError` if the bytes are exported, as
+    /// it would.
+    ///
+    /// # Safety
+    ///
+    /// The bytes must be written, into the capacity that `spare()` returned.
+    #[inline]
+    unsafe fn extend_written(&mut self, length: usize) -> PyResult<()> {
+        let len = self.len + length;
+        debug_assert!(len <= self.capacity);
+        self.check_length(len)?;
+        self.len = len;
+
+        Ok(())
+    }
+
     /// Grows the capacity to at least `required`, so that appending is
     /// amortized: by half again while it's small, and by an eighth, as a
     /// `bytearray` grows, once it's large, so that a large table holds
@@ -198,6 +238,21 @@ impl Mark {
         match self {
             Self::Small(value) => Self::Small(*value),
             Self::Big(value) => Self::Big(value.clone_ref(py)),
+        }
+    }
+
+    /// The number of zeros that put `position` at a multiple of `alignment`
+    /// from this start
+    #[inline]
+    fn padding(&self, py: Python<'_>, position: usize, alignment: usize) -> PyResult<usize> {
+        // Modulo a power of two, which wrapping keeps, and which an int's
+        // bits give, as they're its two's complement
+        let mask = alignment - 1;
+        match self {
+            Self::Small(start) => {
+                Ok((start.wrapping_sub(position as i128).cast_unsigned() as usize) & mask)
+            }
+            Self::Big(start) => start.bind(py).sub(position)?.bitand(mask)?.extract(),
         }
     }
 }
@@ -542,19 +597,7 @@ impl TableWriter {
     /// start of the table
     #[inline]
     fn pad(&mut self, py: Python<'_>, position: usize, alignment: usize) -> PyResult<()> {
-        // Modulo a power of two, which wrapping keeps, and which an int's
-        // bits give, as they're its two's complement
-        let mask = alignment - 1;
-        let padding = match &self.table {
-            Mark::Small(table) => {
-                (table.wrapping_sub(position as i128).cast_unsigned() as usize) & mask
-            }
-            Mark::Big(table) => table
-                .bind(py)
-                .sub(position)?
-                .bitand(mask)?
-                .extract::<usize>()?,
-        };
+        let padding = self.table.padding(py, position, alignment)?;
         if padding > 0 {
             self.data.extend_zeros(padding)?;
         }
@@ -580,12 +623,18 @@ impl TableWriter {
     fn append_elements(&mut self, elements: &[u8], item_size: usize) -> PyResult<()> {
         let start = self.len();
         self.data.extend_from_slice(elements)?;
+        self.make_little_endian(start, item_size);
+        Ok(())
+    }
+
+    /// Swaps the bytes of the elements from `start` to the end, which are in
+    /// the host's byte order, to little-endian ones
+    fn make_little_endian(&mut self, start: usize, item_size: usize) {
         if !little_endian_host() && item_size > 1 {
             for element in self.data.as_mut_slice()[start..].chunks_exact_mut(item_size) {
                 element.reverse();
             }
         }
-        Ok(())
     }
 
     fn set_array(
@@ -597,6 +646,10 @@ impl TableWriter {
         values: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let index = Int::new(index)?;
+        if self.set_sequence(py, &index, code, item_size, values)? {
+            return Ok(());
+        }
+
         elements::with_elements(values, code, item_size, |elements| {
             let length = elements.len();
             self.start_array(
@@ -608,6 +661,47 @@ impl TableWriter {
             )?;
             self.append_elements(elements, item_size)
         })
+    }
+
+    /// Writes an array from an exact list or tuple whose elements
+    /// `elements::convert_sequence()` converts, straight into the spare
+    /// capacity where they follow the array's padding and count, before
+    /// either is written, rather than into an `array` that's copied again.
+    /// Returns `false`, having written nothing, for elements that it doesn't
+    /// convert, so that `with_elements()` converts them, and raises what the
+    /// pure-Python runtime raises.
+    fn set_sequence(
+        &mut self,
+        py: Python<'_>,
+        index: &Int<'_>,
+        code: char,
+        item_size: usize,
+        values: &Bound<'_, PyAny>,
+    ) -> PyResult<bool> {
+        // The elements follow the padding and the count, which start_array()
+        // writes once they're converted
+        let unpadded = self.len() + self.size();
+        let mut start = 0;
+        let table = &self.table;
+        let data = &mut self.data;
+        let destination = |byte_length| {
+            // Moved into the call, so that the capacity it returns outlives it
+            let data = data;
+            start = unpadded + table.padding(py, unpadded, item_size).ok()?;
+            data.spare(start, byte_length)
+        };
+        let Some(byte_length) = elements::convert_sequence(values, code, destination) else {
+            return Ok(false);
+        };
+
+        let count = Int::from(byte_length / item_size);
+        self.start_array(py, index, &count, &Int::from(byte_length), item_size)?;
+        assert_eq!(self.len(), start, "the elements follow the count");
+        // SAFETY: convert_sequence() wrote the elements where they start
+        unsafe { self.data.extend_written(byte_length)? };
+        self.make_little_endian(start, item_size);
+
+        Ok(true)
     }
 
     fn set_table_at(&mut self, py: Python<'_>, index: &Int<'_>, alignment: usize) -> PyResult<()> {
