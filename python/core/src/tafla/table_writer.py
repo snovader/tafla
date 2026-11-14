@@ -1,7 +1,7 @@
 import builtins
 from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
-from typing import Any, Literal, Self, overload
+from typing import Any, Literal, Self, cast, overload
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
@@ -169,6 +169,61 @@ class TableWriter:
             writer.__length.pack_into(data, size if sized else 0, version)
 
         return writer
+
+    @staticmethod
+    def write_fields(
+        fields: FixedFields,
+        values: tuple[Any, ...],
+        string: str = "",
+        version: int | None = None,
+    ) -> builtins.bytes:
+        """Writes a table of only the fields that ``fields`` describes, a
+        message's, in the layout that it was created with, from their
+        ``values`` as ``set_fields()`` takes them, and ``string`` when they
+        end with one, and returns its bytes, in one call. They're the bytes
+        that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
+        ``bytes()`` write, and it raises as they do.
+
+        Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
+        doesn't.
+
+        Generated code calls it to write a message of only such fields."""
+        header = fields._header
+        if header is None:
+            raise TypeError("A nested table's fields have no layout to write")
+
+        size, slots, sized, versioned = header
+        # Packed in one call, then the string's bytes, after the header,
+        # unless a value doesn't fit or the version isn't as the layout needs,
+        # which the writer's calls raise for
+        if versioned == (version is not None):
+            try:
+                if fields._string:
+                    encoded = string.encode()
+                    packed = fields._packers[size](*values, len(encoded))
+                else:
+                    encoded = b""
+                    packed = fields._packers[size](*values)
+
+                length = slots.size + len(packed) + len(encoded)
+                if length <= MAX_LENGTHS[size]:
+                    if sized and versioned:
+                        packed = slots.pack(length, version) + packed
+                    elif sized:
+                        packed = slots.pack(length) + packed
+                    elif versioned:
+                        packed = slots.pack(version) + packed
+                    return packed + encoded if encoded else packed
+            except _FIELD_ERRORS:
+                pass
+
+        layout = cast(Any, fields._layout)
+        if version is None:
+            writer = TableWriter(fields._fields, layout)
+        else:
+            writer = TableWriter(fields._fields, layout, version)
+        writer.set_fields(fields, values, string)
+        return builtins.bytes(writer.bytes())
 
     def bytes(self) -> memoryview[int]:
         """Returns a view of the table's bytes, without copying them. While

@@ -1,11 +1,13 @@
 //! Python for `tafla`. Messages and tables are classes that read
 //! fields lazily from their bytes, written from `TypedDict`s of their fields,
-//! and structs are frozen dataclasses packed with `struct`. A table's leading
-//! fields of fixed size, and a string after them, are written in one call,
-//! from the runtime's `FixedFields`, and a table of only those fields is read
-//! at once by `fields()` too, and a vector of such tables in one call each.
-//! Tables of scalars and a string, and structs of scalars, are also read
-//! into tuples of their values and written from them.
+//! and structs are frozen dataclasses packed with `struct`. Vectors and
+//! arrays of structs are read through views of their items. A table's
+//! leading fields of fixed size, and a string after them, are written in one
+//! call, from the runtime's `FixedFields`, and read in one call by
+//! `field_values()`, which reads every field's value into a tuple, nested
+//! tables' included, and by `fields()`. A message of only such fields is
+//! written and read without a writer or a reader. Messages, tables and
+//! structs of scalars are also written from tuples of their values.
 
 use std::collections::HashSet;
 
@@ -317,6 +319,115 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         field_reader(writer, schema, index, true, Form::Fields);
     }
     field_reader(writer, schema, index, true, Form::Values);
+    if fixed > 0 && fixed == definition.fields.len() {
+        read_values(writer, schema, definition, layout);
+    } else {
+        read_values_by_buffer(writer, schema, index, layout);
+    }
+    writer.dedent();
+}
+
+/// The `read_values()` of a message with other fields than fixed ones, which
+/// reads them as `field_values()` does, from a `ByteBuffer` of its own, without
+/// a reader, and checks its version as the reader's constructor does
+fn read_values_by_buffer(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+    let definition = schema.definition(index);
+    let name = &definition.name;
+    let fixed = fixed_fields(schema, index);
+    let mut reads = Reads::new(schema, Form::Values);
+    let mut elements = reads.unpacked(definition, fixed, "values", &mut 0);
+    let rest = reads.read(definition, fixed, None);
+    elements.extend(rest);
+
+    writer.blank();
+    writer.line("@classmethod");
+    let parameters = ["cls", "data: Buffer"].map(str::to_owned);
+    def_line(
+        writer,
+        "read_values",
+        &parameters,
+        &values_alias(definition),
+    );
+    writer.indent();
+    let mut docs = vec![
+        "Reads every field's value from `data` as `field_values()` reads them,".to_owned(),
+        "without creating a reader.".to_owned(),
+        String::new(),
+        "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
+    ];
+    docs.push(if layout.version.is_some() {
+        "bytes that the getters can't read or of another format version.".to_owned()
+    } else {
+        "bytes that the getters can't read.".to_owned()
+    });
+    docstring(writer, &docs);
+    writer.line("buffer = ByteBuffer(data, cls._LAYOUT)");
+    if layout.version.is_some() {
+        writer.line("version = buffer.get_version()");
+        writer.open("if version != cls.FORMAT_VERSION:");
+        let message = format!(
+            "f\"Expected format version {{cls.FORMAT_VERSION}} of {name}, got {{version}}\""
+        );
+        writer.statement(
+            &STYLE,
+            "raise ",
+            &call("DecodeError", vec![text(message)]),
+            "",
+        );
+        writer.dedent();
+    }
+    if fixed > 0 {
+        writer.line("values = buffer.get_fields(0, cls._FIXED_FIELDS)");
+        writer.open("if values is None:");
+        writer.line("return cls(data).field_values()");
+        writer.dedent();
+        writer.blank();
+    }
+    return_reads(writer, &reads, &elements, Form::Values, false);
+    writer.dedent();
+}
+
+/// A message of only fixed fields' `read_values()`, which reads their values
+/// as `field_values()` reads them, in one call and without a reader, or
+/// through a reader's getters when the message's offsets aren't the ones
+/// that its writer writes, or its version isn't the reader's, which the
+/// reader raises for
+fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
+    let versioned = layout.version.is_some();
+
+    writer.blank();
+    writer.line("@classmethod");
+    let alias = values_alias(definition);
+    let parameters = ["cls", "data: Buffer"].map(str::to_owned);
+    def_line(writer, "read_values", &parameters, &alias);
+    writer.indent();
+    let mut docs = vec![
+        "Reads every field's value from `data` at once, as `field_values()`".to_owned(),
+        "reads them, without creating a reader.".to_owned(),
+        String::new(),
+        "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
+    ];
+    if versioned {
+        docs.push("bytes that the getters can't read or of another format version.".to_owned());
+    } else {
+        docs.push("bytes that the getters can't read.".to_owned());
+    }
+    docstring(writer, &docs);
+    let mut arguments = vec![text("data"), text("cls._FIXED_FIELDS")];
+    if versioned {
+        arguments.push(text("cls.FORMAT_VERSION"));
+    }
+    writer.statement(
+        &STYLE,
+        "values = ",
+        &call("ByteBuffer.read_fields", arguments),
+        "",
+    );
+    writer.open("if values is None:");
+    writer.line("return cls(data).field_values()");
+    writer.dedent();
+    writer.blank();
+    return_converted(writer, schema, definition, "return ", "values");
     writer.dedent();
 }
 
@@ -330,6 +441,9 @@ fn serialize(
     fixed: usize,
 ) {
     let name = &definition.name;
+    // A message of only fixed fields is written whole in one call, into
+    // bytes of its own
+    let whole = fixed > 0 && fixed == definition.fields.len();
 
     writer.line("@classmethod");
     writer.statement(
@@ -339,9 +453,30 @@ fn serialize(
             "serialize",
             vec![text("cls"), text(format!("**fields: Unpack[{name}Fields]"))],
         ),
-        " -> memoryview:",
+        if whole {
+            " -> bytes:"
+        } else {
+            " -> memoryview:"
+        },
     );
     writer.indent();
+    if whole {
+        docstring(
+            writer,
+            &[format!(
+                "Writes {} with every field, in one call, into bytes of its own",
+                article(name)
+            )],
+        );
+        let mut arguments = fixed_arguments(schema, definition, fixed, "cls");
+        if layout.version.is_some() {
+            arguments.push(text("version=cls.FORMAT_VERSION"));
+        }
+        let write = call("TableWriter.write_fields", arguments);
+        writer.statement(&STYLE, "return ", &write, "");
+        writer.dedent();
+        return;
+    }
     docstring(
         writer,
         &[format!("Writes {} with every field", article(name))],
@@ -1390,6 +1525,20 @@ fn set_fixed_fields(
     method: &str,
     owner: &str,
 ) {
+    let arguments = fixed_arguments(schema, definition, count, owner);
+    writer.statement(&STYLE, "", &call(method, arguments), "");
+}
+
+/// The arguments of a call that writes a table's first `count` fields with
+/// its `FixedFields`, from its `TypedDict` of `fields`: the `FixedFields`,
+/// the tuple of their values, each nested table's in place of it, and the
+/// string's
+fn fixed_arguments(
+    schema: &Schema,
+    definition: &Definition,
+    count: usize,
+    owner: &str,
+) -> Vec<Expr> {
     let mut values = Vec::new();
     push_fixed_values(schema, definition, count, "fields", &mut values);
 
@@ -1403,8 +1552,7 @@ fn set_fixed_fields(
     if last.field_type == FieldType::String {
         arguments.push(text(format!("fields[\"{}\"]", identifier(&last.name))));
     }
-
-    writer.statement(&STYLE, "", &call(method, arguments), "");
+    arguments
 }
 
 /// Appends the values of a table's first `count` fields, but a string's,
@@ -1972,6 +2120,19 @@ fn field_reader(writer: &mut CodeWriter, schema: &Schema, index: usize, is_root:
         writer.blank();
     }
 
+    return_reads(writer, &reads, &elements, form, unpacked_whole);
+    writer.dedent();
+}
+
+/// Assigns the locals of `reads`, and returns its `elements` in `form`, or
+/// `values`, which `ByteBuffer.get_fields()` returned, when they're those
+fn return_reads(
+    writer: &mut CodeWriter,
+    reads: &Reads<'_>,
+    elements: &[Element],
+    form: Form,
+    unpacked_whole: bool,
+) {
     for (name, expression) in &reads.statements {
         writer.statement(&STYLE, &format!("{name} = "), expression, "");
     }
@@ -1979,11 +2140,10 @@ fn field_reader(writer: &mut CodeWriter, schema: &Schema, index: usize, is_root:
         writer.line("return values");
     } else {
         match form {
-            Form::Values => writer.statement(&STYLE, "return ", &reads.tuple(&elements), ""),
-            Form::Fields => dict_statement(writer, "return ", &reads.dict(&elements)),
+            Form::Values => writer.statement(&STYLE, "return ", &reads.tuple(elements), ""),
+            Form::Fields => dict_statement(writer, "return ", &reads.dict(elements)),
         }
     }
-    writer.dedent();
 }
 
 /// Returns the fields' values or fields as the getters read them, for a table
@@ -2334,28 +2494,24 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
         .iter()
         .map(|field| parameter(field, &["writer"]))
         .collect();
-    let mut parameters = vec!["cls".to_owned()];
-    for (field, name) in definition.fields.iter().zip(&names) {
-        let value_type = match field.field_type {
-            FieldType::Vector(item) => {
-                format!("Sequence[{}]", values_alias(schema.definition(item)).flat())
-            }
-            field_type => input_type(field_type, schema),
-        };
-        parameters.push(format!("{name}: {value_type}"));
-    }
-    parameters.push("/".to_owned());
+    let parameters = values_parameters(schema, definition, &names);
     let has_vector = definition
         .fields
         .iter()
         .any(|field| matches!(field.field_type, FieldType::Vector(_)));
 
+    // A message of only fixed fields is written whole in one call, into
+    // bytes of its own
+    let fixed = fixed_fields(schema, index);
+    let whole = fixed > 0 && fixed == definition.fields.len();
+
     writer.line("@classmethod");
+    let returned = if whole { "bytes" } else { "memoryview" };
     def_line(
         writer,
         "serialize_values",
         &parameters,
-        &Annotation::Name("memoryview".to_owned()),
+        &Annotation::Name(returned.to_owned()),
     );
     writer.indent();
     let mut docs = vec![format!(
@@ -2371,6 +2527,16 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
         docs.push("`field_values()` returns them".to_owned());
     }
     docstring(writer, &docs);
+    if whole {
+        let mut arguments = fixed_value_arguments(definition, &names, fixed);
+        if layout.version.is_some() {
+            arguments.push(text("version=cls.FORMAT_VERSION"));
+        }
+        let write = call("TableWriter.write_fields", arguments);
+        writer.statement(&STYLE, "return ", &write, "");
+        writer.dedent();
+        return;
+    }
     let mut arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
@@ -2382,14 +2548,8 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
 
     // The leading fields of fixed size in one call, a string's as an argument
     // of its own, after the packed values
-    let fixed = fixed_fields(schema, index);
     if fixed > 0 {
-        let has_string = definition.fields[fixed - 1].field_type == FieldType::String;
-        let packed = &names[..fixed - usize::from(has_string)];
-        let mut arguments = vec![text("cls._FIXED_FIELDS"), tuple_expr(packed)];
-        if has_string {
-            arguments.push(text(names[fixed - 1].clone()));
-        }
+        let arguments = fixed_value_arguments(definition, &names, fixed);
         writer.statement(&STYLE, "", &call("writer.set_fields", arguments), "");
     }
     for (index, field) in definition.fields.iter().enumerate().skip(fixed) {
@@ -2426,6 +2586,37 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
     writer.blank();
     writer.line("return writer.bytes()");
     writer.dedent();
+}
+
+/// The parameters of a message's `serialize_values()`, after `cls`: each
+/// field's value by its parameter's name, and a vector's items' values,
+/// positional only
+fn values_parameters(schema: &Schema, definition: &Definition, names: &[String]) -> Vec<String> {
+    let mut parameters = vec!["cls".to_owned()];
+    for (field, name) in definition.fields.iter().zip(names) {
+        let value_type = match field.field_type {
+            FieldType::Vector(item) => {
+                format!("Sequence[{}]", values_alias(schema.definition(item)).flat())
+            }
+            field_type => input_type(field_type, schema),
+        };
+        parameters.push(format!("{name}: {value_type}"));
+    }
+    parameters.push("/".to_owned());
+    parameters
+}
+
+/// The arguments of a call that writes a message's first `count` fields
+/// with its `FixedFields`, from their values by their parameters' `names`:
+/// the `FixedFields`, the tuple of their values, and a string's after it
+fn fixed_value_arguments(definition: &Definition, names: &[String], count: usize) -> Vec<Expr> {
+    let has_string = definition.fields[count - 1].field_type == FieldType::String;
+    let packed = tuple_expr(&names[..count - usize::from(has_string)]);
+    let mut arguments = vec![text("cls._FIXED_FIELDS"), packed];
+    if has_string {
+        arguments.push(text(names[count - 1].clone()));
+    }
+    arguments
 }
 
 /// A struct of scalars' `read_values()`, `read_array_values()` and

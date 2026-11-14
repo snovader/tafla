@@ -82,6 +82,21 @@ class Uint8Offsets:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint8OffsetsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsFields(TypedDict):
     """The fields of a ``Uint8Offsets``, to write"""
@@ -167,6 +182,21 @@ class Uint8OffsetsSized:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint8OffsetsSizedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
@@ -277,6 +307,26 @@ class Uint8OffsetsVersioned:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint8OffsetsVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint8OffsetsVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
@@ -392,6 +442,26 @@ class Uint8OffsetsSizedVersioned:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint8OffsetsSizedVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint8OffsetsSizedVersionedFields(TypedDict):
     """The fields of a ``Uint8OffsetsSizedVersioned``, to write"""
@@ -480,6 +550,21 @@ class Uint16Offsets:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint16OffsetsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsFields(TypedDict):
     """The fields of a ``Uint16Offsets``, to write"""
@@ -565,6 +650,21 @@ class Uint16OffsetsSized:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint16OffsetsSizedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
@@ -675,6 +775,26 @@ class Uint16OffsetsVersioned:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint16OffsetsVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint16OffsetsVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
@@ -790,6 +910,26 @@ class Uint16OffsetsSizedVersioned:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint16OffsetsSizedVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint16OffsetsSizedVersionedFields(TypedDict):
     """The fields of a ``Uint16OffsetsSizedVersioned``, to write"""
@@ -878,6 +1018,21 @@ class Uint32Offsets:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint32OffsetsFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsFields(TypedDict):
     """The fields of a ``Uint32Offsets``, to write"""
@@ -963,6 +1118,21 @@ class Uint32OffsetsSized:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint32OffsetsSizedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
@@ -1076,6 +1246,26 @@ class Uint32OffsetsVersioned:
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint32OffsetsVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint32OffsetsVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
 
 class Uint32OffsetsVersionedFields(TypedDict):
     """The fields of a ``Uint32OffsetsVersioned``, to write"""
@@ -1185,6 +1375,26 @@ class Uint32OffsetsSizedVersioned:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
+
+        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> Uint32OffsetsSizedVersionedFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
 

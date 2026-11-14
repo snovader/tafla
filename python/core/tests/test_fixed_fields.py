@@ -57,7 +57,7 @@ def invalid_values(kind: str) -> list[Any]:
 INVALID = [(kind, value) for kind in sorted(FORMATS) for value in invalid_values(kind)]
 
 
-def outcome(write: Callable[[], memoryview[int]]) -> Outcome:
+def outcome(write: Callable[[], memoryview[int] | bytes]) -> Outcome:
     """The bytes that ``write`` returns, or the class and message of the error
     that it raises"""
     try:
@@ -338,6 +338,135 @@ class TestGetFields(unittest.TestCase):
             self.assertEqual(
                 comparable(values), comparable(read_by_getters(buffer, table, position))
             )
+
+
+class TestMessages(unittest.TestCase):
+    # write_fields() writes a message of only fixed fields as the constructor,
+    # set_fields() and bytes() write it, in one call, and read_fields() reads
+    # it as get_fields() reads its root, without a ByteBuffer
+
+    @given(tables(), sampled_from([None, *INVALID]), corruptions)
+    def test_writes_and_reads_a_message_as_the_writer_and_the_buffer_do(
+        self,
+        table: Description,
+        invalid: tuple[str, Any] | None,
+        corruption: Truncation | Overwrite,
+    ) -> None:
+        fixed = whole_fixed(nested_in_place(table))
+        assume(fixed is not None)
+        assert fixed is not None
+        if invalid is not None:
+            # A value that the field can't hold, before the message's fields
+            invalid_first: Description = {
+                **fixed,
+                "fields": [scalar(*invalid), *fixed["fields"]],
+            }
+            fixed = invalid_first
+        layout = layout_of(fixed["layout"])
+        fields = fixed_fields(fixed, len(fixed["fields"]), layout)
+        version: int | None = fixed["version"] if layout.versioned() else None
+
+        written = outcome(partial(write_message, fixed, fields, version))
+        self.assertEqual(written, outcome(partial(write_packed, fixed)))
+        if not isinstance(written, bytes):
+            return
+
+        for data in [written, corruption.apply(written)]:
+            buffer = ByteBuffer(data, layout)
+            expected = read_outcome(
+                lambda buffer=buffer: [buffer.get_fields(0, fields)]
+            )
+            self.assertEqual(
+                read_outcome(lambda data=data: [read_message(data, fields, None)]),
+                expected,
+            )
+            # And None for a version other than the one that it was written in
+            if version is not None and outcome_of(buffer.get_version) != version:
+                expected = [None]
+            self.assertEqual(
+                read_outcome(lambda data=data: [read_message(data, fields, version)]),
+                expected,
+            )
+
+    @given(binary(max_size=64), sampled_from(OFFSET_TYPES), integers(0, 3))
+    def test_reads_arbitrary_bytes_as_get_fields_or_none_for_another_version(
+        self, data: bytes, offset_type: OffsetType, version: int
+    ) -> None:
+        pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
+        table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
+        layout = TableLayout(sized=True, versioned=True, offset_type=offset_type)
+        fields = fixed_fields(table, 3, layout)
+        buffer = ByteBuffer(data, layout)
+
+        expected = outcome_of(partial(buffer.get_fields, 0, fields))
+        if expected is not None and outcome_of(buffer.get_version) != version:
+            expected = None
+        self.assertEqual(
+            outcome_of(partial(ByteBuffer.read_fields, data, fields, version)),
+            expected,
+        )
+        self.assertEqual(
+            outcome_of(partial(ByteBuffer.read_fields, data, fields)),
+            outcome_of(partial(buffer.get_fields, 0, fields)),
+        )
+
+    def test_raises_type_error_for_fields_without_a_layout_or_bytes_or_version(
+        self,
+    ) -> None:
+        nested_fields = FixedFields(2, "h", "h")
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(nested_fields, (1, 2))
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(bytes(16), nested_fields)
+
+        fields = FixedFields(2, "h", "h", layout=TableLayout.DEFAULT)
+        data = TableWriter.write_fields(fields, (1, 2))
+        self.assertEqual(ByteBuffer.read_fields(data, fields), (1, 2))
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(data, fields, 1)
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(memoryview(data * 2)[::2], fields)
+        # The writer's constructor raises for a version that the layout has no
+        # slot for, or needs
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(fields, (1, 2), version=1)
+        versioned = FixedFields(1, "h", layout=TableLayout(versioned=True))
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(versioned, (1,))
+        with self.assertRaises(ValueError):
+            TableWriter.write_fields(versioned, (1,), version=2**32)
+
+
+def write_message(
+    table: Description, fields: FixedFields, version: int | None
+) -> bytes:
+    """Writes a message of only fixed fields, as ``set_fields()`` takes them,
+    with ``write_fields()``"""
+    values: list[Any] = []
+    leading = table["fields"]
+    string = leading[-1]["value"] if leading[-1]["type"] == "string" else ""
+    push_values([field for field in leading if field["type"] != "string"], values)
+
+    return TableWriter.write_fields(fields, tuple(values), string, version)
+
+
+def read_message(
+    data: bytes, fields: FixedFields, version: int | None
+) -> tuple[Any, ...] | None:
+    return ByteBuffer.read_fields(data, fields, version)
+
+
+def outcome_of(call: Callable[[], object]) -> object:
+    """What ``call`` returns, with each float as its bits, or the class and
+    message of the error that it raises"""
+    try:
+        value = call()
+    except Exception as error:  # noqa: BLE001
+        return type(error), str(error)
+
+    if isinstance(value, tuple):
+        return comparable(value)
+    return value
 
 
 class TestVectorTables(unittest.TestCase):

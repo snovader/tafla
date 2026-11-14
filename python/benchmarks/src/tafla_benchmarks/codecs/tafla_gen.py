@@ -18,16 +18,16 @@ from tafla_benchmarks.workloads import (
 )
 
 
-def serialize_record(input: RecordInput) -> memoryview:
+def serialize_record(input: RecordInput) -> bytes:
     """Writes the fields' values in their order, as ``serialize_values()``
-    takes them"""
+    takes them, into bytes of the record's own in one call"""
     return Record.serialize_values(input.x, input.y, input.id, input.name)
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    """Reads every field's value at once with ``field_values()``, as an
-    application that wants them all would"""
-    return RecordInput(*Record(data).field_values())
+    """Reads every field's value at once with ``read_values()``, without a
+    reader, as an application that wants them all would"""
+    return RecordInput(*Record.read_values(data))
 
 
 def serialize_document(input: DocumentInput) -> memoryview:
@@ -40,9 +40,9 @@ def serialize_document(input: DocumentInput) -> memoryview:
 
 
 def deserialize_document(data: Buffer) -> DocumentOutput:
-    """Reads every field's value at once with ``field_values()``, the nested
-    columns' as a tuple of their own"""
-    x, y, name, (base, keys, a, b) = Document(data).field_values()
+    """Reads every field's value at once with ``read_values()``, without a
+    reader, the nested columns' as a tuple of their own"""
+    x, y, name, (base, keys, a, b) = Document.read_values(data)
 
     return DocumentOutput(x, y, name, base, keys, a, b)
 
@@ -110,10 +110,11 @@ nesting ``TableBuilder`` instances, and a vector of fixed-layout tables in one
 call too.
 
 The record and the fixed-size record are written from their values, as
-positional arguments, and read into tuples of them, with ``serialize_values()``,
-``field_values()`` and ``read_values()``. The document is written from a
+positional arguments, and read into tuples of them, with ``serialize_values()``
+and ``read_values()``, the record into bytes of its own and from them in one
+call each, without a writer or a reader. The document is written from a
 ``TypedDict`` of each table's fields, and read into a tuple of its values with
-``field_values()``, its columns' in a tuple of their own, as views. The vector
+``read_values()``, its columns' in a tuple of their own, as views. The vector
 is written from a tuple of each item's values, each pair's in place of it,
 with ``serialize_values()``, and read into them with the ``field_values()``
 of the view that its getter returns, which reads every item's values at

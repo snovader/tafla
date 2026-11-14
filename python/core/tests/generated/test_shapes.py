@@ -316,6 +316,10 @@ class TestEveryField(unittest.TestCase):
         _assert_document_as_its_getters(self, document)
         written = Document.serialize(**document.fields())
         self.assertEqual(bytes(written), bytes(data))
+        self.assertEqual(
+            fields_or_decode_error(lambda: plain(Document.read_values(where.of(data)))),
+            fields_or_decode_error(lambda: plain(document.field_values())),
+        )
 
     @SETTINGS
     @given(document_fields, corruptions)
@@ -323,6 +327,11 @@ class TestEveryField(unittest.TestCase):
         self, fields: DocumentFields, corruption: Truncation | Overwrite
     ) -> None:
         data = corruption.apply(bytes(Document.serialize(**fields)))
+        # Without a reader, raising for another version as its constructor does
+        self.assertEqual(
+            fields_or_decode_error(lambda: plain(Document.read_values(data))),
+            fields_or_decode_error(lambda: plain(Document(data).field_values())),
+        )
         try:
             document = Document(data)
         except DecodeError:

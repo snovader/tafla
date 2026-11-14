@@ -22,24 +22,18 @@ class Record:
         self._buffer = ByteBuffer(data, self._LAYOUT)
 
     @classmethod
-    def serialize(cls, **fields: Unpack[RecordFields]) -> memoryview:
-        """Writes a ``Record`` with every field"""
-        writer = TableWriter(4, cls._LAYOUT)
-        writer.set_fields(
+    def serialize(cls, **fields: Unpack[RecordFields]) -> bytes:
+        """Writes a ``Record`` with every field, in one call, into bytes of its own"""
+        return TableWriter.write_fields(
             cls._FIXED_FIELDS, (fields["x"], fields["y"], fields["id"]), fields["name"]
         )
 
-        return writer.bytes()
-
     @classmethod
-    def serialize_values(cls, x: float, y: float, id: int, name: str, /) -> memoryview:
+    def serialize_values(cls, x: float, y: float, id: int, name: str, /) -> bytes:
         """Writes a ``Record`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(4, cls._LAYOUT)
-        writer.set_fields(cls._FIXED_FIELDS, (x, y, id), name)
-
-        return writer.bytes()
+        return TableWriter.write_fields(cls._FIXED_FIELDS, (x, y, id), name)
 
     def x(self) -> float:
         return self._buffer.get_float64(self._buffer.root_offset(0))
@@ -77,6 +71,20 @@ class Record:
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.x(), self.y(), self.id(), self.name())
+
+        return values
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> RecordFieldValues:
+        """Reads every field's value from ``data`` at once, as ``field_values()``
+        reads them, without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         return values
 
@@ -195,6 +203,37 @@ class Document:
         values = buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.x(), self.y(), self.name(), self.columns().field_values())
+
+        columns = buffer.root_offset(3)
+        return (
+            values[0],
+            values[1],
+            values[2],
+            (
+                buffer.get_int64(buffer.field_offset(columns, 0)),
+                buffer.get_uint32_array(buffer.field_offset(columns, 1)),
+                buffer.get_float32_array(buffer.field_offset(columns, 2)),
+                buffer.get_float32_array(buffer.field_offset(columns, 3)),
+            ),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> DocumentFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read or of another format version.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
+        version = buffer.get_version()
+        if version != cls.FORMAT_VERSION:
+            raise DecodeError(
+                f"Expected format version {cls.FORMAT_VERSION} of Document, got {version}"
+            )
+        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        if values is None:
+            return cls(data).field_values()
 
         columns = buffer.root_offset(3)
         return (
@@ -362,6 +401,17 @@ class ItemList:
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
         buffer = self._buffer
+        return (ItemVector(buffer, buffer.root_offset(0)),)
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> ItemListFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
         return (ItemVector(buffer, buffer.root_offset(0)),)
 
 
@@ -658,6 +708,17 @@ class Triples:
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
         buffer = self._buffer
+        return (TripleArray(buffer, buffer.root_offset(0)),)
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> TriplesFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a reader.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        buffer = ByteBuffer(data, cls._LAYOUT)
         return (TripleArray(buffer, buffer.root_offset(0)),)
 
 

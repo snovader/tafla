@@ -243,6 +243,19 @@ fn item_error(
     build().unwrap_or_else(|error| error)
 }
 
+/// The bytes of `source`, held as plain bytes, or `TypeError` if they
+/// aren't C-contiguous
+fn hold(source: &Bound<'_, PyAny>) -> PyResult<Held> {
+    let py = source.py();
+    let mut held = std::mem::MaybeUninit::<ffi::Py_buffer>::uninit();
+    if unsafe { ffi::PyObject_GetBuffer(source.as_ptr(), held.as_mut_ptr(), ffi::PyBUF_SIMPLE) }
+        != 0
+    {
+        return Err(contiguous_error(py, PyErr::fetch(py)));
+    }
+    Ok(Held(unsafe { held.assume_init() }))
+}
+
 /// A one-dimensional view of the bytes of `source`, which a `ByteBuffer`
 /// holds, as the pure-Python runtime views them: `memoryview(source)`, cast
 /// to bytes if it's of another format or shape. A memoryview is one that
@@ -349,19 +362,57 @@ impl ByteBuffer {
             bytes
         };
 
-        let mut held = std::mem::MaybeUninit::<ffi::Py_buffer>::uninit();
-        if unsafe { ffi::PyObject_GetBuffer(source.as_ptr(), held.as_mut_ptr(), ffi::PyBUF_SIMPLE) }
-            != 0
-        {
-            return Err(contiguous_error(py, PyErr::fetch(py)));
-        }
-        let held = Held(unsafe { held.assume_init() });
-
         Ok(Self {
-            held,
+            held: hold(source)?,
             shape: shape_of(layout.as_ref()),
             view: PyOnceLock::new(),
         })
+    }
+
+    /// Returns the values of the fields that ``fields`` describes whole, a
+    /// message's, of the message in ``data``, in the layout that ``fields``
+    /// was created with, as ``ByteBuffer(data, layout).get_fields(0,
+    /// fields)`` returns them, or ``None`` as it does, without creating a
+    /// ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+    /// that the header holds, for the reader's constructor to raise for.
+    ///
+    /// Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
+    /// no layout, as a nested table's doesn't, and if ``version`` is given
+    /// for a layout without a version.
+    ///
+    /// Generated code calls it to read every field of a message of only such
+    /// fields at once, without a reader.
+    #[staticmethod]
+    #[pyo3(signature = (data, fields, version = None))]
+    fn read_fields<'py>(
+        data: &Bound<'py, PyAny>,
+        fields: &Bound<'_, FixedFields>,
+        version: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        let py = data.py();
+        // The constructor's checks of the bytes, before the fields'
+        let held = hold(data)?;
+        let fixed = fields.get();
+        let shape = fixed.shape()?;
+        if version.is_some() && !shape.versioned {
+            return Err(PyTypeError::new_err("The table has no version"));
+        }
+        let buffer = Self {
+            held,
+            shape,
+            view: PyOnceLock::new(),
+        };
+
+        if let Some(version) = version {
+            let layout = shape.core().versioned();
+            let Ok(found) = tafla::ByteBuffer::new(buffer.bytes_slice(), layout).version() else {
+                return Ok(None);
+            };
+            if !version.eq(found)? {
+                return Ok(None);
+            }
+        }
+        buffer.fields_at(py, fixed.plan(shape.size())?, 0)
     }
 
     fn bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
