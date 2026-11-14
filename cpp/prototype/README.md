@@ -25,7 +25,13 @@ the design and the proposal.
   copied, and `to_bytes()` copies them between the buffer's bytes, so a large
   borrowed column is copied once, into the result. `DirectTableBuilder` keeps
   runs of 256 bytes or more; `CopyingTableBuilder` keeps none, copying every
-  value when it's set.
+  value when it's set. The first 4 segments are kept within the builder.
+- `InliningTableBuilder` is `DirectTableBuilder` with each `fill` of
+  `set_table(fields, fill)` and `set_vector(count, fields, fill)` inlined
+  where it's called, which `[[clang::always_inline]]` on the call asks
+  Clang for, as a variant to time.
+- After a vector's first item, it makes room for the others, as long as the
+  first each.
 - A setter checks its field before it writes anything. A nested table or
   vector whose `fill` throws is removed by truncating the buffer, the
   segments and the owned values to a checkpoint.
@@ -46,7 +52,7 @@ build/prototype/tafla_builder_comparison
 build/prototype/tafla_builder_allocation
 ```
 
-The comparison takes about 15 seconds and the benchmarks' harness's options:
+The comparison takes about 10 seconds and the benchmarks' harness's options:
 `--rounds`, `--warmup-rounds`, `--sample-ms`, `--quick`, and parts of names.
 
 ## Tests
