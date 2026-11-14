@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -274,6 +275,35 @@ struct ItemListFields {
      */
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
+
+namespace generic {
+/**
+ * The fields of an `ItemList`, to write, as `ItemListFields` holds them, but whose `items` can be a view of any items
+ * that convert into its items rather than a span of them
+ */
+template <class T = std::span<const ItemFields>>
+struct ItemListFields {
+    /**
+     * A view of `ItemFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `ItemFields` unless `T` is another
+     */
+    T items{};
+
+    /**
+     * Writes an `ItemList` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes an `ItemList` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and
+     * returns its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
 
 /** Two values of an item */
 class Pair {
@@ -591,6 +621,52 @@ inline std::size_t ItemListFields::serialize_into(std::span<std::uint8_t> bytes_
     for (std::size_t index_ = 0; index_ < items.size(); ++index_) {
         items[index_].write(writer_);
         writer_.set_item_end(vector0_, index_);
+    }
+
+    return writer_.finish_into();
+}
+
+template <class T>
+inline ::tafla::Bytes generic::ItemListFields<T>::serialize() const {
+    static_assert(::tafla::ViewOf<T, ItemFields>);
+
+    ::tafla::TableSizer sizer_(1, ItemList::LAYOUT);
+    sizer_.add_vector(std::ranges::size(items));
+    for (const auto& element_ : items) {
+        const ItemFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    const auto vector0_ = writer_.set_vector(0, std::ranges::size(items));
+    for (std::size_t index_ = 0; const auto& element_ : items) {
+        const ItemFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector0_, index_);
+        ++index_;
+    }
+
+    return writer_.finish();
+}
+
+template <class T>
+inline std::size_t generic::ItemListFields<T>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, ItemFields>);
+
+    ::tafla::TableSizer sizer_(1, ItemList::LAYOUT);
+    sizer_.add_vector(std::ranges::size(items));
+    for (const auto& element_ : items) {
+        const ItemFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    const auto vector0_ = writer_.set_vector(0, std::ranges::size(items));
+    for (std::size_t index_ = 0; const auto& element_ : items) {
+        const ItemFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector0_, index_);
+        ++index_;
     }
 
     return writer_.finish_into();

@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <span>
 #include <vector>
 
@@ -23,10 +24,10 @@ namespace tafla::benchmarks {
 /// writes whole instead, each field at a constant position in bytes of its
 /// length. Its readers view strings and columns, as tafla's do.
 ///
-/// It takes the workloads' types, as the other codecs do, so it collects the
-/// generated fields of the vector's items and the generated structs of the
-/// array into a vector in each call, as the protobuf codec builds its
-/// messages, since the generated code writes them from spans.
+/// It takes the workloads' types, as the other codecs do, and writes the
+/// vector's items and the array's structs from views of the workload's items
+/// with the generated generic fields structs, which convert each item as they
+/// write it, rather than collecting the items into the generated types first.
 struct TaflaGen {
     static constexpr std::string_view name = "tafla-gen";
 
@@ -71,12 +72,8 @@ struct TaflaGen {
     }
 
     [[nodiscard]] Bytes serialize(ListShape, const List& input) const {
-        std::vector<::workloads::ItemFields> items(input.items.size());
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            const auto& item = input.items[index];
-            items[index] = {.value = item.value, .pair = {.first = item.first, .second = item.second}};
-        }
-        return ::workloads::ItemListFields{.items = items}.serialize();
+        const auto items = input.items | std::views::transform(item_fields_of);
+        return ::workloads::generic::ItemListFields{.items = items}.serialize();
     }
 
     /// Reads the items through the generated getter's view, which reads each
@@ -94,12 +91,8 @@ struct TaflaGen {
     }
 
     [[nodiscard]] Bytes serialize(StructsShape, const List& input) const {
-        std::vector<::workloads::Triple> items(input.items.size());
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            const auto& item = input.items[index];
-            items[index] = {.value = item.value, .first = item.first, .second = item.second};
-        }
-        return ::workloads::TriplesFields{.items = items}.serialize();
+        const auto items = input.items | std::views::transform(triple_of);
+        return ::workloads::generic::TriplesFields{.items = items}.serialize();
     }
 
     [[nodiscard]] List deserialize(StructsShape, std::span<const std::uint8_t> bytes) const {
@@ -125,6 +118,16 @@ struct TaflaGen {
     }
 
 private:
+    /// The generated fields of an item of the vector
+    static constexpr auto item_fields_of = [](const Item& item) noexcept -> ::workloads::ItemFields {
+        return {.value = item.value, .pair = {.first = item.first, .second = item.second}};
+    };
+
+    /// The generated struct of an item of the array
+    static constexpr auto triple_of = [](const Item& item) noexcept -> ::workloads::Triple {
+        return {.value = item.value, .first = item.first, .second = item.second};
+    };
+
     /// The generated fields of a document, which view its name and columns
     static ::workloads::DocumentFields fields_of(const Document& input) {
         return {

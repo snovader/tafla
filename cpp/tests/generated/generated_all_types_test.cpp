@@ -3,7 +3,8 @@
 // strings, tables nested in tables, vectors of tables that hold vectors of
 // themselves, fields named after keywords, and structs alone, within structs,
 // in tables and in arrays, into new bytes and into the start of bytes that the
-// caller gives. It reads back what it writes, collecting the views that its
+// caller gives, arrays of structs from views of the caller's own items too.
+// It reads back what it writes, collecting the views that its
 // getters of vectors and arrays of structs return, or reading their items by
 // index or by iterating, and reads corrupted bytes as values or decode errors.
 
@@ -13,7 +14,10 @@
 #include <cmath>
 #include <list>
 #include <optional>
+#include <ranges>
+#include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "all_types/all_types.hpp"
@@ -510,6 +514,54 @@ RC_GTEST_PROP(GeneratedAllTypes, StructsAreWrittenAsTableBuilderWritesThemAndRea
     for (const auto way : {Items::collected, Items::by_index, Items::iterated}) {
         RC_ASSERT(read(structs, way) == describe(fields));
     }
+}
+
+/// A documented struct of the caller's own, which converts into the generated
+/// struct
+struct OwnDocumented {
+    std::uint8_t one;
+    std::uint16_t two;
+    std::uint32_t undocumented;
+
+    operator all_types::Documented() const {
+        return {.one = one, .two = two, .undocumented = undocumented};
+    }
+};
+
+/// The generic fields struct writes views of the caller's own items, which it
+/// converts into the structs as it writes them, as `StructsFields` writes
+/// spans of the structs: through the items' own conversion, through
+/// `std::views::transform()`, and with a view's default, a span of the
+/// structs, for an array that it isn't given
+RC_GTEST_PROP(GeneratedAllTypes, ArraysOfStructsAreWrittenFromViewsOfOtherItemsAsFromTheStructs, ()) {
+    const auto owned = *owned_structs();
+    std::vector<OwnDocumented> documented;
+    for (const auto& item : owned.documented) {
+        documented.push_back({.one = item.one, .two = item.two, .undocumented = item.undocumented});
+    }
+    std::vector<std::pair<all_types::Point, all_types::Point>> segments;
+    for (const auto& segment : owned.segments) {
+        segments.emplace_back(segment.start, segment.end);
+    }
+    const auto segment_of = [](const auto& pair) {
+        return all_types::Segment{.start = pair.first, .end = pair.second};
+    };
+
+    const all_types::generic::StructsFields fields{
+        .packed = owned.packed,
+        .documented = std::span<const OwnDocumented>(documented),
+        .segment = owned.segment,
+        .segments = segments | std::views::transform(segment_of),
+        .path = {.start = owned.start, .points = owned.points},
+    };
+    const auto bytes = fields.serialize();
+    RC_ASSERT(bytes == owned.fields().serialize());
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
+
+    const all_types::generic::StructsFields defaulted{.segments = segments | std::views::transform(segment_of),
+                                                      .path = {}};
+    const auto from_spans = all_types::StructsFields{.segments = owned.segments, .path = {}}.serialize();
+    RC_ASSERT(defaulted.serialize() == from_spans);
 }
 
 /// A struct's bytes are its scalars little-endian, one after another, a bool

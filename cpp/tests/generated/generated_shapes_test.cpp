@@ -1,6 +1,7 @@
 // The code generated from `schemas/shapes.tafla` writes the tables that
 // `TableBuilder` writes by hand, into new bytes and into the start of bytes
-// that the caller gives, reads back what it writes, and reads
+// that the caller gives, from its fields or from views of the caller's own
+// items, reads back what it writes, and reads
 // corrupted and arbitrary bytes as values or decode errors, alike whether it
 // reads a vector's items at once or one at a time, and without reading outside
 // them, which the sanitizers check
@@ -9,6 +10,8 @@
 #include <rapidcheck/gtest.h>
 
 #include <optional>
+#include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -109,6 +112,40 @@ RC_GTEST_PROP(GeneratedShapes, AnItemListIsWrittenAsTableBuilderWritesItAndReads
     RC_ASSERT(tables::read(read) == tables::describe(fields));
     RC_ASSERT(tables::read_view(read, true) == tables::describe(fields));
     RC_ASSERT(tables::read_view(read, false) == tables::describe(fields));
+}
+
+/// An item of the caller's own, which converts into the generated fields
+struct OwnItem {
+    float value;
+    float first;
+    float second;
+
+    operator shapes::ItemFields() const {
+        return {.value = value, .pair = {.first = first, .second = second}};
+    }
+};
+
+/// The generic fields struct writes a view of the caller's own items, which
+/// it converts into their fields as it writes them, as `ItemListFields`
+/// writes a span of the fields: through `std::views::transform()`, and
+/// through the items' own conversion
+RC_GTEST_PROP(GeneratedShapes, AnItemListIsWrittenFromAViewOfOtherItemsAsFromTheirFields, ()) {
+    const auto list = *items();
+    std::vector<OwnItem> own;
+    own.reserve(list.size());
+    for (const auto& item : list) {
+        own.push_back({.value = item.value, .first = item.pair.first, .second = item.pair.second});
+    }
+    const auto expected = shapes::ItemListFields{.items = list}.serialize();
+
+    const auto fields_of = [](const OwnItem& item) { return static_cast<shapes::ItemFields>(item); };
+    const shapes::generic::ItemListFields transformed{.items = own | std::views::transform(fields_of)};
+    const shapes::generic::ItemListFields converted{.items = std::span<const OwnItem>(own)};
+
+    RC_ASSERT(transformed.serialize() == expected);
+    RC_ASSERT(converted.serialize() == expected);
+    RC_ASSERT(written_into_any_bytes(transformed, expected.span()));
+    RC_ASSERT(written_into_any_bytes(converted, expected.span()));
 }
 
 RC_GTEST_PROP(GeneratedShapes, ASampleIsWrittenLittleEndianAtItsOffsetsAndReadsBack, ()) {

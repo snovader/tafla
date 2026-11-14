@@ -177,7 +177,10 @@ type, offset size, vector, builder and decode error.
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
 writer's `set_struct()` and `set_structs()` write them, and `StructArray`
-reads an array of them. `load_le()` and `store_le()` read and write a record's
+reads an array of them. `set_structs<T>()` also writes a range of any items
+that convert into `T`, converting each as it writes it, with which a
+generated `generic::<Name>Fields` writes a view of the caller's items, a view
+that `tafla::ViewOf` accepts. `load_le()` and `store_le()` read and write a record's
 scalars at fixed offsets, without bounds, at any alignment.
 
 ## Development

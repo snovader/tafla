@@ -117,12 +117,12 @@ comparison uses its counterpart:
   whole instead, each field at a constant position in bytes of its length,
   without a sizer and a writer. Its readers view strings and columns, as
   tafla's do, and read with a `ByteBuffer` in the table's layout, a constant.
-  It takes the workloads' types, as the other codecs do, so it collects the
-  generated fields of the vector's items and the generated structs of the
-  array into a `std::vector` in each call, since the generated code writes
-  them from spans. The generated getters of the vector and of the array of
-  structs return views of their items, which the codec iterates into the
-  workload's items, reading each item once.
+  It takes the workloads' types, as the other codecs do, and writes the
+  vector's items and the array's structs from `std::views::transform()` of
+  the workload's items, with the generated generic fields structs, which
+  convert each item as they write it. The generated getters of the vector
+  and of the array of structs return views of their items, which the codec
+  iterates into the workload's items, reading each item once.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, which grows by doubling, and each table with flatc's
   `Create*()` functions. Columns are written from spans with
@@ -242,9 +242,8 @@ headers as system headers, and tafla-gen's is checked as the golden files of
   doesn't reuse its builder either.
 - protobuf copies the input's columns into its message, which a caller that
   builds its values in protobuf's messages wouldn't. tafla-gen's codec
-  collects the vector's and the array's items into the generated types,
-  which a caller that holds its values in them wouldn't, but views the
-  columns.
+  converts the vector's and the array's items from the workload's as it
+  writes them, and views the columns.
 - A failed read throws, which takes about 4.5 µs to unwind on macOS, so a
   stream of corrupted messages reads at about 200,000 a second a core. The
   benchmarks time valid bytes only, which reading never throws for.
