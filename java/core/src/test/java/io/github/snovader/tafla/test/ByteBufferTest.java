@@ -17,46 +17,49 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code SPEC.md} lays them out, so that they don't depend on tafla's writers.
  */
 public class ByteBufferTest {
+    /**
+     * Values are written after {@code start} bytes, so that scalars, and the views of arrays and
+     * structs, lie at any alignment and start within the bytes, as in tables
+     */
     @Property
     void a_buffer_reads_back_any_value_written_little_endian_at_its_position(
         @ForAll("values") FieldDescription field,
-        @ForAll("layouts") LayoutDescription layout
+        @ForAll("layouts") LayoutDescription layout,
+        @ForAll @IntRange(max = 9) int start
     ) {
-        assertReadsBack(field, layout);
+        assertReadsBack(field, layout, start);
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void a_buffer_reads_back_the_limits_of_every_type_as_scalars_and_in_arrays(@ForAll("limits") ScalarField limit) {
         var layout = LayoutDescription.headerless(OffsetType.UINT32);
 
-        assertReadsBack(limit, layout);
-        assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout);
+        assertReadsBack(limit, layout, 0);
+        assertReadsBack(new ArrayField(limit.type(), new long[] {limit.value()}), layout, 0);
     }
 
-    private static void assertReadsBack(FieldDescription field, LayoutDescription layout) {
-        var bytes = new byte[(int) Descriptions.maxLength(field, layout.width())];
-        put(littleEndian(bytes), field, layout.width());
+    private static void assertReadsBack(FieldDescription field, LayoutDescription layout, int start) {
+        var bytes = new byte[start + (int) Descriptions.maxLength(field, layout.width())];
+        Arrays.fill(bytes, 0, start, (byte) 0xff);
+        put(littleEndian(bytes).position(start), field, layout.width());
         var buffer = new ByteBuffer(bytes, layout.tableLayout());
 
-        assertEquals(field, readAtStart(buffer, field));
+        assertEquals(field, readAt(buffer, start, field));
 
         // After a count of 1 or 2 bytes, the elements aren't aligned
         if (field instanceof ArrayField array) {
-            assertArrayEquals(array.values(), array.type().readArrayView(buffer, 0));
+            assertArrayEquals(array.values(), array.type().readArrayView(buffer, start));
         }
     }
 
-    /**
-     * {@return the scalar, array, string, struct or array of structs of the field's type at the
-     * buffer's start}
-     */
-    private static FieldDescription readAtStart(ByteBuffer buffer, FieldDescription field) {
+    /** {@return the scalar, array, string, struct or array of structs of the field's type at {@code position}} */
+    private static FieldDescription readAt(ByteBuffer buffer, int position, FieldDescription field) {
         return switch (field) {
-            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, 0));
-            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, 0));
-            case StringField ignored -> new StringField(buffer.getString(0));
-            case StructField struct -> StructBytes.read(buffer, 0, struct.types());
-            case StructArrayField array -> StructBytes.readArray(buffer, 0, array.fields());
+            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
+            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
+            case StringField ignored -> new StringField(buffer.getString(position));
+            case StructField struct -> StructBytes.read(buffer, position, struct.types());
+            case StructArrayField array -> StructBytes.readArray(buffer, position, array.fields());
             default -> throw new IllegalArgumentException("Not a value: " + field);
         };
     }

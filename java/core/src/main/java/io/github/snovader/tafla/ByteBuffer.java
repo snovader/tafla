@@ -19,6 +19,7 @@ import java.util.*;
  */
 public final class ByteBuffer {
     private final byte[] bytes;
+    /** A little-endian view of the bytes, which the array, struct and element views slice */
     private final java.nio.ByteBuffer view;
 
     private final boolean sized;
@@ -92,12 +93,14 @@ public final class ByteBuffer {
         return toPosition(tablePosition + offset);
     }
 
-    // The scalar getters let the JDK's buffer check the range, which is free, and rethrow its error,
-    // as the TypeScript getters rethrow DataView's
+    // The scalar getters read the bytes through Elements' VarHandles, which check the range, as the
+    // array itself does for a byte, and rethrow their error, as the TypeScript getters rethrow
+    // DataView's. Reading through the wrapped view instead, whose limit and byte order are fields
+    // that a read loads, made reading a vector of 100 nested tables into records 11% slower.
 
     public byte getInt8(int position) {
         try {
-            return view.get(position);
+            return bytes[position];
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Byte.BYTES, ex);
         }
@@ -109,7 +112,7 @@ public final class ByteBuffer {
 
     public short getInt16(int position) {
         try {
-            return view.getShort(position);
+            return (short) Elements.INT16.get(bytes, position);
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Short.BYTES, ex);
         }
@@ -121,7 +124,7 @@ public final class ByteBuffer {
 
     public int getInt32(int position) {
         try {
-            return view.getInt(position);
+            return (int) Elements.INT32.get(bytes, position);
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Integer.BYTES, ex);
         }
@@ -133,7 +136,7 @@ public final class ByteBuffer {
 
     public long getInt64(int position) {
         try {
-            return view.getLong(position);
+            return (long) Elements.INT64.get(bytes, position);
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Long.BYTES, ex);
         }
@@ -146,7 +149,7 @@ public final class ByteBuffer {
 
     public float getFloat32(int position) {
         try {
-            return view.getFloat(position);
+            return (float) Elements.FLOAT32.get(bytes, position);
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Float.BYTES, ex);
         }
@@ -154,7 +157,7 @@ public final class ByteBuffer {
 
     public double getFloat64(int position) {
         try {
-            return view.getDouble(position);
+            return (double) Elements.FLOAT64.get(bytes, position);
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(position, Double.BYTES, ex);
         }
@@ -189,7 +192,7 @@ public final class ByteBuffer {
     public int[] getUint16Array(int position) {
         var values = new int[arrayLength(position, Short.BYTES)];
         for (int i = 0, j = position + offsetSize; i < values.length; i++, j += Short.BYTES) {
-            values[i] = Short.toUnsignedInt(view.getShort(j));
+            values[i] = Short.toUnsignedInt((short) Elements.INT16.get(bytes, j));
         }
 
         return values;
@@ -205,7 +208,7 @@ public final class ByteBuffer {
     public long[] getUint32Array(int position) {
         var values = new long[arrayLength(position, Integer.BYTES)];
         for (int i = 0, j = position + offsetSize; i < values.length; i++, j += Integer.BYTES) {
-            values[i] = Integer.toUnsignedLong(view.getInt(j));
+            values[i] = Integer.toUnsignedLong((int) Elements.INT32.get(bytes, j));
         }
 
         return values;
@@ -567,15 +570,15 @@ public final class ByteBuffer {
             throw DecodeException.outOfRange(position, offsetSize, bytes.length);
         }
 
-        // The JDK's buffer checks the rest of the range, as it does for the scalar getters. A check
-        // of its own as well made reading a vector of 100 nested tables 10% slower.
+        // The read checks the rest of the range, as it does for the scalar getters. A check of its
+        // own as well made reading a vector of 100 nested tables 10% slower.
         try {
             return switch (offsetSize) {
-                case Byte.BYTES -> Byte.toUnsignedLong(view.get(index));
+                case Byte.BYTES -> Byte.toUnsignedLong(bytes[index]);
 
-                case Short.BYTES -> Short.toUnsignedLong(view.getShort(index));
+                case Short.BYTES -> Short.toUnsignedLong((short) Elements.INT16.get(bytes, index));
 
-                default -> Integer.toUnsignedLong(view.getInt(index));
+                default -> Integer.toUnsignedLong((int) Elements.INT32.get(bytes, index));
             };
         } catch (IndexOutOfBoundsException ex) {
             throw outOfRange(index, offsetSize, ex);
