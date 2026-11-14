@@ -41,6 +41,19 @@ func (TaflaGen) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (TaflaGen) SerializeDocument(document workloads.Document) ([]byte, error) {
+	return documentFields(document).MarshalBinary()
+}
+
+// SerializeDocumentInto appends the document to bytes from their start,
+// with the generated AppendBinary, which writes it into their capacity when
+// it has room, without allocating or zeroing new bytes.
+func (TaflaGen) SerializeDocumentInto(document workloads.Document, bytes []byte) ([]byte, error) {
+	return documentFields(document).AppendBinary(bytes[:0])
+}
+
+// documentFields are the generated fields of a document, which share its
+// string and columns
+func documentFields(document workloads.Document) gen.DocumentFields {
 	return gen.DocumentFields{
 		X:    document.X,
 		Y:    document.Y,
@@ -51,7 +64,7 @@ func (TaflaGen) SerializeDocument(document workloads.Document) ([]byte, error) {
 			A:    document.A,
 			B:    document.B,
 		},
-	}.MarshalBinary()
+	}
 }
 
 func (TaflaGen) DeserializeDocument(bytes []byte) (workloads.Document, error) {

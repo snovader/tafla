@@ -27,6 +27,18 @@ summed through each library's per-element accessor. `workloads/` ports the
 TypeScript generator, so the inputs are the same values, which its test
 checks against values that the TypeScript generator printed.
 
+The document of 100,000 rows is also **serialized into reused bytes**, by
+tafla-gen's `AppendBinary()`, into the capacity of bytes that the benchmark
+keeps between calls, as long as the document. Its write into new bytes is
+bound by the allocation of its 1.2 MB, which Go zeroes, or maps fresh from
+the system, before the columns are copied into them, since Go has no public
+allocation of bytes that it doesn't zero. Into reused bytes, the write is
+the copy of the columns. The other libraries can write into reused bytes too, with FlatBuffers'
+`Builder.Reset()`, protobuf's `MarshalOptions.MarshalAppend()` and
+vtprotobuf's `MarshalToSizedBufferVT()`, but their codecs write into new
+bytes, as their documentation's examples do, and this row times tafla-gen's
+alone.
+
 Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
