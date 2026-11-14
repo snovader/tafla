@@ -287,6 +287,16 @@ they were.
   large document's column in the same time. The small document's 100
   additions take less than 100 latencies per call, since the processor
   overlaps a call's additions with the next call's.
+- rkyv validates the record's archive once, in `access()`, where bytecheck
+  checks the name's UTF-8 with simdutf8, and then reads each field at a fixed
+  offset. tafla reads each field at the offset that the table stores, and
+  checks each read's range. In a separate measurement, interleaved in one
+  binary, rkyv read the record in 4.1 ns and tafla-gen in 6.9 ns, and
+  reading its fields at fixed positions, with the same check of the name,
+  took 3.2 ns. The stored offsets and the range checks make the difference,
+  rather than the fields' alignment. tafla's runtime checks the name for
+  ASCII first, without a dependency, and took about 12 ns with
+  `str::from_utf8()` alone.
 
 ## Results
 

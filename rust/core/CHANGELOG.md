@@ -41,6 +41,14 @@ first commits, for code built from its source before the release.
   now specifies, including an item whose offsets point past its end.
 - `TableWriter::set_structs()` takes each struct by reference, so it needn't
   be `Copy`.
+- `ByteBuffer::get_str()` checks whether a string is ASCII, a word at a time
+  at any address, before it checks its UTF-8 with `str::from_utf8()`, which
+  checks a string's bytes one at a time but for whole pairs of aligned words.
+  The benchmarks' record, whose 16-byte name isn't aligned, read in 6.3 ns
+  rather than 11.8 ns, and a 1 KiB ASCII string in 11 ns rather than 26 ns.
+  A string that's ASCII until near its end is checked twice, up to the first
+  other character: 1 KiB of it took 37 ns rather than 29 ns. Its values and
+  errors are unchanged.
 
 ### Fixed
 

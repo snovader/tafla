@@ -147,6 +147,16 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     pub fn get_str(&self, position: usize) -> Result<&'a str, DecodeError> {
         let bytes = self.array_bytes(position, 1)?;
 
+        // ASCII first, which `is_ascii()` checks a word at a time at any
+        // address, where `str::from_utf8()` checks a string's bytes one at a
+        // time but for whole pairs of aligned words in it: the benchmarks'
+        // record, whose 16-byte name isn't aligned, read in 6.3 ns rather
+        // than 11.8 ns
+        if bytes.is_ascii() {
+            // SAFETY: ASCII is valid UTF-8
+            return Ok(unsafe { str::from_utf8_unchecked(bytes) });
+        }
+
         str::from_utf8(bytes).map_err(|source| DecodeError::InvalidUtf8 { position, source })
     }
 
