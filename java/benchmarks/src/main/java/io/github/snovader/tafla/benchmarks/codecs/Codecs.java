@@ -16,6 +16,8 @@ public final class Codecs {
         return List.of(
             TaflaCodec.create(),
             TaflaGenCodec.create(),
+            TaflaDirectCodec.create(),
+            TaflaDirectCodec.copying(),
             FlatBuffersCodec.create(),
             ProtobufCodec.create(),
             MessagePackCodec.create()

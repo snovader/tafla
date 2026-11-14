@@ -50,7 +50,7 @@ public class ConformanceTest {
         }
     }
 
-    private static List<Case> cases(String kind) {
+    static List<Case> cases(String kind) {
         return SUITE.getJsonArray(kind).stream().map(value -> new Case(value.asJsonObject())).toList();
     }
 
@@ -65,7 +65,7 @@ public class ConformanceTest {
     }
 
     /** {@return the description of the valid case's table} */
-    private static TableDescription tableOf(Case validCase) {
+    static TableDescription tableOf(Case validCase) {
         return DescriptionJson.readTable(validCase.description().getJsonObject("table"));
     }
 
