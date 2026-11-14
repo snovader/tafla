@@ -21,11 +21,18 @@ type Group<'a> = BenchmarkGroup<'a, WallTime>;
 
 criterion_group! {
     name = comparison;
-    // 100 samples, which grow linearly from about a millisecond, so that the
-    // fastest isn't one lucky call. Command-line options override these.
+    // 50 samples over a second, which grow linearly from about a millisecond,
+    // so that the fastest isn't one lucky call: after this warm-up, 100
+    // samples over a second, from 0.2 ms, report faster samples than longer
+    // runs do. The report reads
+    // only the fastest and median samples, so the bootstrap that estimates
+    // Criterion's confidence intervals resamples 1,000 times rather than
+    // 100,000. Command-line options override these.
     config = Criterion::default()
-        .warm_up_time(Duration::from_secs(2))
-        .measurement_time(Duration::from_secs(4));
+        .warm_up_time(Duration::from_millis(500))
+        .measurement_time(Duration::from_secs(1))
+        .sample_size(50)
+        .nresamples(1000);
     targets = record, documents, list, structs, item_access, sample
 }
 

@@ -1,17 +1,23 @@
 error: `NewPoint` clashes with a name of the code generated for `Point`
- --> go_functions.tafla:7:7
+ --> go_functions.tafla:8:7
   |
-7 | table NewPoint { x: uint8; }
+8 | table NewPoint { x: uint8; }
   |       ^^^^^^^^ the code generated for Go declares `NewPoint` to read `Point`
 
 error: `DocumentVersionOf` clashes with a name of the code generated for `Document`
-  --> go_functions.tafla:10:8
+  --> go_functions.tafla:11:8
    |
-10 | struct DocumentVersionOf { x: uint8; }
+11 | struct DocumentVersionOf { x: uint8; }
    |        ^^^^^^^^^^^^^^^^^ the code generated for Go declares `DocumentVersionOf` to read the version of `Document`
 
 error: `DocumentFormatVersion` clashes with a name of the code generated for `Document`
-  --> go_functions.tafla:11:9
+  --> go_functions.tafla:12:9
    |
-11 | message DocumentFormatVersion { x: uint8; }
+12 | message DocumentFormatVersion { x: uint8; }
    |         ^^^^^^^^^^^^^^^^^^^^^ the code generated for Go declares `DocumentFormatVersion` to hold the version of `Document`
+
+error: `ReadPair` clashes with a name of the code generated for `Pair`
+  --> go_functions.tafla:15:7
+   |
+15 | table ReadPair { x: uint8; }
+   |       ^^^^^^^^ the code generated for Go declares `ReadPair` to read `Pair`

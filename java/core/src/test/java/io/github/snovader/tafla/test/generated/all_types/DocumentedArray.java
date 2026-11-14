@@ -37,6 +37,6 @@ public final class DocumentedArray extends AbstractList<Documented> implements R
     @Override
     public Documented get(int index) {
         Objects.checkIndex(index, size);
-        return Documented.read(view, index * Documented.SIZE);
+        return Documented.readUnchecked(view, index * Documented.SIZE);
     }
 }

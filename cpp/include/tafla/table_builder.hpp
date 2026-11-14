@@ -640,6 +640,24 @@ private:
         alignment_ = counters.alignment;
     }
 
+    /// Makes room, after the first of a vector's `count` items recorded
+    /// `first` fields, for the others' fields: as many as the first's, so
+    /// that items alike, which a vector of one table's items usually is,
+    /// record theirs without growing the fields, but no more than twice the
+    /// `least` that each records, its table and each of its fields, so that
+    /// the room is never more than twice the fields that the items record,
+    /// as growing by doubling would leave it
+    void reserve_items_like(std::size_t first, std::size_t count, std::uint64_t least) {
+        const auto others = count - 1;
+        const auto like_first = detail::saturating_product(others, first);
+        const auto at_most =
+            detail::saturating_product(2, detail::saturating_sum(first, detail::saturating_product(others, least)));
+        const auto room = (std::min)(like_first, at_most - first);
+        if (room < SIZE_MAX - values_.size()) {
+            values_.reserve(values_.size() + static_cast<std::size_t>(room));
+        }
+    }
+
     /// Records a table of `fields` fields in place, whose header, of
     /// `header` bytes, holds only their offsets, and starts counting its
     /// fields rather than this table's
@@ -1310,13 +1328,12 @@ void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill
     const auto owned = owned_.size();
     const auto parent = counters();
     try {
-        // Room for the fewest fields that the items record, one for each
-        // table and each of its fields, which is all of them unless they
-        // nest tables of their own, so that recording them grows the fields
-        // at most a few times. It never reserves more than they record.
-        const auto fewest = detail::saturating_product(count, detail::saturating_sum(fields, 1));
-        if (fewest < SIZE_MAX - values) {
-            values_.reserve(values + 1 + static_cast<std::size_t>(fewest));
+        // Room for the vector and the fewest fields that its first item
+        // records, its table and each of its fields, and then for the others
+        // as many as the first recorded
+        const auto least = detail::saturating_sum(fields, 1);
+        if (least < SIZE_MAX - values - 1) {
+            values_.reserve(values + 1 + static_cast<std::size_t>(least));
         }
         values_.push_back({Kind::vector, 0, Alignment::one, static_cast<std::uint32_t>(count), 0, 0, nullptr});
 
@@ -1329,6 +1346,9 @@ void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill
 
             nested_bytes = detail::saturating_sum(nested_bytes, length_);
             restore(parent);
+            if (index == 0) {
+                reserve_items_like(values_.size() - values - 1, count, least);
+            }
         }
 
         const auto length = check_field(detail::saturating_sum(slots, nested_bytes));

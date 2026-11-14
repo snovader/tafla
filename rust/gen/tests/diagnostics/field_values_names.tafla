@@ -1,0 +1,12 @@
+// Python's generated code declares the tuple of each message's and table's
+// values, `<Name>FieldValues`, which no declaration can take
+
+table PointFieldValues { x: uint8; }
+table Point { p: PointFieldValues; }
+
+message Document { pair: Pair; }
+struct DocumentFieldValues { x: uint8; }
+
+// Valid: a struct's values have no such declaration
+struct Pair { first: float64; second: float64; }
+struct PairFieldValues { first: float64; }

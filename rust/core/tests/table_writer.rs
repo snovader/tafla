@@ -1,10 +1,12 @@
 //! A `TableSizer` counts each table as `TableBuilder` counts it, padding
 //! included, and its `TableWriter` writes the same bytes from the tests'
 //! calls as from the builder's, which writes its tables through a
-//! `TableWriter` too, with nested tables written in place. They fail as the
-//! builder fails: for a table too long for its offsets, a header too long
-//! and a version too large. A writer given other fields than the sizer added
-//! fails rather than writing past the bytes, and no calls make it panic.
+//! `TableWriter` too, with nested tables written in place, or whole from
+//! their bytes. They fail as the builder fails: for a table too long for its
+//! offsets, a header too long and a version too large, and so do the bytes
+//! of a table that its caller writes itself. A writer given other fields
+//! than the sizer added fails rather than writing past the bytes, and no
+//! calls make it panic.
 //!
 //! The bytes themselves are checked against the format's rules in
 //! `format.rs`, against TypeScript's tables in `compatibility.rs` and the
@@ -99,6 +101,40 @@ proptest! {
         let too_long = with_bytes(room + 1);
         prop_assert_eq!(too_long.write(), Err(error));
         prop_assert_eq!(too_long.to_bytes(), Err(error));
+    }
+
+    /// Nested tables and vector items added as their bytes and copied whole
+    /// make the bytes of the table that nests them in place
+    #[test]
+    fn test_writes_nested_tables_and_vector_items_whole_as_in_place(
+        table in in_place_tables(strategy::layout()),
+    ) {
+        let built = table.to_bytes();
+        prop_assume!(built.is_ok());
+
+        prop_assert_eq!(write_whole(&table), built);
+    }
+
+    /// The bytes of a table that its caller writes itself, of the length
+    /// that the sizer counts, hold the header that `TableBuilder` writes, or
+    /// fail as the sizer fails for its header
+    #[test]
+    fn test_table_bytes_hold_the_header_that_table_builder_writes(
+        table in in_place_tables(strategy::layout()),
+    ) {
+        let length = match sized(&table) {
+            Ok(sizer) => sizer.byte_length(),
+            Err(error) => {
+                prop_assert_eq!(table_bytes(&table, 0), Err(error));
+                return Ok(());
+            }
+        };
+        prop_assume!(length.is_ok());
+        let length = length? as u64;
+
+        let built = table.to_bytes()?;
+        let header = &built[..table.layout.header_size()];
+        prop_assert_eq!(table_bytes(&table, length)?, header);
     }
 
     /// A writer given a field of another length than the sizer added fails,
@@ -253,6 +289,80 @@ fn failing_field(table: &Table) -> Option<usize> {
         .position(|field| field.set(&mut builder).is_err())
 }
 
+/// Sizes and writes the table as [`Table::write()`] does, but for its nested
+/// tables and vector items, which it adds as their bytes and copies whole
+fn write_whole(table: &Table) -> Result<Vec<u8>, BuildError> {
+    let mut sizer = table.sizer()?;
+    let mut nested = Vec::new();
+    for field in &table.fields {
+        match field {
+            Field::Table { nested: item, .. } => {
+                let bytes = item.table.write()?;
+                sizer.add_table(field.alignment());
+                sizer.add_table_bytes(1, bytes.len());
+                nested.push(vec![bytes]);
+            }
+            Field::Vector(items) => {
+                let items = items
+                    .iter()
+                    .map(|item| item.table.write())
+                    .collect::<Result<Vec<_>, _>>()?;
+                sizer.add_vector(items.len());
+                for item in &items {
+                    sizer.add_table_bytes(1, item.len());
+                }
+                nested.push(items);
+            }
+            _ => field.add(&mut sizer),
+        }
+    }
+
+    let mut writer = sizer.writer()?;
+    let mut nested = nested.iter();
+    for (index, field) in table.fields.iter().enumerate() {
+        match field {
+            Field::Table { .. } | Field::Vector(_) => {
+                let items = nested.next().expect("the bytes of each nested table");
+                write_items_whole(&mut writer, index, field, items);
+            }
+            _ => field.write(&mut writer, index),
+        }
+    }
+
+    writer.into_bytes()
+}
+
+/// Writes nested table field `index`, or vector field `index`, from the
+/// bytes of its table or items
+fn write_items_whole(writer: &mut TableWriter, index: usize, field: &Field, items: &[Vec<u8>]) {
+    if let Field::Table { .. } = field {
+        writer.set_table(index, field.alignment());
+        writer.copy_table(&items[0]);
+        return;
+    }
+
+    let vector = writer.set_vector(index, items.len());
+    for (item, bytes) in items.iter().enumerate() {
+        writer.copy_table(bytes);
+        writer.set_item_end(vector, item);
+    }
+}
+
+/// The bytes that [`TableWriter::table_bytes()`] returns for a table of
+/// `length` bytes in the table's layout, with its version and number of
+/// fields
+fn table_bytes(table: &Table, length: u64) -> Result<Vec<u8>, BuildError> {
+    let layout = table.layout.unversioned();
+    let fields = table.fields.len();
+
+    match table.version {
+        Some(version) if table.layout.versioned => {
+            TableWriter::versioned_table_bytes(fields, layout.versioned(), version, length)
+        }
+        _ => TableWriter::table_bytes(fields, layout, length),
+    }
+}
+
 /// A sizer of the table with every field added
 fn sized(table: &Table) -> Result<TableSizer, BuildError> {
     let mut sizer = table.sizer()?;
@@ -301,6 +411,9 @@ enum Call {
     ItemEnd {
         item: usize,
     },
+    CopyTable {
+        length: usize,
+    },
 }
 
 fn call() -> impl Strategy<Value = Call> {
@@ -328,6 +441,7 @@ fn call() -> impl Strategy<Value = Call> {
         Just(Call::EndTable),
         (small(), small()).prop_map(|(index, count)| Call::Vector { index, count }),
         small().prop_map(|item| Call::ItemEnd { item }),
+        (0..40_usize).prop_map(|length| Call::CopyTable { length }),
     ]
 }
 
@@ -364,6 +478,7 @@ impl Call {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::CopyTable { length } => writer.copy_table(&vec![0xa5; length]),
         }
     }
 }
@@ -493,6 +608,56 @@ fn test_counts_lengths_past_any_usize_without_overflowing() {
             ..
         })
     ));
+}
+
+#[test]
+fn test_table_bytes_fail_past_what_their_offsets_address_naming_the_last_field() {
+    for offset_type in [OffsetType::Uint8, OffsetType::Uint16, OffsetType::Uint32] {
+        let max = u64::from(offset_type.max_value());
+        let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
+        let error = BuildError::TooLong {
+            index: 2,
+            length: max + 1,
+            offset_type,
+        };
+
+        assert_eq!(TableWriter::table_bytes(3, layout, max + 1), Err(error));
+        let versioned = layout.sized().versioned();
+        assert_eq!(
+            TableWriter::versioned_table_bytes(3, versioned, 1, max + 1),
+            Err(error)
+        );
+        // Allocating 4 GiB would take long, and fail on 32-bit hosts
+        if offset_type != OffsetType::Uint32 {
+            let width = offset_type.size();
+            let bytes = TableWriter::versioned_table_bytes(3, versioned, 1, max).unwrap();
+            assert_eq!(bytes.len(), 2 * width);
+            assert!(bytes[..width].iter().all(|&byte| byte == 0xff));
+        }
+    }
+
+    // A table of no fields fails naming field 0, as the sizer does
+    let error = TableWriter::table_bytes(0, TableLayout::DEFAULT, u64::MAX).unwrap_err();
+    assert!(matches!(error, BuildError::TooLong { index: 0, .. }));
+}
+
+#[test]
+fn test_table_bytes_reject_a_header_or_a_version_as_the_sizer_does() {
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+    assert_eq!(
+        TableWriter::table_bytes(256, layout, 0).unwrap_err(),
+        TableSizer::new(256, layout).unwrap_err()
+    );
+
+    let versioned = layout.versioned();
+    assert_eq!(
+        TableWriter::versioned_table_bytes(1, versioned, 256, 0).unwrap_err(),
+        TableSizer::versioned(1, versioned, 256).unwrap_err()
+    );
+    assert_eq!(
+        TableWriter::versioned_table_bytes(255, versioned, 1, 0).unwrap_err(),
+        TableSizer::versioned(255, versioned, 1).unwrap_err()
+    );
 }
 
 #[test]

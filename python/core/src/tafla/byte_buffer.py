@@ -1,5 +1,5 @@
 from array import array
-from collections.abc import Buffer
+from collections.abc import Buffer, Callable, Iterator
 from struct import error as StructError
 from typing import Any, overload
 
@@ -359,6 +359,64 @@ class ByteBuffer:
 
         return None
 
+    @staticmethod
+    def read_fields(
+        data: Buffer, fields: FixedFields, version: int | None = None
+    ) -> tuple[Any, ...] | None:
+        """Returns the values of the fields that ``fields`` describes whole, a
+        message's, of the message in ``data``, in the layout that ``fields``
+        was created with, as ``ByteBuffer(data, layout).get_fields(0,
+        fields)`` returns them, or ``None`` as it does, without creating a
+        ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+        that the header holds, for the reader's constructor to raise for.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
+        no layout, as a nested table's doesn't, and if ``version`` is given
+        for a layout without a version.
+
+        Generated code calls it to read every field of a message of only such
+        fields at once, without a reader."""
+        # The constructor's view, without the ByteBuffer
+        view = memoryview(data)
+        if not view.c_contiguous:
+            raise not_contiguous()
+        if view.format != "B" or view.ndim != 1:
+            view = view.cast("B")
+
+        header = fields._header
+        if header is None:
+            raise TypeError("A nested table's fields have no layout to read")
+        size, _, sized, versioned = header
+        if version is not None and not versioned:
+            raise TypeError("The table has no version")
+
+        struct, start, check, expected, values, string = fields._readers[size]
+        try:
+            if version is not None:
+                position = size if sized else 0
+                if OFFSET_STRUCTS[size].unpack_from(view, position)[0] != version:
+                    return None
+
+            # get_fields() of the root, inline
+            unpacked = struct.unpack_from(view, start)
+            if check(unpacked) == expected:
+                if not string:
+                    return values(unpacked)
+
+                begin = start + struct.size
+                end = begin + unpacked[-1]
+                if end <= len(view):
+                    # Decoded first, so that the slice is freed before the
+                    # values' tuple is built, and appended by concatenation
+                    # rather than unpacking, which builds a list: 32 fewer
+                    # bytes at the peak of reading a record, and 2% faster
+                    text = str(view[begin:end], "utf-8")
+                    return values(unpacked) + (text,)
+        except StructError, OverflowError, UnicodeDecodeError:
+            pass
+
+        return None
+
     def get_vector_length(self, position: int) -> int:
         """Returns the number of items of the vector at ``position``.
 
@@ -510,6 +568,66 @@ class ByteBuffer:
             items.append((*values(unpacked), text))
 
         return items
+
+    def iter_vector_fields[T](
+        self, position: int, fields: FixedFields, read: Callable[[int], T]
+    ) -> Iterator[tuple[Any, ...] | T]:
+        """Returns an iterator over the values of every item of the vector at
+        ``position``, a table whose fields ``fields`` describes whole: each
+        item's as ``get_fields()`` returns them, or, for an item whose offsets
+        aren't those that its writer writes, what ``read`` returns for the
+        item's position, which the item's getters read.
+
+        It reads each item's end when it reaches the item, after the end of
+        the item before it, so it raises ``DecodeError`` for an item that
+        doesn't lie within the buffer when it reaches it, as
+        ``get_vector_offsets()`` raises for it, after the items before it.
+
+        Raises ``DecodeError`` at once if the vector's count or the ends after
+        it don't lie within the buffer, as ``get_vector_length()`` does.
+
+        Generated code calls it to iterate over the values of a vector's
+        items, without reading them all at once.
+        """
+        ends = self.__get_item_ends(position)
+
+        return self.__iter_vector_fields(position, ends, fields, read)
+
+    def __iter_vector_fields[T](
+        self,
+        position: int,
+        ends: memoryview[int],
+        fields: FixedFields,
+        read: Callable[[int], T],
+    ) -> Iterator[tuple[Any, ...] | T]:
+        # get_vector_fields()'s reads, an item at a time
+        struct, header, check, expected, values, string = fields._readers[self.__size]
+        view, length = self.__view, self.__length
+
+        start = (len(ends) + 1) * self.__size
+        for end in ends:
+            if start > end or position + end > length:
+                raise self.__item_error(position, start, end)
+            offset = position + start
+            start = end
+
+            item = offset + header
+            try:
+                unpacked = struct.unpack_from(view, item)
+                if check(unpacked) == expected:
+                    if not string:
+                        yield values(unpacked)
+                        continue
+
+                    begin = item + struct.size
+                    stop = begin + unpacked[-1]
+                    if stop <= length:
+                        yield (*values(unpacked), str(view[begin:stop], "utf-8"))
+                        continue
+            except StructError, OverflowError, UnicodeDecodeError:
+                pass
+
+            yield read(offset)
 
     def __get_item_ends(self, position: int) -> memoryview[int]:
         """Returns the item ends of the vector at ``position``, once they're

@@ -3,7 +3,6 @@ from collections.abc import Buffer
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
 from tafla_benchmarks.generated.tafla.workloads import (
     Document,
-    ItemFields,
     ItemList,
     Record,
     Sample,
@@ -19,16 +18,16 @@ from tafla_benchmarks.workloads import (
 )
 
 
-def serialize_record(input: RecordInput) -> memoryview:
+def serialize_record(input: RecordInput) -> bytes:
     """Writes the fields' values in their order, as ``serialize_values()``
-    takes them"""
+    takes them, into bytes of the record's own in one call"""
     return Record.serialize_values(input.x, input.y, input.id, input.name)
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    """Reads every field's value at once with ``field_values()``, as an
-    application that wants them all would"""
-    return RecordInput(*Record(data).field_values())
+    """Reads every field's value at once with ``read_values()``, without a
+    reader, as an application that wants them all would"""
+    return RecordInput(*Record.read_values(data))
 
 
 def serialize_document(input: DocumentInput) -> memoryview:
@@ -41,18 +40,11 @@ def serialize_document(input: DocumentInput) -> memoryview:
 
 
 def deserialize_document(data: Buffer) -> DocumentOutput:
-    document = Document(data)
-    columns = document.columns()
+    """Reads every field's value at once with ``read_values()``, without a
+    reader, the nested columns' as a tuple of their own"""
+    x, y, name, (base, keys, a, b) = Document.read_values(data)
 
-    return DocumentOutput(
-        document.x(),
-        document.y(),
-        document.name(),
-        columns.base(),
-        columns.keys(),
-        columns.a(),
-        columns.b(),
-    )
+    return DocumentOutput(x, y, name, base, keys, a, b)
 
 
 def sum_a(data: Buffer) -> float:
@@ -67,21 +59,19 @@ def sum_a(data: Buffer) -> float:
 
 
 def serialize_list(input: ListInput) -> memoryview:
-    return ItemList.serialize(items=[_item_fields(item) for item in input.items])
+    """Writes the items' values, each pair's in place of it, as the view's
+    ``field_values()`` reads them, with ``serialize_values()``"""
+    items = [(item.value, item.first, item.second) for item in input.items]
 
-
-def _item_fields(item: ItemInput) -> ItemFields:
-    return {"value": item.value, "pair": {"first": item.first, "second": item.second}}
+    return ItemList.serialize_values(items)
 
 
 def deserialize_list(data: Buffer) -> ListInput:
-    """Reads every item's fields at once with the view's ``fields()``"""
-    items: list[ItemInput] = []
-    for fields in ItemList(data).items_view().fields():
-        pair = fields["pair"]
-        items.append(ItemInput(fields["value"], pair["first"], pair["second"]))
+    """Reads every item's values at once with the view's ``field_values()``,
+    each nested pair's in place of it"""
+    values = ItemList(data).items().field_values()
 
-    return ListInput(items)
+    return ListInput([ItemInput(*item) for item in values])
 
 
 def serialize_structs(input: ListInput) -> memoryview:
@@ -91,9 +81,9 @@ def serialize_structs(input: ListInput) -> memoryview:
 
 
 def deserialize_structs(data: Buffer) -> ListInput:
-    """Reads every struct's values at once with the view's
-    ``field_values()``, rather than into a ``Triple`` each"""
-    values = Triples(data).items_view().field_values()
+    """Reads each struct's values with the view's ``iter_field_values()``,
+    rather than into a ``Triple`` each"""
+    values = Triples(data).items().iter_field_values()
 
     return ListInput([ItemInput(*triple) for triple in values])
 
@@ -120,13 +110,17 @@ nesting ``TableBuilder`` instances, and a vector of fixed-layout tables in one
 call too.
 
 The record and the fixed-size record are written from their values, as
-positional arguments, and read into tuples of them, with ``serialize_values()``,
-``field_values()`` and ``read_values()``. The document is written from a
-``TypedDict`` of each table's fields, and read with the getters, columns as
-views. The vector is written from its items' ``TypedDict``s, and read into
-them with its view's ``fields()``, which reads every item's fields at once.
-The array of structs is written from the workload's own items, which the
-struct's protocol of fields types, and read with its view's
-``field_values()``, into a tuple of each struct's values rather than a struct.
+positional arguments, and read into tuples of them, with ``serialize_values()``
+and ``read_values()``, the record into bytes of its own and from them in one
+call each, without a writer or a reader. The document is written from a
+``TypedDict`` of each table's fields, and read into a tuple of its values with
+``read_values()``, its columns' in a tuple of their own, as views. The vector
+is written from a tuple of each item's values, each pair's in place of it,
+with ``serialize_values()``, and read into them with the ``field_values()``
+of the view that its getter returns, which reads every item's values at
+once. The array of structs is written from the
+workload's own items, which the struct's protocol of fields types, and read
+with its view's ``iter_field_values()``, into a tuple of each struct's values
+rather than a struct.
 Reading creates the workloads' dataclasses from the values that the generated
 readers return."""

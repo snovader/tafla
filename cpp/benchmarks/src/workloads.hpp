@@ -7,8 +7,10 @@
 // generator, so that the languages' numbers compare.
 //
 // Deserialized values view strings and columns in their bytes where a codec
-// reads them in place, and own copies otherwise. Equality compares floats by
-// their bits, so that a codec reads back exactly what it wrote.
+// reads them in place, and own copies otherwise. A codec whose values view
+// what it decoded the bytes into returns them in a `Kept`, which keeps that.
+// Equality compares floats by their bits, so that a codec reads back exactly
+// what it wrote.
 
 #ifndef TAFLA_BENCHMARKS_WORKLOADS_HPP
 #define TAFLA_BENCHMARKS_WORKLOADS_HPP
@@ -30,8 +32,8 @@ inline constexpr std::size_t kDocumentRows[] = {100, 100'000};
 
 inline constexpr std::size_t kListItems = 100;
 
-/// A column viewed in the bytes it was read from, or owned, as Rust's `Cow`,
-/// or viewed in what a codec decoded the bytes into, which it keeps
+/// A column viewed where a codec read it, in its bytes or in what it decoded
+/// them into, or owned, as Rust's `Cow`
 template <class T>
 class Column {
 public:
@@ -40,15 +42,6 @@ public:
     static Column borrowed(std::span<const T> values) {
         Column column;
         column.view_ = values;
-        return column;
-    }
-
-    /// Views `values`, which `owner` holds, such as the message that a codec
-    /// parsed, and keeps it alive with the column
-    static Column kept(std::span<const T> values, std::shared_ptr<const void> owner) {
-        Column column;
-        column.view_ = values;
-        column.owner_ = std::move(owner);
         return column;
     }
 
@@ -63,17 +56,37 @@ public:
         return owning_ ? std::span<const T>(owned_) : view_;
     }
 
-    /// Whether the column views the bytes it was read from
+    /// Whether the column views its values rather than owning them
     [[nodiscard]] bool is_borrowed() const {
-        return !owning_ && owner_ == nullptr;
+        return !owning_;
     }
 
 private:
     std::span<const T> view_;
     std::vector<T> owned_;
-    std::shared_ptr<const void> owner_;
     bool owning_ = false;
 };
+
+/// A value that views what a codec decoded its bytes into, such as the
+/// message that protobuf parsed, and keeps that alive. Only the reads of such
+/// a codec pay for the owner, and those that view the bytes return the value
+/// alone.
+template <class Value>
+struct Kept {
+    Value value;
+    std::shared_ptr<const void> owner;
+};
+
+/// The value that a codec read, whether alone or kept with its owner
+template <class Value>
+const Value& value_of(const Value& value) {
+    return value;
+}
+
+template <class Value>
+const Value& value_of(const Kept<Value>& kept) {
+    return kept.value;
+}
 
 /// A string viewed in the bytes it was read from, or owned
 class Text {

@@ -290,21 +290,32 @@ impl RangeFields {
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::One;
 
+    /// The byte length of a [`Range`]: its offsets and its fields, whose sizes the
+    /// schema fixes, so that its parent writes it whole
+    pub const SIZE: usize = 16;
+
     /// Adds a [`Range`] to its parent's sizer, after the field or vector that holds it
     #[allow(clippy::unused_self)]
     pub fn size(&self, sizer: &mut TableSizer) {
-        let parent = sizer.start_table(2);
-        sizer.add_u32();
-        sizer.add_u32();
-        sizer.end_table(parent);
+        sizer.add_table_bytes(1, Self::SIZE);
     }
 
     /// Writes a [`Range`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
-        let parent = writer.start_table(2);
-        writer.set_u32(0, self.start);
-        writer.set_u32(1, self.end);
-        writer.end_table(parent);
+        writer.copy_table(&self.to_bytes());
+    }
+
+    /// The bytes of a [`Range`], as its parent holds it: its offsets, and then its
+    /// fields at them
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 16] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..4].copy_from_slice(&8_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&self.start.to_le_bytes());
+        bytes[12..16].copy_from_slice(&self.end.to_le_bytes());
+
+        bytes
     }
 }
 
@@ -407,24 +418,34 @@ impl FrameFields {
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::One;
 
+    /// The byte length of a [`Frame`]: its offsets and its fields, whose sizes the
+    /// schema fixes, so that its parent writes it whole
+    pub const SIZE: usize = 38;
+
     /// Adds a [`Frame`] to its parent's sizer, after the field or vector that holds it
+    #[allow(clippy::unused_self)]
     pub fn size(&self, sizer: &mut TableSizer) {
-        let parent = sizer.start_table(3);
-        sizer.add_struct(Vec2::SIZE);
-        sizer.add_table(RangeFields::ALIGNMENT);
-        self.range.size(sizer);
-        sizer.add_u16();
-        sizer.end_table(parent);
+        sizer.add_table_bytes(1, Self::SIZE);
     }
 
     /// Writes a [`Frame`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
-        let parent = writer.start_table(3);
-        writer.set_struct(0, &self.origin.to_bytes());
-        writer.set_table(1, RangeFields::ALIGNMENT);
-        self.range.write(writer);
-        writer.set_u16(2, self.flags);
-        writer.end_table(parent);
+        writer.copy_table(&self.to_bytes());
+    }
+
+    /// The bytes of a [`Frame`], as its parent holds it: its offsets, and then its
+    /// fields at them
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 38] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..4].copy_from_slice(&12_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&20_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&36_u32.to_le_bytes());
+        bytes[12..20].copy_from_slice(&self.origin.to_bytes());
+        bytes[20..36].copy_from_slice(&self.range.to_bytes());
+        bytes[36..38].copy_from_slice(&self.flags.to_le_bytes());
+
+        bytes
     }
 }
 
@@ -478,15 +499,16 @@ impl TinyFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(2, Tiny::LAYOUT)?;
-        sizer.add_u16();
-        sizer.add_u8();
+        let mut bytes = TableWriter::table_bytes(2, Tiny::LAYOUT, 6)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_u16(0, self.id);
-        writer.set_u8(1, self.kind);
+        let mut fixed = [0; 5];
+        fixed[0] = 3_u8;
+        fixed[1] = 5_u8;
+        fixed[2..4].copy_from_slice(&self.id.to_le_bytes());
+        fixed[4..5].copy_from_slice(&self.kind.to_le_bytes());
+        bytes.extend_from_slice(&fixed);
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -579,18 +601,26 @@ impl TaggedFields<'_> {
     /// # Errors
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(3, Tagged::LAYOUT, Tagged::FORMAT_VERSION)?;
-        sizer.add_u32();
-        sizer.add_struct(Vec2::SIZE);
-        sizer.add_str(self.label);
+        let mut bytes = TableWriter::versioned_table_bytes(
+            3,
+            Tagged::LAYOUT,
+            Tagged::FORMAT_VERSION,
+            18 + self.label.len() as u64,
+        )?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_u32(0, self.id);
-        writer.set_struct(1, &self.position.to_bytes());
-        writer.set_str(2, self.label);
+        let mut fixed = [0; 16];
+        fixed[0] = 5_u8;
+        fixed[1] = 9_u8;
+        fixed[2] = 17_u8;
+        fixed[3..7].copy_from_slice(&self.id.to_le_bytes());
+        fixed[7..15].copy_from_slice(&self.position.to_bytes());
+        fixed[15] = self.label.len() as u8;
+        bytes.extend_from_slice(&fixed);
+        bytes.extend_from_slice(self.label.as_bytes());
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -745,15 +775,17 @@ impl PixelFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(2, Pixel::LAYOUT, Pixel::FORMAT_VERSION)?;
-        sizer.add_struct(Vec2::SIZE);
-        sizer.add_u32();
+        let mut bytes =
+            TableWriter::versioned_table_bytes(2, Pixel::LAYOUT, Pixel::FORMAT_VERSION, 20)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_struct(0, &self.position.to_bytes());
-        writer.set_u32(1, self.color);
+        let mut fixed = [0; 16];
+        fixed[0..2].copy_from_slice(&8_u16.to_le_bytes());
+        fixed[2..4].copy_from_slice(&16_u16.to_le_bytes());
+        fixed[4..12].copy_from_slice(&self.position.to_bytes());
+        fixed[12..16].copy_from_slice(&self.color.to_le_bytes());
+        bytes.extend_from_slice(&fixed);
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -918,19 +950,19 @@ impl BoxFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(3, Box::LAYOUT, Box::FORMAT_VERSION)?;
-        sizer.add_struct(Vec2::SIZE);
-        sizer.add_struct(Vec2::SIZE);
-        sizer.add_table(RangeFields::ALIGNMENT);
-        self.range.size(&mut sizer);
+        let mut bytes =
+            TableWriter::versioned_table_bytes(3, Box::LAYOUT, Box::FORMAT_VERSION, 48)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_struct(0, &self.min.to_bytes());
-        writer.set_struct(1, &self.max.to_bytes());
-        writer.set_table(2, RangeFields::ALIGNMENT);
-        self.range.write(&mut writer);
+        let mut fixed = [0; 44];
+        fixed[0..4].copy_from_slice(&16_u32.to_le_bytes());
+        fixed[4..8].copy_from_slice(&24_u32.to_le_bytes());
+        fixed[8..12].copy_from_slice(&32_u32.to_le_bytes());
+        fixed[12..20].copy_from_slice(&self.min.to_bytes());
+        fixed[20..28].copy_from_slice(&self.max.to_bytes());
+        fixed[28..44].copy_from_slice(&self.range.to_bytes());
+        bytes.extend_from_slice(&fixed);
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -1070,14 +1102,17 @@ impl LabelFields<'_> {
     /// # Errors
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(1, Label::LAYOUT)?;
-        sizer.add_str(self.text);
+        let mut bytes = TableWriter::table_bytes(1, Label::LAYOUT, 8 + self.text.len() as u64)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_str(0, self.text);
+        let mut fixed = [0; 8];
+        fixed[0..4].copy_from_slice(&4_u32.to_le_bytes());
+        fixed[4..8].copy_from_slice(&(self.text.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&fixed);
+        bytes.extend_from_slice(self.text.as_bytes());
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -1122,27 +1157,13 @@ impl<'a> Span<'a> {
         Ok(Frame::new(self.bytes, position))
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn ranges(&self) -> Result<Vec<Range<'a>>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(3)?;
-        let vector = buffer.get_vector(position)?;
-        let mut items = Vec::with_capacity(vector.len());
-        for item in vector.iter_in_place() {
-            items.push(Range::new(item?, 0));
-        }
-
-        Ok(items)
-    }
-
-    /// Views the items of `ranges()`, reading each one when it's asked for
+    /// A view of the items, which reads each [`Range`] when it's asked for, and
+    /// fails then if its bytes are corrupt
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
-    pub fn ranges_view(&self) -> Result<RangeVector<'a>, DecodeError> {
+    pub fn ranges(&self) -> Result<RangeVector<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(3)?;
         Ok(RangeVector {
@@ -1178,10 +1199,7 @@ where
         sizer.add_table(FrameFields::ALIGNMENT);
         self.frame.size(&mut sizer);
         sizer.add_vector(self.ranges.len());
-        for item in self.ranges {
-            let fields: RangeFields = item.into();
-            fields.size(&mut sizer);
-        }
+        sizer.add_table_bytes(self.ranges.len(), RangeFields::SIZE);
 
         let mut writer = sizer.writer()?;
         writer.set_str(0, self.name);

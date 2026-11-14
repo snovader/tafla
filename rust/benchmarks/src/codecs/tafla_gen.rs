@@ -31,8 +31,8 @@ use crate::workloads::{
 /// borrow strings and arrays. Its vector and array of structs take the
 /// workload's items as they are, as an application writes its own types,
 /// and convert each into the item's fields or struct as they write it. The
-/// generated reader of a vector of tables collects the items' readers, which
-/// `deserialize()` then reads into the workload's items.
+/// generated getters of the vector and of the array of structs return views,
+/// whose `iter()` `deserialize()` reads into the workload's items.
 #[derive(Clone, Copy, Debug)]
 pub struct TaflaGen;
 
@@ -124,7 +124,8 @@ impl Workload<ListShape> for TaflaGen {
         let tables = ItemList::new(bytes).items()?;
 
         let mut items = Vec::with_capacity(tables.len());
-        for item in &tables {
+        for item in tables.iter() {
+            let item = item?;
             let pair = item.pair()?;
             items.push(Item {
                 value: item.value()?,
@@ -148,7 +149,11 @@ impl Workload<StructsShape> for TaflaGen {
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {
-        let items = Triples::new(bytes).items()?.map(item_of_triple).collect();
+        let items = Triples::new(bytes)
+            .items()?
+            .iter()
+            .map(item_of_triple)
+            .collect();
 
         Ok(List { items })
     }
@@ -178,58 +183,20 @@ impl Workload<SampleShape> for TaflaGen {
     }
 }
 
-/// The generated getters, which collect the vector's items and iterate over
-/// the array's structs
+/// The views that the generated getters return, which read each item when
+/// it's asked for
 impl ItemAccess for TaflaGen {
     const NAME: &'static str = "tafla-gen";
 
     fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
         let items = ItemList::new(bytes).items()?;
-
-        Ok(sum_table(items.last().ok_or_else(no_items)?)?)
-    }
-
-    fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
-        let items = ItemList::new(bytes).items()?;
-
-        let mut sum = 0.0;
-        for item in &items {
-            sum += sum_table(item)?;
-        }
-
-        Ok(sum)
-    }
-
-    fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let triple = Triples::new(bytes).items()?.last().ok_or_else(no_items)?;
-
-        Ok(sum_triple(triple))
-    }
-
-    fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let triples = Triples::new(bytes).items()?;
-
-        Ok(triples.map(sum_triple).fold(0.0, |sum, item| sum + item))
-    }
-}
-
-/// tafla-gen's views of the vector and of the array of structs, which read
-/// each item when it's asked for, rather than its getters
-#[derive(Clone, Copy, Debug)]
-pub struct TaflaGenView;
-
-impl ItemAccess for TaflaGenView {
-    const NAME: &'static str = "tafla-gen view";
-
-    fn last_table(self, bytes: &[u8]) -> Result<f64, Error> {
-        let items = ItemList::new(bytes).items_view()?;
         let last = items.len().checked_sub(1).ok_or_else(no_items)?;
 
         Ok(sum_table(&items.get(last).ok_or_else(no_items)??)?)
     }
 
     fn every_table(self, bytes: &[u8]) -> Result<f64, Error> {
-        let items = ItemList::new(bytes).items_view()?;
+        let items = ItemList::new(bytes).items()?;
 
         let mut sum = 0.0;
         for item in items.iter() {
@@ -240,14 +207,14 @@ impl ItemAccess for TaflaGenView {
     }
 
     fn last_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let triples = Triples::new(bytes).items_view()?;
+        let triples = Triples::new(bytes).items()?;
         let last = triples.len().checked_sub(1).ok_or_else(no_items)?;
 
         Ok(sum_triple(triples.get(last).ok_or_else(no_items)?))
     }
 
     fn every_struct(self, bytes: &[u8]) -> Result<f64, Error> {
-        let triples = Triples::new(bytes).items_view()?;
+        let triples = Triples::new(bytes).items()?;
 
         Ok(triples
             .iter()

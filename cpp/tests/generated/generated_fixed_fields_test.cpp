@@ -410,7 +410,7 @@ TEST(GeneratedFixedFields, FixedTablesAfterOtherFieldsReadBackAloneAndInAVector)
     const std::vector<std::pair<std::uint32_t, std::uint32_t>> expected{{1, 2}, {3, 4}};
     EXPECT_EQ(items, expected);
 
-    const auto view = read.ranges_view();
+    const auto view = read.ranges();
     ASSERT_EQ(view.size(), 2U);
     EXPECT_EQ(view.get(1).start(), 3U);
     EXPECT_EQ(view.get(1).end(), 4U);

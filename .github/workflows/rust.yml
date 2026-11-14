@@ -17,6 +17,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+# Caches are saved only on main, whose caches every branch restores. A pull
+# request's would serve only its own reruns, and would take the place of
+# main's in the repository's 10 GB of caches.
+
 jobs:
   # Every push and pull request runs this workflow, so that its required check
   # always reports, and the jobs below run only when the change touches these
@@ -30,6 +34,7 @@ jobs:
       pull-requests: read
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      runtime: ${{ steps.filter.outputs.runtime }}
     steps:
       # A pull request lists its files through the API, and a push compares
       # its commits, which needs the repository
@@ -66,6 +71,15 @@ jobs:
               - "python/benchmarks/src/tafla_benchmarks/generated/tafla/**"
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
+            # The runtime and what its tests read, which the jobs that test only
+            # the runtime, under Miri and on a 32-bit target, run for
+            runtime:
+              - ".github/workflows/rust.yml"
+              - "conformance/**"
+              - "rust/Cargo.lock"
+              - "rust/Cargo.toml"
+              - "rust/core/**"
+              - "rust/rust-toolchain.toml"
 
   formatting:
     name: Formatting
@@ -111,6 +125,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: |
             rust -> target
             rust/fuzz -> target
@@ -146,6 +161,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: ${{ matrix.toolchain }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
           cache-key: ${{ matrix.toolchain }}
 
@@ -155,7 +171,7 @@ jobs:
   miri:
     name: Test (${{ matrix.name }}, Miri)
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -176,25 +192,39 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # With the sysroot that Miri builds for the target
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: nightly
           components: miri, rust-src
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
+          cache-directories: ~/.cache/miri
           cache-key: miri-${{ matrix.name }}
+
+      # Miri interprets a test process on one core, so nextest runs a process
+      # for each test, as many at a time as the runner has cores
+      - name: Install nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       # The runtime only: the generator reads and writes no bytes in either
       # order, has no unsafe code, and would take long under Miri
       - name: Run tests under Miri
-        run: cargo +nightly miri test -p tafla --target ${{ matrix.target }}
+        run: cargo +nightly miri nextest run -p tafla --target ${{ matrix.target }}
 
       # Miri isolates the tests from the file system, so the conformance suite
       # is ignored above
       - name: Run the conformance suite under Miri
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
-        run: cargo +nightly miri test -p tafla --target ${{ matrix.target }} --test conformance -- --include-ignored
+        run: cargo +nightly miri nextest run -p tafla --target ${{ matrix.target }} --test conformance --run-ignored all
+
+      # nextest doesn't run the documentation's examples
+      - name: Run the documentation's examples under Miri
+        run: cargo +nightly miri test -p tafla --target ${{ matrix.target }} --doc
 
   # A 32-bit usize, as in the generator's WebAssembly module and 32-bit
   # hosts, where positions plus lengths can overflow and a u32 length doesn't
@@ -202,7 +232,7 @@ jobs:
   i686:
     name: Test (32-bit)
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -216,6 +246,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           target: i686-unknown-linux-gnu
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
           cache-key: i686
 
@@ -244,6 +275,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
           cache-key: benchmark
 
@@ -283,6 +315,7 @@ jobs:
         with:
           target: wasm32-unknown-unknown
           components: clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
           cache-key: wasm
 

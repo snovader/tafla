@@ -58,11 +58,20 @@ public record Block(Quad first, Quad second, Quad third, Quad fourth) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Block} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Block readUnchecked(ByteBuffer view, int offset) {
         return new Block(
-            Quad.read(view, offset),
-            Quad.read(view, offset + 64),
-            Quad.read(view, offset + 128),
-            Quad.read(view, offset + 192)
+            Quad.readUnchecked(view, offset),
+            Quad.readUnchecked(view, offset + 64),
+            Quad.readUnchecked(view, offset + 128),
+            Quad.readUnchecked(view, offset + 192)
         );
     }
 
@@ -83,11 +92,26 @@ public record Block(Quad first, Quad second, Quad third, Quad fourth) {
         return bytes;
     }
 
-    /** Writes the {@code Block} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Block} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(
+        byte[] bytes,
+        int offset,
+        Quad first,
+        Quad second,
+        Quad third,
+        Quad fourth
+    ) {
         first.write(bytes, offset);
         second.write(bytes, offset + 64);
         third.write(bytes, offset + 128);
         fourth.write(bytes, offset + 192);
+    }
+
+    /** Writes the {@code Block} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, first, second, third, fourth);
     }
 }

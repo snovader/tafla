@@ -62,16 +62,6 @@ fn read_arrays(arrays: &Arrays) -> Fields {
     ]
 }
 
-fn read_nested(nested: &Nested) -> Fields {
-    vec![
-        nested.label().map(Value::string),
-        nested.outer().and_then(|outer| table(read_outer(&outer))),
-        nested
-            .trees()
-            .and_then(|trees| vector(trees.iter().map(read_tree))),
-    ]
-}
-
 fn read_outer(outer: &Outer) -> Fields {
     vec![
         outer.count().map(Value::U32),
@@ -83,14 +73,6 @@ fn read_inner(inner: &Inner) -> Fields {
     vec![
         inner.name().map(Value::string),
         inner.values().map(Value::f64_array),
-    ]
-}
-
-fn read_tree(tree: &Tree) -> Fields {
-    vec![
-        tree.value().map(Value::I32),
-        tree.children()
-            .and_then(|children| vector(children.iter().map(read_tree))),
     ]
 }
 
@@ -113,42 +95,8 @@ fn read_keywords(keywords: &Keywords) -> Fields {
     ]
 }
 
-fn read_structs(structs: &Structs) -> Fields {
-    vec![
-        structs
-            .packed()
-            .map(|packed| Value::Struct(describe_packed(&packed))),
-        structs.documented().map(|items| {
-            struct_array(
-                Documented::SIZE,
-                Documented::ALIGNMENT,
-                items.map(describe_documented),
-            )
-        }),
-        structs
-            .segment()
-            .map(|segment| Value::Struct(describe_segment(segment))),
-        structs.segments().map(|items| {
-            struct_array(
-                Segment::SIZE,
-                Segment::ALIGNMENT,
-                items.map(describe_segment),
-            )
-        }),
-        structs.path().and_then(|path| table(read_path(&path))),
-    ]
-}
-
-fn read_path(path: &Path) -> Fields {
-    vec![
-        path.start()
-            .map(|start| Value::Struct(describe_point(start))),
-        path.points()
-            .map(|items| struct_array(Point::SIZE, Point::ALIGNMENT, items.map(describe_point))),
-    ]
-}
-
-// Reading the vectors and arrays of structs through their views instead
+// Reading the vectors and arrays of structs through the views that their
+// getters return
 
 /// Ways to read a view's items: by index from the last, as a reader that
 /// skips items would, and in order with its iterator
@@ -182,41 +130,38 @@ impl ViewOrder {
     }
 }
 
-fn read_nested_views(nested: &Nested, order: ViewOrder) -> Fields {
+fn read_nested(nested: &Nested, order: ViewOrder) -> Fields {
     vec![
         nested.label().map(Value::string),
         nested.outer().and_then(|outer| table(read_outer(&outer))),
-        nested
-            .trees_view()
-            .and_then(|trees| tree_vector(trees, order)),
+        nested.trees().and_then(|trees| tree_vector(trees, order)),
     ]
 }
 
-fn read_tree_views(tree: &Tree, order: ViewOrder) -> Fields {
+fn read_tree(tree: &Tree, order: ViewOrder) -> Fields {
     vec![
         tree.value().map(Value::I32),
-        tree.children_view()
+        tree.children()
             .and_then(|children| tree_vector(children, order)),
     ]
 }
 
-/// The value of a vector of trees, or the first error of its items, as the
-/// getter of the vector reads it
+/// The value of a vector of trees, or the first error of its items in order
 fn tree_vector(view: TreeVector<'_>, order: ViewOrder) -> Result<Value, DecodeError> {
     let trees: Vec<Tree> = order
         .items(view.len(), |index| view.get(index), view.iter())
         .into_iter()
         .collect::<Result<_, _>>()?;
 
-    vector(trees.iter().map(|tree| read_tree_views(tree, order)))
+    vector(trees.iter().map(|tree| read_tree(tree, order)))
 }
 
-fn read_structs_views(structs: &Structs, order: ViewOrder) -> Fields {
+fn read_structs(structs: &Structs, order: ViewOrder) -> Fields {
     vec![
         structs
             .packed()
             .map(|packed| Value::Struct(describe_packed(&packed))),
-        structs.documented_view().map(|view| {
+        structs.documented().map(|view| {
             let items = order.items(view.len(), |index| view.get(index), view.iter());
             struct_array(
                 Documented::SIZE,
@@ -227,7 +172,7 @@ fn read_structs_views(structs: &Structs, order: ViewOrder) -> Fields {
         structs
             .segment()
             .map(|segment| Value::Struct(describe_segment(segment))),
-        structs.segments_view().map(|view| {
+        structs.segments().map(|view| {
             let items = order.items(view.len(), |index| view.get(index), view.iter());
             struct_array(
                 Segment::SIZE,
@@ -237,15 +182,15 @@ fn read_structs_views(structs: &Structs, order: ViewOrder) -> Fields {
         }),
         structs
             .path()
-            .and_then(|path| table(read_path_views(&path, order))),
+            .and_then(|path| table(read_path(&path, order))),
     ]
 }
 
-fn read_path_views(path: &Path, order: ViewOrder) -> Fields {
+fn read_path(path: &Path, order: ViewOrder) -> Fields {
     vec![
         path.start()
             .map(|start| Value::Struct(describe_point(start))),
-        path.points_view().map(|view| {
+        path.points().map(|view| {
             let items = order.items(view.len(), |index| view.get(index), view.iter());
             struct_array(
                 Point::SIZE,
@@ -839,8 +784,10 @@ proptest! {
         nested.with_fields(|fields| -> Result<(), TestCaseError> {
             let bytes = placement.place(&fields.serialize()?);
 
-            let read = read_nested(&Nested::new(bytes.bytes()));
-            prop_assert_eq!(read, expected(describe_nested(fields)));
+            for order in ViewOrder::ALL {
+                let read = read_nested(&Nested::new(bytes.bytes()), order);
+                prop_assert_eq!(read, expected(describe_nested(fields)), "{:?}", order);
+            }
             Ok(())
         })?;
     }
@@ -865,8 +812,10 @@ proptest! {
         let fields = structs.fields();
         let bytes = placement.place(&fields.serialize()?);
 
-        let read = read_structs(&Structs::new(bytes.bytes()));
-        prop_assert_eq!(read, expected(describe_structs(&fields)));
+        for order in ViewOrder::ALL {
+            let read = read_structs(&Structs::new(bytes.bytes()), order);
+            prop_assert_eq!(read, expected(describe_structs(&fields)), "{:?}", order);
+        }
     }
 
     #[test]
@@ -959,11 +908,13 @@ proptest! {
             let bytes = fields.serialize()?;
             let written = describe_nested(fields);
 
-            for truncated in truncations(&bytes) {
-                check_truncated(Ok(read_nested(&Nested::new(truncated))), &written)?;
-            }
+            for order in ViewOrder::ALL {
+                for truncated in truncations(&bytes) {
+                    check_truncated(Ok(read_nested(&Nested::new(truncated), order)), &written)?;
+                }
 
-            read_nested(&Nested::new(&overwrite.apply(&bytes)));
+                read_nested(&Nested::new(&overwrite.apply(&bytes)), order);
+            }
             Ok(())
         })?;
     }
@@ -993,81 +944,55 @@ proptest! {
         let bytes = fields.serialize()?;
         let written = describe_structs(&fields);
 
-        for truncated in truncations(&bytes) {
-            check_truncated(Ok(read_structs(&Structs::new(truncated))), &written)?;
-        }
+        for order in ViewOrder::ALL {
+            for truncated in truncations(&bytes) {
+                check_truncated(Ok(read_structs(&Structs::new(truncated), order)), &written)?;
+            }
 
-        read_structs(&Structs::new(&overwrite.apply(&bytes)));
+            read_structs(&Structs::new(&overwrite.apply(&bytes)), order);
+        }
     }
 
     #[test]
     fn arbitrary_bytes_read_as_any_message_or_decode_errors(bytes in arbitrary_bytes()) {
         read_scalars(&Scalars::new(&bytes));
         read_arrays(&Arrays::new(&bytes));
-        read_nested(&Nested::new(&bytes));
         read_reserved(&Reserved::new(&bytes));
-        read_structs(&Structs::new(&bytes));
+        for order in ViewOrder::ALL {
+            read_nested(&Nested::new(&bytes), order);
+            read_structs(&Structs::new(&bytes), order);
+        }
     }
 
     // Views
 
     #[test]
-    fn nested_reads_back_its_trees_item_by_item_through_their_views(
-        nested in owned_nested(),
-        placement in placements(),
-    ) {
-        nested.with_fields(|fields| -> Result<(), TestCaseError> {
-            let bytes = placement.place(&fields.serialize()?);
-
-            for order in ViewOrder::ALL {
-                let read = read_nested_views(&Nested::new(bytes.bytes()), order);
-                prop_assert_eq!(read, expected(describe_nested(fields)), "{:?}", order);
-            }
-            Ok(())
-        })?;
-    }
-
-    #[test]
-    fn structs_read_back_their_arrays_struct_by_struct_through_their_views(
-        structs in owned_structs(),
-        placement in placements(),
-    ) {
-        let fields = structs.fields();
-        let bytes = placement.place(&fields.serialize()?);
-
-        for order in ViewOrder::ALL {
-            let read = read_structs_views(&Structs::new(bytes.bytes()), order);
-            prop_assert_eq!(read, expected(describe_structs(&fields)), "{:?}", order);
-        }
-    }
-
-    #[test]
-    fn views_read_corrupted_bytes_as_the_getters_read_them(
+    fn views_read_corrupted_bytes_alike_by_index_and_in_order(
         nested in owned_nested(),
         structs in owned_structs(),
         overwrite in overwrites(),
     ) {
+        use ViewOrder::{FromLast, Iterated};
         let nested = nested.serialize()?;
         let structs = structs.fields().serialize()?;
 
-        for order in ViewOrder::ALL {
-            for bytes in truncations(&nested).chain([&overwrite.apply(&nested)[..]]) {
-                let nested = Nested::new(bytes);
-                prop_assert_eq!(read_nested_views(&nested, order), read_nested(&nested));
-            }
-            for bytes in truncations(&structs).chain([&overwrite.apply(&structs)[..]]) {
-                let structs = Structs::new(bytes);
-                prop_assert_eq!(read_structs_views(&structs, order), read_structs(&structs));
-            }
+        for bytes in truncations(&nested).chain([&overwrite.apply(&nested)[..]]) {
+            let nested = Nested::new(bytes);
+            prop_assert_eq!(read_nested(&nested, FromLast), read_nested(&nested, Iterated));
+        }
+        for bytes in truncations(&structs).chain([&overwrite.apply(&structs)[..]]) {
+            let structs = Structs::new(bytes);
+            prop_assert_eq!(read_structs(&structs, FromLast), read_structs(&structs, Iterated));
         }
     }
 
     #[test]
-    fn views_read_arbitrary_bytes_as_the_getters_read_them(bytes in arbitrary_bytes()) {
-        for order in ViewOrder::ALL {
-            prop_assert_eq!(read_nested_views(&Nested::new(&bytes), order), read_nested(&Nested::new(&bytes)));
-            prop_assert_eq!(read_structs_views(&Structs::new(&bytes), order), read_structs(&Structs::new(&bytes)));
-        }
+    fn views_read_arbitrary_bytes_alike_by_index_and_in_order(bytes in arbitrary_bytes()) {
+        use ViewOrder::{FromLast, Iterated};
+        let (nested, structs) = (Nested::new(&bytes), Structs::new(&bytes));
+
+        prop_assert_eq!(read_nested(&nested, FromLast), read_nested(&nested, Iterated));
+        prop_assert_eq!(read_structs(&structs, FromLast), read_structs(&structs, Iterated));
     }
 
     #[test]
@@ -1079,9 +1004,9 @@ proptest! {
         let nested = nested.serialize()?;
         let structs = structs.fields().serialize()?;
 
-        let trees = Nested::new(&nested).trees_view()?;
+        let trees = Nested::new(&nested).trees()?;
         prop_assert!(trees.get(trees.len() + past).is_none());
-        let documented = Structs::new(&structs).documented_view()?;
+        let documented = Structs::new(&structs).documented()?;
         prop_assert!(documented.get(documented.len() + past).is_none());
     }
 
@@ -1202,15 +1127,15 @@ fn views_of_empty_vectors_and_arrays_of_structs_hold_no_items()
     .fields()
     .serialize()?;
 
-    let trees = Nested::new(&nested).trees_view()?;
+    let trees = Nested::new(&nested).trees()?;
     assert!(trees.is_empty() && trees.get(0).is_none() && trees.iter().len() == 0);
 
     let structs = Structs::new(&structs);
-    let documented = structs.documented_view()?;
+    let documented = structs.documented()?;
     assert!(documented.is_empty() && documented.get(0).is_none());
-    let segments = structs.segments_view()?;
+    let segments = structs.segments()?;
     assert!(segments.is_empty() && segments.get(0).is_none());
-    let points = structs.path()?.points_view()?;
+    let points = structs.path()?.points()?;
     assert!(points.is_empty() && points.iter().len() == 0);
     Ok(())
 }

@@ -121,6 +121,15 @@ void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> b
     const auto field = try_read([&] { return buffer.field_offset(position, 1); });
     RC_ASSERT(field == (slot ? std::optional<std::size_t>(position + *slot) : std::nullopt));
 
+    // A table nested in a field is read in place, from its position to the
+    // end of the bytes
+    const auto table = try_read([&] { return buffer.get_table(position); });
+    RC_ASSERT(table.has_value() == (position <= bytes.size()));
+    if (table) {
+        RC_ASSERT(table->data() == bytes.data() + position);
+        RC_ASSERT(table->size() == bytes.size() - position);
+    }
+
     // A vector holds a count and then that many ends
     const auto count = little_endian(bytes, position, width);
     const auto vector = try_read([&] { return buffer.get_vector(position); });

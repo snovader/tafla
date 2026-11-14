@@ -94,6 +94,46 @@ public class DecodeExceptionTest {
     }
 
     @Property
+    void a_vector_items_end_from_any_index_and_start_lies_within_the_bytes_or_throws_DecodeException(
+        @ForAll @Size(max = 64) byte[] bytes,
+        @ForAll("layouts") LayoutDescription layout,
+        @ForAll @IntRange(min = 0, max = 72) int position,
+        @ForAll @IntRange(min = -2, max = 20) int index,
+        @ForAll("nearPositions") int start
+    ) {
+        // An index past the count, or a start other than the previous item's end, reads other bytes
+        // as the item's end, or checks it against another start
+        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+
+        assertValuesOrDecodeException(() -> {
+            var end = buffer.getVectorItemEnd(position, index, start);
+            assertTrue(end >= start && end <= bytes.length, () -> "Item " + index + " ends at " + end);
+        });
+    }
+
+    @Property
+    void reading_a_vectors_items_in_order_finds_them_within_the_bytes_or_throws_DecodeException(
+        @ForAll @Size(max = 64) byte[] bytes,
+        @ForAll("layouts") LayoutDescription layout,
+        @ForAll @IntRange(min = 0, max = 72) int position
+    ) {
+        // As a generated vector view's iterator reads them, from where the items start
+        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+
+        assertValuesOrDecodeException(() -> {
+            var count = buffer.getVectorLength(position);
+            var start = buffer.getVectorItemsStart(position, count);
+            assertTrue(start > position && start <= bytes.length, "The items start within the bytes");
+
+            for (int index = 0; index < count; index++) {
+                var item = start;
+                start = buffer.getVectorItemEnd(position, index, item);
+                assertTrue(start >= item && start <= bytes.length, "Item " + index + " ends within the bytes");
+            }
+        });
+    }
+
+    @Property
     void a_scalar_read_outside_the_bytes_throws_DecodeException_naming_the_read_and_the_bytes_available(
         @ForAll @Size(max = 16) byte[] bytes,
         @ForAll ScalarType type,
@@ -143,6 +183,11 @@ public class DecodeExceptionTest {
         assertEquals("The vector item at 12 ends before it starts, at 11", exception.getMessage());
         assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
         assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
+        exception = assertThrows(
+            DecodeException.class,
+            () -> buffer.getVectorItemEnd(0, 0, buffer.getVectorItemsStart(0, 2))
+        );
+        assertEquals("The vector item at 12 ends before it starts, at 11", exception.getMessage());
     }
 
     @Example
@@ -154,6 +199,11 @@ public class DecodeExceptionTest {
         assertEquals("Read exceeds the supplied buffer: 1 bytes at 8 of 8", exception.getMessage());
         assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
         assertThrows(DecodeException.class, () -> buffer.getVector(0));
+        exception = assertThrows(
+            DecodeException.class,
+            () -> buffer.getVectorItemEnd(0, 0, buffer.getVectorItemsStart(0, 1))
+        );
+        assertEquals("Read exceeds the supplied buffer: 1 bytes at 8 of 8", exception.getMessage());
     }
 
     @Example

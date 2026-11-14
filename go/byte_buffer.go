@@ -136,6 +136,31 @@ func (b ByteBuffer) FieldOffset(tablePosition, index int) (int, error) {
 	return int(position), nil
 }
 
+// Uint32FieldOffset returns the position of a field of the table at table in
+// bytes, whose offsets are uint32s, from its offset at slot: table plus the
+// offset. It fails with OutOfRange if the offset doesn't lie within the
+// bytes.
+//
+// It's [ByteBuffer.FieldOffset] for the code that tafla-gen generates, which
+// knows a table's offset type and the slot of each field, as a function
+// small enough to inline into each getter: a nested table's slots follow
+// its position, and a root's its header, from position 0. table is a
+// position that a read returned, which isn't negative.
+func Uint32FieldOffset(bytes []byte, table, slot int) (int, error) {
+	if slot < 0 || slot > len(bytes)-4 {
+		return 0, outOfRange(slot, 4, len(bytes))
+	}
+
+	// Only a 32-bit int can overflow, at a position past any bytes
+	offset := binary.LittleEndian.Uint32(bytes[slot:])
+	position := uint(table) + uint(offset)
+	if !intIs64 && (position < uint(table) || position > math.MaxInt) {
+		return 0, outOfRange(table, uint64(offset), len(bytes))
+	}
+
+	return int(position), nil
+}
+
 // GetInt8 reads the int8 at position. It fails with OutOfRange if the value
 // doesn't lie within the bytes.
 func (b ByteBuffer) GetInt8(position int) (int8, error) {

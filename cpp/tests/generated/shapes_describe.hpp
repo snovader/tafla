@@ -84,20 +84,20 @@ inline std::vector<Field> read_item(const shapes::Item& item) {
     return {{item.value()}, nested({{pair.first()}, {pair.second()}})};
 }
 
-/// Reads an item list's items through its getter, which reads every item at
-/// once
+/// Reads an item list's items at once, collecting the view that its getter
+/// returns with `to_vector()`
 inline Table read(const shapes::ItemList& list) {
     VectorField items;
-    for (const auto& item : list.items()) {
+    for (const auto& item : list.items().to_vector()) {
         items.items.push_back({Source::builder, {headerless(), std::nullopt, read_item(item)}});
     }
     return {Layout{}, std::nullopt, {{items}}};
 }
 
-/// Reads an item list's items through its view, each by index or by
-/// iterating
+/// Reads an item list's items through the view that its getter returns, each
+/// by index or by iterating
 inline Table read_view(const shapes::ItemList& list, bool by_index) {
-    const auto view = list.items_view();
+    const auto view = list.items();
     VectorField items;
     if (by_index) {
         for (std::size_t index = 0; index < view.size(); ++index) {

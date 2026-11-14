@@ -5,8 +5,10 @@ package generated_test
 // their fields:
 //
 //   - readFields reads every field of a reader through its getters, into
-//     the struct of fields that writes it, and through the views of its
-//     vectors and arrays of structs too,
+//     the struct of fields that writes it, and the items of the views that
+//     the getters of its vectors and arrays of structs return by index and
+//     by iterating, and the structs of arrays of structs all at once,
+//   - checkWhole checks that a reader's Fields() reads what its getters read,
 //   - describe describes a struct of fields as the conformance suite's
 //     description of the table that it writes, which TableBuilder builds,
 //   - drawFields draws a struct of fields of any values, and
@@ -38,9 +40,9 @@ func isFields(t reflect.Type) bool {
 }
 
 // readFields reads every field of reader, a message's or table's reader, into
-// a struct of fieldsType, through the getter of each field. It reads every
-// vector and array of structs through its view too, by index and by
-// iterating, and fails unless they read what the getter reads.
+// a struct of fieldsType, through the getter of each field. The getter of a
+// vector or an array of structs returns a view, whose items it reads by index
+// and by iterating, and fails unless they're the same.
 func readFields(reader reflect.Value, fieldsType reflect.Type) (reflect.Value, error) {
 	fields := reflect.New(fieldsType).Elem()
 
@@ -61,12 +63,6 @@ func readFields(reader reflect.Value, fieldsType reflect.Type) (reflect.Value, e
 			return fields, err
 		}
 		fields.Field(index).Set(value)
-
-		if view := reader.MethodByName(field.Name + "View"); view.IsValid() && field.Type.Kind() == reflect.Slice {
-			if err := checkView(view, value, field.Type); err != nil {
-				return fields, err
-			}
-		}
 	}
 
 	return fields, nil
@@ -74,7 +70,7 @@ func readFields(reader reflect.Value, fieldsType reflect.Type) (reflect.Value, e
 
 // readValue converts what a getter read into the type of the field that
 // writes it: the elements of an ArrayView, the fields of a table's reader,
-// and of each reader of a vector
+// and the items of a view
 func readValue(read reflect.Value, fieldType reflect.Type) (reflect.Value, error) {
 	switch {
 	case read.Type() == fieldType:
@@ -83,78 +79,107 @@ func readValue(read reflect.Value, fieldType reflect.Type) (reflect.Value, error
 		return read.MethodByName("Slice").Call(nil)[0], nil
 	case isFields(fieldType):
 		return readFields(read, fieldType)
-	case read.Kind() == reflect.Slice && fieldType.Kind() == reflect.Slice:
-		values := reflect.MakeSlice(fieldType, read.Len(), read.Len())
-		for index := range read.Len() {
-			value, err := readValue(read.Index(index), fieldType.Elem())
-			if err != nil {
-				return values, err
-			}
-			values.Index(index).Set(value)
-		}
-		return values, nil
+	case isView(read.Type()) && fieldType.Kind() == reflect.Slice:
+		return readView(read, fieldType)
 	default:
 		return read, fmt.Errorf("can't read a %v into a %v", read.Type(), fieldType)
 	}
 }
 
-// checkView reads the items of a vector or an array of structs through its
-// view, the result of the getter view, by index and by iterating, and fails
-// unless they're the values that the field's getter read
-func checkView(getter reflect.Value, values reflect.Value, fieldType reflect.Type) error {
-	results := getter.Call(nil)
-	if err, _ := results[1].Interface().(error); err != nil {
-		return err
+// isView reports whether a type is a view of a vector or an array of
+// structs, which reads each item when it's asked for
+func isView(t reflect.Type) bool {
+	for _, method := range []string{"Len", "Get", "All"} {
+		if _, ok := t.MethodByName(method); !ok {
+			return false
+		}
 	}
-	view := results[0]
 
+	return true
+}
+
+// readView reads the items of a view of a vector or an array of structs, by
+// index and by iterating, into a slice of fieldType, and fails unless both
+// read the same items, and those of an array of structs all at once, through
+// its Slice() and, where they're in place, its AsSlice()
+func readView(view reflect.Value, fieldType reflect.Type) (reflect.Value, error) {
 	length := int(view.MethodByName("Len").Call(nil)[0].Int())
-	if length != values.Len() {
-		return fmt.Errorf("a view of %d items of %d", length, values.Len())
-	}
 
 	byIndex := reflect.MakeSlice(fieldType, length, length)
 	for index := range length {
 		results := view.MethodByName("Get").Call([]reflect.Value{reflect.ValueOf(index)})
 		if len(results) == 2 {
 			if err, _ := results[1].Interface().(error); err != nil {
-				return err
+				return byIndex, err
 			}
 		}
 
 		value, err := readValue(results[0], fieldType.Elem())
 		if err != nil {
-			return err
+			return byIndex, err
 		}
 		byIndex.Index(index).Set(value)
 	}
 
 	iterated := reflect.MakeSlice(fieldType, 0, length)
 	all := view.MethodByName("All").Call(nil)[0]
-	var failed error
 	for key, item := range all.Seq2() {
 		// An array of structs iterates over indices and structs, and a vector
 		// over its items and errors
 		if key.Kind() == reflect.Int {
 			key, item = item, key
 		} else if err, _ := item.Interface().(error); err != nil {
-			failed = err
-			break
+			return byIndex, err
 		}
 
 		value, err := readValue(key, fieldType.Elem())
 		if err != nil {
-			failed = err
-			break
+			return byIndex, err
 		}
 		iterated = reflect.Append(iterated, value)
 	}
-	if failed != nil {
-		return failed
+
+	if !sameValues(iterated, byIndex) {
+		return byIndex, errors.New("a view iterates over other items than it reads by index")
 	}
 
-	if !sameValues(byIndex, values) || !sameValues(iterated, values) {
-		return errors.New("a view reads other items than the getter")
+	if slice := view.MethodByName("Slice"); slice.IsValid() {
+		if !sameValues(slice.Call(nil)[0], byIndex) {
+			return byIndex, errors.New("Slice() reads other structs than the view reads by index")
+		}
+		inPlace := view.MethodByName("AsSlice").Call(nil)
+		if inPlace[1].Bool() && !sameValues(inPlace[0], byIndex) {
+			return byIndex, errors.New("AsSlice() reads other structs than the view reads by index")
+		}
+	}
+
+	return byIndex, nil
+}
+
+// checkWhole reads reader whole, through its Fields(), when it has one, and
+// fails unless Fields() reads the fields that its getters read, which are
+// fields, or fails with a decode error when they fail with err. It reads a
+// table that can hold itself through its getters only, and has no Fields().
+func checkWhole(reader reflect.Value, fields reflect.Value, err error) error {
+	method := reader.MethodByName("Fields")
+	if !method.IsValid() {
+		return nil
+	}
+
+	results := method.Call(nil)
+	whole := results[0]
+	wholeErr, _ := results[1].Interface().(error)
+
+	var decodeError *tafla.DecodeError
+	switch {
+	case err == nil && wholeErr == nil:
+		if !sameValues(whole, fields) {
+			return fmt.Errorf("Fields() read %+v rather than %+v", whole, fields)
+		}
+	case err == nil:
+		return fmt.Errorf("Fields() failed with %v where the getters read %+v", wholeErr, fields)
+	case !errors.As(wholeErr, &decodeError):
+		return fmt.Errorf("Fields() read %+v, %v where the getters failed with %v", whole, wholeErr, err)
 	}
 
 	return nil

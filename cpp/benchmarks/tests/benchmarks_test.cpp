@@ -14,14 +14,15 @@ namespace tafla::benchmarks {
 namespace {
 
 /// Builds every benchmark, which checks each codec's round trip and sums,
-/// and runs each variant once
+/// and tafla-gen's writes into reused bytes, and runs each variant once.
+/// Each has a variant and an A/A pair of it at least.
 TEST(Benchmarks, EveryCodecReadsBackWhatItWroteAndEveryBenchmarkRuns) {
     const Inputs inputs;
     const auto all = benchmarks(inputs);
-    EXPECT_EQ(all.size(), 18U);
+    EXPECT_EQ(all.size(), 19U);
 
     for (const auto& benchmark : all) {
-        EXPECT_GE(benchmark.variants.size(), 3U) << benchmark.name;
+        EXPECT_GE(benchmark.variants.size(), 2U) << benchmark.name;
         for (const auto& variant : benchmark.variants) {
             variant.loop(1);
         }
@@ -84,17 +85,30 @@ TEST(Workloads, GeneratesTheTypeScriptVectorOfNestedTables) {
     EXPECT_EQ(bits(items[99]), (std::array<std::uint32_t, 3>{0x4193'd915, 0x3f97'9e05, 0x418f'26e1}));
 }
 
+/// Whether `column`'s values lie within `bytes`
+template <class T>
+bool lies_within(std::span<const T> column, std::span<const std::uint8_t> bytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(column.data());
+    const auto start = reinterpret_cast<std::uintptr_t>(bytes.data());
+    return begin >= start && begin + column.size_bytes() <= start + bytes.size();
+}
+
 /// tafla's columns are read in place, as views of the bytes, as FlatBuffers'
-/// are, where protobuf's view the message that it decoded them into
+/// are, where protobuf's view the message that it decoded them into, which
+/// the document is kept with
 TEST(Benchmarks, TaflaReadsColumnsInPlace) {
     const auto doc = document(100);
     const auto bytes = Tafla().serialize(DocumentShape{}, doc);
     const auto read = TaflaGen().deserialize(DocumentShape{}, bytes);
 
     EXPECT_TRUE(read.a.is_borrowed());
-    EXPECT_GE(read.a.span().data(), reinterpret_cast<const float*>(bytes.data()));
-    EXPECT_FALSE(
-        Protobuf().deserialize(DocumentShape{}, bytes_of(Protobuf().serialize(DocumentShape{}, doc))).a.is_borrowed());
+    EXPECT_TRUE(lies_within(read.a.span(), bytes_of(bytes)));
+
+    const auto message = Protobuf().serialize(DocumentShape{}, doc);
+    const auto decoded = Protobuf().deserialize(DocumentShape{}, bytes_of(message));
+    EXPECT_TRUE(decoded.value.a.is_borrowed());
+    EXPECT_FALSE(lies_within(decoded.value.a.span(), bytes_of(message)));
+    EXPECT_NE(decoded.owner, nullptr);
 }
 
 }  // namespace

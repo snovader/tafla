@@ -214,7 +214,27 @@ public class ShapesTest {
         var itemList = new ItemList(bytes);
 
         assertEquals(new ItemList.Fields(List.of(item)), readItemList(itemList));
-        assertEquals(item, readItem(itemList.itemsView().get(0)));
+        assertEquals(item, readItem(itemList.items().get(0)));
+    }
+
+    @Example
+    void a_corrupted_item_throws_DecodeException_when_its_read_rather_than_from_the_getter() {
+        var first = new Item.Fields(1.5f, new Pair.Fields(2.5f, 3.5f));
+        var second = new Item.Fields(4.5f, new Pair.Fields(5.5f, 6.5f));
+        var bytes = ItemList.serialize(new ItemList.Fields(List.of(first, second)));
+        // The second item's end, after the vector's count and the first item's end, past the bytes
+        var vector = new ByteBuffer(bytes).rootOffset(0);
+        Arrays.fill(bytes, vector + 2 * Integer.BYTES, vector + 3 * Integer.BYTES, (byte) 0x7f);
+
+        var items = new ItemList(bytes).items();
+
+        assertEquals(2, items.size());
+        assertEquals(first, readItem(items.get(0)));
+        assertThrows(DecodeException.class, () -> items.get(1));
+
+        var iterator = items.iterator();
+        assertEquals(first, readItem(iterator.next()));
+        assertThrows(DecodeException.class, iterator::next);
     }
 
     // The struct

@@ -8,7 +8,7 @@ from typing import Any, Literal, overload, override
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
 
-from tafla import ByteBuffer, FixedFields, TableLayout, TableWriter
+from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
 from tests.descriptions import tables
 from tests.generated.byte_strategies import Overwrite, Truncation, corruptions
 from tests.tables import (
@@ -57,7 +57,7 @@ def invalid_values(kind: str) -> list[Any]:
 INVALID = [(kind, value) for kind in sorted(FORMATS) for value in invalid_values(kind)]
 
 
-def outcome(write: Callable[[], memoryview[int]]) -> Outcome:
+def outcome(write: Callable[[], memoryview[int] | bytes]) -> Outcome:
     """The bytes that ``write`` returns, or the class and message of the error
     that it raises"""
     try:
@@ -340,6 +340,135 @@ class TestGetFields(unittest.TestCase):
             )
 
 
+class TestMessages(unittest.TestCase):
+    # write_fields() writes a message of only fixed fields as the constructor,
+    # set_fields() and bytes() write it, in one call, and read_fields() reads
+    # it as get_fields() reads its root, without a ByteBuffer
+
+    @given(tables(), sampled_from([None, *INVALID]), corruptions)
+    def test_writes_and_reads_a_message_as_the_writer_and_the_buffer_do(
+        self,
+        table: Description,
+        invalid: tuple[str, Any] | None,
+        corruption: Truncation | Overwrite,
+    ) -> None:
+        fixed = whole_fixed(nested_in_place(table))
+        assume(fixed is not None)
+        assert fixed is not None
+        if invalid is not None:
+            # A value that the field can't hold, before the message's fields
+            invalid_first: Description = {
+                **fixed,
+                "fields": [scalar(*invalid), *fixed["fields"]],
+            }
+            fixed = invalid_first
+        layout = layout_of(fixed["layout"])
+        fields = fixed_fields(fixed, len(fixed["fields"]), layout)
+        version: int | None = fixed["version"] if layout.versioned() else None
+
+        written = outcome(partial(write_message, fixed, fields, version))
+        self.assertEqual(written, outcome(partial(write_packed, fixed)))
+        if not isinstance(written, bytes):
+            return
+
+        for data in [written, corruption.apply(written)]:
+            buffer = ByteBuffer(data, layout)
+            expected = read_outcome(
+                lambda buffer=buffer: [buffer.get_fields(0, fields)]
+            )
+            self.assertEqual(
+                read_outcome(lambda data=data: [read_message(data, fields, None)]),
+                expected,
+            )
+            # And None for a version other than the one that it was written in
+            if version is not None and outcome_of(buffer.get_version) != version:
+                expected = [None]
+            self.assertEqual(
+                read_outcome(lambda data=data: [read_message(data, fields, version)]),
+                expected,
+            )
+
+    @given(binary(max_size=64), sampled_from(OFFSET_TYPES), integers(0, 3))
+    def test_reads_arbitrary_bytes_as_get_fields_or_none_for_another_version(
+        self, data: bytes, offset_type: OffsetType, version: int
+    ) -> None:
+        pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
+        table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
+        layout = TableLayout(sized=True, versioned=True, offset_type=offset_type)
+        fields = fixed_fields(table, 3, layout)
+        buffer = ByteBuffer(data, layout)
+
+        expected = outcome_of(partial(buffer.get_fields, 0, fields))
+        if expected is not None and outcome_of(buffer.get_version) != version:
+            expected = None
+        self.assertEqual(
+            outcome_of(partial(ByteBuffer.read_fields, data, fields, version)),
+            expected,
+        )
+        self.assertEqual(
+            outcome_of(partial(ByteBuffer.read_fields, data, fields)),
+            outcome_of(partial(buffer.get_fields, 0, fields)),
+        )
+
+    def test_raises_type_error_for_fields_without_a_layout_or_bytes_or_version(
+        self,
+    ) -> None:
+        nested_fields = FixedFields(2, "h", "h")
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(nested_fields, (1, 2))
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(bytes(16), nested_fields)
+
+        fields = FixedFields(2, "h", "h", layout=TableLayout.DEFAULT)
+        data = TableWriter.write_fields(fields, (1, 2))
+        self.assertEqual(ByteBuffer.read_fields(data, fields), (1, 2))
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(data, fields, 1)
+        with self.assertRaises(TypeError):
+            ByteBuffer.read_fields(memoryview(data * 2)[::2], fields)
+        # The writer's constructor raises for a version that the layout has no
+        # slot for, or needs
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(fields, (1, 2), version=1)
+        versioned = FixedFields(1, "h", layout=TableLayout(versioned=True))
+        with self.assertRaises(TypeError):
+            TableWriter.write_fields(versioned, (1,))
+        with self.assertRaises(ValueError):
+            TableWriter.write_fields(versioned, (1,), version=2**32)
+
+
+def write_message(
+    table: Description, fields: FixedFields, version: int | None
+) -> bytes:
+    """Writes a message of only fixed fields, as ``set_fields()`` takes them,
+    with ``write_fields()``"""
+    values: list[Any] = []
+    leading = table["fields"]
+    string = leading[-1]["value"] if leading[-1]["type"] == "string" else ""
+    push_values([field for field in leading if field["type"] != "string"], values)
+
+    return TableWriter.write_fields(fields, tuple(values), string, version)
+
+
+def read_message(
+    data: bytes, fields: FixedFields, version: int | None
+) -> tuple[Any, ...] | None:
+    return ByteBuffer.read_fields(data, fields, version)
+
+
+def outcome_of(call: Callable[[], object]) -> object:
+    """What ``call`` returns, with each float as its bits, or the class and
+    message of the error that it raises"""
+    try:
+        value = call()
+    except Exception as error:  # noqa: BLE001
+        return type(error), str(error)
+
+    if isinstance(value, tuple):
+        return comparable(value)
+    return value
+
+
 class TestVectorTables(unittest.TestCase):
     # set_vector_tables() writes what set_vector(), write_table() for each item
     # and set_item_end() write, and get_vector_fields() reads what get_fields()
@@ -386,6 +515,10 @@ class TestVectorTables(unittest.TestCase):
                     read_outcome(partial(read_vector_fields, buffer, fields)),
                     read_outcome(partial(read_each_item, buffer, fields)),
                 )
+                self.assertEqual(
+                    iterated(partial(iterate_vector_fields, buffer, fields)),
+                    iterated(partial(iterate_each_item, buffer, fields)),
+                )
 
     @given(binary(max_size=64), integers(-4, 70), sampled_from(OFFSET_TYPES))
     def test_reads_a_vector_of_arbitrary_bytes_as_each_item_alone(
@@ -400,6 +533,53 @@ class TestVectorTables(unittest.TestCase):
             read_outcome(partial(buffer.get_vector_fields, position, fields)),
             read_outcome(partial(read_each_item, buffer, fields, position)),
         )
+        self.assertEqual(
+            iterated(partial(iterate_vector_fields, buffer, fields, position)),
+            iterated(partial(iterate_each_item, buffer, fields, position)),
+        )
+
+    def test_iterates_over_the_items_before_one_whose_end_is_corrupted(
+        self,
+    ) -> None:
+        fields = FixedFields(2, "h", string=True)
+        writer = TableWriter(1)
+        writer.set_vector_tables(0, fields, [(1, "a"), (2, "b"), (3, "c")])
+        data = bytearray(writer.bytes())
+        # The vector at 4 holds its count and the ends of its items, the
+        # second's at 12, which is made to end past the bytes
+        data[12:16] = (len(data)).to_bytes(4, "little")
+        buffer = ByteBuffer(data)
+
+        items = buffer.iter_vector_fields(buffer.root_offset(0), fields, _read_by_hand)
+        self.assertEqual(next(items), (1, "a"))
+        with self.assertRaises(DecodeError):
+            next(items)
+        # An iterator that raised is done
+        self.assertEqual(list(items), [])
+        # As get_vector_fields() raises before it reads any item
+        with self.assertRaises(DecodeError):
+            buffer.get_vector_fields(buffer.root_offset(0), fields)
+
+    def test_reads_the_items_that_get_fields_cant_read_with_read(self) -> None:
+        """Items whose offsets aren't those that the writer writes, such as
+        tables built field by field in another order"""
+        fields = FixedFields(2, "h", string=True)
+        writer = TableWriter(1)
+        vector = writer.set_vector(0, 2)
+        for index, (number, text) in enumerate([(1, "a"), (2, "b")]):
+            # The string first, so that the offsets aren't the ones that
+            # FixedFields expects
+            item = writer.start_table(2)
+            writer.set_string(1, text)
+            writer.set_int16(0, number)
+            writer.end_table(item)
+            writer.set_item_end(vector, index)
+        buffer = ByteBuffer(writer.bytes())
+        vector = buffer.root_offset(0)
+        offsets = list(buffer.get_vector_offsets(vector))
+
+        items = buffer.iter_vector_fields(vector, fields, _read_by_hand)
+        self.assertEqual(list(items), [("read", offsets[0]), ("read", offsets[1])])
 
     def test_raises_value_error_for_items_whose_len_isnt_their_number(
         self,
@@ -507,6 +687,53 @@ def read_each_item(
         if values is None:
             return None
         items.append(values)
+
+    return items
+
+
+def iterate_vector_fields(
+    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+) -> Iterator[tuple[Any, ...]]:
+    if position is None:
+        position = buffer.root_offset(0)
+    return buffer.iter_vector_fields(position, fields, _read_by_hand)
+
+
+def iterate_each_item(
+    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+) -> Iterator[tuple[Any, ...]]:
+    """Reads the vector's items one by one, as ``iter_vector_fields()`` reads
+    them, at ``position``, or the root's first field: after checking its count,
+    each item when it's reached, from the ends of that item and the one before
+    it"""
+    if position is None:
+        position = buffer.root_offset(0)
+    count = buffer.get_vector_length(position)
+
+    def items() -> Iterator[tuple[Any, ...]]:
+        for index in range(count):
+            offset = buffer.get_vector_item_offset(position, count, index)
+            values = buffer.get_fields(offset, fields)
+            yield _read_by_hand(offset) if values is None else values
+
+    return items()
+
+
+def _read_by_hand(offset: int) -> tuple[str, int]:
+    """What reads an item that ``get_fields()`` can't, which the tests tell
+    from the items that it reads"""
+    return ("read", offset)
+
+
+def iterated(iterate: Callable[[], Iterator[tuple[Any, ...]]]) -> list[object]:
+    """Each item that the iterator that ``iterate`` returns gives, comparable,
+    until the error that it or the iterator raises, as its class and message"""
+    items: list[object] = []
+    try:
+        for values in iterate():
+            items.append(comparable(values))
+    except Exception as error:  # noqa: BLE001
+        items.append((type(error), str(error)))
 
     return items
 

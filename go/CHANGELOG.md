@@ -30,6 +30,14 @@ first commits, for code built from its source before the release.
   builder of its own. They write the bytes that nested builders write, and
   the benchmarks' vector of 100 nested tables takes about 5.8 µs so, in 6
   allocations, rather than 10.3 µs and 204 from a builder per item.
+- `Uint32FieldOffset()` reads the offset of a field of a table whose offsets
+  are uint32s, as `ByteBuffer.FieldOffset()` does, in a function small enough
+  to inline, for the getters that tafla-gen generates, which know each
+  field's slot.
+- `StructsInPlace()` returns the bytes of an array of structs as Go structs
+  in place, where they're aligned to the struct in memory on a little-endian
+  host, for the code that tafla-gen generates, which calls it only for
+  structs that lie in memory as their bytes do.
 
 ### Changed
 
@@ -38,6 +46,11 @@ first commits, for code built from its source before the release.
   in the API and its errors.
 - `ByteBuffer` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
+- `TableWriter`'s array setters no longer move the writer to the heap where
+  they're inlined into their caller. They passed the writer to a generic
+  function, which Go's compiler assumes keeps it when it's called from
+  another package. The code that tafla-gen generates writes the Go
+  comparison suite's document in 1 allocation rather than 2.
 
 ### Fixed
 

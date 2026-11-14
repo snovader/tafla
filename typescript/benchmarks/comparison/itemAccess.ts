@@ -110,59 +110,21 @@ function sumStruct(structs: Uint8Array, offset: number): number {
     );
 }
 
-/** tafla-gen's getters, which read every item into an array */
+/**
+ * tafla-gen's getters, which return views of the items, whose `get(i)` reads
+ * one item, in a loop of `get(i)` for every item
+ */
 export const getterAccess: ItemAccess = {
     name: 'tafla-gen',
     lastTable(bytes) {
         const items = new ItemList(bytes).items();
-        const item = items[items.length - 1];
-        const pair = item.pair();
-
-        return item.value() + pair.first() + pair.second();
-    },
-    everyTable(bytes) {
-        const items = new ItemList(bytes).items();
-
-        let sum = 0;
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            const pair = item.pair();
-            sum += item.value() + pair.first() + pair.second();
-        }
-
-        return sum;
-    },
-    lastStruct(bytes) {
-        const triples = new Triples(bytes).items();
-        const triple = triples[triples.length - 1];
-
-        return triple.value() + triple.first() + triple.second();
-    },
-    everyStruct(bytes) {
-        const triples = new Triples(bytes).items();
-
-        let sum = 0;
-        for (let i = 0; i < triples.length; i++) {
-            const triple = triples[i];
-            sum += triple.value() + triple.first() + triple.second();
-        }
-
-        return sum;
-    }
-};
-
-/** tafla-gen's views, which read each item when it's asked for */
-export const viewAccess: ItemAccess = {
-    name: 'tafla-gen view',
-    lastTable(bytes) {
-        const items = new ItemList(bytes).itemsView();
         const item = items.get(items.length() - 1);
         const pair = item.pair();
 
         return item.value() + pair.first() + pair.second();
     },
     everyTable(bytes) {
-        const items = new ItemList(bytes).itemsView();
+        const items = new ItemList(bytes).items();
 
         let sum = 0;
         for (let i = 0; i < items.length(); i++) {
@@ -173,19 +135,20 @@ export const viewAccess: ItemAccess = {
 
         return sum;
     },
+    // Through the array's getter of each field, which reads it without
+    // creating the struct
     lastStruct(bytes) {
-        const triples = new Triples(bytes).itemsView();
-        const triple = triples.get(triples.length() - 1);
+        const triples = new Triples(bytes).items();
+        const last = triples.length() - 1;
 
-        return triple.value() + triple.first() + triple.second();
+        return triples.value(last) + triples.first(last) + triples.second(last);
     },
     everyStruct(bytes) {
-        const triples = new Triples(bytes).itemsView();
+        const triples = new Triples(bytes).items();
 
         let sum = 0;
         for (let i = 0; i < triples.length(); i++) {
-            const triple = triples.get(i);
-            sum += triple.value() + triple.first() + triple.second();
+            sum += triples.value(i) + triples.first(i) + triples.second(i);
         }
 
         return sum;

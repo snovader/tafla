@@ -43,6 +43,7 @@ jobs:
         with:
           filters: |
             cpp:
+              - ".github/actions/ccache/action.yml"
               - ".github/workflows/cpp.yml"
               - "conformance/**"
               - "cpp/**"
@@ -113,16 +114,21 @@ jobs:
 
       # With Clang's runtime of the sanitizers, whose package is named after
       # the default Clang's major version, and the matrix's packages
-      - name: Install Ninja on Linux
+      - name: Install Ninja and ccache on Linux
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ninja-build \
+          sudo apt-get install --yes --no-install-recommends ninja-build ccache \
               "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev" ${{ matrix.packages }}
 
-      - name: Install Ninja on macOS
+      - name: Install Ninja and ccache on macOS
         if: runner.os == 'macOS'
-        run: brew install ninja
+        run: brew install ninja ccache
+
+      - name: Restore the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: ${{ matrix.name }}
 
       # With warnings as errors, which tafla's own targets compile with
       - name: Configure
@@ -132,6 +138,13 @@ jobs:
 
       - name: Build
         run: cmake --build build
+
+      # Before the tests, so that a failing test doesn't discard the build
+      - name: Save the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: ${{ matrix.name }}
+          save: true
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure --parallel 4
@@ -163,8 +176,13 @@ jobs:
 
       - name: Install the cross-compiler and QEMU
         run: >
-          sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build g++-s390x-linux-gnu
-          qemu-user
+          sudo apt-get update && sudo apt-get install --yes --no-install-recommends ninja-build ccache
+          g++-s390x-linux-gnu qemu-user
+
+      - name: Restore the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: big-endian
 
       # Statically linked, so that QEMU runs the tests without s390x's shared
       # libraries
@@ -177,6 +195,13 @@ jobs:
 
       - name: Build
         run: cmake --build build
+
+      # Before the tests, so that a failing test doesn't discard the build
+      - name: Save the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: big-endian
+          save: true
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure --parallel 4
@@ -197,11 +222,16 @@ jobs:
         uses: actions/checkout@v7
 
       # With Clang's runtime of libFuzzer and the sanitizers
-      - name: Install Ninja
+      - name: Install Ninja and ccache
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ninja-build \
+          sudo apt-get install --yes --no-install-recommends ninja-build ccache \
               "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Restore the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: fuzz
 
       - name: Configure
         run: >
@@ -210,6 +240,13 @@ jobs:
 
       - name: Build the fuzz targets
         run: cmake --build build --target fuzz_byte_buffer fuzz_conformance
+
+      # Before the fuzz targets run, so that a crash doesn't discard the build
+      - name: Save the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: fuzz
+          save: true
 
       - name: Run each fuzz target for a minute
         run: |
@@ -233,13 +270,25 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install the libraries of the comparison
-        run: brew install ninja flatbuffers protobuf msgpack-cxx
+        run: brew install ninja ccache flatbuffers protobuf msgpack-cxx
+
+      - name: Restore the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: benchmark
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAFLA_BUILD_BENCHMARKS=ON -DTAFLA_WARNINGS_AS_ERRORS=ON
 
       - name: Build
         run: cmake --build build --target tafla_comparison tafla_encoding tafla_allocation benchmarks_test
+
+      # Before the benchmarks run, so that a failure doesn't discard the build
+      - name: Save the compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          name: benchmark
+          save: true
 
       # Shared runners are too noisy for the numbers to mean much; these runs
       # check that every codec in the comparison reads back what it wrote, and

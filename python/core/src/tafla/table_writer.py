@@ -1,7 +1,7 @@
 import builtins
 from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
-from typing import Any, Literal, Self, overload
+from typing import Any, Literal, Self, cast, overload
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
@@ -77,12 +77,20 @@ class TableWriter:
     Hand-written tables use ``TableBuilder``, which checks every field.
 
     The bytes grow as fields are appended, and ``bytes()`` returns a view of
-    them, without copying them. While the view is held, a field that would
-    change their length raises ``BufferError``. A table too long for the
-    layout's ``offset_type`` raises ``ValueError``, from the setter whose
-    offset or count doesn't fit or from ``bytes()``. A scalar setter that
-    raised wrote nothing, but another setter that raised may have written part
-    of its field, after which the writer is of no further use.
+    them, without copying them. While the view is held, a call that would
+    change their length raises ``BufferError``, as a ``bytearray``'s does,
+    and one that wouldn't writes as it would without the view, such as
+    ``start_table(0)``, an empty struct's ``set_struct()``, or
+    ``set_fields()`` for no leading fields. ``set_fields()`` and
+    ``write_table()`` pack every value before they write any, and raise
+    ``BufferError`` only once they have, so for values that can't be
+    written they raise what the calls that they replace would.
+
+    A table too long for the layout's ``offset_type`` raises ``ValueError``,
+    from the setter whose offset or count doesn't fit, from ``start_table()``
+    for slots that don't, or from ``bytes()``. A scalar setter that raised
+    wrote nothing, but another setter that raised may have written part of
+    its field, after which the writer is of no further use.
     """
 
     __slots__ = [
@@ -170,6 +178,61 @@ class TableWriter:
 
         return writer
 
+    @staticmethod
+    def write_fields(
+        fields: FixedFields,
+        values: tuple[Any, ...],
+        string: str = "",
+        version: int | None = None,
+    ) -> builtins.bytes:
+        """Writes a table of only the fields that ``fields`` describes, a
+        message's, in the layout that it was created with, from their
+        ``values`` as ``set_fields()`` takes them, and ``string`` when they
+        end with one, and returns its bytes, in one call. They're the bytes
+        that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
+        ``bytes()`` write, and it raises as they do.
+
+        Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
+        doesn't.
+
+        Generated code calls it to write a message of only such fields."""
+        header = fields._header
+        if header is None:
+            raise TypeError("A nested table's fields have no layout to write")
+
+        size, slots, sized, versioned = header
+        # Packed in one call, then the string's bytes, after the header,
+        # unless a value doesn't fit or the version isn't as the layout needs,
+        # which the writer's calls raise for
+        if versioned == (version is not None):
+            try:
+                if fields._string:
+                    encoded = string.encode()
+                    packed = fields._packers[size](*values, len(encoded))
+                else:
+                    encoded = b""
+                    packed = fields._packers[size](*values)
+
+                length = slots.size + len(packed) + len(encoded)
+                if length <= MAX_LENGTHS[size]:
+                    if sized and versioned:
+                        packed = slots.pack(length, version) + packed
+                    elif sized:
+                        packed = slots.pack(length) + packed
+                    elif versioned:
+                        packed = slots.pack(version) + packed
+                    return packed + encoded if encoded else packed
+            except _FIELD_ERRORS:
+                pass
+
+        layout = cast(Any, fields._layout)
+        if version is None:
+            writer = TableWriter(fields._fields, layout)
+        else:
+            writer = TableWriter(fields._fields, layout, version)
+        writer.set_fields(fields, values, string)
+        return builtins.bytes(writer.bytes())
+
     def bytes(self) -> memoryview[int]:
         """Returns a view of the table's bytes, without copying them. While
         it's held, a field that would change their length raises
@@ -206,15 +269,30 @@ class TableWriter:
     def start_table(self, fields: int) -> int:
         """Starts the fields of a nested table or vector item of ``fields``
         fields, after its parent's ``set_table()`` or ``set_vector()``, and
-        returns the parent's start, which ``end_table()`` takes back."""
+        returns the parent's start, which ``end_table()`` takes back.
+
+        Raises ``ValueError`` if the table's slots alone are longer than the
+        layout addresses, as the constructor raises for the root's header,
+        rather than allocating them.
+        """
         parent = self.__table
         data = self.__data
 
         self.__table = self.__slots = len(data)
         slots = fields * self.__size
-        data += _ZEROS[slots] if slots < len(_ZEROS) else bytes(slots)
+        data += _ZEROS[slots] if slots < len(_ZEROS) else self.__zeros(slots)
 
         return parent
+
+    def __zeros(self, slots: int) -> builtins.bytes:
+        """The zeros of ``slots`` bytes of a table's slots, more than
+        ``_ZEROS`` holds, unless they're longer than the offset type
+        addresses. Without the check, how bytes() fails for a count that
+        no offset type addresses depends on the allocator and the count."""
+        if slots > self.__max_length:
+            raise self.__too_long(len(self.__data) + slots)
+
+        return bytes(slots)
 
     def end_table(self, parent: int) -> None:
         """Ends the fields of the table that ``start_table()`` started"""

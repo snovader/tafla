@@ -41,4 +41,36 @@ public final class TreeVector extends AbstractList<Tree> implements RandomAccess
     public Tree get(int index) {
         return new Tree(buffer, buffer.getVectorItemOffset(position, size, index));
     }
+
+    /**
+     * {@return an iterator of the items in order}, which reads each item's end once, as the
+     * next item's start, where {@code get()} reads the ends of an item and the one before it. Its
+     * {@code next()} throws a {@code DecodeException} if the item ends before it starts or past the
+     * bytes.
+     */
+    @Override
+    public java.util.Iterator<Tree> iterator() {
+        return new java.util.Iterator<>() {
+            private int index = 0;
+            // Where item index starts, which is where the item before it ends
+            private int start = buffer.getVectorItemsStart(position, size);
+
+            @Override
+            public boolean hasNext() {
+                return index < size;
+            }
+
+            @Override
+            public Tree next() {
+                if (index >= size) {
+                    throw new java.util.NoSuchElementException();
+                }
+
+                var item = start;
+                start = buffer.getVectorItemEnd(position, index++, item);
+
+                return new Tree(buffer, item);
+            }
+        };
+    }
 }

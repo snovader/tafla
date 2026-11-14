@@ -371,6 +371,48 @@ public final class TableWriter {
     }
 
     /**
+     * Writes an array of {@code count} structs of {@code size} bytes each straight into the table,
+     * each with {@code fill}, after their count, padded so that they start at a multiple of
+     * {@code alignment} from the start of the table. It writes the bytes that
+     * {@link #setStructs(int, Object[], int, int, StructWrite)} writes from an array of the
+     * structs, without one. The generated code's {@code serialize(count, fill)} passes the caller's
+     * fill, which writes each struct's values with the struct's static {@code write}:
+     *
+     * {@snippet :
+     * writer.setStructs(0, points.size(), Point.SIZE, Point.ALIGNMENT, (index, bytes, offset) -> {
+     *     var point = points.get(index);
+     *     Point.write(bytes, offset, point.x(), point.y());
+     * });
+     * }
+     *
+     * <p>The sizer checked {@code count}, which this writes as the sizer added it.</p>
+     *
+     * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
+     * @param fill writes every one of struct {@code index}'s {@code size} bytes, at an offset in the
+     *     table's bytes, which may not be zero
+     * @throws IllegalArgumentException if the alignment isn't 1, 2, 4 or 8
+     * @throws IndexOutOfBoundsException from {@code fill}, if a struct ends past the bytes
+     */
+    public void setStructs(int index, int count, int size, int alignment, StructFill fill) {
+        startArray(index, count, alignment);
+
+        for (int i = 0; i < count; i++) {
+            fill.write(i, bytes, position + i * size);
+        }
+        position += count * size;
+    }
+
+    /**
+     * Writes struct {@code index} of {@link #setStructs(int, int, int, int, StructFill)}, such as
+     * with a generated struct's static {@code write(byte[], int, ...)}
+     */
+    @FunctionalInterface
+    public interface StructFill {
+        /** Writes struct {@code index}'s scalars at {@code offset} in {@code bytes}, little-endian */
+        void write(int index, byte[] bytes, int offset);
+    }
+
+    /**
      * Writes the offset of a nested table, padded to start at a multiple of {@code alignment},
      * whose fields then follow between {@link #startTable} and {@link #endTable}
      *

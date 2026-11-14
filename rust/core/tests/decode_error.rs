@@ -108,6 +108,45 @@ proptest! {
             }
         }
     }
+
+    /// A string's bytes, at any address, read as the string that
+    /// `str::from_utf8()` reads, or fail with its error: ASCII, other UTF-8,
+    /// and ASCII with a byte of anything else anywhere in it
+    #[test]
+    fn test_strings_read_as_utf8_reads_them_at_any_address(
+        utf8 in string_bytes(),
+        byte_offset in 0..8_usize,
+    ) {
+        let mut bytes = u32::try_from(utf8.len()).unwrap().to_le_bytes().to_vec();
+        bytes.extend(&utf8);
+        let copy = at_byte_offset(&bytes, byte_offset);
+
+        let read = ByteBuffer::new(copy.bytes(), TableLayout::DEFAULT).get_str(0);
+        match std::str::from_utf8(&utf8) {
+            Ok(string) => prop_assert_eq!(read, Ok(string)),
+            Err(source) => prop_assert_eq!(read, Err(DecodeError::InvalidUtf8 { position: 0, source })),
+        }
+    }
+}
+
+/// The bytes of strings: ASCII, any UTF-8, any bytes, and ASCII with one
+/// byte of anything replaced, so that a string is ASCII but for that byte
+fn string_bytes() -> impl Strategy<Value = Vec<u8>> {
+    let ascii = || vec(0..0x80_u8, 0..80);
+    let one_other = (ascii(), any::<Index>(), any::<u8>()).prop_map(|(mut ascii, at, byte)| {
+        if !ascii.is_empty() {
+            let at = at.index(ascii.len());
+            ascii[at] = byte;
+        }
+        ascii
+    });
+
+    prop_oneof![
+        ascii(),
+        any::<String>().prop_map(String::into_bytes),
+        vec(any::<u8>(), 0..80),
+        one_other,
+    ]
 }
 
 /// Bytes, mostly small, so that offsets, counts and lengths often lie

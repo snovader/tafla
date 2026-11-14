@@ -24,7 +24,7 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
 
     check_fields_declarations(declarations, &indices, &mut errors);
     check_view_declarations(&definitions, declarations, &indices, &mut errors);
-    check_message_functions(&definitions, declarations, &indices, &mut errors);
+    check_go_functions(&definitions, declarations, &indices, &mut errors);
 
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
@@ -270,7 +270,7 @@ fn check_view_names(declaration: &Declaration, fields: &[Field], errors: &mut Ve
 
 /// The most parameter slots that a Java constructor takes: the JVM's 255,
 /// less the one that `this` takes
-const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
+pub const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
 
 /// Checks that Java can declare a record of a definition's fields: it reads a
 /// struct into a record of its fields, and writes a message or table from a
@@ -303,7 +303,7 @@ fn check_java_parameters(
 
 /// The parameter slots of a field in Java, where a `long` or a `double` takes
 /// two: 64-bit scalars, and `uint32`, which Java widens to a `long`
-const fn java_parameter_slots(field_type: FieldType) -> usize {
+pub const fn java_parameter_slots(field_type: FieldType) -> usize {
     match field_type {
         FieldType::Scalar(Scalar::Uint32 | Scalar::Int64 | Scalar::Uint64 | Scalar::Float64) => 2,
         _ => 1,
@@ -313,7 +313,8 @@ const fn java_parameter_slots(field_type: FieldType) -> usize {
 /// Checks that no declaration takes the name of another's fields,
 /// `<Name>Fields`, which the generated code declares beside it to write it
 /// from: TypeScript, JavaScript and Python for every declaration, and Rust
-/// for messages and tables
+/// for messages and tables, nor that of a message's or a table's
+/// `<Name>FieldValues`, which Python declares as the tuple of its values
 fn check_fields_declarations(
     declarations: &[Declaration],
     indices: &HashMap<&str, usize>,
@@ -322,19 +323,33 @@ fn check_fields_declarations(
     for declaration in declarations {
         let name = &declaration.name.text;
         let fields = format!("{name}Fields");
-        let Some(&clash) = indices.get(fields.as_str()) else {
-            continue;
-        };
+        if let Some(&clash) = indices.get(fields.as_str()) {
+            errors.push(
+                Diagnostic::new(
+                    format!("`{fields}` clashes with the fields of `{name}`"),
+                    declarations[clash].name.span,
+                )
+                .with_help(format!(
+                    "the generated code declares `{fields}` to write `{name}` from"
+                )),
+            );
+        }
 
-        errors.push(
-            Diagnostic::new(
-                format!("`{fields}` clashes with the fields of `{name}`"),
-                declarations[clash].name.span,
-            )
-            .with_help(format!(
-                "the generated code declares `{fields}` to write `{name}` from"
-            )),
-        );
+        // Python's tuple of a message's or a table's values
+        let values = format!("{name}FieldValues");
+        if declaration.keyword != Keyword::Struct
+            && let Some(&clash) = indices.get(values.as_str())
+        {
+            errors.push(
+                Diagnostic::new(
+                    format!("`{values}` clashes with the field values of `{name}`"),
+                    declarations[clash].name.span,
+                )
+                .with_help(format!(
+                    "Python's generated code declares `{values}` as the tuple of `{name}`'s values"
+                )),
+            );
+        }
     }
 }
 
@@ -380,26 +395,30 @@ fn check_view_declarations(
 }
 
 /// Checks that no declaration takes the name of a function or constant that
-/// the code generated for Go declares beside a message, in the package of
-/// the schema's declarations: `New<Message>`, which reads it, and a
-/// versioned message's `<Message>VersionOf` and `<Message>FormatVersion`
-fn check_message_functions(
+/// the code generated for Go declares beside a message or a struct, in the
+/// package of the schema's declarations: `New<Message>`, which reads a
+/// message, a versioned message's `<Message>VersionOf` and
+/// `<Message>FormatVersion`, and `Read<Struct>`, which reads a struct
+fn check_go_functions(
     definitions: &[Definition],
     declarations: &[Declaration],
     indices: &HashMap<&str, usize>,
     errors: &mut Vec<Diagnostic>,
 ) {
     for definition in definitions {
-        let Kind::Message(layout) = definition.kind else {
-            continue;
-        };
         let name = &definition.name;
-
-        let mut functions = vec![(format!("New{name}"), "read")];
-        if layout.version.is_some() {
-            functions.push((format!("{name}VersionOf"), "read the version of"));
-            functions.push((format!("{name}FormatVersion"), "hold the version of"));
-        }
+        let functions = match definition.kind {
+            Kind::Message(layout) => {
+                let mut functions = vec![(format!("New{name}"), "read")];
+                if layout.version.is_some() {
+                    functions.push((format!("{name}VersionOf"), "read the version of"));
+                    functions.push((format!("{name}FormatVersion"), "hold the version of"));
+                }
+                functions
+            }
+            Kind::Struct(_) => vec![(format!("Read{name}"), "read")],
+            Kind::Table => continue,
+        };
 
         for (function, purpose) in functions {
             let Some(&clash) = indices.get(function.as_str()) else {

@@ -71,20 +71,23 @@ impl RecordFields<'_> {
     /// # Errors
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
+    #[allow(clippy::cast_possible_truncation)]
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(4, Record::LAYOUT)?;
-        sizer.add_f64();
-        sizer.add_f64();
-        sizer.add_i64();
-        sizer.add_str(self.name);
+        let mut bytes = TableWriter::table_bytes(4, Record::LAYOUT, 44 + self.name.len() as u64)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_f64(0, self.x);
-        writer.set_f64(1, self.y);
-        writer.set_i64(2, self.id);
-        writer.set_str(3, self.name);
+        let mut fixed = [0; 44];
+        fixed[0..4].copy_from_slice(&16_u32.to_le_bytes());
+        fixed[4..8].copy_from_slice(&24_u32.to_le_bytes());
+        fixed[8..12].copy_from_slice(&32_u32.to_le_bytes());
+        fixed[12..16].copy_from_slice(&40_u32.to_le_bytes());
+        fixed[16..24].copy_from_slice(&self.x.to_le_bytes());
+        fixed[24..32].copy_from_slice(&self.y.to_le_bytes());
+        fixed[32..40].copy_from_slice(&self.id.to_le_bytes());
+        fixed[40..44].copy_from_slice(&(self.name.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&fixed);
+        bytes.extend_from_slice(self.name.as_bytes());
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -300,27 +303,13 @@ impl<'a> ItemList<'a> {
         Self { bytes }
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn items(&self) -> Result<Vec<Item<'a>>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(0)?;
-        let vector = buffer.get_vector(position)?;
-        let mut items = Vec::with_capacity(vector.len());
-        for item in vector.iter_in_place() {
-            items.push(Item::new(item?, 0));
-        }
-
-        Ok(items)
-    }
-
-    /// Views the items of `items()`, reading each one when it's asked for
+    /// A view of the items, which reads each [`Item`] when it's asked for, and
+    /// fails then if its bytes are corrupt
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
-    pub fn items_view(&self) -> Result<ItemVector<'a>, DecodeError> {
+    pub fn items(&self) -> Result<ItemVector<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(0)?;
         Ok(ItemVector {
@@ -348,10 +337,7 @@ where
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
         let mut sizer = TableSizer::new(1, ItemList::LAYOUT)?;
         sizer.add_vector(self.items.len());
-        for item in self.items {
-            let fields: ItemFields = item.into();
-            fields.size(&mut sizer);
-        }
+        sizer.add_table_bytes(self.items.len(), ItemFields::SIZE);
 
         let mut writer = sizer.writer()?;
         let vector = writer.set_vector(0, self.items.len());
@@ -409,22 +395,32 @@ impl ItemFields {
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::One;
 
+    /// The byte length of an [`Item`]: its offsets and its fields, whose sizes the
+    /// schema fixes, so that its parent writes it whole
+    pub const SIZE: usize = 28;
+
     /// Adds an [`Item`] to its parent's sizer, after the field or vector that holds it
+    #[allow(clippy::unused_self)]
     pub fn size(&self, sizer: &mut TableSizer) {
-        let parent = sizer.start_table(2);
-        sizer.add_f32();
-        sizer.add_table(PairFields::ALIGNMENT);
-        self.pair.size(sizer);
-        sizer.end_table(parent);
+        sizer.add_table_bytes(1, Self::SIZE);
     }
 
     /// Writes an [`Item`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
-        let parent = writer.start_table(2);
-        writer.set_f32(0, self.value);
-        writer.set_table(1, PairFields::ALIGNMENT);
-        self.pair.write(writer);
-        writer.end_table(parent);
+        writer.copy_table(&self.to_bytes());
+    }
+
+    /// The bytes of an [`Item`], as its parent holds it: its offsets, and then its
+    /// fields at them
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 28] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..4].copy_from_slice(&8_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&self.value.to_le_bytes());
+        bytes[12..28].copy_from_slice(&self.pair.to_bytes());
+
+        bytes
     }
 }
 
@@ -513,21 +509,32 @@ impl PairFields {
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::One;
 
+    /// The byte length of a [`Pair`]: its offsets and its fields, whose sizes the
+    /// schema fixes, so that its parent writes it whole
+    pub const SIZE: usize = 16;
+
     /// Adds a [`Pair`] to its parent's sizer, after the field or vector that holds it
     #[allow(clippy::unused_self)]
     pub fn size(&self, sizer: &mut TableSizer) {
-        let parent = sizer.start_table(2);
-        sizer.add_f32();
-        sizer.add_f32();
-        sizer.end_table(parent);
+        sizer.add_table_bytes(1, Self::SIZE);
     }
 
     /// Writes a [`Pair`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
-        let parent = writer.start_table(2);
-        writer.set_f32(0, self.first);
-        writer.set_f32(1, self.second);
-        writer.end_table(parent);
+        writer.copy_table(&self.to_bytes());
+    }
+
+    /// The bytes of a [`Pair`], as its parent holds it: its offsets, and then its
+    /// fields at them
+    #[must_use]
+    pub fn to_bytes(&self) -> [u8; 16] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..4].copy_from_slice(&8_u32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&12_u32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&self.first.to_le_bytes());
+        bytes[12..16].copy_from_slice(&self.second.to_le_bytes());
+
+        bytes
     }
 }
 
@@ -545,24 +552,12 @@ impl<'a> Triples<'a> {
         Self { bytes }
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn items(&self) -> Result<impl ExactSizeIterator<Item = Triple> + use<'a>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(0)?;
-        let bytes = buffer.get_struct_array(position, Triple::SIZE)?;
-        let (structs, _) = bytes.as_chunks::<{ Triple::SIZE }>();
-
-        Ok(structs.iter().map(Triple::from_bytes))
-    }
-
-    /// Views the items of `items()`, reading each one when it's asked for
+    /// A view of the structs, which reads each [`Triple`] when it's asked for
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
-    pub fn items_view(&self) -> Result<TripleArray<'a>, DecodeError> {
+    pub fn items(&self) -> Result<TripleArray<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(0)?;
         let bytes = buffer.get_struct_array(position, Triple::SIZE)?;

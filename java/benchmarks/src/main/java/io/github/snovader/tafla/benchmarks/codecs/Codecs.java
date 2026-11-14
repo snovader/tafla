@@ -91,6 +91,44 @@ public final class Codecs {
     }
 
     /**
+     * {@return new encodings of the document by name, of the codecs that can write it into reused
+     * bytes}
+     */
+    public static SequencedMap<String, ReusedBytesWorkload<DocumentInput>> reusedBytesDocuments() {
+        var documents = new LinkedHashMap<String, ReusedBytesWorkload<DocumentInput>>();
+        for (var codec : all()) {
+            if (codec.document() instanceof ReusedBytesWorkload<DocumentInput> document) {
+                documents.put(codec.name(), document);
+            }
+        }
+
+        return documents;
+    }
+
+    /**
+     * {@return bytes of the input's length, into which the workload wrote it} The bytes start with
+     * every byte set, and their check that the workload wrote the bytes of {@link Workload#serialize}
+     * into them checks that it wrote every byte, and reads them back, as
+     * {@link #serializeChecked} checks the new bytes.
+     *
+     * @throws IllegalStateException if it doesn't
+     */
+    public static <T> byte[] serializeIntoChecked(ReusedBytesWorkload<T> workload, T input) {
+        var expected = serializeChecked(workload, input);
+        var bytes = new byte[expected.length];
+        Arrays.fill(bytes, (byte) 0xff);
+
+        var length = workload.serializeInto(input, bytes);
+        if (length != expected.length || !Arrays.equals(bytes, expected)) {
+            throw new IllegalStateException(
+                String.format("%s wrote other bytes into reused bytes than into new ones", workload.getClass().getName())
+            );
+        }
+
+        return bytes;
+    }
+
+    /**
      * Serializes the input after checking that the workload reads back exactly what it wrote, so
      * that a broken codec isn't timed.
      *

@@ -49,19 +49,20 @@ def deserialize_record(data: Buffer) -> RecordInput:
 def serialize_document(input: DocumentInput) -> memoryview:
     """Arrays of the columns' element types are copied as bytes, and lists are
     converted as ``array()`` converts them"""
-    columns = TableBuilder(4)
-    columns.set_int64(input.base)
-    columns.set_uint32_array(input.keys)
-    columns.set_float32_array(input.a)
-    columns.set_float32_array(input.b)
-
     document = TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)
     document.set_float64(input.x)
     document.set_float64(input.y)
     document.set_string(input.name)
-    document.set_table(columns)
+    document.set_table_in_place(_set_columns, input, fields=4)
 
     return document.bytes()
+
+
+def _set_columns(columns: TableBuilder, input: DocumentInput) -> None:
+    columns.set_int64(input.base)
+    columns.set_uint32_array(input.keys)
+    columns.set_float32_array(input.a)
+    columns.set_float32_array(input.b)
 
 
 def deserialize_document(data: Buffer) -> DocumentOutput:
@@ -103,21 +104,19 @@ def _open_document(data: Buffer) -> ByteBuffer:
 
 def serialize_list(input: ListInput) -> memoryview:
     builder = TableBuilder(1)
-    builder.set_vector([_item_table(item) for item in input.items])
+    builder.set_vector_in_place(input.items, _set_item, fields=2)
 
     return builder.bytes()
 
 
-def _item_table(input: ItemInput) -> TableBuilder:
-    pair = TableBuilder(2)
+def _set_item(item: TableBuilder, input: ItemInput) -> None:
+    item.set_float32(input.value)
+    item.set_table_in_place(_set_pair, input, fields=2)
+
+
+def _set_pair(pair: TableBuilder, input: ItemInput) -> None:
     pair.set_float32(input.first)
     pair.set_float32(input.second)
-
-    item = TableBuilder(2)
-    item.set_float32(input.value)
-    item.set_table(pair)
-
-    return item
 
 
 def deserialize_list(data: Buffer) -> ListInput:

@@ -4,7 +4,7 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple};
 
-use crate::layout::Layout;
+use crate::layout::{Layout, Shape};
 use crate::python::{Int, objects};
 use crate::values::Kind;
 
@@ -139,6 +139,9 @@ pub struct FixedFields {
     /// A plan for each offset size, 1, 2 and 4: the root's for its layout's
     /// alone, and a nested table's for each
     plans: [Option<Plan>; 3],
+    /// A message's layout, which `TableWriter.write_fields()` and
+    /// `ByteBuffer.read_fields()` write and read its header in
+    shape: Option<Shape>,
 }
 
 impl FixedFields {
@@ -156,6 +159,13 @@ impl FixedFields {
     /// The fields, as the setters write them when the plan can't
     pub fn description(&self) -> &Description {
         &self.description
+    }
+
+    /// A message's layout, or `TypeError` for a nested table's fields,
+    /// which have none
+    pub fn shape(&self) -> PyResult<Shape> {
+        self.shape
+            .ok_or_else(|| PyTypeError::new_err("A nested table's fields have no layout"))
     }
 }
 
@@ -194,6 +204,7 @@ impl FixedFields {
         });
 
         let mut plans = [None, None, None];
+        let shape = layout.as_ref().map(Layout::shape);
         match layout {
             None => {
                 for (slot, size) in plans.iter_mut().zip([1, 2, 4]) {
@@ -208,7 +219,11 @@ impl FixedFields {
             }
         }
 
-        Ok(Self { description, plans })
+        Ok(Self {
+            description,
+            plans,
+            shape,
+        })
     }
 }
 

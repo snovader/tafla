@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.benchmarks.generated.tafla;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
@@ -65,16 +66,13 @@ public final class ItemList {
         return writer.byteLength();
     }
 
-    public List<Item> items() {
-        var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
-
-        return java.util.Arrays.stream(offsets)
-            .mapToObj(item -> new Item(buffer, item))
-            .toList();
-    }
-
-    /** Views the items of {@code items()}, reading each one when it's asked for */
-    public ItemVector itemsView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the items' ends aren't within the bytes
+     */
+    public ItemVector items() {
         return new ItemVector(buffer, buffer.rootOffset(0));
     }
 

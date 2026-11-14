@@ -54,15 +54,15 @@ public:
     /// Reads item `index`, without reading the others. Throws
     /// `std::out_of_range` if `index` isn't less than `size()`, or a
     /// `DecodeError` if the item lies outside the bytes.
-    [[nodiscard]] T get(std::size_t index) const {
+    [[nodiscard]] TAFLA_ALWAYS_INLINE T get(std::size_t index) const {
         return T(vector_.get_in_place(index), 0);
     }
 
-    [[nodiscard]] iterator begin() const noexcept {
+    [[nodiscard]] TAFLA_ALWAYS_INLINE iterator begin() const noexcept {
         return iterator(vector_.items_in_place().begin());
     }
 
-    [[nodiscard]] iterator end() const noexcept {
+    [[nodiscard]] TAFLA_ALWAYS_INLINE iterator end() const noexcept {
         return iterator(vector_.items_in_place().end());
     }
 
@@ -112,11 +112,11 @@ public:
 
         iterator() noexcept = default;
 
-        [[nodiscard]] T operator*() const {
+        [[nodiscard]] TAFLA_ALWAYS_INLINE T operator*() const {
             return T(*items_, 0);
         }
 
-        iterator& operator++() noexcept {
+        TAFLA_ALWAYS_INLINE iterator& operator++() noexcept {
             ++items_;
             return *this;
         }

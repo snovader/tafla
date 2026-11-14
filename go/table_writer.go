@@ -655,34 +655,54 @@ func (w *TableWriter) SetFloat64(index int, value float64) {
 }
 
 // SetInt8Array writes array field index of int8s.
-func (w *TableWriter) SetInt8Array(index int, values []int8) { setElements(w, index, values) }
+func (w *TableWriter) SetInt8Array(index int, values []int8) {
+	putElements(w.reserveArray(index, len(values), Align1), values)
+}
 
 // SetUint8Array writes array field index of uint8s.
-func (w *TableWriter) SetUint8Array(index int, values []uint8) { setElements(w, index, values) }
+func (w *TableWriter) SetUint8Array(index int, values []uint8) {
+	putElements(w.reserveArray(index, len(values), Align1), values)
+}
 
 // SetInt16Array writes array field index of int16s.
-func (w *TableWriter) SetInt16Array(index int, values []int16) { setElements(w, index, values) }
+func (w *TableWriter) SetInt16Array(index int, values []int16) {
+	putElements(w.reserveArray(index, len(values), Align2), values)
+}
 
 // SetUint16Array writes array field index of uint16s.
-func (w *TableWriter) SetUint16Array(index int, values []uint16) { setElements(w, index, values) }
+func (w *TableWriter) SetUint16Array(index int, values []uint16) {
+	putElements(w.reserveArray(index, len(values), Align2), values)
+}
 
 // SetInt32Array writes array field index of int32s.
-func (w *TableWriter) SetInt32Array(index int, values []int32) { setElements(w, index, values) }
+func (w *TableWriter) SetInt32Array(index int, values []int32) {
+	putElements(w.reserveArray(index, len(values), Align4), values)
+}
 
 // SetUint32Array writes array field index of uint32s.
-func (w *TableWriter) SetUint32Array(index int, values []uint32) { setElements(w, index, values) }
+func (w *TableWriter) SetUint32Array(index int, values []uint32) {
+	putElements(w.reserveArray(index, len(values), Align4), values)
+}
 
 // SetInt64Array writes array field index of int64s.
-func (w *TableWriter) SetInt64Array(index int, values []int64) { setElements(w, index, values) }
+func (w *TableWriter) SetInt64Array(index int, values []int64) {
+	putElements(w.reserveArray(index, len(values), Align8), values)
+}
 
 // SetUint64Array writes array field index of uint64s.
-func (w *TableWriter) SetUint64Array(index int, values []uint64) { setElements(w, index, values) }
+func (w *TableWriter) SetUint64Array(index int, values []uint64) {
+	putElements(w.reserveArray(index, len(values), Align8), values)
+}
 
 // SetFloat32Array writes array field index of float32s.
-func (w *TableWriter) SetFloat32Array(index int, values []float32) { setElements(w, index, values) }
+func (w *TableWriter) SetFloat32Array(index int, values []float32) {
+	putElements(w.reserveArray(index, len(values), Align4), values)
+}
 
 // SetFloat64Array writes array field index of float64s.
-func (w *TableWriter) SetFloat64Array(index int, values []float64) { setElements(w, index, values) }
+func (w *TableWriter) SetFloat64Array(index int, values []float64) {
+	putElements(w.reserveArray(index, len(values), Align8), values)
+}
 
 // SetString writes string field index, as its bytes, which are UTF-8 if it
 // is.
@@ -823,12 +843,20 @@ func (w *TableWriter) copyTable(table []byte) {
 	w.position += copy(w.bytes[w.position:w.position+len(table)], table)
 }
 
-func setElements[T Element](w *TableWriter, index int, values []T) {
-	w.startArray(index, len(values), Alignment(sizeOf[T]()))
+// reserveArray writes the offset and count of an array of count elements,
+// each as large as their alignment, and returns the bytes of its elements.
+// Its setters write the elements with a generic function that the writer
+// isn't passed to, since the compiler doesn't know whether a generic
+// function's instantiation keeps its arguments, and would move a writer
+// passed to one to the heap where a setter is inlined.
+func (w *TableWriter) reserveArray(index, count int, alignment Alignment) []byte {
+	w.startArray(index, count, alignment)
 
-	end := w.position + len(values)*sizeOf[T]()
-	putElements(w.bytes[w.position:end], values)
+	end := w.position + count*int(alignment)
+	elements := w.bytes[w.position:end]
 	w.position = end
+
+	return elements
 }
 
 // startArray pads an array so that its elements, after its count, are

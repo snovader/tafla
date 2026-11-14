@@ -46,12 +46,13 @@ fn read_columns(columns: &Columns) -> Fields {
     ]
 }
 
+/// Reads the items in order through the view that the getter returns, or
+/// the first error of their bytes, and then each item's fields
 pub fn read_item_list(item_list: &ItemList) -> Fields {
-    vec![
-        item_list
-            .items()
-            .and_then(|items| vector(items.iter().map(read_item))),
-    ]
+    vec![item_list.items().and_then(|view| {
+        let items: Vec<Item> = view.iter().collect::<Result<_, _>>()?;
+        vector(items.iter().map(read_item))
+    })]
 }
 
 pub fn read_item(item: &Item) -> Fields {

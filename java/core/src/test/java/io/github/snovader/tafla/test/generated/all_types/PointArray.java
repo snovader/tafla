@@ -37,6 +37,6 @@ public final class PointArray extends AbstractList<Point> implements RandomAcces
     @Override
     public Point get(int index) {
         Objects.checkIndex(index, size);
-        return Point.read(view, index * Point.SIZE);
+        return Point.readUnchecked(view, index * Point.SIZE);
     }
 }
