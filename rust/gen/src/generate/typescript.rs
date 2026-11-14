@@ -7,7 +7,10 @@ use super::writer::{
     CodeWriter, Expr, Style, call, comment_text, doc_comment, escape_outside_code_spans, text,
 };
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    strongly_connected_components,
+};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -91,22 +94,26 @@ pub fn generate(
     writer.blank();
     generator.imports(&mut writer, runtime);
 
-    for (index, definition) in schema.definitions.iter().enumerate() {
+    for class in class_order(schema) {
         writer.blank();
-        match definition.kind {
-            Kind::Message(layout) => generator.message(&mut writer, index, layout),
-            Kind::Table => generator.table(&mut writer, index),
-            Kind::Struct(_) => generator.structure(&mut writer, definition),
-        }
-        writer.blank();
-        generator.fields_type(&mut writer, definition);
-
-        if schema.is_item(index) {
-            writer.blank();
-            if matches!(definition.kind, Kind::Struct(_)) {
-                generator.struct_array_view(&mut writer, definition);
-            } else {
-                generator.vector_view(&mut writer, index);
+        match class {
+            Class::Definition(index) => {
+                let definition = schema.definition(index);
+                match definition.kind {
+                    Kind::Message(layout) => generator.message(&mut writer, index, layout),
+                    Kind::Table => generator.table(&mut writer, index),
+                    Kind::Struct(_) => generator.structure(&mut writer, definition),
+                }
+                writer.blank();
+                generator.fields_type(&mut writer, definition);
+            }
+            Class::View(index) => {
+                let definition = schema.definition(index);
+                if matches!(definition.kind, Kind::Struct(_)) {
+                    generator.struct_array_view(&mut writer, definition);
+                } else {
+                    generator.vector_view(&mut writer, index);
+                }
             }
         }
     }
@@ -116,6 +123,134 @@ pub fn generate(
         path: format!("{}.{extension}", camel_case(stem)),
         contents: writer.finish(),
     }]
+}
+
+/// A class of the generated module
+#[derive(Clone, Copy)]
+enum Class {
+    /// A message's, table's or struct's, with the interface of its fields
+    Definition(usize),
+    /// The view of a vector of tables, or of an array of structs, that holds
+    /// the definition
+    View(usize),
+}
+
+impl Class {
+    /// Its position among every possible class of the schema
+    fn slot(self) -> usize {
+        match self {
+            Self::Definition(index) => 2 * index,
+            Self::View(index) => 2 * index + 1,
+        }
+    }
+}
+
+/// The classes in the schema's order, except that each comes after the
+/// classes that its code reads: a table after its nested tables and structs,
+/// the views of its vectors and arrays of structs and the vectors' items, and
+/// a view after its items.
+///
+/// A method that reads an exported class declared after its own, as
+/// `new Pair()` in a getter of `Item` does, checks first that the class is
+/// initialized. V8's optimizing compiler lets the receiver of a method
+/// escape wherever the method can throw, as that check can, for the stack
+/// trace's `getThis()`. So a getter of a nested table, even inlined into a
+/// loop, kept its parent's reader on the heap, and summing a vector of 100
+/// nested tables through `get(i).pair()` allocated 4 KB. V8 reads a class
+/// declared before the method without a check.
+///
+/// Only vectors nest a table in itself, so a cycle of tables passes through
+/// a view, which comes before its items. Its `get()` then checks its items'
+/// class, and keeps the view, made once per vector, on the heap, rather than
+/// the getters of the items that create it.
+fn class_order(schema: &Schema) -> Vec<Class> {
+    let definitions = &schema.definitions;
+    let components = strongly_connected_components(definitions, tables);
+
+    // The tables that a table of their own component holds in a vector,
+    // whose views lie in a cycle
+    let mut view_first = vec![false; definitions.len()];
+    for (index, definition) in definitions.iter().enumerate() {
+        for field in &definition.fields {
+            if let FieldType::Vector(item) = field.field_type
+                && components[item] == components[index]
+            {
+                view_first[item] = true;
+            }
+        }
+    }
+
+    // The classes that a class reads, which come before it. A table's static
+    // `size()` and `write()` read the class of its vectors' items, which
+    // comes before it unless both lie in a cycle, where only those static
+    // methods check it. Without those edges in cycles, and the edges from
+    // the views first to their items, the classes have no cycles.
+    let read = |class: Class| -> std::vec::IntoIter<Class> {
+        let mut classes = Vec::new();
+        match class {
+            Class::Definition(index) => {
+                for field in &definitions[index].fields {
+                    match field.field_type {
+                        FieldType::Table(nested) | FieldType::Struct(nested) if nested != index => {
+                            classes.push(Class::Definition(nested));
+                        }
+                        FieldType::Vector(item) => {
+                            classes.push(Class::View(item));
+                            if components[item] != components[index] {
+                                classes.push(Class::Definition(item));
+                            }
+                        }
+                        FieldType::StructArray(item) => classes.push(Class::View(item)),
+                        _ => {}
+                    }
+                }
+            }
+            Class::View(index) if !view_first[index] => classes.push(Class::Definition(index)),
+            Class::View(_) => {}
+        }
+        classes.into_iter()
+    };
+
+    // Each class is visited once, from a stack rather than by recursion, so
+    // that long chains of them don't overflow it
+    let mut order = Vec::with_capacity(2 * definitions.len());
+    let mut visited = vec![false; 2 * definitions.len()];
+    let mut stack = Vec::new();
+    let roots = (0..definitions.len()).flat_map(|index| {
+        let view = schema.is_item(index).then_some(Class::View(index));
+        std::iter::once(Class::Definition(index)).chain(view)
+    });
+
+    for root in roots {
+        if std::mem::replace(&mut visited[root.slot()], true) {
+            continue;
+        }
+        stack.push((root, read(root)));
+
+        while let Some((class, unvisited)) = stack.last_mut() {
+            let class = *class;
+            if let Some(next) = unvisited.find(|next| !visited[next.slot()]) {
+                visited[next.slot()] = true;
+                stack.push((next, read(next)));
+            } else {
+                order.push(class);
+                stack.pop();
+            }
+        }
+    }
+
+    order
+}
+
+/// The tables that a definition holds, nested or in vectors
+fn tables(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
+    definition
+        .fields
+        .iter()
+        .filter_map(|field| match field.field_type {
+            FieldType::Table(index) | FieldType::Vector(index) => Some(index),
+            _ => None,
+        })
 }
 
 struct Generator<'a> {

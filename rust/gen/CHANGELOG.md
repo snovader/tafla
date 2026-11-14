@@ -159,6 +159,16 @@ first commits, for code built from its source before the release.
   getter, which took 12% longer to sum an array's structs: an index outside
   the array throws `DecodeError`, which is a `RangeError`, rather than a
   plain `RangeError`, and it must be an integer.
+- Generated TypeScript and JavaScript declare each class after the classes
+  that its code reads, rather than in the schema's order: a table after its
+  nested tables and structs and its vectors' views and items, and a view
+  after its items, except in a cycle of tables, where a vector's view comes
+  before its items. V8 reads an exported class in a method declared before
+  it through a check that it's initialized, which kept the method's receiver
+  on the heap: summing a vector of 100 nested tables through `get(i).pair()`
+  allocated each item's reader, 4,280 bytes, and took 0.908 µs in Node 27,
+  against 280 bytes and 0.825 µs now, with the runtime's inlined vector item
+  reads.
 
 ### Fixed
 

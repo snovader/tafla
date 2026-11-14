@@ -389,110 +389,107 @@ export class Arrays {
  * @property {ArrayLike<number> | Float64Array} float64
  */
 
-/** Tables nested in tables, by field and in vectors */
-export class Nested {
-    static #LAYOUT = TableLayout.DEFAULT;
+export class Inner {
+    /**
+     * The alignment that a parent pads an `Inner` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {8}
+     */
+    static ALIGNMENT = 8;
 
     /** @type {ByteBuffer} */
     #buffer;
+    /** @type {number} */
+    #position;
 
-    /** @param {Uint8Array} bytes */
-    constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Nested.#LAYOUT);
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     */
+    constructor(buffer, position) {
+        this.#buffer = buffer;
+        this.#position = position;
     }
 
     /**
-     * Writes a `Nested` with every field
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
      *
-     * @param {NestedFields} fields
-     * @returns {Uint8Array}
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {InnerFields}
      */
-    static serialize(fields) {
-        const sizer = new TableSizer(3, Nested.#LAYOUT);
-        sizer.addString(fields.label);
-        sizer.addTable(Outer.ALIGNMENT);
-        Outer.size(sizer, fields.outer);
-        sizer.addVector(fields.trees.length);
-        for (const item of fields.trees) {
-            Tree.size(sizer, item);
-        }
-
-        const writer = sizer.writer();
-        writer.setString(0, fields.label);
-        writer.setTable(1, Outer.ALIGNMENT);
-        Outer.write(writer, fields.outer);
-        const vector2 = writer.setVector(2, fields.trees.length);
-        for (let i = 0; i < fields.trees.length; i++) {
-            Tree.write(writer, fields.trees[i]);
-            writer.setItemEnd(vector2, i);
-        }
-
-        return writer.bytes();
+    static read(buffer, position) {
+        return {
+            name: buffer.getString(buffer.fieldOffset(position, 0)),
+            values: buffer.getFloat64Array(buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
-     * Writes a `Nested` with every field into the start of `bytes`,
-     * rather than into new bytes, and returns the view of them that holds
-     * it. The view, and what's read from it, change when the bytes are
-     * written again. Reusing bytes saves allocating and zeroing new ones,
-     * which takes longest for large tables.
+     * Adds an `Inner` to its parent's sizer, after the field or
+     * vector that holds it
      *
-     * @param {NestedFields} fields
-     * @param {Uint8Array} bytes
-     * @returns {Uint8Array}
-     * @throws {RangeError} If `bytes` are shorter than the table, before
-     * any of them is written.
+     * @param {TableSizer} sizer
+     * @param {InnerFields} fields
+     * @returns {void}
      */
-    static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(3, Nested.#LAYOUT);
-        sizer.addString(fields.label);
-        sizer.addTable(Outer.ALIGNMENT);
-        Outer.size(sizer, fields.outer);
-        sizer.addVector(fields.trees.length);
-        for (const item of fields.trees) {
-            Tree.size(sizer, item);
-        }
-
-        const writer = sizer.writer(bytes);
-        writer.setString(0, fields.label);
-        writer.setTable(1, Outer.ALIGNMENT);
-        Outer.write(writer, fields.outer);
-        const vector2 = writer.setVector(2, fields.trees.length);
-        for (let i = 0; i < fields.trees.length; i++) {
-            Tree.write(writer, fields.trees[i]);
-            writer.setItemEnd(vector2, i);
-        }
-
-        return writer.bytes();
-    }
-
-    /** @returns {string} A string beside the tables */
-    label() {
-        return this.#buffer.getString(this.#buffer.rootOffset(0));
-    }
-
-    /** @returns {Outer} The first of three levels of tables */
-    outer() {
-        return new Outer(this.#buffer, this.#buffer.rootOffset(1));
+    static size(sizer, fields) {
+        const parent = sizer.startTable(2);
+        sizer.addString(fields.name);
+        sizer.addFloat64Array(fields.values.length);
+        sizer.endTable(parent);
     }
 
     /**
-     * A vector of tables that hold vectors of themselves
+     * Writes an `Inner` where its parent's writer is, after the
+     * field or vector that holds it
      *
-     * @returns {TreeVector}
+     * @param {TableWriter} writer
+     * @param {InnerFields} fields
+     * @returns {void}
      */
-    trees() {
-        return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
+    static write(writer, fields) {
+        const parent = writer.startTable(2);
+        writer.setString(0, fields.name);
+        writer.setFloat64Array(1, fields.values);
+        writer.endTable(parent);
+    }
+
+    /** @returns {string} */
+    name() {
+        return this.#buffer.getString(
+            this.#buffer.fieldOffset(this.#position, 0)
+        );
+    }
+
+    /** @returns {Float64Array} */
+    values() {
+        return this.#buffer.getFloat64Array(
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
+
+    /**
+     * Reads every field into the `InnerFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {InnerFields}
+     */
+    fields() {
+        return Inner.read(this.#buffer, this.#position);
     }
 }
 
 /**
- * The fields of a `Nested`, to write
+ * The fields of an `Inner`, to write
  *
- * @typedef {object} NestedFields
- * @property {string} label A string beside the tables
- * @property {OuterFields} outer The first of three levels of tables
- * @property {readonly TreeFields[]} trees A vector of tables that hold vectors of themselves
+ * @typedef {object} InnerFields
+ * @property {string} name
+ * @property {ArrayLike<number> | Float64Array} values
  */
 
 export class Outer {
@@ -601,108 +598,53 @@ export class Outer {
  * @property {InnerFields} inner
  */
 
-export class Inner {
-    /**
-     * The alignment that a parent pads an `Inner` to: the largest
-     * alignment of its arrays and nested tables, or 1
-     *
-     * @type {8}
-     */
-    static ALIGNMENT = 8;
-
+/** A vector of `Tree`s, which reads each item when it's asked for */
+export class TreeVector {
     /** @type {ByteBuffer} */
     #buffer;
     /** @type {number} */
     #position;
+    /** @type {number} */
+    #length;
 
     /**
-     * Reads the table at `position`, as its parent's getter finds it
+     * Views the vector at `position`, as its parent's getter finds it
      *
      * @param {ByteBuffer} buffer
      * @param {number} position
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
      */
     constructor(buffer, position) {
         this.#buffer = buffer;
         this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** @returns {number} The number of items */
+    length() {
+        return this.#length;
     }
 
     /**
-     * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * Reads item `index`, without reading the others
      *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     * @returns {InnerFields}
+     * @param {number} index
+     * @returns {Tree}
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
      */
-    static read(buffer, position) {
-        return {
-            name: buffer.getString(buffer.fieldOffset(position, 0)),
-            values: buffer.getFloat64Array(buffer.fieldOffset(position, 1))
-        };
-    }
-
-    /**
-     * Adds an `Inner` to its parent's sizer, after the field or
-     * vector that holds it
-     *
-     * @param {TableSizer} sizer
-     * @param {InnerFields} fields
-     * @returns {void}
-     */
-    static size(sizer, fields) {
-        const parent = sizer.startTable(2);
-        sizer.addString(fields.name);
-        sizer.addFloat64Array(fields.values.length);
-        sizer.endTable(parent);
-    }
-
-    /**
-     * Writes an `Inner` where its parent's writer is, after the
-     * field or vector that holds it
-     *
-     * @param {TableWriter} writer
-     * @param {InnerFields} fields
-     * @returns {void}
-     */
-    static write(writer, fields) {
-        const parent = writer.startTable(2);
-        writer.setString(0, fields.name);
-        writer.setFloat64Array(1, fields.values);
-        writer.endTable(parent);
-    }
-
-    /** @returns {string} */
-    name() {
-        return this.#buffer.getString(
-            this.#buffer.fieldOffset(this.#position, 0)
+    get(index) {
+        return new Tree(
+            this.#buffer,
+            this.#buffer.getVectorItemOffset(
+                this.#position,
+                this.#length,
+                index
+            )
         );
-    }
-
-    /** @returns {Float64Array} */
-    values() {
-        return this.#buffer.getFloat64Array(
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-    }
-
-    /**
-     * Reads every field into the `InnerFields` that writes it, nested
-     * tables and the items of vectors and arrays of structs included
-     *
-     * @returns {InnerFields}
-     */
-    fields() {
-        return Inner.read(this.#buffer, this.#position);
     }
 }
-
-/**
- * The fields of an `Inner`, to write
- *
- * @typedef {object} InnerFields
- * @property {string} name
- * @property {ArrayLike<number> | Float64Array} values
- */
 
 /**
  * A table that holds a vector of its own type, which a vector can since it
@@ -794,53 +736,111 @@ export class Tree {
  * @property {readonly TreeFields[]} children
  */
 
-/** A vector of `Tree`s, which reads each item when it's asked for */
-export class TreeVector {
+/** Tables nested in tables, by field and in vectors */
+export class Nested {
+    static #LAYOUT = TableLayout.DEFAULT;
+
     /** @type {ByteBuffer} */
     #buffer;
-    /** @type {number} */
-    #position;
-    /** @type {number} */
-    #length;
 
-    /**
-     * Views the vector at `position`, as its parent's getter finds it
-     *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     * @throws {DecodeError} If the vector's count or the ends of its items lie
-     * outside the bytes.
-     */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
-        this.#position = position;
-        this.#length = buffer.getVectorLength(position);
-    }
-
-    /** @returns {number} The number of items */
-    length() {
-        return this.#length;
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this.#buffer = new ByteBuffer(bytes, Nested.#LAYOUT);
     }
 
     /**
-     * Reads item `index`, without reading the others
+     * Writes a `Nested` with every field
      *
-     * @param {number} index
-     * @returns {Tree}
-     * @throws {RangeError} If the vector has no item `index`.
-     * @throws {DecodeError} If the item lies outside the bytes.
+     * @param {NestedFields} fields
+     * @returns {Uint8Array}
      */
-    get(index) {
-        return new Tree(
-            this.#buffer,
-            this.#buffer.getVectorItemOffset(
-                this.#position,
-                this.#length,
-                index
-            )
-        );
+    static serialize(fields) {
+        const sizer = new TableSizer(3, Nested.#LAYOUT);
+        sizer.addString(fields.label);
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer);
+        sizer.addVector(fields.trees.length);
+        for (const item of fields.trees) {
+            Tree.size(sizer, item);
+        }
+
+        const writer = sizer.writer();
+        writer.setString(0, fields.label);
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer);
+        const vector2 = writer.setVector(2, fields.trees.length);
+        for (let i = 0; i < fields.trees.length; i++) {
+            Tree.write(writer, fields.trees[i]);
+            writer.setItemEnd(vector2, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Nested` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {NestedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(3, Nested.#LAYOUT);
+        sizer.addString(fields.label);
+        sizer.addTable(Outer.ALIGNMENT);
+        Outer.size(sizer, fields.outer);
+        sizer.addVector(fields.trees.length);
+        for (const item of fields.trees) {
+            Tree.size(sizer, item);
+        }
+
+        const writer = sizer.writer(bytes);
+        writer.setString(0, fields.label);
+        writer.setTable(1, Outer.ALIGNMENT);
+        Outer.write(writer, fields.outer);
+        const vector2 = writer.setVector(2, fields.trees.length);
+        for (let i = 0; i < fields.trees.length; i++) {
+            Tree.write(writer, fields.trees[i]);
+            writer.setItemEnd(vector2, i);
+        }
+
+        return writer.bytes();
+    }
+
+    /** @returns {string} A string beside the tables */
+    label() {
+        return this.#buffer.getString(this.#buffer.rootOffset(0));
+    }
+
+    /** @returns {Outer} The first of three levels of tables */
+    outer() {
+        return new Outer(this.#buffer, this.#buffer.rootOffset(1));
+    }
+
+    /**
+     * A vector of tables that hold vectors of themselves
+     *
+     * @returns {TreeVector}
+     */
+    trees() {
+        return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
     }
 }
+
+/**
+ * The fields of a `Nested`, to write
+ *
+ * @typedef {object} NestedFields
+ * @property {string} label A string beside the tables
+ * @property {OuterFields} outer The first of three levels of tables
+ * @property {readonly TreeFields[]} trees A vector of tables that hold vectors of themselves
+ */
 
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 export class Keywords {
@@ -1069,707 +1069,6 @@ export class Reserved {
  * @typedef {object} ReservedFields
  * @property {KeywordsFields} keywords
  */
-
-/**
- * Structs as fields, in place like scalars, and in arrays, which are aligned
- * to their structs' largest scalar
- */
-export class Structs {
-    static #LAYOUT = TableLayout.DEFAULT;
-
-    /** @type {ByteBuffer} */
-    #buffer;
-
-    /** @param {Uint8Array} bytes */
-    constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Structs.#LAYOUT);
-    }
-
-    /**
-     * Writes a `Structs` with every field
-     *
-     * @param {StructsFields} fields
-     * @returns {Uint8Array}
-     */
-    static serialize(fields) {
-        const sizer = new TableSizer(5, Structs.#LAYOUT);
-        sizer.addStruct(Packed.SIZE);
-        sizer.addStructArray(
-            fields.documented.length,
-            Documented.SIZE,
-            Documented.ALIGNMENT
-        );
-        sizer.addStruct(Segment.SIZE);
-        sizer.addStructArray(
-            fields.segments.length,
-            Segment.SIZE,
-            Segment.ALIGNMENT
-        );
-        sizer.addTable(Path.ALIGNMENT);
-        Path.size(sizer, fields.path);
-
-        const writer = sizer.writer();
-        writer.setStruct(0, Packed.serialize(fields.packed));
-        writer.setStructArray(
-            1,
-            Documented.serializeArray(fields.documented),
-            Documented.SIZE,
-            Documented.ALIGNMENT
-        );
-        writer.setStruct(2, Segment.serialize(fields.segment));
-        writer.setStructArray(
-            3,
-            Segment.serializeArray(fields.segments),
-            Segment.SIZE,
-            Segment.ALIGNMENT
-        );
-        writer.setTable(4, Path.ALIGNMENT);
-        Path.write(writer, fields.path);
-
-        return writer.bytes();
-    }
-
-    /**
-     * Writes a `Structs` with every field into the start of `bytes`,
-     * rather than into new bytes, and returns the view of them that holds
-     * it. The view, and what's read from it, change when the bytes are
-     * written again. Reusing bytes saves allocating and zeroing new ones,
-     * which takes longest for large tables.
-     *
-     * @param {StructsFields} fields
-     * @param {Uint8Array} bytes
-     * @returns {Uint8Array}
-     * @throws {RangeError} If `bytes` are shorter than the table, before
-     * any of them is written.
-     */
-    static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(5, Structs.#LAYOUT);
-        sizer.addStruct(Packed.SIZE);
-        sizer.addStructArray(
-            fields.documented.length,
-            Documented.SIZE,
-            Documented.ALIGNMENT
-        );
-        sizer.addStruct(Segment.SIZE);
-        sizer.addStructArray(
-            fields.segments.length,
-            Segment.SIZE,
-            Segment.ALIGNMENT
-        );
-        sizer.addTable(Path.ALIGNMENT);
-        Path.size(sizer, fields.path);
-
-        const writer = sizer.writer(bytes);
-        writer.setStruct(0, Packed.serialize(fields.packed));
-        writer.setStructArray(
-            1,
-            Documented.serializeArray(fields.documented),
-            Documented.SIZE,
-            Documented.ALIGNMENT
-        );
-        writer.setStruct(2, Segment.serialize(fields.segment));
-        writer.setStructArray(
-            3,
-            Segment.serializeArray(fields.segments),
-            Segment.SIZE,
-            Segment.ALIGNMENT
-        );
-        writer.setTable(4, Path.ALIGNMENT);
-        Path.write(writer, fields.path);
-
-        return writer.bytes();
-    }
-
-    /** @returns {Packed} A struct of every scalar type */
-    packed() {
-        return new Packed(this.#buffer.bytes(), this.#buffer.rootOffset(0));
-    }
-
-    /**
-     * An array of structs of 7 bytes, aligned to 4
-     *
-     * @returns {DocumentedArray}
-     */
-    documented() {
-        return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
-    }
-
-    /** @returns {Segment} A struct of structs */
-    segment() {
-        return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
-    }
-
-    /** @returns {SegmentArray} */
-    segments() {
-        return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
-    }
-
-    /**
-     * A table nested in the message, which holds structs too
-     *
-     * @returns {Path}
-     */
-    path() {
-        return new Path(this.#buffer, this.#buffer.rootOffset(4));
-    }
-
-    /**
-     * Reads every field into the `StructsFields` that writes it, nested
-     * tables and the items of vectors and arrays of structs included
-     *
-     * @returns {StructsFields}
-     */
-    fields() {
-        return {
-            packed: Packed.read(
-                this.#buffer.bytes(),
-                this.#buffer.rootOffset(0)
-            ),
-            documented: new DocumentedArray(
-                this.#buffer,
-                this.#buffer.rootOffset(1)
-            ).fields(),
-            segment: Segment.read(
-                this.#buffer.bytes(),
-                this.#buffer.rootOffset(2)
-            ),
-            segments: new SegmentArray(
-                this.#buffer,
-                this.#buffer.rootOffset(3)
-            ).fields(),
-            path: Path.read(this.#buffer, this.#buffer.rootOffset(4))
-        };
-    }
-}
-
-/**
- * The fields of a `Structs`, to write
- *
- * @typedef {object} StructsFields
- * @property {PackedFields} packed A struct of every scalar type
- * @property {readonly DocumentedFields[]} documented An array of structs of 7 bytes, aligned to 4
- * @property {SegmentFields} segment A struct of structs
- * @property {readonly SegmentFields[]} segments
- * @property {PathFields} path A table nested in the message, which holds structs too
- */
-
-export class Path {
-    /**
-     * The alignment that a parent pads a `Path` to: the largest
-     * alignment of its arrays and nested tables, or 1
-     *
-     * @type {4}
-     */
-    static ALIGNMENT = 4;
-
-    /** @type {ByteBuffer} */
-    #buffer;
-    /** @type {number} */
-    #position;
-
-    /**
-     * Reads the table at `position`, as its parent's getter finds it
-     *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
-        this.#position = position;
-    }
-
-    /**
-     * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
-     *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     * @returns {PathFields}
-     */
-    static read(buffer, position) {
-        return {
-            start: Point.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
-            points: new PointArray(
-                buffer,
-                buffer.fieldOffset(position, 1)
-            ).fields()
-        };
-    }
-
-    /**
-     * Adds a `Path` to its parent's sizer, after the field or
-     * vector that holds it
-     *
-     * @param {TableSizer} sizer
-     * @param {PathFields} fields
-     * @returns {void}
-     */
-    static size(sizer, fields) {
-        const parent = sizer.startTable(2);
-        sizer.addStruct(Point.SIZE);
-        sizer.addStructArray(fields.points.length, Point.SIZE, Point.ALIGNMENT);
-        sizer.endTable(parent);
-    }
-
-    /**
-     * Writes a `Path` where its parent's writer is, after the
-     * field or vector that holds it
-     *
-     * @param {TableWriter} writer
-     * @param {PathFields} fields
-     * @returns {void}
-     */
-    static write(writer, fields) {
-        const parent = writer.startTable(2);
-        writer.setStruct(0, Point.serialize(fields.start));
-        writer.setStructArray(
-            1,
-            Point.serializeArray(fields.points),
-            Point.SIZE,
-            Point.ALIGNMENT
-        );
-        writer.endTable(parent);
-    }
-
-    /** @returns {Point} */
-    start() {
-        return new Point(
-            this.#buffer.bytes(),
-            this.#buffer.fieldOffset(this.#position, 0)
-        );
-    }
-
-    /** @returns {PointArray} */
-    points() {
-        return new PointArray(
-            this.#buffer,
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-    }
-
-    /**
-     * Reads every field into the `PathFields` that writes it, nested
-     * tables and the items of vectors and arrays of structs included
-     *
-     * @returns {PathFields}
-     */
-    fields() {
-        return Path.read(this.#buffer, this.#position);
-    }
-}
-
-/**
- * The fields of a `Path`, to write
- *
- * @typedef {object} PathFields
- * @property {PointFields} start
- * @property {readonly PointFields[]} points
- */
-
-/** Two points, whose scalars lie in the segment's place */
-export class Segment {
-    /** The byte length of a `Segment` */
-    static SIZE = 16;
-
-    /**
-     * The alignment of an array of `Segment`: its largest scalar's size
-     *
-     * @type {4}
-     */
-    static ALIGNMENT = 4;
-
-    /** @type {Point} */
-    #start;
-    /** @type {Point} */
-    #end;
-
-    /**
-     * Reads a `Segment` at `offset` in `bytes`, eagerly, so that it
-     * doesn't keep them alive
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} [offset]
-     * @throws {DecodeError} If `bytes` end before the `Segment` does.
-     */
-    constructor(bytes, offset = 0) {
-        this.#start = new Point(bytes, offset);
-        this.#end = new Point(bytes, offset + 8);
-    }
-
-    /**
-     * Reads the fields of a `Segment` at `offset` in `bytes`,
-     * without creating a `Segment`
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} [offset]
-     * @returns {SegmentFields}
-     * @throws {DecodeError} If `bytes` end before the `Segment` does.
-     */
-    static read(bytes, offset = 0) {
-        return {
-            start: Point.read(bytes, offset),
-            end: Point.read(bytes, offset + 8)
-        };
-    }
-
-    /**
-     * Writes a `Segment`
-     *
-     * @param {SegmentFields} fields
-     * @returns {Uint8Array}
-     */
-    static serialize(fields) {
-        const bytes = new Uint8Array(Segment.SIZE);
-        Segment.writeAt(bytes, 0, fields);
-
-        return bytes;
-    }
-
-    /**
-     * Writes `Segment`s one after another, as an array of them holds them
-     *
-     * @param {readonly SegmentFields[]} items
-     * @returns {Uint8Array}
-     */
-    static serializeArray(items) {
-        const bytes = new Uint8Array(items.length * Segment.SIZE);
-        const writer = new StructWriter(bytes);
-        for (const fields of items) {
-            Segment.write(writer, fields);
-        }
-
-        return bytes;
-    }
-
-    /**
-     * Writes a `Segment` at the writer's position
-     *
-     * @param {StructWriter} writer
-     * @param {SegmentFields} fields
-     * @returns {void}
-     */
-    static write(writer, fields) {
-        Point.write(writer, fields.start);
-        Point.write(writer, fields.end);
-    }
-
-    /**
-     * Writes a `Segment` at `offset` in `bytes`
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} offset
-     * @param {SegmentFields} fields
-     * @returns {void}
-     * @throws {RangeError} If `bytes` end before the `Segment` does.
-     */
-    static writeAt(bytes, offset, fields) {
-        Point.writeAt(bytes, offset, fields.start);
-        Point.writeAt(bytes, offset + 8, fields.end);
-    }
-
-    /** @returns {Point} */
-    start() {
-        return this.#start;
-    }
-
-    /** @returns {Point} */
-    end() {
-        return this.#end;
-    }
-}
-
-/**
- * The fields of a `Segment`, to write
- *
- * @typedef {object} SegmentFields
- * @property {PointFields} start
- * @property {PointFields} end
- */
-
-/**
- * An array of `Segment`s, which reads each struct when it's asked for.
- *
- * Its getters take a struct's index, an integer, which they check only by
- * reading within the array's bytes.
- */
-export class SegmentArray {
-    /** @type {Uint8Array} */
-    #bytes;
-    /** @type {number} */
-    #length;
-
-    /**
-     * Views the array at `position`, as its parent's getter finds it
-     *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     * @throws {DecodeError} If the array lies outside the bytes.
-     */
-    constructor(buffer, position) {
-        this.#bytes = buffer.getStructArray(position, Segment.SIZE);
-        this.#length = this.#bytes.length / Segment.SIZE;
-    }
-
-    /** @returns {number} The number of structs */
-    length() {
-        return this.#length;
-    }
-
-    /**
-     * Reads struct `index`
-     *
-     * @param {number} index
-     * @returns {Segment}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    get(index) {
-        return new Segment(this.#bytes, index * 16);
-    }
-
-    /**
-     * Reads `start` of struct `index`, without reading the others
-     *
-     * @param {number} index
-     * @returns {Point}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    start(index) {
-        return new Point(this.#bytes, index * 16);
-    }
-
-    /**
-     * Reads `end` of struct `index`, without reading the others
-     *
-     * @param {number} index
-     * @returns {Point}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    end(index) {
-        return new Point(this.#bytes, index * 16 + 8);
-    }
-
-    /**
-     * Reads the `SegmentFields` of every item, from the first to the last
-     *
-     * @returns {SegmentFields[]}
-     */
-    fields() {
-        const bytes = this.#bytes;
-        const items = new Array(this.#length);
-
-        for (let i = 0; i < items.length; i++) {
-            const offset = i * 16;
-            items[i] = {
-                start: Point.read(bytes, offset),
-                end: Point.read(bytes, offset + 8)
-            };
-        }
-
-        return items;
-    }
-}
-
-export class Point {
-    /** The byte length of a `Point` */
-    static SIZE = 8;
-
-    /**
-     * The alignment of an array of `Point`: its largest scalar's size
-     *
-     * @type {4}
-     */
-    static ALIGNMENT = 4;
-
-    /** @type {number} */
-    #x;
-    /** @type {number} */
-    #y;
-
-    /**
-     * Reads a `Point` at `offset` in `bytes`, eagerly, so that it
-     * doesn't keep them alive
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} [offset]
-     * @throws {DecodeError} If `bytes` end before the `Point` does.
-     */
-    constructor(bytes, offset = 0) {
-        this.#x = readFloat32(bytes, offset);
-        this.#y = readFloat32(bytes, offset + 4);
-    }
-
-    /**
-     * Reads the fields of a `Point` at `offset` in `bytes`,
-     * without creating a `Point`
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} [offset]
-     * @returns {PointFields}
-     * @throws {DecodeError} If `bytes` end before the `Point` does.
-     */
-    static read(bytes, offset = 0) {
-        return {
-            x: readFloat32(bytes, offset),
-            y: readFloat32(bytes, offset + 4)
-        };
-    }
-
-    /**
-     * Writes a `Point`
-     *
-     * @param {PointFields} fields
-     * @returns {Uint8Array}
-     */
-    static serialize(fields) {
-        const bytes = new Uint8Array(Point.SIZE);
-        Point.writeAt(bytes, 0, fields);
-
-        return bytes;
-    }
-
-    /**
-     * Writes `Point`s one after another, as an array of them holds them
-     *
-     * @param {readonly PointFields[]} items
-     * @returns {Uint8Array}
-     */
-    static serializeArray(items) {
-        const bytes = new Uint8Array(items.length * Point.SIZE);
-        const writer = new StructWriter(bytes);
-        for (const fields of items) {
-            Point.write(writer, fields);
-        }
-
-        return bytes;
-    }
-
-    /**
-     * Writes a `Point` at the writer's position
-     *
-     * @param {StructWriter} writer
-     * @param {PointFields} fields
-     * @returns {void}
-     */
-    static write(writer, fields) {
-        writer.setFloat32(fields.x);
-        writer.setFloat32(fields.y);
-    }
-
-    /**
-     * Writes a `Point` at `offset` in `bytes`
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} offset
-     * @param {PointFields} fields
-     * @returns {void}
-     * @throws {RangeError} If `bytes` end before the `Point` does.
-     */
-    static writeAt(bytes, offset, fields) {
-        writeFloat32(bytes, offset, fields.x);
-        writeFloat32(bytes, offset + 4, fields.y);
-    }
-
-    /** @returns {number} */
-    x() {
-        return this.#x;
-    }
-
-    /** @returns {number} */
-    y() {
-        return this.#y;
-    }
-}
-
-/**
- * The fields of a `Point`, to write
- *
- * @typedef {object} PointFields
- * @property {number} x
- * @property {number} y
- */
-
-/**
- * An array of `Point`s, which reads each struct when it's asked for.
- *
- * Its getters take a struct's index, an integer, which they check only by
- * reading within the array's bytes.
- */
-export class PointArray {
-    /** @type {Uint8Array} */
-    #bytes;
-    /** @type {number} */
-    #length;
-
-    /**
-     * Views the array at `position`, as its parent's getter finds it
-     *
-     * @param {ByteBuffer} buffer
-     * @param {number} position
-     * @throws {DecodeError} If the array lies outside the bytes.
-     */
-    constructor(buffer, position) {
-        this.#bytes = buffer.getStructArray(position, Point.SIZE);
-        this.#length = this.#bytes.length / Point.SIZE;
-    }
-
-    /** @returns {number} The number of structs */
-    length() {
-        return this.#length;
-    }
-
-    /**
-     * Reads struct `index`
-     *
-     * @param {number} index
-     * @returns {Point}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    get(index) {
-        return new Point(this.#bytes, index * 8);
-    }
-
-    /**
-     * Reads `x` of struct `index`, without reading the others
-     *
-     * @param {number} index
-     * @returns {number}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    x(index) {
-        return readFloat32(this.#bytes, index * 8);
-    }
-
-    /**
-     * Reads `y` of struct `index`, without reading the others
-     *
-     * @param {number} index
-     * @returns {number}
-     * @throws {DecodeError} If the array has no struct `index`.
-     */
-    y(index) {
-        return readFloat32(this.#bytes, index * 8 + 4);
-    }
-
-    /**
-     * Reads the `PointFields` of every item, from the first to the last
-     *
-     * @returns {PointFields[]}
-     */
-    fields() {
-        const bytes = this.#bytes;
-        const items = new Array(this.#length);
-
-        for (let i = 0; i < items.length; i++) {
-            const offset = i * 8;
-            items[i] = {
-                x: readFloat32(bytes, offset),
-                y: readFloat32(bytes, offset + 4)
-            };
-        }
-
-        return items;
-    }
-}
 
 /**
  * A struct of every scalar type and a bool, at fixed offsets without
@@ -2249,3 +1548,704 @@ export class DocumentedArray {
         return items;
     }
 }
+
+export class Point {
+    /** The byte length of a `Point` */
+    static SIZE = 8;
+
+    /**
+     * The alignment of an array of `Point`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    /** @type {number} */
+    #x;
+    /** @type {number} */
+    #y;
+
+    /**
+     * Reads a `Point` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Point` does.
+     */
+    constructor(bytes, offset = 0) {
+        this.#x = readFloat32(bytes, offset);
+        this.#y = readFloat32(bytes, offset + 4);
+    }
+
+    /**
+     * Reads the fields of a `Point` at `offset` in `bytes`,
+     * without creating a `Point`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {PointFields}
+     * @throws {DecodeError} If `bytes` end before the `Point` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            x: readFloat32(bytes, offset),
+            y: readFloat32(bytes, offset + 4)
+        };
+    }
+
+    /**
+     * Writes a `Point`
+     *
+     * @param {PointFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const bytes = new Uint8Array(Point.SIZE);
+        Point.writeAt(bytes, 0, fields);
+
+        return bytes;
+    }
+
+    /**
+     * Writes `Point`s one after another, as an array of them holds them
+     *
+     * @param {readonly PointFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Point.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Point.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Point` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {PointFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        writer.setFloat32(fields.x);
+        writer.setFloat32(fields.y);
+    }
+
+    /**
+     * Writes a `Point` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {PointFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Point` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        writeFloat32(bytes, offset, fields.x);
+        writeFloat32(bytes, offset + 4, fields.y);
+    }
+
+    /** @returns {number} */
+    x() {
+        return this.#x;
+    }
+
+    /** @returns {number} */
+    y() {
+        return this.#y;
+    }
+}
+
+/**
+ * The fields of a `Point`, to write
+ *
+ * @typedef {object} PointFields
+ * @property {number} x
+ * @property {number} y
+ */
+
+/** Two points, whose scalars lie in the segment's place */
+export class Segment {
+    /** The byte length of a `Segment` */
+    static SIZE = 16;
+
+    /**
+     * The alignment of an array of `Segment`: its largest scalar's size
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    /** @type {Point} */
+    #start;
+    /** @type {Point} */
+    #end;
+
+    /**
+     * Reads a `Segment` at `offset` in `bytes`, eagerly, so that it
+     * doesn't keep them alive
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @throws {DecodeError} If `bytes` end before the `Segment` does.
+     */
+    constructor(bytes, offset = 0) {
+        this.#start = new Point(bytes, offset);
+        this.#end = new Point(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Segment` at `offset` in `bytes`,
+     * without creating a `Segment`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} [offset]
+     * @returns {SegmentFields}
+     * @throws {DecodeError} If `bytes` end before the `Segment` does.
+     */
+    static read(bytes, offset = 0) {
+        return {
+            start: Point.read(bytes, offset),
+            end: Point.read(bytes, offset + 8)
+        };
+    }
+
+    /**
+     * Writes a `Segment`
+     *
+     * @param {SegmentFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const bytes = new Uint8Array(Segment.SIZE);
+        Segment.writeAt(bytes, 0, fields);
+
+        return bytes;
+    }
+
+    /**
+     * Writes `Segment`s one after another, as an array of them holds them
+     *
+     * @param {readonly SegmentFields[]} items
+     * @returns {Uint8Array}
+     */
+    static serializeArray(items) {
+        const bytes = new Uint8Array(items.length * Segment.SIZE);
+        const writer = new StructWriter(bytes);
+        for (const fields of items) {
+            Segment.write(writer, fields);
+        }
+
+        return bytes;
+    }
+
+    /**
+     * Writes a `Segment` at the writer's position
+     *
+     * @param {StructWriter} writer
+     * @param {SegmentFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        Point.write(writer, fields.start);
+        Point.write(writer, fields.end);
+    }
+
+    /**
+     * Writes a `Segment` at `offset` in `bytes`
+     *
+     * @param {Uint8Array} bytes
+     * @param {number} offset
+     * @param {SegmentFields} fields
+     * @returns {void}
+     * @throws {RangeError} If `bytes` end before the `Segment` does.
+     */
+    static writeAt(bytes, offset, fields) {
+        Point.writeAt(bytes, offset, fields.start);
+        Point.writeAt(bytes, offset + 8, fields.end);
+    }
+
+    /** @returns {Point} */
+    start() {
+        return this.#start;
+    }
+
+    /** @returns {Point} */
+    end() {
+        return this.#end;
+    }
+}
+
+/**
+ * The fields of a `Segment`, to write
+ *
+ * @typedef {object} SegmentFields
+ * @property {PointFields} start
+ * @property {PointFields} end
+ */
+
+/**
+ * An array of `Segment`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
+export class SegmentArray {
+    /** @type {Uint8Array} */
+    #bytes;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#bytes = buffer.getStructArray(position, Segment.SIZE);
+        this.#length = this.#bytes.length / Segment.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Segment}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    get(index) {
+        return new Segment(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `start` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    start(index) {
+        return new Point(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `end` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    end(index) {
+        return new Point(this.#bytes, index * 16 + 8);
+    }
+
+    /**
+     * Reads the `SegmentFields` of every item, from the first to the last
+     *
+     * @returns {SegmentFields[]}
+     */
+    fields() {
+        const bytes = this.#bytes;
+        const items = new Array(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 16;
+            items[i] = {
+                start: Point.read(bytes, offset),
+                end: Point.read(bytes, offset + 8)
+            };
+        }
+
+        return items;
+    }
+}
+
+/**
+ * An array of `Point`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
+export class PointArray {
+    /** @type {Uint8Array} */
+    #bytes;
+    /** @type {number} */
+    #length;
+
+    /**
+     * Views the array at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @throws {DecodeError} If the array lies outside the bytes.
+     */
+    constructor(buffer, position) {
+        this.#bytes = buffer.getStructArray(position, Point.SIZE);
+        this.#length = this.#bytes.length / Point.SIZE;
+    }
+
+    /** @returns {number} The number of structs */
+    length() {
+        return this.#length;
+    }
+
+    /**
+     * Reads struct `index`
+     *
+     * @param {number} index
+     * @returns {Point}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    get(index) {
+        return new Point(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `x` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    x(index) {
+        return readFloat32(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `y` of struct `index`, without reading the others
+     *
+     * @param {number} index
+     * @returns {number}
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    y(index) {
+        return readFloat32(this.#bytes, index * 8 + 4);
+    }
+
+    /**
+     * Reads the `PointFields` of every item, from the first to the last
+     *
+     * @returns {PointFields[]}
+     */
+    fields() {
+        const bytes = this.#bytes;
+        const items = new Array(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 8;
+            items[i] = {
+                x: readFloat32(bytes, offset),
+                y: readFloat32(bytes, offset + 4)
+            };
+        }
+
+        return items;
+    }
+}
+
+export class Path {
+    /**
+     * The alignment that a parent pads a `Path` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     *
+     * @type {4}
+     */
+    static ALIGNMENT = 4;
+
+    /** @type {ByteBuffer} */
+    #buffer;
+    /** @type {number} */
+    #position;
+
+    /**
+     * Reads the table at `position`, as its parent's getter finds it
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     */
+    constructor(buffer, position) {
+        this.#buffer = buffer;
+        this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     *
+     * @param {ByteBuffer} buffer
+     * @param {number} position
+     * @returns {PathFields}
+     */
+    static read(buffer, position) {
+        return {
+            start: Point.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
+            points: new PointArray(
+                buffer,
+                buffer.fieldOffset(position, 1)
+            ).fields()
+        };
+    }
+
+    /**
+     * Adds a `Path` to its parent's sizer, after the field or
+     * vector that holds it
+     *
+     * @param {TableSizer} sizer
+     * @param {PathFields} fields
+     * @returns {void}
+     */
+    static size(sizer, fields) {
+        const parent = sizer.startTable(2);
+        sizer.addStruct(Point.SIZE);
+        sizer.addStructArray(fields.points.length, Point.SIZE, Point.ALIGNMENT);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Path` where its parent's writer is, after the
+     * field or vector that holds it
+     *
+     * @param {TableWriter} writer
+     * @param {PathFields} fields
+     * @returns {void}
+     */
+    static write(writer, fields) {
+        const parent = writer.startTable(2);
+        writer.setStruct(0, Point.serialize(fields.start));
+        writer.setStructArray(
+            1,
+            Point.serializeArray(fields.points),
+            Point.SIZE,
+            Point.ALIGNMENT
+        );
+        writer.endTable(parent);
+    }
+
+    /** @returns {Point} */
+    start() {
+        return new Point(
+            this.#buffer.bytes(),
+            this.#buffer.fieldOffset(this.#position, 0)
+        );
+    }
+
+    /** @returns {PointArray} */
+    points() {
+        return new PointArray(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
+
+    /**
+     * Reads every field into the `PathFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {PathFields}
+     */
+    fields() {
+        return Path.read(this.#buffer, this.#position);
+    }
+}
+
+/**
+ * The fields of a `Path`, to write
+ *
+ * @typedef {object} PathFields
+ * @property {PointFields} start
+ * @property {readonly PointFields[]} points
+ */
+
+/**
+ * Structs as fields, in place like scalars, and in arrays, which are aligned
+ * to their structs' largest scalar
+ */
+export class Structs {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @type {ByteBuffer} */
+    #buffer;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this.#buffer = new ByteBuffer(bytes, Structs.#LAYOUT);
+    }
+
+    /**
+     * Writes a `Structs` with every field
+     *
+     * @param {StructsFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(5, Structs.#LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(
+            fields.documented.length,
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(
+            fields.segments.length,
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path);
+
+        const writer = sizer.writer();
+        writer.setStruct(0, Packed.serialize(fields.packed));
+        writer.setStructArray(
+            1,
+            Documented.serializeArray(fields.documented),
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        writer.setStruct(2, Segment.serialize(fields.segment));
+        writer.setStructArray(
+            3,
+            Segment.serializeArray(fields.segments),
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Structs` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {StructsFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(5, Structs.#LAYOUT);
+        sizer.addStruct(Packed.SIZE);
+        sizer.addStructArray(
+            fields.documented.length,
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        sizer.addStruct(Segment.SIZE);
+        sizer.addStructArray(
+            fields.segments.length,
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        sizer.addTable(Path.ALIGNMENT);
+        Path.size(sizer, fields.path);
+
+        const writer = sizer.writer(bytes);
+        writer.setStruct(0, Packed.serialize(fields.packed));
+        writer.setStructArray(
+            1,
+            Documented.serializeArray(fields.documented),
+            Documented.SIZE,
+            Documented.ALIGNMENT
+        );
+        writer.setStruct(2, Segment.serialize(fields.segment));
+        writer.setStructArray(
+            3,
+            Segment.serializeArray(fields.segments),
+            Segment.SIZE,
+            Segment.ALIGNMENT
+        );
+        writer.setTable(4, Path.ALIGNMENT);
+        Path.write(writer, fields.path);
+
+        return writer.bytes();
+    }
+
+    /** @returns {Packed} A struct of every scalar type */
+    packed() {
+        return new Packed(this.#buffer.bytes(), this.#buffer.rootOffset(0));
+    }
+
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * @returns {DocumentedArray}
+     */
+    documented() {
+        return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
+    }
+
+    /** @returns {Segment} A struct of structs */
+    segment() {
+        return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
+    }
+
+    /** @returns {SegmentArray} */
+    segments() {
+        return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
+    }
+
+    /**
+     * A table nested in the message, which holds structs too
+     *
+     * @returns {Path}
+     */
+    path() {
+        return new Path(this.#buffer, this.#buffer.rootOffset(4));
+    }
+
+    /**
+     * Reads every field into the `StructsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {StructsFields}
+     */
+    fields() {
+        return {
+            packed: Packed.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(0)
+            ),
+            documented: new DocumentedArray(
+                this.#buffer,
+                this.#buffer.rootOffset(1)
+            ).fields(),
+            segment: Segment.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(2)
+            ),
+            segments: new SegmentArray(
+                this.#buffer,
+                this.#buffer.rootOffset(3)
+            ).fields(),
+            path: Path.read(this.#buffer, this.#buffer.rootOffset(4))
+        };
+    }
+}
+
+/**
+ * The fields of a `Structs`, to write
+ *
+ * @typedef {object} StructsFields
+ * @property {PackedFields} packed A struct of every scalar type
+ * @property {readonly DocumentedFields[]} documented An array of structs of 7 bytes, aligned to 4
+ * @property {SegmentFields} segment A struct of structs
+ * @property {readonly SegmentFields[]} segments
+ * @property {PathFields} path A table nested in the message, which holds structs too
+ */
