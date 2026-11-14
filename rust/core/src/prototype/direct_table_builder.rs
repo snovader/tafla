@@ -252,6 +252,7 @@ impl<'a, B: Buffer, const N: usize> DirectTableBuilder<'a, B, N> {
     ///
     /// [`BuildError::Incomplete`] if fewer fields were set than the table
     /// holds.
+    #[inline(always)]
     pub fn into_bytes(mut self) -> Result<Vec<u8>, BuildError> {
         self.check_complete()?;
 

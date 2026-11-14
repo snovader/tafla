@@ -8,6 +8,8 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use tafla::prototype::{DirectNestedTable, DirectTableBuilder, InlineBuffer, VecBuffer};
+use tafla::{NestedTable, TableBuilder};
 use tafla_benchmarks::codec::Error;
 use tafla_benchmarks::prototype::{Builder, Visit, for_each_builder};
 use tafla_benchmarks::workloads::{self, Document, LIST_ITEMS, List, RECORD, Record};
@@ -125,11 +127,47 @@ fn main() {
     };
     for_each_builder(&mut counts);
 
-    println!("Allocations and bytes allocated per call of each builder");
+    print_sizes();
+
+    println!("\nAllocations and bytes allocated per call of each builder");
     for (name, lines) in ROWS.iter().zip(&counts.rows) {
         println!("\n{name}: serialize");
         for line in lines {
             println!("{line}");
         }
     }
+}
+
+/// Prints the sizes of the builders, which a builder that nests another
+/// holds within its own
+fn print_sizes() {
+    println!("Sizes in bytes");
+    println!(
+        "  TableBuilder              {:>4}",
+        size_of::<TableBuilder<'_>>()
+    );
+    println!(
+        "  NestedTable               {:>4}",
+        size_of::<NestedTable<'_>>()
+    );
+    println!(
+        "  direct (Vec, 4 segments)  {:>4}",
+        size_of::<DirectTableBuilder<'_, VecBuffer, 4>>()
+    );
+    println!(
+        "  direct (Vec, 0 segments)  {:>4}",
+        size_of::<DirectTableBuilder<'_, VecBuffer, 0>>()
+    );
+    println!(
+        "  direct (inline, 4)        {:>4}",
+        size_of::<DirectTableBuilder<'_, InlineBuffer, 4>>()
+    );
+    println!(
+        "  direct (inline, 0)        {:>4}",
+        size_of::<DirectTableBuilder<'_, InlineBuffer, 0>>()
+    );
+    println!(
+        "  DirectNestedTable (Vec, 4) {:>3}",
+        size_of::<DirectNestedTable<'_, VecBuffer, 4>>()
+    );
 }

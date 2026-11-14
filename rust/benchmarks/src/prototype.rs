@@ -115,7 +115,10 @@ pub fn structs<B: Buffer, const N: usize, const INTO: bool>(
     Ok(finish::<B, N, INTO>(builder)?)
 }
 
-#[inline]
+/// Takes the table from the builder, inlined into the caller, so that the
+/// builder isn't moved into a function of its own
+#[allow(clippy::inline_always)]
+#[inline(always)]
 fn finish<B: Buffer, const N: usize, const INTO: bool>(
     builder: DirectTableBuilder<'_, B, N>,
 ) -> Result<Vec<u8>, BuildError> {
@@ -258,5 +261,6 @@ pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Direct<InlineBuffer, 4, false>>("inline 128");
     visitor.visit::<Direct<InlineBuffer, 4, true>>("inline, into_bytes");
     visitor.visit::<Direct<VecBuffer, 0, false>>("segments in a Vec");
+    visitor.visit::<Direct<InlineBuffer, 0, false>>("inline, segments in Vec");
     visitor.visit::<Direct<VecBuffer<256, true, NO_SEGMENTS>, 4, false>>("copying");
 }
