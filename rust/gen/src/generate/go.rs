@@ -30,7 +30,10 @@ use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::CodeWriter;
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    strongly_connected_components,
+};
 
 /// The runtime's module, unless [`Options::runtime`] names another. The
 /// generated code imports it as `tafla`, whatever its path's last element.
@@ -69,13 +72,15 @@ const KEYWORDS: [&str; 25] = [
 /// The methods that the generated types declare beside a schema's fields,
 /// which exported fields and getters would clash with, so names take a `_`
 /// after them: the binary marshaling methods of structs and of messages'
-/// fields, and the methods whose signatures `go vet` checks, which a getter
+/// fields, the readers' `Fields()`, which reads a table whole, and the
+/// methods whose signatures `go vet` checks, which a getter
 /// that takes no arguments and returns an error too would fail. They're Go's
 /// names, which a field's exported name is compared with, since several
 /// fields' names can export as one: `marshal_j_s_o_n` as `MarshalJSON`.
-const MEMBERS: [&str; 22] = [
+const MEMBERS: [&str; 23] = [
     "AppendBinary",
     "As",
+    "Fields",
     "Format",
     "GobDecode",
     "GobEncode",
@@ -133,6 +138,9 @@ pub fn generate(
             Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
         if !definition.is_struct() {
+            if generator.readable_whole[index] {
+                generator.fields_reader(&mut writer, index);
+            }
             generator.fields_struct(&mut writer, index);
         }
 
@@ -180,6 +188,10 @@ struct Generator<'a> {
     /// The byte length of each table whose fields' sizes the schema fixes,
     /// which the generated code writes whole
     fixed: FixedSizes,
+    /// Whether each message or table has `Fields()`, which reads it whole:
+    /// one that allocates in proportion to its bytes, however corrupted,
+    /// when it's read whole
+    readable_whole: Vec<bool>,
 }
 
 /// The longest that the generated code lays out a table's fields, so that
@@ -219,6 +231,7 @@ impl<'a> Generator<'a> {
         Generator {
             schema,
             fixed: FixedSizes::new(schema, MAX_LAID_OUT),
+            readable_whole: readable_whole(schema),
         }
     }
 
@@ -428,7 +441,7 @@ impl<'a> Generator<'a> {
         writer.line(format!("return {}", layout_expression(layout)));
         writer.close("}");
 
-        self.getters(writer, definition, true);
+        self.getters(writer, definition, Some(layout));
     }
 
     fn table(&self, writer: &mut CodeWriter, definition: &Definition) {
@@ -441,26 +454,15 @@ impl<'a> Generator<'a> {
         writer.line("position int");
         writer.close("}");
 
-        self.getters(writer, definition, false);
+        self.getters(writer, definition, None);
     }
 
-    fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
+    /// The getter of each field of a message, of `layout`, or of a nested
+    /// table, without one
+    fn getters(&self, writer: &mut CodeWriter, definition: &Definition, layout: Option<Layout>) {
         let name = &definition.name;
-        // Each getter reads with a buffer in the table's layout, a constant,
-        // rather than one that the reader holds, so that its reads compile
-        // for that layout's offset type where they're inlined
-        let buffer = if is_root {
-            format!("buffer := tafla.NewByteBuffer({READER}.bytes, {READER}.layout())")
-        } else {
-            format!("buffer := tafla.NewByteBuffer({READER}.bytes, tafla.TableLayout{{}})")
-        };
 
         for (index, field) in definition.fields.iter().enumerate() {
-            let offset = if is_root {
-                format!("buffer.RootOffset({index})")
-            } else {
-                format!("buffer.FieldOffset({READER}.position, {index})")
-            };
             let getter = exported(&field.name);
             let value_type = self.value_type(field.field_type);
 
@@ -469,7 +471,10 @@ impl<'a> Generator<'a> {
             writer.open(format!(
                 "func ({READER} {name}) {getter}() ({value_type}, error) {{"
             ));
-            writer.line(&buffer);
+            let offset = field_offset(layout, index);
+            if reads_with_buffer(&offset, field.field_type) {
+                writer.line(buffer_line(layout));
+            }
             find_field(writer, &offset, &zero_value(&value_type));
 
             match field.field_type {
@@ -694,6 +699,157 @@ impl<'a> Generator<'a> {
             writer.line(format!("return {STRUCT}"));
         }
         writer.close("}");
+    }
+
+    /// A message's or table's `Fields()`, which reads every field at once
+    /// into the struct of fields that writes it, in one function, rather
+    /// than through a getter's call for each field
+    fn fields_reader(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
+        let name = &definition.name;
+        let layout = match definition.kind {
+            Kind::Message(layout) => Some(layout),
+            Kind::Table | Kind::Struct(_) => None,
+        };
+        let fields_type = format!("{name}Fields");
+        let zero = format!("{fields_type}{{}}");
+
+        writer.blank();
+        writer.lines(&prose(&[
+            format!(
+                "Fields reads every field of {} at once, into the [{fields_type}]",
+                article(name)
+            ),
+            "that it's written from, as its getters read them, and its nested tables".to_owned(),
+            "and the items of its vectors as their Fields() reads them. Its strings,".to_owned(),
+            "and its arrays as [tafla.ArrayView.Slice] returns them, share the bytes.".to_owned(),
+            format!("It fails with a {DECODE_ERROR} if a field lies outside the bytes."),
+        ]));
+        writer.open(format!(
+            "func ({READER} {name}) Fields() ({fields_type}, error) {{"
+        ));
+        let offsets: Vec<String> = (0..definition.fields.len())
+            .map(|index| field_offset(layout, index))
+            .collect();
+        if definition
+            .fields
+            .iter()
+            .zip(&offsets)
+            .any(|(field, offset)| reads_with_buffer(offset, field.field_type))
+        {
+            writer.line(buffer_line(layout));
+        }
+        writer.line(format!("var fields {fields_type}"));
+
+        let mut declared_boolean = false;
+        for (index, (field, offset)) in definition.fields.iter().zip(&offsets).enumerate() {
+            writer.blank();
+            if index == 0 {
+                declare_read(writer, "position", offset, &zero);
+            } else {
+                assign_read(writer, "position", offset, &zero);
+            }
+            self.read_whole_field(writer, index, field, &zero, &mut declared_boolean);
+        }
+
+        writer.blank();
+        writer.line("return fields, nil");
+        writer.close("}");
+    }
+
+    /// The lines of `Fields()` that read field `index` at `position` into
+    /// its member of `fields`, returning `zero` and the error if it fails,
+    /// and declare `boolean` for the first bool, which `declared_boolean`
+    /// tracks
+    fn read_whole_field(
+        &self,
+        writer: &mut CodeWriter,
+        index: usize,
+        field: &Field,
+        zero: &str,
+        declared_boolean: &mut bool,
+    ) {
+        let member = format!("fields.{}", exported(&field.name));
+
+        match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => {
+                if !*declared_boolean {
+                    writer.line("var boolean uint8");
+                    *declared_boolean = true;
+                }
+                assign_read(writer, "boolean", "buffer.GetUint8(position)", zero);
+                writer.line(format!("{member} = boolean != 0"));
+            }
+            FieldType::Scalar(scalar) => {
+                let read = format!("buffer.Get{}(position)", method(scalar));
+                assign_read(writer, &member, &read, zero);
+            }
+            FieldType::Array(Scalar::Uint8) => {
+                assign_read(writer, &member, "buffer.GetUint8Array(position)", zero);
+            }
+            FieldType::Array(scalar) => {
+                let local = format!("array{index}");
+                let read = format!("buffer.Get{}Array(position)", method(scalar));
+                declare_read(writer, &local, &read, zero);
+                writer.line(format!("{member} = {local}.Slice()"));
+            }
+            FieldType::String => {
+                assign_read(writer, &member, "buffer.GetString(position)", zero);
+            }
+            FieldType::Struct(struct_index) => {
+                let size = self.schema.definition(struct_index).struct_layout().size;
+                let local = format!("struct{index}");
+                let read = format!("buffer.GetStruct(position, {size})");
+                declare_read(writer, &local, &read, zero);
+                let structure = &self.schema.definition(struct_index).name;
+                writer.line(format!("{member} = read{structure}({local})"));
+            }
+            FieldType::StructArray(struct_index) => {
+                let structure = self.schema.definition(struct_index);
+                let size = structure.struct_layout().size;
+                let local = format!("structs{index}");
+                let read = format!("buffer.GetStructArray(position, {size})");
+                declare_read(writer, &local, &read, zero);
+                writer.line(format!(
+                    "{member} = make([]{}, len({local})/{size})",
+                    structure.name
+                ));
+                writer.open(format!("for item := range {member} {{"));
+                writer.line(format!(
+                    "{member}[item] = read{}({local}[item*{size}:])",
+                    structure.name
+                ));
+                writer.close("}");
+            }
+            // In parentheses, since a composite literal in an if statement's
+            // header would start its block
+            FieldType::Table(table_index) => {
+                let table = &self.schema.definition(table_index).name;
+                let read =
+                    format!("({table}{{bytes: {READER}.bytes, position: position}}).Fields()");
+                assign_read(writer, &member, &read, zero);
+            }
+            // Each item is read in place, from its bytes and those after it
+            // in the message
+            FieldType::Vector(table_index) => {
+                let table = &self.schema.definition(table_index).name;
+                let local = format!("vector{index}");
+                declare_read(writer, &local, "buffer.GetVector(position)", zero);
+                writer.line(format!(
+                    "{member} = make([]{table}Fields, 0, {local}.Len())"
+                ));
+                writer.open(format!("for bytes, err := range {local}.ItemsInPlace() {{"));
+                return_on_error(writer, zero);
+                declare_read(
+                    writer,
+                    "item",
+                    &format!("({table}{{bytes: bytes}}).Fields()"),
+                    zero,
+                );
+                writer.line(format!("{member} = append({member}, item)"));
+                writer.close("}");
+            }
+        }
     }
 
     /// The struct of the values that write a message or table, with the
@@ -1150,10 +1306,134 @@ impl<'a> Generator<'a> {
     }
 }
 
+/// The expression of the offset of field `index` of a message, of `layout`,
+/// or of a nested table, without one: a call that returns its position and
+/// an error. Uint32 offsets, which nested tables have, are read with the
+/// runtime's `Uint32FieldOffset()`, which inlines, from the slot that follows
+/// the table's position or the message's header, and other messages' with
+/// the buffer's `RootOffset()`.
+fn field_offset(layout: Option<Layout>, index: usize) -> String {
+    match layout {
+        None => {
+            let slot = if index == 0 {
+                format!("{READER}.position")
+            } else {
+                format!("{READER}.position+{}", index * NESTED_OFFSET_SIZE)
+            };
+            format!("tafla.Uint32FieldOffset({READER}.bytes, {READER}.position, {slot})")
+        }
+        Some(layout) if layout.offset_type == OffsetType::Uint32 => {
+            let slots = usize::from(layout.sized) + usize::from(layout.version.is_some());
+            let slot = (slots + index) * NESTED_OFFSET_SIZE;
+            format!("tafla.Uint32FieldOffset({READER}.bytes, 0, {slot})")
+        }
+        Some(_) => format!("buffer.RootOffset({index})"),
+    }
+}
+
+/// Whether reading a field, whose offset `offset` reads, takes a buffer: to
+/// read the offset, or the field's value, which every field has but a nested
+/// table
+fn reads_with_buffer(offset: &str, field_type: FieldType) -> bool {
+    offset.starts_with("buffer.") || !matches!(field_type, FieldType::Table(_))
+}
+
+/// The line that creates the buffer that a message's or nested table's
+/// fields are read with, in its layout, a constant, rather than one that the
+/// reader holds, so that its reads compile for that layout's offset type
+/// where they're inlined
+fn buffer_line(layout: Option<Layout>) -> String {
+    match layout {
+        Some(_) => format!("buffer := tafla.NewByteBuffer({READER}.bytes, {READER}.layout())"),
+        None => format!("buffer := tafla.NewByteBuffer({READER}.bytes, tafla.TableLayout{{}})"),
+    }
+}
+
+/// Whether each definition is a message or table that `Fields()` reads
+/// whole: one whose nested tables have `Fields()` too, and whose vectors hold
+/// tables that allocate nothing when they're read whole, so that what
+/// reading it allocates stays in proportion to its bytes, however corrupted.
+/// An item could otherwise allocate an array, or a vector, that corrupted
+/// offsets lead every item to, as many times as there are items, and a
+/// table that holds itself, which only a vector can, could be read as deep
+/// as its bytes lead. A table that allocates nothing has only scalars,
+/// strings and arrays of bytes, which are read in place, structs and nested
+/// tables of the same, and no vectors, so no table that holds itself has
+/// `Fields()`, nor a table that holds one.
+fn readable_whole(schema: &Schema) -> Vec<bool> {
+    let tables = |definition: &Definition| {
+        definition
+            .fields
+            .iter()
+            .filter_map(|field| match field.field_type {
+                FieldType::Table(index) | FieldType::Vector(index) => Some(index),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    };
+    let components = strongly_connected_components(&schema.definitions, tables);
+
+    // A component completes after those that it reaches, so each table's
+    // nested tables and items come before it in the order of their
+    // components. Those that it lies in a component with don't, and are
+    // taken as neither, which they're not, since they hold it through a
+    // vector.
+    let count = schema.definitions.len();
+    let mut order: Vec<usize> = (0..count).collect();
+    order.sort_by_key(|&index| components[index]);
+
+    let mut allocates_nothing = vec![false; count];
+    let mut whole = vec![false; count];
+    for index in order {
+        let definition = schema.definition(index);
+        if definition.is_struct() {
+            continue;
+        }
+
+        allocates_nothing[index] = definition
+            .fields
+            .iter()
+            .all(|field| match field.field_type {
+                FieldType::Scalar(_)
+                | FieldType::String
+                | FieldType::Array(Scalar::Uint8)
+                | FieldType::Struct(_) => true,
+                FieldType::Table(nested) => allocates_nothing[nested],
+                FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => false,
+            });
+        whole[index] = definition
+            .fields
+            .iter()
+            .all(|field| match field.field_type {
+                FieldType::Table(nested) => whole[nested],
+                FieldType::Vector(item) => allocates_nothing[item],
+                _ => true,
+            });
+    }
+
+    whole
+}
+
 /// The lines that find a field's position from `offset`, a call that returns
 /// it and an error, returning `zero` and the error if it fails
 fn find_field(writer: &mut CodeWriter, offset: &str, zero: &str) {
     writer.line(format!("position, err := {offset}"));
+    return_on_error(writer, zero);
+}
+
+/// The lines that assign `value` and the error of `read`, a call that
+/// returns them, returning `zero` and the error if it fails
+fn assign_read(writer: &mut CodeWriter, value: &str, read: &str, zero: &str) {
+    writer.open(format!("if {value}, err = {read}; err != nil {{"));
+    writer.line(format!("return {zero}, err"));
+    writer.close("}");
+}
+
+/// The lines that declare `local`, of the value of `read`, a call that
+/// returns it and an error, returning `zero` and the error if it fails
+fn declare_read(writer: &mut CodeWriter, local: &str, read: &str, zero: &str) {
+    writer.line(format!("{local}, err := {read}"));
     return_on_error(writer, zero);
 }
 

@@ -30,6 +30,10 @@ first commits, for code built from its source before the release.
   builder of its own. They write the bytes that nested builders write, and
   the benchmarks' vector of 100 nested tables takes about 5.8 µs so, in 6
   allocations, rather than 10.3 µs and 204 from a builder per item.
+- `Uint32FieldOffset()` reads the offset of a field of a table whose offsets
+  are uint32s, as `ByteBuffer.FieldOffset()` does, in a function small enough
+  to inline, for the getters that tafla-gen generates, which know each
+  field's slot.
 
 ### Changed
 

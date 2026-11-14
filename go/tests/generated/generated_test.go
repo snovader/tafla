@@ -176,14 +176,20 @@ func write(fields reflect.Value) ([]byte, error) {
 }
 
 // readAll reads bytes as the message, every field through its getter, and
-// every item of the views of its vectors and arrays of structs
+// every item of the views of its vectors and arrays of structs, and fails
+// unless its Fields(), where it has one, reads the same
 func (m message) readAll(bytes []byte) (reflect.Value, error) {
 	reader, err := m.read(bytes)
 	if err != nil {
 		return reflect.Value{}, err
 	}
 
-	return readFields(reader, m.fields)
+	fields, err := readFields(reader, m.fields)
+	if wholeErr := checkWhole(reader, fields, err); wholeErr != nil {
+		return fields, wholeErr
+	}
+
+	return fields, err
 }
 
 // written draws a message's fields, and writes them, skipping a draw that's
