@@ -60,6 +60,10 @@ repository's first commits, for code built from its source before the release.
   in the API and its errors.
 - `ByteBuffer` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
+- `ByteBuffer` reads scalars, offsets and counts from its bytes through
+  `VarHandle`s, rather than through a wrapped `java.nio.ByteBuffer`, with
+  the same checks and `DecodeException`s. The benchmarks' hand-written read
+  of the vector of 100 nested tables takes 0.48 µs rather than 0.54.
 
 ### Removed
 
