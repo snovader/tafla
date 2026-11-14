@@ -129,14 +129,17 @@ tasks.register<JavaExec>("encodingReport") {
 jmh {
     jmhVersion = libs.versions.jmh
 
-    // Every codec of every benchmark runs in 3 forked JVMs, each of 5 warm-up and 5 measured
-    // iterations of 1 s. `--jmhArgs` overrides these, as in README.md's quick run.
+    // Every codec of every benchmark runs in 3 forked JVMs, each of 5 warm-up and 2 measured
+    // iterations of 1 s. The warm-up can't be shorter: some allocating codecs run a third faster
+    // in a JVM's first seconds than from its seventh, as README.md describes. A fork's fastest
+    // iteration is almost always one of its first two. `--jmhArgs` overrides these, as in
+    // README.md's quick run.
     benchmarkMode = listOf("avgt")
     timeUnit = "us"
     fork = 3
     warmupIterations = 5
     warmup = "1s"
-    iterations = 5
+    iterations = 2
     timeOnIteration = "1s"
 
     // A fixed heap, so that resizing it doesn't add to some iterations. msgpack-core uses
