@@ -111,6 +111,76 @@ VALUES: SearchStrategy[Any] = one_of(
 )
 
 
+class Int(int):
+    """An int of a subclass, which ``array()`` converts as an int"""
+
+
+class Float(float):
+    """A float of a subclass, which ``array()`` converts as a float"""
+
+
+class Doubled(list[Any]):
+    """A list whose items read as twice what it holds, as ``array()`` reads
+    them, through ``__getitem__()``, unlike an exact list's"""
+
+    @override
+    def __getitem__(self, index: Any) -> Any:
+        return 2 * super().__getitem__(index)
+
+
+class Tuple(tuple[Any, ...]):
+    """A tuple of a subclass"""
+
+
+# The limits of every array's elements and the integers beside them, and
+# integers beyond a double
+ELEMENT_LIMITS: list[int] = sorted(
+    {
+        limit + step
+        for bits in (8, 16, 32, 64)
+        for limit in (0, -(2 ** (bits - 1)), 2 ** (bits - 1) - 1, 2**bits - 1)
+        for step in (-1, 0, 1)
+    }
+    | {2**1024, -(2**1024)}
+)
+
+# Elements of the arrays that callers pass as sequences: integers, floats and
+# bools, which the native writer converts itself, their subclasses, objects
+# that array() converts through __index__(), and objects that it rejects
+ELEMENTS: SearchStrategy[Any] = one_of(
+    INTEGERS,
+    sampled_from(ELEMENT_LIMITS),
+    FLOATS,
+    booleans(),
+    builds(Int, integers(-300, 300)),
+    builds(Float, FLOATS),
+    builds(Index, one_of(none(), integers(-300, 300))),
+    none(),
+    just("x"),
+)
+
+SEQUENCES: list[Callable[[list[Any]], Any]] = [list, tuple, Doubled, Tuple]
+
+
+def sequences(elements: SearchStrategy[Any], max_size: int) -> SearchStrategy[Any]:
+    """Lists and tuples of elements, and their subclasses'"""
+    return tuples(sampled_from(SEQUENCES), lists(elements, max_size=max_size)).map(
+        lambda drawn: drawn[0](drawn[1])
+    )
+
+
+def convertible(kind: str) -> SearchStrategy[Any]:
+    """Elements that ``array()`` converts to an array of ``kind``"""
+    code = FORMATS[kind]
+    if code in "fd":
+        return one_of(FLOATS, integers(-(2**64), 2**64), booleans())
+
+    bits = 8 * struct.calcsize(code)
+    low = 0 if code.isupper() else -(2 ** (bits - 1))
+    high = low + 2**bits - 1
+    return one_of(integers(low, high), sampled_from([low, high]), booleans())
+
+
 @dataclass
 class Implementation:
     """The classes of one implementation, which never mix with the other's"""
@@ -349,6 +419,34 @@ class TestImplementations(unittest.TestCase):
         calls = draw.draw(lists(WRITES, max_size=10))
 
         self.assert_same_writes(arguments, fields, version, description, calls)
+
+    @given(data())
+    def test_write_the_same_arrays_from_lists_and_tuples_of_any_elements(
+        self, draw: DataObject
+    ) -> None:
+        """An exact list or tuple of ints, floats and bools is converted
+        natively, and any other as ``array()`` converts it: each writes the
+        same elements, or raises the same error having written nothing, for
+        every array type, after fields that pad it, and while a view of the
+        bytes is held"""
+        arguments = draw.draw(layout_arguments())
+        kind = draw.draw(sampled_from(sorted(FORMATS)))
+        values = draw.draw(
+            one_of(
+                sequences(convertible(kind), max_size=40),
+                sequences(one_of(convertible(kind), ELEMENTS), max_size=6),
+            )
+        )
+        leading = draw.draw(integers(0, 3))
+
+        calls: list[tuple[str, tuple[Any, ...]]] = [
+            ("set_uint8", (index, 1)) for index in range(leading)
+        ]
+        if draw.draw(booleans()):
+            calls.append(("hold_view", ()))
+        calls.append((f"set_{kind}_array", (leading, values)))
+
+        self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
 
     def test_write_what_appends_no_bytes_while_a_view_is_held(self) -> None:
         """Regressions: the native writer raised BufferError for any write
@@ -827,6 +925,7 @@ def _items_until_error(items: Iterator[object]) -> list[object]:
 
 ARRAYS: SearchStrategy[Any] = one_of(
     lists(one_of(integers(-130, 300), INTEGERS, FLOATS), max_size=4),
+    sequences(one_of(integers(-130, 300), ELEMENTS), max_size=4),
     builds(array, just("i"), lists(integers(-(2**31), 2**31 - 1), max_size=4)),
     builds(array, just("d"), lists(FLOATS, max_size=4)),
     builds(array, just("B"), lists(integers(0, 255), max_size=4)),

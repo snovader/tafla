@@ -111,6 +111,43 @@ class TestThreads(unittest.TestCase):
         self.assertEqual(run_together(write), [])
         self.assertGreater(len(writer.bytes()), 0)
 
+    @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python" and not sys._is_gil_enabled(),
+        "array() reads a list item by item, which another thread changes "
+        "between them on a free-threaded build",
+    )
+    def test_writes_a_list_as_it_is_at_once_while_another_thread_replaces_it(
+        self,
+    ) -> None:
+        """A list's elements are written as they are at one moment, whatever
+        another thread does to the list meanwhile: each state of this one
+        holds a single value, and a length that the value gives"""
+        values = [0.0] * 1000
+        stop = threading.Event()
+
+        def replace() -> None:
+            count = 0
+            while not stop.is_set():
+                count += 1
+                values[:] = [float(count)] * (1000 + count % 3)
+
+        def write() -> None:
+            for _ in range(200):
+                writer = TableWriter(1)
+                writer.set_float64_array(0, values)
+                buffer = ByteBuffer(bytes(writer.bytes()))
+                written = buffer.get_float64_array(buffer.root_offset(0))
+                assert len(set(written)) == 1, "the elements of two states"
+                assert len(written) == 1000 + int(written[0]) % 3, "another length"
+
+        replacer = threading.Thread(target=replace)
+        replacer.start()
+        try:
+            self.assertEqual(run_together(write), [])
+        finally:
+            stop.set()
+            replacer.join()
+
 
 if __name__ == "__main__":
     unittest.main()
