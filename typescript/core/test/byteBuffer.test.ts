@@ -1,7 +1,8 @@
 import { describe, expect, inject, test } from 'vitest';
-import { it } from '@fast-check/vitest';
+import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
-import { MAX_VALUES } from './conformance/arbitraries.ts';
+import { MAX_VALUES, SLICES, type Slice, sliceOf } from './conformance/arbitraries.ts';
+import type { OffsetType } from './conformance/description.ts';
 
 const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
@@ -135,5 +136,110 @@ describe('versioned tables', () => {
         expect(() => new TableBuilder(1, versioned)).toThrow(TypeError);
         // @ts-expect-error: The layout has no version slot
         expect(() => new TableBuilder(1, unversioned, 1)).toThrow(TypeError);
+    });
+});
+
+describe('strings', () => {
+    // What getString() must read: UTF-8 that a fatal decoder accepts, with a
+    // leading U+FEFF kept as part of the string
+    const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+    const encoder = new TextEncoder();
+
+    const OFFSET_TYPES = fc.constantFrom<OffsetType>('uint8', 'uint16', 'uint32');
+
+    // Lengths up to twice the longest string read a byte at a time, 32 bytes
+    const ASCII = fc
+        .string({ unit: 'binary-ascii', maxLength: 64, size: 'max' })
+        .map(string => encoder.encode(string));
+    const UTF8 = fc
+        .tuple(
+            fc.constantFrom('', '\uFEFF'),
+            fc.string({ unit: 'binary', maxLength: 32, size: 'max' })
+        )
+        .map(([start, string]) => encoder.encode(start + string));
+    const BYTES = fc.uint8Array({ maxLength: 64, size: 'max' });
+    const ASCII_AND_A_BYTE = fc
+        .tuple(ASCII, fc.nat(), fc.integer({ min: 0, max: 0xff }))
+        .map(([ascii, at, byte]) => {
+            const index = at % (ascii.length + 1);
+            return Uint8Array.of(...ascii.subarray(0, index), byte, ...ascii.subarray(index));
+        });
+
+    /**
+     * Reads `bytes` as the string field of a table of the offset type, in a
+     * slice of other bytes, which a read past the string would find
+     */
+    function readString(
+        bytes: Uint8Array,
+        offsetType: OffsetType = 'uint32',
+        slice: Slice = { byteOffset: 0, fill: 0x41 }
+    ): () => string {
+        const layout = TableLayout.create({ offsetType });
+        const builder = new TableBuilder(1, layout);
+        // A string is stored as an array of its bytes is
+        builder.setUint8Array(bytes);
+        const buffer = new ByteBuffer(sliceOf(builder.bytes(), slice), layout);
+        const position = buffer.rootOffset(0);
+
+        return () => buffer.getString(position);
+    }
+
+    /** Expects the read to return what the decoder returns, or to throw where it throws */
+    function expectDecoded(read: () => string, bytes: Uint8Array): void {
+        let expected: string;
+        try {
+            expected = decoder.decode(bytes);
+        } catch {
+            expect(read).toThrow(DecodeError);
+            expect(read).toThrow(expect.objectContaining({ cause: expect.any(TypeError) }));
+            return;
+        }
+
+        expect(read()).toBe(expected);
+    }
+
+    it.prop([fc.oneof(ASCII, UTF8, BYTES, ASCII_AND_A_BYTE), OFFSET_TYPES, SLICES])(
+        'should read any bytes as a fatal UTF-8 decoder reads them, or throw DecodeError where it throws',
+        (bytes, offsetType, slice) => {
+            expectDecoded(readString(bytes, offsetType, slice), bytes);
+        }
+    );
+
+    // Either side of the longest string read a byte at a time, 32 bytes
+    it.each([0, 1, 31, 32, 33, 64])(
+        'should read %i bytes of ASCII, or with a character of 2 bytes first or last, as UTF-8',
+        length => {
+            const ascii = 'tafla-0123456789'.repeat(4).slice(0, length);
+            const strings = [ascii];
+            if (length >= 2) {
+                strings.push(`é${ascii.slice(2)}`, `${ascii.slice(2)}é`);
+            }
+
+            for (const string of strings) {
+                const bytes = encoder.encode(string);
+                expect(bytes.length).toBe(length);
+                expect(readString(bytes)()).toBe(string);
+            }
+        }
+    );
+
+    it.each([1, 31, 32, 33, 64])(
+        'should throw DecodeError for %i bytes of ASCII but a lone continuation byte, first or last',
+        length => {
+            for (const index of [0, length - 1]) {
+                const bytes = new Uint8Array(length).fill(0x61);
+                bytes[index] = 0x80;
+
+                expect(readString(bytes)).toThrow(
+                    new DecodeError("The string at 4 isn't valid UTF-8")
+                );
+            }
+        }
+    );
+
+    it('should keep a leading U+FEFF and NUL bytes', () => {
+        for (const string of ['\uFEFFtafla', '\0', 'ta\0fla\0']) {
+            expect(readString(encoder.encode(string))()).toBe(string);
+        }
     });
 });

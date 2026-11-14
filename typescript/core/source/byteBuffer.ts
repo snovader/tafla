@@ -5,7 +5,7 @@ import {
     SIZEOF_32,
     SIZEOF_64
 } from './constants.ts';
-import { decode } from './encoding.ts';
+import { decode, decodeShortAscii } from './encoding.ts';
 import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
 import { TableLayout } from './layout.ts';
@@ -461,12 +461,26 @@ export class ByteBuffer {
     /** @throws {DecodeError} If the string isn't valid UTF-8. */
     getString(position: number): string {
         const length = this.#getSize(position);
-        const bytes = new Uint8Array(
-            this.#view.buffer,
-            this.#arrayOffset(position, length),
+        const byteOffset = this.#arrayOffset(position, length);
+
+        // A short ASCII string is read a byte at a time, within the range
+        // that #arrayOffset() checked, and any other by the fatal decoder.
+        // The loop is a function of its own, so that this one takes 173
+        // bytes of bytecode rather than 250. In Node 26 and 27, V8 inlines
+        // neither into a reader of other fields too, such as the comparison
+        // suite's record, which still inlines its other reads. This one then
+        // inlines #arrayOffset() and the loop, where the record used to
+        // inline this, at 135 bytes, and call #arrayOffset().
+        const ascii = decodeShortAscii(
+            this.#bytes,
+            position + this.#size,
             length
         );
+        if (ascii !== undefined) {
+            return ascii;
+        }
 
+        const bytes = new Uint8Array(this.#view.buffer, byteOffset, length);
         try {
             return decode(bytes);
         } catch (error) {
