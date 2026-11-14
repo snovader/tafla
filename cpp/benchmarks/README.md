@@ -96,7 +96,7 @@ comparison uses its counterpart:
   so a small table allocates nothing until it's written. Readers check the
   document's version, and read columns as `ArrayView`s, whose `as_span()`
   views them. The array of structs is written with `store_le()` into a vector, which the
-  builder owns through `set_struct_array()`, and read from
+  builder views through `set_struct_array()` until it writes the table, and read from
   `get_struct_array()`'s bytes with `load_le()`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `generated/tafla/`. A message's `serialize()` counts the table's length
