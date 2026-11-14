@@ -1,0 +1,76 @@
+name: Caches
+
+# Deletes the caches that no run will restore, so that the repository's 10 GB
+# of caches keep those that runs do, rather than evicting the least recently
+# used: the caches of closed pull requests, and on main, all but the newest of
+# each cache that a run saves anew under its commit, as C++'s ccache and
+# CodeQL's default setup do. The other workflows save caches only on main.
+
+on:
+  schedule:
+    # Daily at 03:41 UTC, off the hour that most scheduled workflows start
+    - cron: "41 3 * * *"
+
+  # A run of C++ on main saves each build's ccache
+  workflow_run:
+    workflows: [C++]
+    types: [completed]
+    branches: [main]
+
+  workflow_dispatch:
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Deletes caches
+      actions: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Delete the caches that no run will restore
+        run: |
+          caches=$(gh cache list --limit 1000 --json id,key,ref,createdAt)
+
+          # A pull request's caches serve only its own runs
+          closed=()
+          for number in $(jq -r '.[].ref | select(startswith("refs/pull/")) | split("/")[2]' <<< "$caches" | sort -un); do
+            if [[ "$(gh pr view "$number" --json state --jq .state)" != OPEN ]]; then
+              closed+=("$number")
+            fi
+          done
+
+          # The closed pull requests' caches, and of each of main's caches
+          # whose key ends with a commit's or a lock file's hash, and perhaps
+          # a run's ID, all but the newest, which the rest of the key restores
+          stale=$(jq -r '
+            ($ARGS.positional | map("refs/pull/\(.)/")) as $closed
+            | (
+                map(select(.ref as $ref | any($closed[]; . as $prefix | $ref | startswith($prefix)))),
+                (
+                  map(select(.ref == "refs/heads/main" and (.key | test("^(ccache|codeql)-"))))
+                  | group_by(.key | sub("-[0-9a-f]{40,64}(-[0-9]+)*$"; ""))
+                  | map(sort_by(.createdAt) | .[:-1][])
+                )
+              )
+            | .[].id
+          ' --args "${closed[@]}" <<< "$caches")
+
+          echo "Deleting $(wc -w <<< "$stale") caches"
+          for id in $stale; do
+            # A cache that another run evicted or deleted meanwhile is gone
+            # already
+            gh cache delete "$id" || echo "::warning::Couldn't delete cache $id"
+          done
