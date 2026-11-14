@@ -465,11 +465,7 @@ impl<'a> Generator<'a> {
             let value_type = self.value_type(field.field_type);
 
             writer.blank();
-            writer.lines(&go_doc(&getter_docs(
-                &getter,
-                &field.docs,
-                "if the field lies outside the bytes.",
-            )));
+            writer.lines(&go_doc(&getter_docs(&getter, field)));
             writer.open(format!(
                 "func ({READER} {name}) {getter}() ({value_type}, error) {{"
             ));
@@ -500,21 +496,14 @@ impl<'a> Generator<'a> {
                     writer.line("value.read(bytes)");
                     writer.line("return value, nil");
                 }
+                // The runtime returns no bytes and the zero vector with an
+                // error, so the view of them is the zero view
                 FieldType::StructArray(index) => {
-                    let structure = self.schema.definition(index);
-                    let size = structure.struct_layout().size;
+                    let size = self.schema.definition(index).struct_layout().size;
                     writer.line(format!(
                         "bytes, err := buffer.GetStructArray(position, {size})"
                     ));
-                    return_on_error(writer, "nil");
-                    writer.line(format!(
-                        "items := make([]{}, len(bytes)/{size})",
-                        structure.name
-                    ));
-                    writer.open("for index := range items {");
-                    writer.line(format!("items[index].read(bytes[index*{size}:])"));
-                    writer.close("}");
-                    writer.line("return items, nil");
+                    writer.line(format!("return {value_type}{{bytes: bytes}}, err"));
                 }
                 FieldType::Table(index) => {
                     let table = &self.schema.definition(index).name;
@@ -522,99 +511,13 @@ impl<'a> Generator<'a> {
                         "return {table}{{bytes: {READER}.bytes, position: position}}, nil"
                     ));
                 }
-                FieldType::Vector(index) => {
-                    let table = &self.schema.definition(index).name;
+                FieldType::Vector(_) => {
                     writer.line("vector, err := buffer.GetVector(position)");
-                    return_on_error(writer, "nil");
-                    writer.line(format!("items := make([]{table}, 0, vector.Len())"));
-                    // Each item is read in place, from its bytes and those
-                    // after it in the message
-                    writer.open("for bytes, err := range vector.ItemsInPlace() {");
-                    writer.open("if err != nil {");
-                    writer.line("return nil, err");
-                    writer.close("}");
-                    writer.line(format!("items = append(items, {table}{{bytes: bytes}})"));
-                    writer.close("}");
-                    writer.line("return items, nil");
+                    writer.line(format!("return {value_type}{{vector: vector}}, err"));
                 }
             }
             writer.close("}");
-
-            if matches!(
-                field.field_type,
-                FieldType::Vector(_) | FieldType::StructArray(_)
-            ) {
-                self.view_getter(writer, definition, field, &buffer, &offset);
-            }
         }
-    }
-
-    /// The getter of a view of a vector or an array of structs, which reads
-    /// each item when it's asked for, rather than all of them as the
-    /// field's own getter does. It finds the field as the field's getter
-    /// does, with `buffer`'s line and the `offset` it reads.
-    fn view_getter(
-        &self,
-        writer: &mut CodeWriter,
-        definition: &Definition,
-        field: &Field,
-        buffer: &str,
-        offset: &str,
-    ) {
-        let (view, errors) = match field.field_type {
-            FieldType::Vector(index) => (
-                format!("{}Vector", self.schema.definition(index).name),
-                "if the field, or the vector's count or the ends of its items, lie outside the bytes.",
-            ),
-            FieldType::StructArray(index) => (
-                format!("{}Array", self.schema.definition(index).name),
-                "if the field or its structs lie outside the bytes.",
-            ),
-            _ => unreachable!("only vectors and arrays of structs have views"),
-        };
-        let getter = exported(&field.name);
-        let view_getter = format!("{}View", pascal_case(&field.name));
-
-        let mut docs = field.docs.clone();
-        if !docs.is_empty() {
-            docs.push(String::new());
-        }
-        let lead = if docs.is_empty() {
-            format!("{view_getter} views")
-        } else {
-            "It views".to_owned()
-        };
-        docs.extend(wrap(&format!(
-            "{lead} the items of [{}.{getter}], reading each one when it's asked for. \
-             It fails with a {DECODE_ERROR} {errors}",
-            definition.name
-        )));
-
-        writer.blank();
-        writer.lines(&go_doc(&docs));
-        writer.open(format!(
-            "func ({READER} {}) {view_getter}() ({view}, error) {{",
-            definition.name
-        ));
-        writer.line(buffer);
-        find_field(writer, offset, &format!("{view}{{}}"));
-        match field.field_type {
-            FieldType::Vector(_) => {
-                writer.line("vector, err := buffer.GetVector(position)");
-                return_on_error(writer, &format!("{view}{{}}"));
-                writer.line(format!("return {view}{{vector: vector}}, nil"));
-            }
-            FieldType::StructArray(index) => {
-                let size = self.schema.definition(index).struct_layout().size;
-                writer.line(format!(
-                    "bytes, err := buffer.GetStructArray(position, {size})"
-                ));
-                return_on_error(writer, &format!("{view}{{}}"));
-                writer.line(format!("return {view}{{bytes: bytes}}, nil"));
-            }
-            _ => unreachable!("only vectors and arrays of structs have views"),
-        }
-        writer.close("}");
     }
 
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
@@ -1192,9 +1095,8 @@ impl<'a> Generator<'a> {
             FieldType::Struct(index) | FieldType::Table(index) => {
                 self.schema.definition(index).name.clone()
             }
-            FieldType::StructArray(index) | FieldType::Vector(index) => {
-                format!("[]{}", self.schema.definition(index).name)
-            }
+            FieldType::StructArray(index) => format!("{}Array", self.schema.definition(index).name),
+            FieldType::Vector(index) => format!("{}Vector", self.schema.definition(index).name),
         }
     }
 
@@ -1225,17 +1127,36 @@ fn return_on_error(writer: &mut CodeWriter, zero: &str) {
     writer.close("}");
 }
 
-/// The documentation of a getter: the field's own, and when it fails
-fn getter_docs(getter: &str, docs: &[String], condition: &str) -> Vec<String> {
-    let mut lines = docs.to_vec();
-    if lines.is_empty() {
-        lines.extend(wrap(&format!(
-            "{getter} fails with a {DECODE_ERROR} {condition}"
-        )));
-    } else {
+/// The documentation of a field's getter: the field's own, and what the
+/// getter returns and when it fails. The getter of a vector or an array
+/// of structs returns a view, which reads each item when it's asked for.
+fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
+    let (views, condition) = match field.field_type {
+        FieldType::Vector(_) => (
+            Some("the vector's items"),
+            "if the field, or the vector's count or the ends of its items, lie outside \
+             the bytes. An item fails with one when it's read if its own bytes are corrupt.",
+        ),
+        FieldType::StructArray(_) => (
+            Some("the array's structs"),
+            "if the field or its structs lie outside the bytes.",
+        ),
+        _ => (None, "if the field lies outside the bytes."),
+    };
+
+    let mut lines = field.docs.clone();
+    if !lines.is_empty() {
         lines.push(String::new());
-        lines.extend(wrap(&format!("It fails with a {DECODE_ERROR} {condition}")));
     }
+    let subject = if lines.is_empty() { getter } else { "It" };
+    let text = match views {
+        Some(items) => format!(
+            "{subject} views {items}, reading each one when it's asked for. It fails \
+             with a {DECODE_ERROR} {condition}"
+        ),
+        None => format!("{subject} fails with a {DECODE_ERROR} {condition}"),
+    };
+    lines.extend(wrap(&text));
     lines
 }
 

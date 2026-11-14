@@ -78,6 +78,13 @@ first commits, for code built from its source before the release.
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,
   as a vector item's do.
+- Generated Go getters of vectors and arrays of structs return the views
+  that read each item when it's asked for, a `<Table>Vector` or a
+  `<Struct>Array`, rather than a slice of every item, and the separate
+  `<Field>View()` getters are gone. So a corrupt item fails with the decode
+  error when it's read rather than when the getter is called. Collect a view
+  with its `All()` for every item at once. The Go comparison suite reads its
+  vector of 100 nested tables in 1 allocation rather than 2.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and

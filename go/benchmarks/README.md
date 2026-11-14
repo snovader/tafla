@@ -28,7 +28,7 @@ TypeScript generator, so the inputs are the same values, which its test
 checks against values that the TypeScript generator printed.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as float64s, rather than
 collecting items of its own, and `itemaccess/` holds them:
@@ -36,13 +36,11 @@ collecting items of its own, and `itemaccess/` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector.GetInPlace()` of the last item or `Vector.ItemsInPlace()`, and
   `GetStructArray()`'s bytes.
-- **tafla-gen** reads with the generated getters, `Items()`, which collect
-  the vector's items into a slice of readers first, and the array's structs
-  into a slice of structs.
-- **tafla-gen view** reads with the generated views, `ItemsView()`, whose
-  `Get(i)` reads one item and whose `All()` reads every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `Items()`, which return
+  views of the vector and of the array, whose `Get(i)` reads one item and
+  whose `All()` reads every item.
+- **tafla-gen A/A** reads with the generated getters again, an A/A pair that
+  shows the harness's noise.
 
 `go run ./cmd/encoding` prints each library's encoded sizes and what it does
 with a truncated document, as the other comparisons do. The comparison prints
@@ -106,9 +104,10 @@ comparison uses its counterpart:
   tafla's do. It takes the workloads' types, as the other codecs do, so it
   collects the generated fields of the vector's items and the generated
   structs of the array into a slice in each call, as the protobuf codecs
-  collect their messages. The generated getter of the vector collects its
-  items' readers into a slice, and the array of structs is read through its
-  view. Every suite has a copy of the schema; after changing them,
+  collect their messages. The generated getters of the vector and of the
+  array of structs return views, which read each item when it's asked for,
+  and the codec reads every item through their `All()`. Every suite has a
+  copy of the schema; after changing them,
   regenerate the code as `rust/gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `Builder`, which starts
   empty and doubles as it grows, and each table with the functions that

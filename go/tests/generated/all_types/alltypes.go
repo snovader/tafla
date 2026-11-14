@@ -416,43 +416,18 @@ func (t Nested) Outer() (Outer, error) {
 
 // A vector of tables that hold vectors of themselves
 //
-// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Nested) Trees() ([]Tree, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(2)
-	if err != nil {
-		return nil, err
-	}
-	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Tree, 0, vector.Len())
-	for bytes, err := range vector.ItemsInPlace() {
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, Tree{bytes: bytes})
-	}
-	return items, nil
-}
-
-// A vector of tables that hold vectors of themselves
-//
-// It views the items of [Nested.Trees], reading each one when it's asked for.
-// It fails with a [*tafla.DecodeError] if the field, or the vector's count or
-// the ends of its items, lie outside the bytes.
-func (t Nested) TreesView() (TreeVector, error) {
+// It views the vector's items, reading each one when it's asked for. It fails
+// with a [*tafla.DecodeError] if the field, or the vector's count or the ends
+// of its items, lie outside the bytes. An item fails with one when it's read if
+// its own bytes are corrupt.
+func (t Nested) Trees() (TreeVector, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(2)
 	if err != nil {
 		return TreeVector{}, err
 	}
 	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return TreeVector{}, err
-	}
-	return TreeVector{vector: vector}, nil
+	return TreeVector{vector: vector}, err
 }
 
 // NestedFields are the fields of a [Nested], to write.
@@ -620,42 +595,18 @@ func (t Tree) Value() (int32, error) {
 	return buffer.GetInt32(position)
 }
 
-// Children fails with a [*tafla.DecodeError] if the field lies outside the
-// bytes.
-func (t Tree) Children() ([]Tree, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
-	position, err := buffer.FieldOffset(t.position, 1)
-	if err != nil {
-		return nil, err
-	}
-	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Tree, 0, vector.Len())
-	for bytes, err := range vector.ItemsInPlace() {
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, Tree{bytes: bytes})
-	}
-	return items, nil
-}
-
-// ChildrenView views the items of [Tree.Children], reading each one when it's
-// asked for. It fails with a [*tafla.DecodeError] if the field, or the vector's
-// count or the ends of its items, lie outside the bytes.
-func (t Tree) ChildrenView() (TreeVector, error) {
+// Children views the vector's items, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its items, lie outside the bytes. An item fails with one when it's
+// read if its own bytes are corrupt.
+func (t Tree) Children() (TreeVector, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
 	position, err := buffer.FieldOffset(t.position, 1)
 	if err != nil {
 		return TreeVector{}, err
 	}
 	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return TreeVector{}, err
-	}
-	return TreeVector{vector: vector}, nil
+	return TreeVector{vector: vector}, err
 }
 
 // TreeFields are the fields of a [Tree], to write.
@@ -921,40 +872,17 @@ func (t Structs) Packed() (Packed, error) {
 
 // An array of structs of 7 bytes, aligned to 4
 //
-// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Structs) Documented() ([]Documented, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(1)
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := buffer.GetStructArray(position, 7)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Documented, len(bytes)/7)
-	for index := range items {
-		items[index].read(bytes[index*7:])
-	}
-	return items, nil
-}
-
-// An array of structs of 7 bytes, aligned to 4
-//
-// It views the items of [Structs.Documented], reading each one when it's asked
-// for. It fails with a [*tafla.DecodeError] if the field or its structs lie
-// outside the bytes.
-func (t Structs) DocumentedView() (DocumentedArray, error) {
+// It views the array's structs, reading each one when it's asked for. It fails
+// with a [*tafla.DecodeError] if the field or its structs lie outside the
+// bytes.
+func (t Structs) Documented() (DocumentedArray, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(1)
 	if err != nil {
 		return DocumentedArray{}, err
 	}
 	bytes, err := buffer.GetStructArray(position, 7)
-	if err != nil {
-		return DocumentedArray{}, err
-	}
-	return DocumentedArray{bytes: bytes}, nil
+	return DocumentedArray{bytes: bytes}, err
 }
 
 // A struct of structs
@@ -975,39 +903,17 @@ func (t Structs) Segment() (Segment, error) {
 	return value, nil
 }
 
-// Segments fails with a [*tafla.DecodeError] if the field lies outside the
+// Segments views the array's structs, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field or its structs lie outside the
 // bytes.
-func (t Structs) Segments() ([]Segment, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(3)
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := buffer.GetStructArray(position, 16)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Segment, len(bytes)/16)
-	for index := range items {
-		items[index].read(bytes[index*16:])
-	}
-	return items, nil
-}
-
-// SegmentsView views the items of [Structs.Segments], reading each one when
-// it's asked for. It fails with a [*tafla.DecodeError] if the field or its
-// structs lie outside the bytes.
-func (t Structs) SegmentsView() (SegmentArray, error) {
+func (t Structs) Segments() (SegmentArray, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(3)
 	if err != nil {
 		return SegmentArray{}, err
 	}
 	bytes, err := buffer.GetStructArray(position, 16)
-	if err != nil {
-		return SegmentArray{}, err
-	}
-	return SegmentArray{bytes: bytes}, nil
+	return SegmentArray{bytes: bytes}, err
 }
 
 // A table nested in the message, which holds structs too
@@ -1097,38 +1003,17 @@ func (t Path) Start() (Point, error) {
 	return value, nil
 }
 
-// Points fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Path) Points() ([]Point, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
-	position, err := buffer.FieldOffset(t.position, 1)
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := buffer.GetStructArray(position, 8)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Point, len(bytes)/8)
-	for index := range items {
-		items[index].read(bytes[index*8:])
-	}
-	return items, nil
-}
-
-// PointsView views the items of [Path.Points], reading each one when it's asked
-// for. It fails with a [*tafla.DecodeError] if the field or its structs lie
-// outside the bytes.
-func (t Path) PointsView() (PointArray, error) {
+// Points views the array's structs, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field or its structs lie outside the
+// bytes.
+func (t Path) Points() (PointArray, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
 	position, err := buffer.FieldOffset(t.position, 1)
 	if err != nil {
 		return PointArray{}, err
 	}
 	bytes, err := buffer.GetStructArray(position, 8)
-	if err != nil {
-		return PointArray{}, err
-	}
-	return PointArray{bytes: bytes}, nil
+	return PointArray{bytes: bytes}, err
 }
 
 // PathFields are the fields of a [Path], to write.

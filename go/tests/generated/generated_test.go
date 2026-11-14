@@ -5,7 +5,7 @@ package generated_test
 // what it writes wherever its bytes lie, writes the tables that TableBuilder
 // writes by hand, or fails as it fails, rejects other versions, and reads
 // corrupted and arbitrary bytes as values or decode errors, through its
-// views as through its getters, without panicking.
+// getters and the views that they return, without panicking.
 
 import (
 	"bytes"
@@ -174,7 +174,7 @@ func write(fields reflect.Value) ([]byte, error) {
 }
 
 // readAll reads bytes as the message, every field through its getter, and
-// every vector and array of structs through its view too
+// every item of the views of its vectors and arrays of structs
 func (m message) readAll(bytes []byte) (reflect.Value, error) {
 	reader, err := m.read(bytes)
 	if err != nil {
@@ -332,7 +332,7 @@ func TestEveryVersionedMessageRejectsOtherVersionsWithUnsupportedVersion(t *test
 }
 
 // Overwritten bytes read as values, which may be others than those written,
-// or fail with the decode error, through the getters and the views
+// or fail with the decode error, through the getters and their views
 func TestEveryCorruptedMessageReadsAsValuesOrDecodeErrors(t *testing.T) {
 	for _, message := range messages {
 		t.Run(message.name, func(t *testing.T) {
@@ -426,6 +426,46 @@ func TestAnItemIsReadInPlacePastItsEndWithinTheBytesOfItsItemList(t *testing.T) 
 	read, err := readFields(reflect.ValueOf(shapes.NewItemList(written)), reflect.TypeFor[shapes.ItemListFields]())
 	if err != nil || !sameValues(read, reflect.ValueOf(fields)) {
 		t.Fatalf("read %+v, %v", read, err)
+	}
+}
+
+// The getter of a vector returns its view, which reads each item when it's
+// asked for, so an item whose bytes are corrupt fails when it's read, by
+// index or by iterating, rather than when the getter is called, and the
+// other items read as they were written
+func TestACorruptItemFailsWhenItsReadRatherThanWhenTheGetterIsCalled(t *testing.T) {
+	first := shapes.ItemFields{Value: 1.5, Pair: shapes.PairFields{First: 2.5, Second: 3.5}}
+	second := shapes.ItemFields{Value: 4.5, Pair: shapes.PairFields{First: 5.5, Second: 6.5}}
+	written := must(shapes.ItemListFields{Items: []shapes.ItemFields{first, second}}.MarshalBinary())
+
+	// The vector at 4 holds its count and the items' ends, 40 and 68, from
+	// its position. An end of 20 ends the second item before it starts.
+	if !bytes.Equal(written[8:16], []byte{40, 0, 0, 0, 68, 0, 0, 0}) {
+		t.Fatalf("the items end at % x", written[8:16])
+	}
+	copy(written[12:16], []byte{20, 0, 0, 0})
+
+	items, err := shapes.NewItemList(written).Items()
+	if err != nil || items.Len() != 2 {
+		t.Fatalf("a view of %d items, %v", items.Len(), err)
+	}
+
+	read, err := readFields(reflect.ValueOf(must(items.Get(0))), reflect.TypeFor[shapes.ItemFields]())
+	if err != nil || !sameValues(read, reflect.ValueOf(first)) {
+		t.Fatalf("read %+v, %v", read, err)
+	}
+
+	expected := &tafla.DecodeError{Kind: tafla.ItemEndsBeforeStart, Position: 44, End: 24}
+	if _, err := items.Get(1); !sameError(err, expected) {
+		t.Fatalf("%v rather than %v", err, expected)
+	}
+
+	var errs []error
+	for _, err := range items.All() {
+		errs = append(errs, err)
+	}
+	if len(errs) != 2 || errs[0] != nil || !sameError(errs[1], expected) {
+		t.Fatalf("iterated with %v rather than nil and %v", errs, expected)
 	}
 }
 
