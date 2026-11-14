@@ -162,6 +162,11 @@ first commits, for code built from its source before the release.
   `<field>_view()` is removed. The view's `to_vector()` reads every item, as
   the getter did. A corrupt item of a vector fails when it's read, rather than
   when the getter is called.
+- Generated C++ getters are `TAFLA_ALWAYS_INLINE`, as the runtime's getters
+  are, and the getter of a nested table reads it through the runtime's
+  `ByteBuffer::get_table()`, so it throws a `tafla::DecodeError` when the
+  table's offset leads past the bytes, rather than returning a reader whose
+  reads all fail.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - Generated Java getters of vectors and arrays of structs return their views,

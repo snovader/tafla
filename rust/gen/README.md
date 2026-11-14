@@ -462,6 +462,8 @@ structs view their strings, arrays and items as `std::string_view`s and
 a message holds the bytes from the table's start, 16 bytes on a 64-bit host,
 and reads its offsets at constant positions from there, so the positions of
 its decode errors count from the table's start too, as a vector item's do.
+Its parent's getter throws a `tafla::DecodeError` if the table's offset leads
+past the bytes, through the runtime's `ByteBuffer::get_table()`.
 It also has a default constructor, of no bytes, whose getters throw a
 `tafla::DecodeError`, so that `to_vector()` of a vector's view can size its
 `std::vector` before reading the items into it.

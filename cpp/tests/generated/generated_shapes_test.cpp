@@ -275,6 +275,32 @@ DecodeError decode_error_of(Read read) {
     throw std::logic_error("The read didn't fail");
 }
 
+/// The getter of a table nested in a field throws the decode error when the
+/// table's offset leads past the bytes, rather than returning a reader whose
+/// reads would all fail
+TEST(GeneratedShapes, AGetterOfATableNestedPastTheBytesThrows) {
+    const std::vector<std::uint32_t> keys{1, 2, 3};
+    const std::vector<float> a{0.5F, 1.5F, 2.5F};
+    const std::vector<float> b{2.5F, 3.5F, 4.5F};
+    auto bytes =
+        shapes::DocumentFields{.x = 1, .y = 2, .name = "a", .columns = {.base = 0, .keys = keys, .a = a, .b = b}}
+            .serialize()
+            .to_vector();
+
+    // The columns' offset, the document's last, after its length, version and
+    // three other offsets. `at()` checks that the bytes hold it, so that GCC
+    // sees no path that writes through the null data of empty bytes
+    const auto past = static_cast<std::uint32_t>(bytes.size() + 1);
+    store_le(&bytes.at(5 * 4), past);
+
+    const shapes::Document document(bytes);
+    EXPECT_EQ(document.x(), 1.0);
+    const auto error = decode_error_of([&] { static_cast<void>(document.columns()); });
+    EXPECT_EQ(error.kind(), DecodeError::Kind::out_of_range);
+    EXPECT_EQ(error.position(), past);
+    EXPECT_EQ(error.available(), bytes.size());
+}
+
 /// A reader of a table nested in a field reads it from the table's start, so
 /// its decode errors report positions from there, as a vector item's do, and
 /// as a `ByteBuffer` of the table's bytes reports them

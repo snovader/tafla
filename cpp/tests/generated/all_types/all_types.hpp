@@ -284,37 +284,37 @@ public:
     explicit constexpr Scalars(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::int8_t int8() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int8_t int8() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t uint8() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t uint8() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::int16_t int16() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int16_t int16() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint16_t uint16() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint16_t uint16() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::int32_t int32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int32_t int32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t uint32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t uint32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::int64_t int64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int64_t int64() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint64_t uint64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint64_t uint64() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] float float32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE float float32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] double float64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE double float64() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] bool bool_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE bool bool_() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -358,34 +358,34 @@ public:
     explicit constexpr Arrays(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::int8_t> int8() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int8_t> int8() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::span<const std::uint8_t> uint8() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::span<const std::uint8_t> uint8() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::int16_t> int16() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int16_t> int16() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint16_t> uint16() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> uint16() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::int32_t> int32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int32_t> int32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint32_t> uint32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint32_t> uint32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::int64_t> int64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int64_t> int64() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<std::uint64_t> uint64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint64_t> uint64() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<float> float32() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<float> float32() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<double> float64() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<double> float64() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -434,10 +434,10 @@ public:
     constexpr Inner() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view name() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<double> values() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<double> values() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -474,10 +474,10 @@ public:
     constexpr Outer() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint32_t count() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t count() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Inner inner() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Inner inner() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -512,14 +512,14 @@ public:
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
-    [[nodiscard]] std::string_view label() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view label() const;
 
     /**
      * The first of three levels of tables
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
-    [[nodiscard]] Outer outer() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Outer outer() const;
 
     /**
      * A vector of tables that hold vectors of themselves
@@ -528,7 +528,7 @@ public:
      * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
      * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] TreeVector trees() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE TreeVector trees() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -577,14 +577,14 @@ public:
     constexpr Tree() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::int32_t value() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int32_t value() const;
 
     /**
      * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
      * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
      * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] TreeVector children() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE TreeVector children() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -622,22 +622,22 @@ public:
     constexpr Keywords() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t class_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t class_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t default_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t default_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t in() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t in() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t match() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t match() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t self() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t self() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::string_view type() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view type() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -672,7 +672,7 @@ public:
     explicit constexpr Reserved(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Keywords keywords() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Keywords keywords() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -712,13 +712,13 @@ public:
     constexpr Path() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Point start() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Point start() const;
 
     /**
      * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
      * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] PointArray points() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE PointArray points() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -756,7 +756,7 @@ public:
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
-    [[nodiscard]] Packed packed() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Packed packed() const;
 
     /**
      * An array of structs of 7 bytes, aligned to 4
@@ -764,27 +764,27 @@ public:
      * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
      * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] DocumentedArray documented() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE DocumentedArray documented() const;
 
     /**
      * A struct of structs
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
-    [[nodiscard]] Segment segment() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Segment segment() const;
 
     /**
      * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
      * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] SegmentArray segments() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE SegmentArray segments() const;
 
     /**
      * A table nested in the message, which holds structs too
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
-    [[nodiscard]] Path path() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Path path() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1092,7 +1092,7 @@ inline std::uint32_t Outer::count() const {
 inline Inner Outer::inner() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
-    return Inner(bytes_, position);
+    return Inner(buffer.get_table(position), 0);
 }
 
 inline void OuterFields::size(::tafla::TableSizer& sizer_) const {
@@ -1120,7 +1120,7 @@ inline std::string_view Nested::label() const {
 inline Outer Nested::outer() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(1);
-    return Outer(bytes_, position);
+    return Outer(buffer.get_table(position), 0);
 }
 
 inline TreeVector Nested::trees() const {
@@ -1269,7 +1269,7 @@ inline void KeywordsFields::write(::tafla::TableWriter& writer_) const {
 inline Keywords Reserved::keywords() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
-    return Keywords(bytes_, position);
+    return Keywords(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes ReservedFields::serialize() const {
@@ -1349,7 +1349,7 @@ inline SegmentArray Structs::segments() const {
 inline Path Structs::path() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(4);
-    return Path(bytes_, position);
+    return Path(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes StructsFields::serialize() const {
