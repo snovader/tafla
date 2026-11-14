@@ -24,9 +24,24 @@ bench = false
 name = "allocation"
 bench = false
 
+[[bin]]
+name = "builder_comparison"
+bench = false
+required-features = ["prototype"]
+
+[[bin]]
+name = "builder_allocation"
+bench = false
+required-features = ["prototype"]
+
 [[bench]]
 name = "comparison"
 harness = false
+
+[features]
+# The prototype of a builder that writes each field when it's set, which the
+# builder_comparison and builder_allocation binaries compare with TableBuilder
+prototype = ["tafla/prototype"]
 
 [dependencies]
 tafla = { path = "../core" }

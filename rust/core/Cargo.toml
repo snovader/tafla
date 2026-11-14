@@ -11,6 +11,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# A prototype of a builder that writes each field when it's set, beside
+# TableBuilder, for the evaluation that its draft pull request describes
+prototype = []
+
 [dev-dependencies]
 # Without forking test cases into processes or timing them out, which the
 # tests don't use
