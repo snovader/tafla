@@ -5,6 +5,7 @@ package codecs_test
 // again before timing them
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
@@ -40,6 +41,12 @@ func TestEveryCodecReadsBackWhatItWrote(t *testing.T) {
 				}
 			}
 
+			if codec, ok := codec.(codecs.DocumentIntoCodec); ok {
+				for _, document := range documents {
+					checkInto(t, codec, document)
+				}
+			}
+
 			if codec, ok := codec.(codecs.ListCodec); ok {
 				check(t, "vector of nested tables", list, codec.SerializeList, codec.DeserializeList, workloads.List.Same)
 			}
@@ -52,6 +59,35 @@ func TestEveryCodecReadsBackWhatItWrote(t *testing.T) {
 				check(t, "fixed-size record", workloads.TheSample, codec.SerializeSample, codec.DeserializeSample, workloads.Sample.Same)
 			}
 		})
+	}
+}
+
+// checkInto checks that a codec writes the document into the start of the
+// bytes it's given, into their capacity when it has room and into new bytes
+// otherwise, as it writes it into new bytes, and reads it back
+func checkInto(t *testing.T, codec codecs.DocumentIntoCodec, document workloads.Document) {
+	t.Helper()
+
+	written, err := codec.SerializeDocumentInto(document, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, room := range []int{len(written) - 1, len(written), len(written) + 8} {
+		reused := make([]byte, 5, room)
+		into, err := codec.SerializeDocumentInto(document, reused)
+		if err != nil || !bytes.Equal(into, written) {
+			t.Fatalf("wrote % x, %v into bytes of %d", into[:min(len(into), 16)], err, room)
+		}
+		if inPlace := &into[0] == &reused[0]; inPlace != (room >= len(written)) {
+			t.Errorf("wrote into the bytes of %d: %v, for %d", room, inPlace, len(written))
+		}
+	}
+
+	if reader, ok := codec.(codecs.DocumentCodec); ok {
+		check(t, "document written into bytes", document, func(document workloads.Document) ([]byte, error) {
+			return codec.SerializeDocumentInto(document, make([]byte, 0, len(written)))
+		}, reader.DeserializeDocument, workloads.Document.Same)
 	}
 }
 

@@ -76,6 +76,15 @@ measurable. The others don't keep a count for each nested table, so the
 contract doesn't promise it. Hand-written tables use `TableBuilder`, which
 checks every field.
 
+The generated code writes a table of fields whose sizes the schema fixes
+whole, at positions that it works out: a nested one from its bytes, which
+the sizer's `add_table_bytes()` adds and the writer's `copy_table()` copies,
+and a message of such fields, and a string after them, into the bytes that
+`TableWriter::table_bytes()` or `versioned_table_bytes()` returns with its
+header, without a sizer and a writer. Like Go's `AppendTable()`, these are
+for the generated code, outside the compatibility promise of the rest of
+the API, and may change with the generator.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field
@@ -122,6 +131,34 @@ repository's conformance suite, which covers the whole format.
   nested as bytes was written into an allocation of its own and is copied,
   and so is a builder with a header or another offset type than its
   parent's.
+- **Record nested tables in place.** `set_table_with()` and
+  `set_vector_with()` record a nested table, or each item of a vector of
+  them, straight among the builder's own fields, rather than from a builder
+  of their own: a closure sets the fields on the `InPlaceTable` that it's
+  given, whose setters are the builder's. The builder is borrowed meanwhile,
+  so only the `InPlaceTable` sets fields. They write the bytes that nested
+  builders write, and leave the builder as it was if the closure returns an
+  error, leaves fields unset or panics. A table nested from a builder or
+  bytes, with `set_table()` and `set_vector()`, is still what a table built
+  elsewhere, or reused, needs.
+
+  ```rust
+  # use tafla::{BuildError, TableBuilder, TableLayout};
+  let items = [(1.0_f32, [2.0_f32, 3.0]), (4.0, [5.0, 6.0])];
+
+  // Items of a float32 and a nested table of two
+  let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+  builder.set_vector_with(items.len(), 2, |index, item| {
+      let (value, pair) = items[index];
+      item.set_f32(value)?;
+      item.set_table_with(2, |nested| {
+          nested.set_f32(pair[0])?;
+          nested.set_f32(pair[1])
+      })
+  })?;
+  let bytes = builder.to_bytes()?;
+  # Ok::<(), BuildError>(())
+  ```
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
   `ArrayView`, which reads elements from the bytes at any alignment and in
   any host byte order. `as_slice()` returns them as a slice when the host is
@@ -156,9 +193,12 @@ its README describes. Its fastest samples, on an Apple M2 Pro:
   `i64` and a 16-byte string took 77 ns to write, including allocating the
   builder's record of fields and the table, and 13 ns to read.
 - **Each nested builder allocates.** A vector of 100 tables that each nest
-  another took 8.8 µs to write, 2.5 to 6.2 times as long as flatbuffers,
-  rmp-serde and prost, which took 1.4 to 3.5 µs: each of its 200 tables is a
-  builder, which allocates its record of fields. It took 0.28 µs to read.
+  another took 9.0 µs to write, 2.5 to 6.4 times as long as flatbuffers,
+  rmp-serde and prost, which took 1.4 µs: each of its 200 tables is a
+  builder, which allocates its record of fields. It took 0.30 µs to read.
+  Recorded in place with `set_vector_with()` and `set_table_with()`, it took
+  4.4 µs, in 4 allocations rather than 208, against 8.8 µs from a builder
+  per item and 3.5 µs through flatbuffers in the same runs.
 
 ## Conversions
 

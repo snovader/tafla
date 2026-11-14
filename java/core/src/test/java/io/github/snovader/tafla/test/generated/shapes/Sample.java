@@ -63,6 +63,15 @@ public record Sample(long key, float a, float b) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Sample} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Sample readUnchecked(ByteBuffer view, int offset) {
         return new Sample(
             Integer.toUnsignedLong(view.getInt(offset)),
             view.getFloat(offset + 4),
@@ -87,10 +96,18 @@ public record Sample(long key, float a, float b) {
         return bytes;
     }
 
-    /** Writes the {@code Sample} at {@code offset} in {@code bytes}, which must hold it */
-    public void write(byte[] bytes, int offset) {
+    /**
+     * Writes a {@code Sample} of these values at {@code offset} in {@code bytes}, which must hold it,
+     * without creating one
+     */
+    public static void write(byte[] bytes, int offset, long key, float a, float b) {
         INT32.set(bytes, offset, (int) key);
         FLOAT32.set(bytes, offset + 4, a);
         FLOAT32.set(bytes, offset + 8, b);
+    }
+
+    /** Writes the {@code Sample} at {@code offset} in {@code bytes}, which must hold it */
+    public void write(byte[] bytes, int offset) {
+        write(bytes, offset, key, a, b);
     }
 }

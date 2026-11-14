@@ -53,7 +53,15 @@ class FixedFields:
     pass a C ``ssize_t``, as ``struct`` does.
     """
 
-    __slots__ = ("_fields", "_formats", "_packers", "_readers", "_string")
+    __slots__ = (
+        "_fields",
+        "_formats",
+        "_header",
+        "_layout",
+        "_packers",
+        "_readers",
+        "_string",
+    )
 
     def __init__(
         self,
@@ -96,6 +104,11 @@ class FixedFields:
         self._packers = cast(tuple[Packer, ...], tuple(packers))
         self._readers = cast(tuple[Reader, ...], tuple(readers))
 
+        # A message's layout, which TableWriter.write_fields() and
+        # ByteBuffer.read_fields() write and read its header in
+        self._layout = layout
+        self._header = None if layout is None else _header(layout)
+
     def __describe(
         self,
         size: OffsetSize,
@@ -135,6 +148,20 @@ class FixedFields:
         arguments.extend(value_arguments)
 
         return position
+
+
+# What TableWriter.write_fields() and ByteBuffer.read_fields() read of a
+# message's layout: its offset size, the Struct of its header's slots, the
+# length's and then the version's, and whether it has each
+type Header = tuple[OffsetSize, Struct, bool, bool]
+
+
+def _header(layout: TableLayout) -> Header:
+    size = layout.offset_size()
+    sized, versioned = layout.sized(), layout.versioned()
+    slots = Struct("<" + _OFFSET_CODES[size] * (sized + versioned))
+
+    return size, slots, sized, versioned
 
 
 def _packer(struct: Struct, arguments: list[int | None]) -> Packer:
