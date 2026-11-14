@@ -633,12 +633,24 @@ impl TableWriter {
     /// The number of zeros that the pure-Python writer appends for `slots`
     /// bytes of slots: a tuple's item, of zeros by their number up to 64,
     /// which a negative number indexes from its end, and `bytes(slots)`
-    /// beyond. Only a count of fields outside the contract, which is never
-    /// negative, takes another than `slots`, so that the writers' bytes and
-    /// errors agree. Slots that are longer than the offset type addresses
-    /// raise `ValueError`, as the table that they start is too long.
+    /// beyond, unless they're longer than the offset type addresses, which
+    /// raises `ValueError`, as the table that they start is too long. Only a
+    /// count of fields outside the contract, which is never negative, takes
+    /// another than `slots`, so that the writers' bytes and errors agree.
+    #[inline]
     fn zeros(&self, slots: &Int<'_>) -> PyResult<usize> {
-        const TUPLE: i128 = 16 * 4 + 1;
+        // The tuple's, which every offset type addresses, as the pure-Python
+        // writer appends them without a check
+        if let Int::Small(slots @ 0..ZEROS_TUPLE) = *slots {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            return Ok(slots as usize);
+        }
+        self.zeros_beyond(slots)
+    }
+
+    /// `zeros()` for slots that the tuple's zeros don't hold
+    #[cold]
+    fn zeros_beyond(&self, slots: &Int<'_>) -> PyResult<usize> {
         const BEYOND: &str = "cannot fit 'int' into an index-sized integer";
 
         if Int::from(self.shape.max_length()).lt(slots.clone())? {
@@ -650,7 +662,11 @@ impl TableWriter {
             Int::Small(slots) if isize::try_from(slots).is_ok() => slots,
             _ => return Err(PyIndexError::new_err(BEYOND)),
         };
-        let count = if slots < 0 { TUPLE + slots } else { slots };
+        let count = if slots < 0 {
+            ZEROS_TUPLE + slots
+        } else {
+            slots
+        };
         usize::try_from(count).map_err(|_| PyIndexError::new_err("tuple index out of range"))
     }
 
@@ -750,7 +766,12 @@ impl TableWriter {
         }
 
         self.data.replace_from(start, packed)?;
-        self.data.extend_from_slice(encoded)?;
+        // Only a string's bytes follow the fields. Appending none for every
+        // table made set_vector_tables() of 100 tables without strings 6%
+        // slower.
+        if !encoded.is_empty() {
+            self.data.extend_from_slice(encoded)?;
+        }
 
         Ok(true)
     }
@@ -957,6 +978,10 @@ fn pack_message<'py>(
 
     Ok(fits.then_some(bytes))
 }
+
+/// The length of the pure-Python writer's tuple of zeros by their number,
+/// which holds the slots of a table of up to 16 uint32 fields
+const ZEROS_TUPLE: i128 = 16 * 4 + 1;
 
 /// The little-endian bytes of a value that fits in its offset type, the
 /// first of which a slot holds
