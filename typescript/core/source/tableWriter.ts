@@ -82,11 +82,7 @@ export class TableSizer {
      */
     byteLength(): number {
         const length = this.#position;
-        if (!(length <= maxLength(this.#size))) {
-            throw new RangeError(
-                `The table's fields make it ${length} bytes, too long for ${this.#layout.offsetType()} offsets`
-            );
-        }
+        assertAddressable(length, this.#layout);
 
         return length;
     }
@@ -284,6 +280,20 @@ export class TableSizer {
     }
 
     /**
+     * Adds `count` nested tables of `byteLength` bytes each, whose fields'
+     * sizes the schema fixes, which the writer's caller writes whole: a
+     * field's table, after `addTable()`, or a vector's items, after
+     * `addVector()`. It takes the place of each table's `startTable()`,
+     * adders and `endTable()`.
+     *
+     * It's for the code that tafla-gen generates, which knows each such
+     * table's length, and may change with it.
+     */
+    addTableBytes(count: number, byteLength: number): void {
+        this.#position += count * byteLength;
+    }
+
+    /**
      * Adds an array of `count` elements of `size` bytes, padded so that they
      * are aligned after the count
      */
@@ -388,6 +398,51 @@ export class TableWriter {
     }
 
     /**
+     * Returns bytes for a table of `fields` fields in `layout`, which has no
+     * version slot, `length` bytes long, with its header written: new bytes,
+     * or the start of `bytes`. The caller writes every other byte, since
+     * `bytes` needn't be zero: each field's offset, and the field.
+     *
+     * It's for the code that tafla-gen generates, which writes a message of
+     * fields whose sizes the schema fixes, and a string after them, at
+     * positions that it works out, without a sizer and a writer. It may
+     * change with the generator.
+     *
+     * @throws {TypeError} If the layout has a version slot.
+     * @throws {RangeError} As `TableSizer`'s constructor and its `writer()`
+     * throw: if `fields` isn't a non-negative integer, the header alone is
+     * longer than the layout addresses, `length` is longer than it addresses,
+     * or longer than `bytes`, before writing any of them.
+     */
+    static tableBytes(
+        fields: number,
+        layout: TableLayout<false>,
+        length: number,
+        bytes?: Uint8Array
+    ): Uint8Array {
+        return newTableBytes(fields, layout, undefined, length, bytes);
+    }
+
+    /**
+     * Returns bytes for a table of `fields` fields in `layout`, `length` bytes
+     * long, with its header written, `version` included, as `tableBytes()`
+     * does for a layout without a version slot.
+     *
+     * @throws {TypeError} If the layout has no version slot.
+     * @throws {RangeError} As `tableBytes()` throws, and if `version` isn't an
+     * integer that fits in the layout's offset type.
+     */
+    static versionedTableBytes(
+        fields: number,
+        layout: TableLayout<true>,
+        version: number,
+        length: number,
+        bytes?: Uint8Array
+    ): Uint8Array {
+        return newTableBytes(fields, layout, version, length, bytes);
+    }
+
+    /**
      * Writes the header of a table of `fields` fields into `bytes`, which
      * must be as long as the table, as `TableSizer.writer()` makes them. They
      * needn't be zero: the writer writes every byte of the table, padding
@@ -425,15 +480,7 @@ export class TableWriter {
         this.#slots = headerSize;
         this.#position = headerSize + fields * size;
 
-        let slot = 0;
-        if (layout.sized()) {
-            this.#setLength(slot, bytes.length);
-            slot += size;
-        }
-
-        if (version !== undefined) {
-            this.#setLength(slot, version);
-        }
+        writeHeader(bytes, layout, version);
     }
 
     /**
@@ -736,6 +783,99 @@ export class TableWriter {
         );
     }
 
+    // The writer's caller writes the fields that the next three reserve,
+    // whose sizes the schema fixes, into target() at the position that each
+    // returns, as the code that tafla-gen generates writes them, at
+    // positions that it works out. They may change with the generator.
+
+    /**
+     * Reserves a nested table of `byteLength` bytes, which the sizer's
+     * `addTableBytes()` added, after its parent's `setTable()`, and returns
+     * its position in `target()`. The caller writes it whole there: its
+     * offsets, and its fields at them. It takes the place of the table's
+     * `startTable()`, setters and `endTable()`.
+     *
+     * @throws {RangeError} If the table doesn't fit, without moving.
+     */
+    reserveTableBytes(byteLength: number): number {
+        const start = this.#position;
+        assertFits(this.#bytes, start + byteLength);
+        this.#position = start + byteLength;
+
+        return start;
+    }
+
+    /**
+     * Writes the offset and count of field `index`, a vector of `count`
+     * tables of `byteLength` bytes each, which the sizer's `addVector()` and
+     * `addTableBytes()` added, and the end of each, and returns the position
+     * of the first in `target()`. The caller writes each whole, one after
+     * another from there. It takes the place of each item's `startTable()`,
+     * setters, `endTable()` and `setItemEnd()`.
+     *
+     * @throws {RangeError} If `count` isn't a non-negative integer, or the
+     * vector doesn't fit, without writing any of it.
+     */
+    reserveTableVector(
+        index: number,
+        count: number,
+        byteLength: number
+    ): number {
+        assertCount(count);
+        const size = this.#size;
+        const vector = this.#position;
+        const items = vector + (count + 1) * size;
+        assertFits(this.#bytes, items + count * byteLength);
+        this.#setOffset(index);
+
+        this.#setLength(vector, count);
+        let end = (count + 1) * size;
+        for (let item = 1; item <= count; item++) {
+            end += byteLength;
+            this.#setLength(vector + item * size, end);
+        }
+        this.#position = items + count * byteLength;
+
+        return items;
+    }
+
+    /**
+     * Writes the offset and count of field `index`, an array of `count`
+     * structs of `size` bytes each, padded so that they start at a multiple
+     * of `alignment` from the start of the table, and returns their position
+     * in `target()`. The caller writes each struct's scalars there,
+     * little-endian, one struct after another, rather than collecting their
+     * bytes for `setStructArray()`.
+     *
+     * @throws {RangeError} If `count` isn't a non-negative integer, `size` a
+     * positive one, `alignment` 1, 2, 4 or 8, or the array doesn't fit,
+     * without writing any of it.
+     */
+    reserveStructArray(
+        index: number,
+        count: number,
+        size: number,
+        alignment: ElementSize
+    ): number {
+        assertCount(count);
+        assertStructSize(size);
+        assertAlignment(alignment);
+        const elements = this.#arrayElements(count, size, alignment);
+
+        this.#endArray(index, count, elements, count * size);
+
+        return elements;
+    }
+
+    /**
+     * The bytes that the writer writes the table into, from its start, which
+     * the positions that the reserving methods return are in: new bytes, or
+     * the start of those that `TableSizer.writer(bytes)` took
+     */
+    target(): Uint8Array {
+        return this.#bytes;
+    }
+
     /** {@link copyTable}'s write, which only this class's fields can reach */
     #copyTable(table: Uint8Array): void {
         assertFits(this.#bytes, this.#position + table.length);
@@ -803,24 +943,92 @@ export class TableWriter {
         );
     }
 
-    /**
-     * Writes an offset, length, count or header slot at `position`,
-     * little-endian. A value too large for the width is wrapped, as
-     * DataView's setters wrap it; the sizer rejects a table long enough to
-     * need one.
-     */
+    /** Writes an offset, length or count at `position`, as `setSlot()` does */
     #setLength(position: number, value: number): void {
-        const bytes = this.#bytes;
-        bytes[position] = value;
+        setSlot(this.#bytes, position, this.#size, value);
+    }
+}
 
-        if (this.#size !== SIZEOF_8) {
-            bytes[position + 1] = value >>> 8;
+/**
+ * Writes an offset, length, count or header slot of `size` bytes at
+ * `position`, little-endian. A value too large for the width is wrapped, as
+ * DataView's setters wrap it; the sizer rejects a table long enough to need
+ * one.
+ */
+function setSlot(
+    bytes: Uint8Array,
+    position: number,
+    size: OffsetSize,
+    value: number
+): void {
+    bytes[position] = value;
 
-            if (this.#size === SIZEOF_32) {
-                bytes[position + 2] = value >>> 16;
-                bytes[position + 3] = value >>> 24;
-            }
+    if (size !== SIZEOF_8) {
+        bytes[position + 1] = value >>> 8;
+
+        if (size === SIZEOF_32) {
+            bytes[position + 2] = value >>> 16;
+            bytes[position + 3] = value >>> 24;
         }
+    }
+}
+
+/**
+ * Writes a table's header at the start of `bytes`: their length when the
+ * layout is sized, and then `version` when it's versioned
+ */
+function writeHeader(
+    bytes: Uint8Array,
+    layout: TableLayout,
+    version: number | undefined
+): void {
+    const size = layout.offsetSize();
+
+    let slot = 0;
+    if (layout.sized()) {
+        setSlot(bytes, slot, size, bytes.length);
+        slot += size;
+    }
+
+    if (version !== undefined) {
+        setSlot(bytes, slot, size, version);
+    }
+}
+
+/**
+ * `TableWriter.tableBytes()` and `versionedTableBytes()`, which check the
+ * header and the length as a sizer and its `writer()` check them
+ */
+function newTableBytes(
+    fields: number,
+    layout: TableLayout,
+    version: number | undefined,
+    length: number,
+    bytes: Uint8Array | undefined
+): Uint8Array {
+    headerLength(fields, layout, version);
+    assertAddressable(length, layout);
+
+    const table =
+        bytes === undefined
+            ? new Uint8Array(length)
+            : tableBytes(bytes, length);
+    writeHeader(table, layout, version);
+
+    return table;
+}
+
+/**
+ * Checks that a table of `length` bytes is no longer than offsets of the
+ * layout's type address
+ *
+ * @throws {RangeError} If it's longer: past 255 bytes, 64 KiB or 4 GiB.
+ */
+function assertAddressable(length: number, layout: TableLayout): void {
+    if (!(length <= maxLength(layout.offsetSize()))) {
+        throw new RangeError(
+            `The table's fields make it ${length} bytes, too long for ${layout.offsetType()} offsets`
+        );
     }
 }
 
