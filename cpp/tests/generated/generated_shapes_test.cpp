@@ -288,9 +288,10 @@ TEST(GeneratedShapes, AGetterOfATableNestedPastTheBytesThrows) {
             .to_vector();
 
     // The columns' offset, the document's last, after its length, version and
-    // three other offsets
+    // three other offsets. `at()` checks that the bytes hold it, so that GCC
+    // sees no path that writes through the null data of empty bytes
     const auto past = static_cast<std::uint32_t>(bytes.size() + 1);
-    store_le(bytes.data() + 5 * 4, past);
+    store_le(&bytes.at(5 * 4), past);
 
     const shapes::Document document(bytes);
     EXPECT_EQ(document.x(), 1.0);
