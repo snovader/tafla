@@ -152,6 +152,26 @@ export class Scalars {
     bool(): boolean {
         return this.#buffer.getUint8(this.#buffer.rootOffset(10)) !== 0;
     }
+
+    /**
+     * Reads every field into the `ScalarsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ScalarsFields {
+        return {
+            int8: this.#buffer.getInt8(this.#buffer.rootOffset(0)),
+            uint8: this.#buffer.getUint8(this.#buffer.rootOffset(1)),
+            int16: this.#buffer.getInt16(this.#buffer.rootOffset(2)),
+            uint16: this.#buffer.getUint16(this.#buffer.rootOffset(3)),
+            int32: this.#buffer.getInt32(this.#buffer.rootOffset(4)),
+            uint32: this.#buffer.getUint32(this.#buffer.rootOffset(5)),
+            int64: this.#buffer.getInt64(this.#buffer.rootOffset(6)),
+            uint64: this.#buffer.getUint64(this.#buffer.rootOffset(7)),
+            float32: this.#buffer.getFloat32(this.#buffer.rootOffset(8)),
+            float64: this.#buffer.getFloat64(this.#buffer.rootOffset(9)),
+            bool: this.#buffer.getUint8(this.#buffer.rootOffset(10)) !== 0
+        };
+    }
 }
 
 /** The fields of a `Scalars`, to write */
@@ -285,6 +305,25 @@ export class Arrays {
     float64(): Float64Array {
         return this.#buffer.getFloat64Array(this.#buffer.rootOffset(9));
     }
+
+    /**
+     * Reads every field into the `ArraysFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ArraysFields {
+        return {
+            int8: this.#buffer.getInt8Array(this.#buffer.rootOffset(0)),
+            uint8: this.#buffer.getUint8Array(this.#buffer.rootOffset(1)),
+            int16: this.#buffer.getInt16Array(this.#buffer.rootOffset(2)),
+            uint16: this.#buffer.getUint16Array(this.#buffer.rootOffset(3)),
+            int32: this.#buffer.getInt32Array(this.#buffer.rootOffset(4)),
+            uint32: this.#buffer.getUint32Array(this.#buffer.rootOffset(5)),
+            int64: this.#buffer.getInt64Array(this.#buffer.rootOffset(6)),
+            uint64: this.#buffer.getUint64Array(this.#buffer.rootOffset(7)),
+            float32: this.#buffer.getFloat32Array(this.#buffer.rootOffset(8)),
+            float64: this.#buffer.getFloat64Array(this.#buffer.rootOffset(9))
+        };
+    }
 }
 
 /** The fields of an `Arrays`, to write */
@@ -411,6 +450,17 @@ export class Outer {
     }
 
     /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): OuterFields {
+        return {
+            count: buffer.getUint32(buffer.fieldOffset(position, 0)),
+            inner: Inner.read(buffer, buffer.fieldOffset(position, 1))
+        };
+    }
+
+    /**
      * Adds an `Outer` to its parent's sizer, after the field or
      * vector that holds it
      */
@@ -446,6 +496,14 @@ export class Outer {
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
+
+    /**
+     * Reads every field into the `OuterFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): OuterFields {
+        return Outer.read(this.#buffer, this.#position);
+    }
 }
 
 /** The fields of an `Outer`, to write */
@@ -468,6 +526,17 @@ export class Inner {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): InnerFields {
+        return {
+            name: buffer.getString(buffer.fieldOffset(position, 0)),
+            values: buffer.getFloat64Array(buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -502,6 +571,14 @@ export class Inner {
         return this.#buffer.getFloat64Array(
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `InnerFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): InnerFields {
+        return Inner.read(this.#buffer, this.#position);
     }
 }
 
@@ -639,6 +716,21 @@ export class Keywords {
     }
 
     /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): KeywordsFields {
+        return {
+            class: buffer.getUint8(buffer.fieldOffset(position, 0)),
+            default: buffer.getUint8(buffer.fieldOffset(position, 1)),
+            in: buffer.getUint8(buffer.fieldOffset(position, 2)),
+            match: buffer.getUint8(buffer.fieldOffset(position, 3)),
+            self: buffer.getUint8(buffer.fieldOffset(position, 4)),
+            type: buffer.getString(buffer.fieldOffset(position, 5))
+        };
+    }
+
+    /**
      * Adds a `Keywords` to its parent's sizer, after the field or
      * vector that holds it
      */
@@ -703,6 +795,14 @@ export class Keywords {
             this.#buffer.fieldOffset(this.#position, 5)
         );
     }
+
+    /**
+     * Reads every field into the `KeywordsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): KeywordsFields {
+        return Keywords.read(this.#buffer, this.#position);
+    }
 }
 
 /** The fields of a `Keywords`, to write */
@@ -765,6 +865,16 @@ export class Reserved {
 
     keywords(): Keywords {
         return new Keywords(this.#buffer, this.#buffer.rootOffset(0));
+    }
+
+    /**
+     * Reads every field into the `ReservedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ReservedFields {
+        return {
+            keywords: Keywords.read(this.#buffer, this.#buffer.rootOffset(0))
+        };
     }
 }
 
@@ -896,6 +1006,32 @@ export class Structs {
     path(): Path {
         return new Path(this.#buffer, this.#buffer.rootOffset(4));
     }
+
+    /**
+     * Reads every field into the `StructsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): StructsFields {
+        return {
+            packed: Packed.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(0)
+            ),
+            documented: new DocumentedArray(
+                this.#buffer,
+                this.#buffer.rootOffset(1)
+            ).fields(),
+            segment: Segment.read(
+                this.#buffer.bytes(),
+                this.#buffer.rootOffset(2)
+            ),
+            segments: new SegmentArray(
+                this.#buffer,
+                this.#buffer.rootOffset(3)
+            ).fields(),
+            path: Path.read(this.#buffer, this.#buffer.rootOffset(4))
+        };
+    }
 }
 
 /** The fields of a `Structs`, to write */
@@ -925,6 +1061,20 @@ export class Path {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): PathFields {
+        return {
+            start: Point.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
+            points: new PointArray(
+                buffer,
+                buffer.fieldOffset(position, 1)
+            ).fields()
+        };
     }
 
     /**
@@ -967,6 +1117,14 @@ export class Path {
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
+
+    /**
+     * Reads every field into the `PathFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PathFields {
+        return Path.read(this.#buffer, this.#position);
+    }
 }
 
 /** The fields of a `Path`, to write */
@@ -995,6 +1153,19 @@ export class Segment {
     constructor(bytes: Uint8Array, offset = 0) {
         this.#start = new Point(bytes, offset);
         this.#end = new Point(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Segment` at `offset` in `bytes`,
+     * without creating a `Segment`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Segment` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): SegmentFields {
+        return {
+            start: Point.read(bytes, offset),
+            end: Point.read(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Segment` */
@@ -1051,7 +1222,12 @@ export interface SegmentFields {
     end: PointFields;
 }
 
-/** An array of `Segment`s, which reads each struct when it's asked for */
+/**
+ * An array of `Segment`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class SegmentArray {
     readonly #bytes: Uint8Array;
     readonly #length: number;
@@ -1074,16 +1250,44 @@ export class SegmentArray {
     /**
      * Reads struct `index`
      *
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Segment {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Segment(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `start` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    start(index: number): Point {
+        return new Point(this.#bytes, index * 16);
+    }
+
+    /**
+     * Reads `end` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    end(index: number): Point {
+        return new Point(this.#bytes, index * 16 + 8);
+    }
+
+    /** Reads the `SegmentFields` of every item, from the first to the last */
+    fields(): SegmentFields[] {
+        const bytes = this.#bytes;
+        const items = new Array<SegmentFields>(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 16;
+            items[i] = {
+                start: Point.read(bytes, offset),
+                end: Point.read(bytes, offset + 8)
+            };
         }
 
-        return new Segment(this.#bytes, index * Segment.SIZE);
+        return items;
     }
 }
 
@@ -1106,6 +1310,19 @@ export class Point {
     constructor(bytes: Uint8Array, offset = 0) {
         this.#x = readFloat32(bytes, offset);
         this.#y = readFloat32(bytes, offset + 4);
+    }
+
+    /**
+     * Reads the fields of a `Point` at `offset` in `bytes`,
+     * without creating a `Point`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Point` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): PointFields {
+        return {
+            x: readFloat32(bytes, offset),
+            y: readFloat32(bytes, offset + 4)
+        };
     }
 
     /** Writes a `Point` */
@@ -1162,7 +1379,12 @@ export interface PointFields {
     y: number;
 }
 
-/** An array of `Point`s, which reads each struct when it's asked for */
+/**
+ * An array of `Point`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class PointArray {
     readonly #bytes: Uint8Array;
     readonly #length: number;
@@ -1185,16 +1407,44 @@ export class PointArray {
     /**
      * Reads struct `index`
      *
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Point {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Point(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `x` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    x(index: number): number {
+        return readFloat32(this.#bytes, index * 8);
+    }
+
+    /**
+     * Reads `y` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    y(index: number): number {
+        return readFloat32(this.#bytes, index * 8 + 4);
+    }
+
+    /** Reads the `PointFields` of every item, from the first to the last */
+    fields(): PointFields[] {
+        const bytes = this.#bytes;
+        const items = new Array<PointFields>(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 8;
+            items[i] = {
+                x: readFloat32(bytes, offset),
+                y: readFloat32(bytes, offset + 4)
+            };
         }
 
-        return new Point(this.#bytes, index * Point.SIZE);
+        return items;
     }
 }
 
@@ -1239,6 +1489,28 @@ export class Packed {
         this.#float32 = readFloat32(bytes, offset + 30);
         this.#float64 = readFloat64(bytes, offset + 34);
         this.#bool = readUint8(bytes, offset + 42) !== 0;
+    }
+
+    /**
+     * Reads the fields of a `Packed` at `offset` in `bytes`,
+     * without creating a `Packed`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Packed` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): PackedFields {
+        return {
+            int8: readInt8(bytes, offset),
+            uint8: readUint8(bytes, offset + 1),
+            int16: readInt16(bytes, offset + 2),
+            uint16: readUint16(bytes, offset + 4),
+            int32: readInt32(bytes, offset + 6),
+            uint32: readUint32(bytes, offset + 10),
+            int64: readInt64(bytes, offset + 14),
+            uint64: readUint64(bytes, offset + 22),
+            float32: readFloat32(bytes, offset + 30),
+            float64: readFloat64(bytes, offset + 34),
+            bool: readUint8(bytes, offset + 42) !== 0
+        };
     }
 
     /** Writes a `Packed` */
@@ -1393,6 +1665,20 @@ export class Documented {
         this.#undocumented = readUint32(bytes, offset + 3);
     }
 
+    /**
+     * Reads the fields of a `Documented` at `offset` in `bytes`,
+     * without creating a `Documented`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Documented` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): DocumentedFields {
+        return {
+            one: readUint8(bytes, offset),
+            two: readUint16(bytes, offset + 1),
+            undocumented: readUint32(bytes, offset + 3)
+        };
+    }
+
     /** Writes a `Documented` */
     static serialize(fields: DocumentedFields): Uint8Array {
         const bytes = new Uint8Array(Documented.SIZE);
@@ -1464,7 +1750,12 @@ export interface DocumentedFields {
     undocumented: number;
 }
 
-/** An array of `Documented`s, which reads each struct when it's asked for */
+/**
+ * An array of `Documented`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class DocumentedArray {
     readonly #bytes: Uint8Array;
     readonly #length: number;
@@ -1487,15 +1778,58 @@ export class DocumentedArray {
     /**
      * Reads struct `index`
      *
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Documented {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Documented(this.#bytes, index * 7);
+    }
+
+    /**
+     * A field's documentation, of one line
+     *
+     * Reads `one` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    one(index: number): number {
+        return readUint8(this.#bytes, index * 7);
+    }
+
+    /**
+     * A field's documentation,
+     * of two lines
+     *
+     * Reads `two` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    two(index: number): number {
+        return readUint16(this.#bytes, index * 7 + 1);
+    }
+
+    /**
+     * Reads `undocumented` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    undocumented(index: number): number {
+        return readUint32(this.#bytes, index * 7 + 3);
+    }
+
+    /** Reads the `DocumentedFields` of every item, from the first to the last */
+    fields(): DocumentedFields[] {
+        const bytes = this.#bytes;
+        const items = new Array<DocumentedFields>(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 7;
+            items[i] = {
+                one: readUint8(bytes, offset),
+                two: readUint16(bytes, offset + 1),
+                undocumented: readUint32(bytes, offset + 3)
+            };
         }
 
-        return new Documented(this.#bytes, index * Documented.SIZE);
+        return items;
     }
 }

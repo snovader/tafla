@@ -81,6 +81,19 @@ export class Point {
     name(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `PointFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PointFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            id: this.#buffer.getInt64(this.#buffer.rootOffset(2)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Point`, to write */
@@ -204,6 +217,19 @@ export class Document {
     columns(): Columns {
         return new Columns(this.#buffer, this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `DocumentFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): DocumentFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(2)),
+            columns: Columns.read(this.#buffer, this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Document`, to write */
@@ -229,6 +255,19 @@ export class Columns {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ColumnsFields {
+        return {
+            base: buffer.getInt64(buffer.fieldOffset(position, 0)),
+            keys: buffer.getUint32Array(buffer.fieldOffset(position, 1)),
+            a: buffer.getFloat32Array(buffer.fieldOffset(position, 2)),
+            b: buffer.getFloat32Array(buffer.fieldOffset(position, 3))
+        };
     }
 
     /**
@@ -280,6 +319,14 @@ export class Columns {
         return this.#buffer.getFloat32Array(
             this.#buffer.fieldOffset(this.#position, 3)
         );
+    }
+
+    /**
+     * Reads every field into the `ColumnsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ColumnsFields {
+        return Columns.read(this.#buffer, this.#position);
     }
 }
 
@@ -353,6 +400,19 @@ export class ItemList {
     items(): ItemVector {
         return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
+
+    /**
+     * Reads every field into the `ItemListFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemListFields {
+        return {
+            items: new ItemVector(
+                this.#buffer,
+                this.#buffer.rootOffset(0)
+            ).fields()
+        };
+    }
 }
 
 /** The fields of an `ItemList`, to write */
@@ -374,6 +434,17 @@ export class Item {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ItemFields {
+        return {
+            value: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            pair: Pair.read(buffer, buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -411,6 +482,14 @@ export class Item {
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)
         );
+    }
+
+    /**
+     * Reads every field into the `ItemFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemFields {
+        return Item.read(this.#buffer, this.#position);
     }
 }
 
@@ -459,6 +538,22 @@ export class ItemVector {
             )
         );
     }
+
+    /**
+     * Reads the `ItemFields` of every item, from the first to the last
+     *
+     * @throws {DecodeError} If an item lies outside the bytes.
+     */
+    fields(): ItemFields[] {
+        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const items = new Array<ItemFields>(offsets.length);
+
+        for (let i = 0; i < offsets.length; i++) {
+            items[i] = Item.read(this.#buffer, offsets[i]);
+        }
+
+        return items;
+    }
 }
 
 /** Two values of an item */
@@ -476,6 +571,17 @@ export class Pair {
     constructor(buffer: ByteBuffer, position: number) {
         this.#buffer = buffer;
         this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): PairFields {
+        return {
+            first: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            second: buffer.getFloat32(buffer.fieldOffset(position, 1))
+        };
     }
 
     /**
@@ -511,6 +617,14 @@ export class Pair {
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
+
+    /**
+     * Reads every field into the `PairFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PairFields {
+        return Pair.read(this.#buffer, this.#position);
+    }
 }
 
 /** The fields of a `Pair`, to write */
@@ -541,6 +655,20 @@ export class Sample {
         this.#key = readUint32(bytes, offset);
         this.#a = readFloat32(bytes, offset + 4);
         this.#b = readFloat32(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Sample` at `offset` in `bytes`,
+     * without creating a `Sample`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Sample` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): SampleFields {
+        return {
+            key: readUint32(bytes, offset),
+            a: readFloat32(bytes, offset + 4),
+            b: readFloat32(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Sample` */

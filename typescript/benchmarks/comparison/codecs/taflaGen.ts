@@ -4,7 +4,6 @@ import {
     ItemList,
     Record,
     Sample,
-    type Triple,
     Triples
 } from '../generated/tafla/workloads.ts';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
@@ -13,12 +12,14 @@ import type { Codec } from './codec.ts';
 /**
  * The code that tafla-gen generates from `workloads.tafla`, which writes each
  * message's table in one call with a `TableSizer` and a `TableWriter`, rather
- * than nesting `TableBuilder`s, and reads it with the generated getters.
+ * than nesting `TableBuilder`s, and reads it with the generated getters, or
+ * with `fields()` and a struct's `read()` where the generated fields are the
+ * workload's output.
  *
  * The workloads' inputs are flat, so the document and the vector are written
  * from fields in the generated shape, which `serialize()` creates in each
- * call, as the protobufjs codec creates its messages. Reading creates the
- * workloads' outputs from the generated readers.
+ * call, as the protobufjs codec creates its messages. Reading them creates
+ * the workloads' outputs from the generated readers.
  */
 export const taflaGen: Codec = {
     name: 'tafla-gen',
@@ -27,14 +28,8 @@ export const taflaGen: Codec = {
             return Record.serialize(input);
         },
         deserialize(bytes) {
-            const record = new Record(bytes);
-
-            return {
-                x: record.x(),
-                y: record.y(),
-                id: record.id(),
-                name: record.name()
-            };
+            // The record's fields are the workload's
+            return new Record(bytes).fields();
         }
     },
     document: {
@@ -98,14 +93,8 @@ export const taflaGen: Codec = {
             return Triples.serialize(input);
         },
         deserialize(bytes) {
-            const triples = new Triples(bytes).items();
-
-            const items = new Array<ItemInput>(triples.length());
-            for (let i = 0; i < items.length; i++) {
-                items[i] = fromTriple(triples.get(i));
-            }
-
-            return { items };
+            // The struct's fields are the workload's item's
+            return { items: new Triples(bytes).items().fields() };
         }
     },
     sample: {
@@ -113,21 +102,11 @@ export const taflaGen: Codec = {
             return Sample.serialize(input);
         },
         deserialize(bytes) {
-            const sample = new Sample(bytes);
-
-            return { key: sample.key(), a: sample.a(), b: sample.b() };
+            return Sample.read(bytes);
         }
     }
 };
 
 function toItemFields({ value, first, second }: ItemInput): ItemFields {
     return { value, pair: { first, second } };
-}
-
-function fromTriple(triple: Triple): ItemInput {
-    return {
-        value: triple.value(),
-        first: triple.first(),
-        second: triple.second()
-    };
 }

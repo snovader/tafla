@@ -38,12 +38,16 @@ tafla is timed twice, and both write the same bytes:
   every field, nested tables included, into bytes of that length with a
   `TableWriter`. Its readers read each field with a getter, and the getters
   of the vector and of the array of structs return views of their items,
-  which read each item when `get(i)` asks for it. It takes the
-  workloads' inputs, as the other codecs do, so it creates the generated
-  fields of the document and of each item of the vector in each call, as the
-  protobufjs codec creates its messages, and creates the workloads' outputs
-  from the generated readers. The workloads' items and records have the
-  generated structs' fields already, so they're passed as they are.
+  which read each item when `get(i)` asks for it. Where the generated fields
+  are the workload's output, it reads them whole instead, without a reader
+  for each struct: the record with `fields()`, the array of structs with its
+  view's `fields()`, and the fixed-size record with the struct's static
+  `read()`. It takes the workloads' inputs, as the other codecs do, so it
+  creates the generated fields of the document and of each item of the
+  vector in each call, as the protobufjs codec creates its messages, and
+  creates their outputs from the generated readers. The workloads' items and
+  records have the generated structs' fields already, so they're passed as
+  they are.
 
 Every language's suite has a copy of the schema. After changing them,
 regenerate the code as `rust/gen/README.md` describes.
@@ -58,7 +62,9 @@ of its own, and `comparison/itemAccess.ts` holds them:
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`
   with `readFloat32()`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
-  views whose `get(i)` reads one item, in a loop of `get(i)` for every item.
+  views: the vector's `get(i)` reads one item, and the array of structs'
+  getter of each field, such as `value(i)`, reads that field of one struct
+  without creating the struct. A loop reads every item.
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
   harness's noise.
 
@@ -130,8 +136,9 @@ a high load from other processes makes even the minimum unreliable.
   objects, arrays and small buffers, not all the memory a call takes.
 - tafla-gen's codec creates the generated fields from the workloads' flat
   inputs in each call, which a caller that holds its values in the generated
-  shape wouldn't, and reads its outputs from the generated readers, objects
-  of their own that the builder codec doesn't create.
+  shape wouldn't, and reads the document's and the vector's outputs from the
+  generated readers, objects of their own that the builder codec doesn't
+  create.
 
 ### Results
 

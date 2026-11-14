@@ -55,6 +55,18 @@ first commits, for code built from its source before the release.
   getter's call for each field, except where a vector holds tables that
   allocate when they're read whole, so that what it allocates stays in
   proportion to the bytes. A field named `fields` is renamed `Fields_`.
+- Generated TypeScript and JavaScript declare `fields()` on each message and
+  table whose vectors hold tables of scalars, structs and such tables, which
+  reads every field at once into the `<Name>Fields` that it's written from,
+  nested tables and the items of vectors and arrays of structs included,
+  without a reader for each, a static `read(buffer, position)` on each such
+  nested table, `fields()` on the views of their vectors and of arrays of
+  structs, and a static `read(bytes, offset)` on each struct, which reads its
+  fields without creating it. A field named `fields` takes a `_`.
+- Generated TypeScript and JavaScript views of arrays of structs have a
+  getter of each field of their structs, such as `triples.value(i)`, which
+  reads that field of struct `i` without creating the struct. A field named
+  `length`, `get` or `fields` takes a `_` there.
 - Generated Python declares `fields()` on each message and table whose
   fields are all scalars, structs and tables of them, and a string last,
   which reads every field at once into the `TypedDict` that it's written
@@ -137,6 +149,11 @@ first commits, for code built from its source before the release.
   the views' own getters, `<field>View()`, are gone. A corrupt item then
   fails with `DecodeError` when it's read, rather than when the getter is
   called.
+- Generated TypeScript and JavaScript views of arrays of structs check an
+  index only by reading within their bytes, rather than checking it in each
+  getter, which took 12% longer to sum an array's structs: an index outside
+  the array throws `DecodeError`, which is a `RangeError`, rather than a
+  plain `RangeError`, and it must be an integer.
 
 ### Fixed
 
