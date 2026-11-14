@@ -2,7 +2,7 @@
 with tafla."""
 
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from functools import partial
 
 from hypothesis import given
@@ -434,6 +434,12 @@ class TestValues(unittest.TestCase):
             fields_or_decode_error(view.field_values),
             fields_or_decode_error(lambda: [_item_getters(item) for item in view]),
         )
+        # Iterating reads each item when it reaches it, so it reads the items
+        # before one that it can't read, as reading them by index does
+        self.assertEqual(
+            _until_decode_error(view.iter_field_values()),
+            _until_decode_error(_item_getters_at(view, i) for i in range(len(view))),
+        )
         for index in range(len(view)):
             item = partial(_item_getters_at, view, index)
             self.assertEqual(
@@ -522,6 +528,19 @@ def _point_values(point: Point) -> tuple[float, float, int, str]:
 
 def _fields_of_each(view: ItemVector) -> list[ItemFields]:
     return [item.fields() for item in view]
+
+
+def _until_decode_error(items: Iterator[object]) -> list[object]:
+    """Each item that ``items`` gives, as ``fields_or_decode_error()`` compares
+    it, and then the DecodeError that it raises, if any"""
+    taken: list[object] = []
+    while True:
+        item = fields_or_decode_error(partial(next, items, None))
+        if item is None:
+            return taken
+        taken.append(item)
+        if isinstance(item, str):
+            return taken
 
 
 def _item_getters(item: Item) -> tuple[float, float, float]:

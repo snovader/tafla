@@ -290,6 +290,19 @@ class TestEveryField(unittest.TestCase):
         )
 
     @SETTINGS
+    @given(nested_fields, one_of(corruptions, binary(max_size=0)))
+    def test_iterates_over_the_values_of_trees_as_each_tree_reads_them(
+        self, fields: NestedFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        nested = Nested(_corrupted(Nested.serialize(**fields), corruption))
+
+        _assert_same(
+            self,
+            lambda: list(nested.trees().iter_field_values()),
+            lambda: [tree.field_values() for tree in nested.trees()],
+        )
+
+    @SETTINGS
     @given(structs_fields, one_of(corruptions, binary(max_size=0)))
     def test_reads_structs_fields_and_values_as_their_getters_do(
         self, fields: StructsFields, corruption: Truncation | Overwrite | bytes

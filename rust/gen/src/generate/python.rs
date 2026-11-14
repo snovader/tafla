@@ -2158,6 +2158,8 @@ fn vector_readers(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     }
     writer.dedent();
 
+    vector_iter_values(writer, schema, index);
+
     if !is_flat(schema, index) {
         return;
     }
@@ -2188,6 +2190,56 @@ fn vector_readers(writer: &mut CodeWriter, schema: &Schema, index: usize) {
         );
     } else {
         writer.line("return [item.fields() for item in self]");
+    }
+    writer.dedent();
+}
+
+/// A vector view's `iter_field_values()`, which iterates over its items'
+/// values as its table's `field_values()` reads each: through the runtime's
+/// `iter_vector_fields()` for a table of fixed size without structs, which
+/// reads each item's end when it reaches it, and without creating a reader
+/// of each item but those whose offsets aren't the ones that their writer
+/// writes, and through the items' readers for any other table
+fn vector_iter_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
+    let definition = schema.definition(index);
+    let table = &definition.name;
+    let direct =
+        is_fixed(schema, index) && !holds_struct(schema, definition, definition.fields.len());
+
+    writer.blank();
+    let iterator = Annotation::Generic("Iterator", vec![values_alias(definition)]);
+    def_line(writer, "iter_field_values", &["self".to_owned()], &iterator);
+    writer.indent();
+    if direct {
+        docstring(
+            writer,
+            &[
+                format!("Reads every item's values one after another, as `{table}.field_values()`"),
+                "reads each, reading each item when it reaches it, so that it raises".to_owned(),
+                "`DecodeError` for an item that doesn't lie within the bytes when it".to_owned(),
+                "reaches it".to_owned(),
+            ],
+        );
+        writer.line("buffer = self._buffer");
+        let read = call(
+            "buffer.iter_vector_fields",
+            vec![
+                text("self._position"),
+                text(format!("{table}._FIXED_FIELDS")),
+                text(format!(
+                    "lambda offset: {table}(buffer, offset).field_values()"
+                )),
+            ],
+        );
+        writer.statement(&STYLE, "return ", &read, "");
+    } else {
+        docstring(
+            writer,
+            &[format!(
+                "Reads every item's values one after another, as `{table}.field_values()` reads each"
+            )],
+        );
+        writer.line("return (item.field_values() for item in self)");
     }
     writer.dedent();
 }
