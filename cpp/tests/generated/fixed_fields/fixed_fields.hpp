@@ -816,7 +816,7 @@ inline Vec2 Frame::origin() const {
 inline Range Frame::range() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
-    return Range(bytes_, position);
+    return Range(buffer.get_table(position), 0);
 }
 
 inline std::uint16_t Frame::flags() const {
@@ -1131,7 +1131,7 @@ inline Vec2 Box::max_() const {
 inline Range Box::range() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(2);
-    return Range(bytes_, position);
+    return Range(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes BoxFields::serialize() const {
@@ -1178,7 +1178,7 @@ inline Vec2 Track::origin() const {
 inline Frame Track::frame() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(2);
-    return Frame(bytes_, position);
+    return Frame(buffer.get_table(position), 0);
 }
 
 inline ::tafla::ArrayView<float> Track::points() const {
@@ -1281,13 +1281,13 @@ inline std::string_view Span::name() const {
 inline Range Span::range() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(1);
-    return Range(bytes_, position);
+    return Range(buffer.get_table(position), 0);
 }
 
 inline Frame Span::frame() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(2);
-    return Frame(bytes_, position);
+    return Frame(buffer.get_table(position), 0);
 }
 
 inline RangeVector Span::ranges() const {

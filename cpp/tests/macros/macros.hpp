@@ -240,7 +240,7 @@ inline std::uint8_t Macros::small_() const {
 inline Interface Macros::interface_() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(12);
-    return Interface(bytes_, position);
+    return Interface(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes MacrosFields::serialize() const {

@@ -1092,7 +1092,7 @@ inline std::uint32_t Outer::count() const {
 inline Inner Outer::inner() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
-    return Inner(bytes_, position);
+    return Inner(buffer.get_table(position), 0);
 }
 
 inline void OuterFields::size(::tafla::TableSizer& sizer_) const {
@@ -1120,7 +1120,7 @@ inline std::string_view Nested::label() const {
 inline Outer Nested::outer() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(1);
-    return Outer(bytes_, position);
+    return Outer(buffer.get_table(position), 0);
 }
 
 inline TreeVector Nested::trees() const {
@@ -1269,7 +1269,7 @@ inline void KeywordsFields::write(::tafla::TableWriter& writer_) const {
 inline Keywords Reserved::keywords() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
-    return Keywords(bytes_, position);
+    return Keywords(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes ReservedFields::serialize() const {
@@ -1349,7 +1349,7 @@ inline SegmentArray Structs::segments() const {
 inline Path Structs::path() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(4);
-    return Path(bytes_, position);
+    return Path(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes StructsFields::serialize() const {

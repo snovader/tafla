@@ -602,7 +602,7 @@ inline std::string_view Document::name() const {
 inline Columns Document::columns() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(3);
-    return Columns(bytes_, position);
+    return Columns(buffer.get_table(position), 0);
 }
 
 inline ::tafla::Bytes DocumentFields::serialize() const {
@@ -723,7 +723,7 @@ inline float Item::value() const {
 inline Pair Item::pair() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
-    return Pair(bytes_, position);
+    return Pair(buffer.get_table(position), 0);
 }
 
 inline void ItemFields::size(::tafla::TableSizer& sizer_) const {

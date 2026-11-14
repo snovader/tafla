@@ -3673,7 +3673,7 @@ inline void LeafFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 inline Leaf Level62::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Leaf(bytes_, position);
+    return Leaf(buffer.get_table(position), 0);
 }
 
 inline LeafVector Level62::first() const {
@@ -3723,7 +3723,7 @@ inline void Level62Fields::write(::tafla::TableWriter& writer_) const {
 inline Level62 Level61::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level62(bytes_, position);
+    return Level62(buffer.get_table(position), 0);
 }
 
 inline Level62Vector Level61::first() const {
@@ -3773,7 +3773,7 @@ inline void Level61Fields::write(::tafla::TableWriter& writer_) const {
 inline Level61 Level60::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level61(bytes_, position);
+    return Level61(buffer.get_table(position), 0);
 }
 
 inline Level61Vector Level60::first() const {
@@ -3823,7 +3823,7 @@ inline void Level60Fields::write(::tafla::TableWriter& writer_) const {
 inline Level60 Level59::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level60(bytes_, position);
+    return Level60(buffer.get_table(position), 0);
 }
 
 inline Level60Vector Level59::first() const {
@@ -3873,7 +3873,7 @@ inline void Level59Fields::write(::tafla::TableWriter& writer_) const {
 inline Level59 Level58::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level59(bytes_, position);
+    return Level59(buffer.get_table(position), 0);
 }
 
 inline Level59Vector Level58::first() const {
@@ -3923,7 +3923,7 @@ inline void Level58Fields::write(::tafla::TableWriter& writer_) const {
 inline Level58 Level57::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level58(bytes_, position);
+    return Level58(buffer.get_table(position), 0);
 }
 
 inline Level58Vector Level57::first() const {
@@ -3973,7 +3973,7 @@ inline void Level57Fields::write(::tafla::TableWriter& writer_) const {
 inline Level57 Level56::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level57(bytes_, position);
+    return Level57(buffer.get_table(position), 0);
 }
 
 inline Level57Vector Level56::first() const {
@@ -4023,7 +4023,7 @@ inline void Level56Fields::write(::tafla::TableWriter& writer_) const {
 inline Level56 Level55::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level56(bytes_, position);
+    return Level56(buffer.get_table(position), 0);
 }
 
 inline Level56Vector Level55::first() const {
@@ -4073,7 +4073,7 @@ inline void Level55Fields::write(::tafla::TableWriter& writer_) const {
 inline Level55 Level54::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level55(bytes_, position);
+    return Level55(buffer.get_table(position), 0);
 }
 
 inline Level55Vector Level54::first() const {
@@ -4123,7 +4123,7 @@ inline void Level54Fields::write(::tafla::TableWriter& writer_) const {
 inline Level54 Level53::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level54(bytes_, position);
+    return Level54(buffer.get_table(position), 0);
 }
 
 inline Level54Vector Level53::first() const {
@@ -4173,7 +4173,7 @@ inline void Level53Fields::write(::tafla::TableWriter& writer_) const {
 inline Level53 Level52::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level53(bytes_, position);
+    return Level53(buffer.get_table(position), 0);
 }
 
 inline Level53Vector Level52::first() const {
@@ -4223,7 +4223,7 @@ inline void Level52Fields::write(::tafla::TableWriter& writer_) const {
 inline Level52 Level51::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level52(bytes_, position);
+    return Level52(buffer.get_table(position), 0);
 }
 
 inline Level52Vector Level51::first() const {
@@ -4273,7 +4273,7 @@ inline void Level51Fields::write(::tafla::TableWriter& writer_) const {
 inline Level51 Level50::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level51(bytes_, position);
+    return Level51(buffer.get_table(position), 0);
 }
 
 inline Level51Vector Level50::first() const {
@@ -4323,7 +4323,7 @@ inline void Level50Fields::write(::tafla::TableWriter& writer_) const {
 inline Level50 Level49::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level50(bytes_, position);
+    return Level50(buffer.get_table(position), 0);
 }
 
 inline Level50Vector Level49::first() const {
@@ -4373,7 +4373,7 @@ inline void Level49Fields::write(::tafla::TableWriter& writer_) const {
 inline Level49 Level48::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level49(bytes_, position);
+    return Level49(buffer.get_table(position), 0);
 }
 
 inline Level49Vector Level48::first() const {
@@ -4423,7 +4423,7 @@ inline void Level48Fields::write(::tafla::TableWriter& writer_) const {
 inline Level48 Level47::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level48(bytes_, position);
+    return Level48(buffer.get_table(position), 0);
 }
 
 inline Level48Vector Level47::first() const {
@@ -4473,7 +4473,7 @@ inline void Level47Fields::write(::tafla::TableWriter& writer_) const {
 inline Level47 Level46::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level47(bytes_, position);
+    return Level47(buffer.get_table(position), 0);
 }
 
 inline Level47Vector Level46::first() const {
@@ -4523,7 +4523,7 @@ inline void Level46Fields::write(::tafla::TableWriter& writer_) const {
 inline Level46 Level45::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level46(bytes_, position);
+    return Level46(buffer.get_table(position), 0);
 }
 
 inline Level46Vector Level45::first() const {
@@ -4573,7 +4573,7 @@ inline void Level45Fields::write(::tafla::TableWriter& writer_) const {
 inline Level45 Level44::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level45(bytes_, position);
+    return Level45(buffer.get_table(position), 0);
 }
 
 inline Level45Vector Level44::first() const {
@@ -4623,7 +4623,7 @@ inline void Level44Fields::write(::tafla::TableWriter& writer_) const {
 inline Level44 Level43::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level44(bytes_, position);
+    return Level44(buffer.get_table(position), 0);
 }
 
 inline Level44Vector Level43::first() const {
@@ -4673,7 +4673,7 @@ inline void Level43Fields::write(::tafla::TableWriter& writer_) const {
 inline Level43 Level42::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level43(bytes_, position);
+    return Level43(buffer.get_table(position), 0);
 }
 
 inline Level43Vector Level42::first() const {
@@ -4723,7 +4723,7 @@ inline void Level42Fields::write(::tafla::TableWriter& writer_) const {
 inline Level42 Level41::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level42(bytes_, position);
+    return Level42(buffer.get_table(position), 0);
 }
 
 inline Level42Vector Level41::first() const {
@@ -4773,7 +4773,7 @@ inline void Level41Fields::write(::tafla::TableWriter& writer_) const {
 inline Level41 Level40::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level41(bytes_, position);
+    return Level41(buffer.get_table(position), 0);
 }
 
 inline Level41Vector Level40::first() const {
@@ -4823,7 +4823,7 @@ inline void Level40Fields::write(::tafla::TableWriter& writer_) const {
 inline Level40 Level39::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level40(bytes_, position);
+    return Level40(buffer.get_table(position), 0);
 }
 
 inline Level40Vector Level39::first() const {
@@ -4873,7 +4873,7 @@ inline void Level39Fields::write(::tafla::TableWriter& writer_) const {
 inline Level39 Level38::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level39(bytes_, position);
+    return Level39(buffer.get_table(position), 0);
 }
 
 inline Level39Vector Level38::first() const {
@@ -4923,7 +4923,7 @@ inline void Level38Fields::write(::tafla::TableWriter& writer_) const {
 inline Level38 Level37::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level38(bytes_, position);
+    return Level38(buffer.get_table(position), 0);
 }
 
 inline Level38Vector Level37::first() const {
@@ -4973,7 +4973,7 @@ inline void Level37Fields::write(::tafla::TableWriter& writer_) const {
 inline Level37 Level36::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level37(bytes_, position);
+    return Level37(buffer.get_table(position), 0);
 }
 
 inline Level37Vector Level36::first() const {
@@ -5023,7 +5023,7 @@ inline void Level36Fields::write(::tafla::TableWriter& writer_) const {
 inline Level36 Level35::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level36(bytes_, position);
+    return Level36(buffer.get_table(position), 0);
 }
 
 inline Level36Vector Level35::first() const {
@@ -5073,7 +5073,7 @@ inline void Level35Fields::write(::tafla::TableWriter& writer_) const {
 inline Level35 Level34::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level35(bytes_, position);
+    return Level35(buffer.get_table(position), 0);
 }
 
 inline Level35Vector Level34::first() const {
@@ -5123,7 +5123,7 @@ inline void Level34Fields::write(::tafla::TableWriter& writer_) const {
 inline Level34 Level33::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level34(bytes_, position);
+    return Level34(buffer.get_table(position), 0);
 }
 
 inline Level34Vector Level33::first() const {
@@ -5173,7 +5173,7 @@ inline void Level33Fields::write(::tafla::TableWriter& writer_) const {
 inline Level33 Level32::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level33(bytes_, position);
+    return Level33(buffer.get_table(position), 0);
 }
 
 inline Level33Vector Level32::first() const {
@@ -5223,7 +5223,7 @@ inline void Level32Fields::write(::tafla::TableWriter& writer_) const {
 inline Level32 Level31::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level32(bytes_, position);
+    return Level32(buffer.get_table(position), 0);
 }
 
 inline Level32Vector Level31::first() const {
@@ -5273,7 +5273,7 @@ inline void Level31Fields::write(::tafla::TableWriter& writer_) const {
 inline Level31 Level30::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level31(bytes_, position);
+    return Level31(buffer.get_table(position), 0);
 }
 
 inline Level31Vector Level30::first() const {
@@ -5323,7 +5323,7 @@ inline void Level30Fields::write(::tafla::TableWriter& writer_) const {
 inline Level30 Level29::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level30(bytes_, position);
+    return Level30(buffer.get_table(position), 0);
 }
 
 inline Level30Vector Level29::first() const {
@@ -5373,7 +5373,7 @@ inline void Level29Fields::write(::tafla::TableWriter& writer_) const {
 inline Level29 Level28::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level29(bytes_, position);
+    return Level29(buffer.get_table(position), 0);
 }
 
 inline Level29Vector Level28::first() const {
@@ -5423,7 +5423,7 @@ inline void Level28Fields::write(::tafla::TableWriter& writer_) const {
 inline Level28 Level27::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level28(bytes_, position);
+    return Level28(buffer.get_table(position), 0);
 }
 
 inline Level28Vector Level27::first() const {
@@ -5473,7 +5473,7 @@ inline void Level27Fields::write(::tafla::TableWriter& writer_) const {
 inline Level27 Level26::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level27(bytes_, position);
+    return Level27(buffer.get_table(position), 0);
 }
 
 inline Level27Vector Level26::first() const {
@@ -5523,7 +5523,7 @@ inline void Level26Fields::write(::tafla::TableWriter& writer_) const {
 inline Level26 Level25::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level26(bytes_, position);
+    return Level26(buffer.get_table(position), 0);
 }
 
 inline Level26Vector Level25::first() const {
@@ -5573,7 +5573,7 @@ inline void Level25Fields::write(::tafla::TableWriter& writer_) const {
 inline Level25 Level24::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level25(bytes_, position);
+    return Level25(buffer.get_table(position), 0);
 }
 
 inline Level25Vector Level24::first() const {
@@ -5623,7 +5623,7 @@ inline void Level24Fields::write(::tafla::TableWriter& writer_) const {
 inline Level24 Level23::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level24(bytes_, position);
+    return Level24(buffer.get_table(position), 0);
 }
 
 inline Level24Vector Level23::first() const {
@@ -5673,7 +5673,7 @@ inline void Level23Fields::write(::tafla::TableWriter& writer_) const {
 inline Level23 Level22::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level23(bytes_, position);
+    return Level23(buffer.get_table(position), 0);
 }
 
 inline Level23Vector Level22::first() const {
@@ -5723,7 +5723,7 @@ inline void Level22Fields::write(::tafla::TableWriter& writer_) const {
 inline Level22 Level21::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level22(bytes_, position);
+    return Level22(buffer.get_table(position), 0);
 }
 
 inline Level22Vector Level21::first() const {
@@ -5773,7 +5773,7 @@ inline void Level21Fields::write(::tafla::TableWriter& writer_) const {
 inline Level21 Level20::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level21(bytes_, position);
+    return Level21(buffer.get_table(position), 0);
 }
 
 inline Level21Vector Level20::first() const {
@@ -5823,7 +5823,7 @@ inline void Level20Fields::write(::tafla::TableWriter& writer_) const {
 inline Level20 Level19::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level20(bytes_, position);
+    return Level20(buffer.get_table(position), 0);
 }
 
 inline Level20Vector Level19::first() const {
@@ -5873,7 +5873,7 @@ inline void Level19Fields::write(::tafla::TableWriter& writer_) const {
 inline Level19 Level18::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level19(bytes_, position);
+    return Level19(buffer.get_table(position), 0);
 }
 
 inline Level19Vector Level18::first() const {
@@ -5923,7 +5923,7 @@ inline void Level18Fields::write(::tafla::TableWriter& writer_) const {
 inline Level18 Level17::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level18(bytes_, position);
+    return Level18(buffer.get_table(position), 0);
 }
 
 inline Level18Vector Level17::first() const {
@@ -5973,7 +5973,7 @@ inline void Level17Fields::write(::tafla::TableWriter& writer_) const {
 inline Level17 Level16::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level17(bytes_, position);
+    return Level17(buffer.get_table(position), 0);
 }
 
 inline Level17Vector Level16::first() const {
@@ -6023,7 +6023,7 @@ inline void Level16Fields::write(::tafla::TableWriter& writer_) const {
 inline Level16 Level15::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level16(bytes_, position);
+    return Level16(buffer.get_table(position), 0);
 }
 
 inline Level16Vector Level15::first() const {
@@ -6073,7 +6073,7 @@ inline void Level15Fields::write(::tafla::TableWriter& writer_) const {
 inline Level15 Level14::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level15(bytes_, position);
+    return Level15(buffer.get_table(position), 0);
 }
 
 inline Level15Vector Level14::first() const {
@@ -6123,7 +6123,7 @@ inline void Level14Fields::write(::tafla::TableWriter& writer_) const {
 inline Level14 Level13::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level14(bytes_, position);
+    return Level14(buffer.get_table(position), 0);
 }
 
 inline Level14Vector Level13::first() const {
@@ -6173,7 +6173,7 @@ inline void Level13Fields::write(::tafla::TableWriter& writer_) const {
 inline Level13 Level12::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level13(bytes_, position);
+    return Level13(buffer.get_table(position), 0);
 }
 
 inline Level13Vector Level12::first() const {
@@ -6223,7 +6223,7 @@ inline void Level12Fields::write(::tafla::TableWriter& writer_) const {
 inline Level12 Level11::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level12(bytes_, position);
+    return Level12(buffer.get_table(position), 0);
 }
 
 inline Level12Vector Level11::first() const {
@@ -6273,7 +6273,7 @@ inline void Level11Fields::write(::tafla::TableWriter& writer_) const {
 inline Level11 Level10::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level11(bytes_, position);
+    return Level11(buffer.get_table(position), 0);
 }
 
 inline Level11Vector Level10::first() const {
@@ -6323,7 +6323,7 @@ inline void Level10Fields::write(::tafla::TableWriter& writer_) const {
 inline Level10 Level9::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level10(bytes_, position);
+    return Level10(buffer.get_table(position), 0);
 }
 
 inline Level10Vector Level9::first() const {
@@ -6373,7 +6373,7 @@ inline void Level9Fields::write(::tafla::TableWriter& writer_) const {
 inline Level9 Level8::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level9(bytes_, position);
+    return Level9(buffer.get_table(position), 0);
 }
 
 inline Level9Vector Level8::first() const {
@@ -6423,7 +6423,7 @@ inline void Level8Fields::write(::tafla::TableWriter& writer_) const {
 inline Level8 Level7::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level8(bytes_, position);
+    return Level8(buffer.get_table(position), 0);
 }
 
 inline Level8Vector Level7::first() const {
@@ -6473,7 +6473,7 @@ inline void Level7Fields::write(::tafla::TableWriter& writer_) const {
 inline Level7 Level6::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level7(bytes_, position);
+    return Level7(buffer.get_table(position), 0);
 }
 
 inline Level7Vector Level6::first() const {
@@ -6523,7 +6523,7 @@ inline void Level6Fields::write(::tafla::TableWriter& writer_) const {
 inline Level6 Level5::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level6(bytes_, position);
+    return Level6(buffer.get_table(position), 0);
 }
 
 inline Level6Vector Level5::first() const {
@@ -6573,7 +6573,7 @@ inline void Level5Fields::write(::tafla::TableWriter& writer_) const {
 inline Level5 Level4::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level5(bytes_, position);
+    return Level5(buffer.get_table(position), 0);
 }
 
 inline Level5Vector Level4::first() const {
@@ -6623,7 +6623,7 @@ inline void Level4Fields::write(::tafla::TableWriter& writer_) const {
 inline Level4 Level3::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level4(bytes_, position);
+    return Level4(buffer.get_table(position), 0);
 }
 
 inline Level4Vector Level3::first() const {
@@ -6673,7 +6673,7 @@ inline void Level3Fields::write(::tafla::TableWriter& writer_) const {
 inline Level3 Level2::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level3(bytes_, position);
+    return Level3(buffer.get_table(position), 0);
 }
 
 inline Level3Vector Level2::first() const {
@@ -6723,7 +6723,7 @@ inline void Level2Fields::write(::tafla::TableWriter& writer_) const {
 inline Level2 Level1::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level2(bytes_, position);
+    return Level2(buffer.get_table(position), 0);
 }
 
 inline Level2Vector Level1::first() const {
@@ -6773,7 +6773,7 @@ inline void Level1Fields::write(::tafla::TableWriter& writer_) const {
 inline Level1 Root::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
-    return Level1(bytes_, position);
+    return Level1(buffer.get_table(position), 0);
 }
 
 inline Level1Vector Root::first() const {

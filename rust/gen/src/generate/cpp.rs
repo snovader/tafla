@@ -568,9 +568,13 @@ impl Generator<'_> {
                         "{structure}::from_bytes(buffer.get_struct(position, {structure}::SIZE).data())"
                     )
                 }
+                // From the table's bytes, which `get_table()` checks lie
+                // within the bytes, so that its reader is a view of them
+                // without a select of no bytes past them, whose result the
+                // nested table's reads would wait for
                 FieldType::Table(table) => {
                     let table = &type_name(&self.schema.definition(table).name);
-                    format!("{table}(bytes_, position)")
+                    format!("{table}(buffer.get_table(position), 0)")
                 }
                 FieldType::Vector(_) => {
                     let view = self.value_type(field.field_type);
