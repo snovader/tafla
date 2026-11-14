@@ -506,9 +506,7 @@ impl Generator<'_> {
             if !docs.is_empty() {
                 docs.push(String::new());
             }
-            docs.push(
-                "Throws a `tafla::DecodeError` if the field lies outside the bytes".to_owned(),
-            );
+            docs.push(getter_doc(field.field_type).to_owned());
 
             writer.blank();
             cpp_doc(writer, &docs);
@@ -516,21 +514,6 @@ impl Generator<'_> {
                 "[[nodiscard]] {} {name}() const;",
                 self.value_type(field.field_type)
             ));
-
-            if let Some((view, errors)) = self.view(field.field_type) {
-                let mut docs = field.docs.clone();
-                if !docs.is_empty() {
-                    docs.push(String::new());
-                }
-                docs.push(format!(
-                    "Views the items of `{name}()`, reading each one when it's asked for, or \
-                     throws a `tafla::DecodeError` {errors}"
-                ));
-
-                writer.blank();
-                cpp_doc(writer, &docs);
-                writer.line(format!("[[nodiscard]] {view} {}_view() const;", field.name));
-            }
         }
     }
 
@@ -561,13 +544,6 @@ impl Generator<'_> {
                 format!("buffer.field_offset(0, {index})")
             };
 
-            // The getter of a vector or an array of structs reads every item
-            // through its view
-            if let Some((view, _)) = self.view(field.field_type) {
-                self.view_definitions(writer, class, field, &view, buffer, &offset);
-                continue;
-            }
-
             writer.blank();
             writer.line(format!(
                 "inline {} {class}::{name}() const {{",
@@ -591,61 +567,20 @@ impl Generator<'_> {
                     let table = &type_name(&self.schema.definition(table).name);
                     format!("{table}(bytes_, position)")
                 }
-                FieldType::StructArray(_) | FieldType::Vector(_) => {
-                    unreachable!("vectors and arrays of structs are read through their views")
+                FieldType::Vector(_) => {
+                    let view = self.value_type(field.field_type);
+                    format!("{view}(buffer.get_vector(position))")
+                }
+                FieldType::StructArray(structure) => {
+                    let view = self.value_type(field.field_type);
+                    let structure = &type_name(&self.schema.definition(structure).name);
+                    format!("{view}(buffer.get_struct_array(position, {structure}::SIZE))")
                 }
             };
             writer.line(format!("return {read};"));
             writer.dedent();
             writer.line("}");
         }
-    }
-
-    /// The definitions of the getter of a vector or an array of structs,
-    /// which reads every item through its view, and of the view's getter,
-    /// which finds the field as the other getters do, with `buffer`'s line
-    /// and the `offset` it reads
-    fn view_definitions(
-        &self,
-        writer: &mut CodeWriter,
-        class: &str,
-        field: &Field,
-        view: &str,
-        buffer: &str,
-        offset: &str,
-    ) {
-        let name = identifier(&field.name);
-
-        writer.blank();
-        writer.line(format!(
-            "inline {} {class}::{name}() const {{",
-            self.value_type(field.field_type)
-        ));
-        writer.line(format!("{INDENT}return {}_view().to_vector();", field.name));
-        writer.line("}");
-
-        writer.blank();
-        writer.line(format!(
-            "inline {view} {class}::{}_view() const {{",
-            field.name
-        ));
-        writer.indent();
-        writer.line(buffer);
-        writer.line(format!("const auto position = {offset};"));
-        match field.field_type {
-            FieldType::Vector(_) => {
-                writer.line(format!("return {view}(buffer.get_vector(position));"));
-            }
-            FieldType::StructArray(structure) => {
-                let structure = &type_name(&self.schema.definition(structure).name);
-                writer.line(format!(
-                    "return {view}(buffer.get_struct_array(position, {structure}::SIZE));"
-                ));
-            }
-            _ => unreachable!("only vectors and arrays of structs have views"),
-        }
-        writer.dedent();
-        writer.line("}");
     }
 
     /// A struct: its fields, its size and alignment, and the functions that
@@ -1168,22 +1103,6 @@ impl Generator<'_> {
         }
     }
 
-    /// The type and the condition of the errors of the view of a vector or
-    /// an array of structs, or nothing for any other field
-    fn view(&self, field_type: FieldType) -> Option<(String, &'static str)> {
-        match field_type {
-            FieldType::Vector(index) => Some((
-                format!("{}Vector", type_name(&self.schema.definition(index).name)),
-                "if the field, or the vector's count or the ends of its items, lie outside the bytes",
-            )),
-            FieldType::StructArray(index) => Some((
-                format!("{}Array", type_name(&self.schema.definition(index).name)),
-                "if the field or its structs lie outside the bytes",
-            )),
-            _ => None,
-        }
-    }
-
     fn field_size(&self, field_type: FieldType) -> usize {
         match field_type {
             FieldType::Scalar(scalar) => usize::from(scalar.size()),
@@ -1202,9 +1121,8 @@ impl Generator<'_> {
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => name(index),
-            FieldType::StructArray(index) | FieldType::Vector(index) => {
-                format!("std::vector<{}>", name(index))
-            }
+            FieldType::StructArray(index) => format!("{}Array", name(index)),
+            FieldType::Vector(index) => format!("{}Vector", name(index)),
         }
     }
 
@@ -1221,6 +1139,26 @@ impl Generator<'_> {
             FieldType::Table(index) => format!("{}Fields", name(index)),
             FieldType::Vector(index) => format!("std::span<const {}Fields>", name(index)),
         }
+    }
+}
+
+/// The documentation of the getter of a field: of a vector or an array of
+/// structs, which returns a view of its items that reads each one when it's
+/// asked for, or of any other field
+const fn getter_doc(field_type: FieldType) -> &'static str {
+    match field_type {
+        FieldType::Vector(_) => {
+            "Views the items, reading each one when it's asked for, which throws a \
+             `tafla::DecodeError` if its bytes are corrupt, and `to_vector()` reads every item. \
+             Throws a `tafla::DecodeError` if the field, or the vector's count or the ends of its \
+             items, lie outside the bytes."
+        }
+        FieldType::StructArray(_) => {
+            "Views the structs, reading each one when it's asked for, and `to_vector()` reads \
+             every struct. Throws a `tafla::DecodeError` if the field or its structs lie outside \
+             the bytes."
+        }
+        _ => "Throws a `tafla::DecodeError` if the field lies outside the bytes",
     }
 }
 

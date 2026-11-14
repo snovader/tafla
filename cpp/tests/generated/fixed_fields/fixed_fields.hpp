@@ -701,14 +701,12 @@ public:
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
     [[nodiscard]] Frame frame() const;
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Range> ranges() const;
-
     /**
-     * Views the items of `ranges()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] RangeVector ranges_view() const;
+    [[nodiscard]] RangeVector ranges() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1292,11 +1290,7 @@ inline Frame Span::frame() const {
     return Frame(bytes_, position);
 }
 
-inline std::vector<Range> Span::ranges() const {
-    return ranges_view().to_vector();
-}
-
-inline RangeVector Span::ranges_view() const {
+inline RangeVector Span::ranges() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(3);
     return RangeVector(buffer.get_vector(position));

@@ -524,17 +524,11 @@ public:
     /**
      * A vector of tables that hold vectors of themselves
      *
-     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] std::vector<Tree> trees() const;
-
-    /**
-     * A vector of tables that hold vectors of themselves
-     *
-     * Views the items of `trees()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
-     */
-    [[nodiscard]] TreeVector trees_view() const;
+    [[nodiscard]] TreeVector trees() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -585,14 +579,12 @@ public:
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
     [[nodiscard]] std::int32_t value() const;
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Tree> children() const;
-
     /**
-     * Views the items of `children()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] TreeVector children_view() const;
+    [[nodiscard]] TreeVector children() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -722,14 +714,11 @@ public:
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
     [[nodiscard]] Point start() const;
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Point> points() const;
-
     /**
-     * Views the items of `points()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field or its structs lie outside the bytes
+     * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
+     * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] PointArray points_view() const;
+    [[nodiscard]] PointArray points() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -772,17 +761,10 @@ public:
     /**
      * An array of structs of 7 bytes, aligned to 4
      *
-     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
+     * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] std::vector<Documented> documented() const;
-
-    /**
-     * An array of structs of 7 bytes, aligned to 4
-     *
-     * Views the items of `documented()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field or its structs lie outside the bytes
-     */
-    [[nodiscard]] DocumentedArray documented_view() const;
+    [[nodiscard]] DocumentedArray documented() const;
 
     /**
      * A struct of structs
@@ -791,14 +773,11 @@ public:
      */
     [[nodiscard]] Segment segment() const;
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Segment> segments() const;
-
     /**
-     * Views the items of `segments()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field or its structs lie outside the bytes
+     * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
+     * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] SegmentArray segments_view() const;
+    [[nodiscard]] SegmentArray segments() const;
 
     /**
      * A table nested in the message, which holds structs too
@@ -1144,11 +1123,7 @@ inline Outer Nested::outer() const {
     return Outer(bytes_, position);
 }
 
-inline std::vector<Tree> Nested::trees() const {
-    return trees_view().to_vector();
-}
-
-inline TreeVector Nested::trees_view() const {
+inline TreeVector Nested::trees() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(2);
     return TreeVector(buffer.get_vector(position));
@@ -1206,11 +1181,7 @@ inline std::int32_t Tree::value() const {
     return buffer.get_int32(position);
 }
 
-inline std::vector<Tree> Tree::children() const {
-    return children_view().to_vector();
-}
-
-inline TreeVector Tree::children_view() const {
+inline TreeVector Tree::children() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return TreeVector(buffer.get_vector(position));
@@ -1331,11 +1302,7 @@ inline Point Path::start() const {
     return Point::from_bytes(buffer.get_struct(position, Point::SIZE).data());
 }
 
-inline std::vector<Point> Path::points() const {
-    return points_view().to_vector();
-}
-
-inline PointArray Path::points_view() const {
+inline PointArray Path::points() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return PointArray(buffer.get_struct_array(position, Point::SIZE));
@@ -1361,11 +1328,7 @@ inline Packed Structs::packed() const {
     return Packed::from_bytes(buffer.get_struct(position, Packed::SIZE).data());
 }
 
-inline std::vector<Documented> Structs::documented() const {
-    return documented_view().to_vector();
-}
-
-inline DocumentedArray Structs::documented_view() const {
+inline DocumentedArray Structs::documented() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(1);
     return DocumentedArray(buffer.get_struct_array(position, Documented::SIZE));
@@ -1377,11 +1340,7 @@ inline Segment Structs::segment() const {
     return Segment::from_bytes(buffer.get_struct(position, Segment::SIZE).data());
 }
 
-inline std::vector<Segment> Structs::segments() const {
-    return segments_view().to_vector();
-}
-
-inline SegmentArray Structs::segments_view() const {
+inline SegmentArray Structs::segments() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(3);
     return SegmentArray(buffer.get_struct_array(position, Segment::SIZE));
