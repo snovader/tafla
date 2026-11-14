@@ -1,5 +1,5 @@
 from array import array
-from collections.abc import Buffer
+from collections.abc import Buffer, Callable, Iterator
 from struct import error as StructError
 from typing import Any, overload
 
@@ -510,6 +510,66 @@ class ByteBuffer:
             items.append((*values(unpacked), text))
 
         return items
+
+    def iter_vector_fields[T](
+        self, position: int, fields: FixedFields, read: Callable[[int], T]
+    ) -> Iterator[tuple[Any, ...] | T]:
+        """Returns an iterator over the values of every item of the vector at
+        ``position``, a table whose fields ``fields`` describes whole: each
+        item's as ``get_fields()`` returns them, or, for an item whose offsets
+        aren't those that its writer writes, what ``read`` returns for the
+        item's position, which the item's getters read.
+
+        It reads each item's end when it reaches the item, after the end of
+        the item before it, so it raises ``DecodeError`` for an item that
+        doesn't lie within the buffer when it reaches it, as
+        ``get_vector_offsets()`` raises for it, after the items before it.
+
+        Raises ``DecodeError`` at once if the vector's count or the ends after
+        it don't lie within the buffer, as ``get_vector_length()`` does.
+
+        Generated code calls it to iterate over the values of a vector's
+        items, without reading them all at once.
+        """
+        ends = self.__get_item_ends(position)
+
+        return self.__iter_vector_fields(position, ends, fields, read)
+
+    def __iter_vector_fields[T](
+        self,
+        position: int,
+        ends: memoryview[int],
+        fields: FixedFields,
+        read: Callable[[int], T],
+    ) -> Iterator[tuple[Any, ...] | T]:
+        # get_vector_fields()'s reads, an item at a time
+        struct, header, check, expected, values, string = fields._readers[self.__size]
+        view, length = self.__view, self.__length
+
+        start = (len(ends) + 1) * self.__size
+        for end in ends:
+            if start > end or position + end > length:
+                raise self.__item_error(position, start, end)
+            offset = position + start
+            start = end
+
+            item = offset + header
+            try:
+                unpacked = struct.unpack_from(view, item)
+                if check(unpacked) == expected:
+                    if not string:
+                        yield values(unpacked)
+                        continue
+
+                    begin = item + struct.size
+                    stop = begin + unpacked[-1]
+                    if stop <= length:
+                        yield (*values(unpacked), str(view[begin:stop], "utf-8"))
+                        continue
+            except StructError, OverflowError, UnicodeDecodeError:
+                pass
+
+            yield read(offset)
 
     def __get_item_ends(self, position: int) -> memoryview[int]:
         """Returns the item ends of the vector at ``position``, once they're

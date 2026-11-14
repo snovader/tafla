@@ -106,6 +106,11 @@ first commits, for code built from its source before the release.
   which hold no vectors, so that it reads in proportion to the bytes. Views
   of vectors have `field_values()` and `item_field_values(index)`, which
   read the items' values without creating their readers.
+- Generated Python views of vectors have `iter_field_values()`, which
+  iterates over the items' values: for a table of fixed size without
+  structs, through the runtime's `ByteBuffer.iter_vector_fields()`, which
+  reads each item's end when it reaches the item, without creating the
+  items' readers, nor a list of their values.
 - Generated Python messages of scalars, strings, arrays and vectors of
   tables of fixed size without structs have `serialize_values()`, which
   writes the message from its fields' values as positional arguments, each

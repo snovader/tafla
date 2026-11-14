@@ -38,11 +38,12 @@ of its own, and `item_access.py` holds them:
   of the last item or `get_vector_offsets()` of every item, and
   `get_struct_array()` with `Struct("<fff")`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
-  views that read each item when it's asked for. `item_field_values(-1)`
-  reads the last item's values alone, as a tuple: the vector's in one call,
-  and the array's as `Struct("<fff")` unpacks them by hand. `for` iterates
-  over every item of the vector, creating its reader as it reaches it, and
-  `iter_field_values()` over every struct's values.
+  views that read each item when it's asked for, as a tuple of its values.
+  `item_field_values(-1)` reads the last item's alone: the vector's in one
+  call, and the array's as `Struct("<fff")` unpacks them by hand.
+  `iter_field_values()` iterates over every item's: the vector's through the
+  runtime's `iter_vector_fields()`, which reads each item when it reaches
+  it, and the array's as `Struct("<fff")` iterates over them.
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
   harness's noise.
 

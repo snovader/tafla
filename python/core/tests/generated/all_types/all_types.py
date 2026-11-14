@@ -698,6 +698,10 @@ class TreeVector:
         """
         return [item.field_values() for item in self]
 
+    def iter_field_values(self) -> Iterator[TreeFieldValues]:
+        """Reads every item's values one after another, as ``Tree.field_values()`` reads each"""
+        return (item.field_values() for item in self)
+
 
 class Keywords:
     """Fields named after keywords of TypeScript, Python, Java or Rust"""

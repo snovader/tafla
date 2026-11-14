@@ -520,6 +520,19 @@ class ItemVector:
 
         return items
 
+    def iter_field_values(self) -> Iterator[ItemFieldValues]:
+        """Reads every item's values one after another, as ``Item.field_values()``
+        reads each, reading each item when it reaches it, so that it raises
+        ``DecodeError`` for an item that doesn't lie within the bytes when it
+        reaches it
+        """
+        buffer = self._buffer
+        return buffer.iter_vector_fields(
+            self._position,
+            Item._FIXED_FIELDS,
+            lambda offset: Item(buffer, offset).field_values(),
+        )
+
     def fields(self) -> list[ItemFields]:
         """Reads every item's fields at once, as ``Item.fields()`` reads each,
         in one call when the items' offsets are those that their writer writes,

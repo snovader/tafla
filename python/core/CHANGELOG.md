@@ -32,6 +32,10 @@ repository's first commits, for code built from its source before the release.
 - `ByteBuffer.get_fields()`, which reads every field of a table at once, when
   its offsets are those that `TableWriter` writes, for the code that tafla-gen
   generates.
+- `ByteBuffer.iter_vector_fields()`, which iterates over the values of a
+  vector's items as `get_fields()` reads each, reading each item's end when
+  it reaches the item, so that the code that tafla-gen generates iterates
+  over a vector's values without reading them all at once.
 - `TableBuilder.set_table_in_place()` and `set_vector_in_place()`, which
   record a nested table, or each item of a vector, among the builder's own
   fields, from a function that sets them on the builder, rather than from a

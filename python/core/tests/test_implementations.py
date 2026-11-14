@@ -11,7 +11,7 @@ import subprocess
 import sys
 import unittest
 from array import array
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
 from types import ModuleType
@@ -587,6 +587,7 @@ READS = [
     "get_vector",
     "get_fields",
     "get_vector_fields",
+    "iter_vector_fields",
     "get_size",
     "get_version",
     "bytes",
@@ -609,6 +610,7 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
     "get_vector_fields": tuples(POSITIONS),
+    "iter_vector_fields": tuples(POSITIONS),
     "get_size": just(()),
     "get_version": just(()),
     "bytes": just(()),
@@ -626,7 +628,25 @@ def read(
         # A nested table's fields, for any offset type
         fields = fixed_fields_of(implementation, description)
         return getattr(buffer, method)(*args, fields)
+    if method == "iter_vector_fields":
+        fields = fixed_fields_of(implementation, description)
+        return _items_until_error(
+            buffer.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
+        )
     return getattr(buffer, method)(*args)
+
+
+def _items_until_error(items: Iterator[object]) -> list[object]:
+    """Each item that ``items`` gives, comparable, and then the error that it
+    raises, if any, as ``outcome()`` describes it"""
+    taken: list[object] = []
+    while True:
+        item = outcome(partial(next, items, StopIteration))
+        if item is StopIteration:
+            return taken
+        taken.append(item)
+        if isinstance(item, Raised):
+            return taken
 
 
 ARRAYS: SearchStrategy[Any] = one_of(
