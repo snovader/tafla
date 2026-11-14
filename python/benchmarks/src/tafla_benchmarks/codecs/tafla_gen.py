@@ -3,7 +3,6 @@ from collections.abc import Buffer
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
 from tafla_benchmarks.generated.tafla.workloads import (
     Document,
-    ItemFields,
     ItemList,
     Record,
     Sample,
@@ -60,11 +59,11 @@ def sum_a(data: Buffer) -> float:
 
 
 def serialize_list(input: ListInput) -> memoryview:
-    return ItemList.serialize(items=[_item_fields(item) for item in input.items])
+    """Writes the items' values, each pair's in place of it, as the view's
+    ``field_values()`` reads them, with ``serialize_values()``"""
+    items = [(item.value, item.first, item.second) for item in input.items]
 
-
-def _item_fields(item: ItemInput) -> ItemFields:
-    return {"value": item.value, "pair": {"first": item.first, "second": item.second}}
+    return ItemList.serialize_values(items)
 
 
 def deserialize_list(data: Buffer) -> ListInput:
@@ -115,9 +114,10 @@ positional arguments, and read into tuples of them, with ``serialize_values()``,
 ``field_values()`` and ``read_values()``. The document is written from a
 ``TypedDict`` of each table's fields, and read into a tuple of its values with
 ``field_values()``, its columns' in a tuple of their own, as views. The vector
-is written from its items' ``TypedDict``s, and read with the
-``field_values()`` of the view that its getter returns, which reads every
-item's values at once, each pair's in place of it. The array of structs is written from the
+is written from a tuple of each item's values, each pair's in place of it,
+with ``serialize_values()``, and read into them with the ``field_values()``
+of the view that its getter returns, which reads every item's values at
+once. The array of structs is written from the
 workload's own items, which the struct's protocol of fields types, and read
 with its view's ``iter_field_values()``, into a tuple of each struct's values
 rather than a struct.

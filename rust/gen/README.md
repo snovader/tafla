@@ -207,8 +207,10 @@ aren't the ones that its writer writes, so that its values and errors are
 the getters'. A table whose vectors are of tables of only those fields also
 has `fields()`, which reads them into the `TypedDict` that it's written
 from, with the items of its vectors and arrays of structs. A message of
-scalars and a string after them has `serialize_values()`, which writes it
-from its values as positional arguments. A struct of scalars has
+scalars, strings, arrays and vectors of tables of fixed size without
+structs has `serialize_values()`, which writes it from its values as
+positional arguments, each vector's as its items' values, as its view's
+`field_values()` reads them. A struct of scalars has
 `read_values()`, `read_array_values()` and `serialize_values()`, which do
 the same for its values without creating its dataclass. A view of a vector
 has `field_values()`, which reads every item's values, at once when the

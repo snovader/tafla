@@ -231,6 +231,38 @@ class Arrays:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls,
+        int8: Buffer | Iterable[int],
+        uint8: Buffer | Iterable[int],
+        int16: Buffer | Iterable[int],
+        uint16: Buffer | Iterable[int],
+        int32: Buffer | Iterable[int],
+        uint32: Buffer | Iterable[int],
+        int64: Buffer | Iterable[int],
+        uint64: Buffer | Iterable[int],
+        float32: Buffer | Iterable[float],
+        float64: Buffer | Iterable[float],
+        /,
+    ) -> memoryview:
+        """Writes an ``Arrays`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(10, cls._LAYOUT)
+        writer.set_int8_array(0, int8)
+        writer.set_uint8_array(1, uint8)
+        writer.set_int16_array(2, int16)
+        writer.set_uint16_array(3, uint16)
+        writer.set_int32_array(4, int32)
+        writer.set_uint32_array(5, uint32)
+        writer.set_int64_array(6, int64)
+        writer.set_uint64_array(7, uint64)
+        writer.set_float32_array(8, float32)
+        writer.set_float64_array(9, float64)
+
+        return writer.bytes()
+
     def int8(self) -> memoryview[int]:
         return self._buffer.get_int8_array(self._buffer.root_offset(0))
 
@@ -281,8 +313,8 @@ class Arrays:
         }
 
     def field_values(self) -> ArraysFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
