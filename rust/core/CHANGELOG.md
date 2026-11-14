@@ -31,6 +31,13 @@ first commits, for code built from its source before the release.
   returns an error, leaves fields unset or panics. The benchmarks' vector of
   100 nested tables took 4.4 µs so, rather than 8.8 µs from a builder per
   item, in 4 allocations rather than 208.
+- `TableSizer::add_table_bytes()`, a public `TableWriter::copy_table()`, and
+  `TableWriter::table_bytes()` and `versioned_table_bytes()`, for the code
+  that tafla-gen generates: they add and copy whole a table whose length its
+  schema fixes, and start a message's bytes with its header, so that a
+  message of such fields is written at constant positions. They're outside
+  the compatibility promise of the rest of the API, as Go's
+  `AddTableBytes()` and `AppendTable()` are.
 
 ### Changed
 

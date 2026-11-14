@@ -216,7 +216,12 @@ sizer and a writer. C++ writes such a message whole too, each field at a
 constant position, without a sizer and a writer, into new bytes or, from
 `serialize_into()`, the start of the given bytes, which the runtime's
 `room_for_table()` checks hold it. A nested table of only those fields has a
-`SIZE` and a `to_bytes()`, with which such a message writes it. Each nested
+`SIZE` and a `to_bytes()`, with which such a message writes it. Rust writes
+such a message whole too, into the bytes that the runtime's
+`TableWriter::table_bytes()` returns with its header, and its nested tables
+of only those fields have a `SIZE` and a `to_bytes()` too, whose bytes the
+parent's writer copies whole, and whose `SIZE` its sizer adds for every item
+of a vector of them at once. Each nested
 table has an `ALIGNMENT`, which its parent pads it to: the largest alignment
 of its arrays and nested tables. Structs are read and written whole, and
 arrays of

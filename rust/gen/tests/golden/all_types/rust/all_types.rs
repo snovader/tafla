@@ -142,33 +142,34 @@ impl ScalarsFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(11, Scalars::LAYOUT)?;
-        sizer.add_i8();
-        sizer.add_u8();
-        sizer.add_i16();
-        sizer.add_u16();
-        sizer.add_i32();
-        sizer.add_u32();
-        sizer.add_i64();
-        sizer.add_u64();
-        sizer.add_f32();
-        sizer.add_f64();
-        sizer.add_u8();
+        let mut bytes = TableWriter::table_bytes(11, Scalars::LAYOUT, 87)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_i8(0, self.int8);
-        writer.set_u8(1, self.uint8);
-        writer.set_i16(2, self.int16);
-        writer.set_u16(3, self.uint16);
-        writer.set_i32(4, self.int32);
-        writer.set_u32(5, self.uint32);
-        writer.set_i64(6, self.int64);
-        writer.set_u64(7, self.uint64);
-        writer.set_f32(8, self.float32);
-        writer.set_f64(9, self.float64);
-        writer.set_u8(10, u8::from(self.bool));
+        let mut fixed = [0; 87];
+        fixed[0..4].copy_from_slice(&44_u32.to_le_bytes());
+        fixed[4..8].copy_from_slice(&45_u32.to_le_bytes());
+        fixed[8..12].copy_from_slice(&46_u32.to_le_bytes());
+        fixed[12..16].copy_from_slice(&48_u32.to_le_bytes());
+        fixed[16..20].copy_from_slice(&50_u32.to_le_bytes());
+        fixed[20..24].copy_from_slice(&54_u32.to_le_bytes());
+        fixed[24..28].copy_from_slice(&58_u32.to_le_bytes());
+        fixed[28..32].copy_from_slice(&66_u32.to_le_bytes());
+        fixed[32..36].copy_from_slice(&74_u32.to_le_bytes());
+        fixed[36..40].copy_from_slice(&78_u32.to_le_bytes());
+        fixed[40..44].copy_from_slice(&86_u32.to_le_bytes());
+        fixed[44..45].copy_from_slice(&self.int8.to_le_bytes());
+        fixed[45..46].copy_from_slice(&self.uint8.to_le_bytes());
+        fixed[46..48].copy_from_slice(&self.int16.to_le_bytes());
+        fixed[48..50].copy_from_slice(&self.uint16.to_le_bytes());
+        fixed[50..54].copy_from_slice(&self.int32.to_le_bytes());
+        fixed[54..58].copy_from_slice(&self.uint32.to_le_bytes());
+        fixed[58..66].copy_from_slice(&self.int64.to_le_bytes());
+        fixed[66..74].copy_from_slice(&self.uint64.to_le_bytes());
+        fixed[74..78].copy_from_slice(&self.float32.to_le_bytes());
+        fixed[78..86].copy_from_slice(&self.float64.to_le_bytes());
+        fixed[86] = u8::from(self.bool);
+        bytes.extend_from_slice(&fixed);
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
