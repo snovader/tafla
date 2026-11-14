@@ -130,9 +130,8 @@ void append_utf8(std::string& string, char32_t character) {
     }
 }
 
-/// Strings of ASCII, of characters of two, three and four bytes in UTF-8, the
-/// last outside the Basic Multilingual Plane, and of U+FEFF, which isn't a
-/// byte order mark within a table, leading or not
+}  // namespace
+
 rc::Gen<std::string> strings(std::size_t characters) {
     // Three bytes, skipping the surrogates, which aren't characters
     const auto three_bytes = rc::gen::map(rc::gen::inRange<char32_t>(0x800, 0x10000 - 0x800), [](char32_t code) {
@@ -154,6 +153,8 @@ rc::Gen<std::string> strings(std::size_t characters) {
         return string;
     });
 }
+
+namespace {
 
 /// The types of the scalars of a struct, of one to four
 rc::Gen<std::vector<ScalarType>> struct_scalar_types() {
