@@ -62,7 +62,7 @@ void for_each_codec(Function function) {
 template <class Shape, class Codec>
 void check_round_trip(const Codec& codec, const typename Shape::Value& input) {
     const auto bytes = codec.serialize(Shape{}, input);
-    if (!same(codec.deserialize(Shape{}, bytes_of(bytes)), input)) {
+    if (!same(value_of(codec.deserialize(Shape{}, bytes_of(bytes))), input)) {
         throw std::logic_error(std::string(Codec::name) + " didn't read back its " + std::string(Shape::name));
     }
 }

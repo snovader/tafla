@@ -55,9 +55,10 @@ truncated document, as the TypeScript comparison does, and
 - tafla's columns are read as views of the bytes, through
   `ArrayView::as_span()`, when they're aligned on a little-endian host, and so
   are FlatBuffers', through `Vector::data()`, as C++'s FlatBuffers reads them.
-  protobuf's are views of the repeated fields that it decodes them into,
-  which the output keeps, and MessagePack copies its into vectors. Summing a
-  column shows each library's per-element access.
+  protobuf's are views of the repeated fields that it decodes them into, and
+  its document is returned in a `Kept` with the message, so that only its
+  reads pay for keeping what they view. MessagePack copies its columns into
+  vectors. Summing a column shows each library's per-element access.
 - tafla's C++ runtime has no `StructWriter`. The tafla codec writes the
   fixed-size record with `store_le()` and reads it with `ByteBuffer`'s
   getters. tafla-gen's struct writes and reads it with the generated
@@ -123,8 +124,9 @@ comparison uses its counterpart:
   `ParseFromArray()`. Its messages own their strings and repeated fields, so
   building one copies its columns, as a caller that keeps its values would.
   Reading decodes the columns into the message's repeated fields, which the
-  output views and keeps the message for, as tafla's and FlatBuffers'
-  outputs view their bytes, and moves its strings. protobuf has no structs,
+  document views, as tafla's and FlatBuffers' documents view their bytes,
+  and returns it in a `Kept` with a `shared_ptr` to the message. It moves its
+  strings. protobuf has no structs,
   so the array of them is a repeated message of the three floats.
 - **msgpack-cxx** packs the workloads' values with its `packer` into an
   `sbuffer`, a table as a map with its field names, as msgpackr packs an
