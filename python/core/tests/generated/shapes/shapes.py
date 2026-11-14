@@ -54,8 +54,10 @@ class Point:
         return self._buffer.get_string(self._buffer.root_offset(3))
 
     def fields(self) -> PointFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -64,9 +66,13 @@ class Point:
 
         return {"x": values[0], "y": values[1], "id": values[2], "name": values[3]}
 
-    def field_values(self) -> tuple[float, float, int, str]:
+    def field_values(self) -> PointFieldValues:
         """Reads every field's value at once into a tuple, in the fields' order, as
         ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
@@ -82,6 +88,9 @@ class PointFields(TypedDict):
     y: float
     id: int
     name: str
+
+
+type PointFieldValues = tuple[float, float, int, str]
 
 
 class Document:
@@ -142,6 +151,64 @@ class Document:
     def columns(self) -> Columns:
         return Columns(self._buffer, self._buffer.root_offset(3))
 
+    def fields(self) -> DocumentFields:
+        """Reads every field at once, as ``serialize()`` takes them, with a nested
+        table's fields as its ``fields()`` reads them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {
+                "x": self.x(),
+                "y": self.y(),
+                "name": self.name(),
+                "columns": self.columns().fields(),
+            }
+
+        columns = buffer.root_offset(3)
+        return {
+            "x": values[0],
+            "y": values[1],
+            "name": values[2],
+            "columns": {
+                "base": buffer.get_int64(buffer.field_offset(columns, 0)),
+                "keys": buffer.get_uint32_array(buffer.field_offset(columns, 1)),
+                "a": buffer.get_float32_array(buffer.field_offset(columns, 2)),
+                "b": buffer.get_float32_array(buffer.field_offset(columns, 3)),
+            },
+        }
+
+    def field_values(self) -> DocumentFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.x(), self.y(), self.name(), self.columns().field_values())
+
+        columns = buffer.root_offset(3)
+        return (
+            values[0],
+            values[1],
+            values[2],
+            (
+                buffer.get_int64(buffer.field_offset(columns, 0)),
+                buffer.get_uint32_array(buffer.field_offset(columns, 1)),
+                buffer.get_float32_array(buffer.field_offset(columns, 2)),
+                buffer.get_float32_array(buffer.field_offset(columns, 3)),
+            ),
+        )
+
 
 class DocumentFields(TypedDict):
     """The fields of a ``Document``, to write"""
@@ -150,6 +217,9 @@ class DocumentFields(TypedDict):
     y: float
     name: str
     columns: ColumnsFields
+
+
+type DocumentFieldValues = tuple[float, float, str, ColumnsFieldValues]
 
 
 class Columns:
@@ -198,6 +268,33 @@ class Columns:
             self._buffer.field_offset(self._position, 3)
         )
 
+    def fields(self) -> ColumnsFields:
+        """Reads every field at once, as ``write()`` takes them.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return {
+            "base": buffer.get_int64(buffer.field_offset(self._position, 0)),
+            "keys": buffer.get_uint32_array(buffer.field_offset(self._position, 1)),
+            "a": buffer.get_float32_array(buffer.field_offset(self._position, 2)),
+            "b": buffer.get_float32_array(buffer.field_offset(self._position, 3)),
+        }
+
+    def field_values(self) -> ColumnsFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return (
+            buffer.get_int64(buffer.field_offset(self._position, 0)),
+            buffer.get_uint32_array(buffer.field_offset(self._position, 1)),
+            buffer.get_float32_array(buffer.field_offset(self._position, 2)),
+            buffer.get_float32_array(buffer.field_offset(self._position, 3)),
+        )
+
 
 class ColumnsFields(TypedDict):
     """The fields of a ``Columns``, to write"""
@@ -207,6 +304,11 @@ class ColumnsFields(TypedDict):
     keys: Buffer | Iterable[int]
     a: Buffer | Iterable[float]
     b: Buffer | Iterable[float]
+
+
+type ColumnsFieldValues = tuple[
+    int, memoryview[int], memoryview[float], memoryview[float]
+]
 
 
 class ItemList:
@@ -235,11 +337,32 @@ class ItemList:
     def items(self) -> ItemVector:
         return ItemVector(self._buffer, self._buffer.root_offset(0))
 
+    def fields(self) -> ItemListFields:
+        """Reads every field at once, as ``serialize()`` takes them, with the items of
+        vectors and arrays of structs in lists.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return {"items": ItemVector(buffer, buffer.root_offset(0)).fields()}
+
+    def field_values(self) -> ItemListFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return (ItemVector(buffer, buffer.root_offset(0)),)
+
 
 class ItemListFields(TypedDict):
     """The fields of an ``ItemList``, to write"""
 
     items: Sequence[ItemFields]
+
+
+type ItemListFieldValues = tuple[ItemVector]
 
 
 class Item:
@@ -274,8 +397,11 @@ class Item:
         return Pair(self._buffer, self._buffer.field_offset(self._position, 1))
 
     def fields(self) -> ItemFields:
-        """Reads every field at once, as ``write()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``write()`` takes them, with a nested table's
+        fields as its ``fields()`` reads them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
@@ -284,12 +410,30 @@ class Item:
 
         return {"value": values[0], "pair": {"first": values[1], "second": values[2]}}
 
+    def field_values(self) -> ItemFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return (self.value(), *self.pair().field_values())
+
+        return values
+
 
 class ItemFields(TypedDict):
     """The fields of an ``Item``, to write"""
 
     value: float
     pair: PairFields
+
+
+type ItemFieldValues = tuple[float, float, float]
 
 
 class ItemVector:
@@ -335,6 +479,35 @@ class ItemVector:
         buffer = self._buffer
         for offset in buffer.get_vector_offsets(self._position):
             yield Item(buffer, offset)
+
+    def item_field_values(self, index: int) -> ItemFieldValues:
+        """Reads the values of item ``index``, as ``Item.field_values()`` reads
+        them, without reading the others, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the vector has no item ``index``, and ``DecodeError``
+        for bytes that the item's getters can't read.
+        """
+        if index < 0:
+            index += self._length
+        offset = self._buffer.get_vector_item_offset(
+            self._position, self._length, index
+        )
+        values = self._buffer.get_fields(offset, Item._FIXED_FIELDS)
+        if values is None:
+            return Item(self._buffer, offset).field_values()
+
+        return values
+
+    def field_values(self) -> list[ItemFieldValues]:
+        """Reads every item's values at once, as ``Item.field_values()`` reads
+        each, in one call when the items' offsets are those that their writer
+        writes, and otherwise item by item
+        """
+        items = self._buffer.get_vector_fields(self._position, Item._FIXED_FIELDS)
+        if items is None:
+            return [item.field_values() for item in self]
+
+        return items
 
     def fields(self) -> list[ItemFields]:
         """Reads every item's fields at once, as ``Item.fields()`` reads each,
@@ -382,8 +555,10 @@ class Pair:
         return self._buffer.get_float32(self._buffer.field_offset(self._position, 1))
 
     def fields(self) -> PairFields:
-        """Reads every field at once, as ``write()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``write()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
@@ -392,9 +567,13 @@ class Pair:
 
         return {"first": values[0], "second": values[1]}
 
-    def field_values(self) -> tuple[float, float]:
-        """Reads every field's value at once into a tuple, in the fields' order, as
-        ``fields()`` reads them into a dict.
+    def field_values(self) -> PairFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
@@ -408,6 +587,9 @@ class PairFields(TypedDict):
 
     first: float
     second: float
+
+
+type PairFieldValues = tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True, init=False)

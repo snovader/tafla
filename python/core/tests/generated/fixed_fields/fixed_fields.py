@@ -711,8 +711,10 @@ class Range:
         return self._buffer.get_uint32(self._buffer.field_offset(self._position, 1))
 
     def fields(self) -> RangeFields:
-        """Reads every field at once, as ``write()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``write()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
@@ -721,9 +723,13 @@ class Range:
 
         return {"start": values[0], "end": values[1]}
 
-    def field_values(self) -> tuple[int, int]:
-        """Reads every field's value at once into a tuple, in the fields' order, as
-        ``fields()`` reads them into a dict.
+    def field_values(self) -> RangeFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
@@ -737,6 +743,9 @@ class RangeFields(TypedDict):
 
     start: int
     end: int
+
+
+type RangeFieldValues = tuple[int, int]
 
 
 class RangeVector:
@@ -783,6 +792,35 @@ class RangeVector:
         for offset in buffer.get_vector_offsets(self._position):
             yield Range(buffer, offset)
 
+    def item_field_values(self, index: int) -> RangeFieldValues:
+        """Reads the values of item ``index``, as ``Range.field_values()`` reads
+        them, without reading the others, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the vector has no item ``index``, and ``DecodeError``
+        for bytes that the item's getters can't read.
+        """
+        if index < 0:
+            index += self._length
+        offset = self._buffer.get_vector_item_offset(
+            self._position, self._length, index
+        )
+        values = self._buffer.get_fields(offset, Range._FIXED_FIELDS)
+        if values is None:
+            return Range(self._buffer, offset).field_values()
+
+        return values
+
+    def field_values(self) -> list[RangeFieldValues]:
+        """Reads every item's values at once, as ``Range.field_values()`` reads
+        each, in one call when the items' offsets are those that their writer
+        writes, and otherwise item by item
+        """
+        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
+        if items is None:
+            return [item.field_values() for item in self]
+
+        return items
+
     def fields(self) -> list[RangeFields]:
         """Reads every item's fields at once, as ``Range.fields()`` reads each,
         in one call when the items' offsets are those that their writer writes,
@@ -793,17 +831,6 @@ class RangeVector:
             return [item.fields() for item in self]
 
         return [{"start": values[0], "end": values[1]} for values in items]
-
-    def field_values(self) -> list[tuple[int, int]]:
-        """Reads every item's values at once, as ``Range.field_values()`` reads
-        each, in one call when the items' offsets are those that their writer
-        writes, and otherwise item by item
-        """
-        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
-        if items is None:
-            return [item.field_values() for item in self]
-
-        return items
 
 
 class Frame:
@@ -854,8 +881,11 @@ class Frame:
         return self._buffer.get_uint16(self._buffer.field_offset(self._position, 2))
 
     def fields(self) -> FrameFields:
-        """Reads every field at once, as ``write()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``write()`` takes them, with a nested table's
+        fields as its ``fields()`` reads them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
@@ -872,6 +902,21 @@ class Frame:
             "flags": values[3],
         }
 
+    def field_values(self) -> FrameFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        if values is None:
+            return (self.origin(), *self.range().field_values(), self.flags())
+
+        return (Vec2.read(values[0]), values[1], values[2], values[3])
+
 
 class FrameFields(TypedDict):
     """The fields of a ``Frame``, to write"""
@@ -879,6 +924,9 @@ class FrameFields(TypedDict):
     origin: Vec2
     range: RangeFields
     flags: int
+
+
+type FrameFieldValues = tuple[Vec2, int, int, int]
 
 
 class Tiny:
@@ -920,8 +968,10 @@ class Tiny:
         return self._buffer.get_uint8(self._buffer.root_offset(1))
 
     def fields(self) -> TinyFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -930,9 +980,13 @@ class Tiny:
 
         return {"id": values[0], "kind": values[1]}
 
-    def field_values(self) -> tuple[int, int]:
+    def field_values(self) -> TinyFieldValues:
         """Reads every field's value at once into a tuple, in the fields' order, as
         ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
         if values is None:
@@ -946,6 +1000,9 @@ class TinyFields(TypedDict):
 
     id: int
     kind: int
+
+
+type TinyFieldValues = tuple[int, int]
 
 
 class Tagged:
@@ -1008,8 +1065,10 @@ class Tagged:
         return self._buffer.get_string(self._buffer.root_offset(2))
 
     def fields(self) -> TaggedFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -1018,6 +1077,20 @@ class Tagged:
 
         return {"id": values[0], "position": Vec2.read(values[1]), "label": values[2]}
 
+    def field_values(self) -> TaggedFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.position(), self.label())
+
+        return (values[0], Vec2.read(values[1]), values[2])
+
 
 class TaggedFields(TypedDict):
     """The fields of a ``Tagged``, to write"""
@@ -1025,6 +1098,9 @@ class TaggedFields(TypedDict):
     id: int
     position: Vec2
     label: str
+
+
+type TaggedFieldValues = tuple[int, Vec2, str]
 
 
 class Header:
@@ -1057,6 +1133,43 @@ class Header:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint8_array(self._buffer.root_offset(2))
 
+    def fields(self) -> HeaderFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {
+                "kind": self.kind(),
+                "length": self.length(),
+                "values": self.values(),
+            }
+
+        return {
+            "kind": values[0],
+            "length": values[1],
+            "values": buffer.get_uint8_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> HeaderFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.kind(), self.length(), self.values())
+
+        return (values[0], values[1], buffer.get_uint8_array(buffer.root_offset(2)))
+
 
 class HeaderFields(TypedDict):
     """The fields of a ``Header``, to write"""
@@ -1064,6 +1177,9 @@ class HeaderFields(TypedDict):
     kind: int
     length: int
     values: Buffer | Iterable[int]
+
+
+type HeaderFieldValues = tuple[int, int, memoryview[int]]
 
 
 class Pixel:
@@ -1121,8 +1237,10 @@ class Pixel:
         return self._buffer.get_uint32(self._buffer.root_offset(1))
 
     def fields(self) -> PixelFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -1131,12 +1249,29 @@ class Pixel:
 
         return {"position": Vec2.read(values[0]), "color": values[1]}
 
+    def field_values(self) -> PixelFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.position(), self.color())
+
+        return (Vec2.read(values[0]), values[1])
+
 
 class PixelFields(TypedDict):
     """The fields of a ``Pixel``, to write"""
 
     position: Vec2
     color: int
+
+
+type PixelFieldValues = tuple[Vec2, int]
 
 
 class Strip:
@@ -1173,6 +1308,43 @@ class Strip:
     def values(self) -> memoryview[int]:
         return self._buffer.get_uint16_array(self._buffer.root_offset(2))
 
+    def fields(self) -> StripFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {"id": self.id(), "origin": self.origin(), "values": self.values()}
+
+        return {
+            "id": values[0],
+            "origin": Vec2.read(values[1]),
+            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+        }
+
+    def field_values(self) -> StripFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.origin(), self.values())
+
+        return (
+            values[0],
+            Vec2.read(values[1]),
+            buffer.get_uint16_array(buffer.root_offset(2)),
+        )
+
 
 class StripFields(TypedDict):
     """The fields of a ``Strip``, to write"""
@@ -1180,6 +1352,9 @@ class StripFields(TypedDict):
     id: int
     origin: Vec2
     values: Buffer | Iterable[int]
+
+
+type StripFieldValues = tuple[int, Vec2, memoryview[int]]
 
 
 class Box:
@@ -1248,8 +1423,11 @@ class Box:
         return Range(self._buffer, self._buffer.root_offset(2))
 
     def fields(self) -> BoxFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them, with a nested
+        table's fields as its ``fields()`` reads them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -1266,6 +1444,21 @@ class Box:
             "range": {"start": values[2], "end": values[3]},
         }
 
+    def field_values(self) -> BoxFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.min(), self.max(), *self.range().field_values())
+
+        return (Vec2.read(values[0]), Vec2.read(values[1]), values[2], values[3])
+
 
 class BoxFields(TypedDict):
     """The fields of a ``Box``, to write"""
@@ -1273,6 +1466,9 @@ class BoxFields(TypedDict):
     min: Vec2
     max: Vec2
     range: RangeFields
+
+
+type BoxFieldValues = tuple[Vec2, Vec2, int, int]
 
 
 class Track:
@@ -1332,6 +1528,68 @@ class Track:
     def name(self) -> str:
         return self._buffer.get_string(self._buffer.root_offset(4))
 
+    def fields(self) -> TrackFields:
+        """Reads every field at once, as ``serialize()`` takes them, with a nested
+        table's fields as its ``fields()`` reads them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return {
+                "id": self.id(),
+                "origin": self.origin(),
+                "frame": self.frame().fields(),
+                "points": self.points(),
+                "name": self.name(),
+            }
+
+        return {
+            "id": values[0],
+            "origin": Vec2.read(values[1]),
+            "frame": {
+                "origin": Vec2.read(values[2]),
+                "range": {"start": values[3], "end": values[4]},
+                "flags": values[5],
+            },
+            "points": buffer.get_float32_array(buffer.root_offset(3)),
+            "name": buffer.get_string(buffer.root_offset(4)),
+        }
+
+    def field_values(self) -> TrackFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        buffer = self._buffer
+        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (
+                self.id(),
+                self.origin(),
+                *self.frame().field_values(),
+                self.points(),
+                self.name(),
+            )
+
+        return (
+            values[0],
+            Vec2.read(values[1]),
+            Vec2.read(values[2]),
+            values[3],
+            values[4],
+            values[5],
+            buffer.get_float32_array(buffer.root_offset(3)),
+            buffer.get_string(buffer.root_offset(4)),
+        )
+
 
 class TrackFields(TypedDict):
     """The fields of a ``Track``, to write"""
@@ -1341,6 +1599,9 @@ class TrackFields(TypedDict):
     frame: FrameFields
     points: Buffer | Iterable[float]
     name: str
+
+
+type TrackFieldValues = tuple[int, Vec2, Vec2, int, int, int, memoryview[float], str]
 
 
 class Label:
@@ -1365,11 +1626,31 @@ class Label:
     def text(self) -> str:
         return self._buffer.get_string(self._buffer.root_offset(0))
 
+    def fields(self) -> LabelFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return {"text": buffer.get_string(buffer.root_offset(0))}
+
+    def field_values(self) -> LabelFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return (buffer.get_string(buffer.root_offset(0)),)
+
 
 class LabelFields(TypedDict):
     """The fields of a ``Label``, to write"""
 
     text: str
+
+
+type LabelFieldValues = tuple[str]
 
 
 class Span:
@@ -1409,6 +1690,36 @@ class Span:
     def ranges(self) -> RangeVector:
         return RangeVector(self._buffer, self._buffer.root_offset(3))
 
+    def fields(self) -> SpanFields:
+        """Reads every field at once, as ``serialize()`` takes them, with a nested
+        table's fields as its ``fields()`` reads them, and the items of vectors and
+        arrays of structs in lists.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return {
+            "name": buffer.get_string(buffer.root_offset(0)),
+            "range": Range(buffer, buffer.root_offset(1)).fields(),
+            "frame": Frame(buffer, buffer.root_offset(2)).fields(),
+            "ranges": RangeVector(buffer, buffer.root_offset(3)).fields(),
+        }
+
+    def field_values(self) -> SpanFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it, but a nested table's: its values, in place of it when they're
+        all of fixed size, and in a tuple of their own otherwise.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        buffer = self._buffer
+        return (
+            buffer.get_string(buffer.root_offset(0)),
+            *Range(buffer, buffer.root_offset(1)).field_values(),
+            *Frame(buffer, buffer.root_offset(2)).field_values(),
+            RangeVector(buffer, buffer.root_offset(3)),
+        )
+
 
 class SpanFields(TypedDict):
     """The fields of a ``Span``, to write"""
@@ -1417,6 +1728,9 @@ class SpanFields(TypedDict):
     range: RangeFields
     frame: FrameFields
     ranges: Sequence[RangeFields]
+
+
+type SpanFieldValues = tuple[str, int, int, Vec2, int, int, int, RangeVector]
 
 
 class Overflow:
@@ -1452,8 +1766,10 @@ class Overflow:
         )
 
     def fields(self) -> OverflowFields:
-        """Reads every field at once, as ``serialize()`` takes them, in one call
-        when the table's offsets are those that its writer writes, and otherwise
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
         values = self._buffer.get_fields(0, self._FIXED_FIELDS)
@@ -1462,9 +1778,26 @@ class Overflow:
 
         return {"id": values[0], "block": Block.read(values[1])}
 
+    def field_values(self) -> OverflowFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It reads the leading fields of fixed size in one call when the table's
+        offsets are those that its writer writes, and otherwise every field
+        through the getters, which raise ``DecodeError`` for bytes they can't read.
+        """
+        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        if values is None:
+            return (self.id(), self.block())
+
+        return (values[0], Block.read(values[1]))
+
 
 class OverflowFields(TypedDict):
     """The fields of an ``Overflow``, to write"""
 
     id: int
     block: Block
+
+
+type OverflowFieldValues = tuple[int, Block]

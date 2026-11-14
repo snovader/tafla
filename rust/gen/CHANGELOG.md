@@ -93,6 +93,19 @@ first commits, for code built from its source before the release.
   `Slice()` in place where it can, and otherwise a copy. `Fields()` reads
   arrays of structs with `Slice()`, so they share the bytes, as its arrays
   do. The Go comparison suite reads its array of 100 structs with it.
+- Generated Python declares `field_values()` on every message and table,
+  which reads every field's value into a tuple in one call, typed by the
+  alias `<Name>FieldValues` that's declared beside `<Name>Fields`: the leading
+  fields of fixed size through `ByteBuffer.get_fields()`, and the others
+  after them, those of nested tables without such fields included, in the
+  order that the getters read them, so that its values and errors are
+  theirs. A nested table's values are in place of it when they're all of
+  fixed size, as `get_fields()` reads them, and in a tuple of their own
+  otherwise. Vectors and arrays of structs are their views. `fields()` is
+  declared too on every table whose vectors are of tables of fixed size,
+  which hold no vectors, so that it reads in proportion to the bytes. Views
+  of vectors have `field_values()` and `item_field_values(index)`, which
+  read the items' values without creating their readers.
 - Generated Python views of arrays of structs of scalars have
   `iter_field_values()`, which iterates over the structs' values as tuples,
   and `item_field_values(index)`, which reads one struct's, without creating

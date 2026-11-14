@@ -196,20 +196,26 @@ it writes a table's leading fields of fixed size, whose offsets depend on no
 value, and a string after them, in one call that packs them with a `struct`,
 from a `FixedFields` that describes them: a nested table of only those fields
 is written whole, in its parent's call or in one of its own, and a vector of
-such tables in one call. A table of only those fields also has `fields()`,
-which reads them all at once into the `TypedDict` that it's written from, or
-through its getters when its offsets aren't the ones that its writer writes,
-and a view of a vector of them has `fields()`, which reads every item's at
-once. A table of scalars and a string after them also has `field_values()`,
-which reads them into a tuple of their values in order, and a message of
-them `serialize_values()`, which writes it from them as positional
-arguments. A struct of scalars has `read_values()`, `read_array_values()`
-and `serialize_values()`, which do the same for its values without creating
-its dataclass, and a view of an array or a vector of such structs or tables
-has `field_values()`. A view of an array of such structs also has
-`iter_field_values()`, which iterates over their values, and
-`item_field_values(index)`, which reads one struct's. Go's messages and
-tables have `Fields()`, which reads every field at once into the
+such tables in one call. Every table has `field_values()`, which reads its
+fields' values into a tuple, `<Name>FieldValues`, each as its getter returns
+it, but a nested table's: its values, in place of it when they're all of
+fixed size, and in a tuple of their own otherwise. It reads the leading fields of fixed size in
+one call, and the others after them in the same call, nested tables'
+included, or every field through the getters when the table's offsets
+aren't the ones that its writer writes, so that its values and errors are
+the getters'. A table whose vectors are of tables of only those fields also
+has `fields()`, which reads them into the `TypedDict` that it's written
+from, with the items of its vectors and arrays of structs. A message of
+scalars and a string after them has `serialize_values()`, which writes it
+from its values as positional arguments. A struct of scalars has
+`read_values()`, `read_array_values()` and `serialize_values()`, which do
+the same for its values without creating its dataclass. A view of a vector
+has `field_values()`, which reads every item's values, at once when the
+table is of fixed size, and `item_field_values(index)`, which reads one
+item's, and a vector of tables of fixed size `fields()`. A view of an array
+of structs of scalars has `field_values()`, `iter_field_values()`, which
+iterates over their values, and `item_field_values(index)`. Go's messages
+and tables have `Fields()`, which reads every field at once into the
 `<Name>Fields` that writes it, nested tables and the items of vectors with
 their own `Fields()`, in one function rather than a getter's call for each
 field. A table has none when a vector of it holds tables that allocate when

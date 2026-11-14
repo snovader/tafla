@@ -114,15 +114,15 @@ BYTE_BUFFER = ItemAccess(
 )
 
 # tafla-gen's getters, which return views that read each item when it's asked
-# for: a vector's as its table's reader, and an array's structs as tuples of
-# their values, as struct unpacks them by hand
+# for: the last as a tuple of its values, which the vector reads in one call
+# and the array's struct unpacks, as the hand-written reads do, and every
+# vector item as its table's reader, and every struct as a tuple
 
 
 def _last_table_of_getter(data: Buffer) -> float:
-    item = ItemList(data).items()[-1]
-    pair = item.pair()
+    value, first, second = ItemList(data).items().item_field_values(-1)
 
-    return item.value() + pair.first() + pair.second()
+    return value + first + second
 
 
 def _every_table_of_getter(data: Buffer) -> float:
