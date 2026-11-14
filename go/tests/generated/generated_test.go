@@ -152,20 +152,22 @@ var messages = []message{
 	unversioned[fixedfields.Span, fixedfields.SpanFields]("fixed_fields.Span", tafla.Uint32, false, fixedfields.NewSpan),
 }
 
-// structs are every struct of the example schemas, with their sizes
+// structs are every struct of the example schemas, with their sizes and
+// their Read<Struct> functions
 var structs = []struct {
 	name string
 	t    reflect.Type
 	size int
+	read reflect.Value
 }{
-	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12},
-	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16},
-	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8},
-	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43},
-	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7},
-	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8},
-	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64},
-	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256},
+	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12, reflect.ValueOf(shapes.ReadSample)},
+	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16, reflect.ValueOf(alltypes.ReadSegment)},
+	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8, reflect.ValueOf(alltypes.ReadPoint)},
+	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43, reflect.ValueOf(alltypes.ReadPacked)},
+	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7, reflect.ValueOf(alltypes.ReadDocumented)},
+	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8, reflect.ValueOf(fixedfields.ReadVec2)},
+	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64, reflect.ValueOf(fixedfields.ReadQuad)},
+	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256, reflect.ValueOf(fixedfields.ReadBlock)},
 }
 
 // write writes a message's fields with the generated code
@@ -395,15 +397,30 @@ func TestEveryStructIsWrittenAtFixedOffsetsAndReadBackFromTheStartOfItsBytes(t *
 				if err != nil || !sameValues(read.Elem(), value) {
 					t.Fatalf("read %+v, %v", read.Elem(), err)
 				}
+				returned, err := readStruct(structure.read, longer)
+				if err != nil || !sameValues(returned, value) {
+					t.Fatalf("Read returned %+v, %v", returned, err)
+				}
 
 				expectedError := &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: uint64(structure.size), Available: len(written) - 1}
 				err = read.Interface().(encoding.BinaryUnmarshaler).UnmarshalBinary(written[:len(written)-1])
 				if !sameError(err, expectedError) {
 					t.Fatalf("%v rather than %v", err, expectedError)
 				}
+				returned, err = readStruct(structure.read, written[:len(written)-1])
+				if !sameError(err, expectedError) || !returned.IsZero() {
+					t.Fatalf("Read returned %+v, %v rather than %v", returned, err, expectedError)
+				}
 			})
 		})
 	}
+}
+
+// readStruct calls a struct's Read<Struct> function, read, with bytes
+func readStruct(read reflect.Value, bytes []byte) (reflect.Value, error) {
+	results := read.Call([]reflect.Value{reflect.ValueOf(bytes)})
+	err, _ := results[1].Interface().(error)
+	return results[0], err
 }
 
 // An item of a vector is read in place, within the bytes of the message

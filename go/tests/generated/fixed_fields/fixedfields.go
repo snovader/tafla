@@ -19,7 +19,9 @@ type Vec2 struct {
 // MarshalBinary returns the 8 bytes of a [Vec2]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Vec2) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 8))
+	bytes := make([]byte, 8)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 8 bytes of a [Vec2] to bytes, as
@@ -39,16 +41,30 @@ func (s *Vec2) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 8, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readVec2(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Vec2] from the start of bytes, which hold at
+// ReadVec2 reads a [Vec2] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Vec2.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 8.
+func ReadVec2(bytes []byte) (Vec2, error) {
+	if len(bytes) < 8 {
+		return Vec2{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 8, Available: len(bytes)}
+	}
+
+	return readVec2(bytes), nil
+}
+
+// readVec2 reads the scalars of a [Vec2] from the start of bytes, which hold at
 // least its 8 bytes
-func (s *Vec2) read(bytes []byte) {
+func readVec2(bytes []byte) Vec2 {
 	_ = bytes[7]
+	var s Vec2
 	s.X = math.Float32frombits(binary.LittleEndian.Uint32(bytes))
 	s.Y = math.Float32frombits(binary.LittleEndian.Uint32(bytes[4:]))
+	return s
 }
 
 // put writes the scalars of a [Vec2] into the start of bytes, which hold at
@@ -74,7 +90,9 @@ type Quad struct {
 // MarshalBinary returns the 64 bytes of a [Quad]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Quad) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 64))
+	bytes := make([]byte, 64)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 64 bytes of a [Quad] to bytes, as
@@ -94,14 +112,27 @@ func (s *Quad) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 64, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readQuad(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Quad] from the start of bytes, which hold at
+// ReadQuad reads a [Quad] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Quad.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 64.
+func ReadQuad(bytes []byte) (Quad, error) {
+	if len(bytes) < 64 {
+		return Quad{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 64, Available: len(bytes)}
+	}
+
+	return readQuad(bytes), nil
+}
+
+// readQuad reads the scalars of a [Quad] from the start of bytes, which hold at
 // least its 64 bytes
-func (s *Quad) read(bytes []byte) {
+func readQuad(bytes []byte) Quad {
 	_ = bytes[63]
+	var s Quad
 	s.A = math.Float64frombits(binary.LittleEndian.Uint64(bytes))
 	s.B = math.Float64frombits(binary.LittleEndian.Uint64(bytes[8:]))
 	s.C = math.Float64frombits(binary.LittleEndian.Uint64(bytes[16:]))
@@ -110,6 +141,7 @@ func (s *Quad) read(bytes []byte) {
 	s.F = math.Float64frombits(binary.LittleEndian.Uint64(bytes[40:]))
 	s.G = math.Float64frombits(binary.LittleEndian.Uint64(bytes[48:]))
 	s.H = math.Float64frombits(binary.LittleEndian.Uint64(bytes[56:]))
+	return s
 }
 
 // put writes the scalars of a [Quad] into the start of bytes, which hold at
@@ -137,7 +169,9 @@ type Block struct {
 // MarshalBinary returns the 256 bytes of a [Block]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Block) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 256))
+	bytes := make([]byte, 256)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 256 bytes of a [Block] to bytes, as
@@ -157,18 +191,32 @@ func (s *Block) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 256, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readBlock(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Block] from the start of bytes, which hold at
-// least its 256 bytes
-func (s *Block) read(bytes []byte) {
+// ReadBlock reads a [Block] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Block.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 256.
+func ReadBlock(bytes []byte) (Block, error) {
+	if len(bytes) < 256 {
+		return Block{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 256, Available: len(bytes)}
+	}
+
+	return readBlock(bytes), nil
+}
+
+// readBlock reads the scalars of a [Block] from the start of bytes, which hold
+// at least its 256 bytes
+func readBlock(bytes []byte) Block {
 	_ = bytes[255]
-	s.First.read(bytes)
-	s.Second.read(bytes[64:])
-	s.Third.read(bytes[128:])
-	s.Fourth.read(bytes[192:])
+	var s Block
+	s.First = readQuad(bytes)
+	s.Second = readQuad(bytes[64:])
+	s.Third = readQuad(bytes[128:])
+	s.Fourth = readQuad(bytes[192:])
+	return s
 }
 
 // put writes the scalars of a [Block] into the start of bytes, which hold at
@@ -273,9 +321,7 @@ func (t Frame) Origin() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Range fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -443,9 +489,7 @@ func (t Tagged) Position() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Label fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -625,9 +669,7 @@ func (t Pixel) Position() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Color fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -706,9 +748,7 @@ func (t Strip) Origin() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Values fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -806,9 +846,7 @@ func (t Box) Min() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Max fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -822,9 +860,7 @@ func (t Box) Max() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Range fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -907,9 +943,7 @@ func (t Track) Origin() (Vec2, error) {
 	if err != nil {
 		return Vec2{}, err
 	}
-	var value Vec2
-	value.read(bytes)
-	return value, nil
+	return readVec2(bytes), nil
 }
 
 // Frame fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1185,9 +1219,7 @@ func (t Overflow) Block() (Block, error) {
 	if err != nil {
 		return Block{}, err
 	}
-	var value Block
-	value.read(bytes)
-	return value, nil
+	return readBlock(bytes), nil
 }
 
 // OverflowFields are the fields of an [Overflow], to write.

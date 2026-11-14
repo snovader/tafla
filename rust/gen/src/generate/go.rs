@@ -22,9 +22,9 @@
 //!
 //! Everything that a schema names is exported, in `PascalCase`, beside the
 //! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
-//! and `<Message>FormatVersion`, which the checker keeps declarations from
-//! taking. The generated code's own helpers are unexported methods, which
-//! can't clash with them.
+//! and `<Message>FormatVersion`, and of structs, `Read<Struct>`, which the
+//! checker keeps declarations from taking. The generated code's own helpers are unexported methods, and each
+//! struct's `read<Struct>()`, which can't clash with them.
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
@@ -492,9 +492,7 @@ impl<'a> Generator<'a> {
                     let size = structure.struct_layout().size;
                     writer.line(format!("bytes, err := buffer.GetStruct(position, {size})"));
                     return_on_error(writer, &format!("{}{{}}", structure.name));
-                    writer.line(format!("var value {}", structure.name));
-                    writer.line("value.read(bytes)");
-                    writer.line("return value, nil");
+                    writer.line(format!("return read{}(bytes), nil", structure.name));
                 }
                 // The runtime returns no bytes and the zero vector with an
                 // error, so the view of them is the zero view
@@ -552,9 +550,12 @@ impl<'a> Generator<'a> {
         writer.open(format!(
             "func ({STRUCT} {name}) MarshalBinary() ([]byte, error) {{"
         ));
-        writer.line(format!(
-            "return {STRUCT}.AppendBinary(make([]byte, 0, {size}))"
-        ));
+        // Its bytes are its length exactly, which put() writes every one of,
+        // rather than appended to, which would zero them and check their
+        // capacity again
+        writer.line(format!("bytes := make([]byte, {size})"));
+        writer.line(format!("{STRUCT}.put(bytes)"));
+        writer.line("return bytes, nil");
         writer.close("}");
 
         writer.blank();
@@ -592,17 +593,42 @@ impl<'a> Generator<'a> {
         ));
         writer.close("}");
         writer.blank();
-        writer.line(format!("{STRUCT}.read(bytes)"));
+        writer.line(format!("*{STRUCT} = read{name}(bytes)"));
         writer.line("return nil");
+        writer.close("}");
+
+        writer.blank();
+        writer.lines(&prose(&[
+            format!(
+                "Read{name} reads {} from the start of bytes and returns it,",
+                article(name)
+            ),
+            "which the compiler can keep in registers, where".to_owned(),
+            format!("[{name}.UnmarshalBinary] reads into a struct in memory. It fails with a"),
+            format!("{DECODE_ERROR} if bytes are shorter than {size}."),
+        ]));
+        writer.open(format!("func Read{name}(bytes []byte) ({name}, error) {{"));
+        writer.open(format!("if len(bytes) < {size} {{"));
+        writer.line(format!(
+            "return {name}{{}}, &tafla.DecodeError{{Kind: tafla.OutOfRange, ByteLength: {size}, Available: len(bytes)}}"
+        ));
+        writer.close("}");
+        writer.blank();
+        writer.line(format!("return read{name}(bytes), nil"));
         writer.close("}");
 
         self.struct_access(writer, definition, true);
         self.struct_access(writer, definition, false);
     }
 
-    /// A struct's `read()`, which reads its scalars from bytes, or its
-    /// `put()`, which writes them into bytes, each at its offset, and a
-    /// struct within it with its own method
+    /// A struct's `read<Struct>()`, which reads its scalars from bytes, or
+    /// its `put()`, which writes them into bytes, each at its offset, and a
+    /// struct within it with its own function or method. The read returns
+    /// the struct, rather than reading into a pointer's, so that where it's
+    /// inlined the compiler can keep a small struct's scalars in registers
+    /// rather than in memory, where a struct whose address is taken lies. It's
+    /// a function, unexported, which can't clash with a schema's names, since
+    /// they're exported.
     fn struct_access(&self, writer: &mut CodeWriter, definition: &Definition, read: bool) {
         let name = &definition.name;
         let size = definition.struct_layout().size;
@@ -611,12 +637,12 @@ impl<'a> Generator<'a> {
         if read {
             writer.lines(&prose(&[
                 format!(
-                    "read reads the scalars of {} from the start of bytes,",
+                    "read{name} reads the scalars of {} from the start of bytes,",
                     article(name)
                 ),
                 format!("which hold at least its {size} bytes"),
             ]));
-            writer.open(format!("func ({STRUCT} *{name}) read(bytes []byte) {{"));
+            writer.open(format!("func read{name}(bytes []byte) {name} {{"));
         } else {
             writer.lines(&prose(&[
                 format!(
@@ -630,6 +656,9 @@ impl<'a> Generator<'a> {
         // The last byte bounds every access, so that the compiler checks it
         // alone
         writer.line(format!("_ = bytes[{}]", size - 1));
+        if read {
+            writer.line(format!("var {STRUCT} {name}"));
+        }
 
         let mut offset = 0;
         for field in &definition.fields {
@@ -650,12 +679,19 @@ impl<'a> Generator<'a> {
                     offset += usize::from(scalar.size());
                 }
                 FieldType::Struct(index) => {
-                    let method = if read { "read" } else { "put" };
-                    writer.line(format!("{member}.{method}({at})"));
-                    offset += self.schema.definition(index).struct_layout().size;
+                    let structure = self.schema.definition(index);
+                    if read {
+                        writer.line(format!("{member} = read{}({at})", structure.name));
+                    } else {
+                        writer.line(format!("{member}.put({at})"));
+                    }
+                    offset += structure.struct_layout().size;
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             }
+        }
+        if read {
+            writer.line(format!("return {STRUCT}"));
         }
         writer.close("}");
     }
@@ -1299,23 +1335,28 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.open(format!(
         "func ({VIEW} {view}) Get(index int) {structure} {{"
     ));
-    writer.line(format!("var item {structure}"));
-    writer.line(format!("item.read({VIEW}.bytes[index*{size}:])"));
-    writer.line("return item");
+    writer.line(format!(
+        "return read{structure}({VIEW}.bytes[index*{size}:])"
+    ));
     writer.close("}");
 
+    // It advances through the bytes, whose length bounds each read, rather
+    // than finding each struct at its index
     writer.blank();
     writer.lines(&prose(&[
-        "All returns an iterator over the indices and structs.".to_owned(),
+        "All returns an iterator over the indices and structs, which reads each".to_owned(),
+        "struct from the bytes in turn.".to_owned(),
     ]));
     writer.open(format!(
         "func ({VIEW} {view}) All() iter.Seq2[int, {structure}] {{"
     ));
     writer.open(format!("return func(yield func(int, {structure}) bool) {{"));
-    writer.open(format!("for index := range {VIEW}.Len() {{"));
-    writer.open(format!("if !yield(index, {VIEW}.Get(index)) {{"));
+    writer.line(format!("bytes := {VIEW}.bytes"));
+    writer.open(format!("for index := 0; len(bytes) >= {size}; index++ {{"));
+    writer.open(format!("if !yield(index, read{structure}(bytes)) {{"));
     writer.line("return");
     writer.close("}");
+    writer.line(format!("bytes = bytes[{size}:]"));
     writer.close("}");
     writer.close("}");
     writer.close("}");

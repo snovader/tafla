@@ -553,7 +553,9 @@ type Triple struct {
 // MarshalBinary returns the 12 bytes of a [Triple]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Triple) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 12))
+	bytes := make([]byte, 12)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 12 bytes of a [Triple] to bytes, as
@@ -573,17 +575,31 @@ func (s *Triple) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readTriple(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Triple] from the start of bytes, which hold at
-// least its 12 bytes
-func (s *Triple) read(bytes []byte) {
+// ReadTriple reads a [Triple] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Triple.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 12.
+func ReadTriple(bytes []byte) (Triple, error) {
+	if len(bytes) < 12 {
+		return Triple{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
+	}
+
+	return readTriple(bytes), nil
+}
+
+// readTriple reads the scalars of a [Triple] from the start of bytes, which
+// hold at least its 12 bytes
+func readTriple(bytes []byte) Triple {
 	_ = bytes[11]
+	var s Triple
 	s.Value = math.Float32frombits(binary.LittleEndian.Uint32(bytes))
 	s.First = math.Float32frombits(binary.LittleEndian.Uint32(bytes[4:]))
 	s.Second = math.Float32frombits(binary.LittleEndian.Uint32(bytes[8:]))
+	return s
 }
 
 // put writes the scalars of a [Triple] into the start of bytes, which hold at
@@ -609,18 +625,19 @@ func (v TripleArray) Len() int {
 // Get reads struct index. It panics if index is out of range, as indexing a
 // slice does.
 func (v TripleArray) Get(index int) Triple {
-	var item Triple
-	item.read(v.bytes[index*12:])
-	return item
+	return readTriple(v.bytes[index*12:])
 }
 
-// All returns an iterator over the indices and structs.
+// All returns an iterator over the indices and structs, which reads each struct
+// from the bytes in turn.
 func (v TripleArray) All() iter.Seq2[int, Triple] {
 	return func(yield func(int, Triple) bool) {
-		for index := range v.Len() {
-			if !yield(index, v.Get(index)) {
+		bytes := v.bytes
+		for index := 0; len(bytes) >= 12; index++ {
+			if !yield(index, readTriple(bytes)) {
 				return
 			}
+			bytes = bytes[12:]
 		}
 	}
 }
@@ -635,7 +652,9 @@ type Sample struct {
 // MarshalBinary returns the 12 bytes of a [Sample]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Sample) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 12))
+	bytes := make([]byte, 12)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 12 bytes of a [Sample] to bytes, as
@@ -655,17 +674,31 @@ func (s *Sample) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readSample(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Sample] from the start of bytes, which hold at
-// least its 12 bytes
-func (s *Sample) read(bytes []byte) {
+// ReadSample reads a [Sample] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Sample.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 12.
+func ReadSample(bytes []byte) (Sample, error) {
+	if len(bytes) < 12 {
+		return Sample{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
+	}
+
+	return readSample(bytes), nil
+}
+
+// readSample reads the scalars of a [Sample] from the start of bytes, which
+// hold at least its 12 bytes
+func readSample(bytes []byte) Sample {
 	_ = bytes[11]
+	var s Sample
 	s.Key = binary.LittleEndian.Uint32(bytes)
 	s.A = math.Float32frombits(binary.LittleEndian.Uint32(bytes[4:]))
 	s.B = math.Float32frombits(binary.LittleEndian.Uint32(bytes[8:]))
+	return s
 }
 
 // put writes the scalars of a [Sample] into the start of bytes, which hold at

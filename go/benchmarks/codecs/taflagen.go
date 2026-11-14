@@ -220,11 +220,12 @@ func (TaflaGen) SerializeSample(sample workloads.Sample) ([]byte, error) {
 	return gen.Sample{Key: sample.Key, A: sample.A, B: sample.B}.MarshalBinary()
 }
 
+// DeserializeSample converts the generated Sample, whose fields are the
+// workload's, without checking the error, since ReadSample returns the zero
+// Sample with it. That keeps the method within Go's inlining budget, so that
+// it inlines into the wrapper that the codec's interface calls, as Binary's
+// does, rather than costing a second call.
 func (TaflaGen) DeserializeSample(bytes []byte) (workloads.Sample, error) {
-	var sample gen.Sample
-	if err := sample.UnmarshalBinary(bytes); err != nil {
-		return workloads.Sample{}, err
-	}
-
-	return workloads.Sample{Key: sample.Key, A: sample.A, B: sample.B}, nil
+	sample, err := gen.ReadSample(bytes)
+	return workloads.Sample(sample), err
 }

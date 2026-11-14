@@ -55,6 +55,11 @@ first commits, for code built from its source before the release.
   from, through `ByteBuffer.get_fields()`. It reads them through the getters
   when the table's offsets aren't those that its writer writes, so its values
   and errors are theirs. The getters stay lazy.
+- A generated `Read<Struct>()` beside each Go struct, which reads it from
+  the start of bytes and returns it, so that the compiler can keep it in
+  registers, where `UnmarshalBinary()` reads into a struct in memory. The
+  checker keeps declarations from taking its name. The Go comparison suite
+  reads its fixed-size record with it.
 
 ### Changed
 
@@ -92,6 +97,10 @@ first commits, for code built from its source before the release.
   error when it's read rather than when the getter is called. Collect a view
   with its `All()` for every item at once. The Go comparison suite reads its
   vector of 100 nested tables in 1 allocation rather than 2.
+- Generated Go getters and views read structs by value too, a struct's
+  `MarshalBinary()` allocates exactly its size rather than appending to
+  empty bytes, and a `<Struct>Array`'s `All()` steps through its bytes,
+  without a bounds check for each struct.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and

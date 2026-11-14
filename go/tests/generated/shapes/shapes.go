@@ -493,7 +493,9 @@ type Sample struct {
 // MarshalBinary returns the 12 bytes of a [Sample]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Sample) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 12))
+	bytes := make([]byte, 12)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 12 bytes of a [Sample] to bytes, as
@@ -513,17 +515,31 @@ func (s *Sample) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readSample(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Sample] from the start of bytes, which hold at
-// least its 12 bytes
-func (s *Sample) read(bytes []byte) {
+// ReadSample reads a [Sample] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Sample.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 12.
+func ReadSample(bytes []byte) (Sample, error) {
+	if len(bytes) < 12 {
+		return Sample{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 12, Available: len(bytes)}
+	}
+
+	return readSample(bytes), nil
+}
+
+// readSample reads the scalars of a [Sample] from the start of bytes, which
+// hold at least its 12 bytes
+func readSample(bytes []byte) Sample {
 	_ = bytes[11]
+	var s Sample
 	s.Key = binary.LittleEndian.Uint32(bytes)
 	s.A = math.Float32frombits(binary.LittleEndian.Uint32(bytes[4:]))
 	s.B = math.Float32frombits(binary.LittleEndian.Uint32(bytes[8:]))
+	return s
 }
 
 // put writes the scalars of a [Sample] into the start of bytes, which hold at
