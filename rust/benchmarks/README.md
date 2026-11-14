@@ -95,25 +95,28 @@ comparison uses its counterpart:
   fields, with `set_table_with()` and `set_vector_with()`. The builders
   borrow the columns and write each array in bulk into a table of its exact
   size. Readers check the document's version, and read columns as
-  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
-  builder takes with `set_struct_array()`, and read from
+  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is
+  written with `to_le_bytes()` into a `Vec`, which the builder takes with
+  `set_struct_array()`, and read from
   `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
   tafla-gen's code does.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `src/codecs/tafla_gen/`. A message's `serialize()` counts the table's
   length with a `TableSizer`, and then writes every field, nested tables
   included, into a `Vec` of that capacity with a `TableWriter`, in one
-  allocation. Its readers borrow strings and columns, as tafla's do. They
-  hold their bytes, and each getter reads them with a `ByteBuffer` in the
-  table's layout, a constant, as the hand-written reads make theirs, so that
-  the getters compile for that layout wherever a reader is passed. It takes
-  the workloads' types, as the other codecs do, so it collects the generated
-  fields of the vector's items and the generated structs of the array into a
-  `Vec` in each call, as the prost codec collects its messages, since the
-  generated code writes them from slices. The generated getters of the
-  vector and of the array return views, whose `iter()` the codec reads into
-  the workload's items. Every suite has a copy of the schema; after changing
-  them, regenerate the code as `gen/README.md` describes.
+  allocation. A table whose fields' sizes the schema fixes is written whole:
+  the record's fields at constant positions, before its name, and each item
+  of the vector as the bytes of its `to_bytes()`. Its readers borrow strings
+  and columns, as tafla's do. They hold their bytes, and each getter reads
+  them with a `ByteBuffer` in the table's layout, a constant, as the
+  hand-written reads make theirs, so that the getters compile for that
+  layout wherever a reader is passed. It takes the workloads' types, as the
+  other codecs do: the generated vector and array of structs take the
+  workload's items as they are, and convert each, with `From`, into the
+  item's generated fields or struct as they write it. The generated getters
+  of the vector and of the array return views, whose `iter()` the codec
+  reads into the workload's items. Every suite has a copy of the schema;
+  after changing them, regenerate the code as `gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
@@ -327,101 +330,109 @@ they were.
 
 ## Results
 
-One full run on 2026-11-13, of `main` at c43286c, on an Apple M2 Pro with
+One full run on 2026-11-14, of `main` at 0529dbd, on an Apple M2 Pro with
 32 GB in macOS 27.0.1, with rustc 1.100.0 and Criterion 0.8.2. Each group of
 benchmarks ran in a `cargo bench` of its own, twice, in the order of a whole
 run, with the two runs taking turns to go first. A group started once other
 processes used fewer than 3 of the 10 cores, and ran again had they passed 4,
-which three runs of a group did. The writes of the record and the small
-document, and the read of the record, ran again too, after scans by macOS
-loaded the machine during them. In the runs kept, other processes used at
-most 3.0 cores, and the 1-minute load average was between 1.6 and 3.9, with a
-median of 2.1. The median sample was within 5% of the fastest for 100 of the
-102 benchmarks, and at most 10% above it, for tafla-gen's read of the record.
+which one run of a group did. In the runs kept, other processes used at most
+3.8 cores, and the 1-minute load average was between 3.1 and 4.0, with a
+median of 3.4, once the build's load had decayed, from 6.0, during the first
+two groups. The median sample was within 5% of the fastest for 95 of the 98
+benchmarks, and at most 22% above it, for tafla's sum of the small
+document's column.
 
 The second run of each group, an A/A pair of the whole run, agreed within 2%
-for 95 of the 102 fastest samples, within 5% for 101, and within 7.7% for
-rkyv's read of the array of structs.
+for 84 of the 98 fastest samples, within 5% for 97, and within 8.7% for
+tafla-gen's read of the array of structs.
 
 Fastest sample in µs per call, and its ratio to tafla's:
 
 | Benchmark                                          |    tafla |    flatbuffers |          prost |       rmp-serde |             rkyv |      to_le_bytes |
 | -------------------------------------------------- | -------: | -------------: | -------------: | --------------: | ---------------: | ---------------: |
-| record: serialize                                  |   0.0768 |  0.286 (3.73×) | 0.0484 (0.63×) |   0.137 (1.79×) |   0.0643 (0.84×) |                  |
-| record: deserialize                                |   0.0129 | 0.0417 (3.23×) | 0.0413 (3.20×) |  0.0453 (3.51×) |  0.00526 (0.41×) |                  |
-| document of 100 rows: serialize                    |    0.170 |  0.596 (3.52×) |  0.580 (3.42×) |   1.203 (7.09×) |    0.194 (1.15×) |                  |
-| document of 100 rows: deserialize                  |   0.0338 |  0.369 (10.9×) |  1.310 (38.8×) |   1.342 (39.7×) |   0.0832 (2.46×) |                  |
-| document of 100 rows: sum a column per element     |   0.0357 |  0.163 (4.57×) |  1.377 (38.5×) |   1.427 (39.9×) |   0.0422 (1.18×) |                  |
-| document of 100,000 rows: serialize                |     19.0 |  111.8 (5.88×) |  446.0 (23.4×) |   765.1 (40.2×) |     19.2 (1.01×) |                  |
-| document of 100,000 rows: deserialize              |   0.0346 |  220.6 (6384×) | 762.2 (22058×) | 1269.1 (36728×) |      15.3 (443×) |                  |
-| document of 100,000 rows: sum a column per element |     85.8 |   85.7 (1.00×) |  834.4 (9.73×) |  1325.1 (15.5×) |     85.6 (1.00×) |                  |
-| vector of 100 nested tables: serialize             |    8.764 |  3.456 (0.39×) |  1.405 (0.16×) |   2.799 (0.32×) | 0.0403 (0.0046×) |                  |
-| vector of 100 nested tables: deserialize           |    0.275 |  5.019 (18.3×) |  2.455 (8.94×) |   3.163 (11.5×) |   0.0302 (0.11×) |                  |
-| array of 100 structs: serialize                    |    0.139 |  0.575 (4.12×) |  0.962 (6.90×) |   1.387 (9.95×) |   0.0404 (0.29×) |                  |
-| array of 100 structs: deserialize                  |   0.0300 |  0.101 (3.36×) |  1.890 (62.9×) |   1.506 (50.1×) |   0.0306 (1.02×) |                  |
-| fixed-size record: serialize                       | 0.000710 |   0.170 (239×) | 0.0233 (32.8×) |   0.0827 (116×) |   0.0233 (32.8×) | 0.000710 (1.00×) |
-| fixed-size record: deserialize                     |  0.00117 | 0.0232 (19.8×) | 0.0104 (8.92×) |  0.0269 (23.0×) | 0.000987 (0.84×) | 0.000665 (0.57×) |
+| record: serialize                                  |   0.0840 |  0.285 (3.40×) | 0.0503 (0.60×) |   0.138 (1.64×) |   0.0650 (0.77×) |                  |
+| record: deserialize                                |  0.00680 | 0.0413 (6.08×) | 0.0413 (6.08×) |  0.0459 (6.75×) |  0.00528 (0.78×) |                  |
+| document of 100 rows: serialize                    |    0.202 |  0.596 (2.96×) |  0.571 (2.83×) |   1.205 (5.98×) |    0.195 (0.97×) |                  |
+| document of 100 rows: deserialize                  |   0.0278 |  0.363 (13.1×) |  1.345 (48.5×) |   1.368 (49.3×) |   0.0811 (2.92×) |                  |
+| document of 100 rows: sum a column per element     |   0.0367 |  0.164 (4.47×) |  1.383 (37.7×) |   1.411 (38.5×) |   0.0430 (1.17×) |                  |
+| document of 100,000 rows: serialize                |     18.6 |  114.1 (6.13×) |  442.4 (23.8×) |   766.2 (41.1×) |     19.3 (1.04×) |                  |
+| document of 100,000 rows: deserialize              |   0.0278 |  220.6 (7936×) | 761.4 (27389×) | 1278.6 (45993×) |      15.3 (551×) |                  |
+| document of 100,000 rows: sum a column per element |     86.5 |   86.4 (1.00×) |  834.3 (9.65×) |  1331.5 (15.4×) |     86.0 (0.99×) |                  |
+| vector of 100 nested tables: serialize             |    4.439 |  3.472 (0.78×) |  1.417 (0.32×) |   2.808 (0.63×) | 0.0402 (0.0091×) |                  |
+| vector of 100 nested tables: deserialize           |    0.278 |  5.057 (18.2×) |  2.446 (8.80×) |   3.233 (11.6×) |   0.0308 (0.11×) |                  |
+| array of 100 structs: serialize                    |    0.139 |  0.569 (4.09×) |  0.955 (6.87×) |   1.380 (9.93×) |   0.0393 (0.28×) |                  |
+| array of 100 structs: deserialize                  |   0.0310 |  0.101 (3.26×) |  1.897 (61.3×) |   1.556 (50.3×) |   0.0307 (0.99×) |                  |
+| fixed-size record: serialize                       | 0.000710 |   0.175 (247×) | 0.0236 (33.2×) |   0.0843 (119×) |   0.0232 (32.7×) | 0.000714 (1.01×) |
+| fixed-size record: deserialize                     |  0.00117 | 0.0235 (20.0×) | 0.0104 (8.83×) |  0.0263 (22.4×) | 0.000987 (0.84×) | 0.000665 (0.57×) |
 
-- tafla reads a document in 34 ns at 100 rows and 35 ns at 100,000, since its
+- tafla reads a document in 28 ns at 100 rows and at 100,000, since its
   columns are slices of the bytes. rkyv reads in place too, but copies its
   columns into `Vec`s, in 15.3 µs for 100,000 rows. FlatBuffers copies them
   through its iterator in 221 µs, and prost and rmp-serde parse every
-  element, in 0.76 and 1.27 ms.
-- tafla writes the large document in 19.0 µs and rkyv in 19.2 µs, both
+  element, in 0.76 and 1.28 ms.
+- tafla writes the large document in 18.6 µs and rkyv in 19.3 µs, both
   copying the columns whole. FlatBuffers, prost and rmp-serde write them
-  element by element, 6 to 40 times slower than tafla. Copying the columns
+  element by element, 6 to 41 times slower than tafla. Copying the columns
   into prost's message took about 16 µs of its write, in a separate
   measurement. Which of tafla and rkyv writes it faster changes from run to
-  run: the second run gave 19.0 and 19.2 µs too, but rkyv took 15.5 µs on
+  run: the second run gave 19.3 µs to both, and rkyv took 15.5 µs on
   2026-11-08, against tafla's 19.1 µs, with the same code, so a write of the
   large document can move by a fifth from one run to another.
 - Summing the 100,000 floats takes 86 µs through tafla's, FlatBuffers' and
   rkyv's accessors alike, bound by the additions. Summing 100 takes tafla
-  36 ns, rkyv 42 ns and FlatBuffers 163 ns. FlatBuffers' extra 127 ns doesn't
+  37 ns, rkyv 43 ns and FlatBuffers 164 ns. FlatBuffers' extra 127 ns doesn't
   grow with the rows, which suggests that it's opening the document, which
   `flatbuffers::root()` verifies. prost and rmp-serde decode the whole
   document first.
 - rkyv reads the record in 5.3 ns, at fixed offsets once it's validated,
-  against tafla's 12.9 ns and the others' 41 to 45 ns. prost writes it
-  fastest, in 48 ns, then rkyv in 64 ns and tafla in 77 ns.
-- The vector of 100 nested tables is the shape that tafla handles worst, as in
-  the other languages: 8.8 µs to write, against prost's 1.4 µs, rmp-serde's
-  2.8 µs and FlatBuffers' 3.5 µs, and each of its 200 tables is a builder with
-  an allocation of its own. rkyv's vector is an array of structs, whose items
-  are 12 bytes each, inline: it writes it in 40 ns and reads it in 30 ns,
-  against tafla's 0.28 µs, and compares like for like with tafla's array of
-  structs.
-- tafla writes the 100 structs in 139 ns, against 8.8 µs for the same items as
-  nested tables, and reads them in 30 ns, against 275 ns. rkyv, whose archive
-  is the same for both shapes, writes them in 40 ns and reads them in 31 ns,
+  against tafla's 6.8 ns and the others' 41 to 46 ns. prost writes it
+  fastest, in 50 ns, then rkyv in 65 ns and tafla in 84 ns.
+- tafla's builder records the vector of 100 nested tables in place, and
+  writes it in 4.4 µs, against prost's 1.4 µs, rmp-serde's 2.8 µs and
+  FlatBuffers' 3.5 µs, in 4 allocations of 32,200 bytes, most of them the
+  builder's records of the items and their fields. A builder for each of its
+  200 tables took 8.8 µs, in 208 allocations, on 2026-11-13. rkyv's vector
+  is an array of structs, whose items are 12 bytes each, inline: it writes
+  it in 40 ns and reads it in 31 ns, against tafla's 0.28 µs, and compares
+  like for like with tafla's array of structs.
+- Recording the document's columns in place costs its write more than
+  nesting them from a builder of their own did. In an interleaved
+  measurement of tafla's write of the small document, built at each commit,
+  it took 168 ns before the builder recorded tables in place, 175 ns after,
+  with the columns from a builder still, and 197 ns once the codec recorded
+  them in place, as here. The large document's copy of its columns hides
+  the difference.
+- tafla writes the 100 structs in 139 ns, against 4.4 µs for the same items as
+  nested tables, and reads them in 31 ns, against 278 ns. rkyv, whose archive
+  is the same for both shapes, writes them in 39 ns and reads them in 31 ns,
   and tafla-gen's code writes them in 38 ns.
-- FlatBuffers writes its vector of structs in 575 ns and reads it in 101 ns,
+- FlatBuffers writes its vector of structs in 569 ns and reads it in 101 ns,
   including `flatbuffers::root()`'s verification. prost and rmp-serde write
-  and parse each struct's three fields, in 0.96 to 1.4 µs and 1.5 to 1.9 µs.
+  and parse each struct's three fields, in 0.96 to 1.4 µs and 1.6 to 1.9 µs.
 - tafla and `to_le_bytes` write the fixed-size record in 0.71 ns alike, with
   the same code. Reading it takes `from_le_bytes()` 0.67 ns, rkyv 0.99 ns and
   tafla's `ByteBuffer` getters 1.17 ns, which check each read's range. The
-  other crates allocate a `Vec` for each record, and take 23 to 170 ns to
-  write it and 10 to 27 ns to read it.
+  other crates allocate a `Vec` for each record, and take 23 to 175 ns to
+  write it and 10 to 26 ns to read it.
 
 tafla-gen's code, in the same run, and its ratio to tafla's:
 
 | Benchmark                                          |    tafla |        tafla-gen |
 | -------------------------------------------------- | -------: | ---------------: |
-| record: serialize                                  |   0.0768 |   0.0296 (0.39×) |
-| record: deserialize                                |   0.0129 |   0.0118 (0.91×) |
-| document of 100 rows: serialize                    |    0.170 |   0.0682 (0.40×) |
-| document of 100 rows: deserialize                  |   0.0338 |   0.0214 (0.63×) |
-| document of 100 rows: sum a column per element     |   0.0357 |   0.0358 (1.00×) |
-| document of 100,000 rows: serialize                |     19.0 |     18.9 (0.99×) |
-| document of 100,000 rows: deserialize              |   0.0346 |   0.0215 (0.62×) |
-| document of 100,000 rows: sum a column per element |     85.8 |     85.5 (1.00×) |
-| vector of 100 nested tables: serialize             |    8.764 |   0.797 (0.091×) |
-| vector of 100 nested tables: deserialize           |    0.275 |    0.467 (1.70×) |
-| array of 100 structs: serialize                    |    0.139 |   0.0385 (0.28×) |
-| array of 100 structs: deserialize                  |   0.0300 |   0.0285 (0.95×) |
-| fixed-size record: serialize                       | 0.000710 | 0.000709 (1.00×) |
-| fixed-size record: deserialize                     |  0.00117 | 0.000768 (0.66×) |
+| record: serialize                                  |   0.0840 |   0.0206 (0.24×) |
+| record: deserialize                                |  0.00680 |  0.00678 (1.00×) |
+| document of 100 rows: serialize                    |    0.202 |   0.0658 (0.33×) |
+| document of 100 rows: deserialize                  |   0.0278 |   0.0167 (0.60×) |
+| document of 100 rows: sum a column per element     |   0.0367 |   0.0359 (0.98×) |
+| document of 100,000 rows: serialize                |     18.6 |     19.1 (1.02×) |
+| document of 100,000 rows: deserialize              |   0.0278 |   0.0167 (0.60×) |
+| document of 100,000 rows: sum a column per element |     86.5 |     85.9 (0.99×) |
+| vector of 100 nested tables: serialize             |    4.439 |   0.152 (0.034×) |
+| vector of 100 nested tables: deserialize           |    0.278 |    0.273 (0.98×) |
+| array of 100 structs: serialize                    |    0.139 |   0.0383 (0.28×) |
+| array of 100 structs: deserialize                  |   0.0310 |   0.0314 (1.01×) |
+| fixed-size record: serialize                       | 0.000710 | 0.000699 (0.98×) |
+| fixed-size record: deserialize                     |  0.00117 | 0.000761 (0.65×) |
 
 Bytes allocated per call, and the allocations and reallocations that ask for
 them, which the `allocation` binary counts:
@@ -430,43 +441,48 @@ them, which the `allocation` binary counts:
 | -------------------------------------------------- | ------------: | ------------: | -------------: | -------------: | -------------: | ------------: | ----------: |
 | record: serialize                                  |       252 (2) |        60 (1) |        296 (7) |         63 (2) |        120 (4) |        80 (2) |             |
 | record: deserialize                                |         0 (0) |         0 (0) |          0 (0) |         16 (1) |          0 (0) |         0 (0) |             |
-| document of 100 rows: serialize                    |     1,680 (3) |     1,296 (1) |     4,136 (11) |      2,459 (5) |      4,088 (9) |     3,600 (4) |             |
+| document of 100 rows: serialize                    |     1,872 (3) |     1,296 (1) |     4,136 (11) |      2,459 (5) |      4,088 (9) |     3,600 (4) |             |
 | document of 100 rows: deserialize                  |         0 (0) |         0 (0) |      1,200 (3) |     3,040 (19) |      1,200 (3) |     1,200 (3) |             |
 | document of 100 rows: sum a column per element     |         0 (0) |         0 (0) |          0 (0) |     3,040 (19) |      1,200 (3) |         0 (0) |             |
-| document of 100,000 rows: serialize                | 1,200,480 (3) | 1,200,096 (1) | 4,194,344 (21) |  2,387,519 (5) | 4,194,296 (19) | 3,670,032 (4) |             |
+| document of 100,000 rows: serialize                | 1,200,672 (3) | 1,200,096 (1) | 4,194,344 (21) |  2,387,519 (5) | 4,194,296 (19) | 3,670,032 (4) |             |
 | document of 100,000 rows: deserialize              |         0 (0) |         0 (0) |  1,200,000 (3) | 3,145,696 (49) |  1,200,000 (3) | 1,200,000 (3) |             |
 | document of 100,000 rows: sum a column per element |         0 (0) |         0 (0) |          0 (0) | 3,145,696 (49) |  1,200,000 (3) |         0 (0) |             |
-| vector of 100 nested tables: serialize             |  32,536 (208) |     3,208 (1) |     8,632 (13) |      3,500 (2) |     8,184 (10) |     2,048 (1) |             |
-| vector of 100 nested tables: deserialize           |     1,200 (1) |     3,600 (2) |      1,200 (1) |      5,232 (7) |      1,200 (1) |     1,200 (1) |             |
+| vector of 100 nested tables: serialize             |    32,200 (4) |     3,208 (1) |     8,632 (13) |      3,500 (2) |     8,184 (10) |     2,048 (1) |             |
+| vector of 100 nested tables: deserialize           |     1,200 (1) |     1,200 (1) |      1,200 (1) |      5,232 (7) |      1,200 (1) |     1,200 (1) |             |
 | array of 100 structs: serialize                    |     2,456 (3) |     1,208 (1) |     5,336 (12) |      2,900 (2) |      4,088 (9) |     2,048 (1) |             |
 | array of 100 structs: deserialize                  |     1,200 (1) |     1,200 (1) |      1,200 (1) |      3,024 (6) |      1,200 (1) |     1,200 (1) |             |
 | fixed-size record: serialize                       |         0 (0) |         0 (0) |        104 (5) |         16 (1) |         56 (3) |        16 (1) |       0 (0) |
 | fixed-size record: deserialize                     |         0 (0) |         0 (0) |          0 (0) |          0 (0) |          0 (0) |         0 (0) |       0 (0) |
 
-- tafla-gen writes the vector of 100 nested tables in 0.80 µs, against 8.8 µs
-  with tafla's builders, in one allocation against 208: the table's 3,208
-  bytes, into which it converts each of the workload's items as it writes
-  it. It writes the record and the small document more than twice as fast,
-  in 30 and 68 ns against 77 and 170 ns, each in one allocation of the
-  table's exact length.
-- tafla-gen and tafla's builder write the large document in the same 19 µs,
-  since the builder writes through the same `TableWriter`, into a table of
-  its exact length. Both copy the columns' 1.2 MB into it, and the builder's
-  other two allocations are the records of the document's and its nested
-  table's fields, 384 bytes.
+- tafla-gen writes the vector of 100 nested tables in 152 ns, against 4.4 µs
+  with tafla's builder, in one allocation against 4: the table's 3,208
+  bytes. Each item's fields have sizes that the schema fixes, so the
+  generated code sizes the 100 items in one call, and copies each item's
+  bytes whole, from its `to_bytes()`, converting each of the workload's
+  items as it writes it.
+- tafla-gen writes the record and the small document 3 to 4 times as fast as
+  tafla's builder, in 21 and 66 ns against 84 and 202 ns, each in one
+  allocation of the table's exact length. It writes the record whole, its
+  fields at constant positions before its name, without a sizer.
+- tafla-gen and tafla's builder write the large document in 19.1 and
+  18.6 µs, since the builder writes through the same `TableWriter`, into a
+  table of its exact length. Both copy the columns' 1.2 MB into it, and the
+  builder's other two allocations are its record of fields, 576 bytes: made
+  for the document's four fields, and grown once for the columns' four,
+  recorded among them.
 - tafla-gen writes the array of structs in 38 ns, against 139 ns, and as fast
-  as rkyv, in 40 ns. The generated code writes the structs straight into the
+  as rkyv, in 39 ns. The generated code writes the structs straight into the
   table with `TableWriter::set_structs()`, converting each of the workload's
   items as it writes it: 1,208 bytes in one allocation, the table's, against
   the builder's 2,456 in 3.
-- tafla-gen reads the record's and the documents' fields 9% to 38% faster
-  than the hand-written reads, and sums the column in the same time. Its
-  getter of the vector collects the items' readers into a `Vec` of 2,400
-  bytes first, so the vector takes 0.47 µs against 0.28 µs. Its view reads
-  the items as fast as the hand-written reads, as the next section shows.
+- tafla-gen reads the documents' fields 40% faster than the hand-written
+  reads, and the record, the vector and the array of structs in the same
+  time, and sums the column in the same time. Its getter of the vector
+  returns a view, which reads each item when it's asked for, so reading the
+  vector allocates only the workload's `Vec` of items, as tafla's does.
 - tafla, tafla-gen and `to_le_bytes` write the fixed-size record, with the
-  same code, in 0.709 to 0.710 ns. tafla-gen reads it with `from_le_bytes()`,
-  in 0.77 ns, against 1.17 ns with `ByteBuffer`'s getters, and 0.67 ns with
+  same code, in 0.699 to 0.714 ns. tafla-gen reads it with `from_le_bytes()`,
+  in 0.76 ns, against 1.17 ns with `ByteBuffer`'s getters, and 0.67 ns with
   `to_le_bytes`'s `from_le_bytes()`.
 
 `cargo run -p tafla-benchmarks --bin encoding` printed:
@@ -493,8 +509,8 @@ Truncated document of 100000 rows: deserialize()
   prost                 24 B  returned an error: failed to decode Protobuf message: Document.name: buffer und
   rmp-serde         749619 B  returned an error: IO error while reading data: failed to fill whole buffer
   rmp-serde             24 B  returned an error: IO error while reading data: unexpected end of file
-  rkyv              600036 B  returned an error: unaligned pointer: ptr 0x00000074e0bbe7ac unaligned for alig
-  rkyv                  24 B  returned an error: subtree pointer overran range: ptr 0x0000000100e91260 size 5
+  rkyv              600036 B  returned an error: unaligned pointer: ptr 0x000000794da927ac unaligned for alig
+  rkyv                  24 B  returned an error: subtree pointer overran range: ptr 0x0000000103301270 size 5
 ```
 
 Every crate rejects the truncated document with an error, and none panics.
@@ -515,29 +531,29 @@ The four groups that read tafla's items, from the same run.
 
 Fastest sample in µs, and its ratio to `ByteBuffer`'s by hand:
 
-| Benchmark                                       |   tafla |       tafla-gen |  tafla-gen view | tafla-gen view A/A |
-| ----------------------------------------------- | ------: | --------------: | --------------: | -----------------: |
-| vector of 100 nested tables: read the last item | 0.00783 |   0.141 (18.1×) | 0.00646 (0.82×) |    0.00646 (0.83×) |
-| vector of 100 nested tables: sum every item     |   0.211 |   0.466 (2.21×) |   0.214 (1.01×) |      0.214 (1.01×) |
-| array of 100 structs: read the last item        | 0.00206 | 0.00206 (1.00×) | 0.00206 (1.00×) |    0.00205 (1.00×) |
-| array of 100 structs: sum every item            |  0.0590 |  0.0574 (0.97×) |  0.0575 (0.97×) |     0.0576 (0.98×) |
+| Benchmark                                       |   tafla |       tafla-gen |   tafla-gen A/A |
+| ----------------------------------------------- | ------: | --------------: | --------------: |
+| vector of 100 nested tables: read the last item | 0.00795 | 0.00646 (0.81×) | 0.00648 (0.82×) |
+| vector of 100 nested tables: sum every item     |   0.216 |   0.216 (1.00×) |   0.211 (0.98×) |
+| array of 100 structs: read the last item        | 0.00206 | 0.00206 (1.00×) | 0.00203 (0.99×) |
+| array of 100 structs: sum every item            |  0.0589 |  0.0575 (0.98×) |  0.0575 (0.98×) |
 
-Only tafla-gen's getter of the vector allocates: 2,400 bytes, a `Vec` of the
-100 items' readers.
+None of them allocates.
 
-- `iter()` of the vector's view sums every item in 214 ns, as `ByteBuffer`'s
-  getters by hand do in 211 ns, against 466 ns through the getter, which
-  collects the items' readers into the `Vec` and reads each back from it.
+- `iter()` of the vector's view, which the generated getter `items()`
+  returns, sums every item in 216 ns, as `ByteBuffer`'s getters by hand do.
   The view's loop compiles to the same instructions as the hand-written one:
   each generated getter reads with a `ByteBuffer` in the table's layout, a
   constant. Readers that held a `ByteBuffer` took 437 to 449 ns in runs of
   the code before, on 2026-11-02: a function that takes a reader and isn't
   inlined, as the one that sums an item wasn't, read the reader's layout from
-  memory, and branched on its offset size at every read.
-- `get()` of the view reads the last item in 6.5 ns, against 141 ns through
-  the getter, which collects every item's reader first, and 7.8 ns by hand,
+  memory, and branched on its offset size at every read. A getter that
+  collected the items' readers into a `Vec` first took 466 ns, on
+  2026-11-13.
+- `get()` of the view reads the last item in 6.5 ns, against 8.0 ns by hand,
   where the compiler calls `field_offset()` out of line for one of the reads.
-- The getter of an array of structs already returns an iterator, and its
-  `last()` takes as long as `get()` of the view, 2.1 ns, as the compiler
-  reads only the last struct. Every way sums the array in 57 to 59 ns. The
-  view adds `get(i)` for any other struct.
+  A getter that collected every item's reader first took 141 ns, on
+  2026-11-13.
+- The view of an array of structs reads its last struct in 2.1 ns, as the
+  hand-written reads do, since the compiler reads only the last struct, and
+  every way sums the array in 58 to 59 ns.
