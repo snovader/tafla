@@ -82,7 +82,7 @@
  *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
  *     The array view getters, such as {@code getFloat32ArrayView()}, return a read-only
  *     {@code FloatBuffer} or other view of the bytes instead: viewing three columns of 100,000
- *     elements took 0.03 µs and 336 bytes, against 47 µs and 1.6 MB to copy them. Alignment
+ *     elements took 0.03 µs and 336 bytes, against 48 µs and 1.6 MB to copy them. Alignment
  *     doesn't matter to Java, which reads at any offset, but the TypeScript implementation reads
  *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
@@ -94,12 +94,12 @@
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
  *     array of its own and is copied, as is a builder written already, or one whose layout has
  *     a header or another offset type than its parent's. A vector of 100 tables that each nest
- *     another took 4.4 µs to build from builders and 5.1 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 41 µs and 88 µs.</li>
+ *     another took 4.4 µs to build from builders and 5.2 µs from bytes, and a table nesting
+ *     100,000 rows of three columns took 41 µs and 87 µs.</li>
  *   <li><b>Record nested tables in place.</b> {@code setTable(int, Consumer)} and
  *     {@code setVector(int, int, ObjIntConsumer)} record a nested table, or each item of a vector,
  *     among its parent's fields, without a builder of its own. Recorded so, the vector of 100
- *     tables that each nest another took 3.9 µs, 11% less than from a builder per item, and
+ *     tables that each nest another took 3.9 µs, 12% less than from a builder per item, and
  *     allocated 13.0 KB rather than 29.1 KB.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.04 µs to write and 0.014 µs to read.</li>
