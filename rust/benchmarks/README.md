@@ -162,11 +162,13 @@ their codecs return as an error, since every workload has it.
 ## Method
 
 Criterion 0.8.2 times each benchmark in a loop of its own, after a warm-up of
-2 s, in 100 samples over about 4 s. Samples grow linearly, from about a
-millisecond to 80 ms, so the fastest isn't one lucky call, nor limited by the
-timer, which ticks every 42 ns on Apple silicon. The slowest benchmarks, which
-take a millisecond per call, start from one call and take up to 7 s, as
-Criterion warns. The `report` binary then prints each benchmark's fastest
+half a second, in 50 samples over about a second. Samples grow linearly, from
+about a millisecond to 40 ms, so the fastest isn't one lucky call, nor limited
+by the timer, which ticks every 42 ns on Apple silicon. The slowest
+benchmarks, which take more than a millisecond per call, start from one call
+and take up to 2 s, as Criterion warns. The report doesn't use Criterion's
+confidence intervals, so its bootstrap resamples 1,000 times rather than
+100,000. The `report` binary then prints each benchmark's fastest
 sample, per call, and its ratio to tafla's, as the other languages'
 comparisons report the fastest round, since load from other processes only
 slows samples down. It prints the median sample too, which load moves away
@@ -194,8 +196,18 @@ from the fastest.
 Criterion doesn't interleave the codecs as the TypeScript harness does: it
 runs one benchmark's samples after another's, so a burst of load can slow one
 codec's samples and not another's. A benchmark's fastest sample is unaffected
-unless the load lasts the whole 4 s. Check `uptime` before a run, and compare
-the fastest samples with the medians, which the report summarizes.
+unless the load lasts the whole second. Check `uptime` before a run, and
+compare the fastest samples with the medians, which the report summarizes.
+
+Until 2026-11-14, the suite warmed each benchmark up for 2 s and took 100
+samples over 4 s, which took four times as long. Four runs of these settings,
+interleaved with five of those on the same build, differed from them by 1.5%
+in the median benchmark, and by up to 4.1% for 90% of the benchmarks, as two
+runs of the old settings differed from each other by 1.6% and 5.0%. Samples
+must stay long, though: 100 samples over a second after the same warm-up,
+from 0.2 ms, gave faster fastest samples than the old settings for 85% of the
+benchmarks, by 0.8% in the median, and read the record with tafla-gen 4%
+faster in every run.
 
 The harness is Criterion rather than divan, although divan reports the
 fastest sample itself: Criterion's samples last a millisecond or more, where
@@ -214,7 +226,7 @@ cargo run -p tafla-benchmarks --bin report
 cargo run --release -p tafla-benchmarks --bin allocation
 ```
 
-The full run takes about 11 minutes, and the allocation counts about a
+The full run takes about 3 minutes, and the allocation counts about a
 second once they're built, which CI runs too. `-p tafla-benchmarks` keeps Cargo from
 running the other crates' benchmark harnesses, which reject Criterion's
 options. Criterion's options follow `--`: a regular expression
