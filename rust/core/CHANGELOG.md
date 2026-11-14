@@ -56,6 +56,14 @@ first commits, for code built from its source before the release.
   A string that's ASCII until near its end is checked twice, up to the first
   other character: 1 KiB of it took 37 ns rather than 29 ns. Its values and
   errors are unchanged.
+- `TableBuilder` makes room to record at least 8 fields when it starts, its
+  own and those of the tables that it records in place, rather than only its
+  own. Recording a table in place grew a small table's record by a
+  reallocation, which took 40 ns more on macOS than room for 8 from the
+  start. The benchmarks' document of 100 rows, whose columns are recorded
+  in place, was written in 149 ns rather than 188 ns, in 1,680 bytes in 2
+  allocations rather than 1,872 bytes in 3. The record was written in the
+  same time, in 444 bytes rather than 252.
 
 ### Fixed
 
