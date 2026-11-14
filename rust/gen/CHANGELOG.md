@@ -74,6 +74,13 @@ first commits, for code built from its source before the release.
   gone. An item whose bytes are corrupt fails when it's read, rather than
   when the getter is called. A caller that wants every item at once collects
   the view's `iter()`.
+- Generated Rust writes a nested table whose fields' sizes the schema fixes
+  whole, from the array that its `to_bytes()` returns, and sizes a vector of
+  them in one call, as Go and C++ do. A message of such fields, with or
+  without a string after them, is written whole too, at constant positions,
+  into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
+  benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
+  0.83 µs, and the record 20 ns rather than 30 ns.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,
