@@ -41,6 +41,12 @@ export const taflaGen: Codec = {
                 columns: { base, keys, a, b }
             });
         },
+        serializeInto({ x, y, name, base, keys, a, b }, bytes) {
+            return Document.serializeInto(
+                { x, y, name, columns: { base, keys, a, b } },
+                bytes
+            );
+        },
         deserialize(bytes): DocumentOutput {
             const document = new Document(bytes);
             const columns = document.columns();

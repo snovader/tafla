@@ -27,6 +27,14 @@ arrays. Documents are also serialized from `number[]` columns, and a column is
 summed through each library's per-element accessor. The suite also prints
 encoded sizes and what each library does with a truncated document.
 
+**document of 100,000 rows: serialize into reused bytes** writes the large
+document into bytes kept between calls, with the libraries that can:
+tafla-gen's `serializeInto()` writes it into the start of bytes made once, as
+long as its table, rather than into new bytes, and msgpackr's `pack()` is
+timed again beside it, since it reuses its `Packr`'s buffer in every call,
+the serialize row's too. The other libraries write each message into a
+buffer of its own.
+
 tafla is timed twice, and both write the same bytes:
 
 - **tafla** writes each table with a `TableBuilder` by hand, recording its
