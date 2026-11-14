@@ -38,7 +38,8 @@ collecting items of its own, and `itemaccess/` holds them:
   `GetStructArray()`'s bytes.
 - **tafla-gen** reads with the generated getters, `Items()`, which return
   views of the vector and of the array, whose `Get(i)` reads one item and
-  whose `All()` reads every item.
+  whose `All()` reads every item, and reads each of the vector's items whole,
+  with its generated `Fields()`.
 - **tafla-gen A/A** reads with the generated getters again, an A/A pair that
   shows the harness's noise.
 
@@ -100,8 +101,9 @@ comparison uses its counterpart:
   `tafla.AppendTable()` returns, without a sizer and a writer. The others it
   counts with a `TableSizer` and writes with a `TableWriter`, which take the
   document's first scalars together and each of the vector's items, a table
-  of only such fields, whole. Its readers share strings and columns with the bytes, as
-  tafla's do. It takes the workloads' types, as the other codecs do, so it
+  of only such fields, whole. It reads the record, the document and each of
+  the vector's items whole, with their generated `Fields()`, which shares
+  strings and columns with the bytes, as tafla's readers do. It takes the workloads' types, as the other codecs do, so it
   collects the generated fields of the vector's items and the generated
   structs of the array into a slice in each call, as the protobuf codecs
   collect their messages. The generated getters of the vector and of the

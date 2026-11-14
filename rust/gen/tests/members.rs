@@ -197,7 +197,7 @@ fn rust_renames_the_associated_functions_of_views() {
 }
 
 #[test]
-fn go_renames_the_binary_marshaling_methods_and_the_methods_that_vet_checks() {
+fn go_renames_the_binary_marshaling_methods_fields_and_the_methods_that_vet_checks() {
     let schema = "\
 message Members (version: 1) {
     marshal_binary: uint8;
@@ -206,6 +206,7 @@ message Members (version: 1) {
     read: uint8;
     new: uint8;
     version_of: uint8;
+    fields: uint8;
 }
 
 struct Frame {
@@ -234,6 +235,8 @@ table Encodings {
             "func (t Members) New() (uint8, error) {",
             "func (t Members) VersionOf() (uint8, error) {",
             "func MembersVersionOf(bytes []byte) (uint32, error) {",
+            "func (t Members) Fields_() (uint8, error) {",
+            "func (t Members) Fields() (MembersFields, error) {",
             "\tMarshalBinary_ uint8\n",
             "func (f MembersFields) MarshalBinary() ([]byte, error) {",
             "\tUnmarshalBinary_ uint8\n",

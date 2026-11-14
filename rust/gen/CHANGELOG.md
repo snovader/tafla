@@ -49,6 +49,12 @@ first commits, for code built from its source before the release.
   of its fields, which an array of the struct is written from, so that any
   objects with those attributes write it, rather than only the struct's
   dataclass.
+- Generated Go declares `Fields()` on each message and table, which reads
+  every field at once into the `<Name>Fields` that it's written from, nested
+  tables and the items of vectors included, in one function rather than a
+  getter's call for each field, except where a vector holds tables that
+  allocate when they're read whole, so that what it allocates stays in
+  proportion to the bytes. A field named `fields` is renamed `Fields_`.
 - Generated Python declares `fields()` on each message and table whose
   fields are all scalars, structs and tables of them, and a string last,
   which reads every field at once into the `TypedDict` that it's written
@@ -101,6 +107,10 @@ first commits, for code built from its source before the release.
   `MarshalBinary()` allocates exactly its size rather than appending to
   empty bytes, and a `<Struct>Array`'s `All()` steps through its bytes,
   without a bounds check for each struct.
+- Generated Go getters read uint32 offsets with the Go runtime's
+  `Uint32FieldOffset()`, which the compiler inlines, at the slot of each
+  field, rather than through `ByteBuffer.FieldOffset()` or `RootOffset()`, so
+  that a getter is one call rather than two.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - Generated Java getters of vectors and arrays of structs return their views,

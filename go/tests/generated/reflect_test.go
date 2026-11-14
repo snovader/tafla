@@ -8,6 +8,7 @@ package generated_test
 //     the struct of fields that writes it, and the items of the views that
 //     the getters of its vectors and arrays of structs return by index and
 //     by iterating,
+//   - checkWhole checks that a reader's Fields() reads what its getters read,
 //   - describe describes a struct of fields as the conformance suite's
 //     description of the table that it writes, which TableBuilder builds,
 //   - drawFields draws a struct of fields of any values, and
@@ -142,6 +143,35 @@ func readView(view reflect.Value, fieldType reflect.Type) (reflect.Value, error)
 	}
 
 	return byIndex, nil
+}
+
+// checkWhole reads reader whole, through its Fields(), when it has one, and
+// fails unless Fields() reads the fields that its getters read, which are
+// fields, or fails with a decode error when they fail with err. It reads a
+// table that can hold itself through its getters only, and has no Fields().
+func checkWhole(reader reflect.Value, fields reflect.Value, err error) error {
+	method := reader.MethodByName("Fields")
+	if !method.IsValid() {
+		return nil
+	}
+
+	results := method.Call(nil)
+	whole := results[0]
+	wholeErr, _ := results[1].Interface().(error)
+
+	var decodeError *tafla.DecodeError
+	switch {
+	case err == nil && wholeErr == nil:
+		if !sameValues(whole, fields) {
+			return fmt.Errorf("Fields() read %+v rather than %+v", whole, fields)
+		}
+	case err == nil:
+		return fmt.Errorf("Fields() failed with %v where the getters read %+v", wholeErr, fields)
+	case !errors.As(wholeErr, &decodeError):
+		return fmt.Errorf("Fields() read %+v, %v where the getters failed with %v", whole, wholeErr, err)
+	}
+
+	return nil
 }
 
 // sameValues reports whether two values are the same, with floats compared

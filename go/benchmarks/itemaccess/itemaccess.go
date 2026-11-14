@@ -177,7 +177,8 @@ func sumStruct(bytes []byte) float64 {
 
 // Generated reads with the generated getters, Items, which return views of
 // the vector and of the array, whose Get reads one item and whose All reads
-// every item.
+// every item, and reads each of the vector's items whole, with its generated
+// Fields.
 type Generated struct {
 	name string
 }
@@ -197,8 +198,12 @@ func (Generated) LastTable(bytes []byte) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	fields, err := item.Fields()
+	if err != nil {
+		return 0, err
+	}
 
-	return sumItem(item)
+	return sumItem(fields), nil
 }
 
 func (Generated) EveryTable(bytes []byte) (float64, error) {
@@ -212,11 +217,11 @@ func (Generated) EveryTable(bytes []byte) (float64, error) {
 		if err != nil {
 			return 0, err
 		}
-		itemSum, err := sumItem(item)
+		fields, err := item.Fields()
 		if err != nil {
 			return 0, err
 		}
-		sum += itemSum
+		sum += sumItem(fields)
 	}
 
 	return sum, nil
@@ -248,26 +253,10 @@ func (Generated) EveryStruct(bytes []byte) (float64, error) {
 	return sum, nil
 }
 
-// sumItem sums a generated item's value and its pair's two floats
-func sumItem(item gen.Item) (float64, error) {
-	value, err := item.Value()
-	if err != nil {
-		return 0, err
-	}
-	pair, err := item.Pair()
-	if err != nil {
-		return 0, err
-	}
-	first, err := pair.First()
-	if err != nil {
-		return 0, err
-	}
-	second, err := pair.Second()
-	if err != nil {
-		return 0, err
-	}
-
-	return float64(value) + float64(first) + float64(second), nil
+// sumItem sums the generated fields of an item: its value and its pair's two
+// floats
+func sumItem(fields gen.ItemFields) float64 {
+	return float64(fields.Value) + float64(fields.Pair.First) + float64(fields.Pair.Second)
 }
 
 func sumTriple(triple gen.Triple) float64 {
