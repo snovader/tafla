@@ -152,6 +152,11 @@ first commits, for code built from its source before the release.
   asked for, rather than a list of every item, and `<field>_view()` is gone.
   A list of the items is `list(view)`. An item whose bytes are corrupt raises
   `DecodeError` when it's read, rather than when the getter is called.
+- Generated Java views of vectors iterate their items with
+  `ByteBuffer.getVectorItemEnd()`, carrying each item's end to the next, so
+  that a loop over a view reads one end for each item rather than two.
+  Java's comparison suite summed every item of its vector of 100 tables so
+  in 0.427 µs rather than 0.490 µs.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every

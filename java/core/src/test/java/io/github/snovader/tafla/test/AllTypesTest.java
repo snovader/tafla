@@ -7,6 +7,7 @@ import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 
 import static io.github.snovader.tafla.test.AllTypesTables.*;
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
@@ -294,6 +295,23 @@ public class AllTypesTest {
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(view.size() + past));
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(-1 - past));
         }
+    }
+
+    @Property
+    void a_vectors_iterator_reads_the_items_that_get_reads_and_then_throws_NoSuchElementException(
+        @ForAll("nesteds") Nested.Fields fields
+    ) {
+        var trees = new Nested(Nested.serialize(fields)).trees();
+        var iterator = trees.iterator();
+
+        for (var i = 0; i < trees.size(); i++) {
+            assertTrue(iterator.hasNext());
+            var tree = iterator.next();
+            assertEquals(trees.get(i).value(), tree.value(), "Item " + i);
+            assertEquals(trees.get(i).children().size(), tree.children().size(), "Item " + i);
+        }
+        assertFalse(iterator.hasNext());
+        assertThrows(NoSuchElementException.class, iterator::next);
     }
 
     @Example

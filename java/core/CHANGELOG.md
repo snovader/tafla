@@ -28,6 +28,13 @@ repository's first commits, for code built from its source before the release.
 - `ByteBuffer.getVectorItemOffset()`, which finds a vector item from the count
   that `getVectorLength()` read, so that a reader of several items reads and
   checks the count once.
+- `ByteBuffer.getVectorItemsStart()`, where a vector's items start, and
+  `getVectorItemEnd()`, which reads where a vector item ends after checking it
+  against where it starts, so that a reader of the items in order carries each
+  item's end to the next and reads one end for each item, as
+  `getVectorOffsets()` does, where `getVectorItemOffset()` reads two. The
+  benchmarks' generated view summed every item of a vector of 100 tables so
+  in 0.427 µs, against 0.490 µs with `getVectorItemOffset()`.
 - `TableSizer.writer(byte[])`, which writes a table into the start of bytes
   that the caller owns and reuses rather than into new bytes.
 - `TableBuilder.setTable(int, Consumer)` and

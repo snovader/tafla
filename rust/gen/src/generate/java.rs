@@ -163,9 +163,59 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
         "return new {table}(buffer, buffer.getVectorItemOffset(position, size, index));"
     ));
     writer.close("}");
+    writer.blank();
+
+    vector_iterator(writer, table);
     writer.close("}");
 
     name
+}
+
+/// A vector view's `iterator()`, which carries each item's end to the next
+/// item as its start, so that it reads one end for each item, where `get()`
+/// reads two
+fn vector_iterator(writer: &mut CodeWriter, table: &str) {
+    writer.lines(&javadoc(&[
+        "{@return an iterator of the items in order}, which reads each item's end once, as the"
+            .to_owned(),
+        "next item's start, where `get()` reads the ends of an item and the one before it. Its"
+            .to_owned(),
+        "`next()` throws a `DecodeException` if the item ends before it starts or past the"
+            .to_owned(),
+        "bytes.".to_owned(),
+    ]));
+    // Qualified, so that a schema can declare its own `Iterator` and
+    // `NoSuchElementException`
+    writer.line("@Override");
+    writer.open(format!("public java.util.Iterator<{table}> iterator() {{"));
+    writer.open("return new java.util.Iterator<>() {");
+    writer.line("private int index = 0;");
+    // Item 0 starts where the items do, so that every item takes the same
+    // path. Reading it with `getVectorItemOffset()` instead, a call once in
+    // 100 items, which C2 left out of line, kept the buffer from escape
+    // analysis: reading a vector of 100 tables took 17% longer than with
+    // `get()`, and allocated 88 bytes.
+    writer.line("// Where item index starts, which is where the item before it ends");
+    writer.line("private int start = buffer.getVectorItemsStart(position, size);");
+    writer.blank();
+    writer.line("@Override");
+    writer.open("public boolean hasNext() {");
+    writer.line("return index < size;");
+    writer.close("}");
+    writer.blank();
+    writer.line("@Override");
+    writer.open(format!("public {table} next() {{"));
+    writer.open("if (index >= size) {");
+    writer.line("throw new java.util.NoSuchElementException();");
+    writer.close("}");
+    writer.blank();
+    writer.line("var item = start;");
+    writer.line("start = buffer.getVectorItemEnd(position, index++, item);");
+    writer.blank();
+    writer.line(format!("return new {table}(buffer, item);"));
+    writer.close("}");
+    writer.close("};");
+    writer.close("}");
 }
 
 /// The view of an array of a struct, a lazy `List` whose `get()` reads a

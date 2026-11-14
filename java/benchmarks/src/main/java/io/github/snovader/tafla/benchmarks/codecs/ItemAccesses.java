@@ -119,11 +119,9 @@ public final class ItemAccesses {
 
         @Override
         public double everyTable(byte[] bytes) {
-            var items = new ItemList(bytes).items();
-
+            // Iterated, which reads each item's end once, where get(i) reads two
             double sum = 0;
-            for (int i = 0; i < items.size(); i++) {
-                var item = items.get(i);
+            for (var item : new ItemList(bytes).items()) {
                 var pair = item.pair();
                 sum += (double) item.value() + pair.first() + pair.second();
             }

@@ -101,12 +101,12 @@ public final class TaflaGenCodec {
         public ListInput deserialize(byte[] bytes) {
             var tables = new ItemList(bytes).items();
 
+            // Iterated, which reads each item's end once, where get(i) reads two
             var items = new ItemInput[tables.size()];
-            for (int i = 0; i < items.length; i++) {
-                var item = tables.get(i);
+            var i = 0;
+            for (var item : tables) {
                 var pair = item.pair();
-
-                items[i] = new ItemInput(item.value(), pair.first(), pair.second());
+                items[i++] = new ItemInput(item.value(), pair.first(), pair.second());
             }
 
             return new ListInput(Arrays.asList(items));

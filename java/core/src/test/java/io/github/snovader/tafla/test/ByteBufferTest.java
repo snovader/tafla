@@ -80,6 +80,14 @@ public class ByteBufferTest {
             assertArrayEquals(vector[i], Arrays.copyOfRange(buffer.bytes(), offsets[i], offsets[i] + vector[i].length));
             assertEquals(offsets[i], buffer.getVectorOffset(0, i));
         }
+
+        // In order, each item starting at the end of the one before it
+        var start = buffer.getVectorItemsStart(0, buffer.getVectorLength(0));
+        for (int i = 0; i < vector.length; i++) {
+            assertEquals(offsets[i], start, "Item " + i);
+            start = buffer.getVectorItemEnd(0, i, start);
+            assertEquals(offsets[i] + vector[i].length, start, "The end of item " + i);
+        }
         assertEquals(vector.length, buffer.getVectorLength(0));
         assertArrayEquals(vector, buffer.getVector(0));
     }
