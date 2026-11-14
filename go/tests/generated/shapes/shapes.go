@@ -319,41 +319,18 @@ func (ItemList) layout() tafla.TableLayout {
 	return tafla.TableLayout{}
 }
 
-// Items fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t ItemList) Items() ([]Item, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(0)
-	if err != nil {
-		return nil, err
-	}
-	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Item, 0, vector.Len())
-	for bytes, err := range vector.ItemsInPlace() {
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, Item{bytes: bytes})
-	}
-	return items, nil
-}
-
-// ItemsView views the items of [ItemList.Items], reading each one when it's
-// asked for. It fails with a [*tafla.DecodeError] if the field, or the vector's
-// count or the ends of its items, lie outside the bytes.
-func (t ItemList) ItemsView() (ItemVector, error) {
+// Items views the vector's items, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its items, lie outside the bytes. An item fails with one when it's
+// read if its own bytes are corrupt.
+func (t ItemList) Items() (ItemVector, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return ItemVector{}, err
 	}
 	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return ItemVector{}, err
-	}
-	return ItemVector{vector: vector}, nil
+	return ItemVector{vector: vector}, err
 }
 
 // ItemListFields are the fields of an [ItemList], to write.

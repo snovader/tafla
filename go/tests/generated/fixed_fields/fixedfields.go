@@ -1085,41 +1085,18 @@ func (t Span) Frame() (Frame, error) {
 	return Frame{bytes: t.bytes, position: position}, nil
 }
 
-// Ranges fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Span) Ranges() ([]Range, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(3)
-	if err != nil {
-		return nil, err
-	}
-	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Range, 0, vector.Len())
-	for bytes, err := range vector.ItemsInPlace() {
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, Range{bytes: bytes})
-	}
-	return items, nil
-}
-
-// RangesView views the items of [Span.Ranges], reading each one when it's asked
-// for. It fails with a [*tafla.DecodeError] if the field, or the vector's count
-// or the ends of its items, lie outside the bytes.
-func (t Span) RangesView() (RangeVector, error) {
+// Ranges views the vector's items, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its items, lie outside the bytes. An item fails with one when it's
+// read if its own bytes are corrupt.
+func (t Span) Ranges() (RangeVector, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(3)
 	if err != nil {
 		return RangeVector{}, err
 	}
 	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return RangeVector{}, err
-	}
-	return RangeVector{vector: vector}, nil
+	return RangeVector{vector: vector}, err
 }
 
 // SpanFields are the fields of a [Span], to write.

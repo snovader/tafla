@@ -317,41 +317,18 @@ func (ItemList) layout() tafla.TableLayout {
 	return tafla.TableLayout{}
 }
 
-// Items fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t ItemList) Items() ([]Item, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(0)
-	if err != nil {
-		return nil, err
-	}
-	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Item, 0, vector.Len())
-	for bytes, err := range vector.ItemsInPlace() {
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, Item{bytes: bytes})
-	}
-	return items, nil
-}
-
-// ItemsView views the items of [ItemList.Items], reading each one when it's
-// asked for. It fails with a [*tafla.DecodeError] if the field, or the vector's
-// count or the ends of its items, lie outside the bytes.
-func (t ItemList) ItemsView() (ItemVector, error) {
+// Items views the vector's items, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its items, lie outside the bytes. An item fails with one when it's
+// read if its own bytes are corrupt.
+func (t ItemList) Items() (ItemVector, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return ItemVector{}, err
 	}
 	vector, err := buffer.GetVector(position)
-	if err != nil {
-		return ItemVector{}, err
-	}
-	return ItemVector{vector: vector}, nil
+	return ItemVector{vector: vector}, err
 }
 
 // ItemListFields are the fields of an [ItemList], to write.
@@ -520,38 +497,17 @@ func (Triples) layout() tafla.TableLayout {
 	return tafla.TableLayout{}
 }
 
-// Items fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Triples) Items() ([]Triple, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
-	position, err := buffer.RootOffset(0)
-	if err != nil {
-		return nil, err
-	}
-	bytes, err := buffer.GetStructArray(position, 12)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Triple, len(bytes)/12)
-	for index := range items {
-		items[index].read(bytes[index*12:])
-	}
-	return items, nil
-}
-
-// ItemsView views the items of [Triples.Items], reading each one when it's
-// asked for. It fails with a [*tafla.DecodeError] if the field or its structs
-// lie outside the bytes.
-func (t Triples) ItemsView() (TripleArray, error) {
+// Items views the array's structs, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field or its structs lie outside the
+// bytes.
+func (t Triples) Items() (TripleArray, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return TripleArray{}, err
 	}
 	bytes, err := buffer.GetStructArray(position, 12)
-	if err != nil {
-		return TripleArray{}, err
-	}
-	return TripleArray{bytes: bytes}, nil
+	return TripleArray{bytes: bytes}, err
 }
 
 // TriplesFields are the fields of a [Triples], to write.

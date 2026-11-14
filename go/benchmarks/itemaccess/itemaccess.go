@@ -31,10 +31,10 @@ type Way interface {
 	EveryStruct(bytes []byte) (float64, error)
 }
 
-// Ways are every way, in the order that reports list them, the views twice,
-// an A/A pair that shows the harness's noise.
+// Ways are every way, in the order that reports list them, the generated
+// code twice, an A/A pair that shows the harness's noise.
 func Ways() []Way {
-	return []Way{ByHand{}, Getters{}, View{name: "tafla-gen view"}, View{name: "tafla-gen view A/A"}}
+	return []Way{ByHand{}, Generated{name: "tafla-gen"}, Generated{name: "tafla-gen A/A"}}
 }
 
 var errEmpty = errors.New("there are no items")
@@ -175,79 +175,17 @@ func sumStruct(bytes []byte) float64 {
 	return float64(value) + float64(first) + float64(second)
 }
 
-// Getters reads with the generated getters: Items, which reads every item
-// of the vector into a slice of readers, and every struct of the array into
-// a slice of structs, first.
-type Getters struct{}
-
-func (Getters) Name() string { return "tafla-gen" }
-
-func (Getters) LastTable(bytes []byte) (float64, error) {
-	items, err := gen.NewItemList(bytes).Items()
-	if err != nil {
-		return 0, err
-	}
-	if len(items) == 0 {
-		return 0, errEmpty
-	}
-
-	return sumItem(items[len(items)-1])
-}
-
-func (Getters) EveryTable(bytes []byte) (float64, error) {
-	items, err := gen.NewItemList(bytes).Items()
-	if err != nil {
-		return 0, err
-	}
-
-	sum := 0.0
-	for _, item := range items {
-		itemSum, err := sumItem(item)
-		if err != nil {
-			return 0, err
-		}
-		sum += itemSum
-	}
-
-	return sum, nil
-}
-
-func (Getters) LastStruct(bytes []byte) (float64, error) {
-	items, err := gen.NewTriples(bytes).Items()
-	if err != nil {
-		return 0, err
-	}
-	if len(items) == 0 {
-		return 0, errEmpty
-	}
-
-	return sumTriple(items[len(items)-1]), nil
-}
-
-func (Getters) EveryStruct(bytes []byte) (float64, error) {
-	items, err := gen.NewTriples(bytes).Items()
-	if err != nil {
-		return 0, err
-	}
-
-	sum := 0.0
-	for _, item := range items {
-		sum += sumTriple(item)
-	}
-
-	return sum, nil
-}
-
-// View reads with the generated views, ItemsView, whose Get reads one item
-// and whose All reads every item.
-type View struct {
+// Generated reads with the generated getters, Items, which return views of
+// the vector and of the array, whose Get reads one item and whose All reads
+// every item.
+type Generated struct {
 	name string
 }
 
-func (v View) Name() string { return v.name }
+func (g Generated) Name() string { return g.name }
 
-func (View) LastTable(bytes []byte) (float64, error) {
-	view, err := gen.NewItemList(bytes).ItemsView()
+func (Generated) LastTable(bytes []byte) (float64, error) {
+	view, err := gen.NewItemList(bytes).Items()
 	if err != nil {
 		return 0, err
 	}
@@ -263,8 +201,8 @@ func (View) LastTable(bytes []byte) (float64, error) {
 	return sumItem(item)
 }
 
-func (View) EveryTable(bytes []byte) (float64, error) {
-	view, err := gen.NewItemList(bytes).ItemsView()
+func (Generated) EveryTable(bytes []byte) (float64, error) {
+	view, err := gen.NewItemList(bytes).Items()
 	if err != nil {
 		return 0, err
 	}
@@ -284,8 +222,8 @@ func (View) EveryTable(bytes []byte) (float64, error) {
 	return sum, nil
 }
 
-func (View) LastStruct(bytes []byte) (float64, error) {
-	view, err := gen.NewTriples(bytes).ItemsView()
+func (Generated) LastStruct(bytes []byte) (float64, error) {
+	view, err := gen.NewTriples(bytes).Items()
 	if err != nil {
 		return 0, err
 	}
@@ -296,8 +234,8 @@ func (View) LastStruct(bytes []byte) (float64, error) {
 	return sumTriple(view.Get(view.Len() - 1)), nil
 }
 
-func (View) EveryStruct(bytes []byte) (float64, error) {
-	view, err := gen.NewTriples(bytes).ItemsView()
+func (Generated) EveryStruct(bytes []byte) (float64, error) {
+	view, err := gen.NewTriples(bytes).Items()
 	if err != nil {
 		return 0, err
 	}
