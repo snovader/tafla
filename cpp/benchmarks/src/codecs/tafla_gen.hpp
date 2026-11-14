@@ -4,6 +4,7 @@
 #define TAFLA_BENCHMARKS_CODECS_TAFLA_GEN_HPP
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -40,13 +41,14 @@ struct TaflaGen {
     }
 
     [[nodiscard]] Bytes serialize(DocumentShape, const Document& input) const {
-        const ::workloads::DocumentFields fields{
-            .x = input.x,
-            .y = input.y,
-            .name = input.name.view(),
-            .columns = {.base = input.base, .keys = input.keys.span(), .a = input.a.span(), .b = input.b.span()},
-        };
-        return fields.serialize();
+        return fields_of(input).serialize();
+    }
+
+    /// Writes the document into the start of `bytes`, which the caller keeps
+    /// and writes the next document into, and returns its length
+    [[nodiscard]] std::size_t serialize_into(DocumentShape, const Document& input,
+                                             std::span<std::uint8_t> bytes) const {
+        return fields_of(input).serialize_into(bytes);
     }
 
     [[nodiscard]] Document deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
@@ -120,6 +122,17 @@ struct TaflaGen {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const auto sample = ::workloads::Sample::read(bytes);
         return {sample.key, sample.a, sample.b};
+    }
+
+private:
+    /// The generated fields of a document, which view its name and columns
+    static ::workloads::DocumentFields fields_of(const Document& input) {
+        return {
+            .x = input.x,
+            .y = input.y,
+            .name = input.name.view(),
+            .columns = {.base = input.base, .keys = input.keys.span(), .a = input.a.span(), .b = input.b.span()},
+        };
     }
 };
 

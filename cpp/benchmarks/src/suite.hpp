@@ -1,13 +1,16 @@
 // The comparison's benchmarks: each workload's serialize and deserialize, and
 // a document's column summed per element, through every codec that encodes
-// it, and the ways to read tafla's items. Every codec is checked to read back
+// it, the large document written by tafla-gen into reused bytes, and the
+// ways to read tafla's items. Every codec is checked to read back
 // exactly what it wrote before anything is timed.
 
 #ifndef TAFLA_BENCHMARKS_SUITE_HPP
 #define TAFLA_BENCHMARKS_SUITE_HPP
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -126,6 +129,30 @@ inline Benchmark sum_column_benchmark(const std::string& name, const Document& i
     return sum;
 }
 
+/// Writes a document through tafla-gen's `serialize_into()` into bytes that
+/// every call reuses, as a caller that sends each document before writing
+/// the next does, and again as an A/A pair, after checking that it writes the
+/// bytes that `serialize()` writes. Each variant keeps bytes of its own,
+/// which are allocated once, as long as the document.
+inline Benchmark serialize_into_benchmark(const std::string& name, const Document& input) {
+    Benchmark into{name + ": serialize into reused bytes", {}};
+    const auto expected = TaflaGen().serialize(DocumentShape{}, input);
+
+    for (const std::string_view variant_name : {TaflaGen::name, std::string_view("tafla-gen A/A")}) {
+        const auto bytes = std::make_shared<std::vector<std::uint8_t>>(expected.size());
+        const auto length = TaflaGen().serialize_into(DocumentShape{}, input, *bytes);
+        if (length != expected.size() || !std::equal(bytes->begin(), bytes->end(), expected.data())) {
+            throw std::logic_error("tafla-gen wrote other bytes into reused bytes than into new ones");
+        }
+
+        const auto* value = &input;
+        into.variants.push_back(variant(std::string(variant_name), [bytes, value] {
+            return TaflaGen().serialize_into(DocumentShape{}, *opaque(value), *opaque(bytes.get()));
+        }));
+    }
+    return into;
+}
+
 /// The groups that read tafla's items: the last item and every item of the
 /// vector of nested tables and of the array of structs, by hand and through
 /// the generated getters twice, an A/A pair that shows the harness's noise
@@ -172,6 +199,9 @@ inline std::vector<Benchmark> benchmarks(const Inputs& inputs) {
         const auto name = index == 0 ? std::string("document of 100 rows") : std::string("document of 100,000 rows");
         append(workload<DocumentShape>(name, inputs.documents[index]));
         all.push_back(sum_column_benchmark(name, inputs.documents[index]));
+        if (index == 1) {
+            all.push_back(serialize_into_benchmark(name, inputs.documents[index]));
+        }
     }
     append(workload<ListShape>("vector of 100 nested tables", inputs.list));
     append(workload<StructsShape>("array of 100 structs", inputs.list));
