@@ -30,6 +30,7 @@ import {
     structAlignment,
     writeTable,
     writeTableInto,
+    writeTableReserving,
     writeTableThrough
 } from './conformance/tables.ts';
 
@@ -855,5 +856,187 @@ describe("conversions, as the README's table states them", () => {
         expect(() =>
             writer(sizer => sizer.addInt64Array(1)).setInt64Array(0, [1] as unknown as bigint[])
         ).toThrow(TypeError);
+    });
+});
+
+describe('fields that generated code writes into the room reserved for them', () => {
+    /** The bytes of a table's header, which `tableBytes()` writes */
+    const headerOf = ({ layout }: TableDescription): number =>
+        (Number(layout.sized) + Number(layout.versioned)) * OFFSET_SIZES[layout.offsetType];
+
+    /** `tableBytes()` or `versionedTableBytes()` of the table's layout */
+    const tableBytesOf = (
+        { layout, version, fields }: TableDescription,
+        length: number,
+        bytes?: Uint8Array
+    ): Uint8Array => {
+        const { sized, offsetType } = layout;
+        if (layout.versioned) {
+            const versioned = TableLayout.create({ sized, versioned: true, offsetType });
+            return TableWriter.versionedTableBytes(
+                fields.length,
+                versioned,
+                version as number,
+                length,
+                bytes
+            );
+        }
+
+        return TableWriter.tableBytes(
+            fields.length,
+            TableLayout.create({ sized, offsetType }),
+            length,
+            bytes
+        );
+    };
+
+    it.prop([inPlaceTables()])(
+        'should write the bytes of TableBuilder with nested tables, vectors of tables of one length and arrays of structs written whole where the writer reserves them',
+        table => {
+            expect(outcomeOf(() => writeTableReserving(table))).toStrictEqual(
+                outcomeOf(() => writeTable(table))
+            );
+        }
+    );
+
+    it('should write a vector of tables of one length whole, with the end of each', () => {
+        const item: TableDescription = {
+            layout: UINT8_LAYOUT,
+            fields: [
+                { type: 'uint16', value: 7 },
+                { type: 'uint8', value: 9 }
+            ]
+        };
+        const table: TableDescription = {
+            layout: { sized: true, versioned: false, offsetType: 'uint8' },
+            fields: [
+                { type: 'uint8', value: 1 },
+                {
+                    type: 'vector',
+                    items: [0, 1, 2].map(() => ({ from: 'builder' as const, table: item }))
+                }
+            ]
+        };
+
+        const bytes = writeTableReserving(table);
+        expect(bytes).toStrictEqual(buildTable(table).bytes());
+        // The length, 2 offsets, the uint8, the count, 3 ends and 3 items of 5 bytes
+        expect(bytes).toHaveLength(23);
+        expect([...bytes.subarray(4, 8)]).toStrictEqual([3, 9, 14, 19]);
+    });
+
+    it.prop([inPlaceTables(), fc.nat({ max: 16 }), fc.nat({ max: 0xff })])(
+        'should return bytes of a table with the header that TableBuilder writes, new or at the start of the given bytes',
+        (table, extra, fill) => {
+            const built = buildTable(table).bytes();
+            const header = headerOf(table);
+
+            const written = tableBytesOf(table, built.length);
+            expect(written).toHaveLength(built.length);
+            expect(written.subarray(0, header)).toStrictEqual(built.subarray(0, header));
+            expect(written.subarray(header)).toStrictEqual(new Uint8Array(built.length - header));
+
+            const bytes = new Uint8Array(built.length + extra).fill(fill);
+            const into = tableBytesOf(table, built.length, bytes);
+            expect(into.buffer).toBe(bytes.buffer);
+            expect(into).toHaveLength(built.length);
+            expect(into.subarray(0, header)).toStrictEqual(built.subarray(0, header));
+            expect(bytes.subarray(header)).toStrictEqual(
+                new Uint8Array(bytes.length - header).fill(fill)
+            );
+        }
+    );
+
+    it.each(OFFSET_TYPES)(
+        'should return bytes as long as %s offsets address, and throw the sizer’s RangeError for a byte more',
+        offsetType => {
+            const max = MAX_VALUES[offsetType];
+            const layout = TableLayout.create({ sized: true, offsetType });
+            const sizer = new TableSizer(1, layout);
+            sizer.addTableBytes(1, max + 1 - 2 * OFFSET_SIZES[offsetType]);
+
+            if (offsetType !== 'uint32') {
+                expect(TableWriter.tableBytes(1, layout, max)).toHaveLength(max);
+            }
+            expect(() => sizer.byteLength()).toThrow(
+                `The table's fields make it ${max + 1} bytes, too long for ${offsetType} offsets`
+            );
+            expect(() => TableWriter.tableBytes(1, layout, max + 1)).toThrow(
+                new RangeError(
+                    `The table's fields make it ${max + 1} bytes, too long for ${offsetType} offsets`
+                )
+            );
+        }
+    );
+
+    it('should check the header and version as the sizer does, and bytes as its writer does, before writing any', () => {
+        const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });
+        const bytes = new Uint8Array(4).fill(7);
+
+        expect(() => TableWriter.versionedTableBytes(1, versioned, 256, 3)).toThrow(
+            new RangeError("Version 256 doesn't fit in a uint8 slot")
+        );
+        expect(() => TableWriter.tableBytes(0, versioned as never, 1)).toThrow(
+            new TypeError('A versioned layout needs a version')
+        );
+        expect(() => TableWriter.tableBytes(-1, TableLayout.DEFAULT, 1)).toThrow(RangeError);
+        expect(() => TableWriter.versionedTableBytes(1, versioned, 9, 5, bytes)).toThrow(
+            new RangeError('The table is 5 bytes, longer than the 4 bytes given')
+        );
+        expect(bytes).toStrictEqual(new Uint8Array(4).fill(7));
+    });
+
+    it('should throw RangeError for a nested table that does not fit, without moving', () => {
+        const sizer = new TableSizer(2);
+        sizer.addTable(1);
+        sizer.addTableBytes(1, 4);
+        sizer.addUint8();
+        const writer = sizer.writer();
+        writer.setTable(0, 1);
+
+        expect(() => writer.reserveTableBytes(6)).toThrow(
+            new RangeError("The fields need 14 bytes, more than the table's 13")
+        );
+        expect(writer.reserveTableBytes(4)).toBe(8);
+        writer.setUint8(1, 3);
+        expect(writer.bytes()).toHaveLength(13);
+    });
+
+    it('should throw RangeError for a vector of tables of an invalid count, or one that does not fit, writing none of it', () => {
+        const sizer = new TableSizer(1);
+        sizer.addVector(2);
+        sizer.addTableBytes(2, 3);
+        const writer = sizer.writer();
+        const before = writer.target().slice();
+
+        expect(() => writer.reserveTableVector(0, -1, 3)).toThrow(RangeError);
+        expect(() => writer.reserveTableVector(0, 0.5, 3)).toThrow(RangeError);
+        expect(() => writer.reserveTableVector(0, 2, 4)).toThrow(RangeError);
+        expect(() => writer.reserveTableVector(0, 3, 3)).toThrow(RangeError);
+        expect(writer.target()).toStrictEqual(before);
+
+        expect(writer.reserveTableVector(0, 2, 3)).toBe(16);
+        expect([...writer.bytes().subarray(0, 16)]).toStrictEqual([
+            4, 0, 0, 0, 2, 0, 0, 0, 15, 0, 0, 0, 18, 0, 0, 0
+        ]);
+    });
+
+    it('should throw RangeError for an array of structs of an invalid size or alignment, or one that does not fit, writing none of it', () => {
+        const sizer = new TableSizer(1);
+        sizer.addStructArray(2, 6, 2);
+        const writer = sizer.writer();
+        const before = writer.target().slice();
+
+        expect(() => writer.reserveStructArray(0, 2, 0, 2)).toThrow(RangeError);
+        expect(() => writer.reserveStructArray(0, 2, 6, 3 as never)).toThrow(RangeError);
+        expect(() => writer.reserveStructArray(0, -1, 6, 2)).toThrow(RangeError);
+        expect(() => writer.reserveStructArray(0, 3, 6, 2)).toThrow(RangeError);
+        expect(writer.target()).toStrictEqual(before);
+
+        expect(writer.reserveStructArray(0, 2, 6, 2)).toBe(8);
+        writer.target().fill(1, 8);
+        expect([...writer.bytes()]).toStrictEqual([
+            4, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+        ]);
     });
 });

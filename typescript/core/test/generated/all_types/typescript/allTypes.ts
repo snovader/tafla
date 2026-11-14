@@ -15,7 +15,8 @@ import {
     StructWriter,
     TableLayout,
     TableSizer,
-    type TableWriter,
+    TableWriter,
+    viewOf,
     writeFloat32,
     writeFloat64,
     writeInt8,
@@ -40,33 +41,66 @@ export class Scalars {
 
     /** Writes a `Scalars` with every field */
     static serialize(fields: ScalarsFields): Uint8Array {
-        const sizer = new TableSizer(11, Scalars.#LAYOUT);
-        sizer.addInt8();
-        sizer.addUint8();
-        sizer.addInt16();
-        sizer.addUint16();
-        sizer.addInt32();
-        sizer.addUint32();
-        sizer.addInt64();
-        sizer.addUint64();
-        sizer.addFloat32();
-        sizer.addFloat64();
-        sizer.addUint8();
+        const table = TableWriter.tableBytes(11, Scalars.#LAYOUT, 87);
 
-        const writer = sizer.writer();
-        writer.setInt8(0, fields.int8);
-        writer.setUint8(1, fields.uint8);
-        writer.setInt16(2, fields.int16);
-        writer.setUint16(3, fields.uint16);
-        writer.setInt32(4, fields.int32);
-        writer.setUint32(5, fields.uint32);
-        writer.setInt64(6, fields.int64);
-        writer.setUint64(7, fields.uint64);
-        writer.setFloat32(8, fields.float32);
-        writer.setFloat64(9, fields.float64);
-        writer.setUint8(10, fields.bool ? 1 : 0);
+        table[0] = 44;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
+        table[4] = 45;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 46;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 48;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
+        table[16] = 50;
+        table[17] = 0;
+        table[18] = 0;
+        table[19] = 0;
+        table[20] = 54;
+        table[21] = 0;
+        table[22] = 0;
+        table[23] = 0;
+        table[24] = 58;
+        table[25] = 0;
+        table[26] = 0;
+        table[27] = 0;
+        table[28] = 66;
+        table[29] = 0;
+        table[30] = 0;
+        table[31] = 0;
+        table[32] = 74;
+        table[33] = 0;
+        table[34] = 0;
+        table[35] = 0;
+        table[36] = 78;
+        table[37] = 0;
+        table[38] = 0;
+        table[39] = 0;
+        table[40] = 86;
+        table[41] = 0;
+        table[42] = 0;
+        table[43] = 0;
 
-        return writer.bytes();
+        writeInt8(table, 44, fields.int8);
+        writeUint8(table, 45, fields.uint8);
+        writeInt16(table, 46, fields.int16);
+        writeUint16(table, 48, fields.uint16);
+        writeInt32(table, 50, fields.int32);
+        writeUint32(table, 54, fields.uint32);
+        writeInt64(table, 58, fields.int64);
+        writeUint64(table, 66, fields.uint64);
+        writeFloat32(table, 74, fields.float32);
+        writeFloat64(table, 78, fields.float64);
+        writeUint8(table, 86, fields.bool ? 1 : 0);
+
+        return table;
     }
 
     /**
@@ -80,33 +114,66 @@ export class Scalars {
      * any of them is written.
      */
     static serializeInto(fields: ScalarsFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(11, Scalars.#LAYOUT);
-        sizer.addInt8();
-        sizer.addUint8();
-        sizer.addInt16();
-        sizer.addUint16();
-        sizer.addInt32();
-        sizer.addUint32();
-        sizer.addInt64();
-        sizer.addUint64();
-        sizer.addFloat32();
-        sizer.addFloat64();
-        sizer.addUint8();
+        const table = TableWriter.tableBytes(11, Scalars.#LAYOUT, 87, bytes);
 
-        const writer = sizer.writer(bytes);
-        writer.setInt8(0, fields.int8);
-        writer.setUint8(1, fields.uint8);
-        writer.setInt16(2, fields.int16);
-        writer.setUint16(3, fields.uint16);
-        writer.setInt32(4, fields.int32);
-        writer.setUint32(5, fields.uint32);
-        writer.setInt64(6, fields.int64);
-        writer.setUint64(7, fields.uint64);
-        writer.setFloat32(8, fields.float32);
-        writer.setFloat64(9, fields.float64);
-        writer.setUint8(10, fields.bool ? 1 : 0);
+        table[0] = 44;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
+        table[4] = 45;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 46;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 48;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
+        table[16] = 50;
+        table[17] = 0;
+        table[18] = 0;
+        table[19] = 0;
+        table[20] = 54;
+        table[21] = 0;
+        table[22] = 0;
+        table[23] = 0;
+        table[24] = 58;
+        table[25] = 0;
+        table[26] = 0;
+        table[27] = 0;
+        table[28] = 66;
+        table[29] = 0;
+        table[30] = 0;
+        table[31] = 0;
+        table[32] = 74;
+        table[33] = 0;
+        table[34] = 0;
+        table[35] = 0;
+        table[36] = 78;
+        table[37] = 0;
+        table[38] = 0;
+        table[39] = 0;
+        table[40] = 86;
+        table[41] = 0;
+        table[42] = 0;
+        table[43] = 0;
 
-        return writer.bytes();
+        writeInt8(table, 44, fields.int8);
+        writeUint8(table, 45, fields.uint8);
+        writeInt16(table, 46, fields.int16);
+        writeUint16(table, 48, fields.uint16);
+        writeInt32(table, 50, fields.int32);
+        writeUint32(table, 54, fields.uint32);
+        writeInt64(table, 58, fields.int64);
+        writeUint64(table, 66, fields.uint64);
+        writeFloat32(table, 74, fields.float32);
+        writeFloat64(table, 78, fields.float64);
+        writeUint8(table, 86, fields.bool ? 1 : 0);
+
+        return table;
     }
 
     int8(): number {
@@ -1155,6 +1222,55 @@ export class Documented {
         writeUint32(bytes, offset + 3, fields.undocumented);
     }
 
+    /**
+     * Writes a `Documented` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Documented` does.
+     */
+    static writeView(
+        view: DataView,
+        offset: number,
+        fields: DocumentedFields
+    ): void {
+        view.setUint8(offset, fields.one);
+        view.setUint16(offset + 1, fields.two, true);
+        view.setUint32(offset + 3, fields.undocumented, true);
+    }
+
+    /**
+     * Writes `Documented`s one after another at `offset` in `bytes`, as an array
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Documented` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly DocumentedFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Documented.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Documented.writeAt(
+                    bytes,
+                    offset + i * Documented.SIZE,
+                    items[i]
+                );
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Documented.writeView(view, i * Documented.SIZE, items[i]);
+        }
+    }
+
     /** A field's documentation, of one line */
     one(): number {
         return this.#one;
@@ -1342,6 +1458,50 @@ export class Point {
         writeFloat32(bytes, offset + 4, fields.y);
     }
 
+    /**
+     * Writes a `Point` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Point` does.
+     */
+    static writeView(
+        view: DataView,
+        offset: number,
+        fields: PointFields
+    ): void {
+        view.setFloat32(offset, fields.x, true);
+        view.setFloat32(offset + 4, fields.y, true);
+    }
+
+    /**
+     * Writes `Point`s one after another at `offset` in `bytes`, as an array
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Point` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly PointFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Point.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Point.writeAt(bytes, offset + i * Point.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Point.writeView(view, i * Point.SIZE, items[i]);
+        }
+    }
+
     x(): number {
         return this.#x;
     }
@@ -1429,6 +1589,50 @@ export class Segment {
     ): void {
         Point.writeAt(bytes, offset, fields.start);
         Point.writeAt(bytes, offset + 8, fields.end);
+    }
+
+    /**
+     * Writes a `Segment` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Segment` does.
+     */
+    static writeView(
+        view: DataView,
+        offset: number,
+        fields: SegmentFields
+    ): void {
+        Point.writeView(view, offset, fields.start);
+        Point.writeView(view, offset + 8, fields.end);
+    }
+
+    /**
+     * Writes `Segment`s one after another at `offset` in `bytes`, as an array
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Segment` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly SegmentFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Segment.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Segment.writeAt(bytes, offset + i * Segment.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Segment.writeView(view, i * Segment.SIZE, items[i]);
+        }
     }
 
     start(): Point {
@@ -1632,12 +1836,13 @@ export class Path {
     static write(writer: TableWriter, fields: PathFields): void {
         const parent = writer.startTable(2);
         writer.setStruct(0, Point.serialize(fields.start));
-        writer.setStructArray(
+        const items1 = writer.reserveStructArray(
             1,
-            Point.serializeArray(fields.points),
+            fields.points.length,
             Point.SIZE,
             Point.ALIGNMENT
         );
+        Point.writeItemsAt(writer.target(), items1, fields.points);
         writer.endTable(parent);
     }
 
@@ -1703,19 +1908,21 @@ export class Structs {
 
         const writer = sizer.writer();
         writer.setStruct(0, Packed.serialize(fields.packed));
-        writer.setStructArray(
+        const items1 = writer.reserveStructArray(
             1,
-            Documented.serializeArray(fields.documented),
+            fields.documented.length,
             Documented.SIZE,
             Documented.ALIGNMENT
         );
+        Documented.writeItemsAt(writer.target(), items1, fields.documented);
         writer.setStruct(2, Segment.serialize(fields.segment));
-        writer.setStructArray(
+        const items3 = writer.reserveStructArray(
             3,
-            Segment.serializeArray(fields.segments),
+            fields.segments.length,
             Segment.SIZE,
             Segment.ALIGNMENT
         );
+        Segment.writeItemsAt(writer.target(), items3, fields.segments);
         writer.setTable(4, Path.ALIGNMENT);
         Path.write(writer, fields.path);
 
@@ -1751,19 +1958,21 @@ export class Structs {
 
         const writer = sizer.writer(bytes);
         writer.setStruct(0, Packed.serialize(fields.packed));
-        writer.setStructArray(
+        const items1 = writer.reserveStructArray(
             1,
-            Documented.serializeArray(fields.documented),
+            fields.documented.length,
             Documented.SIZE,
             Documented.ALIGNMENT
         );
+        Documented.writeItemsAt(writer.target(), items1, fields.documented);
         writer.setStruct(2, Segment.serialize(fields.segment));
-        writer.setStructArray(
+        const items3 = writer.reserveStructArray(
             3,
-            Segment.serializeArray(fields.segments),
+            fields.segments.length,
             Segment.SIZE,
             Segment.ALIGNMENT
         );
+        Segment.writeItemsAt(writer.target(), items3, fields.segments);
         writer.setTable(4, Path.ALIGNMENT);
         Path.write(writer, fields.path);
 

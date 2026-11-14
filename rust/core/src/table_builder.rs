@@ -51,15 +51,6 @@ pub struct TableBuilder<'a> {
     alignment: Alignment,
 }
 
-/// The fewest fields that a builder makes room to record when it starts, its
-/// own and those of the tables that it records in place, which it otherwise
-/// records after growing its record by a reallocation. On macOS, allocating
-/// room for 8 took about as long as for 4, while growing from 4 to 8 took
-/// 40 ns more: a document of 4 fields, the last a table of 4 recorded in
-/// place, was written in 149 ns rather than 188 ns, and a record of 4 fields
-/// in the same time.
-const MIN_RECORDED: usize = 8;
-
 macro_rules! scalar_setters {
     ($($name:ident($type:ty) => $variant:ident($bits:ty)),*) => {$(
         #[doc = concat!("Sets a `", stringify!($type), "` field")]
@@ -140,7 +131,7 @@ impl<'a> TableBuilder<'a> {
         version: Option<u32>,
     ) -> Self {
         Self {
-            values: Vec::with_capacity(fields.max(MIN_RECORDED)),
+            values: Vec::with_capacity(fields),
             // The header holds an offset of at least a byte per field
             fields: fields as u32,
             set: 0,
