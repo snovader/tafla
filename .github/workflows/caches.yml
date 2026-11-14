@@ -13,7 +13,10 @@ on:
 
   # A run of C++ on main saves each build's ccache
   workflow_run:
-    workflows: [C++]
+    # GitHub reads each name as a filter pattern, in which + repeats the
+    # preceding character. Unescaped, "C++" fails to parse, and every
+    # workflow's run then starts a run of this one that fails at startup.
+    workflows: ['C\+\+']
     types: [completed]
     branches: [main]
 
