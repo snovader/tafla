@@ -36,10 +36,10 @@ inline constexpr std::size_t kSegmentBytes = 256;
 /// A threshold that keeps no segment: every value is copied when it's set
 inline constexpr std::size_t kNoSegments = SIZE_MAX;
 
-template <std::size_t SegmentBytes>
+template <std::size_t SegmentBytes, bool InlineFills = false>
 class BasicDirectTableBuilder;
 
-template <std::size_t SegmentBytes>
+template <std::size_t SegmentBytes, bool InlineFills = false>
 class BasicDirectNestedTable;
 
 /// The builder that keeps runs of `kSegmentBytes` or more as segments
@@ -47,6 +47,10 @@ using DirectTableBuilder = BasicDirectTableBuilder<kSegmentBytes>;
 
 /// The builder that copies every value into its bytes when it's set
 using CopyingTableBuilder = BasicDirectTableBuilder<kNoSegments>;
+
+/// `DirectTableBuilder`, which Clang compiles with each `fill` inlined where
+/// it's called, as `[[clang::always_inline]]` on the call asks
+using InliningTableBuilder = BasicDirectTableBuilder<kSegmentBytes, true>;
 
 namespace detail {
 
@@ -269,7 +273,8 @@ private:
         return spilled_.capacity() != 0;
     }
 
-    std::array<Segment, Inline> inline_{};
+    // Not initialized: only the first `size_` are read
+    std::array<Segment, Inline> inline_;
     std::vector<Segment> spilled_;
     std::size_t size_ = 0;
 };
@@ -294,10 +299,10 @@ TAFLA_ALWAYS_INLINE void store_slot(std::uint8_t* at, std::uint64_t value, Offse
 /// A table to nest with `set_table()` or in `set_vector()`, as
 /// `tafla::NestedTable` is for `tafla::TableBuilder`: a builder or bytes,
 /// borrowed from a `const` reference or span, or owned from an rvalue
-template <std::size_t SegmentBytes>
+template <std::size_t SegmentBytes, bool InlineFills>
 class BasicDirectNestedTable {
 public:
-    using Builder = BasicDirectTableBuilder<SegmentBytes>;
+    using Builder = BasicDirectTableBuilder<SegmentBytes, InlineFills>;
 
     // NOLINTBEGIN(google-explicit-constructor): each converts as an argument
     BasicDirectNestedTable(Builder&& builder) : table_(std::move(builder)) {}
@@ -386,10 +391,10 @@ private:
 /// before writing anything, and a nested table or vector whose `fill` throws
 /// is removed by truncating the bytes, segments and owned values to what
 /// they were.
-template <std::size_t SegmentBytes>
+template <std::size_t SegmentBytes, bool InlineFills>
 class BasicDirectTableBuilder {
 public:
-    using NestedTable = BasicDirectNestedTable<SegmentBytes>;
+    using NestedTable = BasicDirectNestedTable<SegmentBytes, InlineFills>;
     class Item;
 
     BasicDirectTableBuilder(std::size_t fields, TableLayout<false> layout)
@@ -1069,6 +1074,18 @@ private:
         restore({start, buffer_.size() - header, fields, 0, Alignment::one});
     }
 
+    /// Calls a `fill`, inlined into the caller when `InlineFills`, on Clang
+    template <class Fill, class... Arguments>
+    TAFLA_ALWAYS_INLINE static void call(Fill& fill, Arguments&&... arguments) {
+#if defined(__clang__)
+        if constexpr (InlineFills) {
+            [[clang::always_inline]] fill(std::forward<Arguments>(arguments)...);
+            return;
+        }
+#endif
+        std::invoke(fill, std::forward<Arguments>(arguments)...);
+    }
+
     /// Moves the table written in place since `saved` forward by `padding`,
     /// with its segments, and zeros the padding before it
     [[gnu::noinline]] void move_by(std::size_t padding, const Checkpoint& saved) {
@@ -1122,8 +1139,8 @@ private:
 
 /// The fields of a table that a builder writes in place, as
 /// `tafla::TableBuilder::Item` is
-template <std::size_t SegmentBytes>
-class BasicDirectTableBuilder<SegmentBytes>::Item {
+template <std::size_t SegmentBytes, bool InlineFills>
+class BasicDirectTableBuilder<SegmentBytes, InlineFills>::Item {
 public:
     Item(const Item&) = delete;
     Item& operator=(const Item&) = delete;
@@ -1264,8 +1281,8 @@ private:
     BasicDirectTableBuilder* builder_;
 };
 
-template <std::size_t SegmentBytes>
-void BasicDirectTableBuilder<SegmentBytes>::set_table(NestedTable table, Alignment alignment) {
+template <std::size_t SegmentBytes, bool InlineFills>
+void BasicDirectTableBuilder<SegmentBytes, InlineFills>::set_table(NestedTable table, Alignment alignment) {
     table.check_complete();
 
     const std::size_t padding = tafla::detail::padding(table_length(), alignment);
@@ -1288,8 +1305,8 @@ void BasicDirectTableBuilder<SegmentBytes>::set_table(NestedTable table, Alignme
     commit(alignment);
 }
 
-template <std::size_t SegmentBytes>
-void BasicDirectTableBuilder<SegmentBytes>::set_vector(std::vector<NestedTable> items) {
+template <std::size_t SegmentBytes, bool InlineFills>
+void BasicDirectTableBuilder<SegmentBytes, InlineFills>::set_vector(std::vector<NestedTable> items) {
     std::uint64_t nested_bytes = 0;
     Room room;
     for (const auto& item : items) {
@@ -1324,9 +1341,10 @@ void BasicDirectTableBuilder<SegmentBytes>::set_vector(std::vector<NestedTable> 
     commit(Alignment::one);
 }
 
-template <std::size_t SegmentBytes>
-template <std::invocable<typename BasicDirectTableBuilder<SegmentBytes>::Item&> Fill>
-TAFLA_ALWAYS_INLINE void BasicDirectTableBuilder<SegmentBytes>::set_table(std::size_t fields, Fill&& fill) {
+template <std::size_t SegmentBytes, bool InlineFills>
+template <std::invocable<typename BasicDirectTableBuilder<SegmentBytes, InlineFills>::Item&> Fill>
+TAFLA_ALWAYS_INLINE void BasicDirectTableBuilder<SegmentBytes, InlineFills>::set_table(std::size_t fields,
+                                                                                       Fill&& fill) {
     if (set_ == fields_) [[unlikely]] {
         throw_too_many_fields(fields_);
     }
@@ -1336,7 +1354,7 @@ TAFLA_ALWAYS_INLINE void BasicDirectTableBuilder<SegmentBytes>::set_table(std::s
     try {
         start_in_place(static_cast<std::uint32_t>(fields), header);
         Item item(*this);
-        std::invoke(fill, item);
+        call(fill, item);
         check_complete();
 
         // Padded from the parent's length where the table started, as a
@@ -1360,9 +1378,10 @@ TAFLA_ALWAYS_INLINE void BasicDirectTableBuilder<SegmentBytes>::set_table(std::s
     }
 }
 
-template <std::size_t SegmentBytes>
-template <std::invocable<std::size_t, typename BasicDirectTableBuilder<SegmentBytes>::Item&> Fill>
-void BasicDirectTableBuilder<SegmentBytes>::set_vector(std::size_t count, std::size_t fields, Fill&& fill) {
+template <std::size_t SegmentBytes, bool InlineFills>
+template <std::invocable<std::size_t, typename BasicDirectTableBuilder<SegmentBytes, InlineFills>::Item&> Fill>
+void BasicDirectTableBuilder<SegmentBytes, InlineFills>::set_vector(std::size_t count, std::size_t fields,
+                                                                    Fill&& fill) {
     // The count and the items' ends, which fail before any item is written
     const auto slots = tafla::detail::vector_bytes(count, width());
     check_field(slots);
@@ -1381,7 +1400,7 @@ void BasicDirectTableBuilder<SegmentBytes>::set_vector(std::size_t count, std::s
             const auto item_start = buffer_.size();
             start_in_place(static_cast<std::uint32_t>(fields), header);
             Item item(*this);
-            std::invoke(fill, index, item);
+            call(fill, index, item);
             check_complete();
             restore(saved.counters);
 

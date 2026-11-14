@@ -119,6 +119,7 @@ TEST(DirectTableBuilder, RebuildsEveryConformanceTableByteForByte) {
         const auto expected = bytes_with<TableBuilder>(in_place, offset_type);
         EXPECT_EQ(bytes_with<DirectTableBuilder>(in_place, offset_type), expected) << test_case.name;
         EXPECT_EQ(bytes_with<CopyingTableBuilder>(in_place, offset_type), expected) << test_case.name;
+        EXPECT_EQ(bytes_with<InliningTableBuilder>(in_place, offset_type), expected) << test_case.name;
         EXPECT_EQ(bytes_with<EverySegment>(in_place, offset_type), expected) << test_case.name;
         EXPECT_EQ(bytes_with<EightByteSegments>(in_place, offset_type), expected) << test_case.name;
     }
@@ -147,6 +148,7 @@ RC_GTEST_PROP(DirectTableBuilder, WritesAndFailsAsTableBuilderDoes, ()) {
     const auto expected = outcome_of<TableBuilder>(table, layout, fields, in_place);
     RC_ASSERT(outcome_of<DirectTableBuilder>(table, layout, fields, in_place) == expected);
     RC_ASSERT(outcome_of<CopyingTableBuilder>(table, layout, fields, in_place) == expected);
+    RC_ASSERT(outcome_of<InliningTableBuilder>(table, layout, fields, in_place) == expected);
     RC_ASSERT(outcome_of<EverySegment>(table, layout, fields, in_place) == expected);
     RC_ASSERT(outcome_of<EightByteSegments>(table, layout, fields, in_place) == expected);
 }
@@ -284,12 +286,15 @@ TEST(DirectTableBuilder, WritesTheComparisonsWorkloadsAsTableBuilderDoes) {
 
     const HandWritten<DirectTableBuilder> direct;
     const HandWritten<CopyingTableBuilder> copying;
+    const HandWritten<InliningTableBuilder> inlining;
     for (const auto& document : inputs.documents) {
         const auto expected = Tafla().serialize(benchmarks::DocumentShape{}, document);
         EXPECT_EQ(direct.document(document), expected);
         EXPECT_EQ(copying.document(document), expected);
+        EXPECT_EQ(inlining.document(document), expected);
     }
     EXPECT_EQ(direct.list(inputs.list), Tafla().serialize(benchmarks::ListShape{}, inputs.list));
+    EXPECT_EQ(inlining.list(inputs.list), Tafla().serialize(benchmarks::ListShape{}, inputs.list));
     EXPECT_EQ(direct.structs(inputs.list), Tafla().serialize(benchmarks::StructsShape{}, inputs.list));
     EXPECT_EQ(direct.record(inputs.record), Tafla().serialize(benchmarks::RecordShape{}, inputs.record));
 }
