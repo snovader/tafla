@@ -341,10 +341,16 @@ class TestViews(unittest.TestCase):
         nested = Nested(Nested.serialize(**nested_fields))
         structs = Structs(Structs.serialize(**structs_fields))
 
-        for view in [nested.trees(), structs.documented()]:
-            for index in [len(view) + past, -len(view) - 1 - past]:
+        trees, documented = nested.trees(), structs.documented()
+        reads: list[tuple[int, Callable[[int], object]]] = [
+            (len(trees), trees.__getitem__),
+            (len(documented), documented.__getitem__),
+            (len(documented), documented.item_field_values),
+        ]
+        for length, read in reads:
+            for index in [length + past, -length - 1 - past]:
                 with self.assertRaises(IndexError):
-                    view[index]
+                    read(index)
 
     def test_raises_decode_error_for_a_vector_whose_count_the_bytes_cant_hold(
         self,
@@ -747,6 +753,48 @@ class TestValues(unittest.TestCase):
             fields_or_decode_error(lambda: structs.path().points().field_values()),
             fields_or_decode_error(lambda: _astuples(structs.path().points())),
         )
+        self.assertEqual(
+            fields_or_decode_error(
+                lambda: list(structs.documented().iter_field_values())
+            ),
+            fields_or_decode_error(lambda: _astuples(structs.documented())),
+        )
+        self.assertEqual(
+            fields_or_decode_error(
+                lambda: list(structs.path().points().iter_field_values())
+            ),
+            fields_or_decode_error(lambda: _astuples(structs.path().points())),
+        )
+
+    @SETTINGS
+    @given(structs_fields, one_of(corruptions, binary(max_size=0)))
+    def test_reads_each_structs_values_by_index_as_the_struct_holds_them(
+        self, fields: StructsFields, corruption: Truncation | Overwrite | bytes
+    ) -> None:
+        data = bytes(Structs.serialize(**fields))
+        if not isinstance(corruption, bytes):
+            data = corruption.apply(data)
+        try:
+            views = [Structs(data).documented(), Structs(data).path().points()]
+        except DecodeError:
+            return
+
+        for view in views:
+            every = _astuples(view)
+            # Every index, from the end too, and one past each end
+            for index in range(-len(view) - 1, len(view) + 1):
+                with self.subTest(view=type(view).__name__, index=index):
+                    if -len(view) <= index < len(view):
+                        # By their repr, which tells NaN and -0 apart
+                        expected = repr(every[index])
+                        self.assertEqual(repr(view.item_field_values(index)), expected)
+                        self.assertEqual(repr(astuple(view[index])), expected)
+                        continue
+
+                    with self.assertRaises(IndexError):
+                        view.item_field_values(index)
+                    with self.assertRaises(IndexError):
+                        view[index]
 
 
 def _assert_struct_values(test: unittest.TestCase, struct: Any, before: bytes) -> None:

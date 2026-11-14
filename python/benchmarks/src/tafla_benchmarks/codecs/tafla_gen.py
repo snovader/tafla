@@ -91,9 +91,9 @@ def serialize_structs(input: ListInput) -> memoryview:
 
 
 def deserialize_structs(data: Buffer) -> ListInput:
-    """Reads every struct's values at once with the view's
-    ``field_values()``, rather than into a ``Triple`` each"""
-    values = Triples(data).items().field_values()
+    """Reads each struct's values with the view's ``iter_field_values()``,
+    rather than into a ``Triple`` each"""
+    values = Triples(data).items().iter_field_values()
 
     return ListInput([ItemInput(*triple) for triple in values])
 
@@ -127,7 +127,7 @@ views. The vector is written from its items' ``TypedDict``s, and read into
 them with the ``fields()`` of the view that its getter returns, which reads
 every item's fields at once. The array of structs is written from the
 workload's own items, which the struct's protocol of fields types, and read
-with its view's ``field_values()``, into a tuple of each struct's values
+with its view's ``iter_field_values()``, into a tuple of each struct's values
 rather than a struct.
 Reading creates the workloads' dataclasses from the values that the generated
 readers return."""
