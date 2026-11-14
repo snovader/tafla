@@ -2,8 +2,10 @@
 package io.github.snovader.tafla.benchmarks.generated.tafla;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
+import io.github.snovader.tafla.TableWriter;
 
 /** A table holding the items as an array of structs */
 public final class Triples {
@@ -47,19 +49,37 @@ public final class Triples {
         return writer.byteLength();
     }
 
-    public Triple[] items() {
-        var view = buffer.getStructArray(buffer.rootOffset(0), Triple.SIZE);
-        var items = new Triple[view.remaining() / Triple.SIZE];
+    /**
+     * Writes a {@code Triples} of {@code count} structs, each of which {@code fill} writes straight into
+     * the table with {@code Triple.write(bytes, offset, ...)}, without records of them:
+     *
+     * {@snippet :
+     * Triples.serialize(items.size(), (index, bytes, offset) -> {
+     *     var item = items.get(index);
+     *     Triple.write(bytes, offset, ...); // the item's values
+     * });
+     * }
+     *
+     * @param fill writes struct {@code index} at {@code offset} in the table's {@code bytes}, which may not be zero
+     * @throws IllegalArgumentException if {@code count} is negative
+     */
+    public static byte[] serialize(int count, TableWriter.StructFill fill) {
+        var sizer = new TableSizer(1, LAYOUT);
+        sizer.addStructArray(count, Triple.SIZE, Triple.ALIGNMENT);
 
-        for (int i = 0; i < items.length; i++) {
-            items[i] = Triple.read(view, i * Triple.SIZE);
-        }
+        var writer = sizer.writer();
+        writer.setStructs(0, count, Triple.SIZE, Triple.ALIGNMENT, fill);
 
-        return items;
+        return writer.bytes();
     }
 
-    /** Views the items of {@code items()}, reading each one when it's asked for */
-    public TripleArray itemsView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
+     */
+    public TripleArray items() {
         return new TripleArray(buffer, buffer.rootOffset(0));
     }
 

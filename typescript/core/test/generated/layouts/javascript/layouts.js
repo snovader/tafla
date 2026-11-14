@@ -75,6 +75,20 @@ export class Uint8Offsets {
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `Uint8OffsetsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint8OffsetsFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /**
@@ -158,6 +172,20 @@ export class Uint8OffsetsSized {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint8OffsetsSizedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint8OffsetsSizedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -284,6 +312,20 @@ export class Uint8OffsetsVersioned {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint8OffsetsVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint8OffsetsVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -415,6 +457,20 @@ export class Uint8OffsetsSizedVersioned {
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `Uint8OffsetsSizedVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint8OffsetsSizedVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /**
@@ -499,6 +555,20 @@ export class Uint16Offsets {
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `Uint16OffsetsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint16OffsetsFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /**
@@ -582,6 +652,20 @@ export class Uint16OffsetsSized {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint16OffsetsSizedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint16OffsetsSizedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -708,6 +792,20 @@ export class Uint16OffsetsVersioned {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint16OffsetsVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint16OffsetsVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -839,6 +937,20 @@ export class Uint16OffsetsSizedVersioned {
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `Uint16OffsetsSizedVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint16OffsetsSizedVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /**
@@ -923,6 +1035,20 @@ export class Uint32Offsets {
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
     }
+
+    /**
+     * Reads every field into the `Uint32OffsetsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint32OffsetsFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
+    }
 }
 
 /**
@@ -1006,6 +1132,20 @@ export class Uint32OffsetsSized {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint32OffsetsSizedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint32OffsetsSizedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -1129,6 +1269,20 @@ export class Uint32OffsetsVersioned {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint32OffsetsVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint32OffsetsVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 
@@ -1255,6 +1409,20 @@ export class Uint32OffsetsSizedVersioned {
     /** @returns {Uint16Array} */
     values() {
         return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+    }
+
+    /**
+     * Reads every field into the `Uint32OffsetsSizedVersionedFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     *
+     * @returns {Uint32OffsetsSizedVersionedFields}
+     */
+    fields() {
+        return {
+            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(1)),
+            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+        };
     }
 }
 

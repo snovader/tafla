@@ -29,6 +29,11 @@ public class RoundTripTest {
     }
 
     @Provide
+    Arbitrary<String> reusedBytesCodecs() {
+        return Arbitraries.of(List.copyOf(Codecs.reusedBytesDocuments().keySet()));
+    }
+
+    @Provide
     Arbitrary<Integer> documentRows() {
         return Arbitraries.of(Workloads.DOCUMENT_ROWS);
     }
@@ -41,6 +46,17 @@ public class RoundTripTest {
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void should_read_back_documents(@ForAll("codecs") Codec codec, @ForAll("documentRows") int rows) {
         assertReadBack(codec.document(), Workloads.documentInput(rows));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_write_documents_into_reused_bytes_as_into_new_ones(
+        @ForAll("reusedBytesCodecs") String codec,
+        @ForAll("documentRows") int rows
+    ) {
+        var workload = Objects.requireNonNull(Codecs.reusedBytesDocuments().get(codec));
+        var input = Workloads.documentInput(rows);
+
+        assertArrayEquals(workload.serialize(input), Codecs.serializeIntoChecked(workload, input));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)

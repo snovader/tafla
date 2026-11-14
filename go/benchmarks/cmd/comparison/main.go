@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -181,7 +182,39 @@ func documentBenchmarks(document workloads.Document) []benchmark {
 		}})
 	}
 
-	return []benchmark{serialize, deserialize, sum}
+	benchmarks := []benchmark{serialize, deserialize, sum}
+	if len(document.A) == reusedRows {
+		benchmarks = append(benchmarks, serializeIntoBenchmark(rows, document))
+	}
+
+	return benchmarks
+}
+
+// reusedRows are the rows of the document that's also written into reused
+// bytes, the large one, whose write new bytes slow most
+const reusedRows = 100_000
+
+// serializeIntoBenchmark writes the document into bytes that each variant
+// keeps between calls, as long as the document that it writes
+func serializeIntoBenchmark(rows string, document workloads.Document) benchmark {
+	serialize := benchmark{name: rows + ": serialize into reused bytes"}
+
+	for _, codec := range codecs.All() {
+		codec, ok := codec.(codecs.DocumentIntoCodec)
+		if !ok {
+			continue
+		}
+		written, _ := codec.SerializeDocumentInto(document, nil)
+		reused := make([]byte, 0, len(written))
+
+		serialize.variants = append(serialize.variants, harness.Variant{Name: codec.Name(), Loop: func(n int) {
+			for range n {
+				sinkBytes, sinkErr = codec.SerializeDocumentInto(document, reused)
+			}
+		}})
+	}
+
+	return serialize
 }
 
 func listBenchmarks(list workloads.List) []benchmark {
@@ -327,6 +360,11 @@ func check(record workloads.Record, list workloads.List, sample workloads.Sample
 				}
 			}
 		}
+		if codec, ok := codec.(codecs.DocumentIntoCodec); ok {
+			if err := checkInto(codec, workloads.NewDocument(reusedRows)); err != nil {
+				return err
+			}
+		}
 		if codec, ok := codec.(codecs.ListCodec); ok {
 			if err := roundTrip(codec, "the vector", list, codec.SerializeList, codec.DeserializeList, workloads.List.Same); err != nil {
 				return err
@@ -341,6 +379,31 @@ func check(record workloads.Record, list workloads.List, sample workloads.Sample
 			if err := roundTrip(codec, "the fixed-size record", sample, codec.SerializeSample, codec.DeserializeSample, workloads.Sample.Same); err != nil {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+// checkInto checks that a codec writes the document into the start of the
+// bytes that it's given when they have room, as it writes it into new
+// bytes, and reads it back
+func checkInto(codec codecs.DocumentIntoCodec, document workloads.Document) error {
+	written, err := codec.SerializeDocumentInto(document, nil)
+	if err != nil {
+		return fmt.Errorf("%s can't write a document into bytes: %w", codec.Name(), err)
+	}
+
+	reused := make([]byte, 3, len(written))
+	into, err := codec.SerializeDocumentInto(document, reused)
+	if err != nil || !bytes.Equal(into, written) || &into[0] != &reused[0] {
+		return fmt.Errorf("%s doesn't write a document into the bytes it's given: %v", codec.Name(), err)
+	}
+
+	if reader, ok := codec.(codecs.DocumentCodec); ok {
+		read, err := reader.DeserializeDocument(into)
+		if err != nil || !read.Same(document) {
+			return fmt.Errorf("%s doesn't read back a document written into bytes: %v", codec.Name(), err)
 		}
 	}
 

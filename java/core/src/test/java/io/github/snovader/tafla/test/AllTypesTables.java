@@ -99,18 +99,19 @@ final class AllTypesTables {
     static Structs.Fields readStructs(Structs structs) {
         return new Structs.Fields(
             structs.packed(),
-            structs.documented(),
+            structs.documented().toArray(Documented[]::new),
             structs.segment(),
-            structs.segments(),
+            structs.segments().toArray(Segment[]::new),
             readPath(structs.path())
         );
     }
 
     private static Path.Fields readPath(Path path) {
-        return new Path.Fields(path.start(), path.points());
+        return new Path.Fields(path.start(), path.points().toArray(Point[]::new));
     }
 
-    // Reading the vectors, arrays of structs and arrays of scalars through their views instead
+    // Reading the items of the vectors and arrays of structs in an order, and the arrays of scalars
+    // through their views
 
     /** Ways to read a view's items: by index from the last, and in order through its iterator */
     enum ViewOrder {
@@ -143,12 +144,12 @@ final class AllTypesTables {
     }
 
     static Nested.Fields readNestedViews(Nested nested, ViewOrder order) {
-        var trees = order.read(nested.treesView()).stream().map(tree -> readTreeViews(tree, order)).toList();
+        var trees = order.read(nested.trees()).stream().map(tree -> readTreeViews(tree, order)).toList();
         return new Nested.Fields(nested.label(), readOuter(nested.outer()), trees);
     }
 
     private static Tree.Fields readTreeViews(Tree tree, ViewOrder order) {
-        var children = order.read(tree.childrenView()).stream().map(child -> readTreeViews(child, order)).toList();
+        var children = order.read(tree.children()).stream().map(child -> readTreeViews(child, order)).toList();
         return new Tree.Fields(tree.value(), children);
     }
 
@@ -157,10 +158,10 @@ final class AllTypesTables {
 
         return new Structs.Fields(
             structs.packed(),
-            order.read(structs.documentedView()).toArray(Documented[]::new),
+            order.read(structs.documented()).toArray(Documented[]::new),
             structs.segment(),
-            order.read(structs.segmentsView()).toArray(Segment[]::new),
-            new Path.Fields(path.start(), order.read(path.pointsView()).toArray(Point[]::new))
+            order.read(structs.segments()).toArray(Segment[]::new),
+            new Path.Fields(path.start(), order.read(path.points()).toArray(Point[]::new))
         );
     }
 

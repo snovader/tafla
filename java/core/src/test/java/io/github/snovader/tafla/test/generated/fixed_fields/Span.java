@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.test.generated.fixed_fields;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
@@ -97,16 +98,13 @@ public final class Span {
         return new Frame(buffer, buffer.rootOffset(2));
     }
 
-    public List<Range> ranges() {
-        var offsets = buffer.getVectorOffsets(buffer.rootOffset(3));
-
-        return java.util.Arrays.stream(offsets)
-            .mapToObj(item -> new Range(buffer, item))
-            .toList();
-    }
-
-    /** Views the items of {@code ranges()}, reading each one when it's asked for */
-    public RangeVector rangesView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the items' ends aren't within the bytes
+     */
+    public RangeVector ranges() {
         return new RangeVector(buffer, buffer.rootOffset(3));
     }
 

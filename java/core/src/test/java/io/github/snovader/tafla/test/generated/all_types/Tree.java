@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableSizer;
 import io.github.snovader.tafla.TableWriter;
 
@@ -60,16 +61,13 @@ public final class Tree {
         return buffer.getInt32(buffer.fieldOffset(position, 0));
     }
 
-    public List<Tree> children() {
-        var offsets = buffer.getVectorOffsets(buffer.fieldOffset(position, 1));
-
-        return java.util.Arrays.stream(offsets)
-            .mapToObj(item -> new Tree(buffer, item))
-            .toList();
-    }
-
-    /** Views the items of {@code children()}, reading each one when it's asked for */
-    public TreeVector childrenView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the items' ends aren't within the bytes
+     */
+    public TreeVector children() {
         return new TreeVector(buffer, buffer.fieldOffset(position, 1));
     }
 

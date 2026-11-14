@@ -1,0 +1,11 @@
+error: `PointFieldValues` clashes with the field values of `Point`
+ --> field_values_names.tafla:4:7
+  |
+4 | table PointFieldValues { x: uint8; }
+  |       ^^^^^^^^^^^^^^^^ Python's generated code declares `PointFieldValues` as the tuple of `Point`'s values
+
+error: `DocumentFieldValues` clashes with the field values of `Document`
+ --> field_values_names.tafla:8:8
+  |
+8 | struct DocumentFieldValues { x: uint8; }
+  |        ^^^^^^^^^^^^^^^^^^^ Python's generated code declares `DocumentFieldValues` as the tuple of `Document`'s values

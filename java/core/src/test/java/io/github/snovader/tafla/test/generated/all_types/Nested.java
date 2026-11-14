@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
@@ -87,21 +88,15 @@ public final class Nested {
         return new Outer(buffer, buffer.rootOffset(1));
     }
 
-    /** A vector of tables that hold vectors of themselves */
-    public List<Tree> trees() {
-        var offsets = buffer.getVectorOffsets(buffer.rootOffset(2));
-
-        return java.util.Arrays.stream(offsets)
-            .mapToObj(item -> new Tree(buffer, item))
-            .toList();
-    }
-
     /**
      * A vector of tables that hold vectors of themselves
      *
-     * Views the items of {@code trees()}, reading each one when it's asked for
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the items' ends aren't within the bytes
      */
-    public TreeVector treesView() {
+    public TreeVector trees() {
         return new TreeVector(buffer, buffer.rootOffset(2));
     }
 

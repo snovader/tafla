@@ -17,6 +17,7 @@ import {
     table,
     vector
 } from './descriptions.ts';
+import { readItems, readItemsFromLast } from './views.ts';
 import * as javascript from './all_types/javascript/allTypes.js';
 import * as typescript from './all_types/typescript/allTypes.ts';
 import type {
@@ -66,12 +67,6 @@ type Structs = typescript.Structs | javascript.Structs;
 type Path = typescript.Path | javascript.Path;
 type Segment = typescript.Segment | javascript.Segment;
 type Point = typescript.Point | javascript.Point;
-
-/** A view of a vector or an array of structs, in either language */
-interface View<T> {
-    length(): number;
-    get(index: number): T;
-}
 
 /**
  * The scalar types in the order of the fields of `Arrays`, and of `Scalars`
@@ -129,7 +124,7 @@ export function readNested(nested: Nested): NestedFields {
     return {
         label: nested.label(),
         outer: readOuter(nested.outer()),
-        trees: nested.trees().map(readTree)
+        trees: readItems(nested.trees(), readTree)
     };
 }
 
@@ -141,8 +136,17 @@ function readInner(inner: Inner): InnerFields {
     return { name: inner.name(), values: Array.from(inner.values()) };
 }
 
+/**
+ * Reads a tree and its children, each vector's from the first to the last.
+ * Each item then starts where the one before it ends, which reading it
+ * checks, as `getVectorOffsets()` does, so each tree lies further
+ * into the bytes than its parent, and a walk ends within them.
+ */
 function readTree(tree: Tree): TreeFields {
-    return { value: tree.value(), children: tree.children().map(readTree) };
+    return {
+        value: tree.value(),
+        children: readItems(tree.children(), readTree)
+    };
 }
 
 export function readReserved(reserved: Reserved): ReservedFields {
@@ -171,9 +175,9 @@ export function readDocumented(documented: Documented): DocumentedFields {
 export function readStructs(structs: Structs): StructsFields {
     return {
         packed: readScalars(structs.packed()),
-        documented: structs.documented().map(readDocumented),
+        documented: readItems(structs.documented(), readDocumented),
         segment: readSegment(structs.segment()),
-        segments: structs.segments().map(readSegment),
+        segments: readItems(structs.segments(), readSegment),
         path: readPath(structs.path())
     };
 }
@@ -181,16 +185,17 @@ export function readStructs(structs: Structs): StructsFields {
 function readPath(path: Path): PathFields {
     return {
         start: readPoint(path.start()),
-        points: path.points().map(readPoint)
+        points: readItems(path.points(), readPoint)
     };
 }
 
-// Reading the vectors and arrays of structs through their views instead, from
-// the last item to the first, as a reader that skips items would
+// Reading the vectors and arrays of structs from the last item to the first
+// instead, as a reader that skips items would
 
 /**
- * Reads a `Nested` of `byteLength` bytes through its views, with trees nested
- * as many levels deep as the bytes are long at most.
+ * Reads a `Nested` of `byteLength` bytes from the last item of each vector to
+ * the first, with trees nested as many levels deep as the bytes are long at
+ * most.
  *
  * A view reads an item without the items before it, so corrupted ends can
  * give it a tree that holds itself, as SPEC.md's Validation describes, which
@@ -200,55 +205,45 @@ function readPath(path: Path): PathFields {
  * below one that holds itself, and reads as a tree a level above it, which
  * the walk reads.
  */
-export function readNestedViews(
+export function readNestedFromLast(
     nested: Nested,
     byteLength: number
 ): NestedFields {
     return {
         label: nested.label(),
         outer: readOuter(nested.outer()),
-        trees: readView(nested.treesView(), (tree: Tree) =>
-            readTreeViews(tree, byteLength)
+        trees: readItemsFromLast(nested.trees(), (tree: Tree) =>
+            readTreeFromLast(tree, byteLength)
         )
     };
 }
 
-/** Reads a tree and its children through their views, `levels` levels deep */
-function readTreeViews(tree: Tree, levels: number): TreeFields {
+/** Reads a tree and its children from the last to the first, `levels` levels deep */
+function readTreeFromLast(tree: Tree, levels: number): TreeFields {
     const value = tree.value();
     const children =
         levels > 1
-            ? readView(tree.childrenView(), (child: Tree) =>
-                  readTreeViews(child, levels - 1)
+            ? readItemsFromLast(tree.children(), (child: Tree) =>
+                  readTreeFromLast(child, levels - 1)
               )
             : [];
 
     return { value, children };
 }
 
-export function readStructsViews(structs: Structs): StructsFields {
+export function readStructsFromLast(structs: Structs): StructsFields {
     const path = structs.path();
 
     return {
         packed: readScalars(structs.packed()),
-        documented: readView(structs.documentedView(), readDocumented),
+        documented: readItemsFromLast(structs.documented(), readDocumented),
         segment: readSegment(structs.segment()),
-        segments: readView(structs.segmentsView(), readSegment),
+        segments: readItemsFromLast(structs.segments(), readSegment),
         path: {
             start: readPoint(path.start()),
-            points: readView(path.pointsView(), readPoint)
+            points: readItemsFromLast(path.points(), readPoint)
         }
     };
-}
-
-/** Reads a view's items from the last to the first, into an array in order */
-function readView<T, F>(view: View<T>, read: (item: T) => F): F[] {
-    const items = new Array<F>(view.length());
-    for (let i = items.length - 1; i >= 0; i--) {
-        items[i] = read(view.get(i));
-    }
-
-    return items;
 }
 
 function readSegment(segment: Segment): SegmentFields {

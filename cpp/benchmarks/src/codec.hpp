@@ -32,11 +32,12 @@ std::span<const std::uint8_t> bytes_of(const Written& written) {
 }
 
 /// A library that encodes the shape `S`, writing its value into bytes that it
-/// owns and reading them back
+/// owns and reading them back, alone or in a `Kept` with what it decoded them
+/// into
 template <class Codec, class S>
 concept Encodes = requires(const Codec& codec, const typename S::Value& value, std::span<const std::uint8_t> bytes) {
     bytes_of(codec.serialize(S{}, value));
-    { codec.deserialize(S{}, bytes) } -> std::same_as<typename S::Value>;
+    { value_of(codec.deserialize(S{}, bytes)) } -> std::same_as<const typename S::Value&>;
 };
 
 /// A library that also sums a document's column `a` through its own

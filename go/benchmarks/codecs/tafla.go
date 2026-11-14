@@ -9,9 +9,11 @@ import (
 	"github.com/snovader/tafla/go/benchmarks/workloads"
 )
 
-// Tafla writes tables with TableBuilder, nesting tables from their builders,
-// which write each array in bulk into a table of its exact size, and reads
-// them with ByteBuffer's getters, with strings and columns in place.
+// Tafla writes tables with TableBuilder, recording nested tables in place
+// among their parent builder's fields with SetTableFunc() and SetVectorFunc().
+// The builders write each array in bulk into a table of its exact size. It
+// reads the tables with ByteBuffer's getters, with strings and columns in
+// place.
 type Tafla struct{}
 
 // documentLayout is the document's header: its length and version
@@ -77,20 +79,6 @@ func (Tafla) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
-	columns, err := tafla.NewTableBuilder(4, tafla.TableLayout{})
-	if err != nil {
-		return nil, err
-	}
-	err = errors.Join(
-		columns.SetInt64(document.Base),
-		columns.SetUint32Array(document.Keys),
-		columns.SetFloat32Array(document.A),
-		columns.SetFloat32Array(document.B),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	builder, err := tafla.NewVersionedTableBuilder(4, documentLayout, documentVersion)
 	if err != nil {
 		return nil, err
@@ -99,7 +87,14 @@ func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
 		builder.SetFloat64(document.X),
 		builder.SetFloat64(document.Y),
 		builder.SetString(document.Name),
-		builder.SetTable(columns),
+		builder.SetTableFunc(4, func(columns tafla.Item) error {
+			return errors.Join(
+				columns.SetInt64(document.Base),
+				columns.SetUint32Array(document.Keys),
+				columns.SetFloat32Array(document.A),
+				columns.SetFloat32Array(document.B),
+			)
+		}),
 	)
 	if err != nil {
 		return nil, err
@@ -217,35 +212,28 @@ func (Tafla) SumA(bytes []byte) (float64, error) {
 }
 
 func (Tafla) SerializeList(list workloads.List) ([]byte, error) {
-	items := make([]tafla.NestedTable, 0, len(list.Items))
-	for _, item := range list.Items {
-		pair, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
-		if err != nil {
-			return nil, err
-		}
-		if err := errors.Join(pair.SetFloat32(item.First), pair.SetFloat32(item.Second)); err != nil {
-			return nil, err
-		}
-
-		table, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
-		if err != nil {
-			return nil, err
-		}
-		if err := errors.Join(table.SetFloat32(item.Value), table.SetTable(pair)); err != nil {
-			return nil, err
-		}
-		items = append(items, table)
-	}
-
 	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
 	if err != nil {
 		return nil, err
 	}
-	if err := builder.SetVector(items...); err != nil {
+	err = builder.SetVectorFunc(len(list.Items), 2, func(index int, item tafla.Item) error {
+		return setListItem(item, list.Items[index])
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	return builder.Bytes()
+}
+
+// setListItem records an item of the vector, and its pair, in place
+func setListItem(table tafla.Item, item workloads.Item) error {
+	return errors.Join(
+		table.SetFloat32(item.Value),
+		table.SetTableFunc(2, func(pair tafla.Item) error {
+			return errors.Join(pair.SetFloat32(item.First), pair.SetFloat32(item.Second))
+		}),
+	)
 }
 
 func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {

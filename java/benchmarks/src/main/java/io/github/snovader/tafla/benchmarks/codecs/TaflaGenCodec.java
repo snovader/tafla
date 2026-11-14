@@ -21,10 +21,12 @@ import java.util.Arrays;
  *
  * <p>The generated code writes from records of each table's fields and of the structs, which
  * {@code serialize()} creates from the workloads' inputs in each call, as the protobuf codec
- * creates its messages. Reading creates the workloads' records from the generated readers' values,
- * after the generated readers create the structs' own. Its getters of arrays return copies, so it
- * sums a column through the column's view, {@code aView()}, which reads the elements in place, as
- * the other languages' generated getters return them.</p>
+ * creates its messages, except for the array of structs, whose {@code serialize(count, fill)}
+ * writes each item's values straight into the table. Reading creates the workloads' records from
+ * the generated readers' values. The getters of the vector and of the array of structs return
+ * views, which read each item, a reader or a record, as it's asked for. Its getters of arrays of
+ * scalars return copies, so it sums a column through the column's view, {@code aView()}, which
+ * reads the elements in place, as the other languages' generated getters return them.</p>
  */
 public final class TaflaGenCodec {
     private TaflaGenCodec() {}
@@ -47,12 +49,21 @@ public final class TaflaGenCodec {
         }
     }
 
-    private static final class Documents implements DocumentWorkload {
+    private static final class Documents implements DocumentWorkload, ReusedBytesWorkload<DocumentInput> {
         @Override
         public byte[] serialize(DocumentInput input) {
+            return Document.serialize(fieldsOf(input));
+        }
+
+        @Override
+        public int serializeInto(DocumentInput input, byte[] bytes) {
+            return Document.serializeInto(fieldsOf(input), bytes);
+        }
+
+        private static Document.Fields fieldsOf(DocumentInput input) {
             var columns = new Columns.Fields(input.base(), input.keys(), input.a(), input.b());
 
-            return Document.serialize(new Document.Fields(input.x(), input.y(), input.name(), columns));
+            return new Document.Fields(input.x(), input.y(), input.name(), columns);
         }
 
         @Override
@@ -100,12 +111,12 @@ public final class TaflaGenCodec {
         public ListInput deserialize(byte[] bytes) {
             var tables = new ItemList(bytes).items();
 
+            // Iterated, which reads each item's end once, where get(i) reads two
             var items = new ItemInput[tables.size()];
-            for (int i = 0; i < items.length; i++) {
-                var item = tables.get(i);
+            var i = 0;
+            for (var item : tables) {
                 var pair = item.pair();
-
-                items[i] = new ItemInput(item.value(), pair.first(), pair.second());
+                items[i++] = new ItemInput(item.value(), pair.first(), pair.second());
             }
 
             return new ListInput(Arrays.asList(items));
@@ -115,23 +126,22 @@ public final class TaflaGenCodec {
     private static final class Structs implements Workload<ListInput> {
         @Override
         public byte[] serialize(ListInput input) {
+            // Each item's values straight into the table, without a Triple of them
             var items = input.items();
-            var triples = new Triple[items.size()];
-            for (int i = 0; i < triples.length; i++) {
-                var item = items.get(i);
-                triples[i] = new Triple(item.value(), item.first(), item.second());
-            }
 
-            return Triples.serialize(new Triples.Fields(triples));
+            return Triples.serialize(items.size(), (index, bytes, offset) -> {
+                var item = items.get(index);
+                Triple.write(bytes, offset, item.value(), item.first(), item.second());
+            });
         }
 
         @Override
         public ListInput deserialize(byte[] bytes) {
             var triples = new Triples(bytes).items();
 
-            var items = new ItemInput[triples.length];
+            var items = new ItemInput[triples.size()];
             for (int i = 0; i < items.length; i++) {
-                var triple = triples[i];
+                var triple = triples.get(i);
                 items[i] = new ItemInput(triple.value(), triple.first(), triple.second());
             }
 

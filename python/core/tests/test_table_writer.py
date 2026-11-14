@@ -5,7 +5,7 @@ from typing import Any, cast
 from hypothesis import assume, given
 from hypothesis.strategies import booleans, integers, one_of, sampled_from
 
-from tafla import TableBuilder, TableLayout, TableWriter
+from tafla import FixedFields, TableBuilder, TableLayout, TableWriter
 from tests.byte_order import big_endian_host
 from tests.descriptions import tables
 from tests.tables import (
@@ -185,6 +185,42 @@ class TestTableLength(unittest.TestCase):
             TableBuilder(fields + 1, layout)
         with self.assertRaises(ValueError):
             TableWriter(fields + 1, layout)
+
+    @given(sampled_from(NARROW_OFFSET_TYPES))
+    def test_starts_a_nested_table_whose_slots_fit_and_leaves_its_length_to_bytes(
+        self, offset_type: OffsetType
+    ) -> None:
+        size = offset_size_of(offset_type)
+        writer = TableWriter(1, TableLayout(offset_type=offset_type))
+        writer.set_table(0, 1)
+
+        writer.end_table(writer.start_table(LONGEST[offset_type] // size))
+        # With the root's slot before them, the table is too long
+        with self.assertRaisesRegex(ValueError, f"too long for {offset_type} offsets"):
+            writer.bytes()
+
+    @given(
+        sampled_from(list(LONGEST)),
+        one_of(integers(1, 2**70), sampled_from([2**63 - 1, 2**64])),
+    )
+    def test_rejects_a_nested_table_whose_slots_alone_are_longer_than_the_offsets_address(
+        self, offset_type: OffsetType, beyond: int
+    ) -> None:
+        """Rather than allocating them, which raised MemoryError or
+        OverflowError, by the count and the implementation"""
+        size = offset_size_of(offset_type)
+        writer = TableWriter(1, TableLayout(offset_type=offset_type))
+        writer.set_table(0, 1)
+
+        fields = LONGEST[offset_type] // size + beyond
+        length = size + fields * size
+        with self.assertRaises(ValueError) as raised:
+            writer.start_table(fields)
+        self.assertEqual(
+            str(raised.exception),
+            f"The table's fields make it {length} bytes, "
+            f"too long for {offset_type} offsets",
+        )
 
     def test_names_the_offset_type_that_the_table_is_too_long_for(self) -> None:
         for offset_type in NARROW_OFFSET_TYPES:
@@ -494,6 +530,48 @@ class TestBytes(unittest.TestCase):
         for export in [writer.bytes, lambda: memoryview(writer)]:
             with self.assertRaisesRegex(ValueError, "too long for uint8 offsets"):
                 export()
+
+    def test_writes_in_place_while_a_view_is_held_what_appends_no_bytes(
+        self,
+    ) -> None:
+        def write(writer: TableWriter) -> None:
+            """No leading fixed fields, nested tables of no fields and an
+            empty struct, whose offsets are written in the root's slots"""
+            writer.set_fields(FixedFields(3), ())
+            writer.set_table(0, 1)
+            parent = writer.start_table(0)
+            writer.set_fields(FixedFields(0), ())
+            writer.end_table(parent)
+            writer.set_struct(1, b"")
+            writer.set_table(2, 1)
+            writer.write_table(FixedFields(0), ())
+
+        write(expected := TableWriter(3))
+
+        writer = TableWriter(3)
+        with memoryview(writer) as view:
+            write(writer)
+            self.assertEqual(bytes(view), bytes(expected.bytes()))
+
+    def test_raises_buffer_error_for_fixed_fields_while_a_view_is_held_once_they_pack(
+        self,
+    ) -> None:
+        fields = FixedFields(2, "b", string=True)
+        writer = TableWriter(2)
+        with memoryview(writer):
+            with self.assertRaises(BufferError):
+                writer.set_fields(fields, (1,), "")
+            # The value doesn't pack, and raises what set_int8() raises
+            with self.assertRaisesRegex(ValueError, "Can't write 1000 at 8"):
+                writer.set_fields(fields, (1000,), "")
+
+        # Each raises what start_table() raises for the slots that it appends
+        nested = TableWriter(1)
+        nested.set_table(0, 1)
+        with memoryview(nested):
+            for value in [1, 1000]:
+                with self.assertRaises(BufferError):
+                    nested.write_table(fields, (value,), "")
 
     def test_takes_fields_again_once_its_views_are_released(self) -> None:
         writer = TableWriter(2, TableLayout(sized=True))

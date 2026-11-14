@@ -32,6 +32,14 @@ repository's first commits, for code built from its source before the release.
 - `ByteBuffer.get_fields()`, which reads every field of a table at once, when
   its offsets are those that `TableWriter` writes, for the code that tafla-gen
   generates.
+- `TableWriter.write_fields()` and `ByteBuffer.read_fields()`, which write
+  a message of only the fields that a `FixedFields` describes into bytes of
+  its own, and read their values back, each in one call and without a
+  writer or a reader, for the code that tafla-gen generates.
+- `ByteBuffer.iter_vector_fields()`, which iterates over the values of a
+  vector's items as `get_fields()` reads each, reading each item's end when
+  it reaches the item, so that the code that tafla-gen generates iterates
+  over a vector's values without reading them all at once.
 - `TableBuilder.set_table_in_place()` and `set_vector_in_place()`, which
   record a nested table, or each item of a vector, among the builder's own
   fields, from a function that sets them on the builder, rather than from a
@@ -66,5 +74,16 @@ repository's first commits, for code built from its source before the release.
 - The runtime rejects an alignment other than 1, 2, 4 or 8, as Java's does,
   rather than padding to it or dividing by zero.
 - The runtime raises `ValueError` for a float32 too large for its type.
+- While a view of a `TableWriter`'s bytes is held, the native writer raises
+  `BufferError` only for a call that would change their length, as the
+  pure-Python one does, rather than for any call that appends, even nothing:
+  `start_table(0)`, an empty struct's `set_struct()`, or `set_fields()` and
+  `write_table()` for no leading fields write in place. `set_fields()` and
+  `write_table()` pack their values before the view fails them, so a value
+  that can't be written raises the setter's error in both.
+- `TableWriter.start_table()` raises `ValueError` for a nested table whose
+  slots alone are longer than the offset type addresses, as the constructor
+  does for the root's header, rather than `MemoryError` or `OverflowError`
+  from allocating them, which differed by the count and the implementation.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/python

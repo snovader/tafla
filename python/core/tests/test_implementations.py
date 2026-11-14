@@ -11,7 +11,7 @@ import subprocess
 import sys
 import unittest
 from array import array
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
 from types import ModuleType
@@ -348,6 +348,90 @@ class TestImplementations(unittest.TestCase):
         description = draw.draw(descriptions())
         calls = draw.draw(lists(WRITES, max_size=10))
 
+        self.assert_same_writes(arguments, fields, version, description, calls)
+
+    def test_write_what_appends_no_bytes_while_a_view_is_held(self) -> None:
+        """Regressions: the native writer raised BufferError for any write
+        while a view was held, rather than for those that change the bytes'
+        length, as the pure-Python one does"""
+        arguments = {"sized": True, "versioned": False, "offset_type": "uint16"}
+        view = ("hold_view", ())
+        cases = [
+            (0, (0, [], False), [view, ("set_fields", ([], ""))]),
+            (2, (2, [], False), [view, ("set_fields", ([], ""))]),
+            (
+                1,
+                (0, [], False),
+                [view, ("set_table", (0, 1)), ("write_table", ([], ""))],
+            ),
+            (1, (0, [], False), [view, ("start_table", (0,)), ("end_table", (0,))]),
+            (1, (0, [], False), [view, ("set_struct", (0, b""))]),
+            # Fields as long as the bytes after the slots, set again, which
+            # are written in place
+            (
+                1,
+                (1, ["h"], False),
+                [("set_fields", ([1], "")), view, ("set_fields", ([2], ""))],
+            ),
+        ]
+        for fields, description, calls in cases:
+            with self.subTest(fields=fields, description=description, calls=calls):
+                self.assert_same_writes(arguments, fields, None, description, calls)
+
+    def test_raise_the_same_error_for_fixed_fields_while_a_view_is_held(
+        self,
+    ) -> None:
+        """Regressions: the native set_fields() raised BufferError before
+        packing the values, where the pure-Python one raises the first
+        setter's error for one that doesn't pack"""
+        arguments = {"sized": False, "versioned": False, "offset_type": "uint32"}
+        view = ("hold_view", ())
+        cases = [
+            ((1, ["b"], False), [view, ("set_fields", ([1000], ""))]),
+            ((2, ["b", "B"], False), [view, ("set_fields", ([1000, 1], ""))]),
+            ((2, ["b", "B"], False), [view, ("set_fields", ([1, 1000], ""))]),
+            ((2, ["b"], True), [view, ("set_fields", ([1], "\ud800"))]),
+            (
+                (1, ["b"], False),
+                [("set_fields", ([1], "")), view, ("set_fields", ([1000], ""))],
+            ),
+            ((1, ["b"], False), [view, ("set_vector_tables", (0, [([1000], "")], 0))]),
+        ]
+        for description, calls in cases:
+            with self.subTest(description=description, calls=calls):
+                self.assert_same_writes(arguments, 2, None, description, calls)
+
+    def test_raise_the_same_error_for_a_nested_table_too_long_for_its_slots(
+        self,
+    ) -> None:
+        """Regressions: start_table() raised MemoryError natively and
+        OverflowError in pure Python for the slots of 2**63 - 1 fields, as
+        each failed to allocate them, before both checked them against the
+        offset type"""
+        for offset_type in OFFSET_TYPES:
+            arguments = {"sized": False, "versioned": False, "offset_type": offset_type}
+            for count in [300, 2**30, 2**63 - 1, 2**63, 2**64 - 1, 2**100, 2**15000]:
+                with self.subTest(offset_type=offset_type, count=count):
+                    calls = [("set_table", (0, 1)), ("start_table", (count,))]
+                    self.assert_same_writes(arguments, 1, None, (0, [], False), calls)
+
+            # A nested table whose offsets don't fit, which write_table()
+            # starts as start_table() does
+            with self.subTest(offset_type=offset_type, nested=300):
+                calls = [("set_table", (0, 1)), ("write_table", ([1], ""))]
+                description = (300, ["b"], False)
+                self.assert_same_writes(arguments, 1, None, description, calls)
+
+    def assert_same_writes(
+        self,
+        arguments: dict[str, Any],
+        fields: int,
+        version: int | None,
+        description: tuple[int, list[Any], bool],
+        calls: list[tuple[str, tuple[Any, ...]]],
+    ) -> None:
+        """Makes the same calls to a writer of each implementation, which
+        return the same and raise the same errors, and write the same bytes"""
         writers: list[tuple[Implementation, Any]] = []
         constructed = [
             outcome(
@@ -417,6 +501,98 @@ class TestImplementations(unittest.TestCase):
                 for implementation in (PURE, self.native)
             ]
             self.assertEqual(read[1], read[0])
+
+    @given(
+        layout_arguments(),
+        descriptions(),
+        lists(VALUES, max_size=12),
+        one_of(text(max_size=4), sampled_from(["\ud800", "é" * 300])),
+        one_of(none(), integers(0, 2**16), integers(-1, 1), INTEGERS),
+        tuples(integers(0, 2**16), integers(0, 255)),
+    )
+    def test_write_and_read_messages_of_fixed_fields_as_each_other_in_one_call(
+        self,
+        arguments: dict[str, Any],
+        description: tuple[int, list[Any], bool],
+        values: list[Any],
+        string: str,
+        version: int | None,
+        corruption: tuple[int, int],
+    ) -> None:
+        """write_fields() of any values and version, which fall back to the
+        writer's calls, and read_fields() of what it wrote, and of it with a
+        byte replaced, with its version, another and none"""
+        values = values[: value_count(description)]
+        written = [
+            outcome(
+                partial(
+                    _write_message,
+                    implementation,
+                    arguments,
+                    description,
+                    tuple(values),
+                    string,
+                    version,
+                )
+            )
+            for implementation in (PURE, self.native)
+        ]
+        self.assertEqual(written[1], written[0])
+
+        if not isinstance(written[0], Written):
+            return
+        data = written[0].data
+        at, byte = corruption
+        corrupted = bytearray(data)
+        if corrupted:
+            corrupted[at % len(corrupted)] = byte
+
+        for table in [data, bytes(corrupted)]:
+            for expected in [version, None, 0 if version is None else version + 1]:
+                read = [
+                    outcome(
+                        partial(
+                            _read_message,
+                            implementation,
+                            arguments,
+                            description,
+                            table,
+                            expected,
+                        )
+                    )
+                    for implementation in (PURE, self.native)
+                ]
+                self.assertEqual(read[1], read[0])
+
+
+def _write_message(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    description: tuple[int, list[Any], bool],
+    values: tuple[Any, ...],
+    string: str,
+    version: int | None,
+) -> object:
+    """Writes a message with ``write_fields()``, with fields of a layout of
+    ``arguments``"""
+    layout = implementation.TableLayout(**arguments)
+    fields = fixed_fields_of(implementation, description, layout)
+    data = implementation.TableWriter.write_fields(fields, values, string, version)
+    # Bytes, which the writer's bytes() would be a view of
+    assert type(data) is bytes
+    return Written(data)
+
+
+def _read_message(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    description: tuple[int, list[Any], bool],
+    data: bytes,
+    version: int | None,
+) -> object:
+    layout = implementation.TableLayout(**arguments)
+    fields = fixed_fields_of(implementation, description, layout)
+    return implementation.ByteBuffer.read_fields(data, fields, version)
 
 
 # Imports tafla with a finder that the module tafla._native finds first,
@@ -587,6 +763,7 @@ READS = [
     "get_vector",
     "get_fields",
     "get_vector_fields",
+    "iter_vector_fields",
     "get_size",
     "get_version",
     "bytes",
@@ -609,6 +786,7 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
     "get_vector_fields": tuples(POSITIONS),
+    "iter_vector_fields": tuples(POSITIONS),
     "get_size": just(()),
     "get_version": just(()),
     "bytes": just(()),
@@ -626,7 +804,25 @@ def read(
         # A nested table's fields, for any offset type
         fields = fixed_fields_of(implementation, description)
         return getattr(buffer, method)(*args, fields)
+    if method == "iter_vector_fields":
+        fields = fixed_fields_of(implementation, description)
+        return _items_until_error(
+            buffer.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
+        )
     return getattr(buffer, method)(*args)
+
+
+def _items_until_error(items: Iterator[object]) -> list[object]:
+    """Each item that ``items`` gives, comparable, and then the error that it
+    raises, if any, as ``outcome()`` describes it"""
+    taken: list[object] = []
+    while True:
+        item = outcome(partial(next, items, StopIteration))
+        if item is StopIteration:
+            return taken
+        taken.append(item)
+        if isinstance(item, Raised):
+            return taken
 
 
 ARRAYS: SearchStrategy[Any] = one_of(
@@ -673,10 +869,21 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
     ),
     tuples(just("set_table"), tuples(INDICES, ALIGNMENTS)),
     # Counts of fields and parents outside the contract too, which the
-    # pure-Python writer takes as any int
+    # pure-Python writer takes as any int, and counts of more fields than
+    # _ZEROS holds the slots of, up to those whose slots no offset type
+    # addresses, which both reject before allocating them
     tuples(
         just("start_table"),
-        tuples(one_of(integers(0, 4), integers(-80, -1), HUGE_COUNTS, LARGE_INTEGERS)),
+        tuples(
+            one_of(
+                integers(0, 4),
+                integers(-80, -1),
+                integers(5, 300),
+                integers(min_value=2**30),
+                HUGE_COUNTS,
+                LARGE_INTEGERS,
+            )
+        ),
     ),
     tuples(just("end_table"), tuples(one_of(integers(0, 40), INTEGERS))),
     # A view of the bytes that's released at once, one that's held, and the

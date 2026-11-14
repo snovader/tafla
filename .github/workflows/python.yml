@@ -17,6 +17,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+# Caches are saved only on main, whose caches every branch restores. A pull
+# request's would serve only its own reruns, and would take the place of
+# main's in the repository's 10 GB of caches.
+
 jobs:
   # Every push and pull request runs this workflow, so that its required check
   # always reports, and the jobs below run only when the change touches these
@@ -70,11 +74,13 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: clippy, rustfmt
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
           working-directory: python
 
@@ -133,12 +139,17 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           toolchain: "1.88"
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
           cache-key: "1.88"
 
+      # Without uv's cache, which the job installs nothing into: it would save
+      # an empty cache under the key of the other jobs with Python 3.14, which
+      # would then restore it rather than save their own
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          enable-cache: false
           python-version: "3.14"
           working-directory: python
 
@@ -166,11 +177,13 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: ${{ matrix.python_version }}
           working-directory: python
 
@@ -215,11 +228,13 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
           working-directory: python
 
@@ -250,11 +265,13 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
           working-directory: python
 

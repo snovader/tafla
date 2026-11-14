@@ -14,7 +14,7 @@ pub use self::msgpack::RmpSerde;
 pub use self::protobuf::{Prost, messages};
 pub use self::rkyv::Rkyv;
 pub use self::tafla::Tafla;
-pub use self::tafla_gen::{TaflaGen, TaflaGenView};
+pub use self::tafla_gen::TaflaGen;
 
 /// Expands `$body` once for each codec that encodes every workload.
 ///

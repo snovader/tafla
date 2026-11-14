@@ -122,6 +122,10 @@ and their messages included. They differ only in these ways:
   implementation's array reads do, and the pure-Python one's string reads,
   so that they raise ``ValueError``: python/cpython#127716. The native
   string reads don't slice it.
+- The iterator that ``ByteBuffer.iter_vector_fields()`` returns is for one
+  thread at a time too: a native one raises ``RuntimeError`` for a call
+  while another thread's call to it runs, where the pure-Python one, a
+  generator, raises ``ValueError``.
 - A ``TypeError`` for using the API wrongly, such as for bytes that aren't
   C-contiguous, may be worded differently.
 - The native classes can't be subclassed: Python raises ``TypeError`` for a

@@ -7,7 +7,10 @@ use super::writer::{
     CodeWriter, Expr, Style, call, comment_text, doc_comment, escape_outside_code_spans, text,
 };
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    strongly_connected_components,
+};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -23,10 +26,12 @@ const STYLE: Style = Style {
 
 /// Members that classes define or inherit, which names take a `_` after: the
 /// constructor and the other methods of `Object.prototype`, which a getter
-/// would replace, and `then`, which would make a reader a thenable that
-/// `await` and `Promise.resolve()` call and never settle
-const MEMBERS: [&str; 8] = [
+/// would replace, `fields`, which reads every field of a table, and `then`,
+/// which would make a reader a thenable that `await` and `Promise.resolve()`
+/// call and never settle
+const MEMBERS: [&str; 9] = [
     "constructor",
+    "fields",
     "hasOwnProperty",
     "isPrototypeOf",
     "propertyIsEnumerable",
@@ -35,6 +40,31 @@ const MEMBERS: [&str; 8] = [
     "toString",
     "valueOf",
 ];
+
+/// The read of a field's value, which `suffix` follows
+struct Read<'d> {
+    field: &'d Field,
+    expression: Expr,
+    suffix: &'static str,
+}
+
+/// Where a table's `fields()` reads it from
+#[derive(Clone, Copy)]
+enum TableAt {
+    /// A message's root, through its reader
+    Root,
+    /// A nested table's position, as its static `read()` takes it
+    Position,
+}
+
+/// What a struct's fields that are structs are read into
+#[derive(Clone, Copy)]
+enum StructRead {
+    /// Their readers, as the struct's constructor reads them
+    Reader,
+    /// Their fields, as the struct's static `read()` reads them
+    Fields,
+}
 
 /// Where a message's generated serializer writes it
 #[derive(Clone, Copy)]
@@ -52,7 +82,11 @@ pub fn generate(
     options: &Options,
     typed: bool,
 ) -> Vec<GeneratedFile> {
-    let generator = Generator { schema, typed };
+    let generator = Generator {
+        schema,
+        typed,
+        reads: Reads::of(schema),
+    };
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
 
     let mut writer = CodeWriter::new(STYLE.indent);
@@ -60,22 +94,26 @@ pub fn generate(
     writer.blank();
     generator.imports(&mut writer, runtime);
 
-    for (index, definition) in schema.definitions.iter().enumerate() {
+    for class in class_order(schema) {
         writer.blank();
-        match definition.kind {
-            Kind::Message(layout) => generator.message(&mut writer, definition, layout),
-            Kind::Table => generator.table(&mut writer, index),
-            Kind::Struct(_) => generator.structure(&mut writer, definition),
-        }
-        writer.blank();
-        generator.fields_type(&mut writer, definition);
-
-        if schema.is_item(index) {
-            writer.blank();
-            if matches!(definition.kind, Kind::Struct(_)) {
-                generator.struct_array_view(&mut writer, definition);
-            } else {
-                generator.vector_view(&mut writer, definition);
+        match class {
+            Class::Definition(index) => {
+                let definition = schema.definition(index);
+                match definition.kind {
+                    Kind::Message(layout) => generator.message(&mut writer, index, layout),
+                    Kind::Table => generator.table(&mut writer, index),
+                    Kind::Struct(_) => generator.structure(&mut writer, definition),
+                }
+                writer.blank();
+                generator.fields_type(&mut writer, definition);
+            }
+            Class::View(index) => {
+                let definition = schema.definition(index);
+                if matches!(definition.kind, Kind::Struct(_)) {
+                    generator.struct_array_view(&mut writer, definition);
+                } else {
+                    generator.vector_view(&mut writer, index);
+                }
             }
         }
     }
@@ -87,10 +125,222 @@ pub fn generate(
     }]
 }
 
+/// A class of the generated module
+#[derive(Clone, Copy)]
+enum Class {
+    /// A message's, table's or struct's, with the interface of its fields
+    Definition(usize),
+    /// The view of a vector of tables, or of an array of structs, that holds
+    /// the definition
+    View(usize),
+}
+
+impl Class {
+    /// Its position among every possible class of the schema
+    fn slot(self) -> usize {
+        match self {
+            Self::Definition(index) => 2 * index,
+            Self::View(index) => 2 * index + 1,
+        }
+    }
+}
+
+/// The classes in the schema's order, except that each comes after the
+/// classes that its code reads: a table after its nested tables and structs,
+/// the views of its vectors and arrays of structs and the vectors' items, and
+/// a view after its items.
+///
+/// A method that reads an exported class declared after its own, as
+/// `new Pair()` in a getter of `Item` does, checks first that the class is
+/// initialized. V8's optimizing compiler lets the receiver of a method
+/// escape wherever the method can throw, as that check can, for the stack
+/// trace's `getThis()`. So a getter of a nested table, even inlined into a
+/// loop, kept its parent's reader on the heap, and summing a vector of 100
+/// nested tables through `get(i).pair()` allocated 4 KB. V8 reads a class
+/// declared before the method without a check.
+///
+/// Only vectors nest a table in itself, so a cycle of tables passes through
+/// a view, which comes before its items. Its `get()` then checks its items'
+/// class, and keeps the view, made once per vector, on the heap, rather than
+/// the getters of the items that create it.
+fn class_order(schema: &Schema) -> Vec<Class> {
+    let definitions = &schema.definitions;
+    let components = strongly_connected_components(definitions, tables);
+
+    // The tables that a table of their own component holds in a vector,
+    // whose views lie in a cycle
+    let mut view_first = vec![false; definitions.len()];
+    for (index, definition) in definitions.iter().enumerate() {
+        for field in &definition.fields {
+            if let FieldType::Vector(item) = field.field_type
+                && components[item] == components[index]
+            {
+                view_first[item] = true;
+            }
+        }
+    }
+
+    // The classes that a class reads, which come before it. A table's static
+    // `size()` and `write()` read the class of its vectors' items, which
+    // comes before it unless both lie in a cycle, where only those static
+    // methods check it. Without those edges in cycles, and the edges from
+    // the views first to their items, the classes have no cycles.
+    let read = |class: Class| -> std::vec::IntoIter<Class> {
+        let mut classes = Vec::new();
+        match class {
+            Class::Definition(index) => {
+                for field in &definitions[index].fields {
+                    match field.field_type {
+                        FieldType::Table(nested) | FieldType::Struct(nested) if nested != index => {
+                            classes.push(Class::Definition(nested));
+                        }
+                        FieldType::Vector(item) => {
+                            classes.push(Class::View(item));
+                            if components[item] != components[index] {
+                                classes.push(Class::Definition(item));
+                            }
+                        }
+                        FieldType::StructArray(item) => classes.push(Class::View(item)),
+                        _ => {}
+                    }
+                }
+            }
+            Class::View(index) if !view_first[index] => classes.push(Class::Definition(index)),
+            Class::View(_) => {}
+        }
+        classes.into_iter()
+    };
+
+    // Each class is visited once, from a stack rather than by recursion, so
+    // that long chains of them don't overflow it
+    let mut order = Vec::with_capacity(2 * definitions.len());
+    let mut visited = vec![false; 2 * definitions.len()];
+    let mut stack = Vec::new();
+    let roots = (0..definitions.len()).flat_map(|index| {
+        let view = schema.is_item(index).then_some(Class::View(index));
+        std::iter::once(Class::Definition(index)).chain(view)
+    });
+
+    for root in roots {
+        if std::mem::replace(&mut visited[root.slot()], true) {
+            continue;
+        }
+        stack.push((root, read(root)));
+
+        while let Some((class, unvisited)) = stack.last_mut() {
+            let class = *class;
+            if let Some(next) = unvisited.find(|next| !visited[next.slot()]) {
+                visited[next.slot()] = true;
+                stack.push((next, read(next)));
+            } else {
+                order.push(class);
+                stack.pop();
+            }
+        }
+    }
+
+    order
+}
+
+/// The tables that a definition holds, nested or in vectors
+fn tables(definition: &Definition) -> impl Iterator<Item = usize> + '_ {
+    definition
+        .fields
+        .iter()
+        .filter_map(|field| match field.field_type {
+            FieldType::Table(index) | FieldType::Vector(index) => Some(index),
+            _ => None,
+        })
+}
+
 struct Generator<'a> {
     schema: &'a Schema,
     /// TypeScript, rather than JavaScript with `JSDoc`
     typed: bool,
+    reads: Reads,
+}
+
+/// Which tables `fields()` reads whole in one call, which allocates in
+/// proportion to the bytes. Every table that a vector holds would read its
+/// strings, arrays and vectors each time, which corrupted offsets can point
+/// at the same bytes for every item, or at the vector itself, so a vector's
+/// items are read whole only when each takes the same bytes to read.
+struct Reads {
+    /// Tables of scalars, structs and such tables, whose reads take the same
+    /// bytes whatever the bytes hold
+    fixed: Vec<bool>,
+    /// Tables whose `fields()` reads them whole: those whose vectors hold
+    /// only fixed tables
+    whole: Vec<bool>,
+}
+
+impl Reads {
+    fn of(schema: &Schema) -> Self {
+        let tables = schema.definitions.len();
+        let mut fixed = vec![None; tables];
+        let mut whole = vec![None; tables];
+        for index in 0..tables {
+            Self::fixed(schema, index, &mut fixed);
+            Self::whole(schema, index, &mut fixed, &mut whole);
+        }
+
+        Self {
+            fixed: fixed.into_iter().map(|fixed| fixed == Some(true)).collect(),
+            whole: whole.into_iter().map(|whole| whole == Some(true)).collect(),
+        }
+    }
+
+    // Each is worked out once, since a table can nest another in many
+    // fields, and walking every path would take exponential time. Only
+    // vectors can nest a table in itself, and neither follows one into a
+    // table that isn't fixed, so both end.
+
+    fn fixed(schema: &Schema, index: usize, fixed: &mut [Option<bool>]) -> bool {
+        if let Some(known) = fixed[index] {
+            return known;
+        }
+
+        let mut result = true;
+        for field in &schema.definition(index).fields {
+            result = match field.field_type {
+                FieldType::Scalar(_) | FieldType::Struct(_) => true,
+                FieldType::Table(table) => Self::fixed(schema, table, fixed),
+                _ => false,
+            };
+            if !result {
+                break;
+            }
+        }
+        fixed[index] = Some(result);
+
+        result
+    }
+
+    fn whole(
+        schema: &Schema,
+        index: usize,
+        fixed: &mut [Option<bool>],
+        whole: &mut [Option<bool>],
+    ) -> bool {
+        if let Some(known) = whole[index] {
+            return known;
+        }
+
+        let mut result = true;
+        for field in &schema.definition(index).fields {
+            result = match field.field_type {
+                FieldType::Table(table) => Self::whole(schema, table, fixed, whole),
+                FieldType::Vector(table) => Self::fixed(schema, table, fixed),
+                _ => true,
+            };
+            if !result {
+                break;
+            }
+        }
+        whole[index] = Some(result);
+
+        result
+    }
 }
 
 impl Generator<'_> {
@@ -213,7 +463,8 @@ impl Generator<'_> {
             .collect()
     }
 
-    fn message(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
+    fn message(&self, writer: &mut CodeWriter, index: usize, layout: Layout) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
 
         writer.lines(&doc_comment(&schema_docs(&definition.docs)));
@@ -287,6 +538,10 @@ impl Generator<'_> {
         self.serializer(writer, definition, layout, Output::Into);
 
         self.getters(writer, definition, true);
+        if self.reads.whole[index] {
+            writer.blank();
+            self.fields_reader(writer, definition);
+        }
         writer.close("}");
     }
 
@@ -423,9 +678,131 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
+        let whole = self.reads.whole[index];
+        if whole {
+            self.static_read(writer, definition);
+            writer.blank();
+        }
         self.nested_size_and_write(writer, definition);
         self.getters(writer, definition, false);
+        if whole {
+            writer.blank();
+            self.fields_reader(writer, definition);
+        }
         writer.close("}");
+    }
+
+    /// A table's `fields()`, which reads every field at once: a message's
+    /// from its root, and a nested table's with its static `read()`
+    fn fields_reader(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+
+        self.doc(
+            writer,
+            &[
+                format!("Reads every field into the `{name}Fields` that writes it, nested"),
+                "tables and the items of vectors and arrays of structs included".to_owned(),
+            ],
+            &[format!("@returns {{{name}Fields}}")],
+        );
+        writer.open(format!(
+            "fields(){} {{",
+            self.annotation(&format!("{name}Fields"))
+        ));
+        if matches!(definition.kind, Kind::Message(_)) {
+            return_object(writer, &self.table_reads(definition, TableAt::Root));
+        } else {
+            writer.line(format!("return {name}.read(this.#buffer, this.#position);"));
+        }
+        writer.close("}");
+    }
+
+    /// A nested table's static `read()`, which reads every field at once
+    /// without creating its reader, for its parent's `fields()` and a view's
+    fn static_read(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+
+        self.doc(
+            writer,
+            &[
+                "Reads every field of the table at `position`, as `fields()` does,".to_owned(),
+                "without creating its reader".to_owned(),
+            ],
+            &[
+                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {number} position".to_owned(),
+                format!("@returns {{{name}Fields}}"),
+            ],
+        );
+        self.signature(
+            writer,
+            "static read",
+            &[
+                ("buffer", "ByteBuffer".to_owned()),
+                ("position", "number".to_owned()),
+            ],
+            &format!("{name}Fields"),
+        );
+        return_object(writer, &self.table_reads(definition, TableAt::Position));
+        writer.close("}");
+    }
+
+    /// The reads of every field of a table, in order, each of which reads a
+    /// nested table, vector or array of structs whole
+    fn table_reads<'d>(&self, definition: &'d Definition, at: TableAt) -> Vec<Read<'d>> {
+        let buffer = match at {
+            TableAt::Root => "this.#buffer",
+            TableAt::Position => "buffer",
+        };
+
+        definition
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let offset = match at {
+                    TableAt::Root => call(
+                        format!("{buffer}.rootOffset"),
+                        vec![text(index.to_string())],
+                    ),
+                    TableAt::Position => call(
+                        format!("{buffer}.fieldOffset"),
+                        vec![text("position"), text(index.to_string())],
+                    ),
+                };
+                let mut suffix = "";
+                let read = match field.field_type {
+                    FieldType::Scalar(scalar) => call(
+                        format!("{buffer}.get{}", scalar_method(scalar)),
+                        vec![offset],
+                    ),
+                    FieldType::Array(scalar) => call(
+                        format!("{buffer}.get{}Array", scalar_method(scalar)),
+                        vec![offset],
+                    ),
+                    FieldType::String => call(format!("{buffer}.getString"), vec![offset]),
+                    FieldType::Struct(index) => call(
+                        format!("{}.read", self.schema.definition(index).name),
+                        vec![text(format!("{buffer}.bytes()")), offset],
+                    ),
+                    FieldType::Table(index) => call(
+                        format!("{}.read", self.schema.definition(index).name),
+                        vec![text(buffer), offset],
+                    ),
+                    // The view's fields(), which reads every item
+                    FieldType::StructArray(_) | FieldType::Vector(_) => {
+                        suffix = ".fields()";
+                        let view = value_type(field.field_type, self.schema);
+                        call(format!("new {view}"), vec![text(buffer), offset])
+                    }
+                };
+                Read {
+                    field,
+                    expression: read,
+                    suffix,
+                }
+            })
+            .collect()
     }
 
     /// The static functions with which a parent sizes and writes a nested
@@ -557,36 +934,46 @@ impl Generator<'_> {
         ));
         // The runtime's read functions, which check each read, skip making a
         // ByteBuffer and its DataView, which took five times as long
-        let mut offset = 0;
-        for field in &definition.fields {
-            let position = struct_position(offset);
+        for Read {
+            field,
+            expression: read,
+            ..
+        } in self.struct_reads(definition, StructRead::Reader, "bytes", "offset")
+        {
             let target = format!("this.#{} = ", identifier(&field.name));
-            let (read, size) = match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => {
-                    let read = call("readUint8", vec![text("bytes"), position]);
-                    assign_bool(writer, &target, &read);
-                    offset += 1;
-                    continue;
-                }
-                FieldType::Scalar(scalar) => (
-                    call(
-                        format!("read{}", scalar_method(scalar)),
-                        vec![text("bytes"), position],
-                    ),
-                    usize::from(scalar.size()),
-                ),
-                FieldType::Struct(index) => {
-                    let inner = self.schema.definition(index);
-                    (
-                        call(format!("new {}", inner.name), vec![text("bytes"), position]),
-                        inner.struct_layout().size,
-                    )
-                }
-                _ => unreachable!("structs hold scalars and structs only"),
-            };
-            writer.statement(&STYLE, &target, &read, ";");
-            offset += size;
+            match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => assign_bool(writer, &target, &read, ";"),
+                _ => writer.statement(&STYLE, &target, &read, ";"),
+            }
         }
+        writer.close("}");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Reads the fields of {} at `offset` in `bytes`,",
+                    article(name)
+                ),
+                format!("without creating {}", article(name)),
+            ],
+            &[
+                "@param {Uint8Array} bytes".to_owned(),
+                "@param {number} [offset]".to_owned(),
+                format!("@returns {{{name}Fields}}"),
+                format!("@throws {{DecodeError}} If `bytes` end before the `{name}` does."),
+            ],
+        );
+        writer.open(format!(
+            "static read(bytes{}, offset = 0){} {{",
+            self.annotation("Uint8Array"),
+            self.annotation(&format!("{name}Fields"))
+        ));
+        return_object(
+            writer,
+            &self.struct_reads(definition, StructRead::Fields, "bytes", "offset"),
+        );
         writer.close("}");
         writer.blank();
 
@@ -712,7 +1099,7 @@ impl Generator<'_> {
         );
         let mut offset = 0;
         for field in &definition.fields {
-            let position = struct_position(offset);
+            let position = struct_position("offset", offset);
             let value = format!("fields.{}", identifier(&field.name));
             let (write, size) = match field.field_type {
                 FieldType::Scalar(scalar) => (
@@ -757,9 +1144,55 @@ impl Generator<'_> {
         writer.close("}");
     }
 
+    /// The reads of a struct's fields at `offset` in `bytes`, in order, with a
+    /// bool's byte to compare with 0, and a struct's as its `read` says
+    fn struct_reads<'d>(
+        &self,
+        definition: &'d Definition,
+        read: StructRead,
+        bytes: &str,
+        base: &str,
+    ) -> Vec<Read<'d>> {
+        let mut offset = 0;
+        let mut reads = Vec::new();
+        for field in &definition.fields {
+            let position = struct_position(base, offset);
+            let (expression, size) = match field.field_type {
+                FieldType::Scalar(scalar) => (
+                    call(
+                        format!("read{}", scalar_method(scalar)),
+                        vec![text(bytes), position],
+                    ),
+                    usize::from(scalar.size()),
+                ),
+                FieldType::Struct(index) => {
+                    let inner = self.schema.definition(index);
+                    let callee = match read {
+                        StructRead::Reader => format!("new {}", inner.name),
+                        StructRead::Fields => format!("{}.read", inner.name),
+                    };
+                    (
+                        call(callee, vec![text(bytes), position]),
+                        inner.struct_layout().size,
+                    )
+                }
+                _ => unreachable!("structs hold scalars and structs only"),
+            };
+            reads.push(Read {
+                field,
+                expression,
+                suffix: "",
+            });
+            offset += size;
+        }
+
+        reads
+    }
+
     /// The view of a vector of a table, which reads each item when it's
     /// asked for, from the item's end and the end of the item before it
-    fn vector_view(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn vector_view(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let table = &definition.name;
 
         writer.lines(&doc_comment(&[format!(
@@ -824,17 +1257,91 @@ impl Generator<'_> {
             ";",
         );
         writer.close("}");
+        if self.reads.fixed[index] {
+            writer.blank();
+            self.vector_fields(writer, table);
+        }
         writer.close("}");
+    }
+
+    /// A vector's `fields()`, which reads every item's fields
+    fn vector_fields(&self, writer: &mut CodeWriter, table: &str) {
+        self.view_fields(
+            writer,
+            table,
+            &["@throws {DecodeError} If an item lies outside the bytes.".to_owned()],
+        );
+        writer.statement(
+            &STYLE,
+            "const offsets = ",
+            &call(
+                "this.#buffer.getVectorOffsets",
+                vec![text("this.#position")],
+            ),
+            ";",
+        );
+        writer.line(format!(
+            "const items = {};",
+            self.new_array(table, "offsets.length")
+        ));
+        writer.blank();
+        writer.open("for (let i = 0; i < offsets.length; i++) {");
+        writer.statement(
+            &STYLE,
+            "items[i] = ",
+            &call(
+                format!("{table}.read"),
+                vec![text("this.#buffer"), text("offsets[i]")],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.blank();
+        writer.line("return items;");
+        writer.close("}");
+    }
+
+    /// Opens a view's `fields()`, which reads every item's fields at once
+    fn view_fields(&self, writer: &mut CodeWriter, item: &str, throws: &[String]) {
+        let mut tags = vec![format!("@returns {{{item}Fields[]}}")];
+        tags.extend_from_slice(throws);
+        self.doc(
+            writer,
+            &[format!(
+                "Reads the `{item}Fields` of every item, from the first to the last"
+            )],
+            &tags,
+        );
+        writer.open(format!(
+            "fields(){} {{",
+            self.annotation(&format!("{item}Fields[]"))
+        ));
+    }
+
+    /// A new array of `length` items of a type, whose type TypeScript gives
+    fn new_array(&self, item: &str, length: &str) -> String {
+        if self.typed {
+            format!("new Array<{item}Fields>({length})")
+        } else {
+            format!("new Array({length})")
+        }
     }
 
     /// The view of an array of a struct, which reads each struct when it's
     /// asked for, from a view of their bytes
     fn struct_array_view(&self, writer: &mut CodeWriter, definition: &Definition) {
         let structure = &definition.name;
+        // Struct `index`'s offset in the array's bytes, which bound its reads,
+        // rather than a check of `index` in each getter, which took 12% longer
+        // to sum an array's structs field by field
+        let offset = format!("index * {}", definition.struct_layout().size);
 
-        writer.lines(&doc_comment(&[format!(
-            "An array of `{structure}`s, which reads each struct when it's asked for"
-        )]));
+        writer.lines(&doc_comment(&[
+            format!("An array of `{structure}`s, which reads each struct when it's asked for."),
+            String::new(),
+            "Its getters take a struct's index, an integer, which they check only by".to_owned(),
+            "reading within the array's bytes.".to_owned(),
+        ]));
         writer.open(format!("export class {structure}Array {{"));
         self.private_field(writer, "bytes", "Uint8Array");
         self.private_field(writer, "length", "number");
@@ -878,7 +1385,7 @@ impl Generator<'_> {
             &[
                 "@param {number} index".to_owned(),
                 format!("@returns {{{structure}}}"),
-                "@throws {RangeError} If the array has no struct `index`.".to_owned(),
+                "@throws {DecodeError} If the array has no struct `index`.".to_owned(),
             ],
         );
         writer.open(format!(
@@ -886,33 +1393,69 @@ impl Generator<'_> {
             self.annotation("number"),
             self.annotation(structure)
         ));
-        writer.open("if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {");
-        writer.statement(
-            &STYLE,
-            "throw ",
-            &call(
-                "new RangeError",
-                vec![text(
-                    "`Struct ${index} is outside the array of ${this.#length}`",
-                )],
-            ),
-            ";",
-        );
-        writer.close("}");
-        writer.blank();
         writer.statement(
             &STYLE,
             "return ",
             &call(
                 format!("new {structure}"),
-                vec![
-                    text("this.#bytes"),
-                    text(format!("index * {structure}.SIZE")),
-                ],
+                vec![text("this.#bytes"), text(&offset)],
             ),
             ";",
         );
         writer.close("}");
+
+        let reads = self.struct_reads(definition, StructRead::Reader, "this.#bytes", &offset);
+        for Read {
+            field,
+            expression: read,
+            ..
+        } in reads
+        {
+            let return_type = value_type(field.field_type, self.schema);
+            writer.blank();
+            self.struct_getter_doc(writer, field, &return_type);
+            writer.open(format!(
+                "{}(index{}){} {{",
+                view_identifier(&field.name),
+                self.annotation("number"),
+                self.annotation(&return_type)
+            ));
+            if field.field_type == FieldType::Scalar(Scalar::Bool) {
+                return_bool(writer, &read);
+            } else {
+                writer.statement(&STYLE, "return ", &read, ";");
+            }
+            writer.close("}");
+        }
+        writer.blank();
+
+        self.struct_array_fields(writer, definition);
+        writer.close("}");
+    }
+
+    /// An array of structs' `fields()`, which reads every struct's fields
+    fn struct_array_fields(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let structure = &definition.name;
+
+        self.view_fields(writer, structure, &[]);
+        // The struct's reads in the loop, from the bytes in a local, rather
+        // than its read() of this.#bytes, which took a quarter longer
+        writer.line("const bytes = this.#bytes;");
+        writer.line(format!(
+            "const items = {};",
+            self.new_array(structure, "this.#length")
+        ));
+        writer.blank();
+        writer.open("for (let i = 0; i < items.length; i++) {");
+        writer.line(format!(
+            "const offset = i * {};",
+            definition.struct_layout().size
+        ));
+        let reads = self.struct_reads(definition, StructRead::Fields, "bytes", "offset");
+        write_object(writer, "items[i] = ", &reads);
+        writer.close("}");
+        writer.blank();
+        writer.line("return items;");
         writer.close("}");
     }
 
@@ -1091,9 +1634,9 @@ impl Generator<'_> {
         }
     }
 
-    fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
+    fn getters(&self, writer: &mut CodeWriter, definition: &Definition, root: bool) {
         for (index, field) in definition.fields.iter().enumerate() {
-            let offset = if is_root {
+            let offset = if root {
                 call("this.#buffer.rootOffset", vec![text(index.to_string())])
             } else {
                 call(
@@ -1102,14 +1645,12 @@ impl Generator<'_> {
                 )
             };
             let return_type = value_type(field.field_type, self.schema);
-            let field_name = identifier(&field.name);
-            // A view of a vector or an array of structs follows its getter
-            let view = view_type(field.field_type, self.schema).map(|view| (view, offset.clone()));
 
             writer.blank();
             self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
             writer.open(format!(
-                "{field_name}(){} {{",
+                "{}(){} {{",
+                identifier(&field.name),
                 self.annotation(&return_type)
             ));
 
@@ -1148,125 +1689,42 @@ impl Generator<'_> {
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
-                FieldType::StructArray(index) => {
-                    let structure = &self.schema.definition(index).name;
-                    self.struct_array_getter(writer, offset, structure);
-                }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = call(format!("new {table}"), vec![text("this.#buffer"), offset]);
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
-                FieldType::Vector(table) => {
-                    let table = &self.schema.definition(table).name;
-                    let array = if self.typed {
-                        format!("new Array<{table}>(offsets.length)")
-                    } else {
-                        "new Array(offsets.length)".to_owned()
-                    };
-
-                    writer.statement(
-                        &STYLE,
-                        "const offsets = ",
-                        &call("this.#buffer.getVectorOffsets", vec![offset]),
-                        ";",
+                FieldType::StructArray(_) | FieldType::Vector(_) => {
+                    // A view, which reads each item when it's asked for
+                    let read = call(
+                        format!("new {return_type}"),
+                        vec![text("this.#buffer"), offset],
                     );
-                    // The locals aren't named after the field, whose name may
-                    // be a reserved word
-                    writer.line(format!("const items = {array};"));
-                    writer.blank();
-                    writer.open("for (let i = 0; i < offsets.length; i++) {");
-                    writer.statement(
-                        &STYLE,
-                        "items[i] = ",
-                        &call(
-                            format!("new {table}"),
-                            vec![text("this.#buffer"), text("offsets[i]")],
-                        ),
-                        ";",
-                    );
-                    writer.close("}");
-                    writer.blank();
-                    writer.line("return items;");
+                    writer.statement(&STYLE, "return ", &read, ";");
                 }
             }
 
             writer.close("}");
-
-            if let Some((view, offset)) = view {
-                self.view_getter(writer, field, &field_name, &view, offset);
-            }
         }
     }
 
-    /// The getter of a view of a vector or an array of structs, which reads
-    /// each item when it's asked for, rather than all of them as the
-    /// field's own getter does
-    fn view_getter(
-        &self,
-        writer: &mut CodeWriter,
-        field: &Field,
-        field_name: &str,
-        view: &str,
-        offset: Expr,
-    ) {
+    /// The documentation of a view's getter of a field of struct `index`,
+    /// with its parameter and return type in JavaScript
+    fn struct_getter_doc(&self, writer: &mut CodeWriter, field: &Field, return_type: &str) {
         let mut docs = schema_docs(&field.docs);
         if !docs.is_empty() {
             docs.push(String::new());
         }
         docs.push(format!(
-            "Views the items of `{field_name}()`, reading each one when it's asked for"
+            "Reads `{}` of struct `index`, without reading the others",
+            identifier(&field.name)
         ));
-
-        writer.blank();
-        self.getter_doc(writer, &docs, view);
-        writer.open(format!(
-            "{}View(){} {{",
-            camel_case(&field.name),
-            self.annotation(view)
-        ));
-        writer.statement(
-            &STYLE,
-            "return ",
-            &call(format!("new {view}"), vec![text("this.#buffer"), offset]),
-            ";",
-        );
-        writer.close("}");
-    }
-
-    /// The body of a getter of an array of structs, which reads each struct
-    /// eagerly from a view of their bytes
-    fn struct_array_getter(&self, writer: &mut CodeWriter, offset: Expr, structure: &str) {
-        let array = if self.typed {
-            format!("new Array<{structure}>(bytes.length / {structure}.SIZE)")
-        } else {
-            format!("new Array(bytes.length / {structure}.SIZE)")
-        };
-
-        writer.statement(
-            &STYLE,
-            "const bytes = ",
-            &call(
-                "this.#buffer.getStructArray",
-                vec![offset, text(format!("{structure}.SIZE"))],
-            ),
-            ";",
-        );
-        writer.statement(&STYLE, "const items = ", &text(array), ";");
-        writer.blank();
-        writer.open("for (let i = 0; i < items.length; i++) {");
-        writer.statement(
-            &STYLE,
-            "items[i] = ",
-            &call(
-                format!("new {structure}"),
-                vec![text("bytes"), text(format!("i * {structure}.SIZE"))],
-            ),
-            ";",
-        );
-        writer.close("}");
-        writer.blank();
-        writer.line("return items;");
+        let tags = [
+            "@param {number} index".to_owned(),
+            format!("@returns {{{return_type}}}"),
+            "@throws {DecodeError} If the array has no struct `index`.".to_owned(),
+        ];
+        self.doc(writer, &docs, &tags);
     }
 
     /// A getter's documentation, with its return type in JavaScript
@@ -1408,6 +1866,20 @@ fn schema_docs(docs: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// The own members of an array of structs' view, which the getters of its
+/// structs' fields take a `_` after, beside those that every class does
+const VIEW_MEMBERS: [&str; 3] = ["fields", "get", "length"];
+
+/// The name of the getter of its structs' field on an array of structs' view
+fn view_identifier(name: &str) -> String {
+    let name = identifier(name);
+    if VIEW_MEMBERS.contains(&name.as_str()) {
+        format!("{name}_")
+    } else {
+        name
+    }
+}
+
 fn identifier(name: &str) -> String {
     let name = camel_case(name);
     if MEMBERS.contains(&name.as_str()) {
@@ -1440,11 +1912,11 @@ fn layout_expression(layout: Layout) -> Expr {
 }
 
 /// Where a struct's field lies, `offset` bytes into the struct
-fn struct_position(offset: usize) -> Expr {
+fn struct_position(base: &str, offset: usize) -> Expr {
     if offset == 0 {
-        text("offset")
+        text(base)
     } else {
-        text(format!("offset + {offset}"))
+        text(format!("{base} + {offset}"))
     }
 }
 
@@ -1475,16 +1947,41 @@ fn return_bool(writer: &mut CodeWriter, read: &Expr) {
     }
 }
 
+/// Returns an object of each field's value that `reads` reads, a bool's
+/// compared with 0, broken over a line for each, as Biome keeps an object
+/// that's broken after its brace
+fn return_object(writer: &mut CodeWriter, reads: &[Read]) {
+    write_object(writer, "return ", reads);
+}
+
+/// Writes `target` and an object of each field's value that `reads` reads, as
+/// [`return_object`] returns it
+fn write_object(writer: &mut CodeWriter, target: &str, reads: &[Read]) {
+    writer.open(format!("{target}{{"));
+    for (index, read) in reads.iter().enumerate() {
+        let comma = if index + 1 < reads.len() { "," } else { "" };
+        let key = format!("{}: ", identifier(&read.field.name));
+        if read.field.field_type == FieldType::Scalar(Scalar::Bool) {
+            assign_bool(writer, &key, &read.expression, comma);
+        } else {
+            let suffix = format!("{}{comma}", read.suffix);
+            writer.statement(&STYLE, &key, &read.expression, &suffix);
+        }
+    }
+    writer.close("};");
+}
+
 /// Assigns the bool that `read` reads from its byte to `target`, broken after
-/// the `=` when it doesn't fit on a line, as Biome breaks a comparison
-fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr) {
-    let line = format!("{target}{} !== 0;", read.flat());
+/// the `=` or `:` when it doesn't fit on a line, as Biome breaks a comparison,
+/// and ends it with `suffix`
+fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str) {
+    let line = format!("{target}{} !== 0{suffix}", read.flat());
     if writer.fits(&STYLE, &line) {
         writer.line(line);
     } else {
         writer.line(target.trim_end());
         writer.indent();
-        writer.statement(&STYLE, "", read, " !== 0;");
+        writer.statement(&STYLE, "", read, &format!(" !== 0{suffix}"));
         writer.dedent();
     }
 }
@@ -1496,19 +1993,9 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) | FieldType::Vector(index) => {
-            format!("{}[]", schema.definition(index).name)
-        }
-    }
-}
-
-/// The view of a vector or an array of structs, which their view getters
-/// return
-fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
-    match field_type {
-        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
-        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
-        _ => None,
+        // A view of the items, which reads each one when it's asked for
+        FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
+        FieldType::StructArray(index) => format!("{}Array", schema.definition(index).name),
     }
 }
 

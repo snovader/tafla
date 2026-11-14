@@ -5,7 +5,8 @@
 
 #[derive(Debug)]
 pub struct Schema {
-    /// In declaration order, which the generators keep
+    /// In declaration order, which the generators keep, except that C++ and
+    /// TypeScript declare definitions after those that they read
     pub definitions: Vec<Definition>,
     /// Whether a vector or an array of structs holds each definition, by its
     /// index, found once rather than by a search of every field per definition

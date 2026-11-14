@@ -1,0 +1,65 @@
+name: "ccache"
+description: >-
+  Restores a build's compiler cache and has CMake compile through ccache,
+  which the job installs first, or saves the cache once the build is done. A run on main saves the cache under
+  its commit, with only the files that its build used, and other runs restore
+  main's newest. The Caches workflow deletes main's older ones.
+
+inputs:
+  name:
+    description: "The build's name, which its cache's key starts with"
+    required: true
+  save:
+    description: "Whether to save the cache, after the build, rather than restore it"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    # CMake compiles through the launcher that the environment names, and
+    # ccache hashes paths relative to the workspace, as a debug build's working
+    # directory, so that runs share files
+    - name: Use ccache
+      if: inputs.save != 'true'
+      shell: bash
+      run: |
+        {
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/.ccache"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
+          echo "CCACHE_MAXSIZE=500M"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+        } >> "$GITHUB_ENV"
+
+    - name: Restore the compiler cache
+      if: inputs.save != 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: .ccache
+        key: ccache-${{ inputs.name }}-${{ github.sha }}
+        restore-keys: ccache-${{ inputs.name }}-
+
+    # So that the statistics after the build are the build's own
+    - name: Zero the statistics
+      if: inputs.save != 'true'
+      shell: bash
+      run: ccache --zero-stats
+
+    - name: Show the build's statistics
+      if: inputs.save == 'true'
+      shell: bash
+      run: ccache --show-stats
+
+    # ccache touches a file on each hit, so the files that the build didn't
+    # use are older than it
+    - name: Evict the files that the build didn't use
+      if: inputs.save == 'true' && github.ref == 'refs/heads/main'
+      shell: bash
+      run: ccache --evict-older-than 3600s
+
+    - name: Save the compiler cache
+      if: inputs.save == 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v6
+      with:
+        path: .ccache
+        key: ccache-${{ inputs.name }}-${{ github.sha }}

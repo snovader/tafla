@@ -23,8 +23,8 @@ namespace tafla::benchmarks {
 /// `ParseFromArray()`. Messages own their strings and repeated fields, so
 /// building one copies its columns, as a caller that keeps its values would.
 /// Reading decodes the columns into the message's repeated fields, which the
-/// output views, keeping the message, as tafla's and FlatBuffers' outputs view
-/// theirs in the bytes, and moves its strings.
+/// document views, as tafla's and FlatBuffers' documents view theirs in the
+/// bytes, and returns it in a `Kept` with the message. It moves its strings.
 /// protobuf has no structs, so the array of them is a repeated message of the
 /// three floats.
 struct Protobuf {
@@ -58,19 +58,20 @@ struct Protobuf {
         return message.SerializeAsString();
     }
 
-    [[nodiscard]] Document deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
-        const auto message = std::make_shared<tafla_proto::Document>(parse<tafla_proto::Document>(bytes));
+    [[nodiscard]] Kept<Document> deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
+        auto message = std::make_shared<tafla_proto::Document>(parse<tafla_proto::Document>(bytes));
         const auto& columns = message->columns();
 
-        return {
+        Document document{
             message->x(),
             message->y(),
             Text::owned(std::move(*message->mutable_name())),
             columns.base(),
-            Column<std::uint32_t>::kept(view_of(columns.keys()), message),
-            Column<float>::kept(view_of(columns.a()), message),
-            Column<float>::kept(view_of(columns.b()), message),
+            Column<std::uint32_t>::borrowed(view_of(columns.keys())),
+            Column<float>::borrowed(view_of(columns.a())),
+            Column<float>::borrowed(view_of(columns.b())),
         };
+        return {std::move(document), std::move(message)};
     }
 
     [[nodiscard]] double sum_a(std::span<const std::uint8_t> bytes) const {

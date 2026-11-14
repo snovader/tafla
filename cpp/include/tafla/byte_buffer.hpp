@@ -196,6 +196,17 @@ public:
         return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
     }
 
+    /// Returns the bytes from the table at `position` to the end of the
+    /// bytes, which a table nested in a field is read from in place, at
+    /// position 0, with a `ByteBuffer` of its parent's offset type, as a
+    /// vector's item is from `Vector::get_in_place()`. Its fields are checked
+    /// when they're read.
+    ///
+    /// Throws a `DecodeError` if `position` lies past the bytes.
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::span<const std::uint8_t> get_table(std::size_t position) const {
+        return {range(position, 0), size_ - position};
+    }
+
     /// Reads the `size` bytes of the struct at `position`, whose scalars lie
     /// at fixed offsets from its start.
     ///

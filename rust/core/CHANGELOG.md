@@ -23,6 +23,21 @@ first commits, for code built from its source before the release.
 - Bounds-checked reads, which fail on malformed input with `DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- `TableBuilder::set_table_with()` and `set_vector_with()` record a nested
+  table, or each item of a vector of them, in place among the builder's own
+  fields, rather than from a builder of its own: a closure sets the fields on
+  an `InPlaceTable`, whose setters are the builder's. They write the bytes
+  that nested builders write, and leave the builder as it was if the closure
+  returns an error, leaves fields unset or panics. The benchmarks' vector of
+  100 nested tables took 4.4 µs so, rather than 8.8 µs from a builder per
+  item, in 4 allocations rather than 208.
+- `TableSizer::add_table_bytes()`, a public `TableWriter::copy_table()`, and
+  `TableWriter::table_bytes()` and `versioned_table_bytes()`, for the code
+  that tafla-gen generates: they add and copy whole a table whose length its
+  schema fixes, and start a message's bytes with its header, so that a
+  message of such fields is written at constant positions. They're outside
+  the compatibility promise of the rest of the API, as Go's
+  `AddTableBytes()` and `AppendTable()` are.
 
 ### Changed
 
@@ -33,6 +48,14 @@ first commits, for code built from its source before the release.
   now specifies, including an item whose offsets point past its end.
 - `TableWriter::set_structs()` takes each struct by reference, so it needn't
   be `Copy`.
+- `ByteBuffer::get_str()` checks whether a string is ASCII, a word at a time
+  at any address, before it checks its UTF-8 with `str::from_utf8()`, which
+  checks a string's bytes one at a time but for whole pairs of aligned words.
+  The benchmarks' record, whose 16-byte name isn't aligned, read in 6.3 ns
+  rather than 11.8 ns, and a 1 KiB ASCII string in 11 ns rather than 26 ns.
+  A string that's ASCII until near its end is checked twice, up to the first
+  other character: 1 KiB of it took 37 ns rather than 29 ns. Its values and
+  errors are unchanged.
 
 ### Fixed
 

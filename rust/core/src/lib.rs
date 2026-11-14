@@ -14,6 +14,6 @@ pub use byte_buffer::ByteBuffer;
 pub use element::Element;
 pub use errors::{BuildError, DecodeError};
 pub use layout::{Alignment, OffsetType, TableLayout};
-pub use table_builder::{NestedTable, TableBuilder};
+pub use table_builder::{InPlaceTable, NestedTable, TableBuilder};
 pub use table_writer::{SizerParent, TableSizer, TableWriter, VectorPosition, WriterParent};
 pub use vector::{Items, ItemsInPlace, Vector};

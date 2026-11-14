@@ -120,6 +120,42 @@ func TestArbitraryBytesReadAsValuesOrDecodeErrors(t *testing.T) {
 	})
 }
 
+// Uint32FieldOffset, with which the generated code reads uint32 offsets,
+// reads what FieldOffset reads of a nested table at any position, and the
+// positions that RootOffset reads of a root of uint32 offsets after its
+// header, from any bytes. A root's offset past the largest int, which only
+// a 32-bit int can't hold, fails with OutOfRange from either, at the table's
+// position or at the offset's.
+func TestUint32FieldOffsetReadsTheOffsetsThatTheBufferReads(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		bytes := drawBytes(t, 64, "bytes")
+		table := max(drawLarge(t, 80, "table"), 0)
+		index := rapid.IntRange(0, 20).Draw(t, "index")
+
+		nested := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+		position, err := tafla.Uint32FieldOffset(bytes, table, table+4*index)
+		expected, expectedErr := nested.FieldOffset(table, index)
+		if position != expected || !reflect.DeepEqual(err, expectedErr) {
+			t.Fatalf("read %d, %v rather than %d, %v", position, err, expected, expectedErr)
+		}
+
+		for _, layout := range []tafla.TableLayout{
+			{}, tafla.TableLayout{}.Sized(), tafla.TableLayout{}.Versioned(), tafla.TableLayout{}.Sized().Versioned(),
+		} {
+			root := tafla.NewByteBuffer(bytes, layout)
+			position, err := tafla.Uint32FieldOffset(bytes, 0, layout.HeaderSize()+4*index)
+			expected, expectedErr := root.RootOffset(index)
+
+			var decodeError, expectedDecodeError *tafla.DecodeError
+			bothFail := errors.As(err, &decodeError) && errors.As(expectedErr, &expectedDecodeError) &&
+				decodeError.Kind == tafla.OutOfRange && expectedDecodeError.Kind == tafla.OutOfRange
+			if !bothFail && (position != expected || err != nil || expectedErr != nil) {
+				t.Fatalf("%+v: read %d, %v rather than %d, %v", layout, position, err, expected, expectedErr)
+			}
+		}
+	})
+}
+
 // checkReadError fails unless err is nil, a decode error or a mismatch of
 // the values read, which the description of other bytes reads
 func checkReadError(t *rapid.T, err error) {

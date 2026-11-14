@@ -50,6 +50,15 @@ repository's first commits, for code built from its source before the release.
 - `ByteBuffer` checks each read against its bytes' length at the time of the
   read, so bytes made over a resizable buffer without a length follow the
   buffer as it's resized. A read past them still throws a `DecodeError`.
+- `ByteBuffer` reads offsets, field offsets and vector items in less
+  bytecode, with their failures out of line, so that V8 inlines them into
+  their callers: a loop that reads a vector's nested tables through a
+  generated view's `get(i)` inlines every read. It throws the same errors. In
+  the comparison suite in Node 27, `ByteBuffer`'s getters summed the vector of
+  100 nested tables in 0.75 µs rather than 1.19, and tafla-gen's view in
+  0.91 µs rather than 1.85. `getVectorLength()` and `getVectorItemOffset()`
+  check a vector's ends with one comparison, which takes the vector's position
+  to be an integer, as `rootOffset()` and `fieldOffset()` find it.
 
 ### Removed
 

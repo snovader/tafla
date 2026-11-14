@@ -37,6 +37,6 @@ public final class SegmentArray extends AbstractList<Segment> implements RandomA
     @Override
     public Segment get(int index) {
         Objects.checkIndex(index, size);
-        return Segment.read(view, index * Segment.SIZE);
+        return Segment.readUnchecked(view, index * Segment.SIZE);
     }
 }

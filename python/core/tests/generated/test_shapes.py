@@ -2,7 +2,7 @@
 with tafla."""
 
 import unittest
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from functools import partial
 
 from hypothesis import given
@@ -22,6 +22,7 @@ from tests.generated.expectations import (
     assert_same_table,
     assert_values_or_decode_error,
     fields_or_decode_error,
+    plain,
 )
 from tests.generated.shapes.shapes import (
     Document,
@@ -274,7 +275,7 @@ class TestFields(unittest.TestCase):
     ) -> None:
         data = corruption.apply(bytes(ItemList.serialize(**fields)))
         try:
-            view = ItemList(data).items_view()
+            view = ItemList(data).items()
         except DecodeError:
             return
 
@@ -296,6 +297,84 @@ class TestFields(unittest.TestCase):
             fields_or_decode_error(point.fields),
             fields_or_decode_error(partial(read_point, point)),
         )
+
+
+class TestEveryField(unittest.TestCase):
+    # A document's fields() and field_values() read its leading fields of fixed
+    # size in one call, and the rest, its nested columns included, as the
+    # getters do, so they return what the getters read or raise DecodeError as
+    # they do
+
+    @SETTINGS
+    @given(document_fields, slices)
+    def test_reads_a_documents_fields_and_values_as_its_getters_and_writes_them_back(
+        self, fields: DocumentFields, where: Slice
+    ) -> None:
+        data = Document.serialize(**fields)
+        document = Document(where.of(data))
+
+        _assert_document_as_its_getters(self, document)
+        written = Document.serialize(**document.fields())
+        self.assertEqual(bytes(written), bytes(data))
+        self.assertEqual(
+            fields_or_decode_error(lambda: plain(Document.read_values(where.of(data)))),
+            fields_or_decode_error(lambda: plain(document.field_values())),
+        )
+
+    @SETTINGS
+    @given(document_fields, corruptions)
+    def test_reads_a_corrupted_documents_fields_and_values_as_its_getters_do(
+        self, fields: DocumentFields, corruption: Truncation | Overwrite
+    ) -> None:
+        data = corruption.apply(bytes(Document.serialize(**fields)))
+        # Without a reader, raising for another version as its constructor does
+        self.assertEqual(
+            fields_or_decode_error(lambda: plain(Document.read_values(data))),
+            fields_or_decode_error(lambda: plain(Document(data).field_values())),
+        )
+        try:
+            document = Document(data)
+        except DecodeError:
+            return
+
+        _assert_document_as_its_getters(self, document)
+
+    @SETTINGS
+    @given(binary(max_size=64))
+    def test_reads_the_fields_and_values_of_arbitrary_bytes_as_the_getters_do(
+        self, data: bytes
+    ) -> None:
+        try:
+            document = Document(data)
+        except DecodeError:
+            return
+
+        _assert_document_as_its_getters(self, document)
+
+
+def _assert_document_as_its_getters(
+    test: unittest.TestCase, document: Document
+) -> None:
+    test.assertEqual(
+        fields_or_decode_error(lambda: plain(document.fields())),
+        fields_or_decode_error(lambda: plain(read_document(document))),
+    )
+    test.assertEqual(
+        fields_or_decode_error(lambda: plain(document.field_values())),
+        fields_or_decode_error(lambda: plain(_document_values(document))),
+    )
+
+
+def _document_values(document: Document) -> tuple[object, ...]:
+    """A document's values, read in the fields' order, as the getters read them"""
+    x, y, name, columns = (
+        document.x(),
+        document.y(),
+        document.name(),
+        document.columns(),
+    )
+    nested = (columns.base(), columns.keys(), columns.a(), columns.b())
+    return (x, y, name, nested)
 
 
 class TestValues(unittest.TestCase):
@@ -352,7 +431,7 @@ class TestValues(unittest.TestCase):
         if not isinstance(corruption, bytes):
             data = corruption.apply(data)
         try:
-            view = ItemList(data).items_view()
+            view = ItemList(data).items()
         except DecodeError:
             return
 
@@ -360,7 +439,28 @@ class TestValues(unittest.TestCase):
             fields_or_decode_error(view.fields),
             fields_or_decode_error(partial(_fields_of_each, view)),
         )
+        self.assertEqual(
+            fields_or_decode_error(view.field_values),
+            fields_or_decode_error(lambda: [_item_getters(item) for item in view]),
+        )
+        # Iterating reads each item when it reaches it, so it reads the items
+        # before one that it can't read, as reading them by index does
+        self.assertEqual(
+            _until_decode_error(view.iter_field_values()),
+            _until_decode_error(_item_getters_at(view, i) for i in range(len(view))),
+        )
         for index in range(len(view)):
+            item = partial(_item_getters_at, view, index)
+            self.assertEqual(
+                fields_or_decode_error(partial(view.item_field_values, index)),
+                fields_or_decode_error(item),
+                f"item {index}",
+            )
+            self.assertEqual(
+                fields_or_decode_error(lambda index=index: view[index].field_values()),
+                fields_or_decode_error(item),
+                f"item {index}",
+            )
             self.assertEqual(
                 fields_or_decode_error(partial(_pair_values, view, index)),
                 fields_or_decode_error(partial(_pair_getters, view, index)),
@@ -368,11 +468,21 @@ class TestValues(unittest.TestCase):
             )
 
     @SETTINGS
+    @given(item_list_fields, slices)
+    def test_writes_an_item_list_from_the_values_of_its_items_that_its_view_reads(
+        self, fields: ItemListFields, where: Slice
+    ) -> None:
+        data = ItemList.serialize(**fields)
+        items = ItemList(where.of(data)).items().field_values()
+
+        self.assertEqual(bytes(ItemList.serialize_values(items)), bytes(data))
+
+    @SETTINGS
     @given(item_list_fields)
     def test_reads_back_every_items_fields_as_they_were_written(
         self, fields: ItemListFields
     ) -> None:
-        view = ItemList(ItemList.serialize(**fields)).items_view()
+        view = ItemList(ItemList.serialize(**fields)).items()
 
         self.assertEqual(
             fields_or_decode_error(view.fields),
@@ -429,6 +539,28 @@ def _fields_of_each(view: ItemVector) -> list[ItemFields]:
     return [item.fields() for item in view]
 
 
+def _until_decode_error(items: Iterator[object]) -> list[object]:
+    """Each item that ``items`` gives, as ``fields_or_decode_error()`` compares
+    it, and then the DecodeError that it raises, if any"""
+    taken: list[object] = []
+    while True:
+        item = fields_or_decode_error(partial(next, items, None))
+        if item is None:
+            return taken
+        taken.append(item)
+        if isinstance(item, str):
+            return taken
+
+
+def _item_getters(item: Item) -> tuple[float, float, float]:
+    pair = item.pair()
+    return (item.value(), pair.first(), pair.second())
+
+
+def _item_getters_at(view: ItemVector, index: int) -> tuple[float, float, float]:
+    return _item_getters(view[index])
+
+
 def _pair_values(view: ItemVector, index: int) -> tuple[float, float]:
     return view[index].pair().field_values()
 
@@ -461,7 +593,30 @@ class TestReadingInPlace(unittest.TestCase):
         item_list = ItemList(data)
 
         self.assertEqual(read_item_list(item_list), {"items": [item]})
-        self.assertEqual(read_item(item_list.items_view()[0]), item)
+        self.assertEqual(read_item(item_list.items()[0]), item)
+
+    def test_raises_decode_error_for_a_corrupted_item_when_its_read_not_before(
+        self,
+    ) -> None:
+        items: list[ItemFields] = [
+            {"value": 1.5, "pair": {"first": 2.5, "second": 3.5}},
+            {"value": 4.5, "pair": {"first": 5.5, "second": 6.5}},
+        ]
+        data = bytearray(ItemList.serialize(items=items))
+        # The vector at 4 holds its count and the items' ends, the second's at
+        # 12, which is made to end past the bytes
+        data[12:16] = (len(data) - 3).to_bytes(4, "little")
+
+        # The getter reads the count and checks that the ends lie within the
+        # bytes, and the view reads the first item alone
+        view = ItemList(data).items()
+        self.assertEqual(len(view), 2)
+        self.assertEqual(read_item(view[0]), items[0])
+        with self.assertRaises(DecodeError):
+            view[1]
+        # Iterating reads every item's end before it reads any
+        with self.assertRaises(DecodeError):
+            list(view)
 
 
 class TestSample(unittest.TestCase):
@@ -554,7 +709,7 @@ def _items_by_index(data: bytes) -> list[str]:
     """Each item of an item list, read through its view by index, the last
     one again by -1, and one past it"""
     try:
-        view = ItemList(data).items_view()
+        view = ItemList(data).items()
     except DecodeError as error:
         return [f"DecodeError: {error}"]
 
