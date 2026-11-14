@@ -68,8 +68,8 @@ func (t Point) Name() (string, error) {
 // Fields reads every field of a [Point] at once, into the [PointFields] that
 // it's written from, as its getters read them, and its nested tables and the
 // items of its vectors as their Fields() reads them. Its strings, and its
-// arrays as [tafla.ArrayView.Slice] returns them, share the bytes. It fails
-// with a [*tafla.DecodeError] if a field lies outside the bytes.
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Point) Fields() (PointFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	var fields PointFields
@@ -223,8 +223,8 @@ func (t Document) Columns() (Columns, error) {
 // Fields reads every field of a [Document] at once, into the [DocumentFields]
 // that it's written from, as its getters read them, and its nested tables and
 // the items of its vectors as their Fields() reads them. Its strings, and its
-// arrays as [tafla.ArrayView.Slice] returns them, share the bytes. It fails
-// with a [*tafla.DecodeError] if a field lies outside the bytes.
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Document) Fields() (DocumentFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	var fields DocumentFields
@@ -356,8 +356,8 @@ func (t Columns) B() (tafla.ArrayView[float32], error) {
 // Fields reads every field of a [Columns] at once, into the [ColumnsFields]
 // that it's written from, as its getters read them, and its nested tables and
 // the items of its vectors as their Fields() reads them. Its strings, and its
-// arrays as [tafla.ArrayView.Slice] returns them, share the bytes. It fails
-// with a [*tafla.DecodeError] if a field lies outside the bytes.
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Columns) Fields() (ColumnsFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
 	var fields ColumnsFields
@@ -464,8 +464,8 @@ func (t ItemList) Items() (ItemVector, error) {
 // Fields reads every field of an [ItemList] at once, into the [ItemListFields]
 // that it's written from, as its getters read them, and its nested tables and
 // the items of its vectors as their Fields() reads them. Its strings, and its
-// arrays as [tafla.ArrayView.Slice] returns them, share the bytes. It fails
-// with a [*tafla.DecodeError] if a field lies outside the bytes.
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t ItemList) Fields() (ItemListFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
 	var fields ItemListFields
@@ -555,8 +555,8 @@ func (t Item) Pair() (Pair, error) {
 // Fields reads every field of an [Item] at once, into the [ItemFields] that
 // it's written from, as its getters read them, and its nested tables and the
 // items of its vectors as their Fields() reads them. Its strings, and its
-// arrays as [tafla.ArrayView.Slice] returns them, share the bytes. It fails
-// with a [*tafla.DecodeError] if a field lies outside the bytes.
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Item) Fields() (ItemFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
 	var fields ItemFields
@@ -654,9 +654,9 @@ func (t Pair) Second() (float32, error) {
 
 // Fields reads every field of a [Pair] at once, into the [PairFields] that it's
 // written from, as its getters read them, and its nested tables and the items
-// of its vectors as their Fields() reads them. Its strings, and its arrays as
-// [tafla.ArrayView.Slice] returns them, share the bytes. It fails with a
-// [*tafla.DecodeError] if a field lies outside the bytes.
+// of its vectors as their Fields() reads them. Its strings, and its arrays and
+// arrays of structs as their Slice() returns them, share the bytes. It fails
+// with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Pair) Fields() (PairFields, error) {
 	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
 	var fields PairFields

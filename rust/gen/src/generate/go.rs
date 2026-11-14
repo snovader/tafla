@@ -3,7 +3,9 @@
 //! arrays in place; they're written from structs of their fields, which a
 //! `TableSizer` sizes and a `TableWriter` writes, nested tables in place.
 //! Structs are plain structs of exported fields, read and written at fixed
-//! offsets, which implement `encoding`'s binary marshaling interfaces.
+//! offsets, which implement `encoding`'s binary marshaling interfaces. An
+//! array of a struct whose Go struct lies in memory as its bytes do is read
+//! in place too, where the bytes are aligned to it on a little-endian host.
 //!
 //! Each schema generates a package of its own, in one file named after the
 //! package, so that a schema's file name can't make the file a test or
@@ -23,8 +25,9 @@
 //! Everything that a schema names is exported, in `PascalCase`, beside the
 //! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
 //! and `<Message>FormatVersion`, and of structs, `Read<Struct>`, which the
-//! checker keeps declarations from taking. The generated code's own helpers are unexported methods, and each
-//! struct's `read<Struct>()`, which can't clash with them.
+//! checker keeps declarations from taking. The generated code's own helpers
+//! are unexported methods, and each struct's `read<Struct>()`, which can't
+//! clash with them.
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
@@ -146,7 +149,7 @@ pub fn generate(
 
         if schema.is_item(index) {
             if definition.is_struct() {
-                struct_array_view(&mut writer, definition);
+                struct_array_view(&mut writer, definition, lies_in_place(schema, index));
             } else {
                 vector_view(&mut writer, definition);
             }
@@ -722,7 +725,8 @@ impl<'a> Generator<'a> {
             ),
             "that it's written from, as its getters read them, and its nested tables".to_owned(),
             "and the items of its vectors as their Fields() reads them. Its strings,".to_owned(),
-            "and its arrays as [tafla.ArrayView.Slice] returns them, share the bytes.".to_owned(),
+            "and its arrays and arrays of structs as their Slice() returns them,".to_owned(),
+            "share the bytes.".to_owned(),
             format!("It fails with a {DECODE_ERROR} if a field lies outside the bytes."),
         ]));
         writer.open(format!(
@@ -811,15 +815,9 @@ impl<'a> Generator<'a> {
                 let read = format!("buffer.GetStructArray(position, {size})");
                 declare_read(writer, &local, &read, zero);
                 writer.line(format!(
-                    "{member} = make([]{}, len({local})/{size})",
+                    "{member} = {}Array{{bytes: {local}}}.Slice()",
                     structure.name
                 ));
-                writer.open(format!("for item := range {member} {{"));
-                writer.line(format!(
-                    "{member}[item] = read{}({local}[item*{size}:])",
-                    structure.name
-                ));
-                writer.close("}");
             }
             // In parentheses, since a composite literal in an if statement's
             // header would start its block
@@ -1415,6 +1413,43 @@ fn readable_whole(schema: &Schema) -> Vec<bool> {
     whole
 }
 
+/// Whether the Go struct of the struct `index` lies in memory as its bytes
+/// do, on every platform, so that an array of it can be read in place. Go
+/// lays out a struct's fields in order, each at the next multiple of its
+/// alignment, which is its size, but 4 for 64-bit scalars on 32-bit
+/// platforms, and a struct's alignment is its largest field's, which its
+/// size is a multiple of. A struct's bytes have no padding, so they lie as
+/// its Go struct does when each scalar's offset is a multiple of its size,
+/// each struct within it, which must lie so too, at a multiple of its
+/// alignment, and its size is a multiple of its alignment, its largest
+/// scalar's size. No bool lies in place, since Go reads a bool from a byte
+/// other than 0 or 1 as neither.
+fn lies_in_place(schema: &Schema, index: usize) -> bool {
+    let definition = schema.definition(index);
+    let mut offset: usize = 0;
+    for field in &definition.fields {
+        let (size, alignment) = match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => return false,
+            FieldType::Scalar(scalar) => (usize::from(scalar.size()), usize::from(scalar.size())),
+            FieldType::Struct(nested) => {
+                if !lies_in_place(schema, nested) {
+                    return false;
+                }
+                let layout = schema.definition(nested).struct_layout();
+                (layout.size, usize::from(layout.alignment))
+            }
+            _ => unreachable!("a struct holds only scalars and structs"),
+        };
+        if !offset.is_multiple_of(alignment) {
+            return false;
+        }
+        offset += size;
+    }
+
+    let layout = definition.struct_layout();
+    layout.size.is_multiple_of(usize::from(layout.alignment))
+}
+
 /// The lines that find a field's position from `offset`, a call that returns
 /// it and an error, returning `zero` and the error if it fails
 fn find_field(writer: &mut CodeWriter, offset: &str, zero: &str) {
@@ -1587,15 +1622,17 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
 }
 
 /// The view of an array of a struct, which reads each struct when it's
-/// asked for, from their bytes
-fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
+/// asked for, from their bytes, or all of them at once, in place where the
+/// struct `lies_in_place`
+fn struct_array_view(writer: &mut CodeWriter, definition: &Definition, lies_in_place: bool) {
     let structure = &definition.name;
     let view = format!("{structure}Array");
     let size = definition.struct_layout().size;
 
     writer.blank();
     writer.lines(&prose(&[format!(
-        "{view} is an array of [{structure}]s, which reads each struct when it's asked for."
+        "{view} is an array of [{structure}]s, which reads each struct when it's asked for, \
+         or all of them at once with Slice(), in place where it can."
     )]));
     writer.open(format!("type {view} struct {{"));
     writer.line("bytes []byte");
@@ -1639,6 +1676,58 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.line(format!("bytes = bytes[{size}:]"));
     writer.close("}");
     writer.close("}");
+    writer.close("}");
+
+    writer.blank();
+    if lies_in_place {
+        writer.lines(&prose(&[
+            "AsSlice returns the structs in place, and true, or nil and false when".to_owned(),
+            format!("they aren't aligned to [{structure}] in memory or the host is big-endian."),
+            "An empty array is always in place. The slice shares the table's bytes,".to_owned(),
+            "so it changes when they do, and writing to it writes to them.".to_owned(),
+        ]));
+        writer.open(format!(
+            "func ({VIEW} {view}) AsSlice() ([]{structure}, bool) {{"
+        ));
+        writer.line(format!(
+            "return tafla.StructsInPlace[{structure}]({VIEW}.bytes)"
+        ));
+    } else {
+        writer.lines(&prose(&[
+            format!(
+                "AsSlice returns nil and false: the fields of {} don't",
+                article(structure)
+            ),
+            "lie in memory as its bytes hold them, so its structs are never in place.".to_owned(),
+        ]));
+        writer.open(format!(
+            "func ({VIEW} {view}) AsSlice() ([]{structure}, bool) {{"
+        ));
+        writer.line("return nil, false");
+    }
+    writer.close("}");
+
+    writer.blank();
+    writer.lines(&prose(&[
+        format!("Slice returns the structs in place when [{view}.AsSlice] can, and"),
+        "otherwise a copy. Treat the slice as read-only: whether it shares the".to_owned(),
+        "table's bytes depends on the host and on where the bytes lie, so writing".to_owned(),
+        "to it may write to the table.".to_owned(),
+    ]));
+    writer.open(format!("func ({VIEW} {view}) Slice() []{structure} {{"));
+    writer.open(format!("if structs, ok := {VIEW}.AsSlice(); ok {{"));
+    writer.line("return structs");
+    writer.close("}");
+    writer.blank();
+    writer.line(format!(
+        "structs := make([]{structure}, len({VIEW}.bytes)/{size})"
+    ));
+    writer.open("for index := range structs {");
+    writer.line(format!(
+        "structs[index] = read{structure}({VIEW}.bytes[index*{size}:])"
+    ));
+    writer.close("}");
+    writer.line("return structs");
     writer.close("}");
 }
 

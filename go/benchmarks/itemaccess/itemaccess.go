@@ -176,9 +176,11 @@ func sumStruct(bytes []byte) float64 {
 }
 
 // Generated reads with the generated getters, Items, which return views of
-// the vector and of the array, whose Get reads one item and whose All reads
-// every item, and reads each of the vector's items whole, with its generated
-// Fields.
+// the vector and of the array, whose Get reads one item. It reads every item
+// of the vector through its view's All, each whole, with its generated
+// Fields, and every struct of the array at once, with its view's Slice,
+// which returns them in place where the bytes are aligned to them in memory,
+// as they are here.
 type Generated struct {
 	name string
 }
@@ -246,7 +248,7 @@ func (Generated) EveryStruct(bytes []byte) (float64, error) {
 	}
 
 	sum := 0.0
-	for _, item := range view.All() {
+	for _, item := range view.Slice() {
 		sum += sumTriple(item)
 	}
 

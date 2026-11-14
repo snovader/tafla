@@ -295,7 +295,11 @@ returns a view succeeds although an item's bytes are corrupt, and the item
 fails when it's read. In TypeScript and JavaScript, an array of structs
 checks an index only by reading within its bytes, so an index outside the
 array throws `DecodeError`, which is a `RangeError`, and the index must be an
-integer.
+integer. A Go `<Struct>Array` also returns all of its structs at once, as the
+runtime's `ArrayView` returns arrays: `AsSlice()` in place, where the struct
+lies in memory as its bytes do, without a bool, and the bytes are aligned to
+it on a little-endian host, and `Slice()` in place where it can, and
+otherwise a copy.
 
 Since a view reads an item without the items before it, it reads an item
 that corrupted ends start at the vector's count, where a getter that reads

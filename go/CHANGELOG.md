@@ -34,6 +34,10 @@ first commits, for code built from its source before the release.
   are uint32s, as `ByteBuffer.FieldOffset()` does, in a function small enough
   to inline, for the getters that tafla-gen generates, which know each
   field's slot.
+- `StructsInPlace()` returns the bytes of an array of structs as Go structs
+  in place, where they're aligned to the struct in memory on a little-endian
+  host, for the code that tafla-gen generates, which calls it only for
+  structs that lie in memory as their bytes do.
 
 ### Changed
 
