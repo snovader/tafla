@@ -10,7 +10,9 @@ import java.nio.*;
  * check that the values fit; a write past the end throws an {@link IndexOutOfBoundsException}.
  */
 final class Elements {
-    // Views of byte arrays as arrays of wider values, which write at any index, little-endian
+    // Views of byte arrays as arrays of wider values, which read and write at any index,
+    // little-endian, and throw an IndexOutOfBoundsException past the end. ByteBuffer reads through
+    // them too.
     static final VarHandle INT16 = MethodHandles.byteArrayViewVarHandle(short[].class, ByteOrder.LITTLE_ENDIAN);
     static final VarHandle INT32 = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
     static final VarHandle INT64 = MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
