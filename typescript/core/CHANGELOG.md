@@ -59,6 +59,14 @@ repository's first commits, for code built from its source before the release.
   0.91 µs rather than 1.85. `getVectorLength()` and `getVectorItemOffset()`
   check a vector's ends with one comparison, which takes the vector's position
   to be an integer, as `rootOffset()` and `fieldOffset()` find it.
+- `ByteBuffer.getString()` reads a string of up to 32 bytes of ASCII a byte
+  at a time, without a view of its bytes or a `TextDecoder`, and any other
+  string with the fatal decoder as before, so it reads the same strings and
+  throws the same `DecodeError`. The comparison suite read its record, whose
+  name is 16 bytes, in 0.116 µs rather than 0.159 in Node 26, and 0.108 µs
+  rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
+  rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
+  outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
 
 ### Removed
 
