@@ -11,8 +11,9 @@ members = ["core", "benchmarks"]
 
 [tool.uv]
 # The development environment's native module has the tests' hooks, which
-# the wheels that maturin builds elsewhere leave out
-config-settings-package = { tafla = { build-args = "--features test-hooks" } }
+# the wheels that maturin builds elsewhere leave out, and the prototype in
+# prototype/, which no wheel has
+config-settings-package = { tafla = { build-args = "--features test-hooks,prototype" } }
 
 [dependency-groups]
 dev = ["hypothesis>=6.170.15", "ruff>=0.17.4", "ty>=0.0.100"]

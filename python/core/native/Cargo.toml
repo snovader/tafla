@@ -25,6 +25,10 @@ tafla = { path = "../../../rust/core" }
 # development environment's build enables, through python/pyproject.toml,
 # and the wheels leave out, since each array's call would check it
 test-hooks = []
+# The prototype of a builder that writes each field when it's set,
+# DirectTableBuilder, which python/prototype/README.md describes. Only the
+# prototype's own builds enable it.
+prototype = []
 
 [build-dependencies]
 pyo3-build-config = "=0.30.1"
