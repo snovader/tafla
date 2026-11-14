@@ -175,12 +175,20 @@ comparison uses its counterpart:
 pyperf 2.10.0 runs each benchmark in worker processes of its own. The first
 calibrates the number of calls that one value times, so that it takes at least
 100 ms, and each of the others runs a warm-up and then 3 values. A full run
-runs the suite 4 times, with 5 workers per benchmark, and appends their values
-to one file: 20 workers and 60 values per benchmark. The runs alternate the
-order of the codecs in each group, so that each benchmark's workers are spread
-over the whole run. `tafla_benchmarks.report` then prints each benchmark's
-fastest value, and its ratio to tafla's, as the TypeScript comparison reports
-the fastest round, since load from other processes only slows values down.
+runs the suite twice, with 5 workers per benchmark, and appends their values
+to one file: 10 workers and 30 values per benchmark. The second run reverses
+the order of the codecs in each group, so that each benchmark's workers are
+spread over the whole run. `tafla_benchmarks.report` then prints each
+benchmark's fastest value, and its ratio to tafla's, as the TypeScript
+comparison reports the fastest round, since load from other processes only
+slows values down.
+
+Until 2026-11-14, a full run ran the suite 4 times, alternating the order,
+which took twice as long. On that day, eight runs of the suite in alternating
+order were split into two sets of 4 and four pairs. Each pair's fastest values
+were 0.1% to 0.2% slower in the median benchmark than those of the set of 4
+that it wasn't part of, and within 1.0% for 90% of the benchmarks, where the
+two sets of 4 differed by 0.7%.
 
 - A worker runs one benchmark, so CPython's specializing interpreter
   specializes its timing loop for one operation, as the TypeScript harness's
@@ -213,7 +221,7 @@ the fastest round, since load from other processes only slows values down.
 
 pyperf doesn't interleave the codecs as the TypeScript harness does: it runs
 one benchmark's workers after another's. Within a run, a burst of load can slow
-one codec's workers and not another's, but the 4 runs spread each benchmark
+one codec's workers and not another's, but the 2 runs spread each benchmark
 over the whole run, and its fastest value is unaffected unless the load lasts
 for all of them. Check `uptime` before a run, and compare the fastest values
 with pyperf's means, which the report summarizes.
@@ -222,7 +230,7 @@ with pyperf's means, which the report summarizes.
 
 ```sh
 uptime
-for order in "" --reverse "" --reverse; do
+for order in "" --reverse; do
     uv run --python 3.14+gil python -m tafla_benchmarks --processes 5 --append results.json $order
     PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m tafla_benchmarks --codec protobuf --processes 5 --append results.json $order
 done
@@ -231,7 +239,7 @@ uv run --python 3.14+gil python -m tafla_benchmarks.allocation
 PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m tafla_benchmarks.allocation --codec protobuf
 ```
 
-The full run takes about 26 minutes, and the allocation report about 10
+The full run takes about 20 minutes, and the allocation report about 10
 seconds, which CI runs too. `--append` adds to an existing file, so
 remove the last run's `results.json` first. `--filter <regex>` runs only the
 groups whose name matches, and `--reverse` runs each group's codecs in reverse
@@ -294,7 +302,7 @@ generated code:
   numbers don't describe.
 - protobuf's pure-Python implementation runs in invocations of the suite of
   its own, so its workers follow every other codec's in each run, rather than
-  running among them. The 4 runs still spread them over the whole run.
+  running among them. The 2 runs still spread them over the whole run.
 - msgpack's column extensions are in the host's byte order, as msgpackr's are,
   and are this suite's own, so another MessagePack reader would see them as
   unknown extensions.

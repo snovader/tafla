@@ -139,7 +139,7 @@ comparison uses its counterpart:
 ## Method
 
 JMH 1.37 times each benchmark in average-time mode. Every codec of every
-benchmark runs in 3 forked JVMs, each of 5 warm-up and 5 measured iterations
+benchmark runs in 3 forked JVMs, each of 5 warm-up and 2 measured iterations
 of 1 s, with a fixed 2 GiB heap.
 
 - A fork runs one codec, so the JIT compiles its call sites without the other
@@ -164,10 +164,23 @@ of 1 s, with a fixed 2 GiB heap.
 
 Unlike the TypeScript harness, JMH doesn't interleave the variants: it runs
 one fork after another, so a burst of load can slow one codec's forks and not
-another's. Three forks spread each codec over about half a minute, which makes
+another's. Three forks spread each codec over about 20 seconds, which makes
 that less likely, and a fork's fastest iteration is unaffected unless the load
-lasts the whole fork. Check `uptime` before a run, and compare the fastest
-iterations with JMH's means.
+lasts both of its measured iterations. Check `uptime` before a run, and compare
+the fastest iterations with JMH's means.
+
+Some allocating codecs change speed as a forked JVM ages, so the warm-up can't
+be shorter. msgpack wrote the fixed-size record in 0.058 to 0.065 µs in its
+forks' second to fifth seconds, and in 0.084 to 0.095 µs from their seventh.
+Iterations of 200 ms, 5 to warm up and 10 measured, end each fork after 3 s:
+they timed FlatBuffers' write of the large document 12% faster, and msgpack's
+write of the record 14% faster, in every iteration, with or without a garbage
+collection, and protobuf's read of the record up to 22% faster. After the warm-up, a fork's fastest iteration is almost
+always one of its first two, so each fork measures only those. Until
+2026-11-14, each fork measured 5, which took 40% longer. In two runs of 5 on
+that day, the fastest of each fork's first two iterations was within 0.8% of
+the fastest of all five for 90% of the benchmarks, where the two runs differed
+by 4.2%.
 
 ## Running
 
@@ -176,7 +189,7 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 40 minutes. `--jmhArgs` passes JMH's own options,
+The full run takes about 33 minutes. `--jmhArgs` passes JMH's own options,
 which override those in `build.gradle.kts`: a regular expression selects
 benchmarks, and `-p` sets a parameter.
 
