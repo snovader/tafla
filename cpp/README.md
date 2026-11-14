@@ -172,6 +172,17 @@ type, offset size, vector, builder and decode error.
   Writing through a `BasicTableWriter<false>` then made `to_bytes()` of that
   vector a further 13% faster, 1.27 µs against 1.45 µs, with half the
   machine code.
+- **Strings are checked a word at a time.** A read checks that a string is
+  UTF-8, and most strings are ASCII, so `valid_utf8()` checks 8 bytes at a
+  time from the first, with a last word that overlaps the one before it, and
+  a string shorter than 8 bytes by two halves of a word, which overlap, or by
+  its first, middle and last bytes. Reading the comparison's record, whose
+  name is 16 bytes of ASCII, took 3.0 ns rather than 6.2 ns, and its document
+  of 100 rows 7.1 ns rather than 9.9 ns, against a check of words only from
+  the second byte, and of single bytes at the end. A string that holds a byte
+  that isn't ASCII is checked character by character from the word that
+  holds it, which took 1.2 to 1.8 ns longer for such strings of 6 to 40
+  bytes.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
