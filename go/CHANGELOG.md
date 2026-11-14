@@ -51,6 +51,12 @@ first commits, for code built from its source before the release.
   function, which Go's compiler assumes keeps it when it's called from
   another package. The code that tafla-gen generates writes the Go
   comparison suite's document in 1 allocation rather than 2.
+- `ByteBuffer.RootOffset()` and `FieldOffset()` read uint32 offsets as
+  `Uint32FieldOffset()` does, in one call rather than two, and leave the
+  other offset types to the general case. They return the same positions
+  and errors. The benchmarks' hand-written reader of the record takes about
+  22.7 ns rather than 28.2, and of the vector of 100 nested tables 1.43 µs
+  rather than 1.66.
 
 ### Fixed
 
