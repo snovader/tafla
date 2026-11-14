@@ -321,7 +321,14 @@ func (b *TableBuilder) setScalar(bits uint64, size int) error {
 		return b.tooLong(length)
 	}
 
-	buffer, at := b.reserve(size)
+	// reserve, by hand, since it doesn't inline: a call less per scalar
+	at := b.written
+	buffer := b.buffer()
+	if size > len(buffer)-at {
+		buffer = b.grow(at + size)
+	}
+	b.written = at + size
+
 	b.putOffset(buffer, b.length)
 	switch size {
 	case 1:
@@ -685,7 +692,13 @@ func (b *TableBuilder) nestedHeader(fields int) (uint32, error) {
 // startInPlace starts the fields of a table of fields fields nested in
 // place, after its offsets, of header bytes
 func (b *TableBuilder) startInPlace(fields int, header uint32) {
-	_, at := b.reserve(int(header))
+	// reserve, by hand, since it doesn't inline: a call less per table
+	at := b.written
+	if int(header) > len(b.buffer())-at {
+		b.grow(at + int(header))
+	}
+	b.written = at + int(header)
+
 	b.counters = counters{fields: uint32(fields), length: header, slots: at, alignment: tafla.Align1}
 }
 
