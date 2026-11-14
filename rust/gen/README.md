@@ -249,25 +249,24 @@ when the bytes are in another version.
 A table's getter of a vector or an array of structs returns a view of its
 items, which reads an item only when it's asked for, as [Views](#views)
 describes, and a caller that wants every item at once collects the view, as
-with `iter().collect()` in Rust. TypeScript's, JavaScript's, Python's and
-C++'s getters read every item at once instead, and a getter beside each
-returns its view. Their vectors return an array of tables in TypeScript and
-JavaScript, a `list` in Python and a `std::vector` in C++, and their arrays
-of structs an array of structs in TypeScript and JavaScript, a `list` in
-Python, and a `std::vector` in C++. Every target reads a vector's tables in
-place, within the message's bytes, as `SPEC.md` describes, so that it reads
-the same fields from the same bytes as the others, even where a corrupted
-item's offsets lead past its end. Each struct writes an array of them with
-`serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+with `iter().collect()` in Rust. Python's and C++'s getters read every item
+at once instead, and a getter beside each returns its view. Their vectors
+return a `list` in Python and a `std::vector` in C++, and their arrays of
+structs a `list` in Python and a `std::vector` in C++. Every target reads a
+vector's tables in place, within the message's bytes, as `SPEC.md` describes,
+so that it reads the same fields from the same bytes as the others, even
+where a corrupted item's offsets lead past its end. Each struct writes an
+array of them with `serializeArray()`, `serialize_array()` or
+`array_to_bytes()`.
 
 ### Views
 
 A view of a vector or an array of structs reads an item only when it's asked
 for: a `<Table>Vector` or a `<Struct>Array`, which the generated code
 declares for each table that a vector holds and each struct that an array
-holds. The field's getter returns it in Rust, Go and Java. Where a getter
-reads every item at once, `<field>View()` beside it returns the view, or
-`<field>_view()` in Python. A view finds item `i` without reading the
+holds. The field's getter returns it in Rust, Go, Java, TypeScript and
+JavaScript. Where a getter reads every item at once, `<field>_view()` beside
+it returns the view. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
 runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
 view read in Java, TypeScript and JavaScript, `Vector::get_in_place()` in

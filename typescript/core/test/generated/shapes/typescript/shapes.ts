@@ -350,21 +350,7 @@ export class ItemList {
         return writer.bytes();
     }
 
-    items(): Item[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(0)
-        );
-        const items = new Array<Item>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Item(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `items()`, reading each one when it's asked for */
-    itemsView(): ItemVector {
+    items(): ItemVector {
         return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
 }

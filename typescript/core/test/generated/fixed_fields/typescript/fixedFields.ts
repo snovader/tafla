@@ -1210,21 +1210,7 @@ export class Span {
         return new Frame(this.#buffer, this.#buffer.rootOffset(2));
     }
 
-    ranges(): Range[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(3)
-        );
-        const items = new Array<Range>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Range(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `ranges()`, reading each one when it's asked for */
-    rangesView(): RangeVector {
+    ranges(): RangeVector {
         return new RangeVector(this.#buffer, this.#buffer.rootOffset(3));
     }
 }

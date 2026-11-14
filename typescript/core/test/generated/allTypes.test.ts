@@ -20,11 +20,11 @@ import {
     readArrays,
     readDocumented,
     readNested,
-    readNestedViews,
+    readNestedFromLast,
     readReserved,
     readScalars,
     readStructs,
-    readStructsViews,
+    readStructsFromLast,
     SCALARS_FIELDS,
     STRUCTS_FIELDS
 } from './allTypesTables.ts';
@@ -230,52 +230,56 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
 
     describe('views', () => {
         it.prop([NESTED_FIELDS, SLICES])(
-            'should read back vectors of trees item by item through their views, wherever their bytes lie',
+            'should read back vectors of trees through their views from the last item to the first, wherever their bytes lie',
             (fields, slice) => {
                 const bytes = sliceOf(allTypes.Nested.serialize(fields), slice);
 
-                expect(readNestedViews(new allTypes.Nested(bytes), bytes.length)).toEqual(fields);
+                expect(readNestedFromLast(new allTypes.Nested(bytes), bytes.length)).toEqual(
+                    fields
+                );
             }
         );
 
         it.prop([STRUCTS_FIELDS, SLICES])(
-            'should read back arrays of structs one by one through their views, wherever their bytes lie',
+            'should read back arrays of structs through their views from the last to the first, wherever their bytes lie',
             (fields, slice) => {
                 const bytes = sliceOf(allTypes.Structs.serialize(fields), slice);
 
-                expect(readStructsViews(new allTypes.Structs(bytes))).toEqual(fields);
+                expect(readStructsFromLast(new allTypes.Structs(bytes))).toEqual(fields);
             }
         );
 
         it.prop([NESTED_FIELDS, CORRUPTIONS])(
-            'should read corrupted Nested through its views as values or throw DecodeError',
+            'should read corrupted Nested from the last item of each view as values or throw DecodeError',
             (fields, corruption) => {
                 const bytes = allTypes.Nested.serialize(fields);
                 const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
 
                 expectValuesOrDecodeError(() =>
-                    readNestedViews(new allTypes.Nested(corrupted), corrupted.length)
+                    readNestedFromLast(new allTypes.Nested(corrupted), corrupted.length)
                 );
             }
         );
 
         it.prop([STRUCTS_FIELDS, CORRUPTIONS])(
-            'should read corrupted Structs through its views as values or throw DecodeError',
+            'should read corrupted Structs from the last item of each view as values or throw DecodeError',
             (fields, corruption) => {
                 const bytes = allTypes.Structs.serialize(fields);
                 const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
 
-                expectValuesOrDecodeError(() => readStructsViews(new allTypes.Structs(corrupted)));
+                expectValuesOrDecodeError(() =>
+                    readStructsFromLast(new allTypes.Structs(corrupted))
+                );
             }
         );
 
         it.prop([fc.uint8Array({ maxLength: 64 })])(
-            'should read arbitrary bytes through the views of any message or throw DecodeError',
+            'should read arbitrary bytes from the last item of the views of any message or throw DecodeError',
             bytes => {
                 expectValuesOrDecodeError(() =>
-                    readNestedViews(new allTypes.Nested(bytes), bytes.length)
+                    readNestedFromLast(new allTypes.Nested(bytes), bytes.length)
                 );
-                expectValuesOrDecodeError(() => readStructsViews(new allTypes.Structs(bytes)));
+                expectValuesOrDecodeError(() => readStructsFromLast(new allTypes.Structs(bytes)));
             }
         );
 
@@ -285,7 +289,7 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
                 const nested = new allTypes.Nested(allTypes.Nested.serialize(nestedFields));
                 const structs = new allTypes.Structs(allTypes.Structs.serialize(structsFields));
 
-                for (const view of [nested.treesView(), structs.documentedView()]) {
+                for (const view of [nested.trees(), structs.documented()]) {
                     expect(() => view.get(outside(view.length()))).toThrow(RangeError);
                 }
             }
@@ -300,12 +304,12 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             // A count of 2^31 in the tree's empty vector of children, its count
             // alone, which ends the bytes
             bytes.set([0, 0, 0, 0x80], bytes.length - 4);
-            const tree = new allTypes.Nested(bytes).treesView().get(0);
+            const tree = new allTypes.Nested(bytes).trees().get(0);
 
-            expect(() => tree.childrenView()).toThrow(DecodeError);
+            expect(() => tree.children()).toThrow(DecodeError);
         });
 
-        it('should read a tree that holds itself through views, where the getter throws DecodeError', () => {
+        it('should read a tree that holds itself from the last item, where reading the trees from the first throws DecodeError', () => {
             const bytes = allTypes.Nested.serialize({
                 label: '',
                 outer: { count: 0, inner: { name: '', values: [] } },
@@ -322,16 +326,17 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             bytes.set([0, 0, 0, 0], trees + 4);
             const nested = new allTypes.Nested(bytes);
 
-            const top = nested.treesView().get(1);
+            const top = nested.trees().get(1);
             let tree = top;
             for (let level = 0; level < bytes.length; level++) {
-                tree = tree.childrenView().get(1);
+                tree = tree.children().get(1);
             }
 
             expect(tree.value()).toBe(top.value());
-            expect(tree.childrenView().length()).toBe(2);
-            expect(() => nested.trees()).toThrow(DecodeError);
-            expect(() => readNestedViews(nested, bytes.length)).toThrow(DecodeError);
+            expect(tree.children().length()).toBe(2);
+            expect(() => nested.trees().get(0)).toThrow(DecodeError);
+            expect(() => readNested(nested)).toThrow(DecodeError);
+            expect(() => readNestedFromLast(nested, bytes.length)).toThrow(DecodeError);
         });
 
         it('should view empty vectors and arrays of structs', () => {
@@ -353,10 +358,10 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             );
 
             for (const view of [
-                nested.treesView(),
-                structs.documentedView(),
-                structs.segmentsView(),
-                structs.path().pointsView()
+                nested.trees(),
+                structs.documented(),
+                structs.segments(),
+                structs.path().points()
             ]) {
                 expect(view.length()).toBe(0);
                 expect(() => view.get(0)).toThrow(RangeError);

@@ -7,7 +7,7 @@ use super::writer::{
     CodeWriter, Expr, Style, call, comment_text, doc_comment, escape_outside_code_spans, text,
 };
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{Definition, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -1103,8 +1103,6 @@ impl Generator<'_> {
             };
             let return_type = value_type(field.field_type, self.schema);
             let field_name = identifier(&field.name);
-            // A view of a vector or an array of structs follows its getter
-            let view = view_type(field.field_type, self.schema).map(|view| (view, offset.clone()));
 
             writer.blank();
             self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
@@ -1148,125 +1146,23 @@ impl Generator<'_> {
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
-                FieldType::StructArray(index) => {
-                    let structure = &self.schema.definition(index).name;
-                    self.struct_array_getter(writer, offset, structure);
-                }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = call(format!("new {table}"), vec![text("this.#buffer"), offset]);
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
-                FieldType::Vector(table) => {
-                    let table = &self.schema.definition(table).name;
-                    let array = if self.typed {
-                        format!("new Array<{table}>(offsets.length)")
-                    } else {
-                        "new Array(offsets.length)".to_owned()
-                    };
-
-                    writer.statement(
-                        &STYLE,
-                        "const offsets = ",
-                        &call("this.#buffer.getVectorOffsets", vec![offset]),
-                        ";",
+                FieldType::StructArray(_) | FieldType::Vector(_) => {
+                    // A view, which reads each item when it's asked for
+                    let read = call(
+                        format!("new {return_type}"),
+                        vec![text("this.#buffer"), offset],
                     );
-                    // The locals aren't named after the field, whose name may
-                    // be a reserved word
-                    writer.line(format!("const items = {array};"));
-                    writer.blank();
-                    writer.open("for (let i = 0; i < offsets.length; i++) {");
-                    writer.statement(
-                        &STYLE,
-                        "items[i] = ",
-                        &call(
-                            format!("new {table}"),
-                            vec![text("this.#buffer"), text("offsets[i]")],
-                        ),
-                        ";",
-                    );
-                    writer.close("}");
-                    writer.blank();
-                    writer.line("return items;");
+                    writer.statement(&STYLE, "return ", &read, ";");
                 }
             }
 
             writer.close("}");
-
-            if let Some((view, offset)) = view {
-                self.view_getter(writer, field, &field_name, &view, offset);
-            }
         }
-    }
-
-    /// The getter of a view of a vector or an array of structs, which reads
-    /// each item when it's asked for, rather than all of them as the
-    /// field's own getter does
-    fn view_getter(
-        &self,
-        writer: &mut CodeWriter,
-        field: &Field,
-        field_name: &str,
-        view: &str,
-        offset: Expr,
-    ) {
-        let mut docs = schema_docs(&field.docs);
-        if !docs.is_empty() {
-            docs.push(String::new());
-        }
-        docs.push(format!(
-            "Views the items of `{field_name}()`, reading each one when it's asked for"
-        ));
-
-        writer.blank();
-        self.getter_doc(writer, &docs, view);
-        writer.open(format!(
-            "{}View(){} {{",
-            camel_case(&field.name),
-            self.annotation(view)
-        ));
-        writer.statement(
-            &STYLE,
-            "return ",
-            &call(format!("new {view}"), vec![text("this.#buffer"), offset]),
-            ";",
-        );
-        writer.close("}");
-    }
-
-    /// The body of a getter of an array of structs, which reads each struct
-    /// eagerly from a view of their bytes
-    fn struct_array_getter(&self, writer: &mut CodeWriter, offset: Expr, structure: &str) {
-        let array = if self.typed {
-            format!("new Array<{structure}>(bytes.length / {structure}.SIZE)")
-        } else {
-            format!("new Array(bytes.length / {structure}.SIZE)")
-        };
-
-        writer.statement(
-            &STYLE,
-            "const bytes = ",
-            &call(
-                "this.#buffer.getStructArray",
-                vec![offset, text(format!("{structure}.SIZE"))],
-            ),
-            ";",
-        );
-        writer.statement(&STYLE, "const items = ", &text(array), ";");
-        writer.blank();
-        writer.open("for (let i = 0; i < items.length; i++) {");
-        writer.statement(
-            &STYLE,
-            "items[i] = ",
-            &call(
-                format!("new {structure}"),
-                vec![text("bytes"), text(format!("i * {structure}.SIZE"))],
-            ),
-            ";",
-        );
-        writer.close("}");
-        writer.blank();
-        writer.line("return items;");
     }
 
     /// A getter's documentation, with its return type in JavaScript
@@ -1496,19 +1392,9 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) | FieldType::Vector(index) => {
-            format!("{}[]", schema.definition(index).name)
-        }
-    }
-}
-
-/// The view of a vector or an array of structs, which their view getters
-/// return
-fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
-    match field_type {
-        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
-        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
-        _ => None,
+        // A view of the items, which reads each one when it's asked for
+        FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
+        FieldType::StructArray(index) => format!("{}Array", schema.definition(index).name),
     }
 }
 

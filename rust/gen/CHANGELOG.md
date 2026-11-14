@@ -126,6 +126,12 @@ first commits, for code built from its source before the release.
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every
   schema it can't read or write rather than stopping at the first.
+- Generated TypeScript and JavaScript getters of vectors and arrays of
+  structs return their views, a `<Table>Vector` or a `<Struct>Array`, which
+  read each item when it's asked for, rather than an array of every item, and
+  the views' own getters, `<field>View()`, are gone. A corrupt item then
+  fails with `DecodeError` when it's read, rather than when the getter is
+  called.
 
 ### Fixed
 

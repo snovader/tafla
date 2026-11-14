@@ -379,25 +379,7 @@ export class Nested {
     }
 
     /** A vector of tables that hold vectors of themselves */
-    trees(): Tree[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(2)
-        );
-        const items = new Array<Tree>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Tree(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /**
-     * A vector of tables that hold vectors of themselves
-     *
-     * Views the items of `trees()`, reading each one when it's asked for
-     */
-    treesView(): TreeVector {
+    trees(): TreeVector {
         return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
     }
 }
@@ -584,21 +566,7 @@ export class Tree {
         );
     }
 
-    children(): Tree[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-        const items = new Array<Tree>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Tree(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `children()`, reading each one when it's asked for */
-    childrenView(): TreeVector {
+    children(): TreeVector {
         return new TreeVector(
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)
@@ -911,26 +879,7 @@ export class Structs {
     }
 
     /** An array of structs of 7 bytes, aligned to 4 */
-    documented(): Documented[] {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(1),
-            Documented.SIZE
-        );
-        const items = new Array<Documented>(bytes.length / Documented.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Documented(bytes, i * Documented.SIZE);
-        }
-
-        return items;
-    }
-
-    /**
-     * An array of structs of 7 bytes, aligned to 4
-     *
-     * Views the items of `documented()`, reading each one when it's asked for
-     */
-    documentedView(): DocumentedArray {
+    documented(): DocumentedArray {
         return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
     }
 
@@ -939,22 +888,7 @@ export class Structs {
         return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
     }
 
-    segments(): Segment[] {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(3),
-            Segment.SIZE
-        );
-        const items = new Array<Segment>(bytes.length / Segment.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Segment(bytes, i * Segment.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `segments()`, reading each one when it's asked for */
-    segmentsView(): SegmentArray {
+    segments(): SegmentArray {
         return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
     }
 
@@ -1027,22 +961,7 @@ export class Path {
         );
     }
 
-    points(): Point[] {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.fieldOffset(this.#position, 1),
-            Point.SIZE
-        );
-        const items = new Array<Point>(bytes.length / Point.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Point(bytes, i * Point.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `points()`, reading each one when it's asked for */
-    pointsView(): PointArray {
+    points(): PointArray {
         return new PointArray(
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)
