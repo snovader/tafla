@@ -10,8 +10,7 @@ import java.util.SequencedMap;
 
 /**
  * The ways of reading tafla's items: {@link ByteBuffer}'s getters by hand, as the tafla codec reads
- * the list, tafla-gen's getters, which read every item into a list or an array, and its views,
- * which read each item when it's asked for
+ * the list, and tafla-gen's getters, whose views read each item when it's asked for
  */
 public final class ItemAccesses {
     /** An item as a struct: its three float32s */
@@ -24,9 +23,8 @@ public final class ItemAccesses {
         var accesses = new LinkedHashMap<String, ItemAccess>();
         accesses.put("tafla", new ByteBufferAccess());
         accesses.put("tafla-gen", new GetterAccess());
-        accesses.put("tafla-gen view", new ViewAccess());
-        // The views twice, an A/A pair that shows the harness's noise
-        accesses.put("tafla-gen view A/A", new ViewAccess());
+        // The getters twice, an A/A pair that shows the harness's noise
+        accesses.put("tafla-gen A/A", new GetterAccess());
 
         return accesses;
     }
@@ -136,51 +134,6 @@ public final class ItemAccesses {
         @Override
         public double lastStruct(byte[] bytes) {
             var triples = new Triples(bytes).items();
-            var triple = triples[triples.length - 1];
-
-            return (double) triple.value() + triple.first() + triple.second();
-        }
-
-        @Override
-        public double everyStruct(byte[] bytes) {
-            var triples = new Triples(bytes).items();
-
-            double sum = 0;
-            for (var triple : triples) {
-                sum += (double) triple.value() + triple.first() + triple.second();
-            }
-
-            return sum;
-        }
-    }
-
-    private static final class ViewAccess implements ItemAccess {
-        @Override
-        public double lastTable(byte[] bytes) {
-            var items = new ItemList(bytes).itemsView();
-            var item = items.get(items.size() - 1);
-            var pair = item.pair();
-
-            return (double) item.value() + pair.first() + pair.second();
-        }
-
-        @Override
-        public double everyTable(byte[] bytes) {
-            var items = new ItemList(bytes).itemsView();
-
-            double sum = 0;
-            for (int i = 0; i < items.size(); i++) {
-                var item = items.get(i);
-                var pair = item.pair();
-                sum += (double) item.value() + pair.first() + pair.second();
-            }
-
-            return sum;
-        }
-
-        @Override
-        public double lastStruct(byte[] bytes) {
-            var triples = new Triples(bytes).itemsView();
             var triple = triples.get(triples.size() - 1);
 
             return (double) triple.value() + triple.first() + triple.second();
@@ -188,7 +141,7 @@ public final class ItemAccesses {
 
         @Override
         public double everyStruct(byte[] bytes) {
-            var triples = new Triples(bytes).itemsView();
+            var triples = new Triples(bytes).items();
 
             double sum = 0;
             for (int i = 0; i < triples.size(); i++) {

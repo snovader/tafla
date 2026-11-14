@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.benchmarks.generated.tafla;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableSizer;
 
@@ -47,19 +48,13 @@ public final class Triples {
         return writer.byteLength();
     }
 
-    public Triple[] items() {
-        var view = buffer.getStructArray(buffer.rootOffset(0), Triple.SIZE);
-        var items = new Triple[view.remaining() / Triple.SIZE];
-
-        for (int i = 0; i < items.length; i++) {
-            items[i] = Triple.read(view, i * Triple.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of {@code items()}, reading each one when it's asked for */
-    public TripleArray itemsView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
+     */
+    public TripleArray items() {
         return new TripleArray(buffer, buffer.rootOffset(0));
     }
 

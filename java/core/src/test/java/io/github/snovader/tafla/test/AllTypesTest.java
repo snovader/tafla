@@ -290,7 +290,7 @@ public class AllTypesTest {
         var nested = new Nested(Nested.serialize(nestedFields));
         var structs = new Structs(Structs.serialize(structsFields));
 
-        for (var view : List.<List<?>>of(nested.treesView(), structs.documentedView())) {
+        for (var view : List.<List<?>>of(nested.trees(), structs.documented())) {
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(view.size() + past));
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(-1 - past));
         }
@@ -315,10 +315,10 @@ public class AllTypesTest {
         );
 
         var views = List.<List<?>>of(
-            nested.treesView(),
-            structs.documentedView(),
-            structs.segmentsView(),
-            structs.path().pointsView()
+            nested.trees(),
+            structs.documented(),
+            structs.segments(),
+            structs.path().points()
         );
         for (var view : views) {
             assertTrue(view.isEmpty());

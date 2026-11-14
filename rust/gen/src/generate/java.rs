@@ -247,9 +247,13 @@ fn imports(
             .any(|field| predicate(field.field_type))
     };
     let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
+    let has_view =
+        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
 
     let mut names = vec!["ByteBuffer"];
-    if layout.is_some_and(|layout| layout.version.is_some()) {
+    // A versioned message's constructor throws it, and the getters of views
+    // document it
+    if has_view || layout.is_some_and(|layout| layout.version.is_some()) {
         names.push("DecodeException");
     }
     if layout.is_some_and(|layout| layout.offset_type != OffsetType::Uint32) {
@@ -867,7 +871,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         };
 
         writer.blank();
-        writer.lines(&javadoc(&schema_docs(&field.docs)));
+        writer.lines(&javadoc(&getter_docs(field)));
         writer.open(format!(
             "public {} {}() {{",
             value_type(field.field_type, schema),
@@ -896,80 +900,75 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                     "return {structure}.read(buffer.bytes(), {offset});"
                 ));
             }
-            FieldType::StructArray(index) => {
-                // An array, as arrays of scalars are, from a loop rather than
-                // a stream to a list, which took 2.6 times as long to read
-                // 100 structs
-                let structure = &schema.definition(index).name;
+            // The view, which reads each item when it's asked for, so that a
+            // reader of some items doesn't read the others, and C2's escape
+            // analysis removes the readers and records of those it reads in
+            // a loop, which a list or array of every item would hold
+            FieldType::StructArray(_) | FieldType::Vector(_) => {
                 writer.line(format!(
-                    "var view = buffer.getStructArray({offset}, {structure}.SIZE);"
+                    "return new {}(buffer, {offset});",
+                    value_type(field.field_type, schema)
                 ));
-                writer.line(format!(
-                    "var items = new {structure}[view.remaining() / {structure}.SIZE];"
-                ));
-                writer.blank();
-                writer.open("for (int i = 0; i < items.length; i++) {");
-                writer.line(format!(
-                    "items[i] = {structure}.read(view, i * {structure}.SIZE);"
-                ));
-                writer.close("}");
-                writer.blank();
-                writer.line("return items;");
             }
             FieldType::Table(table) => {
                 let table = &schema.definition(table).name;
                 writer.line(format!("return new {table}(buffer, {offset});"));
             }
-            FieldType::Vector(table) => {
-                let table = &schema.definition(table).name;
-                writer.line(format!("var offsets = buffer.getVectorOffsets({offset});"));
-                writer.blank();
-                // Qualified, so that a schema can declare its own `Arrays`
-                writer.line("return java.util.Arrays.stream(offsets)");
-                writer.indent();
-                writer.line(format!(".mapToObj(item -> new {table}(buffer, item))"));
-                writer.line(".toList();");
-                writer.dedent();
-            }
         }
         writer.close("}");
 
-        if let Some(view) = view_type(field.field_type, schema) {
-            view_getter(writer, field, &view, &offset);
+        if let FieldType::Array(scalar) = field.field_type {
+            array_view_getter(writer, field, scalar, &offset);
         }
     }
 }
 
-/// Writes the getter of a field's view, `<field>View()`, beside its getter
-fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: &str) {
-    let getter = identifier(&field.name);
-    let (description, value) = match field.field_type {
-        FieldType::Array(scalar) => {
-            let elements =
-                format!("Views the elements of `{getter}()` in place, read-only, without");
-            let description = match signed_type(scalar) {
-                Some(signed) => vec![
-                    elements,
-                    format!("copying them, as `{signed}`s with the same bits"),
-                ],
-                None => vec![format!("{elements} copying them")],
-            };
-            let value = format!("buffer.get{}ArrayView({offset})", method_name(scalar));
-            (description, value)
-        }
-        _ => (
-            vec![format!(
-                "Views the items of `{getter}()`, reading each one when it's asked for"
-            )],
-            format!("new {view}(buffer, {offset})"),
-        ),
+/// A getter's Javadoc: the field's documentation, and for a vector or an
+/// array of structs, that the getter returns a view whose items are read, and
+/// fail, when they're asked for
+fn getter_docs(field: &Field) -> Vec<String> {
+    let mut docs = schema_docs(&field.docs);
+    let items = match field.field_type {
+        FieldType::Vector(_) => "the items' ends",
+        FieldType::StructArray(_) => "the structs",
+        _ => return docs,
     };
+
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.extend([
+        "Views the items, reading each one when it's asked for, so that an item whose bytes are"
+            .to_owned(),
+        "corrupt throws a `DecodeException` when it's read, rather than here".to_owned(),
+        String::new(),
+        format!("@throws DecodeException if the count or {items} aren't within the bytes"),
+    ]);
+
+    docs
+}
+
+/// Writes the getter of the view of an array of scalars, `<field>View()`,
+/// beside its getter, which copies them
+fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, offset: &str) {
+    let getter = identifier(&field.name);
+    let elements = format!("Views the elements of `{getter}()` in place, read-only, without");
 
     let mut docs = schema_docs(&field.docs);
     if !docs.is_empty() {
         docs.push(String::new());
     }
-    docs.extend(description);
+    match signed_type(scalar) {
+        Some(signed) => docs.extend([
+            elements,
+            format!("copying them, as `{signed}`s with the same bits"),
+        ]),
+        None => docs.push(format!("{elements} copying them")),
+    }
+
+    // Qualified, so that a schema can declare its own `FloatBuffer`, and
+    // since `ByteBuffer` is tafla's
+    let view = format!("java.nio.{}", nio_buffer(scalar));
 
     writer.blank();
     writer.lines(&javadoc(&docs));
@@ -977,22 +976,11 @@ fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: &str)
         "public {view} {}View() {{",
         camel_case(&field.name)
     ));
-    writer.line(format!("return {value};"));
+    writer.line(format!(
+        "return buffer.get{}ArrayView({offset});",
+        method_name(scalar)
+    ));
     writer.close("}");
-}
-
-/// The view that a field's view getter returns: a vector's or an array of
-/// structs', which reads each item when it's asked for, or the runtime's
-/// read-only view of an array of scalars, which the getter copies
-fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
-    match field_type {
-        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
-        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
-        // Qualified, so that a schema can declare its own `FloatBuffer`, and
-        // since `ByteBuffer` is tafla's
-        FieldType::Array(scalar) => Some(format!("java.nio.{}", nio_buffer(scalar))),
-        _ => None,
-    }
 }
 
 /// The JDK's buffer that views an array of scalars, of the signed type of
@@ -1094,13 +1082,15 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
-        FieldType::Vector(index) => format!("List<{}>", schema.definition(index).name),
+        // The views that the generated code declares for the items' types
+        FieldType::StructArray(index) => format!("{}Array", schema.definition(index).name),
+        FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
     }
 }
 
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
         FieldType::Table(index) => format!("{}.Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("List<{}.Fields>", schema.definition(index).name),
         _ => value_type(field_type, schema),

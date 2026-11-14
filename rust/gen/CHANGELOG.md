@@ -87,6 +87,15 @@ first commits, for code built from its source before the release.
   vector of 100 nested tables in 1 allocation rather than 2.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
+- Generated Java getters of vectors and arrays of structs return their views,
+  `<Table>Vector` and `<Struct>Array`, which read each item when it's asked
+  for, rather than a `List` or an array of every item, and `<field>View()` of
+  them is gone. An item whose bytes are corrupt throws a `DecodeException`
+  when it's read rather than from the getter. `List.copyOf()` or `toArray()`
+  reads every item at once. Java's comparison suite read its vector of 100
+  tables in 0.64 µs rather than 1.13 µs, and its array of 100 structs in
+  0.20 µs rather than 0.53 µs, allocating 2.9 KB rather than 6.4 KB and
+  5.7 KB.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every
