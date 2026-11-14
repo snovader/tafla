@@ -167,7 +167,8 @@ or read its tables, or a target couldn't generate its code:
   array of scalars, which Java declares, and a declaration can't take
   the name of a view that the schema's vectors and arrays of structs need,
   `<Table>Vector` or `<Struct>Array`, nor another declaration's
-  `<Name>Fields`, which the generated code below declares.
+  `<Name>Fields`, which the generated code below declares, nor a message's
+  or a table's `<Name>FieldValues`, which Python declares.
 
 Fields named after a member of the generated code are renamed instead, as
 the generated code below describes.
