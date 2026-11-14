@@ -29,6 +29,17 @@ generator printed. Each of these benchmarks also times tafla's codec again,
 as **tafla A/A**, an A/A pair whose ratio to tafla's shows the harness's
 noise.
 
+**document of 100,000 rows: serialize into reused bytes** times tafla-gen's
+`serialize_into()`, which writes the document into the start of bytes that
+the caller keeps, here a `std::vector` that each call writes over, as a
+caller that sends each document before writing the next would, rather than
+into new bytes, as the serialize rows do. It times it again as **tafla-gen
+A/A**. Its time compares with tafla-gen's in the document's serialize row. No
+other codec here reuses a buffer: FlatBuffers' builder, protobuf's string and
+msgpack-cxx's `sbuffer` are new for each message, though a builder's
+`Clear()`, `SerializeToArray()` and an `sbuffer`'s `clear()` would reuse
+theirs.
+
 Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way

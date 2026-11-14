@@ -14,14 +14,15 @@ namespace tafla::benchmarks {
 namespace {
 
 /// Builds every benchmark, which checks each codec's round trip and sums,
-/// and runs each variant once
+/// and tafla-gen's writes into reused bytes, and runs each variant once.
+/// Each has a variant and an A/A pair of it at least.
 TEST(Benchmarks, EveryCodecReadsBackWhatItWroteAndEveryBenchmarkRuns) {
     const Inputs inputs;
     const auto all = benchmarks(inputs);
-    EXPECT_EQ(all.size(), 18U);
+    EXPECT_EQ(all.size(), 19U);
 
     for (const auto& benchmark : all) {
-        EXPECT_GE(benchmark.variants.size(), 3U) << benchmark.name;
+        EXPECT_GE(benchmark.variants.size(), 2U) << benchmark.name;
         for (const auto& variant : benchmark.variants) {
             variant.loop(1);
         }
