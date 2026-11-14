@@ -24,7 +24,7 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
 
     check_fields_declarations(declarations, &indices, &mut errors);
     check_view_declarations(&definitions, declarations, &indices, &mut errors);
-    check_message_functions(&definitions, declarations, &indices, &mut errors);
+    check_go_functions(&definitions, declarations, &indices, &mut errors);
 
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
@@ -380,26 +380,30 @@ fn check_view_declarations(
 }
 
 /// Checks that no declaration takes the name of a function or constant that
-/// the code generated for Go declares beside a message, in the package of
-/// the schema's declarations: `New<Message>`, which reads it, and a
-/// versioned message's `<Message>VersionOf` and `<Message>FormatVersion`
-fn check_message_functions(
+/// the code generated for Go declares beside a message or a struct, in the
+/// package of the schema's declarations: `New<Message>`, which reads a
+/// message, a versioned message's `<Message>VersionOf` and
+/// `<Message>FormatVersion`, and `Read<Struct>`, which reads a struct
+fn check_go_functions(
     definitions: &[Definition],
     declarations: &[Declaration],
     indices: &HashMap<&str, usize>,
     errors: &mut Vec<Diagnostic>,
 ) {
     for definition in definitions {
-        let Kind::Message(layout) = definition.kind else {
-            continue;
-        };
         let name = &definition.name;
-
-        let mut functions = vec![(format!("New{name}"), "read")];
-        if layout.version.is_some() {
-            functions.push((format!("{name}VersionOf"), "read the version of"));
-            functions.push((format!("{name}FormatVersion"), "hold the version of"));
-        }
+        let functions = match definition.kind {
+            Kind::Message(layout) => {
+                let mut functions = vec![(format!("New{name}"), "read")];
+                if layout.version.is_some() {
+                    functions.push((format!("{name}VersionOf"), "read the version of"));
+                    functions.push((format!("{name}FormatVersion"), "hold the version of"));
+                }
+                functions
+            }
+            Kind::Struct(_) => vec![(format!("Read{name}"), "read")],
+            Kind::Table => continue,
+        };
 
         for (function, purpose) in functions {
             let Some(&clash) = indices.get(function.as_str()) else {
