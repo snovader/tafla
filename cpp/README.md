@@ -86,8 +86,8 @@ type, offset size, vector, builder and decode error.
   `TableBuilder::Item` that `fill` sets the fields on, rather than from a
   builder of its own. They write the bytes that nested builders write, and
   leave the builder as it was if `fill` throws or leaves fields unset. The
-  benchmarks' vector of 100 nested tables took about 3.2 µs so, against
-  6.9 µs from a builder per item and 3.0 µs through FlatBuffers. A table
+  benchmarks' vector of 100 nested tables takes about 3.5 µs so, against
+  3.2 µs through FlatBuffers, and took 6.9 µs from a builder per item. A table
   nested from a builder or bytes, with `set_table(table)` and
   `set_vector(items)`, is still what a table built elsewhere, or reused,
   needs.
@@ -108,9 +108,11 @@ type, offset size, vector, builder and decode error.
   23.5 ns into new bytes, 28 ns for the document of 100 rows against 45 ns,
   and 61 ns for the array of 100 structs against 79 ns. It saves less where
   the bytes cost little beside the rest: 5% for the vector of 100 nested
-  tables, whose codec allocates the items' fields, and 2% for the document of
-  1.2 MB, which copying its columns takes most of. A `serialize()` compiles
-  to the same code as before.
+  tables, whose codec allocated the items' fields, and nothing for the
+  document of 1.2 MB, which copying its columns takes most of: the
+  comparison's write of it into reused bytes takes about 19 µs, against 16
+  to 17 µs into new bytes. A `serialize()` compiles to the same code as
+  before.
 - **`ArrayView::as_span()`** returns a `std::span<const T>` of the elements
   where they're aligned on a little-endian host, as `TableBuilder` aligns
   them within an aligned table. It deliberately reads the table's bytes as
