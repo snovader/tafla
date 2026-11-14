@@ -865,9 +865,7 @@ func (t Structs) Packed() (Packed, error) {
 	if err != nil {
 		return Packed{}, err
 	}
-	var value Packed
-	value.read(bytes)
-	return value, nil
+	return readPacked(bytes), nil
 }
 
 // An array of structs of 7 bytes, aligned to 4
@@ -898,9 +896,7 @@ func (t Structs) Segment() (Segment, error) {
 	if err != nil {
 		return Segment{}, err
 	}
-	var value Segment
-	value.read(bytes)
-	return value, nil
+	return readSegment(bytes), nil
 }
 
 // Segments views the array's structs, reading each one when it's asked for. It
@@ -998,9 +994,7 @@ func (t Path) Start() (Point, error) {
 	if err != nil {
 		return Point{}, err
 	}
-	var value Point
-	value.read(bytes)
-	return value, nil
+	return readPoint(bytes), nil
 }
 
 // Points views the array's structs, reading each one when it's asked for. It
@@ -1052,7 +1046,9 @@ type Segment struct {
 // MarshalBinary returns the 16 bytes of a [Segment]: its scalars,
 // little-endian, one after another. It never fails.
 func (s Segment) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 16))
+	bytes := make([]byte, 16)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 16 bytes of a [Segment] to bytes, as
@@ -1072,16 +1068,30 @@ func (s *Segment) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 16, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readSegment(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Segment] from the start of bytes, which hold at
-// least its 16 bytes
-func (s *Segment) read(bytes []byte) {
+// ReadSegment reads a [Segment] from the start of bytes and returns it, which
+// the compiler can keep in registers, where [Segment.UnmarshalBinary] reads
+// into a struct in memory. It fails with a [*tafla.DecodeError] if bytes are
+// shorter than 16.
+func ReadSegment(bytes []byte) (Segment, error) {
+	if len(bytes) < 16 {
+		return Segment{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 16, Available: len(bytes)}
+	}
+
+	return readSegment(bytes), nil
+}
+
+// readSegment reads the scalars of a [Segment] from the start of bytes, which
+// hold at least its 16 bytes
+func readSegment(bytes []byte) Segment {
 	_ = bytes[15]
-	s.Start.read(bytes)
-	s.End.read(bytes[8:])
+	var s Segment
+	s.Start = readPoint(bytes)
+	s.End = readPoint(bytes[8:])
+	return s
 }
 
 // put writes the scalars of a [Segment] into the start of bytes, which hold at
@@ -1106,18 +1116,19 @@ func (v SegmentArray) Len() int {
 // Get reads struct index. It panics if index is out of range, as indexing a
 // slice does.
 func (v SegmentArray) Get(index int) Segment {
-	var item Segment
-	item.read(v.bytes[index*16:])
-	return item
+	return readSegment(v.bytes[index*16:])
 }
 
-// All returns an iterator over the indices and structs.
+// All returns an iterator over the indices and structs, which reads each struct
+// from the bytes in turn.
 func (v SegmentArray) All() iter.Seq2[int, Segment] {
 	return func(yield func(int, Segment) bool) {
-		for index := range v.Len() {
-			if !yield(index, v.Get(index)) {
+		bytes := v.bytes
+		for index := 0; len(bytes) >= 16; index++ {
+			if !yield(index, readSegment(bytes)) {
 				return
 			}
+			bytes = bytes[16:]
 		}
 	}
 }
@@ -1130,7 +1141,9 @@ type Point struct {
 // MarshalBinary returns the 8 bytes of a [Point]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Point) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 8))
+	bytes := make([]byte, 8)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 8 bytes of a [Point] to bytes, as
@@ -1150,16 +1163,30 @@ func (s *Point) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 8, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readPoint(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Point] from the start of bytes, which hold at
-// least its 8 bytes
-func (s *Point) read(bytes []byte) {
+// ReadPoint reads a [Point] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Point.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 8.
+func ReadPoint(bytes []byte) (Point, error) {
+	if len(bytes) < 8 {
+		return Point{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 8, Available: len(bytes)}
+	}
+
+	return readPoint(bytes), nil
+}
+
+// readPoint reads the scalars of a [Point] from the start of bytes, which hold
+// at least its 8 bytes
+func readPoint(bytes []byte) Point {
 	_ = bytes[7]
+	var s Point
 	s.X = math.Float32frombits(binary.LittleEndian.Uint32(bytes))
 	s.Y = math.Float32frombits(binary.LittleEndian.Uint32(bytes[4:]))
+	return s
 }
 
 // put writes the scalars of a [Point] into the start of bytes, which hold at
@@ -1184,18 +1211,19 @@ func (v PointArray) Len() int {
 // Get reads struct index. It panics if index is out of range, as indexing a
 // slice does.
 func (v PointArray) Get(index int) Point {
-	var item Point
-	item.read(v.bytes[index*8:])
-	return item
+	return readPoint(v.bytes[index*8:])
 }
 
-// All returns an iterator over the indices and structs.
+// All returns an iterator over the indices and structs, which reads each struct
+// from the bytes in turn.
 func (v PointArray) All() iter.Seq2[int, Point] {
 	return func(yield func(int, Point) bool) {
-		for index := range v.Len() {
-			if !yield(index, v.Get(index)) {
+		bytes := v.bytes
+		for index := 0; len(bytes) >= 8; index++ {
+			if !yield(index, readPoint(bytes)) {
 				return
 			}
+			bytes = bytes[8:]
 		}
 	}
 }
@@ -1219,7 +1247,9 @@ type Packed struct {
 // MarshalBinary returns the 43 bytes of a [Packed]: its scalars, little-endian,
 // one after another. It never fails.
 func (s Packed) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 43))
+	bytes := make([]byte, 43)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 43 bytes of a [Packed] to bytes, as
@@ -1239,14 +1269,27 @@ func (s *Packed) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 43, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readPacked(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Packed] from the start of bytes, which hold at
-// least its 43 bytes
-func (s *Packed) read(bytes []byte) {
+// ReadPacked reads a [Packed] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Packed.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 43.
+func ReadPacked(bytes []byte) (Packed, error) {
+	if len(bytes) < 43 {
+		return Packed{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 43, Available: len(bytes)}
+	}
+
+	return readPacked(bytes), nil
+}
+
+// readPacked reads the scalars of a [Packed] from the start of bytes, which
+// hold at least its 43 bytes
+func readPacked(bytes []byte) Packed {
 	_ = bytes[42]
+	var s Packed
 	s.Int8 = int8(bytes[0])
 	s.Uint8 = bytes[1]
 	s.Int16 = int16(binary.LittleEndian.Uint16(bytes[2:]))
@@ -1258,6 +1301,7 @@ func (s *Packed) read(bytes []byte) {
 	s.Float32 = math.Float32frombits(binary.LittleEndian.Uint32(bytes[30:]))
 	s.Float64 = math.Float64frombits(binary.LittleEndian.Uint64(bytes[34:]))
 	s.Bool = bytes[42] != 0
+	return s
 }
 
 // put writes the scalars of a [Packed] into the start of bytes, which hold at
@@ -1302,7 +1346,9 @@ type Documented struct {
 // MarshalBinary returns the 7 bytes of a [Documented]: its scalars,
 // little-endian, one after another. It never fails.
 func (s Documented) MarshalBinary() ([]byte, error) {
-	return s.AppendBinary(make([]byte, 0, 7))
+	bytes := make([]byte, 7)
+	s.put(bytes)
+	return bytes, nil
 }
 
 // AppendBinary appends the 7 bytes of a [Documented] to bytes, as
@@ -1322,17 +1368,31 @@ func (s *Documented) UnmarshalBinary(bytes []byte) error {
 		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 7, Available: len(bytes)}
 	}
 
-	s.read(bytes)
+	*s = readDocumented(bytes)
 	return nil
 }
 
-// read reads the scalars of a [Documented] from the start of bytes, which hold
-// at least its 7 bytes
-func (s *Documented) read(bytes []byte) {
+// ReadDocumented reads a [Documented] from the start of bytes and returns it,
+// which the compiler can keep in registers, where [Documented.UnmarshalBinary]
+// reads into a struct in memory. It fails with a [*tafla.DecodeError] if bytes
+// are shorter than 7.
+func ReadDocumented(bytes []byte) (Documented, error) {
+	if len(bytes) < 7 {
+		return Documented{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 7, Available: len(bytes)}
+	}
+
+	return readDocumented(bytes), nil
+}
+
+// readDocumented reads the scalars of a [Documented] from the start of bytes,
+// which hold at least its 7 bytes
+func readDocumented(bytes []byte) Documented {
 	_ = bytes[6]
+	var s Documented
 	s.One = bytes[0]
 	s.Two = binary.LittleEndian.Uint16(bytes[1:])
 	s.Undocumented = binary.LittleEndian.Uint32(bytes[3:])
+	return s
 }
 
 // put writes the scalars of a [Documented] into the start of bytes, which hold
@@ -1358,18 +1418,19 @@ func (v DocumentedArray) Len() int {
 // Get reads struct index. It panics if index is out of range, as indexing a
 // slice does.
 func (v DocumentedArray) Get(index int) Documented {
-	var item Documented
-	item.read(v.bytes[index*7:])
-	return item
+	return readDocumented(v.bytes[index*7:])
 }
 
-// All returns an iterator over the indices and structs.
+// All returns an iterator over the indices and structs, which reads each struct
+// from the bytes in turn.
 func (v DocumentedArray) All() iter.Seq2[int, Documented] {
 	return func(yield func(int, Documented) bool) {
-		for index := range v.Len() {
-			if !yield(index, v.Get(index)) {
+		bytes := v.bytes
+		for index := 0; len(bytes) >= 7; index++ {
+			if !yield(index, readDocumented(bytes)) {
 				return
 			}
+			bytes = bytes[7:]
 		}
 	}
 }

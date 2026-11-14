@@ -38,6 +38,11 @@ first commits, for code built from its source before the release.
   in the API and its errors.
 - `ByteBuffer` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
+- `TableWriter`'s array setters no longer move the writer to the heap where
+  they're inlined into their caller. They passed the writer to a generic
+  function, which Go's compiler assumes keeps it when it's called from
+  another package. The code that tafla-gen generates writes the Go
+  comparison suite's document in 1 allocation rather than 2.
 
 ### Fixed
 
