@@ -6,7 +6,7 @@ pass but for the behaviours that writing at set time changes."""
 
 import unittest
 from array import array
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from typing import Any
 from unittest.mock import patch
@@ -78,7 +78,7 @@ def building_with(builder: Builder) -> Generator[Any]:
 
 
 @contextmanager
-def big_endian_everywhere() -> Iterator[None]:
+def big_endian_everywhere() -> Generator[None]:
     """Treats the host as big-endian for the native classes, as
     ``big_endian_host()`` does with the native implementation, and for the
     pure-Python prototypes, which work with either"""
@@ -91,7 +91,7 @@ class _Raised(Exception):
 
 
 @contextmanager
-def fills_raising_at(call: int | None) -> Iterator[None]:
+def fills_raising_at(call: int | None) -> Generator[None]:
     """Makes the ``call``th fill of a table nested in place set half its
     fields and raise ``_Raised``"""
     fill = tables._set_fields_in_place

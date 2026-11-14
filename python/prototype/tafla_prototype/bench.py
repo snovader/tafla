@@ -93,9 +93,9 @@ def codec_of(builder: Builder, copy: str) -> Codec:
     module = types.ModuleType(f"tafla_codec_{copy}")
     source = Path(tafla_codec.__file__).read_text(encoding="utf-8")
     exec(compile(source, f"<tafla codec, {copy}>", "exec"), module.__dict__)  # noqa: S102
-    module.TableBuilder = builder.cls
+    module.__dict__["TableBuilder"] = builder.cls
 
-    return module.TAFLA
+    return module.__dict__["TAFLA"]
 
 
 def variants() -> list[Variant]:

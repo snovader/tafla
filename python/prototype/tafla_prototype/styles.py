@@ -12,6 +12,7 @@ import sys
 from collections.abc import Callable
 from struct import Struct
 from time import perf_counter_ns
+from types import FunctionType
 from typing import Any
 
 FIELDS = 100
@@ -115,7 +116,7 @@ def module_functions() -> bytearray:
     return data
 
 
-STYLES: tuple[Callable[[], bytearray], ...] = (
+STYLES: tuple[FunctionType, ...] = (
     struct_pack_append,
     struct_pack_append_again,
     struct_pack_extend,

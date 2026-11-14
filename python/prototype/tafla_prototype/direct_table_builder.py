@@ -75,6 +75,10 @@ when it's set, as the C++ prototype keeps"""
 # written, as TableWriter appends them
 _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 
+# typeshed's bytearray takes bytes for a slice, where it takes any buffer, so
+# ty is told to ignore the buffers that the preallocated builder assigns,
+# rather than a cast() adding a call to each
+
 # Comparisons rather than max() for alignments, and counted indices rather
 # than enumerate(), as in tafla.TableBuilder, which found them faster
 
@@ -1150,7 +1154,7 @@ class PreallocatedTableBuilder:
             self.__end = end
             self.__hold(data, byte_length)
         else:
-            buffer[end : end + byte_length] = data
+            buffer[end : end + byte_length] = data  # ty: ignore[invalid-assignment]
             self.__end = end + byte_length
         self.__index = index + 1
         if alignment > self.__alignment:  # noqa: PLR1730
@@ -1478,7 +1482,7 @@ class PreallocatedTableBuilder:
             self.__end = end
             self.__hold(elements, byte_length)
         else:
-            data[end : end + byte_length] = elements
+            data[end : end + byte_length] = elements  # ty: ignore[invalid-assignment]
             self.__end = end + byte_length
         self.__index = index + 1
         if item_size > self.__alignment:  # noqa: PLR1730
@@ -1507,7 +1511,7 @@ class PreallocatedTableBuilder:
         else:
             end = self.__end
             data = self.__room(byte_length)
-            data[end : end + byte_length] = table
+            data[end : end + byte_length] = table  # ty: ignore[invalid-assignment]
             self.__end = end + byte_length
 
     def __append_builder(self, nested: PreallocatedTableBuilder) -> None:
