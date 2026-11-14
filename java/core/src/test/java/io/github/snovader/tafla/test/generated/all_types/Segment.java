@@ -53,7 +53,19 @@ public record Segment(Point start, Point end) {
             );
         }
 
-        return new Segment(Point.read(view, offset), Point.read(view, offset + 8));
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Segment} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Segment readUnchecked(ByteBuffer view, int offset) {
+        return new Segment(
+            Point.readUnchecked(view, offset),
+            Point.readUnchecked(view, offset + 8)
+        );
     }
 
     /** {@return the bytes of {@code Segment}s one after another, as an array of them holds them} */

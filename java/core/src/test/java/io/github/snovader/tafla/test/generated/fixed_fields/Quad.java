@@ -66,6 +66,15 @@ public record Quad(double a, double b, double c, double d, double e, double f, d
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Quad} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Quad readUnchecked(ByteBuffer view, int offset) {
         return new Quad(
             view.getDouble(offset),
             view.getDouble(offset + 8),

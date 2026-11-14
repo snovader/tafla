@@ -57,6 +57,15 @@ public record Vec2(float x, float y) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Vec2} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Vec2 readUnchecked(ByteBuffer view, int offset) {
         return new Vec2(view.getFloat(offset), view.getFloat(offset + 4));
     }
 

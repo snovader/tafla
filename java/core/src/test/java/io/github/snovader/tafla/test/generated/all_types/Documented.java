@@ -74,6 +74,15 @@ public record Documented(short one, int two, long undocumented) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Documented} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Documented readUnchecked(ByteBuffer view, int offset) {
         return new Documented(
             (short) Byte.toUnsignedInt(view.get(offset)),
             Short.toUnsignedInt(view.getShort(offset + 1)),

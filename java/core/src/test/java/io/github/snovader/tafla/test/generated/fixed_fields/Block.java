@@ -58,11 +58,20 @@ public record Block(Quad first, Quad second, Quad third, Quad fourth) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Block} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Block readUnchecked(ByteBuffer view, int offset) {
         return new Block(
-            Quad.read(view, offset),
-            Quad.read(view, offset + 64),
-            Quad.read(view, offset + 128),
-            Quad.read(view, offset + 192)
+            Quad.readUnchecked(view, offset),
+            Quad.readUnchecked(view, offset + 64),
+            Quad.readUnchecked(view, offset + 128),
+            Quad.readUnchecked(view, offset + 192)
         );
     }
 

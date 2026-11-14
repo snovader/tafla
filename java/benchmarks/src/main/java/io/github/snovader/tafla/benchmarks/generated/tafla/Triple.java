@@ -61,6 +61,15 @@ public record Triple(float value, float first, float second) {
             );
         }
 
+        return readUnchecked(view, offset);
+    }
+
+    /**
+     * Reads a {@code Triple} at {@code offset} in a little-endian view, without checking
+     * that the view holds it, as its caller has: {@code read()} by its bounds, and an array's
+     * view by its index
+     */
+    static Triple readUnchecked(ByteBuffer view, int offset) {
         return new Triple(
             view.getFloat(offset),
             view.getFloat(offset + 4),

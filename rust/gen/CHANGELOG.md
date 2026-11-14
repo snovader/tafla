@@ -122,6 +122,11 @@ first commits, for code built from its source before the release.
   tables in 0.64 µs rather than 1.13 µs, and its array of 100 structs in
   0.20 µs rather than 0.53 µs, allocating 2.9 KB rather than 6.4 KB and
   5.7 KB.
+- Generated Java views of arrays of structs read a struct with its
+  package-private `readUnchecked()`, after checking its index, rather than
+  with `read()`, which checked its bounds again. `read()` checks them as
+  before. Java's comparison suite read every struct of its array of 100
+  through the view 3% faster, in 0.066 µs rather than 0.068 µs.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every
