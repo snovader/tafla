@@ -245,99 +245,115 @@ they rather than this module would change.
 
 ## Results
 
-One full run on 2026-11-11, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
-with Go 1.27.4. It took 1 minute 17 seconds, after the quick pass. Other
-processes kept the 1-minute load average at 3.98 when it started and 4.41
-when it ended, on the 10 cores. The median round was within 5% of the
-fastest for 60 of the 102 benchmarks' variants, and within 10% for 93, with
-a median of 4.2% and a largest of 25.9%, vtprotobuf's write of the vector.
-The A/A pair agreed within 0.3%.
+One full run on 2026-11-14, of main at 0529dbd, on an Apple M2 Pro with
+32 GB in macOS 27.0.1, with Go 1.27.4. It took 1 minute 14 seconds, after
+the quick pass. Other processes kept the 1-minute load average at 3.11 when
+it started and 3.63 when it ended, and no higher in between, on the 10
+cores. The median round was within 5% of the fastest for 80 of the 99
+benchmarks' variants, and within 10% for 97, with a median of 3.1% and a
+largest of 13.8%, vtprotobuf's write of the vector. The A/A pair agreed
+within 0.5%. A second full run, after a run of the comparison at c43286c,
+is an A/A pair of the whole run. The load average fell from 2.93 to 2.18
+while it ran, and it was faster for 91 of the variants, by 2.8% at the
+median. Its fastest rounds were within 5% of these for 79 of the variants,
+and at most 14.5% apart, vtprotobuf's read of the vector.
 
 Fastest round in µs per call, and its ratio to tafla's:
 
-| Benchmark                                          | tafla   | tafla-gen        | flatbuffers       | protobuf         | vtprotobuf       | msgpack            | encoding/binary  |
-| -------------------------------------------------- | ------: | ---------------: | ----------------: | ---------------: | ---------------: | -----------------: | ---------------: |
-| record: serialize                                  |  0.0874 |  0.0555 (0.635×) |    0.211 (2.416×) |  0.0929 (1.063×) |  0.0253 (0.290×) |     0.174 (1.989×) |                  |
-| record: deserialize                                |  0.0274 |  0.0300 (1.095×) |   0.0280 (1.025×) |  0.0991 (3.621×) |  0.0275 (1.005×) |     0.251 (9.171×) |                  |
-| document of 100 rows: serialize                    |   0.284 |   0.202 (0.710×) |    2.078 (7.313×) |   0.803 (2.826×) |   0.683 (2.405×) |     5.888 (20.72×) |                  |
-| document of 100 rows: deserialize                  |  0.0615 |  0.0663 (1.078×) |    1.472 (23.92×) |   0.975 (15.85×) |   0.968 (15.73×) |     8.404 (136.6×) |                  |
-| document of 100 rows: sum a column per element     |  0.0780 |  0.0798 (1.023×) |    0.446 (5.718×) |   1.075 (13.78×) |   1.045 (13.39×) |     8.512 (109.1×) |                  |
-| document of 100,000 rows: serialize                |   45.00 |   44.29 (0.984×) |   1306.7 (29.04×) |   585.3 (13.01×) |   642.2 (14.27×) |    5186.4 (115.2×) |                  |
-| document of 100,000 rows: deserialize              |  0.0610 |  0.0658 (1.078×) | 1261.1 (20678.6×) | 692.2 (11350.3×) | 884.5 (14503.1×) | 7304.2 (119769.2×) |                  |
-| document of 100,000 rows: sum a column per element |   88.66 |   88.87 (1.002×) |    413.8 (4.667×) |   786.7 (8.873×) |   960.6 (10.83×) |    7385.9 (83.30×) |                  |
-| vector of 100 nested tables: serialize             |   9.719 |   2.630 (0.271×) |    5.807 (0.597×) |   7.257 (0.747×) |   3.520 (0.362×) |     10.46 (1.076×) |                  |
-| vector of 100 nested tables: deserialize           |   1.609 |   2.127 (1.322×) |    2.286 (1.421×) |   9.006 (5.597×) |   3.888 (2.417×) |     15.14 (9.409×) |                  |
-| array of 100 structs: serialize                    |   0.341 |   0.311 (0.910×) |    1.981 (5.804×) |   4.199 (12.30×) |   1.994 (5.843×) |     7.953 (23.30×) |                  |
-| array of 100 structs: deserialize                  |   0.154 |   0.220 (1.423×) |    0.693 (4.492×) |   5.564 (36.04×) |   2.409 (15.61×) |     11.51 (74.55×) |                  |
-| fixed-size record: serialize                       | 0.00885 | 0.00929 (1.050×) |    0.148 (16.78×) |  0.0656 (7.410×) |  0.0146 (1.647×) |     0.147 (16.63×) | 0.00879 (0.993×) |
-| fixed-size record: deserialize                     | 0.00322 | 0.00289 (0.896×) |   0.0120 (3.717×) |  0.0616 (19.11×) |  0.0130 (4.030×) |     0.195 (60.57×) | 0.00194 (0.603×) |
+| Benchmark                                             | tafla   | tafla-gen        | flatbuffers       | protobuf         | vtprotobuf       | msgpack            | encoding/binary  |
+| ----------------------------------------------------- | ------: | ---------------: | ----------------: | ---------------: | ---------------: | -----------------: | ---------------: |
+| record: serialize                                     |  0.0850 |  0.0180 (0.212×) |    0.203 (2.382×) |  0.0915 (1.076×) |  0.0246 (0.290×) |     0.169 (1.983×) |                  |
+| record: deserialize                                   |  0.0279 |  0.0199 (0.713×) |   0.0271 (0.970×) |  0.0957 (3.425×) |  0.0276 (0.987×) |     0.255 (9.115×) |                  |
+| document of 100 rows: serialize                       |   0.287 |   0.188 (0.654×) |    1.914 (6.658×) |   0.780 (2.713×) |   0.651 (2.265×) |     5.965 (20.75×) |                  |
+| document of 100 rows: deserialize                     |  0.0610 |  0.0609 (0.998×) |    1.436 (23.55×) |   0.945 (15.49×) |   0.950 (15.58×) |     8.194 (134.4×) |                  |
+| document of 100 rows: sum a column per element        |  0.0769 |  0.0746 (0.970×) |    0.445 (5.787×) |   1.035 (13.46×) |   1.011 (13.15×) |     8.464 (110.1×) |                  |
+| document of 100,000 rows: serialize                   |   42.39 |   42.33 (0.999×) |   1276.5 (30.11×) |   566.0 (13.35×) |   614.4 (14.49×) |    5044.3 (119.0×) |                  |
+| document of 100,000 rows: deserialize                 |  0.0622 |  0.0621 (0.999×) | 1265.9 (20362.2×) | 674.1 (10842.8×) | 864.4 (13903.5×) | 7144.8 (114922.8×) |                  |
+| document of 100,000 rows: sum a column per element    |   86.38 |   86.68 (1.004×) |    413.2 (4.783×) |   748.9 (8.670×) |   944.4 (10.93×) |    7155.6 (82.84×) |                  |
+| document of 100,000 rows: serialize into reused bytes |         |            16.41 |                   |                  |                  |                    |                  |
+| vector of 100 nested tables: serialize                |   5.415 |  0.507 (0.0935×) |    5.808 (1.072×) |   7.435 (1.373×) |   3.769 (0.696×) |     10.52 (1.943×) |                  |
+| vector of 100 nested tables: deserialize              |   1.664 |   1.077 (0.648×) |    2.266 (1.362×) |   9.078 (5.456×) |   3.949 (2.374×) |     16.02 (9.630×) |                  |
+| array of 100 structs: serialize                       |   0.341 |   0.321 (0.940×) |    1.988 (5.825×) |   4.383 (12.84×) |   2.020 (5.917×) |     8.274 (24.24×) |                  |
+| array of 100 structs: deserialize                     |   0.153 |   0.124 (0.805×) |    0.686 (4.472×) |   5.526 (36.01×) |   2.314 (15.08×) |     11.82 (77.03×) |                  |
+| fixed-size record: serialize                          | 0.00886 | 0.00862 (0.973×) |    0.153 (17.21×) |  0.0652 (7.364×) |  0.0152 (1.715×) |     0.143 (16.16×) | 0.00881 (0.995×) |
+| fixed-size record: deserialize                        | 0.00323 | 0.00204 (0.629×) |   0.0122 (3.768×) |  0.0634 (19.61×) |  0.0128 (3.971×) |     0.203 (62.65×) | 0.00197 (0.609×) |
 
 - tafla reads a document in 61 ns, at 100 rows and at 100,000 alike, since
-  its columns are slices of the bytes, and tafla-gen in 66 ns. FlatBuffers
-  copies 100,000 rows' columns element by element in 1.26 ms, and protobuf,
-  vtprotobuf and msgpack decode every element, in 0.69, 0.88 and 7.3 ms.
-- tafla writes the large document in 45.0 µs and tafla-gen in 44.3 µs, both
-  copying the columns whole into a table of its exact length, against 0.59
-  to 5.2 ms for the libraries that write each element. Rust's tafla writes
-  it in 18 µs. Go's allocation of the 1.2 MB, which its runtime zeroes and
-  maps, took most of a CPU profile of tafla-gen's write, and copying the
-  columns 8.6% of it, though macOS's profiler attributes samples coarsely.
-- Summing the 100,000 floats takes tafla and tafla-gen 88.7 µs, bound by the
-  additions. FlatBuffers' accessor takes 414 µs, since it looks up the
+  its columns are slices of the bytes, and tafla-gen in 61 to 62 ns, reading
+  it whole with its generated `Fields()`. FlatBuffers copies 100,000 rows'
+  columns element by element in 1.27 ms, and protobuf, vtprotobuf and
+  msgpack decode every element, in 0.67, 0.86 and 7.1 ms.
+- tafla writes the large document in 42.4 µs and tafla-gen in 42.3 µs, both
+  copying the columns whole into a table of its exact length, against 0.57
+  to 5.0 ms for the libraries that write each element. Into reused bytes,
+  tafla-gen writes it in 16.4 µs, without allocating, so the other 26 µs of
+  its write into new bytes go to allocating the 1.2 MB, which Go zeroes or
+  maps fresh from the system, and to the garbage collection that it causes.
+- Summing the 100,000 floats takes tafla and tafla-gen 86 µs, bound by the
+  additions. FlatBuffers' accessor takes 413 µs, since it looks up the
   column in the table's vtable at every element. protobuf, vtprotobuf and
   msgpack decode the whole document first.
-- tafla-gen writes the record in 55.5 ns and tafla's builder in 87 ns,
-  against vtprotobuf's 25 ns and protobuf's 93 ns. About 15 ns of
-  tafla-gen's is the allocation of its bytes, as of vtprotobuf's. The rest
-  is the sizer's and the writer's work for each field: the compiled code
-  loads and stores their fields in memory at every field, rather than
-  keeping them in registers. Into reused bytes, the write took 39 ns, of
-  which creating the sizer and counting the fields took 11 ns. tafla reads the record in
-  27 ns, tafla-gen in 30 ns, FlatBuffers in 28 ns and vtprotobuf in 28 ns,
-  with an allocation of its string.
+- tafla-gen writes the record fastest, in 18.0 ns, against vtprotobuf's
+  25 ns, tafla's builder's 85 ns and protobuf's 92 ns. It lays out the
+  record's fields at positions that the generator works out, in the bytes
+  that `AppendTable()` returns, without a sizer and a writer, and allocates
+  only those 64 bytes, as vtprotobuf allocates its 48. It reads the record
+  fastest too, in 20 ns, whole with `Fields()`, against tafla's 28 ns,
+  FlatBuffers' 27 ns and vtprotobuf's 28 ns, with an allocation of its
+  string.
 - The vector of 100 nested tables is the shape that tafla's builders handle
-  worst, as in the other languages: 9.7 µs, with a builder and an allocation
-  for each of its 200 tables. tafla-gen writes it fastest, in 2.6 µs and 2
-  allocations: the table's bytes, and the slice of the items' generated
-  fields that the codec collects from the workload's. vtprotobuf takes
-  3.5 µs, FlatBuffers 5.8 µs and protobuf 7.3 µs. tafla reads it in 1.6 µs,
-  against tafla-gen's 2.1 µs, whose getter collects the items' readers into
-  a slice first, FlatBuffers' 2.3 µs and vtprotobuf's 3.9 µs.
-- tafla writes the 100 structs in 0.34 µs and tafla-gen in 0.31 µs, against
-  9.7 and 2.6 µs for the same items as nested tables, and reads them in
-  0.15 and 0.22 µs. FlatBuffers writes its vector of structs in 2.0 µs and
-  reads it in 0.69 µs. protobuf and vtprotobuf write and read a message for
-  each struct, in 2.0 to 5.6 µs.
-- tafla and `encoding/binary` write the fixed-size record in 8.8 ns alike,
-  with the same code, most of it the allocation of its 12 bytes. Reading it
-  takes `encoding/binary` 1.9 ns, tafla-gen 2.9 ns and tafla's `ByteBuffer`
-  getters 3.2 ns, which return an error for each read.
+  worst, as in the other languages. The `tafla` codec records the items in
+  place, in 5.4 µs and 6 allocations, against 9.9 µs and 204 allocations
+  from a builder for each item and each item's pair, as c43286c's
+  comparison nested them, timed straight after this run. tafla-gen writes
+  it fastest, in 0.51 µs and 2 allocations: the table's bytes, and the slice
+  of the items' generated fields that the codec collects from the
+  workload's. Each item is a table of only fixed-size fields, which the
+  generated code writes whole, at positions that the generator works out.
+  vtprotobuf takes 3.8 µs, FlatBuffers 5.8 µs and protobuf 7.4 µs. tafla-gen
+  reads it fastest too, in 1.08 µs, each item whole through its getter's
+  view, against tafla's 1.66 µs, FlatBuffers' 2.27 µs and vtprotobuf's
+  3.95 µs.
+- tafla writes the 100 structs in 0.34 µs and tafla-gen in 0.32 µs, against
+  5.4 and 0.51 µs for the same items as nested tables. tafla reads them in
+  0.15 µs, with `encoding/binary` from `GetStructArray()`'s bytes, and
+  tafla-gen in 0.12 µs, from its view's `Slice()`, which returns the structs
+  in place. FlatBuffers writes its vector of structs in 2.0 µs and reads it
+  in 0.69 µs. protobuf and vtprotobuf write and read a message for each
+  struct, in 2.0 to 5.5 µs.
+- tafla, tafla-gen and `encoding/binary` write the fixed-size record in 8.6
+  to 8.9 ns, with the same calls, most of it the allocation of its 12 bytes.
+  Reading it takes `encoding/binary` and tafla-gen 2.0 ns, and tafla's
+  `ByteBuffer` getters 3.2 ns, which return an error for each read.
 
-Bytes allocated per call, and the allocations that ask for them:
+Bytes allocated per call, and the allocations that ask for them, on average
+over the calls where they don't all allocate alike:
 
-| Benchmark                                          | tafla         | tafla-gen     | flatbuffers    | protobuf      | vtprotobuf    | msgpack        | encoding/binary |
-| -------------------------------------------------- | ------------: | ------------: | -------------: | ------------: | ------------: | -------------: | --------------: |
-| record: serialize                                  |       240 (2) |        64 (1) |        392 (8) |       128 (2) |        48 (1) |        160 (3) |                 |
-| record: deserialize                                |         0 (0) |         0 (0) |         16 (1) |        96 (2) |        16 (1) |        112 (3) |                 |
-| document of 100 rows: serialize                    |     1,760 (3) |     1,504 (2) |     7,160 (17) |     1,488 (3) |     1,280 (1) |      4,193 (8) |                 |
-| document of 100 rows: deserialize                  |         0 (0) |         0 (0) |      1,296 (5) |     1,472 (6) |     1,392 (5) |     2,889 (18) |                 |
-| document of 100 rows: sum a column per element     |         0 (0) |         0 (0) |         32 (1) |     1,472 (6) |     1,392 (5) |     2,889 (18) |                 |
-| document of 100,000 rows: serialize                | 1,204,577 (3) | 1,204,320 (2) | 7,149,305 (37) | 1,188,048 (3) | 1,187,840 (1) | 4,195,381 (20) |                 |
-| document of 100,000 rows: deserialize              |         0 (0) |         0 (0) |  1,204,272 (5) | 1,204,448 (6) | 1,204,368 (5) | 2,409,548 (19) |                 |
-| document of 100,000 rows: sum a column per element |         0 (0) |         0 (0) |         32 (1) | 1,204,448 (6) | 1,204,368 (5) | 2,409,652 (20) |                 |
-| vector of 100 nested tables: serialize             |  29,520 (204) |     4,736 (2) |    14,368 (19) |  14,208 (203) |  14,144 (202) |      8,202 (9) |                 |
-| vector of 100 nested tables: deserialize           |     1,280 (1) |     4,736 (2) |      1,280 (1) |  14,712 (210) |  14,648 (209) |      2,705 (7) |                 |
-| array of 100 structs: serialize                    |     2,640 (3) |     2,560 (2) |     7,040 (16) |   9,152 (103) |   9,088 (102) |      5,385 (9) |                 |
-| array of 100 structs: deserialize                  |     1,280 (1) |     1,280 (1) |      1,280 (1) |   9,912 (110) |   9,848 (109) |    6,409 (109) |                 |
-| fixed-size record: serialize                       |        16 (1) |        16 (1) |        200 (6) |        80 (2) |        16 (1) |        128 (3) |          16 (1) |
-| fixed-size record: deserialize                     |         0 (0) |         0 (0) |          0 (0) |        64 (1) |         0 (0) |         64 (2) |           0 (0) |
+| Benchmark                                             | tafla            | tafla-gen     | flatbuffers    | protobuf      | vtprotobuf    | msgpack           | encoding/binary |
+| ----------------------------------------------------- | ---------------: | ------------: | -------------: | ------------: | ------------: | ----------------: | --------------: |
+| record: serialize                                     |          240 (2) |        64 (1) |        392 (8) |       128 (2) |        48 (1) |           160 (3) |                 |
+| record: deserialize                                   |            0 (0) |         0 (0) |         16 (1) |        96 (2) |        16 (1) |           112 (3) |                 |
+| document of 100 rows: serialize                       |        1,840 (3) |     1,408 (1) |     7,160 (17) |     1,488 (3) |     1,280 (1) |         4,193 (8) |                 |
+| document of 100 rows: deserialize                     |            0 (0) |         0 (0) |      1,296 (5) |     1,472 (6) |     1,392 (5) |        2,889 (18) |                 |
+| document of 100 rows: sum a column per element        |            0 (0) |         0 (0) |         32 (1) |     1,472 (6) |     1,392 (5) |        2,889 (18) |                 |
+| document of 100,000 rows: serialize                   | 1,204,657 (3.01) | 1,204,224 (1) | 7,149,306 (37) | 1,188,048 (3) | 1,187,840 (1) | 4,194,909 (19.33) |                 |
+| document of 100,000 rows: deserialize                 |            0 (0) |         0 (0) |  1,204,272 (5) | 1,204,448 (6) | 1,204,368 (5) |    2,409,548 (19) |                 |
+| document of 100,000 rows: sum a column per element    |            0 (0) |         0 (0) |         32 (1) | 1,204,448 (6) | 1,204,368 (5) |    2,409,548 (19) |                 |
+| document of 100,000 rows: serialize into reused bytes |                  |         0 (0) |                |               |               |                   |                 |
+| vector of 100 nested tables: serialize                |       17,552 (6) |     4,736 (2) |    14,368 (19) |  14,208 (203) |  14,144 (202) |         8,202 (9) |                 |
+| vector of 100 nested tables: deserialize              |        1,280 (1) |     1,280 (1) |      1,280 (1) |  14,712 (210) |  14,648 (209) |         2,705 (7) |                 |
+| array of 100 structs: serialize                       |        2,640 (3) |     2,560 (2) |     7,040 (16) |   9,152 (103) |   9,088 (102) |         5,385 (9) |                 |
+| array of 100 structs: deserialize                     |        1,280 (1) |     1,280 (1) |      1,280 (1) |   9,912 (110) |   9,848 (109) |       6,409 (109) |                 |
+| fixed-size record: serialize                          |           16 (1) |        16 (1) |        200 (6) |        80 (2) |        16 (1) |           128 (3) |          16 (1) |
+| fixed-size record: deserialize                        |            0 (0) |         0 (0) |          0 (0) |        64 (1) |         0 (0) |            64 (2) |           0 (0) |
 
-The `tafla` codec's builders allocate a builder for each table besides the
-table's bytes, and `SetTable()` writes a nested builder straight into its
-parent's bytes. tafla-gen allocates only the table's bytes, and the slices of
-generated fields or structs that its codec collects from the workloads'
-types. Neither allocates to read the record or a document: strings and
-columns share the bytes.
+The `tafla` codec allocates the builder and the table's bytes, and what the
+builder needs to record nested tables in place: 6 allocations for the
+vector's 200 tables, where a builder for each took 204. tafla-gen allocates
+only the table's bytes, and the slices of generated fields or structs that
+its codec collects from the workloads' types, and nothing into reused bytes.
+Neither allocates to read the record or a document: strings and columns
+share the bytes.
 
 `go run ./cmd/encoding` printed:
 
@@ -380,24 +396,23 @@ The four groups that read tafla's items, from the same run.
 
 Fastest round in µs, and its ratio to `ByteBuffer`'s by hand:
 
-| Benchmark                                       | tafla   | tafla-gen      | tafla-gen view  | tafla-gen view A/A |
-| ----------------------------------------------- | ------: | -------------: | --------------: | -----------------: |
-| vector of 100 nested tables: read the last item |  0.0281 | 0.614 (21.87×) | 0.0345 (1.228×) |    0.0344 (1.224×) |
-| vector of 100 nested tables: sum every item     |   1.454 | 2.105 (1.448×) |  1.785 (1.228×) |     1.788 (1.230×) |
-| array of 100 structs: read the last item        | 0.00974 | 0.182 (18.64×) | 0.0104 (1.064×) |    0.0104 (1.063×) |
-| array of 100 structs: sum every item            |   0.117 | 0.267 (2.280×) |  0.133 (1.138×) |     0.133 (1.137×) |
+| Benchmark                                       | tafla   | tafla-gen        | tafla-gen A/A    |
+| ----------------------------------------------- | ------: | ---------------: | ---------------: |
+| vector of 100 nested tables: read the last item |  0.0286 |  0.0241 (0.843×) |  0.0242 (0.846×) |
+| vector of 100 nested tables: sum every item     |   1.457 |   0.893 (0.613×) |   0.893 (0.613×) |
+| array of 100 structs: read the last item        | 0.00967 | 0.00749 (0.774×) | 0.00749 (0.774×) |
+| array of 100 structs: sum every item            |   0.115 |  0.0697 (0.604×) |  0.0698 (0.605×) |
 
-Only tafla-gen's getters allocate: 3,456 bytes, a slice of the 100 items'
-readers, and 1,280 bytes, a slice of the 100 structs.
+None of them allocates.
 
-- `All()` of the vector's view sums every item in 1.79 µs, against 1.45 µs
-  by hand, and `Get()` reads the last item in 34 ns, against 28 ns. Both of
-  the view's iterators inline into the loop. Its items' getters don't: each
-  reads with `FieldOffset()` and a getter, whose cost together exceeds the
-  compiler's budget for inlining, so the loop calls one getter for each of
-  an item's four fields, where the hand-written loop calls one function for
-  each item. The getter of the vector collects every item's reader into a
-  slice first, so it takes 0.61 µs for the last item, and 2.1 µs for all.
-- The view of the array of structs reads the last struct in 10.4 ns, against
-  9.7 ns by hand, and sums every struct in 133 ns, against 117 ns. The getter
-  collects every struct into a slice first: 182 and 267 ns.
+- tafla-gen's views read the items faster than `ByteBuffer`'s getters by
+  hand. `All()` of the vector's view sums every item in 0.89 µs, against
+  1.46 µs by hand, and `Get()` reads the last item in 24 ns, against 29 ns.
+  Each item's generated `Fields()` reads its fields' offsets with
+  `Uint32FieldOffset()`, which inlines, at the slots that the generator
+  knows, where the hand-written loop calls `ByteBuffer.FieldOffset()` for
+  each.
+- The view of the array of structs returns the last struct by value in
+  7.5 ns, against 9.7 ns by hand, and its `Slice()` returns every struct in
+  place, which it sums in 70 ns, against 115 ns by hand with
+  `encoding/binary`.

@@ -112,9 +112,10 @@ with the code that tafla-gen generates.
   function sets the fields on, rather than from a builder of its own. They
   write the bytes that nested builders write, and leave the builder as it
   was if the function returns an error or leaves fields unset. The
-  benchmarks' vector of 100 nested tables took about 5.8 µs so, in 6
-  allocations, against 10.3 µs and 204 allocations from a builder per item,
-  and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
+  benchmarks' vector of 100 nested tables took 5.4 µs so, in 6 allocations,
+  and 5.8 µs through FlatBuffers, against 9.9 µs and 204 allocations from a
+  builder per item, as the comparison at c43286c wrote it, run straight
+  after on 2026-11-14. A table nested from a builder or bytes,
   with `SetTable()` and `SetVector()`, is still what a table built
   elsewhere, or reused, needs.
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
