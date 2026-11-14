@@ -33,7 +33,7 @@ nested tables, `StructsBenchmark` for the array of structs and
 what it does with a truncated document, as the TypeScript comparison does.
 
 `ItemAccessBenchmark` times only tafla's bytes of the vector of nested tables
-and of the array of structs, read in three ways: the last item alone, which a
+and of the array of structs, read in two ways: the last item alone, which a
 reader can find without reading the others, and every item. Each way sums the
 three float32s of the items it reads as doubles, rather than creating objects
 of its own, and `ItemAccesses` holds them:
@@ -41,11 +41,10 @@ of its own, and `ItemAccesses` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`'s
   view with `getFloat()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into a `List` or an array first.
-- **tafla-gen view** reads with the generated views, `itemsView()`, lazy
-  `List`s whose `get(i)` reads one item, in a loop of `get(i)` for every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views, lazy `List`s whose `get(i)` reads one item, in a loop of `get(i)` for
+  every item.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows
   JMH's noise.
 
 ### What differs from TypeScript
@@ -92,10 +91,11 @@ comparison uses its counterpart:
   `io.github.snovader.tafla.benchmarks.generated.tafla`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then
   writes every field, nested tables included, into an array of that length
-  with a `TableWriter`. Its readers read each field with a getter. Its
-  getters of arrays return copies, so it sums a column through the column's
-  view, `aView()`, which reads the elements in place, as the other
-  languages' generated getters return them. It
+  with a `TableWriter`. Its readers read each field with a getter. The
+  getters of the vector and of the array of structs return views, which read
+  each item as it's asked for. Its getters of arrays of scalars return copies,
+  so it sums a column through the column's view, `aView()`, which reads the
+  elements in place, as the other languages' generated getters return them. It
   takes the workloads' records, as the other codecs do, so it creates the
   generated `Fields` records, and the `Triple` and `Sample` records, from them
   in each call, as the protobuf codec builds its messages, and creates the

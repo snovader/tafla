@@ -2,6 +2,7 @@
 package io.github.snovader.tafla.test.generated.all_types;
 
 import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.TableSizer;
 import io.github.snovader.tafla.TableWriter;
 
@@ -46,19 +47,13 @@ public final class Path {
         return Point.read(buffer.bytes(), buffer.fieldOffset(position, 0));
     }
 
-    public Point[] points() {
-        var view = buffer.getStructArray(buffer.fieldOffset(position, 1), Point.SIZE);
-        var items = new Point[view.remaining() / Point.SIZE];
-
-        for (int i = 0; i < items.length; i++) {
-            items[i] = Point.read(view, i * Point.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of {@code points()}, reading each one when it's asked for */
-    public PointArray pointsView() {
+    /**
+     * Views the items, reading each one when it's asked for, so that an item whose bytes are
+     * corrupt throws a {@code DecodeException} when it's read, rather than here
+     *
+     * @throws DecodeException if the count or the structs aren't within the bytes
+     */
+    public PointArray points() {
         return new PointArray(buffer, buffer.fieldOffset(position, 1));
     }
 

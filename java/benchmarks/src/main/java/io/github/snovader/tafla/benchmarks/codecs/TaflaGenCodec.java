@@ -21,10 +21,11 @@ import java.util.Arrays;
  *
  * <p>The generated code writes from records of each table's fields and of the structs, which
  * {@code serialize()} creates from the workloads' inputs in each call, as the protobuf codec
- * creates its messages. Reading creates the workloads' records from the generated readers' values,
- * after the generated readers create the structs' own. Its getters of arrays return copies, so it
- * sums a column through the column's view, {@code aView()}, which reads the elements in place, as
- * the other languages' generated getters return them.</p>
+ * creates its messages. Reading creates the workloads' records from the generated readers' values.
+ * The getters of the vector and of the array of structs return views, which read each item, a
+ * reader or a record, as it's asked for. Its getters of arrays of scalars return copies, so it sums
+ * a column through the column's view, {@code aView()}, which reads the elements in place, as the
+ * other languages' generated getters return them.</p>
  */
 public final class TaflaGenCodec {
     private TaflaGenCodec() {}
@@ -129,9 +130,9 @@ public final class TaflaGenCodec {
         public ListInput deserialize(byte[] bytes) {
             var triples = new Triples(bytes).items();
 
-            var items = new ItemInput[triples.length];
+            var items = new ItemInput[triples.size()];
             for (int i = 0; i < items.length; i++) {
-                var triple = triples[i];
+                var triple = triples.get(i);
                 items[i] = new ItemInput(triple.value(), triple.first(), triple.second());
             }
 
