@@ -235,6 +235,23 @@ describe.each(SHAPES)('%s', (_, shapes) => {
                 expectViewReadsWithin(bytes => new shapes.ItemList(bytes), bytes, byteOffset);
             }
         );
+
+        it('should view a vector with a corrupt item, and throw DecodeError when that item is read', () => {
+            const items = [
+                { value: 1.5, pair: { first: 2.5, second: 3.5 } },
+                { value: 4.5, pair: { first: 5.5, second: 6.5 } }
+            ];
+            const bytes = shapes.ItemList.serialize({ items });
+            // The vector at 4 holds its count and its items' ends, the second's
+            // at 12, which then ends past the bytes
+            expect(bytes.subarray(4, 8)).toStrictEqual(new Uint8Array([2, 0, 0, 0]));
+            bytes.set([0xff, 0xff, 0, 0], 12);
+            const view = new shapes.ItemList(bytes).items();
+
+            expect(view.length()).toBe(2);
+            expect(readItem(view.get(0))).toEqual(items[0]);
+            expect(() => view.get(1)).toThrow(DecodeError);
+        });
     });
 
     describe('reading in place', () => {
@@ -250,7 +267,6 @@ describe.each(SHAPES)('%s', (_, shapes) => {
             const itemList = new shapes.ItemList(bytes);
 
             expect(readItemList(itemList)).toEqual({ items: [item] });
-            expect(readItem(itemList.itemsView().get(0))).toEqual(item);
         });
     });
 
@@ -412,9 +428,9 @@ function expectViewReadsWithin(
  * DecodeError of the view itself
  */
 function readItemsView(itemList: ItemList): unknown[] {
-    let view: ReturnType<ItemList['itemsView']>;
+    let view: ReturnType<ItemList['items']>;
     try {
-        view = itemList.itemsView();
+        view = itemList.items();
     } catch (error) {
         expect(error).toBeInstanceOf(DecodeError);
         return [error];

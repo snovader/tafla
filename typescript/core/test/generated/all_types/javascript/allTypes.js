@@ -433,28 +433,12 @@ export class Nested {
         return new Outer(this.#buffer, this.#buffer.rootOffset(1));
     }
 
-    /** @returns {Tree[]} A vector of tables that hold vectors of themselves */
-    trees() {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(2)
-        );
-        const items = new Array(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Tree(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
     /**
      * A vector of tables that hold vectors of themselves
      *
-     * Views the items of `trees()`, reading each one when it's asked for
-     *
      * @returns {TreeVector}
      */
-    treesView() {
+    trees() {
         return new TreeVector(this.#buffer, this.#buffer.rootOffset(2));
     }
 }
@@ -700,26 +684,8 @@ export class Tree {
         );
     }
 
-    /** @returns {Tree[]} */
+    /** @returns {TreeVector} */
     children() {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-        const items = new Array(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Tree(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /**
-     * Views the items of `children()`, reading each one when it's asked for
-     *
-     * @returns {TreeVector}
-     */
-    childrenView() {
         return new TreeVector(
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)
@@ -1085,29 +1051,12 @@ export class Structs {
         return new Packed(this.#buffer.bytes(), this.#buffer.rootOffset(0));
     }
 
-    /** @returns {Documented[]} An array of structs of 7 bytes, aligned to 4 */
-    documented() {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(1),
-            Documented.SIZE
-        );
-        const items = new Array(bytes.length / Documented.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Documented(bytes, i * Documented.SIZE);
-        }
-
-        return items;
-    }
-
     /**
      * An array of structs of 7 bytes, aligned to 4
      *
-     * Views the items of `documented()`, reading each one when it's asked for
-     *
      * @returns {DocumentedArray}
      */
-    documentedView() {
+    documented() {
         return new DocumentedArray(this.#buffer, this.#buffer.rootOffset(1));
     }
 
@@ -1116,27 +1065,8 @@ export class Structs {
         return new Segment(this.#buffer.bytes(), this.#buffer.rootOffset(2));
     }
 
-    /** @returns {Segment[]} */
+    /** @returns {SegmentArray} */
     segments() {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(3),
-            Segment.SIZE
-        );
-        const items = new Array(bytes.length / Segment.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Segment(bytes, i * Segment.SIZE);
-        }
-
-        return items;
-    }
-
-    /**
-     * Views the items of `segments()`, reading each one when it's asked for
-     *
-     * @returns {SegmentArray}
-     */
-    segmentsView() {
         return new SegmentArray(this.#buffer, this.#buffer.rootOffset(3));
     }
 
@@ -1229,27 +1159,8 @@ export class Path {
         );
     }
 
-    /** @returns {Point[]} */
+    /** @returns {PointArray} */
     points() {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.fieldOffset(this.#position, 1),
-            Point.SIZE
-        );
-        const items = new Array(bytes.length / Point.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Point(bytes, i * Point.SIZE);
-        }
-
-        return items;
-    }
-
-    /**
-     * Views the items of `points()`, reading each one when it's asked for
-     *
-     * @returns {PointArray}
-     */
-    pointsView() {
         return new PointArray(
             this.#buffer,
             this.#buffer.fieldOffset(this.#position, 1)

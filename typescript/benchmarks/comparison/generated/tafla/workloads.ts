@@ -348,21 +348,7 @@ export class ItemList {
         return writer.bytes();
     }
 
-    items(): Item[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(0)
-        );
-        const items = new Array<Item>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Item(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `items()`, reading each one when it's asked for */
-    itemsView(): ItemVector {
+    items(): ItemVector {
         return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
 }
@@ -590,22 +576,7 @@ export class Triples {
         return writer.bytes();
     }
 
-    items(): Triple[] {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(0),
-            Triple.SIZE
-        );
-        const items = new Array<Triple>(bytes.length / Triple.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Triple(bytes, i * Triple.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `items()`, reading each one when it's asked for */
-    itemsView(): TripleArray {
+    items(): TripleArray {
         return new TripleArray(this.#buffer, this.#buffer.rootOffset(0));
     }
 }

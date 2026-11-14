@@ -36,7 +36,9 @@ tafla is timed twice, and both write the same bytes:
   `comparison/workloads.tafla`, in `comparison/generated/tafla/`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then writes
   every field, nested tables included, into bytes of that length with a
-  `TableWriter`. Its readers read each field with a getter. It takes the
+  `TableWriter`. Its readers read each field with a getter, and the getters
+  of the vector and of the array of structs return views of their items,
+  which read each item when `get(i)` asks for it. It takes the
   workloads' inputs, as the other codecs do, so it creates the generated
   fields of the document and of each item of the vector in each call, as the
   protobufjs codec creates its messages, and creates the workloads' outputs
@@ -47,7 +49,7 @@ Every language's suite has a copy of the schema. After changing them,
 regenerate the code as `rust/gen/README.md` describes.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
 of its own, and `comparison/itemAccess.ts` holds them:
@@ -55,12 +57,10 @@ of its own, and `comparison/itemAccess.ts` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`
   with `readFloat32()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into an array first.
-- **tafla-gen view** reads with the generated views, `itemsView()`, whose
-  `get(i)` reads one item, in a loop of `get(i)` for every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views whose `get(i)` reads one item, in a loop of `get(i)` for every item.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
+  harness's noise.
 
 Each library writes the array of structs in its own fixed-size encoding:
 FlatBuffers as a vector of structs, protobuf as a repeated message of the three

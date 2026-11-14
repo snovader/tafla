@@ -1500,26 +1500,8 @@ export class Span {
         return new Frame(this.#buffer, this.#buffer.rootOffset(2));
     }
 
-    /** @returns {Range[]} */
+    /** @returns {RangeVector} */
     ranges() {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(3)
-        );
-        const items = new Array(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Range(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /**
-     * Views the items of `ranges()`, reading each one when it's asked for
-     *
-     * @returns {RangeVector}
-     */
-    rangesView() {
         return new RangeVector(this.#buffer, this.#buffer.rootOffset(3));
     }
 }

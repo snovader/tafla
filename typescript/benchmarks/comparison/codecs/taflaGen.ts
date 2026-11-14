@@ -78,9 +78,9 @@ export const taflaGen: Codec = {
         deserialize(bytes) {
             const tables = new ItemList(bytes).items();
 
-            const items = new Array<ItemInput>(tables.length);
-            for (let i = 0; i < tables.length; i++) {
-                const item = tables[i];
+            const items = new Array<ItemInput>(tables.length());
+            for (let i = 0; i < items.length; i++) {
+                const item = tables.get(i);
                 const pair = item.pair();
 
                 items[i] = {
@@ -98,7 +98,14 @@ export const taflaGen: Codec = {
             return Triples.serialize(input);
         },
         deserialize(bytes) {
-            return { items: new Triples(bytes).items().map(fromTriple) };
+            const triples = new Triples(bytes).items();
+
+            const items = new Array<ItemInput>(triples.length());
+            for (let i = 0; i < items.length; i++) {
+                items[i] = fromTriple(triples.get(i));
+            }
+
+            return { items };
         }
     },
     sample: {

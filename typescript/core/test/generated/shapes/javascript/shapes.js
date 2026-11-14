@@ -408,26 +408,8 @@ export class ItemList {
         return writer.bytes();
     }
 
-    /** @returns {Item[]} */
+    /** @returns {ItemVector} */
     items() {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(0)
-        );
-        const items = new Array(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Item(this.#buffer, offsets[i]);
-        }
-
-        return items;
-    }
-
-    /**
-     * Views the items of `items()`, reading each one when it's asked for
-     *
-     * @returns {ItemVector}
-     */
-    itemsView() {
         return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
 }
