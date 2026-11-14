@@ -35,6 +35,13 @@ first commits, for code built from its source before the release.
   each item with the runtime's `getVectorItemOffset()`
   (`get_vector_item_offset()` in Python), from the count that they read and
   check once.
+- A generated static `write(bytes, offset, ...)` on Java's structs, which
+  writes a struct's values without creating its record, and a generated
+  `serialize(count, fill)` on Java's messages of an array of structs alone,
+  whose fill writes each struct straight into the table with it, from what
+  the caller holds, rather than from an array of records. Java's comparison
+  suite wrote its array of 100 structs so in 0.109 µs rather than 0.338 µs,
+  allocating 1.2 KB rather than 4.0 KB.
 - A generated `serializeInto(fields, bytes)` on Java's messages, which writes
   the message into the start of bytes that the caller owns and reuses, and
   returns the message's length.
@@ -49,12 +56,82 @@ first commits, for code built from its source before the release.
   of its fields, which an array of the struct is written from, so that any
   objects with those attributes write it, rather than only the struct's
   dataclass.
+- Generated Go declares `Fields()` on each message and table, which reads
+  every field at once into the `<Name>Fields` that it's written from, nested
+  tables and the items of vectors included, in one function rather than a
+  getter's call for each field, except where a vector holds tables that
+  allocate when they're read whole, so that what it allocates stays in
+  proportion to the bytes. A field named `fields` is renamed `Fields_`.
+- Generated TypeScript and JavaScript declare `fields()` on each message and
+  table whose vectors hold tables of scalars, structs and such tables, which
+  reads every field at once into the `<Name>Fields` that it's written from,
+  nested tables and the items of vectors and arrays of structs included,
+  without a reader for each, a static `read(buffer, position)` on each such
+  nested table, `fields()` on the views of their vectors and of arrays of
+  structs, and a static `read(bytes, offset)` on each struct, which reads its
+  fields without creating it. A field named `fields` takes a `_`.
+- Generated TypeScript and JavaScript views of arrays of structs have a
+  getter of each field of their structs, such as `triples.value(i)`, which
+  reads that field of struct `i` without creating the struct. A field named
+  `length`, `get` or `fields` takes a `_` there.
 - Generated Python declares `fields()` on each message and table whose
   fields are all scalars, structs and tables of them, and a string last,
   which reads every field at once into the `TypedDict` that it's written
   from, through `ByteBuffer.get_fields()`. It reads them through the getters
   when the table's offsets aren't those that its writer writes, so its values
   and errors are theirs. The getters stay lazy.
+- A generated `Read<Struct>()` beside each Go struct, which reads it from
+  the start of bytes and returns it, so that the compiler can keep it in
+  registers, where `UnmarshalBinary()` reads into a struct in memory. The
+  checker keeps declarations from taking its name. The Go comparison suite
+  reads its fixed-size record with it.
+- A generated Go `<Struct>Array` declares `AsSlice()` and `Slice()`, which
+  return its structs at once, as `tafla.ArrayView` returns arrays:
+  `AsSlice()` in place, through the Go runtime's `StructsInPlace()`, where
+  the struct's Go struct lies in memory as its bytes do on every platform,
+  with no bool, and the bytes are aligned to it on a little-endian host, and
+  `Slice()` in place where it can, and otherwise a copy. `Fields()` reads
+  arrays of structs with `Slice()`, so they share the bytes, as its arrays
+  do. The Go comparison suite reads its array of 100 structs with it.
+- Generated Python declares `field_values()` on every message and table,
+  which reads every field's value into a tuple in one call, typed by the
+  alias `<Name>FieldValues` that's declared beside `<Name>Fields`: the leading
+  fields of fixed size through `ByteBuffer.get_fields()`, and the others
+  after them, those of nested tables without such fields included, in the
+  order that the getters read them, so that its values and errors are
+  theirs. A nested table's values are in place of it when they're all of
+  fixed size, as `get_fields()` reads them, and in a tuple of their own
+  otherwise. Vectors and arrays of structs are their views. `fields()` is
+  declared too on every table whose vectors are of tables of fixed size,
+  which hold no vectors, so that it reads in proportion to the bytes. Views
+  of vectors have `field_values()` and `item_field_values(index)`, which
+  read the items' values without creating their readers.
+- Generated Python views of vectors have `iter_field_values()`, which
+  iterates over the items' values: for a table of fixed size without
+  structs, through the runtime's `ByteBuffer.iter_vector_fields()`, which
+  reads each item's end when it reaches the item, without creating the
+  items' readers, nor a list of their values.
+- Generated Python messages of only fields of fixed size, and a string
+  after them, are written in one call into bytes of their own, through the
+  runtime's `TableWriter.write_fields()`: their `serialize()` and
+  `serialize_values()` return `bytes` rather than a view of a writer's
+  `bytearray`, which other messages' still return.
+- Every generated Python message has a static `read_values(data)`, which
+  reads every field's value as `field_values()` reads them, without creating
+  a reader, and raises the reader's `DecodeError` for another format
+  version: a message of only fields of fixed size in one call, through
+  `ByteBuffer.read_fields()`, and any other from a `ByteBuffer` of its own.
+- Generated Python messages of scalars, strings, arrays and vectors of
+  tables of fixed size without structs have `serialize_values()`, which
+  writes the message from its fields' values as positional arguments, each
+  vector's as a sequence of its items' values, the tuples that its view's
+  `field_values()` reads, which `TableWriter.set_vector_tables()` writes in
+  one call. Before, only messages of scalars and a string had it.
+- Generated Python views of arrays of structs of scalars have
+  `iter_field_values()`, which iterates over the structs' values as tuples,
+  and `item_field_values(index)`, which reads one struct's, without creating
+  their dataclasses. A view reads a struct by index with one unpack, whose
+  check of the offset is the check of the index.
 
 ### Changed
 
@@ -67,16 +144,101 @@ first commits, for code built from its source before the release.
   type whose reference converts into the item's fields or struct, through a
   type parameter that defaults to the generated type, so that an application
   writes the items it holds without collecting them first.
+- A generated Rust getter of a vector or an array of structs returns the view
+  of its items, a `<Table>Vector` or a `<Struct>Array`, which reads each item
+  when it's asked for, rather than a `Vec` of every item's reader or an
+  iterator over the structs, and the `<field>_view()` getter beside it is
+  gone. An item whose bytes are corrupt fails when it's read, rather than
+  when the getter is called. A caller that wants every item at once collects
+  the view's `iter()`.
+- Generated Rust writes a nested table whose fields' sizes the schema fixes
+  whole, from the array that its `to_bytes()` returns, and sizes a vector of
+  them in one call, as Go and C++ do. A message of such fields, with or
+  without a string after them, is written whole too, at constant positions,
+  into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
+  benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
+  0.83 µs, and the record 20 ns rather than 30 ns.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,
   as a vector item's do.
+- Generated Go getters of vectors and arrays of structs return the views
+  that read each item when it's asked for, a `<Table>Vector` or a
+  `<Struct>Array`, rather than a slice of every item, and the separate
+  `<Field>View()` getters are gone. So a corrupt item fails with the decode
+  error when it's read rather than when the getter is called. Collect a view
+  with its `All()` for every item at once. The Go comparison suite reads its
+  vector of 100 nested tables in 1 allocation rather than 2.
+- Generated Go getters and views read structs by value too, a struct's
+  `MarshalBinary()` allocates exactly its size rather than appending to
+  empty bytes, and a `<Struct>Array`'s `All()` steps through its bytes,
+  without a bounds check for each struct.
+- Generated Go getters read uint32 offsets with the Go runtime's
+  `Uint32FieldOffset()`, which the compiler inlines, at the slot of each
+  field, rather than through `ByteBuffer.FieldOffset()` or `RootOffset()`, so
+  that a getter is one call rather than two.
+- The generated C++ getter of a vector or an array of structs returns its
+  view, a `<Table>Vector` or a `<Struct>Array`, which reads each item when
+  it's asked for, rather than a `std::vector` of every item, and
+  `<field>_view()` is removed. The view's `to_vector()` reads every item, as
+  the getter did. A corrupt item of a vector fails when it's read, rather than
+  when the getter is called.
+- Generated C++ getters are `TAFLA_ALWAYS_INLINE`, as the runtime's getters
+  are, and the getter of a nested table reads it through the runtime's
+  `ByteBuffer::get_table()`, so it throws a `tafla::DecodeError` when the
+  table's offset leads past the bytes, rather than returning a reader whose
+  reads all fail.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
+- Generated Java getters of vectors and arrays of structs return their views,
+  `<Table>Vector` and `<Struct>Array`, which read each item when it's asked
+  for, rather than a `List` or an array of every item, and `<field>View()` of
+  them is gone. An item whose bytes are corrupt throws a `DecodeException`
+  when it's read rather than from the getter. `List.copyOf()` or `toArray()`
+  reads every item at once. Java's comparison suite read its vector of 100
+  tables in 0.64 µs rather than 1.13 µs, and its array of 100 structs in
+  0.20 µs rather than 0.53 µs, allocating 2.9 KB rather than 6.4 KB and
+  5.7 KB.
+- Generated Java views of arrays of structs read a struct with its
+  package-private `readUnchecked()`, after checking its index, rather than
+  with `read()`, which checked its bounds again. `read()` checks them as
+  before. Java's comparison suite read every struct of its array of 100
+  through the view 3% faster, in 0.066 µs rather than 0.068 µs.
+- Generated Python getters of vectors and arrays of structs return their
+  views, `<Table>Vector` and `<Struct>Array`, which read each item when it's
+  asked for, rather than a list of every item, and `<field>_view()` is gone.
+  A list of the items is `list(view)`. An item whose bytes are corrupt raises
+  `DecodeError` when it's read, rather than when the getter is called.
+- Generated Java views of vectors iterate their items with
+  `ByteBuffer.getVectorItemEnd()`, carrying each item's end to the next, so
+  that a loop over a view reads one end for each item rather than two.
+  Java's comparison suite summed every item of its vector of 100 tables so
+  in 0.427 µs rather than 0.490 µs.
 - tafla-gen exits with 2 on wrong arguments, and 1 on a schema's errors, and
   rejects an unknown option rather than reading it as a schema. It has
   `--help`, `--version` and `--`, takes options anywhere, and reports every
   schema it can't read or write rather than stopping at the first.
+- Generated TypeScript and JavaScript getters of vectors and arrays of
+  structs return their views, a `<Table>Vector` or a `<Struct>Array`, which
+  read each item when it's asked for, rather than an array of every item, and
+  the views' own getters, `<field>View()`, are gone. A corrupt item then
+  fails with `DecodeError` when it's read, rather than when the getter is
+  called.
+- Generated TypeScript and JavaScript views of arrays of structs check an
+  index only by reading within their bytes, rather than checking it in each
+  getter, which took 12% longer to sum an array's structs: an index outside
+  the array throws `DecodeError`, which is a `RangeError`, rather than a
+  plain `RangeError`, and it must be an integer.
+- Generated TypeScript and JavaScript declare each class after the classes
+  that its code reads, rather than in the schema's order: a table after its
+  nested tables and structs and its vectors' views and items, and a view
+  after its items, except in a cycle of tables, where a vector's view comes
+  before its items. V8 reads an exported class in a method declared before
+  it through a check that it's initialized, which kept the method's receiver
+  on the heap: summing a vector of 100 nested tables through `get(i).pair()`
+  allocated each item's reader, 4,280 bytes, and took 0.908 µs in Node 27,
+  against 280 bytes and 0.825 µs now, with the runtime's inlined vector item
+  reads.
 
 ### Fixed
 

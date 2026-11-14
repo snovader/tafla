@@ -84,6 +84,70 @@ fn javascript_renames_object_members_and_then() {
     );
 }
 
+/// A TypeScript or JavaScript table reads every field with `fields()`, so a
+/// field named `fields` takes a `_`
+#[test]
+fn typescript_and_javascript_rename_fields() {
+    let schema = "message Form {\n    fields: uint8;\n}\n";
+    assert_generates(
+        "typescript",
+        schema,
+        &[
+            "    fields_(): number {",
+            "    fields(): FormFields {",
+            "    fields_: number;",
+        ],
+    );
+    assert_generates(
+        "javascript",
+        schema,
+        &[
+            "    fields_() {",
+            "    fields() {",
+            " * @property {number} fields_",
+        ],
+    );
+}
+
+/// A TypeScript or JavaScript view reads a field of its items with a getter
+/// of the field's name, so fields named after its own `length()`, `get()` and
+/// `fields()` take a `_` there, and keep their names in the item's reader
+#[test]
+fn typescript_views_rename_their_own_members() {
+    let schema = "\
+message Lists {
+    entries: [Entry];
+    spans: [Span];
+}
+
+table Entry {
+    length: uint8;
+    get: uint8;
+}
+
+struct Span {
+    length: uint32;
+    get: uint32;
+    fields: uint32;
+}
+";
+    assert_generates(
+        "typescript",
+        schema,
+        &[
+            "    length_(index: number): number {",
+            "    get_(index: number): number {",
+            "    fields_(index: number): number {",
+            // A table's own getters, which a vector's view doesn't repeat
+            "    get(): number {",
+            "    length(): number {",
+            "    get(index: number): Entry {",
+            "    get(index: number): Span {",
+            "    fields(): SpanFields[] {",
+        ],
+    );
+}
+
 #[test]
 fn python_renames_methods_the_parameter_of_serialize_and_builtins() {
     assert_declares(
@@ -197,7 +261,7 @@ fn rust_renames_the_associated_functions_of_views() {
 }
 
 #[test]
-fn go_renames_the_binary_marshaling_methods_and_the_methods_that_vet_checks() {
+fn go_renames_the_binary_marshaling_methods_fields_and_the_methods_that_vet_checks() {
     let schema = "\
 message Members (version: 1) {
     marshal_binary: uint8;
@@ -206,6 +270,7 @@ message Members (version: 1) {
     read: uint8;
     new: uint8;
     version_of: uint8;
+    fields: uint8;
 }
 
 struct Frame {
@@ -234,6 +299,8 @@ table Encodings {
             "func (t Members) New() (uint8, error) {",
             "func (t Members) VersionOf() (uint8, error) {",
             "func MembersVersionOf(bytes []byte) (uint32, error) {",
+            "func (t Members) Fields_() (uint8, error) {",
+            "func (t Members) Fields() (MembersFields, error) {",
             "\tMarshalBinary_ uint8\n",
             "func (f MembersFields) MarshalBinary() ([]byte, error) {",
             "\tUnmarshalBinary_ uint8\n",
@@ -257,17 +324,17 @@ fn cpp_renames_the_members_of_structs_and_fields_structs_and_keywords() {
     assert_declares(
         "cpp",
         &[
-            "    [[nodiscard]] std::uint8_t serialize_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t serialize_() const;",
             "    std::uint8_t serialize_{};",
-            "    [[nodiscard]] std::uint8_t read_() const;",
-            "    [[nodiscard]] std::uint8_t write_() const;",
-            "    [[nodiscard]] std::uint8_t new_() const;",
-            "    [[nodiscard]] std::uint8_t int_() const;",
-            "    [[nodiscard]] bool bool_() const;",
-            "    [[nodiscard]] std::uint8_t then() const;",
-            "    [[nodiscard]] std::uint8_t constructor() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t read_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t write_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t new_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t int_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE bool bool_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t then() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t constructor() const;",
             "    [[nodiscard]] static std::uint32_t version_of(std::span<const std::uint8_t> bytes);",
-            "    [[nodiscard]] std::uint8_t version_of_() const;",
+            "    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t version_of_() const;",
             "    std::uint8_t writer{};",
             "    std::uint8_t bytes{};",
             "    std::uint8_t read_{};",

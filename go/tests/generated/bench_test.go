@@ -203,7 +203,7 @@ func BenchmarkSumItemList100View(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		view, err := reader.ItemsView()
+		view, err := reader.Items()
 		sum := 0.0
 		for item, itemErr := range view.All() {
 			value, _ := item.Value()
@@ -223,7 +223,7 @@ func BenchmarkReadLastItemView(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		view, _ := reader.ItemsView()
+		view, _ := reader.Items()
 		item, err := view.Get(view.Len() - 1)
 		value, _ := item.Value()
 		sinkFloat, sinkErr = float64(value), err

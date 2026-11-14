@@ -7,6 +7,7 @@ import net.jqwik.api.*;
 import net.jqwik.api.constraints.*;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 
 import static io.github.snovader.tafla.test.AllTypesTables.*;
 import static io.github.snovader.tafla.test.DecodeAssertions.*;
@@ -290,10 +291,27 @@ public class AllTypesTest {
         var nested = new Nested(Nested.serialize(nestedFields));
         var structs = new Structs(Structs.serialize(structsFields));
 
-        for (var view : List.<List<?>>of(nested.treesView(), structs.documentedView())) {
+        for (var view : List.<List<?>>of(nested.trees(), structs.documented())) {
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(view.size() + past));
             assertThrows(IndexOutOfBoundsException.class, () -> view.get(-1 - past));
         }
+    }
+
+    @Property
+    void a_vectors_iterator_reads_the_items_that_get_reads_and_then_throws_NoSuchElementException(
+        @ForAll("nesteds") Nested.Fields fields
+    ) {
+        var trees = new Nested(Nested.serialize(fields)).trees();
+        var iterator = trees.iterator();
+
+        for (var i = 0; i < trees.size(); i++) {
+            assertTrue(iterator.hasNext());
+            var tree = iterator.next();
+            assertEquals(trees.get(i).value(), tree.value(), "Item " + i);
+            assertEquals(trees.get(i).children().size(), tree.children().size(), "Item " + i);
+        }
+        assertFalse(iterator.hasNext());
+        assertThrows(NoSuchElementException.class, iterator::next);
     }
 
     @Example
@@ -315,10 +333,10 @@ public class AllTypesTest {
         );
 
         var views = List.<List<?>>of(
-            nested.treesView(),
-            structs.documentedView(),
-            structs.segmentsView(),
-            structs.path().pointsView()
+            nested.trees(),
+            structs.documented(),
+            structs.segments(),
+            structs.path().points()
         );
         for (var view : views) {
             assertTrue(view.isEmpty());
@@ -459,6 +477,68 @@ public class AllTypesTest {
         offset += Segment.SIZE;
         assertEquals(describePoint(point), describePoint(Point.read(bytes, offset)));
         assertEquals(describePoint(point), describePoint(Point.read(view, offset)));
+    }
+
+    @Property
+    void a_structs_static_write_of_its_values_writes_what_the_struct_writes(
+        @ForAll("packeds") Packed packed,
+        @ForAll("documenteds") Documented documented,
+        @ForAll("segments") Segment segment,
+        @ForAll("points") Point point,
+        @ForAll @IntRange(max = 16) int offset,
+        @ForAll byte fill
+    ) {
+        assertWritten(Packed.SIZE, offset, fill, packed::write, (bytes, at) -> Packed.write(
+            bytes,
+            at,
+            packed.int8(),
+            packed.uint8(),
+            packed.int16(),
+            packed.uint16(),
+            packed.int32(),
+            packed.uint32(),
+            packed.int64(),
+            packed.uint64(),
+            packed.float32(),
+            packed.float64(),
+            packed.bool()
+        ));
+        assertWritten(Documented.SIZE, offset, fill, documented::write, (bytes, at) -> Documented.write(
+            bytes,
+            at,
+            documented.one(),
+            documented.two(),
+            documented.undocumented()
+        ));
+        assertWritten(Segment.SIZE, offset, fill, segment::write, (bytes, at) -> Segment.write(
+            bytes,
+            at,
+            segment.start(),
+            segment.end()
+        ));
+        assertWritten(Point.SIZE, offset, fill, point::write, (bytes, at) -> Point.write(bytes, at, point.x(), point.y()));
+    }
+
+    /**
+     * Asserts that two writes of a struct at {@code offset} in bytes of {@code fill}, longer than it,
+     * write the same bytes
+     */
+    private static void assertWritten(int size, int offset, byte fill, StructWrite expected, StructWrite actual) {
+        var expectedBytes = new byte[offset + size + 8];
+        java.util.Arrays.fill(expectedBytes, fill);
+        expected.write(expectedBytes, offset);
+
+        var actualBytes = new byte[offset + size + 8];
+        java.util.Arrays.fill(actualBytes, fill);
+        actual.write(actualBytes, offset);
+
+        assertArrayEquals(expectedBytes, actualBytes);
+    }
+
+    /** A write of a struct at {@code offset} in {@code bytes} */
+    @FunctionalInterface
+    private interface StructWrite {
+        void write(byte[] bytes, int offset);
     }
 
     @Property

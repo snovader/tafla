@@ -345,7 +345,7 @@ public:
     constexpr Leaf() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t value() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t value() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -390,25 +390,21 @@ public:
     constexpr Level62() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Leaf level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Leaf> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Leaf level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] LeafVector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Leaf> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE LeafVector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] LeafVector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE LeafVector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -446,25 +442,21 @@ public:
     constexpr Level61() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level62 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level62> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level62 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level62Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level62> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level62Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level62Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level62Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -502,25 +494,21 @@ public:
     constexpr Level60() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level61 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level61> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level61 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level61Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level61> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level61Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level61Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level61Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -558,25 +546,21 @@ public:
     constexpr Level59() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level60 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level60> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level60 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level60Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level60> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level60Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level60Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level60Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -614,25 +598,21 @@ public:
     constexpr Level58() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level59 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level59> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level59 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level59Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level59> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level59Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level59Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level59Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -670,25 +650,21 @@ public:
     constexpr Level57() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level58 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level58> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level58 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level58Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level58> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level58Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level58Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level58Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -726,25 +702,21 @@ public:
     constexpr Level56() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level57 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level57> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level57 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level57Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level57> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level57Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level57Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level57Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -782,25 +754,21 @@ public:
     constexpr Level55() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level56 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level56> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level56 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level56Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level56> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level56Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level56Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level56Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -838,25 +806,21 @@ public:
     constexpr Level54() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level55 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level55> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level55 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level55Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level55> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level55Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level55Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level55Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -894,25 +858,21 @@ public:
     constexpr Level53() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level54 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level54> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level54 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level54Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level54> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level54Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level54Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level54Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -950,25 +910,21 @@ public:
     constexpr Level52() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level53 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level53> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level53 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level53Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level53> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level53Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level53Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level53Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1006,25 +962,21 @@ public:
     constexpr Level51() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level52 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level52> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level52 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level52Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level52> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level52Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level52Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level52Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1062,25 +1014,21 @@ public:
     constexpr Level50() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level51 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level51> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level51 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level51Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level51> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level51Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level51Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level51Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1118,25 +1066,21 @@ public:
     constexpr Level49() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level50 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level50> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level50 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level50Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level50> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level50Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level50Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level50Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1174,25 +1118,21 @@ public:
     constexpr Level48() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level49 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level49> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level49 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level49Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level49> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level49Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level49Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level49Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1230,25 +1170,21 @@ public:
     constexpr Level47() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level48 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level48> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level48 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level48Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level48> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level48Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level48Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level48Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1286,25 +1222,21 @@ public:
     constexpr Level46() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level47 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level47> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level47 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level47Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level47> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level47Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level47Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level47Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1342,25 +1274,21 @@ public:
     constexpr Level45() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level46 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level46> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level46 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level46Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level46> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level46Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level46Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level46Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1398,25 +1326,21 @@ public:
     constexpr Level44() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level45 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level45> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level45 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level45Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level45> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level45Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level45Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level45Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1454,25 +1378,21 @@ public:
     constexpr Level43() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level44 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level44> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level44 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level44Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level44> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level44Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level44Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level44Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1510,25 +1430,21 @@ public:
     constexpr Level42() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level43 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level43> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level43 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level43Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level43> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level43Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level43Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level43Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1566,25 +1482,21 @@ public:
     constexpr Level41() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level42 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level42> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level42 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level42Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level42> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level42Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level42Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level42Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1622,25 +1534,21 @@ public:
     constexpr Level40() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level41 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level41> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level41 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level41Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level41> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level41Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level41Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level41Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1678,25 +1586,21 @@ public:
     constexpr Level39() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level40 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level40> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level40 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level40Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level40> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level40Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level40Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level40Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1734,25 +1638,21 @@ public:
     constexpr Level38() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level39 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level39> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level39 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level39Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level39> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level39Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level39Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level39Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1790,25 +1690,21 @@ public:
     constexpr Level37() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level38 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level38> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level38 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level38Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level38> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level38Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level38Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level38Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1846,25 +1742,21 @@ public:
     constexpr Level36() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level37 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level37> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level37 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level37Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level37> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level37Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level37Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level37Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1902,25 +1794,21 @@ public:
     constexpr Level35() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level36 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level36> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level36 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level36Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level36> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level36Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level36Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level36Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -1958,25 +1846,21 @@ public:
     constexpr Level34() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level35 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level35> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level35 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level35Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level35> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level35Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level35Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level35Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2014,25 +1898,21 @@ public:
     constexpr Level33() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level34 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level34> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level34 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level34Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level34> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level34Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level34Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level34Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2070,25 +1950,21 @@ public:
     constexpr Level32() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level33 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level33> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level33 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level33Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level33> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level33Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level33Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level33Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2126,25 +2002,21 @@ public:
     constexpr Level31() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level32 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level32> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level32 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level32Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level32> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level32Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level32Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level32Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2182,25 +2054,21 @@ public:
     constexpr Level30() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level31 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level31> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level31 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level31Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level31> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level31Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level31Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level31Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2238,25 +2106,21 @@ public:
     constexpr Level29() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level30 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level30> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level30 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level30Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level30> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level30Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level30Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level30Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2294,25 +2158,21 @@ public:
     constexpr Level28() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level29 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level29> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level29 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level29Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level29> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level29Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level29Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level29Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2350,25 +2210,21 @@ public:
     constexpr Level27() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level28 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level28> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level28 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level28Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level28> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level28Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level28Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level28Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2406,25 +2262,21 @@ public:
     constexpr Level26() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level27 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level27> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level27 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level27Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level27> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level27Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level27Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level27Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2462,25 +2314,21 @@ public:
     constexpr Level25() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level26 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level26> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level26 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level26Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level26> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level26Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level26Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level26Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2518,25 +2366,21 @@ public:
     constexpr Level24() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level25 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level25> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level25 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level25Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level25> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level25Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level25Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level25Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2574,25 +2418,21 @@ public:
     constexpr Level23() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level24 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level24> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level24 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level24Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level24> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level24Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level24Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level24Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2630,25 +2470,21 @@ public:
     constexpr Level22() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level23 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level23> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level23 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level23Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level23> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level23Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level23Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level23Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2686,25 +2522,21 @@ public:
     constexpr Level21() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level22 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level22> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level22 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level22Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level22> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level22Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level22Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level22Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2742,25 +2574,21 @@ public:
     constexpr Level20() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level21 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level21> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level21 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level21Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level21> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level21Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level21Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level21Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2798,25 +2626,21 @@ public:
     constexpr Level19() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level20 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level20> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level20 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level20Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level20> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level20Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level20Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level20Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2854,25 +2678,21 @@ public:
     constexpr Level18() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level19 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level19> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level19 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level19Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level19> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level19Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level19Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level19Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2910,25 +2730,21 @@ public:
     constexpr Level17() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level18 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level18> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level18 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level18Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level18> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level18Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level18Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level18Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -2966,25 +2782,21 @@ public:
     constexpr Level16() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level17 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level17> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level17 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level17Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level17> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level17Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level17Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level17Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3022,25 +2834,21 @@ public:
     constexpr Level15() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level16 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level16> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level16 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level16Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level16> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level16Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level16Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level16Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3078,25 +2886,21 @@ public:
     constexpr Level14() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level15 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level15> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level15 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level15Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level15> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level15Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level15Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level15Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3134,25 +2938,21 @@ public:
     constexpr Level13() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level14 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level14> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level14 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level14Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level14> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level14Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level14Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level14Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3190,25 +2990,21 @@ public:
     constexpr Level12() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level13 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level13> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level13 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level13Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level13> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level13Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level13Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level13Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3246,25 +3042,21 @@ public:
     constexpr Level11() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level12 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level12> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level12 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level12Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level12> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level12Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level12Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level12Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3302,25 +3094,21 @@ public:
     constexpr Level10() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level11 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level11> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level11 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level11Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level11> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level11Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level11Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level11Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3358,25 +3146,21 @@ public:
     constexpr Level9() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level10 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level10> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level10 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level10Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level10> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level10Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level10Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level10Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3414,25 +3198,21 @@ public:
     constexpr Level8() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level9 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level9> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level9 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level9Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level9> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level9Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level9Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level9Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3470,25 +3250,21 @@ public:
     constexpr Level7() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level8 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level8> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level8 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level8Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level8> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level8Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level8Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level8Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3526,25 +3302,21 @@ public:
     constexpr Level6() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level7 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level7> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level7 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level7Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level7> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level7Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level7Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level7Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3582,25 +3354,21 @@ public:
     constexpr Level5() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level6 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level6> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level6 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level6Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level6> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level6Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level6Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level6Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3638,25 +3406,21 @@ public:
     constexpr Level4() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level5 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level5> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level5 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level5Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level5> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level5Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level5Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level5Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3694,25 +3458,21 @@ public:
     constexpr Level3() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level4 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level4> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level4 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level4Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level4> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level4Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level4Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level4Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3750,25 +3510,21 @@ public:
     constexpr Level2() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level3 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level3> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level3 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level3Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level3> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level3Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level3Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level3Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3806,25 +3562,21 @@ public:
     constexpr Level1() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level2 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level2> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level2 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level2Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level2> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level2Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level2Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level2Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3855,25 +3607,21 @@ public:
     explicit constexpr Root(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Level1 level() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level1> first() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level1 level() const;
 
     /**
-     * Views the items of `first()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level1Vector first_view() const;
-
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Level1> second() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level1Vector first() const;
 
     /**
-     * Views the items of `second()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] Level1Vector second_view() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level1Vector second() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -3925,24 +3673,16 @@ inline void LeafFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 inline Leaf Level62::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Leaf(bytes_, position);
+    return Leaf(buffer.get_table(position), 0);
 }
 
-inline std::vector<Leaf> Level62::first() const {
-    return first_view().to_vector();
-}
-
-inline LeafVector Level62::first_view() const {
+inline LeafVector Level62::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return LeafVector(buffer.get_vector(position));
 }
 
-inline std::vector<Leaf> Level62::second() const {
-    return second_view().to_vector();
-}
-
-inline LeafVector Level62::second_view() const {
+inline LeafVector Level62::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return LeafVector(buffer.get_vector(position));
@@ -3983,24 +3723,16 @@ inline void Level62Fields::write(::tafla::TableWriter& writer_) const {
 inline Level62 Level61::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level62(bytes_, position);
+    return Level62(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level62> Level61::first() const {
-    return first_view().to_vector();
-}
-
-inline Level62Vector Level61::first_view() const {
+inline Level62Vector Level61::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level62Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level62> Level61::second() const {
-    return second_view().to_vector();
-}
-
-inline Level62Vector Level61::second_view() const {
+inline Level62Vector Level61::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level62Vector(buffer.get_vector(position));
@@ -4041,24 +3773,16 @@ inline void Level61Fields::write(::tafla::TableWriter& writer_) const {
 inline Level61 Level60::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level61(bytes_, position);
+    return Level61(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level61> Level60::first() const {
-    return first_view().to_vector();
-}
-
-inline Level61Vector Level60::first_view() const {
+inline Level61Vector Level60::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level61Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level61> Level60::second() const {
-    return second_view().to_vector();
-}
-
-inline Level61Vector Level60::second_view() const {
+inline Level61Vector Level60::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level61Vector(buffer.get_vector(position));
@@ -4099,24 +3823,16 @@ inline void Level60Fields::write(::tafla::TableWriter& writer_) const {
 inline Level60 Level59::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level60(bytes_, position);
+    return Level60(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level60> Level59::first() const {
-    return first_view().to_vector();
-}
-
-inline Level60Vector Level59::first_view() const {
+inline Level60Vector Level59::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level60Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level60> Level59::second() const {
-    return second_view().to_vector();
-}
-
-inline Level60Vector Level59::second_view() const {
+inline Level60Vector Level59::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level60Vector(buffer.get_vector(position));
@@ -4157,24 +3873,16 @@ inline void Level59Fields::write(::tafla::TableWriter& writer_) const {
 inline Level59 Level58::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level59(bytes_, position);
+    return Level59(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level59> Level58::first() const {
-    return first_view().to_vector();
-}
-
-inline Level59Vector Level58::first_view() const {
+inline Level59Vector Level58::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level59Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level59> Level58::second() const {
-    return second_view().to_vector();
-}
-
-inline Level59Vector Level58::second_view() const {
+inline Level59Vector Level58::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level59Vector(buffer.get_vector(position));
@@ -4215,24 +3923,16 @@ inline void Level58Fields::write(::tafla::TableWriter& writer_) const {
 inline Level58 Level57::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level58(bytes_, position);
+    return Level58(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level58> Level57::first() const {
-    return first_view().to_vector();
-}
-
-inline Level58Vector Level57::first_view() const {
+inline Level58Vector Level57::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level58Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level58> Level57::second() const {
-    return second_view().to_vector();
-}
-
-inline Level58Vector Level57::second_view() const {
+inline Level58Vector Level57::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level58Vector(buffer.get_vector(position));
@@ -4273,24 +3973,16 @@ inline void Level57Fields::write(::tafla::TableWriter& writer_) const {
 inline Level57 Level56::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level57(bytes_, position);
+    return Level57(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level57> Level56::first() const {
-    return first_view().to_vector();
-}
-
-inline Level57Vector Level56::first_view() const {
+inline Level57Vector Level56::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level57Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level57> Level56::second() const {
-    return second_view().to_vector();
-}
-
-inline Level57Vector Level56::second_view() const {
+inline Level57Vector Level56::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level57Vector(buffer.get_vector(position));
@@ -4331,24 +4023,16 @@ inline void Level56Fields::write(::tafla::TableWriter& writer_) const {
 inline Level56 Level55::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level56(bytes_, position);
+    return Level56(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level56> Level55::first() const {
-    return first_view().to_vector();
-}
-
-inline Level56Vector Level55::first_view() const {
+inline Level56Vector Level55::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level56Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level56> Level55::second() const {
-    return second_view().to_vector();
-}
-
-inline Level56Vector Level55::second_view() const {
+inline Level56Vector Level55::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level56Vector(buffer.get_vector(position));
@@ -4389,24 +4073,16 @@ inline void Level55Fields::write(::tafla::TableWriter& writer_) const {
 inline Level55 Level54::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level55(bytes_, position);
+    return Level55(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level55> Level54::first() const {
-    return first_view().to_vector();
-}
-
-inline Level55Vector Level54::first_view() const {
+inline Level55Vector Level54::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level55Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level55> Level54::second() const {
-    return second_view().to_vector();
-}
-
-inline Level55Vector Level54::second_view() const {
+inline Level55Vector Level54::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level55Vector(buffer.get_vector(position));
@@ -4447,24 +4123,16 @@ inline void Level54Fields::write(::tafla::TableWriter& writer_) const {
 inline Level54 Level53::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level54(bytes_, position);
+    return Level54(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level54> Level53::first() const {
-    return first_view().to_vector();
-}
-
-inline Level54Vector Level53::first_view() const {
+inline Level54Vector Level53::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level54Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level54> Level53::second() const {
-    return second_view().to_vector();
-}
-
-inline Level54Vector Level53::second_view() const {
+inline Level54Vector Level53::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level54Vector(buffer.get_vector(position));
@@ -4505,24 +4173,16 @@ inline void Level53Fields::write(::tafla::TableWriter& writer_) const {
 inline Level53 Level52::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level53(bytes_, position);
+    return Level53(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level53> Level52::first() const {
-    return first_view().to_vector();
-}
-
-inline Level53Vector Level52::first_view() const {
+inline Level53Vector Level52::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level53Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level53> Level52::second() const {
-    return second_view().to_vector();
-}
-
-inline Level53Vector Level52::second_view() const {
+inline Level53Vector Level52::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level53Vector(buffer.get_vector(position));
@@ -4563,24 +4223,16 @@ inline void Level52Fields::write(::tafla::TableWriter& writer_) const {
 inline Level52 Level51::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level52(bytes_, position);
+    return Level52(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level52> Level51::first() const {
-    return first_view().to_vector();
-}
-
-inline Level52Vector Level51::first_view() const {
+inline Level52Vector Level51::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level52Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level52> Level51::second() const {
-    return second_view().to_vector();
-}
-
-inline Level52Vector Level51::second_view() const {
+inline Level52Vector Level51::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level52Vector(buffer.get_vector(position));
@@ -4621,24 +4273,16 @@ inline void Level51Fields::write(::tafla::TableWriter& writer_) const {
 inline Level51 Level50::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level51(bytes_, position);
+    return Level51(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level51> Level50::first() const {
-    return first_view().to_vector();
-}
-
-inline Level51Vector Level50::first_view() const {
+inline Level51Vector Level50::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level51Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level51> Level50::second() const {
-    return second_view().to_vector();
-}
-
-inline Level51Vector Level50::second_view() const {
+inline Level51Vector Level50::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level51Vector(buffer.get_vector(position));
@@ -4679,24 +4323,16 @@ inline void Level50Fields::write(::tafla::TableWriter& writer_) const {
 inline Level50 Level49::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level50(bytes_, position);
+    return Level50(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level50> Level49::first() const {
-    return first_view().to_vector();
-}
-
-inline Level50Vector Level49::first_view() const {
+inline Level50Vector Level49::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level50Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level50> Level49::second() const {
-    return second_view().to_vector();
-}
-
-inline Level50Vector Level49::second_view() const {
+inline Level50Vector Level49::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level50Vector(buffer.get_vector(position));
@@ -4737,24 +4373,16 @@ inline void Level49Fields::write(::tafla::TableWriter& writer_) const {
 inline Level49 Level48::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level49(bytes_, position);
+    return Level49(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level49> Level48::first() const {
-    return first_view().to_vector();
-}
-
-inline Level49Vector Level48::first_view() const {
+inline Level49Vector Level48::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level49Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level49> Level48::second() const {
-    return second_view().to_vector();
-}
-
-inline Level49Vector Level48::second_view() const {
+inline Level49Vector Level48::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level49Vector(buffer.get_vector(position));
@@ -4795,24 +4423,16 @@ inline void Level48Fields::write(::tafla::TableWriter& writer_) const {
 inline Level48 Level47::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level48(bytes_, position);
+    return Level48(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level48> Level47::first() const {
-    return first_view().to_vector();
-}
-
-inline Level48Vector Level47::first_view() const {
+inline Level48Vector Level47::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level48Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level48> Level47::second() const {
-    return second_view().to_vector();
-}
-
-inline Level48Vector Level47::second_view() const {
+inline Level48Vector Level47::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level48Vector(buffer.get_vector(position));
@@ -4853,24 +4473,16 @@ inline void Level47Fields::write(::tafla::TableWriter& writer_) const {
 inline Level47 Level46::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level47(bytes_, position);
+    return Level47(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level47> Level46::first() const {
-    return first_view().to_vector();
-}
-
-inline Level47Vector Level46::first_view() const {
+inline Level47Vector Level46::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level47Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level47> Level46::second() const {
-    return second_view().to_vector();
-}
-
-inline Level47Vector Level46::second_view() const {
+inline Level47Vector Level46::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level47Vector(buffer.get_vector(position));
@@ -4911,24 +4523,16 @@ inline void Level46Fields::write(::tafla::TableWriter& writer_) const {
 inline Level46 Level45::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level46(bytes_, position);
+    return Level46(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level46> Level45::first() const {
-    return first_view().to_vector();
-}
-
-inline Level46Vector Level45::first_view() const {
+inline Level46Vector Level45::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level46Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level46> Level45::second() const {
-    return second_view().to_vector();
-}
-
-inline Level46Vector Level45::second_view() const {
+inline Level46Vector Level45::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level46Vector(buffer.get_vector(position));
@@ -4969,24 +4573,16 @@ inline void Level45Fields::write(::tafla::TableWriter& writer_) const {
 inline Level45 Level44::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level45(bytes_, position);
+    return Level45(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level45> Level44::first() const {
-    return first_view().to_vector();
-}
-
-inline Level45Vector Level44::first_view() const {
+inline Level45Vector Level44::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level45Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level45> Level44::second() const {
-    return second_view().to_vector();
-}
-
-inline Level45Vector Level44::second_view() const {
+inline Level45Vector Level44::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level45Vector(buffer.get_vector(position));
@@ -5027,24 +4623,16 @@ inline void Level44Fields::write(::tafla::TableWriter& writer_) const {
 inline Level44 Level43::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level44(bytes_, position);
+    return Level44(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level44> Level43::first() const {
-    return first_view().to_vector();
-}
-
-inline Level44Vector Level43::first_view() const {
+inline Level44Vector Level43::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level44Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level44> Level43::second() const {
-    return second_view().to_vector();
-}
-
-inline Level44Vector Level43::second_view() const {
+inline Level44Vector Level43::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level44Vector(buffer.get_vector(position));
@@ -5085,24 +4673,16 @@ inline void Level43Fields::write(::tafla::TableWriter& writer_) const {
 inline Level43 Level42::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level43(bytes_, position);
+    return Level43(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level43> Level42::first() const {
-    return first_view().to_vector();
-}
-
-inline Level43Vector Level42::first_view() const {
+inline Level43Vector Level42::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level43Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level43> Level42::second() const {
-    return second_view().to_vector();
-}
-
-inline Level43Vector Level42::second_view() const {
+inline Level43Vector Level42::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level43Vector(buffer.get_vector(position));
@@ -5143,24 +4723,16 @@ inline void Level42Fields::write(::tafla::TableWriter& writer_) const {
 inline Level42 Level41::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level42(bytes_, position);
+    return Level42(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level42> Level41::first() const {
-    return first_view().to_vector();
-}
-
-inline Level42Vector Level41::first_view() const {
+inline Level42Vector Level41::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level42Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level42> Level41::second() const {
-    return second_view().to_vector();
-}
-
-inline Level42Vector Level41::second_view() const {
+inline Level42Vector Level41::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level42Vector(buffer.get_vector(position));
@@ -5201,24 +4773,16 @@ inline void Level41Fields::write(::tafla::TableWriter& writer_) const {
 inline Level41 Level40::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level41(bytes_, position);
+    return Level41(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level41> Level40::first() const {
-    return first_view().to_vector();
-}
-
-inline Level41Vector Level40::first_view() const {
+inline Level41Vector Level40::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level41Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level41> Level40::second() const {
-    return second_view().to_vector();
-}
-
-inline Level41Vector Level40::second_view() const {
+inline Level41Vector Level40::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level41Vector(buffer.get_vector(position));
@@ -5259,24 +4823,16 @@ inline void Level40Fields::write(::tafla::TableWriter& writer_) const {
 inline Level40 Level39::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level40(bytes_, position);
+    return Level40(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level40> Level39::first() const {
-    return first_view().to_vector();
-}
-
-inline Level40Vector Level39::first_view() const {
+inline Level40Vector Level39::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level40Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level40> Level39::second() const {
-    return second_view().to_vector();
-}
-
-inline Level40Vector Level39::second_view() const {
+inline Level40Vector Level39::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level40Vector(buffer.get_vector(position));
@@ -5317,24 +4873,16 @@ inline void Level39Fields::write(::tafla::TableWriter& writer_) const {
 inline Level39 Level38::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level39(bytes_, position);
+    return Level39(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level39> Level38::first() const {
-    return first_view().to_vector();
-}
-
-inline Level39Vector Level38::first_view() const {
+inline Level39Vector Level38::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level39Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level39> Level38::second() const {
-    return second_view().to_vector();
-}
-
-inline Level39Vector Level38::second_view() const {
+inline Level39Vector Level38::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level39Vector(buffer.get_vector(position));
@@ -5375,24 +4923,16 @@ inline void Level38Fields::write(::tafla::TableWriter& writer_) const {
 inline Level38 Level37::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level38(bytes_, position);
+    return Level38(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level38> Level37::first() const {
-    return first_view().to_vector();
-}
-
-inline Level38Vector Level37::first_view() const {
+inline Level38Vector Level37::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level38Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level38> Level37::second() const {
-    return second_view().to_vector();
-}
-
-inline Level38Vector Level37::second_view() const {
+inline Level38Vector Level37::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level38Vector(buffer.get_vector(position));
@@ -5433,24 +4973,16 @@ inline void Level37Fields::write(::tafla::TableWriter& writer_) const {
 inline Level37 Level36::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level37(bytes_, position);
+    return Level37(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level37> Level36::first() const {
-    return first_view().to_vector();
-}
-
-inline Level37Vector Level36::first_view() const {
+inline Level37Vector Level36::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level37Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level37> Level36::second() const {
-    return second_view().to_vector();
-}
-
-inline Level37Vector Level36::second_view() const {
+inline Level37Vector Level36::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level37Vector(buffer.get_vector(position));
@@ -5491,24 +5023,16 @@ inline void Level36Fields::write(::tafla::TableWriter& writer_) const {
 inline Level36 Level35::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level36(bytes_, position);
+    return Level36(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level36> Level35::first() const {
-    return first_view().to_vector();
-}
-
-inline Level36Vector Level35::first_view() const {
+inline Level36Vector Level35::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level36Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level36> Level35::second() const {
-    return second_view().to_vector();
-}
-
-inline Level36Vector Level35::second_view() const {
+inline Level36Vector Level35::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level36Vector(buffer.get_vector(position));
@@ -5549,24 +5073,16 @@ inline void Level35Fields::write(::tafla::TableWriter& writer_) const {
 inline Level35 Level34::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level35(bytes_, position);
+    return Level35(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level35> Level34::first() const {
-    return first_view().to_vector();
-}
-
-inline Level35Vector Level34::first_view() const {
+inline Level35Vector Level34::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level35Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level35> Level34::second() const {
-    return second_view().to_vector();
-}
-
-inline Level35Vector Level34::second_view() const {
+inline Level35Vector Level34::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level35Vector(buffer.get_vector(position));
@@ -5607,24 +5123,16 @@ inline void Level34Fields::write(::tafla::TableWriter& writer_) const {
 inline Level34 Level33::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level34(bytes_, position);
+    return Level34(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level34> Level33::first() const {
-    return first_view().to_vector();
-}
-
-inline Level34Vector Level33::first_view() const {
+inline Level34Vector Level33::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level34Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level34> Level33::second() const {
-    return second_view().to_vector();
-}
-
-inline Level34Vector Level33::second_view() const {
+inline Level34Vector Level33::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level34Vector(buffer.get_vector(position));
@@ -5665,24 +5173,16 @@ inline void Level33Fields::write(::tafla::TableWriter& writer_) const {
 inline Level33 Level32::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level33(bytes_, position);
+    return Level33(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level33> Level32::first() const {
-    return first_view().to_vector();
-}
-
-inline Level33Vector Level32::first_view() const {
+inline Level33Vector Level32::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level33Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level33> Level32::second() const {
-    return second_view().to_vector();
-}
-
-inline Level33Vector Level32::second_view() const {
+inline Level33Vector Level32::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level33Vector(buffer.get_vector(position));
@@ -5723,24 +5223,16 @@ inline void Level32Fields::write(::tafla::TableWriter& writer_) const {
 inline Level32 Level31::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level32(bytes_, position);
+    return Level32(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level32> Level31::first() const {
-    return first_view().to_vector();
-}
-
-inline Level32Vector Level31::first_view() const {
+inline Level32Vector Level31::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level32Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level32> Level31::second() const {
-    return second_view().to_vector();
-}
-
-inline Level32Vector Level31::second_view() const {
+inline Level32Vector Level31::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level32Vector(buffer.get_vector(position));
@@ -5781,24 +5273,16 @@ inline void Level31Fields::write(::tafla::TableWriter& writer_) const {
 inline Level31 Level30::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level31(bytes_, position);
+    return Level31(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level31> Level30::first() const {
-    return first_view().to_vector();
-}
-
-inline Level31Vector Level30::first_view() const {
+inline Level31Vector Level30::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level31Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level31> Level30::second() const {
-    return second_view().to_vector();
-}
-
-inline Level31Vector Level30::second_view() const {
+inline Level31Vector Level30::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level31Vector(buffer.get_vector(position));
@@ -5839,24 +5323,16 @@ inline void Level30Fields::write(::tafla::TableWriter& writer_) const {
 inline Level30 Level29::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level30(bytes_, position);
+    return Level30(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level30> Level29::first() const {
-    return first_view().to_vector();
-}
-
-inline Level30Vector Level29::first_view() const {
+inline Level30Vector Level29::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level30Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level30> Level29::second() const {
-    return second_view().to_vector();
-}
-
-inline Level30Vector Level29::second_view() const {
+inline Level30Vector Level29::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level30Vector(buffer.get_vector(position));
@@ -5897,24 +5373,16 @@ inline void Level29Fields::write(::tafla::TableWriter& writer_) const {
 inline Level29 Level28::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level29(bytes_, position);
+    return Level29(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level29> Level28::first() const {
-    return first_view().to_vector();
-}
-
-inline Level29Vector Level28::first_view() const {
+inline Level29Vector Level28::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level29Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level29> Level28::second() const {
-    return second_view().to_vector();
-}
-
-inline Level29Vector Level28::second_view() const {
+inline Level29Vector Level28::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level29Vector(buffer.get_vector(position));
@@ -5955,24 +5423,16 @@ inline void Level28Fields::write(::tafla::TableWriter& writer_) const {
 inline Level28 Level27::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level28(bytes_, position);
+    return Level28(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level28> Level27::first() const {
-    return first_view().to_vector();
-}
-
-inline Level28Vector Level27::first_view() const {
+inline Level28Vector Level27::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level28Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level28> Level27::second() const {
-    return second_view().to_vector();
-}
-
-inline Level28Vector Level27::second_view() const {
+inline Level28Vector Level27::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level28Vector(buffer.get_vector(position));
@@ -6013,24 +5473,16 @@ inline void Level27Fields::write(::tafla::TableWriter& writer_) const {
 inline Level27 Level26::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level27(bytes_, position);
+    return Level27(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level27> Level26::first() const {
-    return first_view().to_vector();
-}
-
-inline Level27Vector Level26::first_view() const {
+inline Level27Vector Level26::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level27Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level27> Level26::second() const {
-    return second_view().to_vector();
-}
-
-inline Level27Vector Level26::second_view() const {
+inline Level27Vector Level26::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level27Vector(buffer.get_vector(position));
@@ -6071,24 +5523,16 @@ inline void Level26Fields::write(::tafla::TableWriter& writer_) const {
 inline Level26 Level25::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level26(bytes_, position);
+    return Level26(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level26> Level25::first() const {
-    return first_view().to_vector();
-}
-
-inline Level26Vector Level25::first_view() const {
+inline Level26Vector Level25::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level26Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level26> Level25::second() const {
-    return second_view().to_vector();
-}
-
-inline Level26Vector Level25::second_view() const {
+inline Level26Vector Level25::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level26Vector(buffer.get_vector(position));
@@ -6129,24 +5573,16 @@ inline void Level25Fields::write(::tafla::TableWriter& writer_) const {
 inline Level25 Level24::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level25(bytes_, position);
+    return Level25(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level25> Level24::first() const {
-    return first_view().to_vector();
-}
-
-inline Level25Vector Level24::first_view() const {
+inline Level25Vector Level24::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level25Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level25> Level24::second() const {
-    return second_view().to_vector();
-}
-
-inline Level25Vector Level24::second_view() const {
+inline Level25Vector Level24::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level25Vector(buffer.get_vector(position));
@@ -6187,24 +5623,16 @@ inline void Level24Fields::write(::tafla::TableWriter& writer_) const {
 inline Level24 Level23::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level24(bytes_, position);
+    return Level24(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level24> Level23::first() const {
-    return first_view().to_vector();
-}
-
-inline Level24Vector Level23::first_view() const {
+inline Level24Vector Level23::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level24Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level24> Level23::second() const {
-    return second_view().to_vector();
-}
-
-inline Level24Vector Level23::second_view() const {
+inline Level24Vector Level23::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level24Vector(buffer.get_vector(position));
@@ -6245,24 +5673,16 @@ inline void Level23Fields::write(::tafla::TableWriter& writer_) const {
 inline Level23 Level22::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level23(bytes_, position);
+    return Level23(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level23> Level22::first() const {
-    return first_view().to_vector();
-}
-
-inline Level23Vector Level22::first_view() const {
+inline Level23Vector Level22::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level23Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level23> Level22::second() const {
-    return second_view().to_vector();
-}
-
-inline Level23Vector Level22::second_view() const {
+inline Level23Vector Level22::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level23Vector(buffer.get_vector(position));
@@ -6303,24 +5723,16 @@ inline void Level22Fields::write(::tafla::TableWriter& writer_) const {
 inline Level22 Level21::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level22(bytes_, position);
+    return Level22(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level22> Level21::first() const {
-    return first_view().to_vector();
-}
-
-inline Level22Vector Level21::first_view() const {
+inline Level22Vector Level21::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level22Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level22> Level21::second() const {
-    return second_view().to_vector();
-}
-
-inline Level22Vector Level21::second_view() const {
+inline Level22Vector Level21::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level22Vector(buffer.get_vector(position));
@@ -6361,24 +5773,16 @@ inline void Level21Fields::write(::tafla::TableWriter& writer_) const {
 inline Level21 Level20::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level21(bytes_, position);
+    return Level21(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level21> Level20::first() const {
-    return first_view().to_vector();
-}
-
-inline Level21Vector Level20::first_view() const {
+inline Level21Vector Level20::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level21Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level21> Level20::second() const {
-    return second_view().to_vector();
-}
-
-inline Level21Vector Level20::second_view() const {
+inline Level21Vector Level20::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level21Vector(buffer.get_vector(position));
@@ -6419,24 +5823,16 @@ inline void Level20Fields::write(::tafla::TableWriter& writer_) const {
 inline Level20 Level19::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level20(bytes_, position);
+    return Level20(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level20> Level19::first() const {
-    return first_view().to_vector();
-}
-
-inline Level20Vector Level19::first_view() const {
+inline Level20Vector Level19::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level20Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level20> Level19::second() const {
-    return second_view().to_vector();
-}
-
-inline Level20Vector Level19::second_view() const {
+inline Level20Vector Level19::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level20Vector(buffer.get_vector(position));
@@ -6477,24 +5873,16 @@ inline void Level19Fields::write(::tafla::TableWriter& writer_) const {
 inline Level19 Level18::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level19(bytes_, position);
+    return Level19(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level19> Level18::first() const {
-    return first_view().to_vector();
-}
-
-inline Level19Vector Level18::first_view() const {
+inline Level19Vector Level18::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level19Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level19> Level18::second() const {
-    return second_view().to_vector();
-}
-
-inline Level19Vector Level18::second_view() const {
+inline Level19Vector Level18::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level19Vector(buffer.get_vector(position));
@@ -6535,24 +5923,16 @@ inline void Level18Fields::write(::tafla::TableWriter& writer_) const {
 inline Level18 Level17::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level18(bytes_, position);
+    return Level18(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level18> Level17::first() const {
-    return first_view().to_vector();
-}
-
-inline Level18Vector Level17::first_view() const {
+inline Level18Vector Level17::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level18Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level18> Level17::second() const {
-    return second_view().to_vector();
-}
-
-inline Level18Vector Level17::second_view() const {
+inline Level18Vector Level17::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level18Vector(buffer.get_vector(position));
@@ -6593,24 +5973,16 @@ inline void Level17Fields::write(::tafla::TableWriter& writer_) const {
 inline Level17 Level16::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level17(bytes_, position);
+    return Level17(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level17> Level16::first() const {
-    return first_view().to_vector();
-}
-
-inline Level17Vector Level16::first_view() const {
+inline Level17Vector Level16::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level17Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level17> Level16::second() const {
-    return second_view().to_vector();
-}
-
-inline Level17Vector Level16::second_view() const {
+inline Level17Vector Level16::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level17Vector(buffer.get_vector(position));
@@ -6651,24 +6023,16 @@ inline void Level16Fields::write(::tafla::TableWriter& writer_) const {
 inline Level16 Level15::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level16(bytes_, position);
+    return Level16(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level16> Level15::first() const {
-    return first_view().to_vector();
-}
-
-inline Level16Vector Level15::first_view() const {
+inline Level16Vector Level15::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level16Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level16> Level15::second() const {
-    return second_view().to_vector();
-}
-
-inline Level16Vector Level15::second_view() const {
+inline Level16Vector Level15::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level16Vector(buffer.get_vector(position));
@@ -6709,24 +6073,16 @@ inline void Level15Fields::write(::tafla::TableWriter& writer_) const {
 inline Level15 Level14::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level15(bytes_, position);
+    return Level15(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level15> Level14::first() const {
-    return first_view().to_vector();
-}
-
-inline Level15Vector Level14::first_view() const {
+inline Level15Vector Level14::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level15Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level15> Level14::second() const {
-    return second_view().to_vector();
-}
-
-inline Level15Vector Level14::second_view() const {
+inline Level15Vector Level14::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level15Vector(buffer.get_vector(position));
@@ -6767,24 +6123,16 @@ inline void Level14Fields::write(::tafla::TableWriter& writer_) const {
 inline Level14 Level13::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level14(bytes_, position);
+    return Level14(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level14> Level13::first() const {
-    return first_view().to_vector();
-}
-
-inline Level14Vector Level13::first_view() const {
+inline Level14Vector Level13::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level14Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level14> Level13::second() const {
-    return second_view().to_vector();
-}
-
-inline Level14Vector Level13::second_view() const {
+inline Level14Vector Level13::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level14Vector(buffer.get_vector(position));
@@ -6825,24 +6173,16 @@ inline void Level13Fields::write(::tafla::TableWriter& writer_) const {
 inline Level13 Level12::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level13(bytes_, position);
+    return Level13(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level13> Level12::first() const {
-    return first_view().to_vector();
-}
-
-inline Level13Vector Level12::first_view() const {
+inline Level13Vector Level12::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level13Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level13> Level12::second() const {
-    return second_view().to_vector();
-}
-
-inline Level13Vector Level12::second_view() const {
+inline Level13Vector Level12::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level13Vector(buffer.get_vector(position));
@@ -6883,24 +6223,16 @@ inline void Level12Fields::write(::tafla::TableWriter& writer_) const {
 inline Level12 Level11::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level12(bytes_, position);
+    return Level12(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level12> Level11::first() const {
-    return first_view().to_vector();
-}
-
-inline Level12Vector Level11::first_view() const {
+inline Level12Vector Level11::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level12Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level12> Level11::second() const {
-    return second_view().to_vector();
-}
-
-inline Level12Vector Level11::second_view() const {
+inline Level12Vector Level11::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level12Vector(buffer.get_vector(position));
@@ -6941,24 +6273,16 @@ inline void Level11Fields::write(::tafla::TableWriter& writer_) const {
 inline Level11 Level10::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level11(bytes_, position);
+    return Level11(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level11> Level10::first() const {
-    return first_view().to_vector();
-}
-
-inline Level11Vector Level10::first_view() const {
+inline Level11Vector Level10::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level11Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level11> Level10::second() const {
-    return second_view().to_vector();
-}
-
-inline Level11Vector Level10::second_view() const {
+inline Level11Vector Level10::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level11Vector(buffer.get_vector(position));
@@ -6999,24 +6323,16 @@ inline void Level10Fields::write(::tafla::TableWriter& writer_) const {
 inline Level10 Level9::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level10(bytes_, position);
+    return Level10(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level10> Level9::first() const {
-    return first_view().to_vector();
-}
-
-inline Level10Vector Level9::first_view() const {
+inline Level10Vector Level9::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level10Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level10> Level9::second() const {
-    return second_view().to_vector();
-}
-
-inline Level10Vector Level9::second_view() const {
+inline Level10Vector Level9::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level10Vector(buffer.get_vector(position));
@@ -7057,24 +6373,16 @@ inline void Level9Fields::write(::tafla::TableWriter& writer_) const {
 inline Level9 Level8::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level9(bytes_, position);
+    return Level9(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level9> Level8::first() const {
-    return first_view().to_vector();
-}
-
-inline Level9Vector Level8::first_view() const {
+inline Level9Vector Level8::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level9Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level9> Level8::second() const {
-    return second_view().to_vector();
-}
-
-inline Level9Vector Level8::second_view() const {
+inline Level9Vector Level8::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level9Vector(buffer.get_vector(position));
@@ -7115,24 +6423,16 @@ inline void Level8Fields::write(::tafla::TableWriter& writer_) const {
 inline Level8 Level7::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level8(bytes_, position);
+    return Level8(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level8> Level7::first() const {
-    return first_view().to_vector();
-}
-
-inline Level8Vector Level7::first_view() const {
+inline Level8Vector Level7::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level8Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level8> Level7::second() const {
-    return second_view().to_vector();
-}
-
-inline Level8Vector Level7::second_view() const {
+inline Level8Vector Level7::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level8Vector(buffer.get_vector(position));
@@ -7173,24 +6473,16 @@ inline void Level7Fields::write(::tafla::TableWriter& writer_) const {
 inline Level7 Level6::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level7(bytes_, position);
+    return Level7(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level7> Level6::first() const {
-    return first_view().to_vector();
-}
-
-inline Level7Vector Level6::first_view() const {
+inline Level7Vector Level6::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level7Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level7> Level6::second() const {
-    return second_view().to_vector();
-}
-
-inline Level7Vector Level6::second_view() const {
+inline Level7Vector Level6::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level7Vector(buffer.get_vector(position));
@@ -7231,24 +6523,16 @@ inline void Level6Fields::write(::tafla::TableWriter& writer_) const {
 inline Level6 Level5::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level6(bytes_, position);
+    return Level6(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level6> Level5::first() const {
-    return first_view().to_vector();
-}
-
-inline Level6Vector Level5::first_view() const {
+inline Level6Vector Level5::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level6Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level6> Level5::second() const {
-    return second_view().to_vector();
-}
-
-inline Level6Vector Level5::second_view() const {
+inline Level6Vector Level5::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level6Vector(buffer.get_vector(position));
@@ -7289,24 +6573,16 @@ inline void Level5Fields::write(::tafla::TableWriter& writer_) const {
 inline Level5 Level4::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level5(bytes_, position);
+    return Level5(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level5> Level4::first() const {
-    return first_view().to_vector();
-}
-
-inline Level5Vector Level4::first_view() const {
+inline Level5Vector Level4::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level5Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level5> Level4::second() const {
-    return second_view().to_vector();
-}
-
-inline Level5Vector Level4::second_view() const {
+inline Level5Vector Level4::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level5Vector(buffer.get_vector(position));
@@ -7347,24 +6623,16 @@ inline void Level4Fields::write(::tafla::TableWriter& writer_) const {
 inline Level4 Level3::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level4(bytes_, position);
+    return Level4(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level4> Level3::first() const {
-    return first_view().to_vector();
-}
-
-inline Level4Vector Level3::first_view() const {
+inline Level4Vector Level3::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level4Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level4> Level3::second() const {
-    return second_view().to_vector();
-}
-
-inline Level4Vector Level3::second_view() const {
+inline Level4Vector Level3::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level4Vector(buffer.get_vector(position));
@@ -7405,24 +6673,16 @@ inline void Level3Fields::write(::tafla::TableWriter& writer_) const {
 inline Level3 Level2::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level3(bytes_, position);
+    return Level3(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level3> Level2::first() const {
-    return first_view().to_vector();
-}
-
-inline Level3Vector Level2::first_view() const {
+inline Level3Vector Level2::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level3Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level3> Level2::second() const {
-    return second_view().to_vector();
-}
-
-inline Level3Vector Level2::second_view() const {
+inline Level3Vector Level2::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level3Vector(buffer.get_vector(position));
@@ -7463,24 +6723,16 @@ inline void Level2Fields::write(::tafla::TableWriter& writer_) const {
 inline Level2 Level1::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
-    return Level2(bytes_, position);
+    return Level2(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level2> Level1::first() const {
-    return first_view().to_vector();
-}
-
-inline Level2Vector Level1::first_view() const {
+inline Level2Vector Level1::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 1);
     return Level2Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level2> Level1::second() const {
-    return second_view().to_vector();
-}
-
-inline Level2Vector Level1::second_view() const {
+inline Level2Vector Level1::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 2);
     return Level2Vector(buffer.get_vector(position));
@@ -7521,24 +6773,16 @@ inline void Level1Fields::write(::tafla::TableWriter& writer_) const {
 inline Level1 Root::level() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
-    return Level1(bytes_, position);
+    return Level1(buffer.get_table(position), 0);
 }
 
-inline std::vector<Level1> Root::first() const {
-    return first_view().to_vector();
-}
-
-inline Level1Vector Root::first_view() const {
+inline Level1Vector Root::first() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(1);
     return Level1Vector(buffer.get_vector(position));
 }
 
-inline std::vector<Level1> Root::second() const {
-    return second_view().to_vector();
-}
-
-inline Level1Vector Root::second_view() const {
+inline Level1Vector Root::second() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(2);
     return Level1Vector(buffer.get_vector(position));

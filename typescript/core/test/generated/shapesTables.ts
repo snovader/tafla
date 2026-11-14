@@ -13,6 +13,7 @@ import {
     table,
     vector
 } from './descriptions.ts';
+import { readItems } from './views.ts';
 import * as javascript from './shapes/javascript/shapes.js';
 import * as typescript from './shapes/typescript/shapes.ts';
 import type {
@@ -80,7 +81,7 @@ function readColumns(columns: Columns): ColumnsFields {
 }
 
 export function readItemList(itemList: ItemList): ItemListFields {
-    return { items: itemList.items().map(readItem) };
+    return { items: readItems(itemList.items(), readItem) };
 }
 
 export function readItem(item: Item): ItemFields {

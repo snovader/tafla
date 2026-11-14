@@ -43,7 +43,7 @@ TEST(Nesting, WritesAndReadsTablesNestedAsDeepAsTheyNest) {
     EXPECT_EQ(innermost(root).value(), 7);
     EXPECT_EQ(root.first().size(), 0U);
     EXPECT_EQ(root.level().second().size(), 2U);
-    EXPECT_EQ(innermost(root.level().second()[1]).value(), 0);
+    EXPECT_EQ(innermost(root.level().second().get(1)).value(), 0);
 }
 
 }  // namespace

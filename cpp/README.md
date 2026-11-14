@@ -143,7 +143,19 @@ type, offset size, vector, builder and decode error.
   are values or static functions, so that no call takes a reader's or
   writer's address: a function that did kept the writer of a generated
   `serialize()` in memory rather than in registers, and read its offset type
-  from memory rather than folding the constant layout's. The generated code
+  from memory rather than folding the constant layout's. So are
+  `TableVector`'s `get()` and iterators, so that a generated getter's view
+  reads an item with the offset type of the constant layout that read the
+  vector: Apple Clang called `get()` out of line otherwise, which branched
+  on the offset type, and reading the last of the comparison's 100 nested
+  tables took 4.35 ns rather than 3.23 ns. So are the generated getters:
+  Apple Clang called the record's and the document's `name()` out of line
+  otherwise, which kept their reader in memory, and reading the record took
+  6.65 ns rather than 6.25 ns. A generated getter of a nested table reads it
+  through `ByteBuffer::get_table()`, which throws if the table's offset leads
+  past the bytes. Returning a reader of no bytes instead put a choice on the
+  load of each of the nested table's fields, and summing the comparison's
+  100 nested tables took 0.258 µs rather than 0.229 µs. The generated code
   inlines the writers of the tables nested in a message while they're short,
   at most 64 fields with those they inline in turn, so that its code grows
   linearly with the schema rather than doubling with each level of tables

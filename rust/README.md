@@ -59,6 +59,13 @@ MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test -p tafla \
     --target powerpc-unknown-linux-gnu --test conformance -- --include-ignored
 ```
 
+Miri interprets a test process on one core. CI runs the tests with
+[cargo-nextest](https://nexte.st), which runs a process for each test, on
+every core, as `cargo +nightly miri nextest run` in place of
+`cargo +nightly miri test`, with `--run-ignored all` in place of
+`-- --include-ignored`. nextest doesn't run the documentation's examples,
+which `cargo +nightly miri test -p tafla --doc` does.
+
 CI also runs the runtime's tests on a 32-bit target, where a `usize` is as
 wide as a `u32` length, as it is in the generator's WebAssembly module. On
 Linux with `gcc-multilib` installed, that's

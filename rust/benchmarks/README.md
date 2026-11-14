@@ -27,7 +27,7 @@ values, which `tests/workloads.rs` checks against values that the TypeScript
 generator printed.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as `f64`s, rather than
 collecting items of its own, and `item_access.rs` holds them:
@@ -35,12 +35,9 @@ collecting items of its own, and `item_access.rs` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `Vector::iter_in_place()`,
   and `get_struct_array()`'s bytes with `as_chunks()`.
-- **tafla-gen** reads with the generated getters, `items()`, which collect
-  the vector's items into a `Vec` first, and iterate over the array's
-  structs, whose `last()` the compiler finds without reading the others.
-- **tafla-gen view** reads with the generated views, `items_view()`, whose
-  `get(i)` reads one item and whose `iter()` reads every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+- **tafla-gen** reads with the views that the generated getters, `items()`,
+  return, whose `get(i)` reads one item and whose `iter()` reads every item.
+- **tafla-gen A/A** reads with the views again, an A/A pair that shows
   Criterion's noise.
 
 `cargo run -p tafla-benchmarks --bin encoding` prints each crate's encoded
@@ -94,12 +91,11 @@ the allocations and bytes of each benchmark's call.
 Each crate is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders, which borrow the columns and
-  write each array in bulk into a table of its exact size. Readers check the
-  document's version, and read columns as `ArrayView`s, whose `to_cow()`
-  borrows them. The vector's items are nested from builders, collected first,
-  since creating a builder can fail. The
-  array of structs is written with `to_le_bytes()` into a `Vec`, which the
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `set_table_with()` and `set_vector_with()`. The builders
+  borrow the columns and write each array in bulk into a table of its exact
+  size. Readers check the document's version, and read columns as
+  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
   builder takes with `set_struct_array()`, and read from
   `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
   tafla-gen's code does.
@@ -114,10 +110,10 @@ comparison uses its counterpart:
   the workloads' types, as the other codecs do, so it collects the generated
   fields of the vector's items and the generated structs of the array into a
   `Vec` in each call, as the prost codec collects its messages, since the
-  generated code writes them from slices. The generated reader of the vector
-  collects its items' readers into a `Vec`, which the codec reads into the
-  workload's items. Every suite has a copy of the schema; after changing them,
-  regenerate the code as `gen/README.md` describes.
+  generated code writes them from slices. The generated getters of the
+  vector and of the array return views, whose `iter()` the codec reads into
+  the workload's items. Every suite has a copy of the schema; after changing
+  them, regenerate the code as `gen/README.md` describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder`, which
   starts empty and doubles as it grows, and each table with flatc's
   `create()` and its arguments. Columns are written from slices with
@@ -163,11 +159,13 @@ their codecs return as an error, since every workload has it.
 ## Method
 
 Criterion 0.8.2 times each benchmark in a loop of its own, after a warm-up of
-2 s, in 100 samples over about 4 s. Samples grow linearly, from about a
-millisecond to 80 ms, so the fastest isn't one lucky call, nor limited by the
-timer, which ticks every 42 ns on Apple silicon. The slowest benchmarks, which
-take a millisecond per call, start from one call and take up to 7 s, as
-Criterion warns. The `report` binary then prints each benchmark's fastest
+half a second, in 50 samples over about a second. Samples grow linearly, from
+about a millisecond to 40 ms, so the fastest isn't one lucky call, nor limited
+by the timer, which ticks every 42 ns on Apple silicon. The slowest
+benchmarks, which take more than a millisecond per call, start from one call
+and take up to 2 s, as Criterion warns. The report doesn't use Criterion's
+confidence intervals, so its bootstrap resamples 1,000 times rather than
+100,000. The `report` binary then prints each benchmark's fastest
 sample, per call, and its ratio to tafla's, as the other languages'
 comparisons report the fastest round, since load from other processes only
 slows samples down. It prints the median sample too, which load moves away
@@ -195,8 +193,18 @@ from the fastest.
 Criterion doesn't interleave the codecs as the TypeScript harness does: it
 runs one benchmark's samples after another's, so a burst of load can slow one
 codec's samples and not another's. A benchmark's fastest sample is unaffected
-unless the load lasts the whole 4 s. Check `uptime` before a run, and compare
-the fastest samples with the medians, which the report summarizes.
+unless the load lasts the whole second. Check `uptime` before a run, and
+compare the fastest samples with the medians, which the report summarizes.
+
+Until 2026-11-14, the suite warmed each benchmark up for 2 s and took 100
+samples over 4 s, which took four times as long. Four runs of these settings,
+interleaved with five of those on the same build, differed from them by 1.5%
+in the median benchmark, and by up to 4.1% for 90% of the benchmarks, as two
+runs of the old settings differed from each other by 1.6% and 5.0%. Samples
+must stay long, though: 100 samples over a second after the same warm-up,
+from 0.2 ms, gave faster fastest samples than the old settings for 85% of the
+benchmarks, by 0.8% in the median, and read the record with tafla-gen 4%
+faster in every run.
 
 The harness is Criterion rather than divan, although divan reports the
 fastest sample itself: Criterion's samples last a millisecond or more, where
@@ -215,7 +223,7 @@ cargo run -p tafla-benchmarks --bin report
 cargo run --release -p tafla-benchmarks --bin allocation
 ```
 
-The full run takes about 11 minutes, and the allocation counts about a
+The full run takes about 3 minutes, and the allocation counts about a
 second once they're built, which CI runs too. `-p tafla-benchmarks` keeps Cargo from
 running the other crates' benchmark harnesses, which reject Criterion's
 options. Criterion's options follow `--`: a regular expression
@@ -288,6 +296,16 @@ they were.
   large document's column in the same time. The small document's 100
   additions take less than 100 latencies per call, since the processor
   overlaps a call's additions with the next call's.
+- rkyv validates the record's archive once, in `access()`, where bytecheck
+  checks the name's UTF-8 with simdutf8, and then reads each field at a fixed
+  offset. tafla reads each field at the offset that the table stores, and
+  checks each read's range. In a separate measurement, interleaved in one
+  binary, rkyv read the record in 4.1 ns and tafla-gen in 6.9 ns, and
+  reading its fields at fixed positions, with the same check of the name,
+  took 3.2 ns. The stored offsets and the range checks make the difference,
+  rather than the fields' alignment. tafla's runtime checks the name for
+  ASCII first, without a dependency, and took about 12 ns with
+  `str::from_utf8()` alone.
 
 ## Results
 

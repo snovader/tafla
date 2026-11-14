@@ -10,6 +10,7 @@ use super::java_package::KEYWORDS;
 use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
+use crate::check::{MAX_JAVA_PARAMETER_SLOTS, java_parameter_slots};
 use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
 use crate::naming::camel_case;
 
@@ -73,11 +74,11 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
 
         match definition.kind {
             Kind::Message(layout) => {
-                imports(&mut writer, runtime, definition, Some(layout));
+                imports(&mut writer, runtime, schema, definition, Some(layout));
                 message(&mut writer, schema, definition, layout);
             }
             Kind::Table => {
-                imports(&mut writer, runtime, definition, None);
+                imports(&mut writer, runtime, schema, definition, None);
                 table(&mut writer, schema, index);
             }
             Kind::Struct(_) => {
@@ -163,9 +164,59 @@ fn vector_view(writer: &mut CodeWriter, runtime: &str, definition: &Definition) 
         "return new {table}(buffer, buffer.getVectorItemOffset(position, size, index));"
     ));
     writer.close("}");
+    writer.blank();
+
+    vector_iterator(writer, table);
     writer.close("}");
 
     name
+}
+
+/// A vector view's `iterator()`, which carries each item's end to the next
+/// item as its start, so that it reads one end for each item, where `get()`
+/// reads two
+fn vector_iterator(writer: &mut CodeWriter, table: &str) {
+    writer.lines(&javadoc(&[
+        "{@return an iterator of the items in order}, which reads each item's end once, as the"
+            .to_owned(),
+        "next item's start, where `get()` reads the ends of an item and the one before it. Its"
+            .to_owned(),
+        "`next()` throws a `DecodeException` if the item ends before it starts or past the"
+            .to_owned(),
+        "bytes.".to_owned(),
+    ]));
+    // Qualified, so that a schema can declare its own `Iterator` and
+    // `NoSuchElementException`
+    writer.line("@Override");
+    writer.open(format!("public java.util.Iterator<{table}> iterator() {{"));
+    writer.open("return new java.util.Iterator<>() {");
+    writer.line("private int index = 0;");
+    // Item 0 starts where the items do, so that every item takes the same
+    // path. Reading it with `getVectorItemOffset()` instead, a call once in
+    // 100 items, which C2 left out of line, kept the buffer from escape
+    // analysis: reading a vector of 100 tables took 17% longer than with
+    // `get()`, and allocated 88 bytes.
+    writer.line("// Where item index starts, which is where the item before it ends");
+    writer.line("private int start = buffer.getVectorItemsStart(position, size);");
+    writer.blank();
+    writer.line("@Override");
+    writer.open("public boolean hasNext() {");
+    writer.line("return index < size;");
+    writer.close("}");
+    writer.blank();
+    writer.line("@Override");
+    writer.open(format!("public {table} next() {{"));
+    writer.open("if (index >= size) {");
+    writer.line("throw new java.util.NoSuchElementException();");
+    writer.close("}");
+    writer.blank();
+    writer.line("var item = start;");
+    writer.line("start = buffer.getVectorItemEnd(position, index++, item);");
+    writer.blank();
+    writer.line(format!("return new {table}(buffer, item);"));
+    writer.close("}");
+    writer.close("};");
+    writer.close("}");
 }
 
 /// The view of an array of a struct, a lazy `List` whose `get()` reads a
@@ -216,7 +267,7 @@ fn struct_array_view(writer: &mut CodeWriter, runtime: &str, definition: &Defini
     writer.open(format!("public {structure} get(int index) {{"));
     writer.line("Objects.checkIndex(index, size);");
     writer.line(format!(
-        "return {structure}.read(view, index * {structure}.SIZE);"
+        "return {structure}.readUnchecked(view, index * {structure}.SIZE);"
     ));
     writer.close("}");
     writer.close("}");
@@ -237,6 +288,7 @@ fn view_size(writer: &mut CodeWriter, items: &str) {
 fn imports(
     writer: &mut CodeWriter,
     runtime: &str,
+    schema: &Schema,
     definition: &Definition,
     layout: Option<Layout>,
 ) {
@@ -247,9 +299,13 @@ fn imports(
             .any(|field| predicate(field.field_type))
     };
     let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
+    let has_view =
+        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
 
     let mut names = vec!["ByteBuffer"];
-    if layout.is_some_and(|layout| layout.version.is_some()) {
+    // A versioned message's constructor throws it, and the getters of views
+    // document it
+    if has_view || layout.is_some_and(|layout| layout.version.is_some()) {
         names.push("DecodeException");
     }
     if layout.is_some_and(|layout| layout.offset_type != OffsetType::Uint32) {
@@ -260,7 +316,9 @@ fn imports(
         names.push("TableLayout");
     }
     names.push("TableSizer");
-    if layout.is_none() {
+    // Tables take a writer, and a message of an array of structs alone takes
+    // its fill
+    if layout.is_none() || struct_fill(schema, definition).is_some() {
         names.push("TableWriter");
     }
     for name in names {
@@ -377,9 +435,77 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
     serialize_body(writer, schema, definition, layout, Output::GivenBytes);
     writer.close("}");
 
+    if let Some(structure) = struct_fill(schema, definition) {
+        writer.blank();
+        serialize_structs(writer, name, &structure.name, layout);
+    }
+
     getters(writer, schema, definition, true);
     writer.blank();
     fields_record(writer, schema, definition);
+    writer.close("}");
+}
+
+/// The struct of a message's `serialize(count, fill)`: the struct of its
+/// only field, an array of structs, if it has a static `write()` to fill it
+/// with
+fn struct_fill<'a>(schema: &'a Schema, definition: &Definition) -> Option<&'a Definition> {
+    let [field] = definition.fields.as_slice() else {
+        return None;
+    };
+    let FieldType::StructArray(index) = field.field_type else {
+        return None;
+    };
+
+    let structure = schema.definition(index);
+    has_static_write(structure).then_some(structure)
+}
+
+/// A message of an array of structs alone also has `serialize(count, fill)`,
+/// named after `TableBuilder.setVector(count, fields, fill)`, whose `fill`
+/// writes each struct straight into the table with the struct's static
+/// `write()`, from whatever the caller holds, rather than from records of the
+/// structs in an array
+fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layout: Layout) {
+    writer.lines(&javadoc(&[
+        format!(
+            "Writes {} of `count` structs, each of which `fill` writes straight into",
+            article(name)
+        ),
+        format!("the table with `{structure}.write(bytes, offset, ...)`, without records of them:"),
+        String::new(),
+        "{@snippet :".to_owned(),
+        format!("{name}.serialize(items.size(), (index, bytes, offset) -> {{"),
+        "    var item = items.get(index);".to_owned(),
+        format!("    {structure}.write(bytes, offset, ...); // the item's values"),
+        "});".to_owned(),
+        "}".to_owned(),
+        String::new(),
+        "@param fill writes struct `index` at `offset` in the table's `bytes`, which may not be zero"
+            .to_owned(),
+        "@throws IllegalArgumentException if `count` is negative".to_owned(),
+    ]));
+    writer.open("public static byte[] serialize(int count, TableWriter.StructFill fill) {");
+    let mut arguments = vec![text("1"), text("LAYOUT")];
+    if layout.version.is_some() {
+        arguments.push(text("FORMAT_VERSION"));
+    }
+    writer.statement(
+        &STYLE,
+        "var sizer = ",
+        &call("new TableSizer", arguments),
+        ";",
+    );
+    writer.line(format!(
+        "sizer.addStructArray(count, {structure}.SIZE, {structure}.ALIGNMENT);"
+    ));
+    writer.blank();
+    writer.line("var writer = sizer.writer();");
+    writer.line(format!(
+        "writer.setStructs(0, count, {structure}.SIZE, {structure}.ALIGNMENT, fill);"
+    ));
+    writer.blank();
+    writer.line("return writer.bytes();");
     writer.close("}");
 }
 
@@ -632,6 +758,26 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
         "public static {name} read(ByteBuffer view, int offset) {{"
     ));
     struct_bounds_check(writer, "view.limit()");
+    writer.line("return readUnchecked(view, offset);");
+    writer.close("}");
+    writer.blank();
+
+    // The view of an array reads its structs without checking them again,
+    // since it checks their index, and the array's bounds hold every struct
+    // below its count. Checking each struct too made reading every struct of
+    // an array of 100 3% slower.
+    writer.lines(&javadoc(&[
+        format!(
+            "Reads {} at `offset` in a little-endian view, without checking",
+            article(name)
+        ),
+        "that the view holds it, as its caller has: `read()` by its bounds, and an array's"
+            .to_owned(),
+        "view by its index".to_owned(),
+    ]));
+    writer.open(format!(
+        "static {name} readUnchecked(ByteBuffer view, int offset) {{"
+    ));
     let reads = fields
         .iter()
         .map(|(_, field_type, at)| {
@@ -639,7 +785,10 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
             text(match field_type {
                 FieldType::Scalar(scalar) => view_read(*scalar, &at),
                 FieldType::Struct(index) => {
-                    format!("{}.read(view, {at})", schema.definition(*index).name)
+                    format!(
+                        "{}.readUnchecked(view, {at})",
+                        schema.definition(*index).name
+                    )
                 }
                 _ => unreachable!("structs hold scalars and structs only"),
             })
@@ -672,22 +821,81 @@ fn structure(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) 
     writer.close("}");
     writer.blank();
 
+    // The scalars' writes, at their offsets
+    let write_scalars = |writer: &mut CodeWriter| {
+        for (field, field_type, at) in &fields {
+            let at = offset_expression("offset", *at);
+            match field_type {
+                FieldType::Scalar(scalar) => {
+                    writer.line(format!("{};", struct_write(*scalar, &at, field)));
+                }
+                FieldType::Struct(_) => writer.line(format!("{field}.write(bytes, {at});")),
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+    };
+
+    // A static write of the struct's values, from which a caller writes
+    // what it holds, such as in a message's fill, without creating a record,
+    // and which the record's write calls
+    let static_write = has_static_write(definition);
+    if static_write {
+        writer.lines(&javadoc(&[
+            format!(
+                "Writes {} of these values at `offset` in `bytes`, which must hold it,",
+                article(name)
+            ),
+            "without creating one".to_owned(),
+        ]));
+        let parameters = ["byte[] bytes".to_owned(), "int offset".to_owned()]
+            .into_iter()
+            .chain(fields.iter().map(|(field, field_type, _)| {
+                format!("{} {field}", value_type(*field_type, schema))
+            }))
+            .map(text)
+            .collect();
+        writer.statement(
+            &STYLE,
+            "public ",
+            &call("static void write", parameters),
+            " {",
+        );
+        writer.indent();
+        write_scalars(writer);
+        writer.close("}");
+        writer.blank();
+    }
+
     writer.lines(&javadoc(&[format!(
         "Writes the `{name}` at `offset` in `bytes`, which must hold it"
     )]));
     writer.open("public void write(byte[] bytes, int offset) {");
-    for (field, field_type, at) in &fields {
-        let at = offset_expression("offset", *at);
-        match field_type {
-            FieldType::Scalar(scalar) => {
-                writer.line(format!("{};", struct_write(*scalar, &at, field)));
-            }
-            FieldType::Struct(_) => writer.line(format!("{field}.write(bytes, {at});")),
-            _ => unreachable!("structs hold scalars and structs only"),
-        }
+    if static_write {
+        let values = ["bytes".to_owned(), "offset".to_owned()]
+            .into_iter()
+            .chain(fields.iter().map(|(field, _, _)| field.clone()))
+            .map(text)
+            .collect();
+        writer.statement(&STYLE, "", &call("write", values), ";");
+    } else {
+        write_scalars(writer);
     }
     writer.close("}");
     writer.close("}");
+}
+
+/// Whether a struct declares a static `write()` of its values, which take
+/// a Java method's parameter slots after the bytes and the offset: the JVM's
+/// 255, which a record's constructor shares with `this`, as the checker
+/// counts them
+fn has_static_write(definition: &Definition) -> bool {
+    let slots: usize = definition
+        .fields
+        .iter()
+        .map(|field| java_parameter_slots(field.field_type))
+        .sum();
+
+    slots + 2 <= MAX_JAVA_PARAMETER_SLOTS + 1
 }
 
 fn fields_record(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
@@ -867,7 +1075,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         };
 
         writer.blank();
-        writer.lines(&javadoc(&schema_docs(&field.docs)));
+        writer.lines(&javadoc(&getter_docs(field)));
         writer.open(format!(
             "public {} {}() {{",
             value_type(field.field_type, schema),
@@ -896,80 +1104,75 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                     "return {structure}.read(buffer.bytes(), {offset});"
                 ));
             }
-            FieldType::StructArray(index) => {
-                // An array, as arrays of scalars are, from a loop rather than
-                // a stream to a list, which took 2.6 times as long to read
-                // 100 structs
-                let structure = &schema.definition(index).name;
+            // The view, which reads each item when it's asked for, so that a
+            // reader of some items doesn't read the others, and C2's escape
+            // analysis removes the readers and records of those it reads in
+            // a loop, which a list or array of every item would hold
+            FieldType::StructArray(_) | FieldType::Vector(_) => {
                 writer.line(format!(
-                    "var view = buffer.getStructArray({offset}, {structure}.SIZE);"
+                    "return new {}(buffer, {offset});",
+                    value_type(field.field_type, schema)
                 ));
-                writer.line(format!(
-                    "var items = new {structure}[view.remaining() / {structure}.SIZE];"
-                ));
-                writer.blank();
-                writer.open("for (int i = 0; i < items.length; i++) {");
-                writer.line(format!(
-                    "items[i] = {structure}.read(view, i * {structure}.SIZE);"
-                ));
-                writer.close("}");
-                writer.blank();
-                writer.line("return items;");
             }
             FieldType::Table(table) => {
                 let table = &schema.definition(table).name;
                 writer.line(format!("return new {table}(buffer, {offset});"));
             }
-            FieldType::Vector(table) => {
-                let table = &schema.definition(table).name;
-                writer.line(format!("var offsets = buffer.getVectorOffsets({offset});"));
-                writer.blank();
-                // Qualified, so that a schema can declare its own `Arrays`
-                writer.line("return java.util.Arrays.stream(offsets)");
-                writer.indent();
-                writer.line(format!(".mapToObj(item -> new {table}(buffer, item))"));
-                writer.line(".toList();");
-                writer.dedent();
-            }
         }
         writer.close("}");
 
-        if let Some(view) = view_type(field.field_type, schema) {
-            view_getter(writer, field, &view, &offset);
+        if let FieldType::Array(scalar) = field.field_type {
+            array_view_getter(writer, field, scalar, &offset);
         }
     }
 }
 
-/// Writes the getter of a field's view, `<field>View()`, beside its getter
-fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: &str) {
-    let getter = identifier(&field.name);
-    let (description, value) = match field.field_type {
-        FieldType::Array(scalar) => {
-            let elements =
-                format!("Views the elements of `{getter}()` in place, read-only, without");
-            let description = match signed_type(scalar) {
-                Some(signed) => vec![
-                    elements,
-                    format!("copying them, as `{signed}`s with the same bits"),
-                ],
-                None => vec![format!("{elements} copying them")],
-            };
-            let value = format!("buffer.get{}ArrayView({offset})", method_name(scalar));
-            (description, value)
-        }
-        _ => (
-            vec![format!(
-                "Views the items of `{getter}()`, reading each one when it's asked for"
-            )],
-            format!("new {view}(buffer, {offset})"),
-        ),
+/// A getter's Javadoc: the field's documentation, and for a vector or an
+/// array of structs, that the getter returns a view whose items are read, and
+/// fail, when they're asked for
+fn getter_docs(field: &Field) -> Vec<String> {
+    let mut docs = schema_docs(&field.docs);
+    let items = match field.field_type {
+        FieldType::Vector(_) => "the items' ends",
+        FieldType::StructArray(_) => "the structs",
+        _ => return docs,
     };
+
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.extend([
+        "Views the items, reading each one when it's asked for, so that an item whose bytes are"
+            .to_owned(),
+        "corrupt throws a `DecodeException` when it's read, rather than here".to_owned(),
+        String::new(),
+        format!("@throws DecodeException if the count or {items} aren't within the bytes"),
+    ]);
+
+    docs
+}
+
+/// Writes the getter of the view of an array of scalars, `<field>View()`,
+/// beside its getter, which copies them
+fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, offset: &str) {
+    let getter = identifier(&field.name);
+    let elements = format!("Views the elements of `{getter}()` in place, read-only, without");
 
     let mut docs = schema_docs(&field.docs);
     if !docs.is_empty() {
         docs.push(String::new());
     }
-    docs.extend(description);
+    match signed_type(scalar) {
+        Some(signed) => docs.extend([
+            elements,
+            format!("copying them, as `{signed}`s with the same bits"),
+        ]),
+        None => docs.push(format!("{elements} copying them")),
+    }
+
+    // Qualified, so that a schema can declare its own `FloatBuffer`, and
+    // since `ByteBuffer` is tafla's
+    let view = format!("java.nio.{}", nio_buffer(scalar));
 
     writer.blank();
     writer.lines(&javadoc(&docs));
@@ -977,22 +1180,11 @@ fn view_getter(writer: &mut CodeWriter, field: &Field, view: &str, offset: &str)
         "public {view} {}View() {{",
         camel_case(&field.name)
     ));
-    writer.line(format!("return {value};"));
+    writer.line(format!(
+        "return buffer.get{}ArrayView({offset});",
+        method_name(scalar)
+    ));
     writer.close("}");
-}
-
-/// The view that a field's view getter returns: a vector's or an array of
-/// structs', which reads each item when it's asked for, or the runtime's
-/// read-only view of an array of scalars, which the getter copies
-fn view_type(field_type: FieldType, schema: &Schema) -> Option<String> {
-    match field_type {
-        FieldType::Vector(index) => Some(format!("{}Vector", schema.definition(index).name)),
-        FieldType::StructArray(index) => Some(format!("{}Array", schema.definition(index).name)),
-        // Qualified, so that a schema can declare its own `FloatBuffer`, and
-        // since `ByteBuffer` is tafla's
-        FieldType::Array(scalar) => Some(format!("java.nio.{}", nio_buffer(scalar))),
-        _ => None,
-    }
 }
 
 /// The JDK's buffer that views an array of scalars, of the signed type of
@@ -1094,13 +1286,15 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
-        FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
-        FieldType::Vector(index) => format!("List<{}>", schema.definition(index).name),
+        // The views that the generated code declares for the items' types
+        FieldType::StructArray(index) => format!("{}Array", schema.definition(index).name),
+        FieldType::Vector(index) => format!("{}Vector", schema.definition(index).name),
     }
 }
 
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
         FieldType::Table(index) => format!("{}.Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("List<{}.Fields>", schema.definition(index).name),
         _ => value_type(field_type, schema),

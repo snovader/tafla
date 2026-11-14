@@ -187,11 +187,14 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # Without the build cache, which setup-go keys by go.sum alone: a job
+      # that finished first would save its builds for another architecture
+      # under the key that the tests' jobs restore
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version: stable
-          cache-dependency-path: go/tests/go.sum
+          cache: false
 
       - name: Install qemu
         if: matrix.emulator != ''
@@ -224,11 +227,14 @@ jobs:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
 
+      # Without the build cache, which setup-go keys by go.sum alone: a job
+      # that finished first would save its instrumented builds under the key
+      # that the tests' jobs restore
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
           go-version: stable
-          cache-dependency-path: go/tests/go.sum
+          cache: false
 
       # Briefly, from the conformance suite's tables, so that a change that
       # breaks a target, or that it finds quickly, fails here. Go writes a

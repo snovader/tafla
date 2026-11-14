@@ -11,7 +11,7 @@ import org.openjdk.jmh.annotations.*;
  */
 @State(Scope.Benchmark)
 public class ItemAccessBenchmark {
-    @Param({"tafla", "tafla-gen", "tafla-gen view", "tafla-gen view A/A"})
+    @Param({"tafla", "tafla-gen", "tafla-gen A/A"})
     public String codec;
 
     private ItemAccess access;

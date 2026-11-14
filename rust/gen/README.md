@@ -167,7 +167,8 @@ or read its tables, or a target couldn't generate its code:
   array of scalars, which Java declares, and a declaration can't take
   the name of a view that the schema's vectors and arrays of structs need,
   `<Table>Vector` or `<Struct>Array`, nor another declaration's
-  `<Name>Fields`, which the generated code below declares.
+  `<Name>Fields`, which the generated code below declares, nor a message's
+  or a table's `<Name>FieldValues`, which Python declares.
 
 Fields named after a member of the generated code are renamed instead, as
 the generated code below describes.
@@ -196,17 +197,43 @@ it writes a table's leading fields of fixed size, whose offsets depend on no
 value, and a string after them, in one call that packs them with a `struct`,
 from a `FixedFields` that describes them: a nested table of only those fields
 is written whole, in its parent's call or in one of its own, and a vector of
-such tables in one call. A table of only those fields also has `fields()`,
-which reads them all at once into the `TypedDict` that it's written from, or
-through its getters when its offsets aren't the ones that its writer writes,
-and a view of a vector of them has `fields()`, which reads every item's at
-once. A table of scalars and a string after them also has `field_values()`,
-which reads them into a tuple of their values in order, and a message of
-them `serialize_values()`, which writes it from them as positional
-arguments. A struct of scalars has `read_values()`, `read_array_values()`
-and `serialize_values()`, which do the same for its values without creating
-its dataclass, and a view of an array or a vector of such structs or tables
-has `field_values()`. Go lays out the same fields itself, at positions that
+such tables in one call. Every table has `field_values()`, which reads its
+fields' values into a tuple, `<Name>FieldValues`, each as its getter returns
+it, but a nested table's: its values, in place of it when they're all of
+fixed size, and in a tuple of their own otherwise. It reads the leading fields of fixed size in
+one call, and the others after them in the same call, nested tables'
+included, or every field through the getters when the table's offsets
+aren't the ones that its writer writes, so that its values and errors are
+the getters'. A table whose vectors are of tables of only those fields also
+has `fields()`, which reads them into the `TypedDict` that it's written
+from, with the items of its vectors and arrays of structs. A message of
+scalars, strings, arrays and vectors of tables of fixed size without
+structs has `serialize_values()`, which writes it from its values as
+positional arguments, each vector's as its items' values, as its view's
+`field_values()` reads them. A struct of scalars has
+`read_values()`, `read_array_values()` and `serialize_values()`, which do
+the same for its values without creating its dataclass. A message of only
+fields of fixed size, and a string after them, is written in one call into
+bytes of its own, which its `serialize()` and `serialize_values()` return
+rather than a view of a writer's, through the runtime's
+`TableWriter.write_fields()`. Every message has a static
+`read_values(data)`, which reads its values as `field_values()` does without
+creating a reader: those of a message of only such fields in one call,
+through `ByteBuffer.read_fields()`. A view of a vector
+has `field_values()`, which reads every item's values, at once when the
+table is of fixed size, `iter_field_values()`, which iterates over them,
+reading each item when it reaches it, and `item_field_values(index)`, which
+reads one item's, and a vector of tables of fixed size `fields()`. A view of an array
+of structs of scalars has `field_values()`, `iter_field_values()`, which
+iterates over their values, and `item_field_values(index)`. Go's messages
+and tables have `Fields()`, which reads every field at once into the
+`<Name>Fields` that writes it, nested tables and the items of vectors with
+their own `Fields()`, in one function rather than a getter's call for each
+field. A table has none when a vector of it holds tables that allocate when
+they're read whole, with arrays, arrays of structs or vectors, which
+corrupted offsets could lead every item to, so that what `Fields()`
+allocates stays in proportion to the bytes; no table that holds itself has
+one. Go lays out the same fields itself, at positions that
 the generator works out, since Go's compiler keeps a sizer's and a writer's
 fields in memory at every call: its sizer and writer take a table's leading
 fields of fixed size together, and a nested table of only those fields
@@ -216,7 +243,12 @@ sizer and a writer. C++ writes such a message whole too, each field at a
 constant position, without a sizer and a writer, into new bytes or, from
 `serialize_into()`, the start of the given bytes, which the runtime's
 `room_for_table()` checks hold it. A nested table of only those fields has a
-`SIZE` and a `to_bytes()`, with which such a message writes it. Each nested
+`SIZE` and a `to_bytes()`, with which such a message writes it. Rust writes
+such a message whole too, into the bytes that the runtime's
+`TableWriter::table_bytes()` returns with its header, and its nested tables
+of only those fields have a `SIZE` and a `to_bytes()` too, whose bytes the
+parent's writer copies whole, and whose `SIZE` its sizer adds for every item
+of a vector of them at once. Each nested
 table has an `ALIGNMENT`, which its parent pads it to: the largest alignment
 of its arrays and nested tables. Structs are read and written whole, and
 arrays of
@@ -234,56 +266,79 @@ when the bytes are in another version.
 | Go         | `<package>.go`, a package of its name    | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 | C++        | `<schema>.hpp`, a header of C++20        | Views of their bytes, written from aggregates, `<Name>Fields`            | Aggregates, read and written at their offsets        |
 
-A table's getter of a vector or an array of structs reads every item at once.
-Vectors return an array of tables in TypeScript and JavaScript, a `List` in
-Java, a `list` in Python, a `Vec` in Rust, a slice in Go and a `std::vector` in C++. Every target reads a vector's
-tables in place, within the message's bytes, as `SPEC.md` describes, so that
-it reads the same fields from the same bytes as the others, even where a
-corrupted item's offsets lead past its end. Arrays of structs return an
-array of structs in TypeScript, JavaScript and Java, as Java's getters of
-arrays of scalars return Java arrays, a `list` in Python, an iterator
-that reads each from the bytes in Rust, a slice in Go, and a `std::vector` in
-C++. Each struct writes an array of them
-with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+A table's getter of a vector or an array of structs returns a view of its
+items, which reads an item only when it's asked for, as [Views](#views)
+describes, and a caller that wants every item at once collects the view, as
+with `iter().collect()` in Rust or `to_vector()` in C++. Every target reads a
+vector's tables in place, within the message's bytes, as `SPEC.md` describes,
+so that it reads the same fields from the same bytes as the others, even
+where a corrupted item's offsets lead past its end. Each struct writes an
+array of them with `serializeArray()`, `serialize_array()` or
+`array_to_bytes()`.
+
+In TypeScript and JavaScript, `fields()` reads every field of a message or a
+table at once into the `<Name>Fields` that it's written from, nested tables
+and the items of its vectors and arrays of structs included, without a reader
+for each, which a nested table's static `read(buffer, position)` reads. A
+view's `fields()` reads every item's, and a struct's static
+`read(bytes, offset)` reads its fields without creating it. One call reads
+each nested table once, and allocates in proportion to the bytes: a table has
+`fields()` only when its vectors hold tables of scalars, structs and such
+tables, since an item that holds a string, an array or a vector would read
+it again for each item that corrupted offsets point at it, and a vector of
+its own type, as a tree's, at itself. The view of an array of structs also
+has a getter of each field of its structs, such as `triples.value(i)`, which
+reads that field of struct `i` without creating the struct; one named after
+the view's own members, `length`, `get` or `fields`, takes a `_`. The view of
+a vector has none, since each would find the item again, which takes longer
+than finding it once for `get(i)`.
 
 ### Views
 
-Beside each getter of a vector or an array of structs, `<field>View()`, or
-`<field>_view()` in Python and Rust and `<Field>View()` in Go, returns a view of its items, which reads
-an item only when it's asked for: a `<Table>Vector` or a `<Struct>Array`,
-which the generated code declares for each table that a vector holds and
-each struct that an array holds. A view finds item `i` without reading the
+A view of a vector or an array of structs reads an item only when it's asked
+for: a `<Table>Vector` or a `<Struct>Array`, which the generated code
+declares for each table that a vector holds and each struct that an array
+holds. The field's getter returns it. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
 runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
 view read in Java, TypeScript and JavaScript, `Vector::get_in_place()` in
-Rust or `Vector.GetInPlace()` in Go, and an array's at `i` times its struct's size. When it's made, it checks that the
-bytes hold the vector's count and an end for each item, or the array's
-structs, so that its length is never more than the bytes can hold. It reads
-each item when it's asked for, which fails with the decode error if the
-item's bytes are corrupt.
+Rust or `Vector.GetInPlace()` in Go, and an array's at `i` times its struct's
+size. When it's made, it checks that the bytes hold the vector's count and an
+end for each item, or the array's structs, so that its length is never more
+than the bytes can hold. It reads each item when it's asked for, which fails
+with the decode error if the item's bytes are corrupt. So a getter that
+returns a view succeeds although an item's bytes are corrupt, and the item
+fails when it's read. In TypeScript and JavaScript, an array of structs
+checks an index only by reading within its bytes, so an index outside the
+array throws `DecodeError`, which is a `RangeError`, and the index must be an
+integer. A Go `<Struct>Array` also returns all of its structs at once, as the
+runtime's `ArrayView` returns arrays: `AsSlice()` in place, where the struct
+lies in memory as its bytes do, without a bool, and the bytes are aligned to
+it on a little-endian host, and `Slice()` in place where it can, and
+otherwise a copy.
 
 Since a view reads an item without the items before it, it reads an item
-that corrupted ends start at the vector's count, where the getter fails at
-an item before it. Such an item can hold itself, when its table holds a
-vector of its own type, as
+that corrupted ends start at the vector's count, where reading every item in
+order fails at an item before it. Such an item can hold itself,
+when its table holds a vector of its own type, as
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#validation)
 describes, so a caller that walks a tree recursively through views bounds
 how deep it walks.
 
 | Target                 | Length                | Item `i`                                                                                    | Every item                                             |
 | ---------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`                                                                 | A loop of `get(i)`                                     |
+| TypeScript, JavaScript | `length()`            | `get(i)`, or a `RangeError`, a `DecodeError` outside an array of structs                    | A loop of `get(i)`, or `fields()`                      |
 | Python                 | `len(view)`           | `view[i]`, from the end if `i` is negative, or an `IndexError`                              | `for item in view`, which reads every item's end first |
-| Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`                                |
+| Java                   | `size()`              | `get(i)`, or an `IndexOutOfBoundsException`: a view is a random-access, unmodifiable `List` | `for (var item : view)`, reading each item's end once  |
 | Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
 | Go                     | `Len()`               | `Get(i)`, with an error for a vector's table, or a panic past the end, as indexing a slice  | `range view.All()`, which reads each item's end once   |
 | C++                    | `size()`, `empty()`   | `get(i)` of a vector, `at(i)` of an array, or a `std::out_of_range`                         | `for (auto item : view)`, reading each item's end once |
 
-A view creates the reader of each item that it reads, as the getter does, but
-not those of the items it skips, nor an array of them. TypeScript's views
-aren't iterable, since a loop of `for...of` over them took twice as long as a
-loop of `get(i)` in V8. The comparison suites time reading the last item and
-every item through views, against the getters and `ByteBuffer` by hand.
+A view creates the reader of each item that it reads, but not those of the
+items it skips, nor an array of them. TypeScript's views aren't iterable,
+since a loop of `for...of` over them took twice as long as a loop of `get(i)`
+in V8. The comparison suites time reading the last item and every item
+through views, against `ByteBuffer` by hand.
 
 Java's getter of an array of scalars returns a copy, a Java array, where the
 other targets return the array in place. So beside it, `<field>View()`
@@ -301,7 +356,7 @@ use shapes::{ItemFields, ItemList, ItemListFields, PairFields};
 let item = |value| ItemFields { value, pair: PairFields { first: 0.5, second: 1.5 } };
 let bytes = ItemListFields { items: &[item(1.0), item(2.0), item(3.0)] }.serialize()?;
 
-let items = ItemList::new(&bytes).items_view()?; // an ItemVector
+let items = ItemList::new(&bytes).items()?; // an ItemVector
 let last = items.get(items.len() - 1).ok_or("no items")??; // reads the last item alone
 assert_eq!(last.value()?, 3.0);
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -311,7 +366,7 @@ Field names that are keywords in a target take a `_` after them, such as
 `class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
-`constructor_` and `toString_` in TypeScript, `serialize_`, `int_`, `bool_`
+`constructor_`, `toString_` and `fields_` in TypeScript, `serialize_`, `int_`, `bool_`
 and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
 `version_of_` in Rust, `MarshalBinary_` in Go, as Go exports every name of a
 schema in `PascalCase`, which keywords don't clash with, and `serialize_`,
@@ -417,8 +472,10 @@ structs view their strings, arrays and items as `std::string_view`s and
 a message holds the bytes from the table's start, 16 bytes on a 64-bit host,
 and reads its offsets at constant positions from there, so the positions of
 its decode errors count from the table's start too, as a vector item's do.
+Its parent's getter throws a `tafla::DecodeError` if the table's offset leads
+past the bytes, through the runtime's `ByteBuffer::get_table()`.
 It also has a default constructor, of no bytes, whose getters throw a
-`tafla::DecodeError`, so that the getter of a vector can size its
+`tafla::DecodeError`, so that `to_vector()` of a vector's view can size its
 `std::vector` before reading the items into it.
 
 ### Writing into reused bytes
@@ -518,12 +575,29 @@ impl From<&Row> for ItemFields {
 
 let rows = [Row { value: 1.0, first: 0.5, second: 1.5 }];
 let bytes = ItemListFields { items: &rows }.serialize()?; // a slice of Row
-assert_eq!(ItemList::new(&bytes).items()?[0].pair()?.second()?, 1.5);
+let item = ItemList::new(&bytes).items()?.get(0).ok_or("no item")??;
+assert_eq!(item.pair()?.second()?, 1.5);
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 TypeScript's and JavaScript's fields are interfaces, which any object with
 their properties satisfies, so they take the caller's objects as they are.
+
+In Java, a struct also has a static `write(bytes, offset, ...)` of its
+values, unless they take more than 253 of a method's parameter slots, and a
+message whose only field is an array of such structs also has
+`serialize(count, fill)`, named after `TableBuilder.setVector(count, fields,
+fill)`. Its fill writes each struct straight into the table with the static
+`write()`, from the items that the caller holds, without creating a record
+of each struct and an array of them, such as for a message `Triples` of an
+array `items` of `Triple`s of three floats:
+
+```java
+var bytes = Triples.serialize(items.size(), (index, bytes, offset) -> {
+    var item = items.get(index);
+    Triple.write(bytes, offset, item.value(), item.first(), item.second());
+});
+```
 
 ### Versions
 
