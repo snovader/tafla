@@ -73,7 +73,7 @@
  *
  * <h2>Performance</h2>
  *
- * <p>Measured in OpenJDK 25 on an Apple M2 Pro, as the minimum of 41 rounds:</p>
+ * <p>Measured with JMH in Oracle's JDK 25.0.1 on an Apple M2 Pro, as the fastest iteration:</p>
  *
  * <ul>
  *   <li><b>Arrays of the field's Java type are copied in bulk</b>, both ways, such as a
@@ -82,27 +82,27 @@
  *   <li><b>Array reads return copies</b>, since a Java array can't share the bytes' storage.
  *     The array view getters, such as {@code getFloat32ArrayView()}, return a read-only
  *     {@code FloatBuffer} or other view of the bytes instead: viewing three columns of 100,000
- *     elements took 0.04 µs and 448 bytes, against 47 µs and 1.6 MB to copy them. Alignment
+ *     elements took 0.03 µs and 336 bytes, against 48 µs and 1.6 MB to copy them. Alignment
  *     doesn't matter to Java, which reads at any offset, but the TypeScript implementation reads
  *     aligned arrays as views of the bytes, so Java aligns the arrays it writes.</li>
  *   <li><b>Reading elements one at a time costs no more than copying the array.</b> Summing a
- *     27,028-element {@code float32} array with {@code getFloat32()} took 6.8 µs, against 9.5 µs
- *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar
- *     getters are the slower way.</li>
+ *     27,028-element {@code float32} array with {@code getFloat32()} took 24 µs, against 27 µs
+ *     with {@code getFloat32Array()}, which copies it first. In Python, the scalar getters are the
+ *     slower way.</li>
  *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
  *     {@code TableBuilder} straight into its parent when the parent is written, so the outermost
  *     table allocates and writes all the bytes once. A table nested as bytes was built into an
  *     array of its own and is copied, as is a builder written already, or one whose layout has
  *     a header or another offset type than its parent's. A vector of 100 tables that each nest
- *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 54 µs and 108 µs.</li>
+ *     another took 4.4 µs to build from builders and 5.2 µs from bytes, and a table nesting
+ *     100,000 rows of three columns took 41 µs and 87 µs.</li>
  *   <li><b>Record nested tables in place.</b> {@code setTable(int, Consumer)} and
  *     {@code setVector(int, int, ObjIntConsumer)} record a nested table, or each item of a vector,
- *     among its parent's fields, without a builder of its own. The vector of 100 tables that each
- *     nest another took 12% less time so than from a builder per item, as the fastest of JMH's
- *     iterations, and allocated 13.0 KB rather than 29.1 KB.</li>
+ *     among its parent's fields, without a builder of its own. Recorded so, the vector of 100
+ *     tables that each nest another took 3.9 µs, 12% less than from a builder per item, and
+ *     allocated 13.0 KB rather than 29.1 KB.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
- *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
+ *     16-byte string took 0.04 µs to write and 0.014 µs to read.</li>
  * </ul>
  *
  * <h2>Conversions</h2>
