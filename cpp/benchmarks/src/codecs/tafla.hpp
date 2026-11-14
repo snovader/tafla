@@ -111,7 +111,8 @@ struct Tafla {
     }
 
     /// Writes the structs one after another into a vector, which the builder
-    /// owns, as tafla-gen's code writes an array of them
+    /// views until it writes the table, as tafla-gen's code writes an array
+    /// of them
     [[nodiscard]] Bytes serialize(StructsShape, const List& input) const {
         std::vector<std::uint8_t> structs(input.items.size() * kItemSize);
         for (std::size_t index = 0; index < input.items.size(); ++index) {
@@ -119,7 +120,7 @@ struct Tafla {
         }
 
         TableBuilder builder(1, TableLayout());
-        builder.set_struct_array(std::move(structs), kItemSize, kItemAlignment);
+        builder.set_struct_array(std::span<const std::uint8_t>(structs), kItemSize, kItemAlignment);
         return builder.to_bytes();
     }
 
