@@ -294,14 +294,12 @@ public:
     /** Reads an `ItemList` from `bytes`, which it views */
     explicit constexpr ItemList(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Item> items() const;
-
     /**
-     * Views the items of `items()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the
-     * field, or the vector's count or the ends of its items, lie outside the bytes
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
      */
-    [[nodiscard]] ItemVector items_view() const;
+    [[nodiscard]] ItemVector items() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -433,14 +431,11 @@ public:
     /** Reads a `Triples` from `bytes`, which it views */
     explicit constexpr Triples(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
-    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::vector<Triple> items() const;
-
     /**
-     * Views the items of `items()`, reading each one when it's asked for, or throws a `tafla::DecodeError` if the field
-     * or its structs lie outside the bytes
+     * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
+     * `tafla::DecodeError` if the field or its structs lie outside the bytes.
      */
-    [[nodiscard]] TripleArray items_view() const;
+    [[nodiscard]] TripleArray items() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -646,11 +641,7 @@ inline std::size_t DocumentFields::serialize_into(std::span<std::uint8_t> bytes_
     return writer_.finish_into();
 }
 
-inline std::vector<Item> ItemList::items() const {
-    return items_view().to_vector();
-}
-
-inline ItemVector ItemList::items_view() const {
+inline ItemVector ItemList::items() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
     return ItemVector(buffer.get_vector(position));
@@ -758,11 +749,7 @@ inline void ItemFields::to_bytes(std::uint8_t* bytes_) const noexcept {
     pair.to_bytes(bytes_ + 12);
 }
 
-inline std::vector<Triple> Triples::items() const {
-    return items_view().to_vector();
-}
-
-inline TripleArray Triples::items_view() const {
+inline TripleArray Triples::items() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
     return TripleArray(buffer.get_struct_array(position, Triple::SIZE));

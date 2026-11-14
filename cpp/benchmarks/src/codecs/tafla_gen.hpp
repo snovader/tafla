@@ -77,15 +77,16 @@ struct TaflaGen {
         return ::workloads::ItemListFields{.items = items}.serialize();
     }
 
-    /// Reads the items through the generated getter, which reads every item's
-    /// reader into a vector first
+    /// Reads the items through the generated getter's view, which reads each
+    /// item's end once as it iterates
     [[nodiscard]] List deserialize(ListShape, std::span<const std::uint8_t> bytes) const {
         const auto items = ::workloads::ItemList(bytes).items();
 
         List list{std::vector<Item>(items.size())};
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            const auto pair = items[index].pair();
-            list.items[index] = {items[index].value(), pair.first(), pair.second()};
+        auto into = list.items.begin();
+        for (const auto item : items) {
+            const auto pair = item.pair();
+            *into++ = {item.value(), pair.first(), pair.second()};
         }
         return list;
     }
@@ -100,7 +101,7 @@ struct TaflaGen {
     }
 
     [[nodiscard]] List deserialize(StructsShape, std::span<const std::uint8_t> bytes) const {
-        const auto triples = ::workloads::Triples(bytes).items_view();
+        const auto triples = ::workloads::Triples(bytes).items();
 
         List list{std::vector<Item>(triples.size())};
         for (std::size_t index = 0; index < triples.size(); ++index) {

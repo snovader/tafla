@@ -30,7 +30,7 @@ as **tafla A/A**, an A/A pair whose ratio to tafla's shows the harness's
 noise.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as doubles, rather than
 collecting items of its own, and `src/item_access.hpp` holds them:
@@ -38,12 +38,13 @@ collecting items of its own, and `src/item_access.hpp` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `items_in_place()`, and
   `get_struct_array()`'s bytes with `load_le()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into a `std::vector` first.
-- **tafla-gen view** reads with the generated views, `items_view()`, whose
-  `get(i)` or `at(i)` reads one item and whose iterators read every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views: a vector's `get(i)` reads one item, an array's `operator[]` reads
+  one struct without checking its index, as the read by hand does, and their
+  iterators read every item. The generated readers are passed by value, as
+  `ByteBuffer`'s spans are by hand.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
+  harness's noise.
 
 `tafla_encoding` prints each library's encoded sizes and what it does with a
 truncated document, as the TypeScript comparison does, and
@@ -108,9 +109,9 @@ comparison uses its counterpart:
   It takes the workloads' types, as the other codecs do, so it collects the
   generated fields of the vector's items and the generated structs of the
   array into a `std::vector` in each call, since the generated code writes
-  them from spans. The generated getter of the vector reads its items' readers
-  into a `std::vector`, which the codec reads into the workload's items, and
-  the array of structs is read through its view.
+  them from spans. The generated getters of the vector and of the array of
+  structs return views of their items, which the codec iterates into the
+  workload's items, reading each item once.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
   default size, which grows by doubling, and each table with flatc's
   `Create*()` functions. Columns are written from spans with

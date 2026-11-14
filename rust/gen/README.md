@@ -249,13 +249,12 @@ when the bytes are in another version.
 A table's getter of a vector or an array of structs returns a view of its
 items, which reads an item only when it's asked for, as [Views](#views)
 describes, and a caller that wants every item at once collects the view, as
-with `iter().collect()` in Rust. C++'s getters read every item at once
-instead, into a `std::vector` of a vector's tables or an array's structs, and
-a getter beside each returns its view. Every target reads a vector's tables
-in place, within the message's bytes, as `SPEC.md` describes, so that it
-reads the same fields from the same bytes as the others, even where a
-corrupted item's offsets lead past its end. Each struct writes an array of
-them with `serializeArray()`, `serialize_array()` or `array_to_bytes()`.
+with `iter().collect()` in Rust or `to_vector()` in C++. Every target reads a
+vector's tables in place, within the message's bytes, as `SPEC.md` describes,
+so that it reads the same fields from the same bytes as the others, even
+where a corrupted item's offsets lead past its end. Each struct writes an
+array of them with `serializeArray()`, `serialize_array()` or
+`array_to_bytes()`.
 
 In TypeScript and JavaScript, `fields()` reads every field of a message or a
 table at once into the `<Name>Fields` that it's written from, nested tables
@@ -279,10 +278,7 @@ than finding it once for `get(i)`.
 A view of a vector or an array of structs reads an item only when it's asked
 for: a `<Table>Vector` or a `<Struct>Array`, which the generated code
 declares for each table that a vector holds and each struct that an array
-holds. The field's getter returns it in Rust, Go, Java, TypeScript,
-JavaScript and Python. Where a getter reads every item at once, as in C++,
-`<field>_view()` beside it returns the view. A view finds item `i` without
-reading the
+holds. The field's getter returns it. A view finds item `i` without reading the
 others: a vector's from the ends of that item and the one before it, with the
 runtime's `getVectorOffset()`, `getVectorItemOffset()` and the count that the
 view read in Java, TypeScript and JavaScript, `Vector::get_in_place()` in
@@ -298,8 +294,8 @@ array throws `DecodeError`, which is a `RangeError`, and the index must be an
 integer.
 
 Since a view reads an item without the items before it, it reads an item
-that corrupted ends start at the vector's count, where a getter that reads
-every item at once fails at an item before it. Such an item can hold itself,
+that corrupted ends start at the vector's count, where reading every item in
+order fails at an item before it. Such an item can hold itself,
 when its table holds a vector of its own type, as
 [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#validation)
 describes, so a caller that walks a tree recursively through views bounds
@@ -318,8 +314,7 @@ A view creates the reader of each item that it reads, but not those of the
 items it skips, nor an array of them. TypeScript's views aren't iterable,
 since a loop of `for...of` over them took twice as long as a loop of `get(i)`
 in V8. The comparison suites time reading the last item and every item
-through views, against `ByteBuffer` by hand, and through the getters that
-read every item at once.
+through views, against `ByteBuffer` by hand.
 
 Java's getter of an array of scalars returns a copy, a Java array, where the
 other targets return the array in place. So beside it, `<field>View()`
@@ -454,7 +449,7 @@ a message holds the bytes from the table's start, 16 bytes on a 64-bit host,
 and reads its offsets at constant positions from there, so the positions of
 its decode errors count from the table's start too, as a vector item's do.
 It also has a default constructor, of no bytes, whose getters throw a
-`tafla::DecodeError`, so that the getter of a vector can size its
+`tafla::DecodeError`, so that `to_vector()` of a vector's view can size its
 `std::vector` before reading the items into it.
 
 ### Writing into reused bytes

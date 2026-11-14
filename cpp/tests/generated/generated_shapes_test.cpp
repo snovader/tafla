@@ -1,9 +1,9 @@
 // The code generated from `schemas/shapes.tafla` writes the tables that
 // `TableBuilder` writes by hand, into new bytes and into the start of bytes
 // that the caller gives, reads back what it writes, and reads
-// corrupted and arbitrary bytes as values or decode errors, alike through its
-// views and its getters, and without reading outside them, which the
-// sanitizers check
+// corrupted and arbitrary bytes as values or decode errors, alike whether it
+// reads a vector's items at once or one at a time, and without reading outside
+// them, which the sanitizers check
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -195,8 +195,41 @@ TEST(GeneratedShapes, AnItemIsReadInPlacePastItsEndWithinTheBytesOfItsItemList) 
     detail::store(bytes.data() + first, static_cast<std::uint32_t>(value));
 
     const shapes::ItemList read(bytes);
-    EXPECT_EQ(read.items()[0].value(), 4.0F);
-    EXPECT_EQ(read.items_view().get(0).value(), 4.0F);
+    EXPECT_EQ(read.items().get(0).value(), 4.0F);
+    EXPECT_EQ(read.items().to_vector()[0].value(), 4.0F);
+}
+
+/// The getter of a vector returns a view of its items, which reads each item
+/// when it's asked for, so a corrupt item fails when it's read rather than
+/// when the getter is called, and the items before it read
+TEST(GeneratedShapes, ACorruptItemFailsWhenItIsReadRatherThanWhenTheGetterIsCalled) {
+    const std::vector<shapes::ItemFields> list{
+        {.value = 1.0F, .pair = {.first = 2.0F, .second = 3.0F}},
+        {.value = 4.0F, .pair = {.first = 5.0F, .second = 6.0F}},
+        {.value = 7.0F, .pair = {.first = 8.0F, .second = 9.0F}},
+    };
+    auto bytes = shapes::ItemListFields{.items = list}.serialize().to_vector();
+
+    // The last item's end, after the vector's count and the two ends before
+    // it, lies past the bytes
+    const ByteBuffer buffer(bytes, TableLayout());
+    store_le(bytes.data() + buffer.root_offset(0) + 3 * 4, std::uint32_t{0xffff'ffff});
+
+    const auto items = shapes::ItemList(bytes).items();
+    ASSERT_EQ(items.size(), 3U);
+    EXPECT_EQ(items.get(1).value(), 4.0F);
+    EXPECT_THROW(static_cast<void>(items.get(2)), DecodeError);
+    EXPECT_THROW(static_cast<void>(items.to_vector()), DecodeError);
+
+    std::vector<float> values;
+    EXPECT_THROW(
+        {
+            for (const auto item : items) {
+                values.push_back(item.value());
+            }
+        },
+        DecodeError);
+    EXPECT_EQ(values, (std::vector<float>{1.0F, 4.0F}));
 }
 
 TEST(GeneratedShapes, ASampleShorterThanItsSizeIsRejected) {
@@ -213,7 +246,7 @@ TEST(GeneratedShapes, ASampleShorterThanItsSizeIsRejected) {
 
 TEST(GeneratedShapes, AViewOfAnEmptyVectorHoldsNoItems) {
     const auto bytes = shapes::ItemListFields{}.serialize();
-    const auto view = shapes::ItemList(bytes).items_view();
+    const auto view = shapes::ItemList(bytes).items();
 
     EXPECT_TRUE(view.empty());
     EXPECT_EQ(view.begin(), view.end());

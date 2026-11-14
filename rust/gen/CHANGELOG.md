@@ -123,6 +123,12 @@ first commits, for code built from its source before the release.
   `Uint32FieldOffset()`, which the compiler inlines, at the slot of each
   field, rather than through `ByteBuffer.FieldOffset()` or `RootOffset()`, so
   that a getter is one call rather than two.
+- The generated C++ getter of a vector or an array of structs returns its
+  view, a `<Table>Vector` or a `<Struct>Array`, which reads each item when
+  it's asked for, rather than a `std::vector` of every item, and
+  `<field>_view()` is removed. The view's `to_vector()` reads every item, as
+  the getter did. A corrupt item of a vector fails when it's read, rather than
+  when the getter is called.
 - Generated fields that clash with the generated code's members, or that are
   named `then` in TypeScript, are renamed.
 - Generated Java getters of vectors and arrays of structs return their views,

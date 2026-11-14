@@ -127,9 +127,8 @@ inline Benchmark sum_column_benchmark(const std::string& name, const Document& i
 }
 
 /// The groups that read tafla's items: the last item and every item of the
-/// vector of nested tables and of the array of structs, by hand, through the
-/// generated getters and through the generated views twice, an A/A pair that
-/// shows the harness's noise
+/// vector of nested tables and of the array of structs, by hand and through
+/// the generated getters twice, an A/A pair that shows the harness's noise
 inline std::array<Benchmark, 4> item_access(const List& list) {
     const auto tables = std::make_shared<const Bytes>(Tafla().serialize(ListShape{}, list));
     const auto structs = std::make_shared<const Bytes>(Tafla().serialize(StructsShape{}, list));
@@ -154,8 +153,7 @@ inline std::array<Benchmark, 4> item_access(const List& list) {
     };
     add(TaflaItems(), std::string(TaflaItems::name));
     add(TaflaGenItems(), std::string(TaflaGenItems::name));
-    add(TaflaGenViewItems(), std::string(TaflaGenViewItems::name));
-    add(TaflaGenViewItems(), "tafla-gen view A/A");
+    add(TaflaGenItems(), "tafla-gen A/A");
 
     return groups;
 }
