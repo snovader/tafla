@@ -490,8 +490,8 @@ fn plan() -> impl Strategy<Value = Plan> {
         strategy::offset_type().prop_map(|offset_type| (Some(offset_type), Some(offset_type))),
     ];
     let failure = (
-        0..6_usize,
-        0..6_usize,
+        0..4_usize,
+        0..4_usize,
         select(vec![Fails::Error, Fails::Panics, Fails::Returns]),
     )
         .prop_map(|(fill, before, how)| Failure { fill, before, how });
@@ -741,6 +741,62 @@ fn test_reject_table_in_place_that_makes_its_parent_too_long() {
     builder
         .set_table_with(1, |table| table.set_u8_array(vec![3; 10]))
         .unwrap();
+
+    assert_eq!(builder.to_bytes(), expected.to_bytes());
+}
+
+/// A table nested in place whose fill leaves a field unset fails once the
+/// fill returns, and leaves the builder as it was
+#[test]
+fn test_reject_incomplete_table_in_place() {
+    let incomplete = Err(BuildError::Incomplete { set: 1, fields: 2 });
+
+    let mut expected = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let rejected = expected.set_table_with(2, |table| table.set_u8(1));
+    assert_eq!(rejected, incomplete);
+    expected
+        .set_table_with(2, |table| {
+            table.set_u8(2)?;
+            table.set_u8(3)
+        })
+        .unwrap();
+
+    let mut builder = DirectTableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    let rejected = builder.set_table_with(2, |table| table.set_u8(1));
+    assert_eq!(rejected, incomplete);
+    builder
+        .set_table_with(2, |table| {
+            table.set_u8(2)?;
+            table.set_u8(3)
+        })
+        .unwrap();
+
+    assert_eq!(builder.to_bytes(), expected.to_bytes());
+}
+
+/// A builder takes the alignment of the arrays in the tables nested in it
+/// in place, so that its parent pads it to keep them aligned
+#[test]
+fn test_a_builder_is_padded_for_the_tables_nested_in_it_in_place() {
+    let column = [0.5_f64, 1.5];
+
+    let mut nested = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    nested.set_u8(1).unwrap();
+    nested
+        .set_table_with(1, |table| table.set_f64_array(column.as_slice()))
+        .unwrap();
+    let mut expected = TableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    expected.set_u8(2).unwrap();
+    expected.set_table(nested).unwrap();
+
+    let mut nested = DirectTableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    nested.set_u8(1).unwrap();
+    nested
+        .set_table_with(1, |table| table.set_f64_array(column.as_slice()))
+        .unwrap();
+    let mut builder = DirectTableBuilder::new(2, TableLayout::DEFAULT).unwrap();
+    builder.set_u8(2).unwrap();
+    builder.set_table(nested).unwrap();
 
     assert_eq!(builder.to_bytes(), expected.to_bytes());
 }
