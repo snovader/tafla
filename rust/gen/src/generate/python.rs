@@ -896,7 +896,7 @@ fn vector_values_reader(writer: &mut CodeWriter, schema: &Schema, definition: &D
     let table = &definition.name;
 
     writer.blank();
-    let types = Annotation::ListOfTuples(value_types(schema, definition));
+    let types = Annotation::TuplesIn("list", value_types(schema, definition));
     def_line(writer, "field_values", &["self".to_owned()], &types);
     writer.indent();
     docstring(
@@ -942,7 +942,7 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
         )],
     );
     writer.blank();
-    writer.line("__slots__ = (\"_data\", \"_length\")");
+    writer.line("__slots__ = (\"_data\",)");
     writer.blank();
 
     writer.open("def __init__(self, buffer: ByteBuffer, position: int) -> None:");
@@ -957,14 +957,17 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
     writer.line(format!(
         "self._data = buffer.get_struct_array(position, {structure}.SIZE)"
     ));
-    writer.line(format!(
-        "self._length = len(self._data) // {structure}.SIZE"
-    ));
     writer.dedent();
     writer.blank();
 
-    view_length(writer);
+    writer.open("def __len__(self) -> int:");
+    writer.line(format!("return len(self._data) // {structure}.SIZE"));
+    writer.dedent();
+    writer.blank();
 
+    // The structs' values as their Struct unpacks them, as read_array()
+    // reads them
+    let construction = construction(schema, definition, structure, &mut 0);
     writer.open(format!("def __getitem__(self, index: int) -> {structure}:"));
     docstring(
         writer,
@@ -974,33 +977,11 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
             "Raises `IndexError` if the array has no struct `index`.".to_owned(),
         ],
     );
-    writer.open("if index < 0:");
-    writer.line("index += self._length");
-    writer.dedent();
-    // The message leaves out the caller's index, as a list's does, since
-    // converting one of more digits than Python's limit to a string fails
-    writer.open("if not 0 <= index < self._length:");
-    writer.statement(
-        &STYLE,
-        "raise ",
-        &call(
-            "IndexError",
-            vec![text(
-                "f\"Struct index is outside the array of {self._length}\"",
-            )],
-        ),
-        "",
-    );
-    writer.dedent();
-    writer.line(format!(
-        "return {structure}.read(self._data, index * {structure}.SIZE)"
-    ));
+    struct_item_values(writer, structure, "values = ");
+    writer.statement(&STYLE, "return ", &construction, "");
     writer.dedent();
     writer.blank();
 
-    // The structs' values as their Struct unpacks them, as read_array()
-    // reads them
-    let construction = construction(schema, definition, structure, &mut 0);
     writer.open(format!("def __iter__(self) -> Iterator[{structure}]:"));
     docstring(writer, &["Reads the structs one after another".to_owned()]);
     writer.open(format!(
@@ -1011,21 +992,113 @@ fn struct_array_view(writer: &mut CodeWriter, schema: &Schema, definition: &Defi
     writer.dedent();
 
     if has_struct_values(definition) {
-        writer.blank();
-        let types = Annotation::ListOfTuples(value_types(schema, definition));
-        def_line(writer, "field_values", &["self".to_owned()], &types);
-        writer.indent();
-        docstring(
-            writer,
-            &[format!(
-                "Reads every struct's values at once, as `{structure}.read_values()` reads each"
-            )],
-        );
-        writer.line(format!(
-            "return list({structure}._STRUCT.iter_unpack(self._data))"
-        ));
-        writer.dedent();
+        struct_array_values(writer, schema, definition);
     }
+    writer.dedent();
+}
+
+/// The methods of the view of an array of a struct of scalars that read the
+/// structs' values into tuples, as `read_values()` reads one, without
+/// creating their dataclasses: one struct's, every struct's at once, and
+/// every struct's one after another
+fn struct_array_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
+    let structure = &definition.name;
+    let types = value_types(schema, definition);
+
+    writer.blank();
+    def_line(
+        writer,
+        "item_field_values",
+        &["self".to_owned(), "index: int".to_owned()],
+        &Annotation::Tuple(types.clone()),
+    );
+    writer.indent();
+    docstring(
+        writer,
+        &[
+            format!("Reads the values of struct `index`, as `{structure}.read_values()` reads"),
+            "them, counting from the end if it's negative.".to_owned(),
+            String::new(),
+            "Raises `IndexError` if the array has no struct `index`.".to_owned(),
+        ],
+    );
+    struct_item_values(writer, structure, "return ");
+    writer.dedent();
+
+    writer.blank();
+    def_line(
+        writer,
+        "field_values",
+        &["self".to_owned()],
+        &Annotation::TuplesIn("list", types.clone()),
+    );
+    writer.indent();
+    docstring(
+        writer,
+        &[format!(
+            "Reads every struct's values at once, as `{structure}.read_values()` reads each"
+        )],
+    );
+    writer.line(format!(
+        "return list({structure}._STRUCT.iter_unpack(self._data))"
+    ));
+    writer.dedent();
+
+    writer.blank();
+    def_line(
+        writer,
+        "iter_field_values",
+        &["self".to_owned()],
+        &Annotation::TuplesIn("Iterator", types),
+    );
+    writer.indent();
+    docstring(
+        writer,
+        &[
+            "Reads every struct's values one after another, as `field_values()` reads".to_owned(),
+            "them into a list".to_owned(),
+        ],
+    );
+    writer.line(format!(
+        "return {structure}._STRUCT.iter_unpack(self._data)"
+    ));
+    writer.dedent();
+}
+
+/// Unpacks the values of struct `index` of an array's view, after `prefix`.
+/// `struct` reads a negative offset from the end of the array's bytes, which
+/// are a whole number of structs, and raises `struct.error` for an offset
+/// outside them, or `OverflowError` for one beyond a C `ssize_t`, so its
+/// check of the offset is the check of the index.
+fn struct_item_values(writer: &mut CodeWriter, structure: &str, prefix: &str) {
+    writer.open("try:");
+    writer.statement(
+        &STYLE,
+        prefix,
+        &call(
+            format!("{structure}._STRUCT.unpack_from"),
+            vec![
+                text("self._data"),
+                text(format!("index * {structure}.SIZE")),
+            ],
+        ),
+        "",
+    );
+    writer.dedent();
+    // The message leaves out the caller's index, as a list's does, since
+    // converting one of more digits than Python's limit to a string fails
+    writer.open("except error, OverflowError:");
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call(
+            "IndexError",
+            vec![text(
+                "f\"Struct index is outside the array of {len(self)}\"",
+            )],
+        ),
+        " from None",
+    );
     writer.dedent();
 }
 
@@ -1681,7 +1754,7 @@ fn struct_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definiti
     writer.blank();
     writer.line("@classmethod");
     let parameters = ["cls", "data: Buffer"].map(str::to_owned);
-    let annotation = Annotation::ListOfTuples(types.clone());
+    let annotation = Annotation::TuplesIn("list", types.clone());
     def_line(writer, "read_array_values", &parameters, &annotation);
     writer.indent();
     docstring(
@@ -1813,8 +1886,8 @@ enum Annotation {
     Name(String),
     /// A `tuple` of the types
     Tuple(Vec<String>),
-    /// A `list` of `tuple`s of the types
-    ListOfTuples(Vec<String>),
+    /// A generic of `tuple`s of the types, such as a `list` of them
+    TuplesIn(&'static str, Vec<String>),
 }
 
 impl Annotation {
@@ -1822,7 +1895,7 @@ impl Annotation {
         match self {
             Self::Name(name) => name.clone(),
             Self::Tuple(types) => format!("tuple[{}]", types.join(", ")),
-            Self::ListOfTuples(types) => format!("list[tuple[{}]]", types.join(", ")),
+            Self::TuplesIn(generic, types) => format!("{generic}[tuple[{}]]", types.join(", ")),
         }
     }
 
@@ -1843,8 +1916,8 @@ impl Annotation {
                 lines.push("]:".to_owned());
                 lines
             }
-            Self::ListOfTuples(types) => {
-                let mut lines = vec![") -> list[".to_owned(), format!("{indent}tuple[")];
+            Self::TuplesIn(generic, types) => {
+                let mut lines = vec![format!(") -> {generic}["), format!("{indent}tuple[")];
                 lines.extend(each(2, types));
                 lines.push(format!("{indent}]"));
                 lines.push("]:".to_owned());

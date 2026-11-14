@@ -38,9 +38,11 @@ of its own, and `item_access.py` holds them:
   of the last item or `get_vector_offsets()` of every item, and
   `get_struct_array()` with `Struct("<fff")`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
-  views that read each item when it's asked for: `[-1]` reads the last item
-  alone, and `for` iterates over every item, creating its reader or `Triple`
-  as it reaches it.
+  views that read each item when it's asked for. The vector's `[-1]` reads
+  the last item alone, and `for` iterates over every item, creating its
+  reader as it reaches it. The array's `item_field_values(-1)` reads the last
+  struct's values alone, and `iter_field_values()` every struct's, as tuples,
+  as `Struct("<fff")` unpacks them by hand.
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
   harness's noise.
 
@@ -116,8 +118,8 @@ comparison uses its counterpart:
   once. The array of structs is
   written from the workload's own items, whose attributes `TripleFields`, the
   struct's protocol of fields, types, as an application's objects would be,
-  and read with its view's `field_values()`, into a tuple of each struct's
-  values. It takes the workloads' dataclasses, as the other codecs do, so it
+  and read with its view's `iter_field_values()`, into a tuple of each
+  struct's values. It takes the workloads' dataclasses, as the other codecs do, so it
   creates the dicts of the document and the vector from them in each call,
   as the protobuf codec builds its messages, and reading creates the
   workloads' dataclasses from the generated readers' values. Every suite has

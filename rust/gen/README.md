@@ -206,14 +206,17 @@ them `serialize_values()`, which writes it from them as positional
 arguments. A struct of scalars has `read_values()`, `read_array_values()`
 and `serialize_values()`, which do the same for its values without creating
 its dataclass, and a view of an array or a vector of such structs or tables
-has `field_values()`. Go's messages and tables have `Fields()`, which reads
-every field at once into the `<Name>Fields` that writes it, nested tables and
-the items of vectors with their own `Fields()`, in one function rather than a
-getter's call for each field. A table has none when a vector of it holds
-tables that allocate when they're read whole, with arrays, arrays of structs
-or vectors, which corrupted offsets could lead every item to, so that what
-`Fields()` allocates stays in proportion to the bytes; no table that holds
-itself has one. Go lays out the same fields itself, at positions that
+has `field_values()`. A view of an array of such structs also has
+`iter_field_values()`, which iterates over their values, and
+`item_field_values(index)`, which reads one struct's. Go's messages and
+tables have `Fields()`, which reads every field at once into the
+`<Name>Fields` that writes it, nested tables and the items of vectors with
+their own `Fields()`, in one function rather than a getter's call for each
+field. A table has none when a vector of it holds tables that allocate when
+they're read whole, with arrays, arrays of structs or vectors, which
+corrupted offsets could lead every item to, so that what `Fields()`
+allocates stays in proportion to the bytes; no table that holds itself has
+one. Go lays out the same fields itself, at positions that
 the generator works out, since Go's compiler keeps a sizer's and a writer's
 fields in memory at every call: its sizer and writer take a table's leading
 fields of fixed size together, and a nested table of only those fields

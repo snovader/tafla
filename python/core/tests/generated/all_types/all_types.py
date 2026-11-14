@@ -854,7 +854,7 @@ class SegmentFields(Protocol):
 class SegmentArray:
     """An array of ``Segment``s, which reads each struct when it's asked for"""
 
-    __slots__ = ("_data", "_length")
+    __slots__ = ("_data",)
 
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
@@ -862,21 +862,22 @@ class SegmentArray:
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
         self._data = buffer.get_struct_array(position, Segment.SIZE)
-        self._length = len(self._data) // Segment.SIZE
 
     def __len__(self) -> int:
-        return self._length
+        return len(self._data) // Segment.SIZE
 
     def __getitem__(self, index: int) -> Segment:
         """Reads struct ``index``, counting from the end if it's negative.
 
         Raises ``IndexError`` if the array has no struct ``index``.
         """
-        if index < 0:
-            index += self._length
-        if not 0 <= index < self._length:
-            raise IndexError(f"Struct index is outside the array of {self._length}")
-        return Segment.read(self._data, index * Segment.SIZE)
+        try:
+            values = Segment._STRUCT.unpack_from(self._data, index * Segment.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+        return Segment(Point(values[0], values[1]), Point(values[2], values[3]))
 
     def __iter__(self) -> Iterator[Segment]:
         """Reads the structs one after another"""
@@ -1039,7 +1040,7 @@ class PointFields(Protocol):
 class PointArray:
     """An array of ``Point``s, which reads each struct when it's asked for"""
 
-    __slots__ = ("_data", "_length")
+    __slots__ = ("_data",)
 
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
@@ -1047,30 +1048,50 @@ class PointArray:
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
         self._data = buffer.get_struct_array(position, Point.SIZE)
-        self._length = len(self._data) // Point.SIZE
 
     def __len__(self) -> int:
-        return self._length
+        return len(self._data) // Point.SIZE
 
     def __getitem__(self, index: int) -> Point:
         """Reads struct ``index``, counting from the end if it's negative.
 
         Raises ``IndexError`` if the array has no struct ``index``.
         """
-        if index < 0:
-            index += self._length
-        if not 0 <= index < self._length:
-            raise IndexError(f"Struct index is outside the array of {self._length}")
-        return Point.read(self._data, index * Point.SIZE)
+        try:
+            values = Point._STRUCT.unpack_from(self._data, index * Point.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+        return Point(values[0], values[1])
 
     def __iter__(self) -> Iterator[Point]:
         """Reads the structs one after another"""
         for values in Point._STRUCT.iter_unpack(self._data):
             yield Point(values[0], values[1])
 
+    def item_field_values(self, index: int) -> tuple[float, float]:
+        """Reads the values of struct ``index``, as ``Point.read_values()`` reads
+        them, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the array has no struct ``index``.
+        """
+        try:
+            return Point._STRUCT.unpack_from(self._data, index * Point.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+
     def field_values(self) -> list[tuple[float, float]]:
         """Reads every struct's values at once, as ``Point.read_values()`` reads each"""
         return list(Point._STRUCT.iter_unpack(self._data))
+
+    def iter_field_values(self) -> Iterator[tuple[float, float]]:
+        """Reads every struct's values one after another, as ``field_values()`` reads
+        them into a list
+        """
+        return Point._STRUCT.iter_unpack(self._data)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -1559,7 +1580,7 @@ class DocumentedFields(Protocol):
 class DocumentedArray:
     """An array of ``Documented``s, which reads each struct when it's asked for"""
 
-    __slots__ = ("_data", "_length")
+    __slots__ = ("_data",)
 
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
@@ -1567,27 +1588,47 @@ class DocumentedArray:
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
         self._data = buffer.get_struct_array(position, Documented.SIZE)
-        self._length = len(self._data) // Documented.SIZE
 
     def __len__(self) -> int:
-        return self._length
+        return len(self._data) // Documented.SIZE
 
     def __getitem__(self, index: int) -> Documented:
         """Reads struct ``index``, counting from the end if it's negative.
 
         Raises ``IndexError`` if the array has no struct ``index``.
         """
-        if index < 0:
-            index += self._length
-        if not 0 <= index < self._length:
-            raise IndexError(f"Struct index is outside the array of {self._length}")
-        return Documented.read(self._data, index * Documented.SIZE)
+        try:
+            values = Documented._STRUCT.unpack_from(self._data, index * Documented.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+        return Documented(values[0], values[1], values[2])
 
     def __iter__(self) -> Iterator[Documented]:
         """Reads the structs one after another"""
         for values in Documented._STRUCT.iter_unpack(self._data):
             yield Documented(values[0], values[1], values[2])
 
+    def item_field_values(self, index: int) -> tuple[int, int, int]:
+        """Reads the values of struct ``index``, as ``Documented.read_values()`` reads
+        them, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the array has no struct ``index``.
+        """
+        try:
+            return Documented._STRUCT.unpack_from(self._data, index * Documented.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+
     def field_values(self) -> list[tuple[int, int, int]]:
         """Reads every struct's values at once, as ``Documented.read_values()`` reads each"""
         return list(Documented._STRUCT.iter_unpack(self._data))
+
+    def iter_field_values(self) -> Iterator[tuple[int, int, int]]:
+        """Reads every struct's values one after another, as ``field_values()`` reads
+        them into a list
+        """
+        return Documented._STRUCT.iter_unpack(self._data)

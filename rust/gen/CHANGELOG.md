@@ -86,6 +86,11 @@ first commits, for code built from its source before the release.
   `Slice()` in place where it can, and otherwise a copy. `Fields()` reads
   arrays of structs with `Slice()`, so they share the bytes, as its arrays
   do. The Go comparison suite reads its array of 100 structs with it.
+- Generated Python views of arrays of structs of scalars have
+  `iter_field_values()`, which iterates over the structs' values as tuples,
+  and `item_field_values(index)`, which reads one struct's, without creating
+  their dataclasses. A view reads a struct by index with one unpack, whose
+  check of the offset is the check of the index.
 
 ### Changed
 

@@ -603,7 +603,7 @@ class TripleFields(Protocol):
 class TripleArray:
     """An array of ``Triple``s, which reads each struct when it's asked for"""
 
-    __slots__ = ("_data", "_length")
+    __slots__ = ("_data",)
 
     def __init__(self, buffer: ByteBuffer, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
@@ -611,30 +611,50 @@ class TripleArray:
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
         self._data = buffer.get_struct_array(position, Triple.SIZE)
-        self._length = len(self._data) // Triple.SIZE
 
     def __len__(self) -> int:
-        return self._length
+        return len(self._data) // Triple.SIZE
 
     def __getitem__(self, index: int) -> Triple:
         """Reads struct ``index``, counting from the end if it's negative.
 
         Raises ``IndexError`` if the array has no struct ``index``.
         """
-        if index < 0:
-            index += self._length
-        if not 0 <= index < self._length:
-            raise IndexError(f"Struct index is outside the array of {self._length}")
-        return Triple.read(self._data, index * Triple.SIZE)
+        try:
+            values = Triple._STRUCT.unpack_from(self._data, index * Triple.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+        return Triple(values[0], values[1], values[2])
 
     def __iter__(self) -> Iterator[Triple]:
         """Reads the structs one after another"""
         for values in Triple._STRUCT.iter_unpack(self._data):
             yield Triple(values[0], values[1], values[2])
 
+    def item_field_values(self, index: int) -> tuple[float, float, float]:
+        """Reads the values of struct ``index``, as ``Triple.read_values()`` reads
+        them, counting from the end if it's negative.
+
+        Raises ``IndexError`` if the array has no struct ``index``.
+        """
+        try:
+            return Triple._STRUCT.unpack_from(self._data, index * Triple.SIZE)
+        except error, OverflowError:
+            raise IndexError(
+                f"Struct index is outside the array of {len(self)}"
+            ) from None
+
     def field_values(self) -> list[tuple[float, float, float]]:
         """Reads every struct's values at once, as ``Triple.read_values()`` reads each"""
         return list(Triple._STRUCT.iter_unpack(self._data))
+
+    def iter_field_values(self) -> Iterator[tuple[float, float, float]]:
+        """Reads every struct's values one after another, as ``field_values()`` reads
+        them into a list
+        """
+        return Triple._STRUCT.iter_unpack(self._data)
 
 
 @dataclass(frozen=True, slots=True, init=False)
