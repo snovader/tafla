@@ -508,10 +508,15 @@ impl Generator<'_> {
             }
             docs.push(getter_doc(field.field_type).to_owned());
 
+            // Inlined where they're called, as `ByteBuffer`'s getters are, so
+            // that the reader stays in registers and its layout's constants
+            // fold, rather than a getter that the compiler leaves out of line,
+            // such as a string's with its UTF-8 validation, taking the
+            // reader's address
             writer.blank();
             cpp_doc(writer, &docs);
             writer.line(format!(
-                "[[nodiscard]] {} {name}() const;",
+                "[[nodiscard]] TAFLA_ALWAYS_INLINE {} {name}() const;",
                 self.value_type(field.field_type)
             ));
         }

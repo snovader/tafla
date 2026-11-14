@@ -32,10 +32,10 @@ public:
     constexpr Interface() noexcept = default;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<float> min_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<float> min_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] ::tafla::ArrayView<float> max_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<float> max_() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
@@ -67,43 +67,43 @@ public:
     explicit constexpr Macros(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t linux_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t linux_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t unix_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t unix_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t i386_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t i386_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t sun_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t sun_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t min_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t min_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t max_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t max_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t major_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t major_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t minor_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t minor_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t errno_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t errno_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t near_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t near_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t far_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t far_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] std::uint8_t small_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t small_() const;
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] Interface interface_() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Interface interface_() const;
 
 private:
     std::span<const std::uint8_t> bytes_;
