@@ -156,6 +156,68 @@ func TestUint32FieldOffsetReadsTheOffsetsThatTheBufferReads(t *testing.T) {
 	})
 }
 
+// RootOffset and FieldOffset read the offset at a field's slot, as wide as
+// the offset type, after the root's header or from the nested table's
+// position, in every offset type, and fail where the general case fails:
+// at a negative table's position, at a slot outside the bytes, and on a
+// 32-bit host, at the slot of a root's offset past the largest int or at
+// the position of a nested table that it would take past it.
+func TestFieldOffsetsFailAtTheirSlotInEveryOffsetType(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		bytes := drawBytes(t, 64, "bytes")
+		table := drawLarge(t, 80, "table")
+		index := rapid.IntRange(0, 20).Draw(t, "index")
+		failure := func(position int, byteLength uint64) error {
+			return &tafla.DecodeError{Kind: tafla.OutOfRange, Position: position, ByteLength: byteLength, Available: len(bytes)}
+		}
+
+		for _, offsetType := range tables.OffsetTypes {
+			size := offsetType.Size()
+			nested := tafla.TableLayout{}.WithOffsetType(offsetType)
+
+			for _, layout := range []tafla.TableLayout{nested, nested.Sized(), nested.Versioned(), nested.Sized().Versioned()} {
+				slot := layout.HeaderSize() + index*size
+				offset, ok := slotAt(bytes, slot, offsetType)
+
+				var expected error
+				if !ok {
+					expected = failure(slot, uint64(size))
+				} else if !fitsInt(uint64(offset)) {
+					expected = failure(slot, uint64(offset))
+				}
+
+				position, err := tafla.NewByteBuffer(bytes, layout).RootOffset(index)
+				if expected != nil && !reflect.DeepEqual(err, expected) {
+					t.Fatalf("%+v: %#v rather than %#v", layout, err, expected)
+				} else if expected == nil && (position != int(offset) || err != nil) {
+					t.Fatalf("%+v: read %d, %v rather than %d", layout, position, err, offset)
+				}
+			}
+
+			// A slot past the largest int wraps to a negative position, as
+			// the reader computes it
+			slot := table + index*size
+			offset, ok := slotAt(bytes, slot, offsetType)
+
+			var expected error
+			if table < 0 {
+				expected = failure(table, uint64(size))
+			} else if !ok {
+				expected = failure(slot, uint64(size))
+			} else if !fitsInt(uint64(table) + uint64(offset)) {
+				expected = failure(table, uint64(offset))
+			}
+
+			position, err := tafla.NewByteBuffer(bytes, nested).FieldOffset(table, index)
+			if expected != nil && !reflect.DeepEqual(err, expected) {
+				t.Fatalf("%v: %#v rather than %#v", offsetType, err, expected)
+			} else if expected == nil && (position != table+int(offset) || err != nil) {
+				t.Fatalf("%v: read %d, %v rather than %d", offsetType, position, err, table+int(offset))
+			}
+		}
+	})
+}
+
 // checkReadError fails unless err is nil, a decode error or a mismatch of
 // the values read, which the description of other bytes reads
 func checkReadError(t *rapid.T, err error) {
