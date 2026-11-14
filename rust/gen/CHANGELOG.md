@@ -52,6 +52,14 @@ first commits, for code built from its source before the release.
 - A generated `serialize_into(bytes)` on C++'s messages, which writes the
   message into the start of bytes that the caller owns and reuses, and
   returns the message's length.
+- Generated C++ declares `generic::<Name>Fields` beside the `<Name>Fields` of
+  each message and table with vectors or arrays of structs, a template that
+  takes each of them as a view of any items that convert into the item's
+  fields or struct, such as `std::views::transform()` of the caller's items,
+  through a type parameter that defaults to a span of the generated type, so
+  that an application writes the items it holds without collecting them
+  first. It needs the C++ runtime's `tafla::ViewOf` and its
+  `TableWriter::set_structs()` of any range, which come with it.
 - Generated Python declares `<Struct>Fields` beside each struct, a protocol
   of its fields, which an array of the struct is written from, so that any
   objects with those attributes write it, rather than only the struct's

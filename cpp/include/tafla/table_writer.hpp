@@ -4,6 +4,7 @@
 #define TAFLA_TABLE_WRITER_HPP
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -29,6 +30,17 @@ class BasicTableWriter;
 
 /// The writer that `TableSizer::writer()` returns, which checks each write
 using TableWriter = BasicTableWriter<true>;
+
+/// A view of items that convert into `Item`, from which tafla-gen's generic
+/// fields structs write a vector or an array of structs: a `std::span` of
+/// `Item`s, or `std::views::transform()` of the caller's own items, say. It's
+/// a view, so that a fields struct holds it rather than a copy of the items,
+/// it knows its size, and it can be iterated more than once, since a fields
+/// struct counts the items' bytes before it writes them.
+template <class Items, class Item>
+concept ViewOf =
+    std::ranges::view<Items> && std::ranges::forward_range<const Items> && std::ranges::sized_range<const Items> &&
+    std::convertible_to<std::ranges::range_reference_t<const Items>, const Item&>;
 
 namespace detail {
 
@@ -755,6 +767,23 @@ public:
     template <Struct T>
     TAFLA_ALWAYS_INLINE void set_structs(std::size_t index, std::span<const T> structs) noexcept(
         noexcept(std::declval<const T&>().to_bytes(std::declval<std::uint8_t*>()))) {
+        const auto write = [](const T& item, std::uint8_t* bytes) noexcept(noexcept(item.to_bytes(bytes))) {
+            item.to_bytes(bytes);
+        };
+        set_structs<T::SIZE>(index, structs, write, T::ALIGNMENT);
+    }
+
+    /// Writes field `index`, an array of a `T` for each of `structs`, which
+    /// are `T`s or convert into them, each as the bytes that `T::to_bytes()`
+    /// writes, as the overload of a span of `T`s does. tafla-gen's generic
+    /// fields structs write their views of the caller's items with it. It
+    /// throws only what reading an item from `structs`, converting it or
+    /// `to_bytes()` throws.
+    template <Struct T, std::ranges::sized_range Structs>
+        requires std::convertible_to<std::ranges::range_reference_t<const Structs>, const T&>
+    TAFLA_ALWAYS_INLINE void set_structs(std::size_t index, const Structs& structs) noexcept(
+        noexcept(std::declval<const T&>().to_bytes(std::declval<std::uint8_t*>())) &&
+        noexcept(static_cast<const T&>(*std::ranges::begin(structs)))) {
         const auto write = [](const T& item, std::uint8_t* bytes) noexcept(noexcept(item.to_bytes(bytes))) {
             item.to_bytes(bytes);
         };

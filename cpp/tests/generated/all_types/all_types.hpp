@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <ranges>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -557,6 +558,41 @@ struct NestedFields {
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Nested`, to write, as `NestedFields` holds them, but whose `trees` can be a view of any items that
+ * convert into its items rather than a span of them
+ */
+template <class T = std::span<const ::all_types::TreeFields>>
+struct NestedFields {
+    /** A string beside the tables */
+    std::string_view label{};
+    /** The first of three levels of tables */
+    OuterFields outer;
+    /**
+     * A vector of tables that hold vectors of themselves
+     *
+     * A view of `TreeFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `TreeFields` unless `T` is another
+     */
+    T trees{};
+
+    /**
+     * Writes a `Nested` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Nested` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
+
 /**
  * A table that holds a vector of its own type, which a vector can since it
  * may be empty
@@ -604,6 +640,32 @@ struct TreeFields {
     /** Writes a `Tree` where its parent's writer is, after the field or vector that holds it */
     void write(::tafla::TableWriter& writer_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Tree`, to write, as `TreeFields` holds them, but whose `children` can be a view of any items that
+ * convert into its items rather than a span of them
+ */
+template <class T = std::span<const ::all_types::TreeFields>>
+struct TreeFields {
+    std::int32_t value{};
+    /**
+     * A view of `TreeFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `TreeFields` unless `T` is another
+     */
+    T children{};
+
+    /** The alignment that a parent pads a `Tree` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Tree` to its parent's sizer, after the field or vector that holds it */
+    void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Tree` where its parent's writer is, after the field or vector that holds it */
+    void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
 
 /** Fields named after keywords of TypeScript, Python, Java or Rust */
 class Keywords {
@@ -739,6 +801,32 @@ struct PathFields {
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
 };
 
+namespace generic {
+/**
+ * The fields of a `Path`, to write, as `PathFields` holds them, but whose `points` can be a view of any items that
+ * convert into its items rather than a span of them
+ */
+template <class T = std::span<const Point>>
+struct PathFields {
+    Point start{};
+    /**
+     * A view of `Point`s, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `Point`s unless `T` is another
+     */
+    T points{};
+
+    /** The alignment that a parent pads a `Path` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::four;
+
+    /** Adds a `Path` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Path` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
+
+}  // namespace generic
+
 /**
  * Structs as fields, in place like scalars, and in arrays, which are aligned
  * to their structs' largest scalar
@@ -815,6 +903,48 @@ struct StructsFields {
      */
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
+
+namespace generic {
+/**
+ * The fields of a `Structs`, to write, as `StructsFields` holds them, but whose `documented` and `segments` can be
+ * views of any items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const Documented>, class U = std::span<const Segment>>
+struct StructsFields {
+    /** A struct of every scalar type */
+    Packed packed{};
+    /**
+     * An array of structs of 7 bytes, aligned to 4
+     *
+     * A view of `Documented`s, or of any items that convert into them, such as `std::views::transform()` of the
+     * caller's own: a `std::span` of `Documented`s unless `T` is another
+     */
+    T documented{};
+    /** A struct of structs */
+    Segment segment{};
+    /**
+     * A view of `Segment`s, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `Segment`s unless `U` is another
+     */
+    U segments{};
+    /** A table nested in the message, which holds structs too */
+    ::all_types::PathFields path;
+
+    /**
+     * Writes a `Structs` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Structs` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
 
 inline std::int8_t Scalars::int8() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
@@ -1175,6 +1305,64 @@ inline std::size_t NestedFields::serialize_into(std::span<std::uint8_t> bytes_) 
     return writer_.finish_into();
 }
 
+template <class T>
+inline ::tafla::Bytes generic::NestedFields<T>::serialize() const {
+    static_assert(::tafla::ViewOf<T, ::all_types::TreeFields>);
+
+    ::tafla::TableSizer sizer_(3, Nested::LAYOUT);
+    sizer_.add_string(label);
+    sizer_.add_table(OuterFields::ALIGNMENT);
+    outer.size(sizer_);
+    sizer_.add_vector(std::ranges::size(trees));
+    for (const auto& element_ : trees) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_string(0, label);
+    writer_.set_table(1, OuterFields::ALIGNMENT);
+    outer.write(writer_);
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(trees));
+    for (std::size_t index_ = 0; const auto& element_ : trees) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+
+    return writer_.finish();
+}
+
+template <class T>
+inline std::size_t generic::NestedFields<T>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, ::all_types::TreeFields>);
+
+    ::tafla::TableSizer sizer_(3, Nested::LAYOUT);
+    sizer_.add_string(label);
+    sizer_.add_table(OuterFields::ALIGNMENT);
+    outer.size(sizer_);
+    sizer_.add_vector(std::ranges::size(trees));
+    for (const auto& element_ : trees) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_string(0, label);
+    writer_.set_table(1, OuterFields::ALIGNMENT);
+    outer.write(writer_);
+    const auto vector2_ = writer_.set_vector(2, std::ranges::size(trees));
+    for (std::size_t index_ = 0; const auto& element_ : trees) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector2_, index_);
+        ++index_;
+    }
+
+    return writer_.finish_into();
+}
+
 inline std::int32_t Tree::value() const {
     const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
     const auto position = buffer.field_offset(0, 0);
@@ -1204,6 +1392,36 @@ inline void TreeFields::write(::tafla::TableWriter& writer_) const {
     for (std::size_t index_ = 0; index_ < children.size(); ++index_) {
         children[index_].write(writer_);
         writer_.set_item_end(vector1_, index_);
+    }
+    writer_.end_table(parent_);
+}
+
+template <class T>
+inline void generic::TreeFields<T>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, ::all_types::TreeFields>);
+
+    const auto parent_ = sizer_.start_table(2);
+    sizer_.add_int32();
+    sizer_.add_vector(std::ranges::size(children));
+    for (const auto& element_ : children) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.size(sizer_);
+    }
+    sizer_.end_table(parent_);
+}
+
+template <class T>
+inline void generic::TreeFields<T>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, ::all_types::TreeFields>);
+
+    const auto parent_ = writer_.start_table(2);
+    writer_.set_int32(0, value);
+    const auto vector1_ = writer_.set_vector(1, std::ranges::size(children));
+    for (std::size_t index_ = 0; const auto& element_ : children) {
+        const ::all_types::TreeFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector1_, index_);
+        ++index_;
     }
     writer_.end_table(parent_);
 }
@@ -1322,6 +1540,26 @@ inline void PathFields::write(::tafla::TableWriter& writer_) const {
     writer_.end_table(parent_);
 }
 
+template <class T>
+inline void generic::PathFields<T>::size(::tafla::TableSizer& sizer_) const {
+    static_assert(::tafla::ViewOf<T, Point>);
+
+    const auto parent_ = sizer_.start_table(2);
+    sizer_.add_struct(Point::SIZE);
+    sizer_.add_struct_array(std::ranges::size(points), Point::SIZE, Point::ALIGNMENT);
+    sizer_.end_table(parent_);
+}
+
+template <class T>
+inline void generic::PathFields<T>::write(::tafla::TableWriter& writer_) const {
+    static_assert(::tafla::ViewOf<T, Point>);
+
+    const auto parent_ = writer_.start_table(2);
+    writer_.set_struct(0, start);
+    writer_.set_structs<Point>(1, points);
+    writer_.end_table(parent_);
+}
+
 inline Packed Structs::packed() const {
     const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
     const auto position = buffer.root_offset(0);
@@ -1387,6 +1625,54 @@ inline std::size_t StructsFields::serialize_into(std::span<std::uint8_t> bytes_)
     writer_.set_struct(2, segment);
     writer_.set_structs(3, segments);
     writer_.set_table(4, PathFields::ALIGNMENT);
+    path.write(writer_);
+
+    return writer_.finish_into();
+}
+
+template <class T, class U>
+inline ::tafla::Bytes generic::StructsFields<T, U>::serialize() const {
+    static_assert(::tafla::ViewOf<T, Documented>);
+    static_assert(::tafla::ViewOf<U, Segment>);
+
+    ::tafla::TableSizer sizer_(5, Structs::LAYOUT);
+    sizer_.add_struct(Packed::SIZE);
+    sizer_.add_struct_array(std::ranges::size(documented), Documented::SIZE, Documented::ALIGNMENT);
+    sizer_.add_struct(Segment::SIZE);
+    sizer_.add_struct_array(std::ranges::size(segments), Segment::SIZE, Segment::ALIGNMENT);
+    sizer_.add_table(::all_types::PathFields::ALIGNMENT);
+    path.size(sizer_);
+
+    auto writer_ = sizer_.writer();
+    writer_.set_struct(0, packed);
+    writer_.set_structs<Documented>(1, documented);
+    writer_.set_struct(2, segment);
+    writer_.set_structs<Segment>(3, segments);
+    writer_.set_table(4, ::all_types::PathFields::ALIGNMENT);
+    path.write(writer_);
+
+    return writer_.finish();
+}
+
+template <class T, class U>
+inline std::size_t generic::StructsFields<T, U>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, Documented>);
+    static_assert(::tafla::ViewOf<U, Segment>);
+
+    ::tafla::TableSizer sizer_(5, Structs::LAYOUT);
+    sizer_.add_struct(Packed::SIZE);
+    sizer_.add_struct_array(std::ranges::size(documented), Documented::SIZE, Documented::ALIGNMENT);
+    sizer_.add_struct(Segment::SIZE);
+    sizer_.add_struct_array(std::ranges::size(segments), Segment::SIZE, Segment::ALIGNMENT);
+    sizer_.add_table(::all_types::PathFields::ALIGNMENT);
+    path.size(sizer_);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_struct(0, packed);
+    writer_.set_structs<Documented>(1, documented);
+    writer_.set_struct(2, segment);
+    writer_.set_structs<Segment>(3, segments);
+    writer_.set_table(4, ::all_types::PathFields::ALIGNMENT);
     path.write(writer_);
 
     return writer_.finish_into();
