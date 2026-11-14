@@ -113,7 +113,8 @@ BYTE_BUFFER = ItemAccess(
     _every_struct_by_hand,
 )
 
-# tafla-gen's getters, which read every item into a list
+# tafla-gen's getters, which return views that read each item when it's asked
+# for
 
 
 def _last_table_of_getter(data: Buffer) -> float:
@@ -154,51 +155,9 @@ GETTERS = ItemAccess(
     _every_struct_of_getter,
 )
 
-# tafla-gen's views, which read each item when it's asked for
-
-
-def _last_table_of_view(data: Buffer) -> float:
-    item = ItemList(data).items_view()[-1]
-    pair = item.pair()
-
-    return item.value() + pair.first() + pair.second()
-
-
-def _every_table_of_view(data: Buffer) -> float:
-    total = 0.0
-    for item in ItemList(data).items_view():
-        pair = item.pair()
-        total += item.value() + pair.first() + pair.second()
-
-    return total
-
-
-def _last_struct_of_view(data: Buffer) -> float:
-    triple = Triples(data).items_view()[-1]
-
-    return triple.value + triple.first + triple.second
-
-
-def _every_struct_of_view(data: Buffer) -> float:
-    total = 0.0
-    for triple in Triples(data).items_view():
-        total += triple.value + triple.first + triple.second
-
-    return total
-
-
-VIEWS = ItemAccess(
-    "tafla-gen view",
-    _last_table_of_view,
-    _every_table_of_view,
-    _last_struct_of_view,
-    _every_struct_of_view,
-)
-
 ACCESSES: tuple[ItemAccess, ...] = (
     BYTE_BUFFER,
     GETTERS,
-    VIEWS,
-    # The views twice, an A/A pair that shows the harness's noise
-    replace(VIEWS, name="tafla-gen view A/A"),
+    # The getters twice, an A/A pair that shows the harness's noise
+    replace(GETTERS, name="tafla-gen A/A"),
 )

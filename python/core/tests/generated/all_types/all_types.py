@@ -301,16 +301,8 @@ class Nested:
         """The first of three levels of tables"""
         return Outer(self._buffer, self._buffer.root_offset(1))
 
-    def trees(self) -> list[Tree]:
+    def trees(self) -> TreeVector:
         """A vector of tables that hold vectors of themselves"""
-        offsets = self._buffer.get_vector_offsets(self._buffer.root_offset(2))
-        return [Tree(self._buffer, offset) for offset in offsets]
-
-    def trees_view(self) -> TreeVector:
-        """A vector of tables that hold vectors of themselves
-
-        Views the items of ``trees()``, reading each one when it's asked for
-        """
         return TreeVector(self._buffer, self._buffer.root_offset(2))
 
 
@@ -435,14 +427,7 @@ class Tree:
     def value(self) -> int:
         return self._buffer.get_int32(self._buffer.field_offset(self._position, 0))
 
-    def children(self) -> list[Tree]:
-        offsets = self._buffer.get_vector_offsets(
-            self._buffer.field_offset(self._position, 1)
-        )
-        return [Tree(self._buffer, offset) for offset in offsets]
-
-    def children_view(self) -> TreeVector:
-        """Views the items of ``children()``, reading each one when it's asked for"""
+    def children(self) -> TreeVector:
         return TreeVector(self._buffer, self._buffer.field_offset(self._position, 1))
 
 
@@ -454,7 +439,10 @@ class TreeFields(TypedDict):
 
 
 class TreeVector:
-    """A vector of ``Tree``s, which reads each item when it's asked for"""
+    """A vector of ``Tree``s, which reads each item when it's asked for, so
+    an item whose bytes are corrupt raises ``DecodeError`` when it's read, rather
+    than when its parent's getter returns the vector
+    """
 
     __slots__ = ("_buffer", "_length", "_position")
 
@@ -673,17 +661,8 @@ class Structs:
             self._buffer.get_struct(self._buffer.root_offset(0), Packed.SIZE)
         )
 
-    def documented(self) -> list[Documented]:
+    def documented(self) -> DocumentedArray:
         """An array of structs of 7 bytes, aligned to 4"""
-        return Documented.read_array(
-            self._buffer.get_struct_array(self._buffer.root_offset(1), Documented.SIZE)
-        )
-
-    def documented_view(self) -> DocumentedArray:
-        """An array of structs of 7 bytes, aligned to 4
-
-        Views the items of ``documented()``, reading each one when it's asked for
-        """
         return DocumentedArray(self._buffer, self._buffer.root_offset(1))
 
     def segment(self) -> Segment:
@@ -692,13 +671,7 @@ class Structs:
             self._buffer.get_struct(self._buffer.root_offset(2), Segment.SIZE)
         )
 
-    def segments(self) -> list[Segment]:
-        return Segment.read_array(
-            self._buffer.get_struct_array(self._buffer.root_offset(3), Segment.SIZE)
-        )
-
-    def segments_view(self) -> SegmentArray:
-        """Views the items of ``segments()``, reading each one when it's asked for"""
+    def segments(self) -> SegmentArray:
         return SegmentArray(self._buffer, self._buffer.root_offset(3))
 
     def path(self) -> Path:
@@ -752,15 +725,7 @@ class Path:
             )
         )
 
-    def points(self) -> list[Point]:
-        return Point.read_array(
-            self._buffer.get_struct_array(
-                self._buffer.field_offset(self._position, 1), Point.SIZE
-            )
-        )
-
-    def points_view(self) -> PointArray:
-        """Views the items of ``points()``, reading each one when it's asked for"""
+    def points(self) -> PointArray:
         return PointArray(self._buffer, self._buffer.field_offset(self._position, 1))
 
 

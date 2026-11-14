@@ -29,7 +29,6 @@ from tests.generated.all_types.all_types import (
     Outer,
     OuterFields,
     Packed,
-    Path,
     PathFields,
     Point,
     PointFields,
@@ -93,11 +92,40 @@ def read_arrays(arrays: Arrays) -> ArraysFields:
     }
 
 
-def read_nested(nested: Nested) -> NestedFields:
+# The getters of vectors and arrays of structs return views, which read each
+# item when it's asked for. A function reads a view's items into a list: by
+# iterating it, or by index.
+
+
+class View[Item](Protocol):
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, index: int) -> Item: ...
+
+    def __iter__(self) -> Iterator[Item]: ...
+
+
+type ViewItems = Callable[[View[Any]], list[Any]]
+
+
+def in_order[Item](view: View[Item]) -> list[Item]:
+    """Reads a view's items by iterating it"""
+    return list(view)
+
+
+def from_last[Item](view: View[Item]) -> list[Item]:
+    """Reads a view's items by negative indices, from the last to the first, as
+    a reader that skips items would, into a list in order"""
+    items = [view[index] for index in range(-1, -len(view) - 1, -1)]
+    items.reverse()
+    return items
+
+
+def read_nested(nested: Nested, items: ViewItems = in_order) -> NestedFields:
     return {
         "label": nested.label(),
         "outer": _read_outer(nested.outer()),
-        "trees": [_read_tree(tree) for tree in nested.trees()],
+        "trees": [_read_tree(tree, items) for tree in items(nested.trees())],
     }
 
 
@@ -109,10 +137,10 @@ def _read_inner(inner: Inner) -> InnerFields:
     return {"name": inner.name(), "values": inner.values().tolist()}
 
 
-def _read_tree(tree: Tree) -> TreeFields:
+def _read_tree(tree: Tree, items: ViewItems) -> TreeFields:
     return {
         "value": tree.value(),
-        "children": [_read_tree(child) for child in tree.children()],
+        "children": [_read_tree(child, items) for child in items(tree.children())],
     }
 
 
@@ -131,74 +159,15 @@ def _read_keywords(keywords: Keywords) -> KeywordsFields:
     }
 
 
-def read_structs(structs: Structs) -> StructsFields:
-    return {
-        "packed": structs.packed(),
-        "documented": structs.documented(),
-        "segment": structs.segment(),
-        "segments": structs.segments(),
-        "path": _read_path(structs.path()),
-    }
-
-
-def _read_path(path: Path) -> PathFields:
-    return {"start": path.start(), "points": path.points()}
-
-
-# Reading the vectors and arrays of structs through their views instead, with
-# a function that reads a view's items
-
-
-class View[Item](Protocol):
-    def __len__(self) -> int: ...
-
-    def __getitem__(self, index: int) -> Item: ...
-
-    def __iter__(self) -> Iterator[Item]: ...
-
-
-type ViewItems = Callable[[View[Any]], list[Any]]
-
-
-def from_last[Item](view: View[Item]) -> list[Item]:
-    """Reads a view's items by negative indices, from the last to the first, as
-    a reader that skips items would, into a list in order"""
-    items = [view[index] for index in range(-1, -len(view) - 1, -1)]
-    items.reverse()
-    return items
-
-
-def in_order[Item](view: View[Item]) -> list[Item]:
-    """Reads a view's items by iterating it"""
-    return list(view)
-
-
-def read_nested_views(nested: Nested, items: ViewItems) -> NestedFields:
-    return {
-        "label": nested.label(),
-        "outer": _read_outer(nested.outer()),
-        "trees": [_read_tree_views(tree, items) for tree in items(nested.trees_view())],
-    }
-
-
-def _read_tree_views(tree: Tree, items: ViewItems) -> TreeFields:
-    return {
-        "value": tree.value(),
-        "children": [
-            _read_tree_views(child, items) for child in items(tree.children_view())
-        ],
-    }
-
-
-def read_structs_views(structs: Structs, items: ViewItems) -> StructsFields:
+def read_structs(structs: Structs, items: ViewItems = in_order) -> StructsFields:
     path = structs.path()
 
     return {
         "packed": structs.packed(),
-        "documented": items(structs.documented_view()),
+        "documented": items(structs.documented()),
         "segment": structs.segment(),
-        "segments": items(structs.segments_view()),
-        "path": {"start": path.start(), "points": items(path.points_view())},
+        "segments": items(structs.segments()),
+        "path": {"start": path.start(), "points": items(path.points())},
     }
 
 

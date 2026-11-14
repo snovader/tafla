@@ -740,7 +740,10 @@ class RangeFields(TypedDict):
 
 
 class RangeVector:
-    """A vector of ``Range``s, which reads each item when it's asked for"""
+    """A vector of ``Range``s, which reads each item when it's asked for, so
+    an item whose bytes are corrupt raises ``DecodeError`` when it's read, rather
+    than when its parent's getter returns the vector
+    """
 
     __slots__ = ("_buffer", "_length", "_position")
 
@@ -1403,12 +1406,7 @@ class Span:
     def frame(self) -> Frame:
         return Frame(self._buffer, self._buffer.root_offset(2))
 
-    def ranges(self) -> list[Range]:
-        offsets = self._buffer.get_vector_offsets(self._buffer.root_offset(3))
-        return [Range(self._buffer, offset) for offset in offsets]
-
-    def ranges_view(self) -> RangeVector:
-        """Views the items of ``ranges()``, reading each one when it's asked for"""
+    def ranges(self) -> RangeVector:
         return RangeVector(self._buffer, self._buffer.root_offset(3))
 
 
