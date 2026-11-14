@@ -74,71 +74,45 @@ struct TaflaItems {
     }
 };
 
-inline double sum_of(const ::workloads::Item& item) {
+// The generated readers are a span of the bytes, which they're passed by as
+// `ByteBuffer`'s spans are by hand
+
+inline double sum_of(::workloads::Item item) {
     const auto pair = item.pair();
     return sum_item(item.value(), pair.first(), pair.second());
 }
 
-inline double sum_of(const ::workloads::Triple& triple) {
+inline double sum_of(::workloads::Triple triple) {
     return sum_item(triple.value, triple.first, triple.second);
 }
 
-/// The generated getters, `items()`, which read every item into a vector
-/// first
+/// The generated getters, `items()`, which return views: a vector's `get(i)`
+/// reads one item, an array's `operator[]` reads one struct unchecked, as
+/// `load_le()` does by hand, and their iterators read every item
 struct TaflaGenItems {
     static constexpr std::string_view name = "tafla-gen";
 
     [[nodiscard]] double last_table(std::span<const std::uint8_t> bytes) const {
-        return sum_of(::workloads::ItemList(bytes).items().back());
-    }
-
-    [[nodiscard]] double every_table(std::span<const std::uint8_t> bytes) const {
-        double sum = 0;
-        for (const auto& item : ::workloads::ItemList(bytes).items()) {
-            sum += sum_of(item);
-        }
-        return sum;
-    }
-
-    [[nodiscard]] double last_struct(std::span<const std::uint8_t> bytes) const {
-        return sum_of(::workloads::Triples(bytes).items().back());
-    }
-
-    [[nodiscard]] double every_struct(std::span<const std::uint8_t> bytes) const {
-        double sum = 0;
-        for (const auto& triple : ::workloads::Triples(bytes).items()) {
-            sum += sum_of(triple);
-        }
-        return sum;
-    }
-};
-
-/// The generated views, `items_view()`, whose `get(i)` reads one item and whose
-/// iterators read every item
-struct TaflaGenViewItems {
-    static constexpr std::string_view name = "tafla-gen view";
-
-    [[nodiscard]] double last_table(std::span<const std::uint8_t> bytes) const {
-        const auto items = ::workloads::ItemList(bytes).items_view();
+        const auto items = ::workloads::ItemList(bytes).items();
         return sum_of(items.get(items.size() - 1));
     }
 
     [[nodiscard]] double every_table(std::span<const std::uint8_t> bytes) const {
         double sum = 0;
-        for (const auto item : ::workloads::ItemList(bytes).items_view()) {
+        for (const auto item : ::workloads::ItemList(bytes).items()) {
             sum += sum_of(item);
         }
         return sum;
     }
 
     [[nodiscard]] double last_struct(std::span<const std::uint8_t> bytes) const {
-        const auto items = ::workloads::Triples(bytes).items_view();
-        return sum_of(items.at(items.size() - 1));
+        const auto items = ::workloads::Triples(bytes).items();
+        return sum_of(items[items.size() - 1]);
     }
 
     [[nodiscard]] double every_struct(std::span<const std::uint8_t> bytes) const {
         double sum = 0;
-        for (const auto triple : ::workloads::Triples(bytes).items_view()) {
+        for (const auto triple : ::workloads::Triples(bytes).items()) {
             sum += sum_of(triple);
         }
         return sum;

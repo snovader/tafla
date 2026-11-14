@@ -51,6 +51,10 @@ concurrency:
   # one
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Caches are saved only on main, whose caches every branch restores. A pull
+# request's would serve only its own reruns, and would take the place of
+# main's in the repository's 10 GB of caches.
+
 jobs:
   # Decides which packages the jobs below build, and whether they publish. It
   # runs on every pull request, so that a package whose manifest and lock files
@@ -272,12 +276,14 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: clippy, rustfmt
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: python/core/native -> target
           cache-key: release
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
           working-directory: python
 
@@ -389,6 +395,7 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
           working-directory: python
 
       # A manylinux container holds the Pythons, which maturin-action puts on
@@ -520,6 +527,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           components: rustfmt, clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-workspaces: rust -> target
           cache-key: release
 

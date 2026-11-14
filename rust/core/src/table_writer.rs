@@ -275,6 +275,23 @@ impl TableSizer {
         self.add(slots.saturating_mul(self.width()));
     }
 
+    /// Adds `count` nested tables of `byte_length` bytes each, whose
+    /// fields' sizes the schema fixes, which [`TableWriter::copy_table()`]
+    /// then writes whole: a field's table, after
+    /// [`TableSizer::add_table()`], or a vector's items of the same length,
+    /// after [`TableSizer::add_vector()`]. It takes the place of each
+    /// table's [`TableSizer::start_table()`], adders and
+    /// [`TableSizer::end_table()`].
+    ///
+    /// It's for the code that tafla-gen generates, as Go's `AddTableBytes()`
+    /// is, outside the compatibility promise of the rest of the API: it may
+    /// change in any release, with the generator.
+    #[inline]
+    pub const fn add_table_bytes(&mut self, count: usize, byte_length: usize) {
+        let length = (count as u64).saturating_mul(byte_length as u64);
+        self.position = self.position.saturating_add(length);
+    }
+
     #[inline]
     fn add_elements<T: Element>(&mut self, count: usize) {
         let byte_length = (count as u64).saturating_mul(size_of::<T>() as u64);
@@ -452,6 +469,59 @@ impl TableWriter {
         writer.push_zeros(fields * offset_type.size());
 
         writer
+    }
+
+    /// Returns new bytes for a table of `fields` fields in `layout`, of
+    /// `length` bytes, which the caller writes itself, at positions that it
+    /// works out, without a sizer and a writer: an empty `Vec` with the
+    /// table's header and a capacity of exactly `length`, at least the
+    /// header's slots and offsets, to which the caller appends every other
+    /// byte, each field's offset and the field.
+    ///
+    /// It's for the code that tafla-gen generates, as Go's `AppendTable()`
+    /// is, outside the compatibility promise of the rest of the API: it may
+    /// change in any release, with the generator. The generator writes a
+    /// message this way when its fields' sizes are all fixed, but for a
+    /// string after them, so only its last field can make it too long.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::HeaderTooLong`] as [`TableSizer::new()`] returns it, or
+    /// [`BuildError::TooLong`], naming the last field, if `length` is longer
+    /// than the layout's offset type addresses.
+    #[inline]
+    pub fn table_bytes(
+        fields: usize,
+        layout: TableLayout,
+        length: u64,
+    ) -> Result<Vec<u8>, BuildError> {
+        layout.header_length(fields)?;
+
+        let (sized, offset_type) = (layout.is_sized(), layout.offset_type());
+        new_table_bytes(fields, length, sized, None, offset_type)
+    }
+
+    /// Returns new bytes for a table of `fields` fields in `layout`, of
+    /// `length` bytes, with `version` in its header, as
+    /// [`TableWriter::table_bytes()`] returns them
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::VersionTooLarge`] or [`BuildError::HeaderTooLong`] as
+    /// [`TableSizer::versioned()`] returns them, or [`BuildError::TooLong`]
+    /// as [`TableWriter::table_bytes()`] does.
+    #[inline]
+    pub fn versioned_table_bytes(
+        fields: usize,
+        layout: TableLayout<true>,
+        version: u32,
+        length: u64,
+    ) -> Result<Vec<u8>, BuildError> {
+        layout.check_version(version)?;
+        layout.header_length(fields)?;
+
+        let (sized, offset_type) = (layout.is_sized(), layout.offset_type());
+        new_table_bytes(fields, length, sized, Some(version), offset_type)
     }
 
     /// Returns the table's bytes.
@@ -703,14 +773,21 @@ impl TableWriter {
         self.set_slot(slot, end);
     }
 
-    /// Writes a finished table's bytes as they are, in place of the fields
-    /// that [`TableWriter::start_table()`] and [`TableWriter::end_table()`]
-    /// would enclose: after its parent's [`TableWriter::set_table()`], or
-    /// as a vector item before its [`TableWriter::set_item_end()`]. It's for
-    /// the tables that `TableBuilder` can't write in place: tables nested as
-    /// bytes, and builders with a header or another offset type.
+    /// Writes a finished table's bytes as they are, its offsets and its
+    /// fields, in place of the fields that [`TableWriter::start_table()`]
+    /// and [`TableWriter::end_table()`] would enclose: after its parent's
+    /// [`TableWriter::set_table()`], or as a vector item before its
+    /// [`TableWriter::set_item_end()`]. The sizer adds it with
+    /// [`TableSizer::add_table_bytes()`].
+    ///
+    /// It's for the tables that tafla-gen's code writes whole, those of
+    /// fields whose sizes the schema fixes, as C++'s `copy_table()` writes
+    /// them, and for those that `TableBuilder` can't write in place: tables
+    /// nested as bytes, and builders with a header or another offset type.
+    /// Like [`TableSizer::add_table_bytes()`], it's outside the compatibility
+    /// promise of the rest of the API.
     #[inline]
-    pub(crate) fn copy_table(&mut self, table: &[u8]) {
+    pub fn copy_table(&mut self, table: &[u8]) {
         self.push(table);
     }
 
@@ -852,6 +929,47 @@ pub struct WriterParent {
 pub struct VectorPosition {
     position: usize,
     count: usize,
+}
+
+/// Returns an empty `Vec` with a capacity of `length`, holding the header of
+/// a table of `fields` fields in its offset type: its length if it's
+/// `sized`, and its `version`. The header's slots, which `length` holds,
+/// fit in the offset type, as the caller checked.
+#[allow(clippy::cast_possible_truncation)]
+#[inline]
+fn new_table_bytes(
+    fields: usize,
+    length: u64,
+    sized: bool,
+    version: Option<u32>,
+    offset_type: OffsetType,
+) -> Result<Vec<u8>, BuildError> {
+    let Some(table_length) = u32::try_from(length)
+        .ok()
+        .filter(|&table_length| table_length <= offset_type.max_value())
+        .and_then(|table_length| usize::try_from(table_length).ok())
+    else {
+        return Err(BuildError::TooLong {
+            index: fields.saturating_sub(1),
+            length,
+            offset_type,
+        });
+    };
+
+    let mut bytes = Vec::with_capacity(table_length);
+    let version = version.map(|version| version as usize);
+    for value in [sized.then_some(table_length), version]
+        .into_iter()
+        .flatten()
+    {
+        match offset_type {
+            OffsetType::Uint8 => bytes.push(value as u8),
+            OffsetType::Uint16 => bytes.extend_from_slice(&(value as u16).to_le_bytes()),
+            OffsetType::Uint32 => bytes.extend_from_slice(&(value as u32).to_le_bytes()),
+        }
+    }
+
+    Ok(bytes)
 }
 
 /// Copies `value` to the start of `bytes`, if they're as long

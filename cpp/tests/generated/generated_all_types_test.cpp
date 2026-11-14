@@ -3,8 +3,9 @@
 // strings, tables nested in tables, vectors of tables that hold vectors of
 // themselves, fields named after keywords, and structs alone, within structs,
 // in tables and in arrays, into new bytes and into the start of bytes that the
-// caller gives. It reads back what it writes, through its views as through its
-// getters, and reads corrupted bytes as values or decode errors.
+// caller gives. It reads back what it writes, collecting the views that its
+// getters of vectors and arrays of structs return, or reading their items by
+// index or by iterating, and reads corrupted bytes as values or decode errors.
 
 #include <gtest/gtest.h>
 #include <rapidcheck/gtest.h>
@@ -182,7 +183,6 @@ Table describe(const all_types::StructsFields& fields) {
 }
 
 // The descriptions of what each generated reader reads, through its getters
-// or its views
 
 Table read(const all_types::Scalars& scalars) {
     return {Layout{},
@@ -215,33 +215,53 @@ Table read(const all_types::Arrays& arrays) {
              {arrays.float64().to_vector()}}};
 }
 
-std::vector<Field> read_tree(const all_types::Tree& tree, bool views) {
+/// How a test reads the items of a vector or an array of structs from the
+/// view that the getter returns: at once with `to_vector()`, one at a time by
+/// index, or by iterating the view
+enum class Items { collected, by_index, iterated };
+
+template <class T>
+T item_at(const tafla::TableVector<T>& view, std::size_t index) {
+    return view.get(index);
+}
+
+template <class T>
+T item_at(const tafla::StructArray<T>& view, std::size_t index) {
+    return view.at(index);
+}
+
+template <class View>
+auto items_of(const View& view, Items way) {
+    switch (way) {
+        case Items::collected:
+            return view.to_vector();
+        case Items::by_index: {
+            std::vector<typename View::value_type> items;
+            for (std::size_t index = 0; index < view.size(); ++index) {
+                items.push_back(item_at(view, index));
+            }
+            return items;
+        }
+        case Items::iterated:
+            break;
+    }
+    return std::vector<typename View::value_type>(view.begin(), view.end());
+}
+
+std::vector<Field> read_tree(const all_types::Tree& tree, Items way) {
     VectorField children;
-    if (views) {
-        const auto view = tree.children_view();
-        for (std::size_t index = 0; index < view.size(); ++index) {
-            children.items.push_back(item(read_tree(view.get(index), views)));
-        }
-    } else {
-        for (const auto& child : tree.children()) {
-            children.items.push_back(item(read_tree(child, views)));
-        }
+    for (const auto& child : items_of(tree.children(), way)) {
+        children.items.push_back(item(read_tree(child, way)));
     }
     return {{tree.value()}, {children}};
 }
 
-Table read(const all_types::Nested& nested_table, bool views) {
+Table read(const all_types::Nested& nested_table, Items way) {
     const auto outer = nested_table.outer();
     const auto inner = outer.inner();
     VectorField trees;
-    if (views) {
-        for (const auto tree : nested_table.trees_view()) {
-            trees.items.push_back(item(read_tree(tree, views)));
-        }
-    } else {
-        for (const auto& tree : nested_table.trees()) {
-            trees.items.push_back(item(read_tree(tree, views)));
-        }
+    for (const auto& tree : items_of(nested_table.trees(), way)) {
+        trees.items.push_back(item(read_tree(tree, way)));
     }
     return {Layout{},
             std::nullopt,
@@ -262,24 +282,11 @@ Table read(const all_types::Reserved& reserved) {
                      {std::string(keywords.type())}})}};
 }
 
-template <class View>
-auto from_view(const View& view, bool by_index) {
-    std::vector<typename View::value_type> items;
-    if (by_index) {
-        for (std::size_t index = 0; index < view.size(); ++index) {
-            items.push_back(view.at(index));
-        }
-    } else {
-        items.assign(view.begin(), view.end());
-    }
-    return items;
-}
-
-Table read(const all_types::Structs& structs, std::optional<bool> views) {
+Table read(const all_types::Structs& structs, Items way) {
     const auto path = structs.path();
-    const auto documented = views ? from_view(structs.documented_view(), *views) : structs.documented();
-    const auto segments = views ? from_view(structs.segments_view(), *views) : structs.segments();
-    const auto points = views ? from_view(path.points_view(), *views) : path.points();
+    const auto documented = items_of(structs.documented(), way);
+    const auto segments = items_of(structs.segments(), way);
+    const auto points = items_of(path.points(), way);
     return {Layout{},
             std::nullopt,
             {structure(structs.packed()), struct_array(std::span<const all_types::Documented>(documented), kDocumented),
@@ -470,8 +477,9 @@ RC_GTEST_PROP(GeneratedAllTypes, NestedTablesAndTreesAreWrittenAsTableBuilderWri
 
     RC_ASSERT(bytes == to_bytes(describe(fields)));
     RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
-    RC_ASSERT(read(all_types::Nested(bytes), false) == describe(fields));
-    RC_ASSERT(read(all_types::Nested(bytes), true) == describe(fields));
+    for (const auto way : {Items::collected, Items::by_index, Items::iterated}) {
+        RC_ASSERT(read(all_types::Nested(bytes), way) == describe(fields));
+    }
 }
 
 RC_GTEST_PROP(GeneratedAllTypes, FieldsNamedAfterKeywordsAreWrittenAndReadBack, ()) {
@@ -499,9 +507,9 @@ RC_GTEST_PROP(GeneratedAllTypes, StructsAreWrittenAsTableBuilderWritesThemAndRea
     RC_ASSERT(bytes == to_bytes(describe(fields)));
     RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
     const all_types::Structs structs(bytes);
-    RC_ASSERT(read(structs, std::nullopt) == describe(fields));
-    RC_ASSERT(read(structs, true) == describe(fields));
-    RC_ASSERT(read(structs, false) == describe(fields));
+    for (const auto way : {Items::collected, Items::by_index, Items::iterated}) {
+        RC_ASSERT(read(structs, way) == describe(fields));
+    }
 }
 
 /// A struct's bytes are its scalars little-endian, one after another, a bool
@@ -527,8 +535,8 @@ RC_GTEST_PROP(GeneratedAllTypes, StructsAreTheirScalarsLittleEndianOneAfterAnoth
     RC_ASSERT(all_types::Documented::ALIGNMENT == Alignment::four);
 }
 
-/// Corrupted and arbitrary bytes read as values or decode errors, and views
-/// read what getters read
+/// Corrupted and arbitrary bytes read as values or decode errors, alike
+/// whichever way the items of vectors and arrays of structs are read
 RC_GTEST_PROP(GeneratedAllTypes, CorruptedTablesReadAsValuesOrDecodeErrors, ()) {
     const auto nested_values = *owned_nested();
     const auto structs_values = *owned_structs();
@@ -544,15 +552,16 @@ RC_GTEST_PROP(GeneratedAllTypes, CorruptedTablesReadAsValuesOrDecodeErrors, ()) 
 
     for (const auto& bytes : values::corrupted(nested_fields.serialize().to_vector(), corruption)) {
         const all_types::Nested nested_table(bytes);
-        const auto from_getters = try_read([&] { return read(nested_table, false); });
-        RC_ASSERT(try_read([&] { return read(nested_table, true); }) == from_getters);
+        const auto collected = try_read([&] { return read(nested_table, Items::collected); });
+        RC_ASSERT(try_read([&] { return read(nested_table, Items::by_index); }) == collected);
+        RC_ASSERT(try_read([&] { return read(nested_table, Items::iterated); }) == collected);
     }
 
     for (const auto& bytes : values::corrupted(structs_values.fields().serialize().to_vector(), corruption)) {
         const all_types::Structs structs(bytes);
-        const auto from_getters = try_read([&] { return read(structs, std::nullopt); });
-        RC_ASSERT(try_read([&] { return read(structs, true); }) == from_getters);
-        RC_ASSERT(try_read([&] { return read(structs, false); }) == from_getters);
+        const auto collected = try_read([&] { return read(structs, Items::collected); });
+        RC_ASSERT(try_read([&] { return read(structs, Items::by_index); }) == collected);
+        RC_ASSERT(try_read([&] { return read(structs, Items::iterated); }) == collected);
 
         static_cast<void>(try_read([&] { return read(all_types::Scalars(bytes)); }));
         static_cast<void>(try_read([&] { return read(all_types::Arrays(bytes)); }));
@@ -564,11 +573,11 @@ TEST(GeneratedAllTypes, ViewsOfEmptyVectorsAndArraysOfStructsHoldNoItems) {
     const auto nested_bytes = all_types::NestedFields{}.serialize();
     const auto structs_bytes = all_types::StructsFields{}.serialize();
 
-    EXPECT_TRUE(all_types::Nested(nested_bytes).trees_view().empty());
     EXPECT_TRUE(all_types::Nested(nested_bytes).trees().empty());
-    EXPECT_TRUE(all_types::Structs(structs_bytes).segments_view().empty());
-    EXPECT_TRUE(all_types::Structs(structs_bytes).documented().empty());
-    EXPECT_THROW(static_cast<void>(all_types::Structs(structs_bytes).segments_view().at(0)), std::out_of_range);
+    EXPECT_TRUE(all_types::Nested(nested_bytes).trees().to_vector().empty());
+    EXPECT_TRUE(all_types::Structs(structs_bytes).segments().empty());
+    EXPECT_TRUE(all_types::Structs(structs_bytes).documented().to_vector().empty());
+    EXPECT_THROW(static_cast<void>(all_types::Structs(structs_bytes).segments().at(0)), std::out_of_range);
 }
 
 /// Each nested table is aligned to its arrays' and nested tables' largest

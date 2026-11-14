@@ -81,6 +81,19 @@ export class Record {
     name(): string {
         return this.#buffer.getString(this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `RecordFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): RecordFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            id: this.#buffer.getInt64(this.#buffer.rootOffset(2)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Record`, to write */
@@ -89,6 +102,103 @@ export interface RecordFields {
     y: number;
     id: bigint;
     name: string;
+}
+
+/** A uint32 and two float32 columns, and the value that `keys` count from */
+export class Columns {
+    /**
+     * The alignment that a parent pads a `Columns` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 4;
+
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+
+    /** Reads the table at `position`, as its parent's getter finds it */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ColumnsFields {
+        return {
+            base: buffer.getInt64(buffer.fieldOffset(position, 0)),
+            keys: buffer.getUint32Array(buffer.fieldOffset(position, 1)),
+            a: buffer.getFloat32Array(buffer.fieldOffset(position, 2)),
+            b: buffer.getFloat32Array(buffer.fieldOffset(position, 3))
+        };
+    }
+
+    /**
+     * Adds a `Columns` to its parent's sizer, after the field or
+     * vector that holds it
+     */
+    static size(sizer: TableSizer, fields: ColumnsFields): void {
+        const parent = sizer.startTable(4);
+        sizer.addInt64();
+        sizer.addUint32Array(fields.keys.length);
+        sizer.addFloat32Array(fields.a.length);
+        sizer.addFloat32Array(fields.b.length);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes a `Columns` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: ColumnsFields): void {
+        const parent = writer.startTable(4);
+        writer.setInt64(0, fields.base);
+        writer.setUint32Array(1, fields.keys);
+        writer.setFloat32Array(2, fields.a);
+        writer.setFloat32Array(3, fields.b);
+        writer.endTable(parent);
+    }
+
+    base(): bigint {
+        return this.#buffer.getInt64(
+            this.#buffer.fieldOffset(this.#position, 0)
+        );
+    }
+
+    keys(): Uint32Array {
+        return this.#buffer.getUint32Array(
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
+
+    a(): Float32Array {
+        return this.#buffer.getFloat32Array(
+            this.#buffer.fieldOffset(this.#position, 2)
+        );
+    }
+
+    b(): Float32Array {
+        return this.#buffer.getFloat32Array(
+            this.#buffer.fieldOffset(this.#position, 3)
+        );
+    }
+
+    /**
+     * Reads every field into the `ColumnsFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ColumnsFields {
+        return Columns.read(this.#buffer, this.#position);
+    }
+}
+
+/** The fields of a `Columns`, to write */
+export interface ColumnsFields {
+    base: bigint;
+    keys: ArrayLike<number> | Uint32Array;
+    a: ArrayLike<number> | Float32Array;
+    b: ArrayLike<number> | Float32Array;
 }
 
 /**
@@ -204,6 +314,19 @@ export class Document {
     columns(): Columns {
         return new Columns(this.#buffer, this.#buffer.rootOffset(3));
     }
+
+    /**
+     * Reads every field into the `DocumentFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): DocumentFields {
+        return {
+            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
+            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
+            name: this.#buffer.getString(this.#buffer.rootOffset(2)),
+            columns: Columns.read(this.#buffer, this.#buffer.rootOffset(3))
+        };
+    }
 }
 
 /** The fields of a `Document`, to write */
@@ -214,13 +337,12 @@ export interface DocumentFields {
     columns: ColumnsFields;
 }
 
-/** A uint32 and two float32 columns, and the value that `keys` count from */
-export class Columns {
+export class Pair {
     /**
-     * The alignment that a parent pads a `Columns` to: the largest
+     * The alignment that a parent pads a `Pair` to: the largest
      * alignment of its arrays and nested tables, or 1
      */
-    static readonly ALIGNMENT = 4;
+    static readonly ALIGNMENT = 1;
 
     readonly #buffer: ByteBuffer;
     readonly #position: number;
@@ -232,62 +354,200 @@ export class Columns {
     }
 
     /**
-     * Adds a `Columns` to its parent's sizer, after the field or
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): PairFields {
+        return {
+            first: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            second: buffer.getFloat32(buffer.fieldOffset(position, 1))
+        };
+    }
+
+    /**
+     * Adds a `Pair` to its parent's sizer, after the field or
      * vector that holds it
      */
-    static size(sizer: TableSizer, fields: ColumnsFields): void {
-        const parent = sizer.startTable(4);
-        sizer.addInt64();
-        sizer.addUint32Array(fields.keys.length);
-        sizer.addFloat32Array(fields.a.length);
-        sizer.addFloat32Array(fields.b.length);
+    static size(sizer: TableSizer, _fields: PairFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addFloat32();
+        sizer.addFloat32();
         sizer.endTable(parent);
     }
 
     /**
-     * Writes a `Columns` where its parent's writer is, after the
+     * Writes a `Pair` where its parent's writer is, after the
      * field or vector that holds it
      */
-    static write(writer: TableWriter, fields: ColumnsFields): void {
-        const parent = writer.startTable(4);
-        writer.setInt64(0, fields.base);
-        writer.setUint32Array(1, fields.keys);
-        writer.setFloat32Array(2, fields.a);
-        writer.setFloat32Array(3, fields.b);
+    static write(writer: TableWriter, fields: PairFields): void {
+        const parent = writer.startTable(2);
+        writer.setFloat32(0, fields.first);
+        writer.setFloat32(1, fields.second);
         writer.endTable(parent);
     }
 
-    base(): bigint {
-        return this.#buffer.getInt64(
+    first(): number {
+        return this.#buffer.getFloat32(
             this.#buffer.fieldOffset(this.#position, 0)
         );
     }
 
-    keys(): Uint32Array {
-        return this.#buffer.getUint32Array(
+    second(): number {
+        return this.#buffer.getFloat32(
             this.#buffer.fieldOffset(this.#position, 1)
         );
     }
 
-    a(): Float32Array {
-        return this.#buffer.getFloat32Array(
-            this.#buffer.fieldOffset(this.#position, 2)
-        );
-    }
-
-    b(): Float32Array {
-        return this.#buffer.getFloat32Array(
-            this.#buffer.fieldOffset(this.#position, 3)
-        );
+    /**
+     * Reads every field into the `PairFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): PairFields {
+        return Pair.read(this.#buffer, this.#position);
     }
 }
 
-/** The fields of a `Columns`, to write */
-export interface ColumnsFields {
-    base: bigint;
-    keys: ArrayLike<number> | Uint32Array;
-    a: ArrayLike<number> | Float32Array;
-    b: ArrayLike<number> | Float32Array;
+/** The fields of a `Pair`, to write */
+export interface PairFields {
+    first: number;
+    second: number;
+}
+
+/** A float32 and a nested table of two float32s */
+export class Item {
+    /**
+     * The alignment that a parent pads an `Item` to: the largest
+     * alignment of its arrays and nested tables, or 1
+     */
+    static readonly ALIGNMENT = 1;
+
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+
+    /** Reads the table at `position`, as its parent's getter finds it */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+    }
+
+    /**
+     * Reads every field of the table at `position`, as `fields()` does,
+     * without creating its reader
+     */
+    static read(buffer: ByteBuffer, position: number): ItemFields {
+        return {
+            value: buffer.getFloat32(buffer.fieldOffset(position, 0)),
+            pair: Pair.read(buffer, buffer.fieldOffset(position, 1))
+        };
+    }
+
+    /**
+     * Adds an `Item` to its parent's sizer, after the field or
+     * vector that holds it
+     */
+    static size(sizer: TableSizer, fields: ItemFields): void {
+        const parent = sizer.startTable(2);
+        sizer.addFloat32();
+        sizer.addTable(Pair.ALIGNMENT);
+        Pair.size(sizer, fields.pair);
+        sizer.endTable(parent);
+    }
+
+    /**
+     * Writes an `Item` where its parent's writer is, after the
+     * field or vector that holds it
+     */
+    static write(writer: TableWriter, fields: ItemFields): void {
+        const parent = writer.startTable(2);
+        writer.setFloat32(0, fields.value);
+        writer.setTable(1, Pair.ALIGNMENT);
+        Pair.write(writer, fields.pair);
+        writer.endTable(parent);
+    }
+
+    value(): number {
+        return this.#buffer.getFloat32(
+            this.#buffer.fieldOffset(this.#position, 0)
+        );
+    }
+
+    pair(): Pair {
+        return new Pair(
+            this.#buffer,
+            this.#buffer.fieldOffset(this.#position, 1)
+        );
+    }
+
+    /**
+     * Reads every field into the `ItemFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemFields {
+        return Item.read(this.#buffer, this.#position);
+    }
+}
+
+/** The fields of an `Item`, to write */
+export interface ItemFields {
+    value: number;
+    pair: PairFields;
+}
+
+/** A vector of `Item`s, which reads each item when it's asked for */
+export class ItemVector {
+    readonly #buffer: ByteBuffer;
+    readonly #position: number;
+    readonly #length: number;
+
+    /**
+     * Views the vector at `position`, as its parent's getter finds it
+     *
+     * @throws {DecodeError} If the vector's count or the ends of its items lie
+     * outside the bytes.
+     */
+    constructor(buffer: ByteBuffer, position: number) {
+        this.#buffer = buffer;
+        this.#position = position;
+        this.#length = buffer.getVectorLength(position);
+    }
+
+    /** The number of items */
+    length(): number {
+        return this.#length;
+    }
+
+    /**
+     * Reads item `index`, without reading the others
+     *
+     * @throws {RangeError} If the vector has no item `index`.
+     * @throws {DecodeError} If the item lies outside the bytes.
+     */
+    get(index: number): Item {
+        return new Item(
+            this.#buffer,
+            this.#buffer.getVectorItemOffset(
+                this.#position,
+                this.#length,
+                index
+            )
+        );
+    }
+
+    /**
+     * Reads the `ItemFields` of every item, from the first to the last
+     *
+     * @throws {DecodeError} If an item lies outside the bytes.
+     */
+    fields(): ItemFields[] {
+        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const items = new Array<ItemFields>(offsets.length);
+
+        for (let i = 0; i < offsets.length; i++) {
+            items[i] = Item.read(this.#buffer, offsets[i]);
+        }
+
+        return items;
+    }
 }
 
 /** A table holding a vector of item tables */
@@ -348,271 +608,27 @@ export class ItemList {
         return writer.bytes();
     }
 
-    items(): Item[] {
-        const offsets = this.#buffer.getVectorOffsets(
-            this.#buffer.rootOffset(0)
-        );
-        const items = new Array<Item>(offsets.length);
-
-        for (let i = 0; i < offsets.length; i++) {
-            items[i] = new Item(this.#buffer, offsets[i]);
-        }
-
-        return items;
+    items(): ItemVector {
+        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
     }
 
-    /** Views the items of `items()`, reading each one when it's asked for */
-    itemsView(): ItemVector {
-        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+    /**
+     * Reads every field into the `ItemListFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): ItemListFields {
+        return {
+            items: new ItemVector(
+                this.#buffer,
+                this.#buffer.rootOffset(0)
+            ).fields()
+        };
     }
 }
 
 /** The fields of an `ItemList`, to write */
 export interface ItemListFields {
     items: readonly ItemFields[];
-}
-
-/** A float32 and a nested table of two float32s */
-export class Item {
-    /**
-     * The alignment that a parent pads an `Item` to: the largest
-     * alignment of its arrays and nested tables, or 1
-     */
-    static readonly ALIGNMENT = 1;
-
-    readonly #buffer: ByteBuffer;
-    readonly #position: number;
-
-    /** Reads the table at `position`, as its parent's getter finds it */
-    constructor(buffer: ByteBuffer, position: number) {
-        this.#buffer = buffer;
-        this.#position = position;
-    }
-
-    /**
-     * Adds an `Item` to its parent's sizer, after the field or
-     * vector that holds it
-     */
-    static size(sizer: TableSizer, fields: ItemFields): void {
-        const parent = sizer.startTable(2);
-        sizer.addFloat32();
-        sizer.addTable(Pair.ALIGNMENT);
-        Pair.size(sizer, fields.pair);
-        sizer.endTable(parent);
-    }
-
-    /**
-     * Writes an `Item` where its parent's writer is, after the
-     * field or vector that holds it
-     */
-    static write(writer: TableWriter, fields: ItemFields): void {
-        const parent = writer.startTable(2);
-        writer.setFloat32(0, fields.value);
-        writer.setTable(1, Pair.ALIGNMENT);
-        Pair.write(writer, fields.pair);
-        writer.endTable(parent);
-    }
-
-    value(): number {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 0)
-        );
-    }
-
-    pair(): Pair {
-        return new Pair(
-            this.#buffer,
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-    }
-}
-
-/** The fields of an `Item`, to write */
-export interface ItemFields {
-    value: number;
-    pair: PairFields;
-}
-
-/** A vector of `Item`s, which reads each item when it's asked for */
-export class ItemVector {
-    readonly #buffer: ByteBuffer;
-    readonly #position: number;
-    readonly #length: number;
-
-    /**
-     * Views the vector at `position`, as its parent's getter finds it
-     *
-     * @throws {DecodeError} If the vector's count or the ends of its items lie
-     * outside the bytes.
-     */
-    constructor(buffer: ByteBuffer, position: number) {
-        this.#buffer = buffer;
-        this.#position = position;
-        this.#length = buffer.getVectorLength(position);
-    }
-
-    /** The number of items */
-    length(): number {
-        return this.#length;
-    }
-
-    /**
-     * Reads item `index`, without reading the others
-     *
-     * @throws {RangeError} If the vector has no item `index`.
-     * @throws {DecodeError} If the item lies outside the bytes.
-     */
-    get(index: number): Item {
-        return new Item(
-            this.#buffer,
-            this.#buffer.getVectorItemOffset(
-                this.#position,
-                this.#length,
-                index
-            )
-        );
-    }
-}
-
-export class Pair {
-    /**
-     * The alignment that a parent pads a `Pair` to: the largest
-     * alignment of its arrays and nested tables, or 1
-     */
-    static readonly ALIGNMENT = 1;
-
-    readonly #buffer: ByteBuffer;
-    readonly #position: number;
-
-    /** Reads the table at `position`, as its parent's getter finds it */
-    constructor(buffer: ByteBuffer, position: number) {
-        this.#buffer = buffer;
-        this.#position = position;
-    }
-
-    /**
-     * Adds a `Pair` to its parent's sizer, after the field or
-     * vector that holds it
-     */
-    static size(sizer: TableSizer, _fields: PairFields): void {
-        const parent = sizer.startTable(2);
-        sizer.addFloat32();
-        sizer.addFloat32();
-        sizer.endTable(parent);
-    }
-
-    /**
-     * Writes a `Pair` where its parent's writer is, after the
-     * field or vector that holds it
-     */
-    static write(writer: TableWriter, fields: PairFields): void {
-        const parent = writer.startTable(2);
-        writer.setFloat32(0, fields.first);
-        writer.setFloat32(1, fields.second);
-        writer.endTable(parent);
-    }
-
-    first(): number {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 0)
-        );
-    }
-
-    second(): number {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 1)
-        );
-    }
-}
-
-/** The fields of a `Pair`, to write */
-export interface PairFields {
-    first: number;
-    second: number;
-}
-
-/** A table holding the items as an array of structs */
-export class Triples {
-    static readonly #LAYOUT = TableLayout.DEFAULT;
-
-    readonly #buffer: ByteBuffer;
-
-    constructor(bytes: Uint8Array) {
-        this.#buffer = new ByteBuffer(bytes, Triples.#LAYOUT);
-    }
-
-    /** Writes a `Triples` with every field */
-    static serialize(fields: TriplesFields): Uint8Array {
-        const sizer = new TableSizer(1, Triples.#LAYOUT);
-        sizer.addStructArray(
-            fields.items.length,
-            Triple.SIZE,
-            Triple.ALIGNMENT
-        );
-
-        const writer = sizer.writer();
-        writer.setStructArray(
-            0,
-            Triple.serializeArray(fields.items),
-            Triple.SIZE,
-            Triple.ALIGNMENT
-        );
-
-        return writer.bytes();
-    }
-
-    /**
-     * Writes a `Triples` with every field into the start of `bytes`,
-     * rather than into new bytes, and returns the view of them that holds
-     * it. The view, and what's read from it, change when the bytes are
-     * written again. Reusing bytes saves allocating and zeroing new ones,
-     * which takes longest for large tables.
-     *
-     * @throws {RangeError} If `bytes` are shorter than the table, before
-     * any of them is written.
-     */
-    static serializeInto(fields: TriplesFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(1, Triples.#LAYOUT);
-        sizer.addStructArray(
-            fields.items.length,
-            Triple.SIZE,
-            Triple.ALIGNMENT
-        );
-
-        const writer = sizer.writer(bytes);
-        writer.setStructArray(
-            0,
-            Triple.serializeArray(fields.items),
-            Triple.SIZE,
-            Triple.ALIGNMENT
-        );
-
-        return writer.bytes();
-    }
-
-    items(): Triple[] {
-        const bytes = this.#buffer.getStructArray(
-            this.#buffer.rootOffset(0),
-            Triple.SIZE
-        );
-        const items = new Array<Triple>(bytes.length / Triple.SIZE);
-
-        for (let i = 0; i < items.length; i++) {
-            items[i] = new Triple(bytes, i * Triple.SIZE);
-        }
-
-        return items;
-    }
-
-    /** Views the items of `items()`, reading each one when it's asked for */
-    itemsView(): TripleArray {
-        return new TripleArray(this.#buffer, this.#buffer.rootOffset(0));
-    }
-}
-
-/** The fields of a `Triples`, to write */
-export interface TriplesFields {
-    items: readonly TripleFields[];
 }
 
 /** An item's three float32s, 12 bytes aligned to 4 in an array */
@@ -637,6 +653,20 @@ export class Triple {
         this.#value = readFloat32(bytes, offset);
         this.#first = readFloat32(bytes, offset + 4);
         this.#second = readFloat32(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Triple` at `offset` in `bytes`,
+     * without creating a `Triple`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Triple` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): TripleFields {
+        return {
+            value: readFloat32(bytes, offset),
+            first: readFloat32(bytes, offset + 4),
+            second: readFloat32(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Triple` */
@@ -700,7 +730,12 @@ export interface TripleFields {
     second: number;
 }
 
-/** An array of `Triple`s, which reads each struct when it's asked for */
+/**
+ * An array of `Triple`s, which reads each struct when it's asked for.
+ *
+ * Its getters take a struct's index, an integer, which they check only by
+ * reading within the array's bytes.
+ */
 export class TripleArray {
     readonly #bytes: Uint8Array;
     readonly #length: number;
@@ -723,17 +758,137 @@ export class TripleArray {
     /**
      * Reads struct `index`
      *
-     * @throws {RangeError} If the array has no struct `index`.
+     * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Triple {
-        if (!(Number.isInteger(index) && index >= 0 && index < this.#length)) {
-            throw new RangeError(
-                `Struct ${index} is outside the array of ${this.#length}`
-            );
+        return new Triple(this.#bytes, index * 12);
+    }
+
+    /**
+     * Reads `value` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    value(index: number): number {
+        return readFloat32(this.#bytes, index * 12);
+    }
+
+    /**
+     * Reads `first` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    first(index: number): number {
+        return readFloat32(this.#bytes, index * 12 + 4);
+    }
+
+    /**
+     * Reads `second` of struct `index`, without reading the others
+     *
+     * @throws {DecodeError} If the array has no struct `index`.
+     */
+    second(index: number): number {
+        return readFloat32(this.#bytes, index * 12 + 8);
+    }
+
+    /** Reads the `TripleFields` of every item, from the first to the last */
+    fields(): TripleFields[] {
+        const bytes = this.#bytes;
+        const items = new Array<TripleFields>(this.#length);
+
+        for (let i = 0; i < items.length; i++) {
+            const offset = i * 12;
+            items[i] = {
+                value: readFloat32(bytes, offset),
+                first: readFloat32(bytes, offset + 4),
+                second: readFloat32(bytes, offset + 8)
+            };
         }
 
-        return new Triple(this.#bytes, index * Triple.SIZE);
+        return items;
     }
+}
+
+/** A table holding the items as an array of structs */
+export class Triples {
+    static readonly #LAYOUT = TableLayout.DEFAULT;
+
+    readonly #buffer: ByteBuffer;
+
+    constructor(bytes: Uint8Array) {
+        this.#buffer = new ByteBuffer(bytes, Triples.#LAYOUT);
+    }
+
+    /** Writes a `Triples` with every field */
+    static serialize(fields: TriplesFields): Uint8Array {
+        const sizer = new TableSizer(1, Triples.#LAYOUT);
+        sizer.addStructArray(
+            fields.items.length,
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        const writer = sizer.writer();
+        writer.setStructArray(
+            0,
+            Triple.serializeArray(fields.items),
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Triples` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: TriplesFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(1, Triples.#LAYOUT);
+        sizer.addStructArray(
+            fields.items.length,
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        const writer = sizer.writer(bytes);
+        writer.setStructArray(
+            0,
+            Triple.serializeArray(fields.items),
+            Triple.SIZE,
+            Triple.ALIGNMENT
+        );
+
+        return writer.bytes();
+    }
+
+    items(): TripleArray {
+        return new TripleArray(this.#buffer, this.#buffer.rootOffset(0));
+    }
+
+    /**
+     * Reads every field into the `TriplesFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): TriplesFields {
+        return {
+            items: new TripleArray(
+                this.#buffer,
+                this.#buffer.rootOffset(0)
+            ).fields()
+        };
+    }
+}
+
+/** The fields of a `Triples`, to write */
+export interface TriplesFields {
+    items: readonly TripleFields[];
 }
 
 /** A fixed-size record of a uint32 and two float32s */
@@ -758,6 +913,20 @@ export class Sample {
         this.#key = readUint32(bytes, offset);
         this.#a = readFloat32(bytes, offset + 4);
         this.#b = readFloat32(bytes, offset + 8);
+    }
+
+    /**
+     * Reads the fields of a `Sample` at `offset` in `bytes`,
+     * without creating a `Sample`
+     *
+     * @throws {DecodeError} If `bytes` end before the `Sample` does.
+     */
+    static read(bytes: Uint8Array, offset = 0): SampleFields {
+        return {
+            key: readUint32(bytes, offset),
+            a: readFloat32(bytes, offset + 4),
+            b: readFloat32(bytes, offset + 8)
+        };
     }
 
     /** Writes a `Sample` */

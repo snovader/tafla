@@ -243,6 +243,19 @@ fn item_error(
     build().unwrap_or_else(|error| error)
 }
 
+/// The bytes of `source`, held as plain bytes, or `TypeError` if they
+/// aren't C-contiguous
+fn hold(source: &Bound<'_, PyAny>) -> PyResult<Held> {
+    let py = source.py();
+    let mut held = std::mem::MaybeUninit::<ffi::Py_buffer>::uninit();
+    if unsafe { ffi::PyObject_GetBuffer(source.as_ptr(), held.as_mut_ptr(), ffi::PyBUF_SIMPLE) }
+        != 0
+    {
+        return Err(contiguous_error(py, PyErr::fetch(py)));
+    }
+    Ok(Held(unsafe { held.assume_init() }))
+}
+
 /// A one-dimensional view of the bytes of `source`, which a `ByteBuffer`
 /// holds, as the pure-Python runtime views them: `memoryview(source)`, cast
 /// to bytes if it's of another format or shape. A memoryview is one that
@@ -349,19 +362,57 @@ impl ByteBuffer {
             bytes
         };
 
-        let mut held = std::mem::MaybeUninit::<ffi::Py_buffer>::uninit();
-        if unsafe { ffi::PyObject_GetBuffer(source.as_ptr(), held.as_mut_ptr(), ffi::PyBUF_SIMPLE) }
-            != 0
-        {
-            return Err(contiguous_error(py, PyErr::fetch(py)));
-        }
-        let held = Held(unsafe { held.assume_init() });
-
         Ok(Self {
-            held,
+            held: hold(source)?,
             shape: shape_of(layout.as_ref()),
             view: PyOnceLock::new(),
         })
+    }
+
+    /// Returns the values of the fields that ``fields`` describes whole, a
+    /// message's, of the message in ``data``, in the layout that ``fields``
+    /// was created with, as ``ByteBuffer(data, layout).get_fields(0,
+    /// fields)`` returns them, or ``None`` as it does, without creating a
+    /// ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+    /// that the header holds, for the reader's constructor to raise for.
+    ///
+    /// Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
+    /// no layout, as a nested table's doesn't, and if ``version`` is given
+    /// for a layout without a version.
+    ///
+    /// Generated code calls it to read every field of a message of only such
+    /// fields at once, without a reader.
+    #[staticmethod]
+    #[pyo3(signature = (data, fields, version = None))]
+    fn read_fields<'py>(
+        data: &Bound<'py, PyAny>,
+        fields: &Bound<'_, FixedFields>,
+        version: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Option<Bound<'py, PyTuple>>> {
+        let py = data.py();
+        // The constructor's checks of the bytes, before the fields'
+        let held = hold(data)?;
+        let fixed = fields.get();
+        let shape = fixed.shape()?;
+        if version.is_some() && !shape.versioned {
+            return Err(PyTypeError::new_err("The table has no version"));
+        }
+        let buffer = Self {
+            held,
+            shape,
+            view: PyOnceLock::new(),
+        };
+
+        if let Some(version) = version {
+            let layout = shape.core().versioned();
+            let Ok(found) = tafla::ByteBuffer::new(buffer.bytes_slice(), layout).version() else {
+                return Ok(None);
+            };
+            if !version.eq(found)? {
+                return Ok(None);
+            }
+        }
+        buffer.fields_at(py, fixed.plan(shape.size())?, 0)
     }
 
     fn bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -673,6 +724,45 @@ impl ByteBuffer {
         Ok(Some(PyList::new(py, items)?))
     }
 
+    /// Returns an iterator over the values of every item of the vector at
+    /// ``position``, a table whose fields ``fields`` describes whole: each
+    /// item's as ``get_fields()`` returns them, or, for an item whose offsets
+    /// aren't those that its writer writes, what ``read`` returns for the
+    /// item's position, which the item's getters read.
+    ///
+    /// It reads each item's end when it reaches the item, after the end of
+    /// the item before it, so it raises ``DecodeError`` for an item that
+    /// doesn't lie within the buffer when it reaches it, as
+    /// ``get_vector_offsets()`` raises for it, after the items before it.
+    ///
+    /// Raises ``DecodeError`` at once if the vector's count or the ends after
+    /// it don't lie within the buffer, as ``get_vector_length()`` does.
+    ///
+    /// Generated code calls it to iterate over the values of a vector's
+    /// items, without reading them all at once.
+    fn iter_vector_fields(
+        slf: &Bound<'_, Self>,
+        position: &Bound<'_, PyAny>,
+        fields: &Bound<'_, FixedFields>,
+        read: Bound<'_, PyAny>,
+    ) -> PyResult<VectorFields> {
+        let py = slf.py();
+        let buffer = slf.get();
+        let count = buffer.get_vector_length(py, position)?;
+        let at = buffer.position(position, buffer.size())?;
+        fields.get().plan(buffer.size())?;
+
+        Ok(VectorFields {
+            buffer: slf.clone().unbind(),
+            fields: fields.clone().unbind(),
+            read: read.unbind(),
+            position: at,
+            count,
+            index: 0,
+            start: (count + 1) * buffer.size(),
+        })
+    }
+
     /// Returns the bytes of every item of the vector at ``position``, as
     /// views of the buffer.
     fn get_vector<'py>(
@@ -792,6 +882,82 @@ impl ByteBuffer {
             slot.copy_from_slice(&offset.to_ne_bytes());
         }
         Ok(())
+    }
+}
+
+/// An iterator over the values of a vector's items, which
+/// ``ByteBuffer.iter_vector_fields()`` returns. It's for one thread at a
+/// time: in free-threaded Python, a call while another thread's call to it
+/// runs raises ``RuntimeError``.
+#[pyclass(module = "tafla._native", name = "VectorFieldsIterator")]
+pub struct VectorFields {
+    buffer: Py<ByteBuffer>,
+    fields: Py<FixedFields>,
+    /// What reads an item that `get_fields()` can't, from its position
+    read: Py<PyAny>,
+    /// The vector's position, and its count, whose ends lie within the bytes
+    position: usize,
+    count: usize,
+    /// The next item, and where it starts, from the vector's position
+    index: usize,
+    start: usize,
+}
+
+#[pymethods]
+impl VectorFields {
+    const fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(&mut self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyAny>>> {
+        if self.index >= self.count {
+            return Ok(None);
+        }
+
+        let next = self.next_item(py);
+        // An iterator that raised is done, as a generator that raised is
+        if next.is_err() {
+            self.index = self.count;
+        }
+        next.map(Some)
+    }
+}
+
+impl VectorFields {
+    /// The values of the next item, after reading its end
+    fn next_item<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let buffer = self.buffer.get();
+        let size = buffer.size();
+        let available = buffer.available();
+
+        // The ends lie within the bytes, which the iterator checked first
+        let slot = self.position + (self.index + 1) * size;
+        let end = read_slot(&buffer.bytes_slice()[slot..], size);
+        let start = self.start;
+        if start > end
+            || self
+                .position
+                .checked_add(end)
+                .is_none_or(|end| end > available)
+        {
+            let position = Int::from(self.position);
+            return Err(item_error(
+                py,
+                &position,
+                &Int::from(start),
+                &Int::from(end),
+                available,
+            ));
+        }
+        self.index += 1;
+        self.start = end;
+
+        let offset = self.position + start;
+        let plan = self.fields.get().plan(size)?;
+        match buffer.fields_at(py, plan, offset)? {
+            Some(values) => Ok(values.into_any()),
+            None => self.read.bind(py).call1((offset,)),
+        }
     }
 }
 

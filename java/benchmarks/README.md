@@ -29,11 +29,22 @@ The benchmark classes are named after the TypeScript code's workloads:
 `RecordBenchmark`, `DocumentBenchmark`, `ListBenchmark` for the vector of
 nested tables, `StructsBenchmark` for the array of structs and
 `SampleBenchmark` for the fixed-size record.
+
+`ReusedBytesBenchmark` times the document of 100,000 rows written into the
+start of the same bytes in every call, rather than into new bytes, by the
+codecs that can: tafla-gen's `Document.serializeInto()`, whose bytes the
+benchmark owns and keeps. The other libraries write into new bytes, as the
+document's `serialize` times them. msgpack's packer reuses its buffer, but
+copies each message out of it with `toByteArray()`, and FlatBuffers'
+builder could be reused with `clear()`, though the comparison doesn't, as
+Limitations describes. Before timing, the check that the codec writes into
+the bytes what `serialize()` writes into new ones starts from bytes of
+`0xff`.
 `./gradlew :benchmarks:encodingReport` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does.
 
 `ItemAccessBenchmark` times only tafla's bytes of the vector of nested tables
-and of the array of structs, read in three ways: the last item alone, which a
+and of the array of structs, read in two ways: the last item alone, which a
 reader can find without reading the others, and every item. Each way sums the
 three float32s of the items it reads as doubles, rather than creating objects
 of its own, and `ItemAccesses` holds them:
@@ -41,11 +52,10 @@ of its own, and `ItemAccesses` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`'s
   view with `getFloat()`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into a `List` or an array first.
-- **tafla-gen view** reads with the generated views, `itemsView()`, lazy
-  `List`s whose `get(i)` reads one item, in a loop of `get(i)` for every item.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views, lazy `List`s whose `get(i)` reads one item, in a loop of `get(i)` for
+  every item.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows
   JMH's noise.
 
 ### What differs from TypeScript
@@ -81,9 +91,10 @@ of its own, and `ItemAccesses` holds them:
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders. Arrays of the elements' own Java
-  type are copied in bulk, and the uint32 keys are narrowed and widened element
-  by element. The array of structs is written into a `byte[]` through a
+- **tafla** records nested tables in place among their parent builder's
+  fields, with `setTable(fields, fill)` and `setVector(count, fields, fill)`.
+  Arrays of the elements' own Java type are copied in bulk, and the uint32
+  keys are narrowed and widened element by element. The array of structs is written into a `byte[]` through a
   little-endian `VarHandle` and set with `setStructArray()`, and read from
   `getStructArray()`'s little-endian view, as tafla-gen's code does.
 - **tafla-gen** is the code that tafla-gen generates from
@@ -91,14 +102,18 @@ comparison uses its counterpart:
   `io.github.snovader.tafla.benchmarks.generated.tafla`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then
   writes every field, nested tables included, into an array of that length
-  with a `TableWriter`. Its readers read each field with a getter. Its
-  getters of arrays return copies, so it sums a column through the column's
-  view, `aView()`, which reads the elements in place, as the other
-  languages' generated getters return them. It
+  with a `TableWriter`. Its readers read each field with a getter. The
+  getters of the vector and of the array of structs return views, which read
+  each item as it's asked for. Its getters of arrays of scalars return copies,
+  so it sums a column through the column's view, `aView()`, which reads the
+  elements in place, as the other languages' generated getters return them. It
   takes the workloads' records, as the other codecs do, so it creates the
-  generated `Fields` records, and the `Triple` and `Sample` records, from them
-  in each call, as the protobuf codec builds its messages, and creates the
-  workloads' records from the generated readers. Every suite has a copy of the
+  generated `Fields` records, and the `Sample` record, from them in each call,
+  as the protobuf codec builds its messages, and creates the workloads'
+  records from the generated readers. It writes the array of structs with
+  `Triples.serialize(count, fill)`, whose fill writes each item's values
+  straight into the table with the static `Triple.write()`, rather than
+  creating a `Triple` of each. Every suite has a copy of the
   schema; after changing them, regenerate the code as `rust/gen/README.md`
   describes.
 - **FlatBuffers** builds each message with a new `FlatBufferBuilder` of the
@@ -168,7 +183,7 @@ comparison uses its counterpart:
 ## Method
 
 JMH 1.37 times each benchmark in average-time mode. Every codec of every
-benchmark runs in 3 forked JVMs, each of 5 warm-up and 5 measured iterations
+benchmark runs in 3 forked JVMs, each of 5 warm-up and 2 measured iterations
 of 1 s, with a fixed 2 GiB heap.
 
 - A fork runs one codec, so the JIT compiles its call sites without the other
@@ -193,10 +208,23 @@ of 1 s, with a fixed 2 GiB heap.
 
 Unlike the TypeScript harness, JMH doesn't interleave the variants: it runs
 one fork after another, so a burst of load can slow one codec's forks and not
-another's. Three forks spread each codec over about half a minute, which makes
+another's. Three forks spread each codec over about 20 seconds, which makes
 that less likely, and a fork's fastest iteration is unaffected unless the load
-lasts the whole fork. Check `uptime` before a run, and compare the fastest
-iterations with JMH's means.
+lasts both of its measured iterations. Check `uptime` before a run, and compare
+the fastest iterations with JMH's means.
+
+Some allocating codecs change speed as a forked JVM ages, so the warm-up can't
+be shorter. msgpack wrote the fixed-size record in 0.058 to 0.065 µs in its
+forks' second to fifth seconds, and in 0.084 to 0.095 µs from their seventh.
+Iterations of 200 ms, 5 to warm up and 10 measured, end each fork after 3 s:
+they timed FlatBuffers' write of the large document 12% faster, and msgpack's
+write of the record 14% faster, in every iteration, with or without a garbage
+collection, and protobuf's read of the record up to 22% faster. After the warm-up, a fork's fastest iteration is almost
+always one of its first two, so each fork measures only those. Until
+2026-11-14, each fork measured 5, which took 40% longer. In two runs of 5 on
+that day, the fastest of each fork's first two iterations was within 0.8% of
+the fastest of all five for 90% of the benchmarks, where the two runs differed
+by 4.2%.
 
 The results below interleave the codecs. Each fork ran on its own, from the
 jar that `./gradlew :benchmarks:jmhJar` builds, with the options above and
@@ -214,7 +242,7 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 45 minutes. `--jmhArgs` passes JMH's own options,
+The full run takes about 33 minutes. `--jmhArgs` passes JMH's own options,
 which override those in `build.gradle.kts`: a regular expression selects
 benchmarks, and `-p` sets a parameter.
 

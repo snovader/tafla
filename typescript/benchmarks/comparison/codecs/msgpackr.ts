@@ -38,14 +38,9 @@ export const msgpackr: Codec = {
         }
     },
     document: {
-        serialize(input) {
-            return packr.pack({
-                ...input,
-                keys: toTyped(input.keys, Uint32Array),
-                a: toTyped(input.a, Float32Array),
-                b: toTyped(input.b, Float32Array)
-            });
-        },
+        serialize: packDocument,
+        // pack() writes into a buffer that the Packr reuses already
+        serializeInto: packDocument,
         deserialize(bytes) {
             return packr.unpack(bytes) as DocumentOutput;
         },
@@ -100,4 +95,13 @@ function toFields({ value, first, second }: ItemInput): ItemFields {
 
 function fromFields([value, first, second]: ItemFields): ItemInput {
     return { value, first, second };
+}
+
+function packDocument(input: DocumentInput): Uint8Array {
+    return packr.pack({
+        ...input,
+        keys: toTyped(input.keys, Uint32Array),
+        a: toTyped(input.a, Float32Array),
+        b: toTyped(input.b, Float32Array)
+    });
 }
