@@ -32,6 +32,10 @@ the design and the proposal.
   Clang for, as a variant to time.
 - After a vector's first item, it makes room for the others, as long as the
   first each.
+- `Growth::reallocate` grows the bytes with `std::realloc()`, which can extend
+  them in place, rather than into new bytes that the old ones are copied
+  into. `ReallocatingTableBuilder` and `CopyingReallocatingTableBuilder` are
+  the direct and copying builders that grow so.
 - A setter checks its field before it writes anything. A nested table or
   vector whose `fill` throws is removed by truncating the buffer, the
   segments and the owned values to a checkpoint.
