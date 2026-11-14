@@ -334,6 +334,17 @@ class ItemList:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(cls, items: Sequence[ItemFieldValues], /) -> memoryview:
+        """Writes an ``ItemList`` from every field's value, in their order, as
+        ``field_values()`` returns them, but a vector's as its items' values, as its
+        view's ``field_values()`` returns them
+        """
+        writer = TableWriter(1, cls._LAYOUT)
+        writer.set_vector_tables(0, Item._FIXED_FIELDS, items)
+
+        return writer.bytes()
+
     def items(self) -> ItemVector:
         return ItemVector(self._buffer, self._buffer.root_offset(0))
 

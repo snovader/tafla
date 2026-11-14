@@ -1124,6 +1124,19 @@ class Header:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, kind: int, length: int, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Header`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (kind, length))
+        writer.set_uint8_array(2, values)
+
+        return writer.bytes()
+
     def kind(self) -> int:
         return self._buffer.get_uint8(self._buffer.root_offset(0))
 
@@ -1156,8 +1169,8 @@ class Header:
         }
 
     def field_values(self) -> HeaderFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -1623,6 +1636,16 @@ class Label:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(cls, text: str, /) -> memoryview:
+        """Writes a ``Label`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(1, cls._LAYOUT)
+        writer.set_string(0, text)
+
+        return writer.bytes()
+
     def text(self) -> str:
         return self._buffer.get_string(self._buffer.root_offset(0))
 
@@ -1635,8 +1658,8 @@ class Label:
         return {"text": buffer.get_string(buffer.root_offset(0))}
 
     def field_values(self) -> LabelFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """

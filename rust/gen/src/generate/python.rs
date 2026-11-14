@@ -309,7 +309,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     serialize(writer, schema, definition, layout, fixed);
     if has_serialize_values(schema, index) {
         writer.blank();
-        serialize_values(writer, schema, definition, layout);
+        serialize_values(writer, schema, index, layout);
     }
 
     getters(writer, schema, definition, true);
@@ -1434,18 +1434,27 @@ fn push_fixed_values(
     }
 }
 
-/// Whether the message or table at `index` is of scalars, and maybe a string
-/// after them, which its `FixedFields` describes whole, so that a message's
-/// `serialize_values()` writes it from the tuple of its values that
-/// `field_values()` returns, as `ByteBuffer.get_fields()` reads them.
+/// Whether the message at `index` has `serialize_values()`, which writes it
+/// from the values that `field_values()` reads: whether its fields are
+/// scalars, strings, arrays and vectors of tables of fixed size without
+/// structs, whose items' values its vectors' views read into the tuples that
+/// `TableWriter.set_vector_tables()` writes, as `ByteBuffer.get_fields()`
+/// reads them. A struct's value would be its bytes there, and a nested
+/// table's values would be written by code of its own.
 fn has_serialize_values(schema: &Schema, index: usize) -> bool {
     let definition = schema.definition(index);
-    !definition.is_struct()
-        && fixed_fields(schema, index) == definition.fields.len()
+    matches!(definition.kind, Kind::Message(_))
         && definition
             .fields
             .iter()
-            .all(|field| matches!(field.field_type, FieldType::Scalar(_) | FieldType::String))
+            .all(|field| match field.field_type {
+                FieldType::Scalar(_) | FieldType::String | FieldType::Array(_) => true,
+                FieldType::Vector(item) => {
+                    let table = schema.definition(item);
+                    is_fixed(schema, item) && !holds_struct(schema, table, table.fields.len())
+                }
+                FieldType::Struct(_) | FieldType::StructArray(_) | FieldType::Table(_) => false,
+            })
 }
 
 /// Whether a struct is of scalars alone, whose values `read_values()` reads
@@ -2030,9 +2039,11 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
     let tables = holds(|field_type| matches!(field_type, FieldType::Table(_)));
     let items =
         holds(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
+    let vectors = holds(|field_type| matches!(field_type, FieldType::Vector(_)));
 
     let mut docs: Vec<String> = match form {
-        Form::Values if is_root && has_serialize_values(schema, index) => vec![
+        // The values that serialize_values() takes, but for a vector's view
+        Form::Values if is_root && has_serialize_values(schema, index) && !vectors => vec![
             "Reads every field's value at once into a tuple, in the fields' order, as".to_owned(),
             "`serialize_values()` takes them, as `fields()` reads them into a dict.".to_owned(),
         ],
@@ -2260,13 +2271,11 @@ fn return_converted(
 }
 
 /// A message's `serialize_values()`, which writes it from its fields' values
-/// in their order, as positional arguments, as `field_values()` returns them
-fn serialize_values(
-    writer: &mut CodeWriter,
-    schema: &Schema,
-    definition: &Definition,
-    layout: Layout,
-) {
+/// in their order, as positional arguments, as `field_values()` returns them,
+/// but a vector's as its items' values, as its view's `field_values()` returns
+/// them
+fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+    let definition = schema.definition(index);
     let name = &definition.name;
     let names: Vec<String> = definition
         .fields
@@ -2275,9 +2284,19 @@ fn serialize_values(
         .collect();
     let mut parameters = vec!["cls".to_owned()];
     for (field, name) in definition.fields.iter().zip(&names) {
-        parameters.push(format!("{name}: {}", value_type(field.field_type, schema)));
+        let value_type = match field.field_type {
+            FieldType::Vector(item) => {
+                format!("Sequence[{}]", values_alias(schema.definition(item)).flat())
+            }
+            field_type => input_type(field_type, schema),
+        };
+        parameters.push(format!("{name}: {value_type}"));
     }
     parameters.push("/".to_owned());
+    let has_vector = definition
+        .fields
+        .iter()
+        .any(|field| matches!(field.field_type, FieldType::Vector(_)));
 
     writer.line("@classmethod");
     def_line(
@@ -2287,16 +2306,19 @@ fn serialize_values(
         &Annotation::Name("memoryview".to_owned()),
     );
     writer.indent();
-    docstring(
-        writer,
-        &[
-            format!(
-                "Writes {} from every field's value, in their order, as",
-                article(name)
-            ),
-            "`field_values()` returns them".to_owned(),
-        ],
-    );
+    let mut docs = vec![format!(
+        "Writes {} from every field's value, in their order, as",
+        article(name)
+    )];
+    if has_vector {
+        docs.extend([
+            "`field_values()` returns them, but a vector's as its items' values, as its".to_owned(),
+            "view's `field_values()` returns them".to_owned(),
+        ]);
+    } else {
+        docs.push("`field_values()` returns them".to_owned());
+    }
+    docstring(writer, &docs);
     let mut arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
@@ -2306,15 +2328,49 @@ fn serialize_values(
     }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
 
-    // The string is an argument of its own, after the packed values
-    let has_string =
-        definition.fields.last().map(|field| field.field_type) == Some(FieldType::String);
-    let packed = &names[..names.len() - usize::from(has_string)];
-    let mut arguments = vec![text("cls._FIXED_FIELDS"), tuple_expr(packed)];
-    if has_string {
-        arguments.push(text(names[names.len() - 1].clone()));
+    // The leading fields of fixed size in one call, a string's as an argument
+    // of its own, after the packed values
+    let fixed = fixed_fields(schema, index);
+    if fixed > 0 {
+        let has_string = definition.fields[fixed - 1].field_type == FieldType::String;
+        let packed = &names[..fixed - usize::from(has_string)];
+        let mut arguments = vec![text("cls._FIXED_FIELDS"), tuple_expr(packed)];
+        if has_string {
+            arguments.push(text(names[fixed - 1].clone()));
+        }
+        writer.statement(&STYLE, "", &call("writer.set_fields", arguments), "");
     }
-    writer.statement(&STYLE, "", &call("writer.set_fields", arguments), "");
+    for (index, field) in definition.fields.iter().enumerate().skip(fixed) {
+        let value = names[index].clone();
+        let position = text(index.to_string());
+        let (method, arguments) = match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => (
+                "set_uint8".to_owned(),
+                vec![position, text(format!("1 if {value} else 0"))],
+            ),
+            FieldType::Scalar(scalar) => (
+                format!("set_{}", scalar.name()),
+                vec![position, text(value)],
+            ),
+            FieldType::Array(scalar) => (
+                format!("set_{}_array", scalar.name()),
+                vec![position, text(value)],
+            ),
+            FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+            FieldType::Vector(item) => (
+                "set_vector_tables".to_owned(),
+                vec![
+                    position,
+                    text(format!("{}._FIXED_FIELDS", schema.definition(item).name)),
+                    text(value),
+                ],
+            ),
+            FieldType::Struct(_) | FieldType::StructArray(_) | FieldType::Table(_) => {
+                unreachable!("messages of these fields have no serialize_values()")
+            }
+        };
+        writer.statement(&STYLE, "", &call(format!("writer.{method}"), arguments), "");
+    }
     writer.blank();
     writer.line("return writer.bytes()");
     writer.dedent();

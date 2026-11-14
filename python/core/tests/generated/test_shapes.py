@@ -453,6 +453,16 @@ class TestValues(unittest.TestCase):
             )
 
     @SETTINGS
+    @given(item_list_fields, slices)
+    def test_writes_an_item_list_from_the_values_of_its_items_that_its_view_reads(
+        self, fields: ItemListFields, where: Slice
+    ) -> None:
+        data = ItemList.serialize(**fields)
+        items = ItemList(where.of(data)).items().field_values()
+
+        self.assertEqual(bytes(ItemList.serialize_values(items)), bytes(data))
+
+    @SETTINGS
     @given(item_list_fields)
     def test_reads_back_every_items_fields_as_they_were_written(
         self, fields: ItemListFields

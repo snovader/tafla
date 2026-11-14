@@ -27,6 +27,19 @@ class Uint8Offsets:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint8Offsets`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -55,8 +68,8 @@ class Uint8Offsets:
         }
 
     def field_values(self) -> Uint8OffsetsFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -102,6 +115,19 @@ class Uint8OffsetsSized:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint8OffsetsSized`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -130,8 +156,8 @@ class Uint8OffsetsSized:
         }
 
     def field_values(self) -> Uint8OffsetsSizedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -199,6 +225,19 @@ class Uint8OffsetsVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint8OffsetsVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -227,8 +266,8 @@ class Uint8OffsetsVersioned:
         }
 
     def field_values(self) -> Uint8OffsetsVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -298,6 +337,19 @@ class Uint8OffsetsSizedVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint8OffsetsSizedVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -326,8 +378,8 @@ class Uint8OffsetsSizedVersioned:
         }
 
     def field_values(self) -> Uint8OffsetsSizedVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -373,6 +425,19 @@ class Uint16Offsets:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint16Offsets`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -401,8 +466,8 @@ class Uint16Offsets:
         }
 
     def field_values(self) -> Uint16OffsetsFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -448,6 +513,19 @@ class Uint16OffsetsSized:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint16OffsetsSized`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -476,8 +554,8 @@ class Uint16OffsetsSized:
         }
 
     def field_values(self) -> Uint16OffsetsSizedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -545,6 +623,19 @@ class Uint16OffsetsVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint16OffsetsVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -573,8 +664,8 @@ class Uint16OffsetsVersioned:
         }
 
     def field_values(self) -> Uint16OffsetsVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -644,6 +735,19 @@ class Uint16OffsetsSizedVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint16OffsetsSizedVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -672,8 +776,8 @@ class Uint16OffsetsSizedVersioned:
         }
 
     def field_values(self) -> Uint16OffsetsSizedVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -719,6 +823,19 @@ class Uint32Offsets:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint32Offsets`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -747,8 +864,8 @@ class Uint32Offsets:
         }
 
     def field_values(self) -> Uint32OffsetsFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -794,6 +911,19 @@ class Uint32OffsetsSized:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint32OffsetsSized`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -822,8 +952,8 @@ class Uint32OffsetsSized:
         }
 
     def field_values(self) -> Uint32OffsetsSizedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -891,6 +1021,19 @@ class Uint32OffsetsVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint32OffsetsVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -919,8 +1062,8 @@ class Uint32OffsetsVersioned:
         }
 
     def field_values(self) -> Uint32OffsetsVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field
@@ -990,6 +1133,19 @@ class Uint32OffsetsSizedVersioned:
 
         return writer.bytes()
 
+    @classmethod
+    def serialize_values(
+        cls, id: int, name: str, values: Buffer | Iterable[int], /
+    ) -> memoryview:
+        """Writes a ``Uint32OffsetsSizedVersioned`` from every field's value, in their order, as
+        ``field_values()`` returns them
+        """
+        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer.set_fields(cls._FIXED_FIELDS, (id,), name)
+        writer.set_uint16_array(2, values)
+
+        return writer.bytes()
+
     def id(self) -> int:
         return self._buffer.get_uint32(self._buffer.root_offset(0))
 
@@ -1018,8 +1174,8 @@ class Uint32OffsetsSizedVersioned:
         }
 
     def field_values(self) -> Uint32OffsetsSizedVersionedFieldValues:
-        """Reads every field's value into a tuple, in the fields' order, as its getter
-        returns it.
+        """Reads every field's value at once into a tuple, in the fields' order, as
+        ``serialize_values()`` takes them, as ``fields()`` reads them into a dict.
 
         It reads the leading fields of fixed size in one call when the table's
         offsets are those that its writer writes, and otherwise every field

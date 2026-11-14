@@ -20,8 +20,15 @@ from tests.generated.byte_strategies import (
 from tests.generated.expectations import (
     assert_same_table,
     assert_values_or_decode_error,
+    fields_or_decode_error,
+    plain,
 )
-from tests.generated.layouts_tables import MESSAGES, Fields, fields_of_every_message
+from tests.generated.layouts_tables import (
+    MESSAGES,
+    Fields,
+    LayoutsMessage,
+    fields_of_every_message,
+)
 from tests.tables import build_table
 
 _VERSIONED = [layout for layout in MESSAGES if layout.version is not None]
@@ -43,6 +50,56 @@ class TestRoundTrip(unittest.TestCase):
                 layout.describe(fields),
                 layout.message.__name__,
             )
+
+
+class TestValues(unittest.TestCase):
+    # field_values() reads a message's values, its leading fields of fixed
+    # size in one call and its array after them, as the getters read them,
+    # and serialize_values() writes the message from them
+
+    @SETTINGS
+    @given(fields_of_every_message, slices)
+    def test_writes_every_layout_from_the_values_that_it_reads_from_it(
+        self, fields: Fields, slice: Slice
+    ) -> None:
+        for layout in MESSAGES:
+            data = layout.message.serialize(**fields)
+            values = layout.message(slice.of(data)).field_values()
+
+            written = layout.message.serialize_values(*values)
+            self.assertEqual(bytes(written), bytes(data), layout.message.__name__)
+
+    @SETTINGS
+    @given(fields_of_every_message, corruptions)
+    def test_reads_the_values_of_a_corrupted_message_as_its_getters_do(
+        self, fields: Fields, corruption: Truncation | Overwrite
+    ) -> None:
+        for layout in MESSAGES:
+            data = corruption.apply(bytes(layout.message.serialize(**fields)))
+            try:
+                message = layout.message(data)
+            except DecodeError:
+                continue
+
+            read = partial(layout.read, data)
+            self.assertEqual(
+                fields_or_decode_error(partial(_plain_values, message)),
+                fields_or_decode_error(lambda read=read: tuple(read().values())),
+                layout.message.__name__,
+            )
+            self.assertEqual(
+                fields_or_decode_error(partial(_plain_fields, message)),
+                fields_or_decode_error(read),
+                layout.message.__name__,
+            )
+
+
+def _plain_values(message: LayoutsMessage) -> object:
+    return plain(message.field_values())
+
+
+def _plain_fields(message: LayoutsMessage) -> object:
+    return plain(message.fields())
 
 
 class TestTablesBuiltByHand(unittest.TestCase):

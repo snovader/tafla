@@ -114,15 +114,16 @@ comparison uses its counterpart:
   `field_values()` and `read_values()`. The document is written from the
   generated fields' dicts, and read into a tuple of its values with
   `field_values()`, its columns' in a tuple of their own, as views. The
-  vector is written from its items' dicts, and read with the `field_values()`
-  of the view that its getter returns, which reads every item's values at
-  once, each pair's in place of it. The array of structs is
-  written from the workload's own items, whose attributes `TripleFields`, the
-  struct's protocol of fields, types, as an application's objects would be,
-  and read with its view's `iter_field_values()`, into a tuple of each
-  struct's values. It takes the workloads' dataclasses, as the other codecs do, so it
-  creates the dicts of the document and the vector from them in each call,
-  as the protobuf codec builds its messages, and reading creates the
+  vector is written from a tuple of each item's values, each pair's in place
+  of it, with `serialize_values()`, and read into them with the
+  `field_values()` of the view that its getter returns, which reads every
+  item's values at once. The array of structs is written from the
+  workload's own items, whose attributes `TripleFields`, the struct's
+  protocol of fields, types, as an application's objects would be, and read
+  with its view's `iter_field_values()`, into a tuple of each struct's
+  values. It takes the workloads' dataclasses, as the other codecs do, so it
+  creates the document's dicts and the vector's tuples from them in each
+  call, as the protobuf codec builds its messages, and reading creates the
   workloads' dataclasses from the generated readers' values. Every suite has
   a copy of the schema; after changing them, regenerate the code as
   `rust/gen/README.md` describes.
