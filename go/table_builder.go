@@ -921,12 +921,12 @@ func (f *field) writeArray(writer *TableWriter, index int) {
 	count := f.length / int(f.size)
 	switch f.size {
 	case 1:
-		setElements(writer, index, f.bytes())
+		writer.SetUint8Array(index, f.bytes())
 	case 2:
-		setElements(writer, index, unsafe.Slice((*uint16)(f.data), count))
+		writer.SetUint16Array(index, unsafe.Slice((*uint16)(f.data), count))
 	case 4:
-		setElements(writer, index, unsafe.Slice((*uint32)(f.data), count))
+		writer.SetUint32Array(index, unsafe.Slice((*uint32)(f.data), count))
 	default:
-		setElements(writer, index, unsafe.Slice((*uint64)(f.data), count))
+		writer.SetUint64Array(index, unsafe.Slice((*uint64)(f.data), count))
 	}
 }

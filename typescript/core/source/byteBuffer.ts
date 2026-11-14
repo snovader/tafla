@@ -89,20 +89,35 @@ export class ByteBuffer {
      * offset of the field that holds it.
      */
     fieldOffset(tablePosition: number, index: number): number {
-        return (
-            tablePosition + this.#getSize(tablePosition + index * this.#size)
-        );
+        // Reads the offset as #getSize() does, without a call of its own,
+        // which leaves more of V8's inlining budget to the getters that call
+        // it: see getVectorItemOffset()
+        const size = this.#size;
+        const view = this.#view;
+        const position = tablePosition + index * size;
+        try {
+            return (
+                tablePosition +
+                (size === 4
+                    ? view.getUint32(position, true)
+                    : readNarrowSize(view, position, size))
+            );
+        } catch {
+            throw readError(position, size, this.#bytes);
+        }
     }
 
     // The scalar getters let the DataView check the range, which is free,
     // and rethrow its error. A check of their own made reading 27,028 floats
-    // one at a time 2.7 times slower in d8 and Node.
+    // one at a time 2.7 times slower in d8 and Node. They build the error in
+    // readError(), out of their bytecode, which V8 inlines while it's small:
+    // see getVectorItemOffset().
 
     getInt8(position: number): number {
         try {
             return this.#view.getInt8(position);
         } catch {
-            throw outOfRange(position, SIZEOF_8, this.#byteLength());
+            throw readError(position, SIZEOF_8, this.#bytes);
         }
     }
 
@@ -110,7 +125,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint8(position);
         } catch {
-            throw outOfRange(position, SIZEOF_8, this.#byteLength());
+            throw readError(position, SIZEOF_8, this.#bytes);
         }
     }
 
@@ -118,7 +133,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt16(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_16, this.#byteLength());
+            throw readError(position, SIZEOF_16, this.#bytes);
         }
     }
 
@@ -126,7 +141,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint16(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_16, this.#byteLength());
+            throw readError(position, SIZEOF_16, this.#bytes);
         }
     }
 
@@ -134,7 +149,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#byteLength());
+            throw readError(position, SIZEOF_32, this.#bytes);
         }
     }
 
@@ -142,7 +157,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#byteLength());
+            throw readError(position, SIZEOF_32, this.#bytes);
         }
     }
 
@@ -150,7 +165,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigInt64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#byteLength());
+            throw readError(position, SIZEOF_64, this.#bytes);
         }
     }
 
@@ -158,7 +173,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigUint64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#byteLength());
+            throw readError(position, SIZEOF_64, this.#bytes);
         }
     }
 
@@ -166,7 +181,7 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat32(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_32, this.#byteLength());
+            throw readError(position, SIZEOF_32, this.#bytes);
         }
     }
 
@@ -174,7 +189,7 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat64(position, true);
         } catch {
-            throw outOfRange(position, SIZEOF_64, this.#byteLength());
+            throw readError(position, SIZEOF_64, this.#bytes);
         }
     }
 
@@ -471,8 +486,24 @@ export class ByteBuffer {
      * the bytes.
      */
     getVectorLength(position: number): number {
-        const count = this.#getSize(position);
-        this.#assertRange(position + this.#size, count * this.#size);
+        // Reads the count as #getSize() does, and checks its ends with one
+        // comparison rather than #assertRange(), so that V8 inlines it with
+        // the item reads: see getVectorItemOffset()
+        const size = this.#size;
+        const view = this.#view;
+        let count: number;
+        try {
+            count =
+                size === 4
+                    ? view.getUint32(position, true)
+                    : readNarrowSize(view, position, size);
+        } catch {
+            throw readError(position, size, this.#bytes);
+        }
+
+        if (!(position + (count + 1) * size <= this.#bytes.length)) {
+            throw readError(position + size, count * size, this.#bytes);
+        }
 
         return count;
     }
@@ -487,20 +518,11 @@ export class ByteBuffer {
      * @throws {RangeError} If the vector has no item `index`.
      */
     getVectorOffset(position: number, index: number): number {
-        const count = this.getVectorLength(position);
-        if (!(Number.isInteger(index) && index >= 0 && index < count)) {
-            throw new RangeError(
-                `Item ${index} is outside the vector of ${count} at ${position}`
-            );
-        }
-
-        const start =
-            index === 0
-                ? (count + 1) * this.#size
-                : this.#getSize(position + index * this.#size);
-        const end = this.#getSize(position + (index + 1) * this.#size);
-
-        return this.#itemOffset(position, start, end);
+        return this.getVectorItemOffset(
+            position,
+            this.getVectorLength(position),
+            index
+        );
     }
 
     /**
@@ -522,21 +544,49 @@ export class ByteBuffer {
         count: number,
         index: number
     ): number {
-        // getVectorOffset() repeats this body: calling it from there read
-        // the last item 2-4% slower in Node 27 and d8, 7-12% bundled
-        if (!(Number.isInteger(index) && index >= 0 && index < count)) {
-            throw new RangeError(
-                `Item ${index} is outside the vector of ${count} at ${position}`
-            );
+        // V8 inlines calls into an optimized function until the bytecode
+        // inlined into it reaches a budget, 920 bytes in V8 15, and counts a
+        // call as its own bytecode and what its optimized code inlined. A
+        // view's get(i) and the getters of the item it returns share that
+        // budget, so this body keeps every failure out of line: it reads the
+        // item's ends in one try, and #itemError() finds which check failed.
+        // It takes 219 bytes and, in a process of uint32 offsets, inlines
+        // nothing more, where reading the ends through #getSize() and
+        // #itemOffset() took 189 and inlined 452. A loop that sums the items
+        // of a vector through get(i) then inlines every read, and the
+        // comparison suite's view summed 100 nested tables in 0.91 µs rather
+        // than 1.85 in Node 27.
+        //
+        // An index that equals its unsigned 32-bit conversion is an integer
+        // in [0, 2^32), which holds every count. A vector's position, as
+        // rootOffset() and fieldOffset() find it, its count and the ends are
+        // integers, so the item lies within the bytes when it ends there.
+        if (index >>> 0 === index && index < count) {
+            const size = this.#size;
+            const view = this.#view;
+            const startPosition = position + index * size;
+            const endPosition = startPosition + size;
+            try {
+                const start =
+                    index === 0
+                        ? (count + 1) * size
+                        : size === 4
+                          ? view.getUint32(startPosition, true)
+                          : readNarrowSize(view, startPosition, size);
+                const end =
+                    size === 4
+                        ? view.getUint32(endPosition, true)
+                        : readNarrowSize(view, endPosition, size);
+
+                if (start <= end && position + end <= this.#bytes.length) {
+                    return position + start;
+                }
+            } catch {
+                // #itemError() reads the ends again, and throws their error
+            }
         }
 
-        const start =
-            index === 0
-                ? (count + 1) * this.#size
-                : this.#getSize(position + index * this.#size);
-        const end = this.#getSize(position + (index + 1) * this.#size);
-
-        return this.#itemOffset(position, start, end);
+        throw this.#itemError(position, count, index);
     }
 
     /**
@@ -585,19 +635,40 @@ export class ByteBuffer {
 
     /**
      * Checks that a vector item, from `start` to `end` from the vector's
-     * position, starts no later than it ends and lies within the bytes.
+     * position, starts no later than it ends and lies within the bytes. The
+     * vector's position and the ends are integers, as in
+     * getVectorItemOffset(), so the item lies within the bytes when it ends
+     * there.
      *
      * @returns The item's position.
      */
     #itemOffset(position: number, start: number, end: number): number {
-        if (start > end) {
-            throw new DecodeError(
-                `The vector item at ${position + start} ends before it starts, at ${position + end}`
+        if (start > end || position + end > this.#bytes.length) {
+            throw itemRangeError(position, start, end, this.#bytes.length);
+        }
+
+        return position + start;
+    }
+
+    /**
+     * Finds why `getVectorItemOffset()` couldn't read item `index`, by its
+     * checks one at a time, and returns the error to throw. An end that can't
+     * be read throws its `DecodeError` from here.
+     */
+    #itemError(position: number, count: number, index: number): Error {
+        if (!(index >>> 0 === index && index < count)) {
+            return new RangeError(
+                `Item ${index} is outside the vector of ${count} at ${position}`
             );
         }
 
-        this.#assertRange(position + start, end - start);
-        return position + start;
+        const start =
+            index === 0
+                ? (count + 1) * this.#size
+                : this.#getSize(position + index * this.#size);
+        const end = this.#getSize(position + (index + 1) * this.#size);
+
+        return itemRangeError(position, start, end, this.#bytes.length);
     }
 
     #assertRange(position: number, byteLength: number): void {
@@ -643,18 +714,76 @@ export class ByteBuffer {
         }
     }
 
+    /**
+     * Reads the offset, count, length or item end at `position`. A uint32 is
+     * read inline, and narrower ones by readNarrowSize(), which a process
+     * that reads only uint32 offsets never compiles into its reads.
+     *
+     * The sizes are literals rather than SIZEOF_32 and SIZEOF_16, which V8
+     * loads from their module and checks for initialization at every read:
+     * the loop that sums the vector of 100 nested tables compiled to 877
+     * instructions rather than 969.
+     *
+     * fieldOffset(), getVectorLength() and getVectorItemOffset() read their
+     * offsets as this does, for V8's inlining budget. A switch that called
+     * getUint8(), getUint16() or getUint32() took 133 bytes of bytecode at
+     * every read. A reader function of each offset size, which a buffer held,
+     * took 69, but V8 inlines none of three functions called from one place:
+     * a process that had read all three offset types summed the vector of
+     * 100 nested tables in 2.90 µs, rather than 1.79 with the switch and 0.72
+     * as this reads.
+     */
     #getSize(position: number): number {
-        switch (this.#size) {
-            case SIZEOF_8:
-                return this.getUint8(position);
-
-            case SIZEOF_16:
-                return this.getUint16(position);
-
-            case SIZEOF_32:
-                return this.getUint32(position);
+        const size = this.#size;
+        const view = this.#view;
+        try {
+            return size === 4
+                ? view.getUint32(position, true)
+                : readNarrowSize(view, position, size);
+        } catch {
+            throw readError(position, size, this.#bytes);
         }
     }
+}
+
+/** Reads an offset of a layout whose offsets are narrower than uint32's */
+function readNarrowSize(
+    view: DataView,
+    position: number,
+    size: OffsetSize
+): number {
+    return size === 2
+        ? view.getUint16(position, true)
+        : view.getUint8(position);
+}
+
+/**
+ * Builds the error of a read outside `bytes`. Its own function keeps it out
+ * of the getters' bytecode, which V8 inlines while it's small.
+ */
+function readError(
+    position: number,
+    byteLength: number,
+    bytes: Uint8Array
+): DecodeError {
+    return outOfRange(position, byteLength, bytes.length);
+}
+
+/**
+ * Builds the error of a vector item, from `start` to `end` from the vector's
+ * position, that ends before it starts or past the bytes
+ */
+function itemRangeError(
+    position: number,
+    start: number,
+    end: number,
+    available: number
+): DecodeError {
+    return start > end
+        ? new DecodeError(
+              `The vector item at ${position + start} ends before it starts, at ${position + end}`
+          )
+        : outOfRange(position + start, end - start, available);
 }
 
 export function assertStructSize(size: number): void {

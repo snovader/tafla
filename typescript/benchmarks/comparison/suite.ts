@@ -65,6 +65,11 @@ export function runSuite(
                 }
             )
         ]),
+        reusedBytesGroup(
+            codecs,
+            `document of ${DOCUMENT_ROWS[DOCUMENT_ROWS.length - 1]} rows: serialize into reused bytes`,
+            documents[documents.length - 1]
+        ),
         ...workloadGroups(
             codecs,
             `vector of ${LIST_ITEMS} nested tables`,
@@ -128,6 +133,29 @@ function serializeGroup<I, O>(
         const workload = select(codec);
         return () => workload.serialize(input);
     });
+}
+
+/**
+ * Writes a document into bytes kept between calls, with each codec that can:
+ * tafla-gen into bytes that are made once, as long as its table, and
+ * msgpackr into the buffer that its `Packr` reuses
+ */
+function reusedBytesGroup(
+    codecs: Codec[],
+    name: string,
+    input: DocumentInput
+): Group {
+    const variants = codecs.flatMap(({ name, document }) => {
+        const { serializeInto } = document;
+        if (serializeInto === undefined) {
+            return [];
+        }
+
+        const bytes = new Uint8Array(document.serialize(input).length);
+        return [{ name, run: () => serializeInto(input, bytes) }];
+    });
+
+    return { name, variants };
 }
 
 /**
@@ -285,6 +313,17 @@ function checkRoundTrips(
                     codec.document.serialize(input)
                 );
                 assertDocument(codec.name, input, output);
+            }
+
+            const { serializeInto } = codec.document;
+            if (serializeInto !== undefined) {
+                // Longer bytes than the table, of other contents
+                const length = codec.document.serialize(document).length;
+                const bytes = new Uint8Array(length + 64).fill(0xff);
+                const output = codec.document.deserialize(
+                    serializeInto(document, bytes)
+                );
+                assertDocument(codec.name, document, output);
             }
         }
 

@@ -365,6 +365,7 @@ void check_position(const ByteBuffer<false>& buffer, std::size_t position, std::
     }
 
     const std::size_t remaining = bytes.size() > position ? bytes.size() - position : 0;
+    check_view(bytes, [&] { return buffer.get_table(position); }, range(bytes, position, remaining));
     for (const std::size_t size : {std::size_t{0}, std::size_t{1}, struct_size, remaining, remaining + 1, SIZE_MAX}) {
         check_view(bytes, [&] { return buffer.get_struct(position, size); }, range(bytes, position, size));
         check_view(

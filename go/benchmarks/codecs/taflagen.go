@@ -12,14 +12,18 @@ import (
 // structs: the record, whose only other field is a string, into the bytes
 // that tafla.AppendTable returns, without a sizer and a writer, and the
 // others with a TableSizer and a TableWriter, which take the document's
-// first scalars together and each of the vector's items whole. Its readers
-// share strings and columns with the bytes, as tafla's do.
+// first scalars together and each of the vector's items whole. It reads the
+// record, the document and each of the vector's items whole, with their
+// Fields(), which shares strings and columns with the bytes, as tafla's
+// readers do.
 //
 // It takes the workloads' types, as the other codecs do, so it collects the
-// generated fields of the vector's items and the generated structs of the
-// array into a slice in each call, as the protobuf codecs collect their
-// messages. The getter of the vector collects its items' readers into a
-// slice, and the array's view reads each struct.
+// generated fields of the vector's items into a slice in each call, as the
+// protobuf codecs collect their messages. The getter of the vector returns a
+// view, which reads each item when it's asked for, and the codec reads every
+// item through its All(), with its Fields(). The getter of the array returns
+// a view too, whose Slice() returns the structs in place where the bytes are
+// aligned to them in memory, as they are here.
 type TaflaGen struct{}
 
 func (TaflaGen) Name() string { return "tafla-gen" }
@@ -29,29 +33,28 @@ func (TaflaGen) SerializeRecord(record workloads.Record) ([]byte, error) {
 }
 
 func (TaflaGen) DeserializeRecord(bytes []byte) (workloads.Record, error) {
-	reader := gen.NewRecord(bytes)
-
-	x, err := reader.X()
-	if err != nil {
-		return workloads.Record{}, err
-	}
-	y, err := reader.Y()
-	if err != nil {
-		return workloads.Record{}, err
-	}
-	id, err := reader.Id()
-	if err != nil {
-		return workloads.Record{}, err
-	}
-	name, err := reader.Name()
+	fields, err := gen.NewRecord(bytes).Fields()
 	if err != nil {
 		return workloads.Record{}, err
 	}
 
-	return workloads.Record{X: x, Y: y, ID: id, Name: name}, nil
+	return workloads.Record{X: fields.X, Y: fields.Y, ID: fields.Id, Name: fields.Name}, nil
 }
 
 func (TaflaGen) SerializeDocument(document workloads.Document) ([]byte, error) {
+	return documentFields(document).MarshalBinary()
+}
+
+// SerializeDocumentInto appends the document to bytes from their start,
+// with the generated AppendBinary, which writes it into their capacity when
+// it has room, without allocating or zeroing new bytes.
+func (TaflaGen) SerializeDocumentInto(document workloads.Document, bytes []byte) ([]byte, error) {
+	return documentFields(document).AppendBinary(bytes[:0])
+}
+
+// documentFields are the generated fields of a document, which share its
+// string and columns
+func documentFields(document workloads.Document) gen.DocumentFields {
 	return gen.DocumentFields{
 		X:    document.X,
 		Y:    document.Y,
@@ -62,7 +65,7 @@ func (TaflaGen) SerializeDocument(document workloads.Document) ([]byte, error) {
 			A:    document.A,
 			B:    document.B,
 		},
-	}.MarshalBinary()
+	}
 }
 
 func (TaflaGen) DeserializeDocument(bytes []byte) (workloads.Document, error) {
@@ -70,48 +73,20 @@ func (TaflaGen) DeserializeDocument(bytes []byte) (workloads.Document, error) {
 	if err != nil {
 		return workloads.Document{}, err
 	}
-
-	x, err := reader.X()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	y, err := reader.Y()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	name, err := reader.Name()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	columns, err := reader.Columns()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	base, err := columns.Base()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	keys, err := columns.Keys()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	a, err := columns.A()
-	if err != nil {
-		return workloads.Document{}, err
-	}
-	b, err := columns.B()
+	fields, err := reader.Fields()
 	if err != nil {
 		return workloads.Document{}, err
 	}
 
+	columns := fields.Columns
 	return workloads.Document{
-		X:    x,
-		Y:    y,
-		Name: name,
-		Base: base,
-		Keys: keys.Slice(),
-		A:    a.Slice(),
-		B:    b.Slice(),
+		X:    fields.X,
+		Y:    fields.Y,
+		Name: fields.Name,
+		Base: columns.Base,
+		Keys: columns.Keys,
+		A:    columns.A,
+		B:    columns.B,
 	}, nil
 }
 
@@ -155,38 +130,23 @@ func (TaflaGen) DeserializeList(bytes []byte) (workloads.List, error) {
 		return workloads.List{}, err
 	}
 
-	list := workloads.List{Items: make([]workloads.Item, len(items))}
-	for index, item := range items {
-		read, err := readItem(item)
+	list := workloads.List{Items: make([]workloads.Item, 0, items.Len())}
+	for item, err := range items.All() {
 		if err != nil {
 			return workloads.List{}, err
 		}
-		list.Items[index] = read
+		fields, err := item.Fields()
+		if err != nil {
+			return workloads.List{}, err
+		}
+		list.Items = append(list.Items, workloads.Item{
+			Value:  fields.Value,
+			First:  fields.Pair.First,
+			Second: fields.Pair.Second,
+		})
 	}
 
 	return list, nil
-}
-
-// readItem reads an item of the vector, and its pair
-func readItem(item gen.Item) (workloads.Item, error) {
-	value, err := item.Value()
-	if err != nil {
-		return workloads.Item{}, err
-	}
-	pair, err := item.Pair()
-	if err != nil {
-		return workloads.Item{}, err
-	}
-	first, err := pair.First()
-	if err != nil {
-		return workloads.Item{}, err
-	}
-	second, err := pair.Second()
-	if err != nil {
-		return workloads.Item{}, err
-	}
-
-	return workloads.Item{Value: value, First: first, Second: second}, nil
 }
 
 func (TaflaGen) SerializeStructs(list workloads.List) ([]byte, error) {
@@ -199,14 +159,17 @@ func (TaflaGen) SerializeStructs(list workloads.List) ([]byte, error) {
 }
 
 func (TaflaGen) DeserializeStructs(bytes []byte) (workloads.List, error) {
-	view, err := gen.NewTriples(bytes).ItemsView()
+	items, err := gen.NewTriples(bytes).Items()
 	if err != nil {
 		return workloads.List{}, err
 	}
 
-	list := workloads.List{Items: make([]workloads.Item, view.Len())}
-	for index, triple := range view.All() {
-		list.Items[index] = workloads.Item{Value: triple.Value, First: triple.First, Second: triple.Second}
+	// Each generated Triple converts to a workload item, whose fields are its
+	// own
+	triples := items.Slice()
+	list := workloads.List{Items: make([]workloads.Item, len(triples))}
+	for index, triple := range triples {
+		list.Items[index] = workloads.Item(triple)
 	}
 
 	return list, nil
@@ -216,11 +179,12 @@ func (TaflaGen) SerializeSample(sample workloads.Sample) ([]byte, error) {
 	return gen.Sample{Key: sample.Key, A: sample.A, B: sample.B}.MarshalBinary()
 }
 
+// DeserializeSample converts the generated Sample, whose fields are the
+// workload's, without checking the error, since ReadSample returns the zero
+// Sample with it. That keeps the method within Go's inlining budget, so that
+// it inlines into the wrapper that the codec's interface calls, as Binary's
+// does, rather than costing a second call.
 func (TaflaGen) DeserializeSample(bytes []byte) (workloads.Sample, error) {
-	var sample gen.Sample
-	if err := sample.UnmarshalBinary(bytes); err != nil {
-		return workloads.Sample{}, err
-	}
-
-	return workloads.Sample{Key: sample.Key, A: sample.A, B: sample.B}, nil
+	sample, err := gen.ReadSample(bytes)
+	return workloads.Sample(sample), err
 }

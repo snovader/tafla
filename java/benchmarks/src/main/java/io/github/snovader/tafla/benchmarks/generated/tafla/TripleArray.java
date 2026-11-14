@@ -37,6 +37,6 @@ public final class TripleArray extends AbstractList<Triple> implements RandomAcc
     @Override
     public Triple get(int index) {
         Objects.checkIndex(index, size);
-        return Triple.read(view, index * Triple.SIZE);
+        return Triple.readUnchecked(view, index * Triple.SIZE);
     }
 }

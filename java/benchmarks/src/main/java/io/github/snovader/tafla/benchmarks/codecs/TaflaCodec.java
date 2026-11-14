@@ -8,10 +8,10 @@ import java.nio.ByteOrder;
 import java.util.*;
 
 /**
- * tafla's tables, nested from their builders. The runtime writes tables, and leaves records at
- * fixed offsets to the standard library, as its package documentation says. The fixed-size record
- * is written through little-endian {@link VarHandle}s and read with {@link ByteBuffer}'s getters
- * at fixed positions. An array of structs is written through them too, and read from
+ * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
+ * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
+ * package documentation says. The fixed-size record is written through little-endian
+ * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of structs is written through them too, and read from
  * {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
  */
 public final class TaflaCodec {
@@ -65,17 +65,16 @@ public final class TaflaCodec {
     private static final class Documents implements DocumentWorkload {
         @Override
         public byte[] serialize(DocumentInput input) {
-            var columns = new TableBuilder(4);
-            columns.setInt64(input.base());
-            columns.setUint32Array(input.keys());
-            columns.setFloat32Array(input.a());
-            columns.setFloat32Array(input.b());
-
             var document = new TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION);
             document.setFloat64(input.x());
             document.setFloat64(input.y());
             document.setString(input.name());
-            document.setTable(columns);
+            document.setTable(4, columns -> {
+                columns.setInt64(input.base());
+                columns.setUint32Array(input.keys());
+                columns.setFloat32Array(input.a());
+                columns.setFloat32Array(input.b());
+            });
 
             return document.bytes();
         }
@@ -130,13 +129,9 @@ public final class TaflaCodec {
         @Override
         public byte[] serialize(ListInput input) {
             var items = input.items();
-            var tables = new ArrayList<TableBuilder>(items.size());
-            for (var item : items) {
-                tables.add(itemTable(item));
-            }
 
             var builder = new TableBuilder(1);
-            builder.setVector(tables);
+            builder.setVector(items.size(), 2, (item, index) -> setItem(item, items.get(index)));
 
             return builder.bytes();
         }
@@ -161,16 +156,12 @@ public final class TaflaCodec {
             return new ListInput(Arrays.asList(items));
         }
 
-        private static TableBuilder itemTable(ItemInput input) {
-            var pair = new TableBuilder(2);
-            pair.setFloat32(input.first());
-            pair.setFloat32(input.second());
-
-            var item = new TableBuilder(2);
+        private static void setItem(TableBuilder.Item item, ItemInput input) {
             item.setFloat32(input.value());
-            item.setTable(pair);
-
-            return item;
+            item.setTable(2, pair -> {
+                pair.setFloat32(input.first());
+                pair.setFloat32(input.second());
+            });
         }
     }
 

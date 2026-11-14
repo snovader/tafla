@@ -3,15 +3,15 @@ use std::fmt::Display;
 use std::ptr::{self, NonNull};
 
 use pyo3::exceptions::{
-    PyBufferError, PyIndexError, PyMemoryError, PyOverflowError, PyStopIteration, PyValueError,
+    PyBufferError, PyIndexError, PyMemoryError, PyStopIteration, PyUnicodeEncodeError, PyValueError,
 };
 use pyo3::prelude::*;
-use pyo3::types::{PySlice, PyString, PyTuple, PyType};
+use pyo3::types::{PyBytes, PySlice, PyString, PyTuple, PyType};
 use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
 use crate::layout::{Layout, Shape, shape_of};
-use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
+use crate::python::{Int, objects, small, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
 
@@ -52,22 +52,27 @@ impl Bytes {
     }
 
     #[inline]
-    const fn as_slice(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.pointer.as_ptr(), self.len) }
-    }
-
-    #[inline]
     const fn as_mut_slice(&mut self) -> &mut [u8] {
         unsafe { std::slice::from_raw_parts_mut(self.pointer.as_ptr(), self.len) }
     }
 
-    /// Sets the length to `len`, with zeros in the bytes it adds. Raises
-    /// `BufferError` while the bytes are exported, as a `bytearray` does.
+    /// Raises `BufferError` if the bytes are exported and `len` isn't their
+    /// length, as a `bytearray` raises for a change of its length while
+    /// it's exported, and for nothing else
     #[inline]
-    fn resize(&mut self, len: usize) -> PyResult<()> {
-        if self.exports > 0 {
+    fn check_length(&self, len: usize) -> PyResult<()> {
+        if self.exports > 0 && len != self.len {
             return Err(frozen());
         }
+        Ok(())
+    }
+
+    /// Sets the length to `len`, with zeros in the bytes it adds. Raises
+    /// `BufferError` if that changes the length while the bytes are
+    /// exported, as a `bytearray` does.
+    #[inline]
+    fn resize(&mut self, len: usize) -> PyResult<()> {
+        self.check_length(len)?;
         if len > self.capacity {
             self.grow(len)?;
         }
@@ -79,29 +84,15 @@ impl Bytes {
         Ok(())
     }
 
-    /// Sets the length to `len`, with zeros from `start`, which is at most
-    /// the length
+    /// Replaces the bytes from `start`, which is at most the length, with
+    /// `bytes`, as a `bytearray`'s slice assignment `data[start:] = bytes`
+    /// does. Raises `BufferError` if that changes the length while the bytes
+    /// are exported, having written nothing.
     #[inline]
-    fn zero_from(&mut self, start: usize, len: usize) -> PyResult<()> {
-        if self.exports > 0 {
-            return Err(frozen());
-        }
-        if len > self.capacity {
-            self.grow(len)?;
-        }
-        unsafe { ptr::write_bytes(self.pointer.as_ptr().add(start), 0, len - start) };
-        self.len = len;
-
-        Ok(())
-    }
-
-    #[inline]
-    fn extend_from_slice(&mut self, bytes: &[u8]) -> PyResult<()> {
-        let start = self.len;
+    fn replace_from(&mut self, start: usize, bytes: &[u8]) -> PyResult<()> {
+        debug_assert!(start <= self.len);
         let len = start.checked_add(bytes.len()).ok_or_else(memory_error)?;
-        if self.exports > 0 {
-            return Err(frozen());
-        }
+        self.check_length(len)?;
         if len > self.capacity {
             self.grow(len)?;
         }
@@ -115,6 +106,11 @@ impl Bytes {
         self.len = len;
 
         Ok(())
+    }
+
+    #[inline]
+    fn extend_from_slice(&mut self, bytes: &[u8]) -> PyResult<()> {
+        self.replace_from(self.len, bytes)
     }
 
     #[inline]
@@ -235,12 +231,20 @@ struct SlotFailure;
 /// ``ValueError``.
 ///
 /// The bytes grow as fields are appended, and ``bytes()`` returns a view of
-/// them, without copying them. While the view is held, a field that would
-/// change their length raises ``BufferError``. A table too long for the
-/// layout's ``offset_type`` raises ``ValueError``, from the setter whose
-/// offset or count doesn't fit or from ``bytes()``. A scalar setter that
-/// raised wrote nothing, but another setter that raised may have written part
-/// of its field, after which the writer is of no further use.
+/// them, without copying them. While the view is held, a call that would
+/// change their length raises ``BufferError``, as a ``bytearray``'s does,
+/// and one that wouldn't writes as it would without the view, such as
+/// ``start_table(0)``, an empty struct's ``set_struct()``, or
+/// ``set_fields()`` for no leading fields. ``set_fields()`` and
+/// ``write_table()`` pack every value before they write any, and raise
+/// ``BufferError`` only once they have, so for values that can't be
+/// written they raise what the calls that they replace would.
+///
+/// A table too long for the layout's ``offset_type`` raises ``ValueError``,
+/// from the setter whose offset or count doesn't fit, from ``start_table()``
+/// for slots that don't, or from ``bytes()``. A scalar setter that raised
+/// wrote nothing, but another setter that raised may have written part of
+/// its field, after which the writer is of no further use.
 #[pyclass(module = "tafla._native", name = "TableWriter")]
 pub struct TableWriter {
     data: Bytes,
@@ -620,10 +624,50 @@ impl TableWriter {
 
     fn start(&mut self, fields: usize) -> PyResult<Mark> {
         let parent = self.begin();
-        let slots = fields.checked_mul(self.size()).ok_or_else(memory_error)?;
-        self.data.extend_zeros(slots)?;
+        let slots = Int::from(fields).mul(self.size())?;
+        self.data.extend_zeros(self.zeros(&slots)?)?;
 
         Ok(parent)
+    }
+
+    /// The number of zeros that the pure-Python writer appends for `slots`
+    /// bytes of slots: a tuple's item, of zeros by their number up to 64,
+    /// which a negative number indexes from its end, and `bytes(slots)`
+    /// beyond, unless they're longer than the offset type addresses, which
+    /// raises `ValueError`, as the table that they start is too long. Only a
+    /// count of fields outside the contract, which is never negative, takes
+    /// another than `slots`, so that the writers' bytes and errors agree.
+    #[inline]
+    fn zeros(&self, slots: &Int<'_>) -> PyResult<usize> {
+        // The tuple's, which every offset type addresses, as the pure-Python
+        // writer appends them without a check
+        if let Int::Small(slots @ 0..ZEROS_TUPLE) = *slots {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            return Ok(slots as usize);
+        }
+        self.zeros_beyond(slots)
+    }
+
+    /// `zeros()` for slots that the tuple's zeros don't hold
+    #[cold]
+    fn zeros_beyond(&self, slots: &Int<'_>) -> PyResult<usize> {
+        const BEYOND: &str = "cannot fit 'int' into an index-sized integer";
+
+        if Int::from(self.shape.max_length()).lt(slots.clone())? {
+            return Err(self.too_long(slots.add(self.len())?.display()?));
+        }
+
+        // Within the offset type, only a negative number passes an isize
+        let slots = match *slots {
+            Int::Small(slots) if isize::try_from(slots).is_ok() => slots,
+            _ => return Err(PyIndexError::new_err(BEYOND)),
+        };
+        let count = if slots < 0 {
+            ZEROS_TUPLE + slots
+        } else {
+            slots
+        };
+        usize::try_from(count).map_err(|_| PyIndexError::new_err("tuple index out of range"))
     }
 
     fn end(&mut self, py: Python<'_>, parent: Mark) {
@@ -686,9 +730,7 @@ impl TableWriter {
         let encoded = match (plan.string_length, string) {
             (Some(_), Some(string)) => match utf8(string) {
                 Ok(encoded) => encoded,
-                Err(error)
-                    if error.is_instance_of::<pyo3::exceptions::PyUnicodeEncodeError>(py) =>
-                {
+                Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => {
                     return Ok(false);
                 }
                 Err(error) => return Err(error),
@@ -699,58 +741,53 @@ impl TableWriter {
             return Ok(false);
         }
 
-        // The bytes from the slots to the end, which the constructor or
-        // start_table() zeroed, and which a write that fails restores, as
-        // the pure-Python runtime packs every field before it writes any
-        let original = self.len();
-        let start = start.min(original);
+        // The fields are packed apart from the bytes, and replace them from
+        // the slots only once every value has packed, as the pure-Python
+        // runtime packs them before it writes any. So values that struct
+        // rejects write nothing, and fall back to the setters, before a
+        // view of the bytes that's held can fail the write, which it does
+        // only if the write changes their length.
         let mut stack = [0u8; 64];
-        let heap: Vec<u8>;
-        let saved = &self.data.as_slice()[start..];
-        let saved: &[u8] = if saved.len() <= stack.len() {
-            stack[..saved.len()].copy_from_slice(saved);
-            &stack[..saved.len()]
+        let mut heap = Vec::new();
+        let packed = if plan.len <= stack.len() {
+            &mut stack[..plan.len]
         } else {
-            heap = saved.to_vec();
-            &heap
+            heap.try_reserve_exact(plan.len)
+                .map_err(|_| memory_error())?;
+            heap.resize(plan.len, 0);
+            &mut heap[..]
         };
-        let end = start + plan.len;
-        let size = plan.size;
-
-        self.data.zero_from(start, end)?;
-        let written = self.fill_fixed(plan, start, values);
-        if !matches!(written, Ok(true)) {
-            self.data.resize(start)?;
-            self.data.extend_from_slice(saved)?;
-            return written;
+        if !Self::pack_fixed(plan, packed, values)? {
+            return Ok(false);
+        }
+        if let Some(at) = plan.string_length {
+            let size = plan.size;
+            packed[at..at + size].copy_from_slice(&slot(encoded.len())[..size]);
         }
 
-        if let Some(at) = plan.string_length {
-            self.data.as_mut_slice()[start + at..start + at + size]
-                .copy_from_slice(&slot(encoded.len())[..size]);
+        self.data.replace_from(start, packed)?;
+        // Only a string's bytes follow the fields. Appending none for every
+        // table made set_vector_tables() of 100 tables without strings 6%
+        // slower.
+        if !encoded.is_empty() {
             self.data.extend_from_slice(encoded)?;
         }
 
         Ok(true)
     }
 
-    /// Writes the slots and values of `plan` at `start`, over zeros
-    fn fill_fixed(
-        &mut self,
-        plan: &Plan,
-        start: usize,
-        values: &Bound<'_, PyTuple>,
-    ) -> PyResult<bool> {
+    /// Packs the slots and values of `plan` into `packed`, its zeroed bytes.
+    /// Returns `false` for a value that `struct` rejects.
+    fn pack_fixed(plan: &Plan, packed: &mut [u8], values: &Bound<'_, PyTuple>) -> PyResult<bool> {
         let size = plan.size;
-        let block = &mut self.data.as_mut_slice()[start..];
 
         for &(at, offset) in &plan.slots {
-            block[at..at + size].copy_from_slice(&slot(offset)[..size]);
+            packed[at..at + size].copy_from_slice(&slot(offset)[..size]);
         }
 
         for (index, &(at, kind)) in plan.values.iter().enumerate() {
             let value = tuple_item(values, index);
-            if !values::write(kind, &value, &mut block[at..at + kind.size()])? {
+            if !values::write(kind, &value, &mut packed[at..at + kind.size()])? {
                 return Ok(false);
             }
         }
@@ -866,6 +903,86 @@ impl TableWriter {
     }
 }
 
+/// The bytes of a message of only the fields of `fixed`, in the layout of
+/// `shape`, packed into new bytes at once, or `None` when a value doesn't
+/// fit, the version isn't as the layout needs or the message is longer than
+/// it addresses, for the writer's calls to raise for
+fn pack_message<'py>(
+    fixed: &FixedFields,
+    shape: Shape,
+    values: &Bound<'py, PyTuple>,
+    string: Option<&Bound<'py, PyString>>,
+    version: Option<&Bound<'py, PyAny>>,
+) -> PyResult<Option<Bound<'py, PyBytes>>> {
+    let py = values.py();
+    let size = shape.size();
+    let plan = fixed.plan(size)?;
+    if values.len() != plan.values.len() || !plan.fits || shape.versioned != version.is_some() {
+        return Ok(None);
+    }
+    // Any version but an int that fits is the writer's to raise for
+    let version = match version {
+        None => None,
+        Some(version) => match small(version)
+            .ok()
+            .flatten()
+            .and_then(|version| usize::try_from(version).ok())
+        {
+            Some(version) if version <= shape.max_length() => Some(version),
+            _ => return Ok(None),
+        },
+    };
+    let encoded = match (plan.string_length, string) {
+        (Some(_), Some(string)) => match utf8(string) {
+            Ok(encoded) => encoded,
+            Err(error) if error.is_instance_of::<PyUnicodeEncodeError>(py) => return Ok(None),
+            Err(error) => return Err(error),
+        },
+        _ => &[],
+    };
+    let header = shape.header_size();
+    let length = header + plan.len + encoded.len();
+    if length > shape.max_length() {
+        return Ok(None);
+    }
+
+    // new_with() zeroes the bytes, which the header, the plan and the
+    // string fill, before Python sees them
+    let mut fits = true;
+    let bytes = PyBytes::new_with(py, length, |bytes| {
+        if shape.sized {
+            bytes[..size].copy_from_slice(&slot(length)[..size]);
+        }
+        if let Some(version) = version {
+            let at = if shape.sized { size } else { 0 };
+            bytes[at..at + size].copy_from_slice(&slot(version)[..size]);
+        }
+
+        let block = &mut bytes[header..];
+        for &(at, offset) in &plan.slots {
+            block[at..at + size].copy_from_slice(&slot(offset)[..size]);
+        }
+        for (index, &(at, kind)) in plan.values.iter().enumerate() {
+            let value = tuple_item(values, index);
+            if !values::write(kind, &value, &mut block[at..at + kind.size()])? {
+                fits = false;
+                return Ok(());
+            }
+        }
+        if let Some(at) = plan.string_length {
+            block[at..at + size].copy_from_slice(&slot(encoded.len())[..size]);
+            block[plan.len..].copy_from_slice(encoded);
+        }
+        Ok(())
+    })?;
+
+    Ok(fits.then_some(bytes))
+}
+
+/// The length of the pure-Python writer's tuple of zeros by their number,
+/// which holds the slots of a table of up to 16 uint32 fields
+const ZEROS_TUPLE: i128 = 16 * 4 + 1;
+
 /// The little-endian bytes of a value that fits in its offset type, the
 /// first of which a slot holds
 #[inline]
@@ -873,24 +990,6 @@ const fn slot(value: usize) -> [u8; 4] {
     debug_assert!(value <= u32::MAX as usize);
     #[allow(clippy::cast_possible_truncation)]
     (value as u32).to_le_bytes()
-}
-
-/// The number of zeros that the pure-Python writer appends for `slots`
-/// bytes of slots: a tuple's item, of zeros by their number up to 64, which a
-/// negative number indexes from its end, and `bytes(slots)` beyond. Only a
-/// count of fields outside the contract, which is never negative, takes
-/// another than `slots`, so that the writers' bytes and errors agree.
-fn zeros(slots: &Int<'_>) -> PyResult<usize> {
-    const TUPLE: i128 = 16 * 4 + 1;
-    const BEYOND: &str = "cannot fit 'int' into an index-sized integer";
-
-    let slots = match *slots {
-        Int::Small(slots) if isize::try_from(slots).is_ok() => slots,
-        _ if slots.is_negative()? => return Err(PyIndexError::new_err(BEYOND)),
-        _ => return Err(PyOverflowError::new_err(BEYOND)),
-    };
-    let count = if slots < 0 { TUPLE + slots } else { slots };
-    usize::try_from(count).map_err(|_| PyIndexError::new_err("tuple index out of range"))
 }
 
 /// The order of a C-contiguous buffer, as `PyBuffer_IsContiguous()` takes it
@@ -1165,6 +1264,10 @@ impl TableWriter {
     /// Starts the fields of a nested table or vector item of ``fields``
     /// fields, after its parent's ``set_table()`` or ``set_vector()``, and
     /// returns the parent's start, which ``end_table()`` takes back.
+    ///
+    /// Raises ``ValueError`` if the table's slots alone are longer than the
+    /// layout addresses, as the constructor raises for the root's header,
+    /// rather than allocating them.
     fn start_table<'py>(
         &mut self,
         py: Python<'py>,
@@ -1172,7 +1275,7 @@ impl TableWriter {
     ) -> PyResult<Bound<'py, PyAny>> {
         let slots = Int::new(fields)?.mul(self.size())?;
         let parent = self.begin().int(py).to_object(py)?;
-        self.data.extend_zeros(zeros(&slots)?)?;
+        self.data.extend_zeros(self.zeros(&slots)?)?;
 
         Ok(parent)
     }
@@ -1208,6 +1311,48 @@ impl TableWriter {
 
         let mut values = Values::all(&values);
         self.set_each(fields.description(), &mut values, string)
+    }
+
+    /// Writes a table of only the fields that ``fields`` describes, a
+    /// message's, in the layout that it was created with, from their
+    /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
+    /// end with one, and returns its bytes, in one call. They're the bytes
+    /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
+    /// ``bytes()`` write, and it raises as they do.
+    ///
+    /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
+    /// doesn't.
+    ///
+    /// Generated code calls it to write a message of only such fields.
+    #[staticmethod]
+    #[pyo3(signature = (fields, values, string = None, version = None))]
+    fn write_fields<'py>(
+        fields: &Bound<'py, FixedFields>,
+        values: &Bound<'py, PyAny>,
+        string: Option<&Bound<'py, PyString>>,
+        version: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let py = fields.py();
+        let fixed = fields.get();
+        let shape = fixed.shape()?;
+        let tuple = Self::fixed_values(values)?;
+        if let Some(bytes) = pack_message(fixed, shape, &tuple, string, version)? {
+            return Ok(bytes);
+        }
+
+        // The writer's calls, which raise for what doesn't fit
+        let version = version.map(Int::new).transpose()?;
+        let fields_count = Int::from(fixed.description().fields);
+        let length = header_length(shape, &fields_count, version.as_ref())?;
+        let writer = Bound::new(py, Self::create(shape, length, version.as_ref())?)?;
+        writer.borrow_mut().set_fields(fields, &tuple, string)?;
+        let view = Self::bytes(&writer)?;
+        unsafe {
+            Ok(
+                Bound::from_owned_ptr_or_err(py, ffi::PyBytes_FromObject(view.as_ptr()))?
+                    .cast_into_unchecked(),
+            )
+        }
     }
 
     /// Writes a nested table whose fields ``fields`` describes whole, from

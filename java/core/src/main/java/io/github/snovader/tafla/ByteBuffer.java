@@ -439,6 +439,41 @@ public final class ByteBuffer {
     }
 
     /**
+     * Returns where the items of the vector at {@code position} start, which is where item 0
+     * starts: after the count and the items' ends. It reads nothing, and a reader of the items in
+     * order passes it to {@code getVectorItemEnd()} as item 0's start, which checks it against the
+     * item's end.
+     *
+     * <p>{@code count} is the one that {@code getVectorLength(position)} returned, which checks
+     * that the ends lie within the bytes, and so does the position returned.</p>
+     */
+    public int getVectorItemsStart(int position, int count) {
+        return (int) (position + firstItemStart(count));
+    }
+
+    /**
+     * Returns where item {@code index} of the vector at {@code position} ends, as a position in the
+     * bytes, after checking that the item ends no earlier than {@code start}, where it starts, and
+     * within the bytes. A reader of the items in order reads one end for each item, as
+     * {@code getVectorOffsets()} does, where {@code getVectorItemOffset()} reads two: item 0 starts
+     * at {@code getVectorItemsStart(position, count)}, and each item after it at the end that this
+     * returned for the item before it.
+     *
+     * <p>It leaves {@code index} to the reader, which reads items below the count that
+     * {@code getVectorLength()} returned. Another index reads other bytes as the item's end, which
+     * still stay within the bytes, and return a position or throw a {@code DecodeException}.</p>
+     *
+     * @throws DecodeException if the item's end isn't within the bytes, or the item ends before
+     *     {@code start} or past the bytes
+     */
+    public int getVectorItemEnd(int position, int index, int start) {
+        var end = itemEnd(position, index);
+        itemOffset(position, (long) start - position, end);
+
+        return (int) (position + end);
+    }
+
+    /**
      * Returns the position of each item of the vector at {@code position}.
      *
      * @throws DecodeException if the count or the ends aren't within the bytes, or an item ends
