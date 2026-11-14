@@ -49,12 +49,21 @@ public final class TaflaGenCodec {
         }
     }
 
-    private static final class Documents implements DocumentWorkload {
+    private static final class Documents implements DocumentWorkload, ReusedBytesWorkload<DocumentInput> {
         @Override
         public byte[] serialize(DocumentInput input) {
+            return Document.serialize(fieldsOf(input));
+        }
+
+        @Override
+        public int serializeInto(DocumentInput input, byte[] bytes) {
+            return Document.serializeInto(fieldsOf(input), bytes);
+        }
+
+        private static Document.Fields fieldsOf(DocumentInput input) {
             var columns = new Columns.Fields(input.base(), input.keys(), input.a(), input.b());
 
-            return Document.serialize(new Document.Fields(input.x(), input.y(), input.name(), columns));
+            return new Document.Fields(input.x(), input.y(), input.name(), columns);
         }
 
         @Override
