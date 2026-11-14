@@ -188,7 +188,6 @@ impl Workload<SampleShape> for Tafla {
     }
 }
 
-/// Reads a document's header, which must carry the version it's written in
 /// `ByteBuffer`'s getters by hand, as the codec reads the list
 impl ItemAccess for Tafla {
     const NAME: &'static str = "tafla";
@@ -234,6 +233,7 @@ impl ItemAccess for Tafla {
     }
 }
 
+/// Reads a document's header, which must carry the version it's written in
 fn open_document(bytes: &[u8]) -> Result<ByteBuffer<'_, true>, DecodeError> {
     let buffer = ByteBuffer::new(bytes, DOCUMENT_LAYOUT);
 
