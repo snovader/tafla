@@ -77,7 +77,7 @@ def _item_fields(item: ItemInput) -> ItemFields:
 def deserialize_list(data: Buffer) -> ListInput:
     """Reads every item's fields at once with the view's ``fields()``"""
     items: list[ItemInput] = []
-    for fields in ItemList(data).items_view().fields():
+    for fields in ItemList(data).items().fields():
         pair = fields["pair"]
         items.append(ItemInput(fields["value"], pair["first"], pair["second"]))
 
@@ -93,7 +93,7 @@ def serialize_structs(input: ListInput) -> memoryview:
 def deserialize_structs(data: Buffer) -> ListInput:
     """Reads every struct's values at once with the view's
     ``field_values()``, rather than into a ``Triple`` each"""
-    values = Triples(data).items_view().field_values()
+    values = Triples(data).items().field_values()
 
     return ListInput([ItemInput(*triple) for triple in values])
 
@@ -124,9 +124,10 @@ positional arguments, and read into tuples of them, with ``serialize_values()``,
 ``field_values()`` and ``read_values()``. The document is written from a
 ``TypedDict`` of each table's fields, and read with the getters, columns as
 views. The vector is written from its items' ``TypedDict``s, and read into
-them with its view's ``fields()``, which reads every item's fields at once.
-The array of structs is written from the workload's own items, which the
-struct's protocol of fields types, and read with its view's
-``field_values()``, into a tuple of each struct's values rather than a struct.
+them with the ``fields()`` of the view that its getter returns, which reads
+every item's fields at once. The array of structs is written from the
+workload's own items, which the struct's protocol of fields types, and read
+with its view's ``field_values()``, into a tuple of each struct's values
+rather than a struct.
 Reading creates the workloads' dataclasses from the values that the generated
 readers return."""

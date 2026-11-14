@@ -274,7 +274,7 @@ class TestFields(unittest.TestCase):
     ) -> None:
         data = corruption.apply(bytes(ItemList.serialize(**fields)))
         try:
-            view = ItemList(data).items_view()
+            view = ItemList(data).items()
         except DecodeError:
             return
 
@@ -352,7 +352,7 @@ class TestValues(unittest.TestCase):
         if not isinstance(corruption, bytes):
             data = corruption.apply(data)
         try:
-            view = ItemList(data).items_view()
+            view = ItemList(data).items()
         except DecodeError:
             return
 
@@ -372,7 +372,7 @@ class TestValues(unittest.TestCase):
     def test_reads_back_every_items_fields_as_they_were_written(
         self, fields: ItemListFields
     ) -> None:
-        view = ItemList(ItemList.serialize(**fields)).items_view()
+        view = ItemList(ItemList.serialize(**fields)).items()
 
         self.assertEqual(
             fields_or_decode_error(view.fields),
@@ -461,7 +461,30 @@ class TestReadingInPlace(unittest.TestCase):
         item_list = ItemList(data)
 
         self.assertEqual(read_item_list(item_list), {"items": [item]})
-        self.assertEqual(read_item(item_list.items_view()[0]), item)
+        self.assertEqual(read_item(item_list.items()[0]), item)
+
+    def test_raises_decode_error_for_a_corrupted_item_when_its_read_not_before(
+        self,
+    ) -> None:
+        items: list[ItemFields] = [
+            {"value": 1.5, "pair": {"first": 2.5, "second": 3.5}},
+            {"value": 4.5, "pair": {"first": 5.5, "second": 6.5}},
+        ]
+        data = bytearray(ItemList.serialize(items=items))
+        # The vector at 4 holds its count and the items' ends, the second's at
+        # 12, which is made to end past the bytes
+        data[12:16] = (len(data) - 3).to_bytes(4, "little")
+
+        # The getter reads the count and checks that the ends lie within the
+        # bytes, and the view reads the first item alone
+        view = ItemList(data).items()
+        self.assertEqual(len(view), 2)
+        self.assertEqual(read_item(view[0]), items[0])
+        with self.assertRaises(DecodeError):
+            view[1]
+        # Iterating reads every item's end before it reads any
+        with self.assertRaises(DecodeError):
+            list(view)
 
 
 class TestSample(unittest.TestCase):
@@ -554,7 +577,7 @@ def _items_by_index(data: bytes) -> list[str]:
     """Each item of an item list, read through its view by index, the last
     one again by -1, and one past it"""
     try:
-        view = ItemList(data).items_view()
+        view = ItemList(data).items()
     except DecodeError as error:
         return [f"DecodeError: {error}"]
 

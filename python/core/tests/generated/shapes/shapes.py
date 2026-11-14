@@ -232,12 +232,7 @@ class ItemList:
 
         return writer.bytes()
 
-    def items(self) -> list[Item]:
-        offsets = self._buffer.get_vector_offsets(self._buffer.root_offset(0))
-        return [Item(self._buffer, offset) for offset in offsets]
-
-    def items_view(self) -> ItemVector:
-        """Views the items of ``items()``, reading each one when it's asked for"""
+    def items(self) -> ItemVector:
         return ItemVector(self._buffer, self._buffer.root_offset(0))
 
 
@@ -298,7 +293,10 @@ class ItemFields(TypedDict):
 
 
 class ItemVector:
-    """A vector of ``Item``s, which reads each item when it's asked for"""
+    """A vector of ``Item``s, which reads each item when it's asked for, so
+    an item whose bytes are corrupt raises ``DecodeError`` when it's read, rather
+    than when its parent's getter returns the vector
+    """
 
     __slots__ = ("_buffer", "_length", "_position")
 
