@@ -7,7 +7,7 @@ package generated_test
 //   - readFields reads every field of a reader through its getters, into
 //     the struct of fields that writes it, and the items of the views that
 //     the getters of its vectors and arrays of structs return by index and
-//     by iterating,
+//     by iterating, and the structs of arrays of structs all at once,
 //   - checkWhole checks that a reader's Fields() reads what its getters read,
 //   - describe describes a struct of fields as the conformance suite's
 //     description of the table that it writes, which TableBuilder builds,
@@ -100,7 +100,8 @@ func isView(t reflect.Type) bool {
 
 // readView reads the items of a view of a vector or an array of structs, by
 // index and by iterating, into a slice of fieldType, and fails unless both
-// read the same items
+// read the same items, and those of an array of structs all at once, through
+// its Slice() and, where they're in place, its AsSlice()
 func readView(view reflect.Value, fieldType reflect.Type) (reflect.Value, error) {
 	length := int(view.MethodByName("Len").Call(nil)[0].Int())
 
@@ -140,6 +141,16 @@ func readView(view reflect.Value, fieldType reflect.Type) (reflect.Value, error)
 
 	if !sameValues(iterated, byIndex) {
 		return byIndex, errors.New("a view iterates over other items than it reads by index")
+	}
+
+	if slice := view.MethodByName("Slice"); slice.IsValid() {
+		if !sameValues(slice.Call(nil)[0], byIndex) {
+			return byIndex, errors.New("Slice() reads other structs than the view reads by index")
+		}
+		inPlace := view.MethodByName("AsSlice").Call(nil)
+		if inPlace[1].Bool() && !sameValues(inPlace[0], byIndex) {
+			return byIndex, errors.New("AsSlice() reads other structs than the view reads by index")
+		}
 	}
 
 	return byIndex, nil

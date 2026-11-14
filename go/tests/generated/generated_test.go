@@ -12,9 +12,11 @@ import (
 	"encoding"
 	"errors"
 	"flag"
+	"math"
 	"os"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	tafla "github.com/snovader/tafla/go"
 	alltypes "github.com/snovader/tafla/go/tests/generated/all_types"
@@ -490,6 +492,58 @@ func TestACorruptItemFailsWhenItsReadRatherThanWhenTheGetterIsCalled(t *testing.
 	if len(errs) != 2 || errs[0] != nil || !sameError(errs[1], expected) {
 		t.Fatalf("iterated with %v rather than nil and %v", errs, expected)
 	}
+}
+
+// An array of a struct whose Go struct lies in memory as its bytes do, such
+// as Segment, is read in place where it's aligned to the struct in memory on
+// a little-endian host, and an array of another struct, such as Documented,
+// whose uint16 lies at 1, never is. Slice() reads the same structs either
+// way, and in place it shares the table's bytes.
+func TestAnArrayOfStructsIsReadInPlaceWhereItsStructLiesAsItsBytesAndIsAligned(t *testing.T) {
+	segments := []alltypes.Segment{
+		{Start: alltypes.Point{X: 1.5, Y: float32(math.Copysign(0, -1))}, End: alltypes.Point{X: math.MaxFloat32, Y: math.Float32frombits(tables.QuietNaN32)}},
+		{Start: alltypes.Point{X: -2.25, Y: 3}, End: alltypes.Point{X: math.SmallestNonzeroFloat32, Y: float32(math.Inf(-1))}},
+	}
+	documented := []alltypes.Documented{{One: 1, Two: 0xfffe, Undocumented: math.MaxUint32}, {One: 0xff, Two: 2, Undocumented: 3}}
+	written := must(alltypes.StructsFields{Documented: documented, Segments: segments}.MarshalBinary())
+
+	for byteOffset := range 8 {
+		bytes := tables.AtByteOffset(written, byteOffset)
+		message := alltypes.NewStructs(bytes)
+
+		segmentArray := must(message.Segments())
+		inPlace := readsInPlace && byteOffset%int(unsafe.Alignof(alltypes.Segment{})) == 0
+		inPlaceSegments, ok := segmentArray.AsSlice()
+		if ok != inPlace {
+			t.Errorf("at %d, the segments are in place: %v", byteOffset, ok)
+		}
+		slice := segmentArray.Slice()
+		if !sameValues(reflect.ValueOf(slice), reflect.ValueOf(segments)) {
+			t.Errorf("at %d, read %+v", byteOffset, slice)
+		}
+		if ok && (!sameValues(reflect.ValueOf(inPlaceSegments), reflect.ValueOf(segments)) || !within(slice, bytes)) {
+			t.Errorf("at %d, read %+v in place, within the bytes: %v", byteOffset, inPlaceSegments, within(slice, bytes))
+		}
+
+		documentedArray := must(message.Documented())
+		if structs, ok := documentedArray.AsSlice(); ok || structs != nil {
+			t.Errorf("at %d, read %+v, %v in place", byteOffset, structs, ok)
+		}
+		if slice := documentedArray.Slice(); !sameValues(reflect.ValueOf(slice), reflect.ValueOf(documented)) {
+			t.Errorf("at %d, read %+v", byteOffset, slice)
+		}
+	}
+}
+
+// within says whether the first of structs lies within bytes
+func within[S any](structs []S, bytes []byte) bool {
+	if len(structs) == 0 || len(bytes) == 0 {
+		return false
+	}
+
+	first := uintptr(unsafe.Pointer(&structs[0]))
+	start := uintptr(unsafe.Pointer(&bytes[0]))
+	return first >= start && first < start+uintptr(len(bytes))
 }
 
 func sameError(a, b error) bool {

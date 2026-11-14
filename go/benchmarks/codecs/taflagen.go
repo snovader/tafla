@@ -18,11 +18,12 @@ import (
 // readers do.
 //
 // It takes the workloads' types, as the other codecs do, so it collects the
-// generated fields of the vector's items and the generated structs of the
-// array into a slice in each call, as the protobuf codecs collect their
-// messages. The getters of the vector and of the array return views, which
-// read each item when it's asked for, and the codec reads every item through
-// their All(), each of the vector's items with its Fields().
+// generated fields of the vector's items into a slice in each call, as the
+// protobuf codecs collect their messages. The getter of the vector returns a
+// view, which reads each item when it's asked for, and the codec reads every
+// item through its All(), with its Fields(). The getter of the array returns
+// a view too, whose Slice() returns the structs in place where the bytes are
+// aligned to them in memory, as they are here.
 type TaflaGen struct{}
 
 func (TaflaGen) Name() string { return "tafla-gen" }
@@ -163,9 +164,12 @@ func (TaflaGen) DeserializeStructs(bytes []byte) (workloads.List, error) {
 		return workloads.List{}, err
 	}
 
-	list := workloads.List{Items: make([]workloads.Item, items.Len())}
-	for index, triple := range items.All() {
-		list.Items[index] = workloads.Item{Value: triple.Value, First: triple.First, Second: triple.Second}
+	// Each generated Triple converts to a workload item, whose fields are its
+	// own
+	triples := items.Slice()
+	list := workloads.List{Items: make([]workloads.Item, len(triples))}
+	for index, triple := range triples {
+		list.Items[index] = workloads.Item(triple)
 	}
 
 	return list, nil

@@ -78,6 +78,14 @@ first commits, for code built from its source before the release.
   registers, where `UnmarshalBinary()` reads into a struct in memory. The
   checker keeps declarations from taking its name. The Go comparison suite
   reads its fixed-size record with it.
+- A generated Go `<Struct>Array` declares `AsSlice()` and `Slice()`, which
+  return its structs at once, as `tafla.ArrayView` returns arrays:
+  `AsSlice()` in place, through the Go runtime's `StructsInPlace()`, where
+  the struct's Go struct lies in memory as its bytes do on every platform,
+  with no bool, and the bytes are aligned to it on a little-endian host, and
+  `Slice()` in place where it can, and otherwise a copy. `Fields()` reads
+  arrays of structs with `Slice()`, so they share the bytes, as its arrays
+  do. The Go comparison suite reads its array of 100 structs with it.
 
 ### Changed
 

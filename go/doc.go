@@ -68,8 +68,10 @@
 // [AppendTable], [AppendVersionedTable], [TableSizer.AddFields],
 // [TableSizer.AddTableBytes], [TableWriter.ReserveFields] and
 // [TableWriter.ReserveTableBytes] are for the code that tafla-gen generates,
-// which lays out the fields whose sizes the schema fixes itself, and
-// [Uint32FieldOffset] for its getters, which know each field's slot. They're
+// which lays out the fields whose sizes the schema fixes itself,
+// [Uint32FieldOffset] for its getters, which know each field's slot, and
+// [StructsInPlace] for its arrays of structs, which know their structs'
+// layouts in memory. They're
 // exported because generated code lies in its user's package, but they're
 // outside the compatibility promise of the rest of the API, and may change in
 // any release, with the generator.
