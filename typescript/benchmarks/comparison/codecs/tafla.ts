@@ -5,6 +5,7 @@ import {
     SIZEOF_32,
     StructWriter,
     TableBuilder,
+    type TableItem,
     TableLayout
 } from 'tafla';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
@@ -45,12 +46,6 @@ export const tafla: Codec = {
     },
     document: {
         serialize(input) {
-            const columns = new TableBuilder(4);
-            columns.setInt64(input.base);
-            columns.setUint32Array(input.keys);
-            columns.setFloat32Array(input.a);
-            columns.setFloat32Array(input.b);
-
             const document = new TableBuilder(
                 4,
                 DOCUMENT_LAYOUT,
@@ -59,7 +54,12 @@ export const tafla: Codec = {
             document.setFloat64(input.x);
             document.setFloat64(input.y);
             document.setString(input.name);
-            document.setTable(columns);
+            document.setTableInPlace(4, columns => {
+                columns.setInt64(input.base);
+                columns.setUint32Array(input.keys);
+                columns.setFloat32Array(input.a);
+                columns.setFloat32Array(input.b);
+            });
 
             return document.bytes();
         },
@@ -94,7 +94,9 @@ export const tafla: Codec = {
     list: {
         serialize({ items }) {
             const builder = new TableBuilder(1);
-            builder.setVector(items.map(serializeItem));
+            builder.setVectorInPlace(items.length, 2, (item, index) => {
+                setItem(item, items[index]);
+            });
 
             return builder.bytes();
         },
@@ -184,14 +186,10 @@ function openDocument(bytes: Uint8Array): ByteBuffer {
     return buffer;
 }
 
-function serializeItem({ value, first, second }: ItemInput): TableBuilder {
-    const pair = new TableBuilder(2);
-    pair.setFloat32(first);
-    pair.setFloat32(second);
-
-    const item = new TableBuilder(2);
+function setItem(item: TableItem, { value, first, second }: ItemInput): void {
     item.setFloat32(value);
-    item.setTable(pair);
-
-    return item;
+    item.setTableInPlace(2, pair => {
+        pair.setFloat32(first);
+        pair.setFloat32(second);
+    });
 }

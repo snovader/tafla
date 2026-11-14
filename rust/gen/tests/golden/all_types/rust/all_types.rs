@@ -142,33 +142,34 @@ impl ScalarsFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(11, Scalars::LAYOUT)?;
-        sizer.add_i8();
-        sizer.add_u8();
-        sizer.add_i16();
-        sizer.add_u16();
-        sizer.add_i32();
-        sizer.add_u32();
-        sizer.add_i64();
-        sizer.add_u64();
-        sizer.add_f32();
-        sizer.add_f64();
-        sizer.add_u8();
+        let mut bytes = TableWriter::table_bytes(11, Scalars::LAYOUT, 87)?;
 
-        let mut writer = sizer.writer()?;
-        writer.set_i8(0, self.int8);
-        writer.set_u8(1, self.uint8);
-        writer.set_i16(2, self.int16);
-        writer.set_u16(3, self.uint16);
-        writer.set_i32(4, self.int32);
-        writer.set_u32(5, self.uint32);
-        writer.set_i64(6, self.int64);
-        writer.set_u64(7, self.uint64);
-        writer.set_f32(8, self.float32);
-        writer.set_f64(9, self.float64);
-        writer.set_u8(10, u8::from(self.bool));
+        let mut fixed = [0; 87];
+        fixed[0..4].copy_from_slice(&44_u32.to_le_bytes());
+        fixed[4..8].copy_from_slice(&45_u32.to_le_bytes());
+        fixed[8..12].copy_from_slice(&46_u32.to_le_bytes());
+        fixed[12..16].copy_from_slice(&48_u32.to_le_bytes());
+        fixed[16..20].copy_from_slice(&50_u32.to_le_bytes());
+        fixed[20..24].copy_from_slice(&54_u32.to_le_bytes());
+        fixed[24..28].copy_from_slice(&58_u32.to_le_bytes());
+        fixed[28..32].copy_from_slice(&66_u32.to_le_bytes());
+        fixed[32..36].copy_from_slice(&74_u32.to_le_bytes());
+        fixed[36..40].copy_from_slice(&78_u32.to_le_bytes());
+        fixed[40..44].copy_from_slice(&86_u32.to_le_bytes());
+        fixed[44..45].copy_from_slice(&self.int8.to_le_bytes());
+        fixed[45..46].copy_from_slice(&self.uint8.to_le_bytes());
+        fixed[46..48].copy_from_slice(&self.int16.to_le_bytes());
+        fixed[48..50].copy_from_slice(&self.uint16.to_le_bytes());
+        fixed[50..54].copy_from_slice(&self.int32.to_le_bytes());
+        fixed[54..58].copy_from_slice(&self.uint32.to_le_bytes());
+        fixed[58..66].copy_from_slice(&self.int64.to_le_bytes());
+        fixed[66..74].copy_from_slice(&self.uint64.to_le_bytes());
+        fixed[74..78].copy_from_slice(&self.float32.to_le_bytes());
+        fixed[78..86].copy_from_slice(&self.float64.to_le_bytes());
+        fixed[86] = u8::from(self.bool);
+        bytes.extend_from_slice(&fixed);
 
-        writer.into_bytes()
+        Ok(bytes)
     }
 }
 
@@ -365,29 +366,13 @@ impl<'a> Nested<'a> {
 
     /// A vector of tables that hold vectors of themselves
     ///
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn trees(&self) -> Result<Vec<Tree<'a>>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(2)?;
-        let vector = buffer.get_vector(position)?;
-        let mut items = Vec::with_capacity(vector.len());
-        for item in vector.iter_in_place() {
-            items.push(Tree::new(item?, 0));
-        }
-
-        Ok(items)
-    }
-
-    /// A vector of tables that hold vectors of themselves
-    ///
-    /// Views the items of `trees()`, reading each one when it's asked for
+    /// A view of the items, which reads each [`Tree`] when it's asked for, and
+    /// fails then if its bytes are corrupt
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
-    pub fn trees_view(&self) -> Result<TreeVector<'a>, DecodeError> {
+    pub fn trees(&self) -> Result<TreeVector<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(2)?;
         Ok(TreeVector {
@@ -589,27 +574,13 @@ impl<'a> Tree<'a> {
         buffer.get_i32(position)
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn children(&self) -> Result<Vec<Tree<'a>>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 1)?;
-        let vector = buffer.get_vector(position)?;
-        let mut items = Vec::with_capacity(vector.len());
-        for item in vector.iter_in_place() {
-            items.push(Tree::new(item?, 0));
-        }
-
-        Ok(items)
-    }
-
-    /// Views the items of `children()`, reading each one when it's asked for
+    /// A view of the items, which reads each [`Tree`] when it's asked for, and
+    /// fails then if its bytes are corrupt
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
-    pub fn children_view(&self) -> Result<TreeVector<'a>, DecodeError> {
+    pub fn children(&self) -> Result<TreeVector<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
         let position = buffer.field_offset(self.position, 1)?;
         Ok(TreeVector {
@@ -884,28 +855,12 @@ impl<'a> Structs<'a> {
 
     /// An array of structs of 7 bytes, aligned to 4
     ///
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn documented(
-        &self,
-    ) -> Result<impl ExactSizeIterator<Item = Documented> + use<'a>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(1)?;
-        let bytes = buffer.get_struct_array(position, Documented::SIZE)?;
-        let (structs, _) = bytes.as_chunks::<{ Documented::SIZE }>();
-
-        Ok(structs.iter().map(Documented::from_bytes))
-    }
-
-    /// An array of structs of 7 bytes, aligned to 4
-    ///
-    /// Views the items of `documented()`, reading each one when it's asked for
+    /// A view of the structs, which reads each [`Documented`] when it's asked for
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
-    pub fn documented_view(&self) -> Result<DocumentedArray<'a>, DecodeError> {
+    pub fn documented(&self) -> Result<DocumentedArray<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(1)?;
         let bytes = buffer.get_struct_array(position, Documented::SIZE)?;
@@ -927,26 +882,12 @@ impl<'a> Structs<'a> {
         Segment::read(bytes)
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn segments(
-        &self,
-    ) -> Result<impl ExactSizeIterator<Item = Segment> + use<'a>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
-        let position = buffer.root_offset(3)?;
-        let bytes = buffer.get_struct_array(position, Segment::SIZE)?;
-        let (structs, _) = bytes.as_chunks::<{ Segment::SIZE }>();
-
-        Ok(structs.iter().map(Segment::from_bytes))
-    }
-
-    /// Views the items of `segments()`, reading each one when it's asked for
+    /// A view of the structs, which reads each [`Segment`] when it's asked for
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
-    pub fn segments_view(&self) -> Result<SegmentArray<'a>, DecodeError> {
+    pub fn segments(&self) -> Result<SegmentArray<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);
         let position = buffer.root_offset(3)?;
         let bytes = buffer.get_struct_array(position, Segment::SIZE)?;
@@ -1052,24 +993,12 @@ impl<'a> Path<'a> {
         Point::read(bytes)
     }
 
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn points(&self) -> Result<impl ExactSizeIterator<Item = Point> + use<'a>, DecodeError> {
-        let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
-        let position = buffer.field_offset(self.position, 1)?;
-        let bytes = buffer.get_struct_array(position, Point::SIZE)?;
-        let (structs, _) = bytes.as_chunks::<{ Point::SIZE }>();
-
-        Ok(structs.iter().map(Point::from_bytes))
-    }
-
-    /// Views the items of `points()`, reading each one when it's asked for
+    /// A view of the structs, which reads each [`Point`] when it's asked for
     ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
-    pub fn points_view(&self) -> Result<PointArray<'a>, DecodeError> {
+    pub fn points(&self) -> Result<PointArray<'a>, DecodeError> {
         let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);
         let position = buffer.field_offset(self.position, 1)?;
         let bytes = buffer.get_struct_array(position, Point::SIZE)?;

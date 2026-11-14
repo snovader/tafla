@@ -5,16 +5,18 @@ package generated_test
 // what it writes wherever its bytes lie, writes the tables that TableBuilder
 // writes by hand, or fails as it fails, rejects other versions, and reads
 // corrupted and arbitrary bytes as values or decode errors, through its
-// views as through its getters, without panicking.
+// getters and the views that they return, without panicking.
 
 import (
 	"bytes"
 	"encoding"
 	"errors"
 	"flag"
+	"math"
 	"os"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	tafla "github.com/snovader/tafla/go"
 	alltypes "github.com/snovader/tafla/go/tests/generated/all_types"
@@ -152,20 +154,22 @@ var messages = []message{
 	unversioned[fixedfields.Span, fixedfields.SpanFields]("fixed_fields.Span", tafla.Uint32, false, fixedfields.NewSpan),
 }
 
-// structs are every struct of the example schemas, with their sizes
+// structs are every struct of the example schemas, with their sizes and
+// their Read<Struct> functions
 var structs = []struct {
 	name string
 	t    reflect.Type
 	size int
+	read reflect.Value
 }{
-	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12},
-	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16},
-	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8},
-	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43},
-	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7},
-	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8},
-	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64},
-	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256},
+	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12, reflect.ValueOf(shapes.ReadSample)},
+	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16, reflect.ValueOf(alltypes.ReadSegment)},
+	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8, reflect.ValueOf(alltypes.ReadPoint)},
+	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43, reflect.ValueOf(alltypes.ReadPacked)},
+	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7, reflect.ValueOf(alltypes.ReadDocumented)},
+	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8, reflect.ValueOf(fixedfields.ReadVec2)},
+	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64, reflect.ValueOf(fixedfields.ReadQuad)},
+	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256, reflect.ValueOf(fixedfields.ReadBlock)},
 }
 
 // write writes a message's fields with the generated code
@@ -174,14 +178,20 @@ func write(fields reflect.Value) ([]byte, error) {
 }
 
 // readAll reads bytes as the message, every field through its getter, and
-// every vector and array of structs through its view too
+// every item of the views of its vectors and arrays of structs, and fails
+// unless its Fields(), where it has one, reads the same
 func (m message) readAll(bytes []byte) (reflect.Value, error) {
 	reader, err := m.read(bytes)
 	if err != nil {
 		return reflect.Value{}, err
 	}
 
-	return readFields(reader, m.fields)
+	fields, err := readFields(reader, m.fields)
+	if wholeErr := checkWhole(reader, fields, err); wholeErr != nil {
+		return fields, wholeErr
+	}
+
+	return fields, err
 }
 
 // written draws a message's fields, and writes them, skipping a draw that's
@@ -332,7 +342,7 @@ func TestEveryVersionedMessageRejectsOtherVersionsWithUnsupportedVersion(t *test
 }
 
 // Overwritten bytes read as values, which may be others than those written,
-// or fail with the decode error, through the getters and the views
+// or fail with the decode error, through the getters and their views
 func TestEveryCorruptedMessageReadsAsValuesOrDecodeErrors(t *testing.T) {
 	for _, message := range messages {
 		t.Run(message.name, func(t *testing.T) {
@@ -395,15 +405,30 @@ func TestEveryStructIsWrittenAtFixedOffsetsAndReadBackFromTheStartOfItsBytes(t *
 				if err != nil || !sameValues(read.Elem(), value) {
 					t.Fatalf("read %+v, %v", read.Elem(), err)
 				}
+				returned, err := readStruct(structure.read, longer)
+				if err != nil || !sameValues(returned, value) {
+					t.Fatalf("Read returned %+v, %v", returned, err)
+				}
 
 				expectedError := &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: uint64(structure.size), Available: len(written) - 1}
 				err = read.Interface().(encoding.BinaryUnmarshaler).UnmarshalBinary(written[:len(written)-1])
 				if !sameError(err, expectedError) {
 					t.Fatalf("%v rather than %v", err, expectedError)
 				}
+				returned, err = readStruct(structure.read, written[:len(written)-1])
+				if !sameError(err, expectedError) || !returned.IsZero() {
+					t.Fatalf("Read returned %+v, %v rather than %v", returned, err, expectedError)
+				}
 			})
 		})
 	}
+}
+
+// readStruct calls a struct's Read<Struct> function, read, with bytes
+func readStruct(read reflect.Value, bytes []byte) (reflect.Value, error) {
+	results := read.Call([]reflect.Value{reflect.ValueOf(bytes)})
+	err, _ := results[1].Interface().(error)
+	return results[0], err
 }
 
 // An item of a vector is read in place, within the bytes of the message
@@ -427,6 +452,98 @@ func TestAnItemIsReadInPlacePastItsEndWithinTheBytesOfItsItemList(t *testing.T) 
 	if err != nil || !sameValues(read, reflect.ValueOf(fields)) {
 		t.Fatalf("read %+v, %v", read, err)
 	}
+}
+
+// The getter of a vector returns its view, which reads each item when it's
+// asked for, so an item whose bytes are corrupt fails when it's read, by
+// index or by iterating, rather than when the getter is called, and the
+// other items read as they were written
+func TestACorruptItemFailsWhenItsReadRatherThanWhenTheGetterIsCalled(t *testing.T) {
+	first := shapes.ItemFields{Value: 1.5, Pair: shapes.PairFields{First: 2.5, Second: 3.5}}
+	second := shapes.ItemFields{Value: 4.5, Pair: shapes.PairFields{First: 5.5, Second: 6.5}}
+	written := must(shapes.ItemListFields{Items: []shapes.ItemFields{first, second}}.MarshalBinary())
+
+	// The vector at 4 holds its count and the items' ends, 40 and 68, from
+	// its position. An end of 20 ends the second item before it starts.
+	if !bytes.Equal(written[8:16], []byte{40, 0, 0, 0, 68, 0, 0, 0}) {
+		t.Fatalf("the items end at % x", written[8:16])
+	}
+	copy(written[12:16], []byte{20, 0, 0, 0})
+
+	items, err := shapes.NewItemList(written).Items()
+	if err != nil || items.Len() != 2 {
+		t.Fatalf("a view of %d items, %v", items.Len(), err)
+	}
+
+	read, err := readFields(reflect.ValueOf(must(items.Get(0))), reflect.TypeFor[shapes.ItemFields]())
+	if err != nil || !sameValues(read, reflect.ValueOf(first)) {
+		t.Fatalf("read %+v, %v", read, err)
+	}
+
+	expected := &tafla.DecodeError{Kind: tafla.ItemEndsBeforeStart, Position: 44, End: 24}
+	if _, err := items.Get(1); !sameError(err, expected) {
+		t.Fatalf("%v rather than %v", err, expected)
+	}
+
+	var errs []error
+	for _, err := range items.All() {
+		errs = append(errs, err)
+	}
+	if len(errs) != 2 || errs[0] != nil || !sameError(errs[1], expected) {
+		t.Fatalf("iterated with %v rather than nil and %v", errs, expected)
+	}
+}
+
+// An array of a struct whose Go struct lies in memory as its bytes do, such
+// as Segment, is read in place where it's aligned to the struct in memory on
+// a little-endian host, and an array of another struct, such as Documented,
+// whose uint16 lies at 1, never is. Slice() reads the same structs either
+// way, and in place it shares the table's bytes.
+func TestAnArrayOfStructsIsReadInPlaceWhereItsStructLiesAsItsBytesAndIsAligned(t *testing.T) {
+	segments := []alltypes.Segment{
+		{Start: alltypes.Point{X: 1.5, Y: float32(math.Copysign(0, -1))}, End: alltypes.Point{X: math.MaxFloat32, Y: math.Float32frombits(tables.QuietNaN32)}},
+		{Start: alltypes.Point{X: -2.25, Y: 3}, End: alltypes.Point{X: math.SmallestNonzeroFloat32, Y: float32(math.Inf(-1))}},
+	}
+	documented := []alltypes.Documented{{One: 1, Two: 0xfffe, Undocumented: math.MaxUint32}, {One: 0xff, Two: 2, Undocumented: 3}}
+	written := must(alltypes.StructsFields{Documented: documented, Segments: segments}.MarshalBinary())
+
+	for byteOffset := range 8 {
+		bytes := tables.AtByteOffset(written, byteOffset)
+		message := alltypes.NewStructs(bytes)
+
+		segmentArray := must(message.Segments())
+		inPlace := readsInPlace && byteOffset%int(unsafe.Alignof(alltypes.Segment{})) == 0
+		inPlaceSegments, ok := segmentArray.AsSlice()
+		if ok != inPlace {
+			t.Errorf("at %d, the segments are in place: %v", byteOffset, ok)
+		}
+		slice := segmentArray.Slice()
+		if !sameValues(reflect.ValueOf(slice), reflect.ValueOf(segments)) {
+			t.Errorf("at %d, read %+v", byteOffset, slice)
+		}
+		if ok && (!sameValues(reflect.ValueOf(inPlaceSegments), reflect.ValueOf(segments)) || !within(slice, bytes)) {
+			t.Errorf("at %d, read %+v in place, within the bytes: %v", byteOffset, inPlaceSegments, within(slice, bytes))
+		}
+
+		documentedArray := must(message.Documented())
+		if structs, ok := documentedArray.AsSlice(); ok || structs != nil {
+			t.Errorf("at %d, read %+v, %v in place", byteOffset, structs, ok)
+		}
+		if slice := documentedArray.Slice(); !sameValues(reflect.ValueOf(slice), reflect.ValueOf(documented)) {
+			t.Errorf("at %d, read %+v", byteOffset, slice)
+		}
+	}
+}
+
+// within says whether the first of structs lies within bytes
+func within[S any](structs []S, bytes []byte) bool {
+	if len(structs) == 0 || len(bytes) == 0 {
+		return false
+	}
+
+	first := uintptr(unsafe.Pointer(&structs[0]))
+	start := uintptr(unsafe.Pointer(&bytes[0]))
+	return first >= start && first < start+uintptr(len(bytes))
 }
 
 func sameError(a, b error) bool {

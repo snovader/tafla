@@ -29,7 +29,7 @@ so the inputs are the same values, which `tests/test_workloads.py` checks
 against values that the TypeScript generator printed.
 
 Four more groups time only tafla's bytes of the vector of nested tables and
-of the array of structs, read in three ways: **read the last item**, which a
+of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
 of its own, and `item_access.py` holds them:
@@ -37,13 +37,15 @@ of its own, and `item_access.py` holds them:
 - **tafla** reads with `ByteBuffer`'s getters by hand: `get_vector_offset()`
   of the last item or `get_vector_offsets()` of every item, and
   `get_struct_array()` with `Struct("<fff")`.
-- **tafla-gen** reads with the generated getters, `items()`, which read every
-  item into a list first, a `Triple` for each struct.
-- **tafla-gen view** reads with the generated views, `items_view()`: `[-1]`
-  reads the last item alone, and `for` iterates over every item, creating its
-  reader or `Triple` as it reaches it.
-- **tafla-gen view A/A** reads with the views again, an A/A pair that shows
-  the harness's noise.
+- **tafla-gen** reads with the generated getters, `items()`, which return
+  views that read each item when it's asked for, as a tuple of its values.
+  `item_field_values(-1)` reads the last item's alone: the vector's in one
+  call, and the array's as `Struct("<fff")` unpacks them by hand.
+  `iter_field_values()` iterates over every item's: the vector's through the
+  runtime's `iter_vector_fields()`, which reads each item when it reaches
+  it, and the array's as `Struct("<fff")` iterates over them.
+- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
+  harness's noise.
 
 `python -m tafla_benchmarks.encoding` prints each library's encoded sizes and
 what it does with a truncated document, as the TypeScript comparison does, and
@@ -95,8 +97,9 @@ benchmark's call allocates.
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** nests tables from their builders and reads columns as views of the
-  bytes. Arrays of the columns' element types are copied as bytes, and lists
+- **tafla** records nested tables among their parent builder's fields with
+  `set_table_in_place()` and `set_vector_in_place()`, and reads columns as
+  views of the bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
   as tafla's documentation advises over a getter call per element. The array
   of structs is packed into a `bytearray` and unpacked from
@@ -106,19 +109,26 @@ comparison uses its counterpart:
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a
   `TableWriter`'s `bytearray` in one call, and returns a view of it, and
-  writes a vector of tables of fixed layout in one call too. The record and
-  the fixed-size `Sample` are written from their values, as positional
+  writes a vector of tables of fixed layout in one call too. A message of
+  only fixed fields and a string, as the record is, is written into bytes of
+  its own in one call instead, with the runtime's
+  `TableWriter.write_fields()`, without a writer. The record and the
+  fixed-size `Sample` are written from their values, as positional
   arguments, with `serialize_values()`, and read into tuples of them with
-  `field_values()` and `read_values()`. The document is written from the
-  generated fields' dicts, and read with the getters, columns as views. The
-  vector is written from its items' dicts, and read into them with its
-  view's `fields()`, which reads every item at once. The array of structs is
-  written from the workload's own items, whose attributes `TripleFields`, the
-  struct's protocol of fields, types, as an application's objects would be,
-  and read with its view's `field_values()`, into a tuple of each struct's
+  `read_values()`, without a reader: the record in one call, with
+  `ByteBuffer.read_fields()`. The document is written from the generated
+  fields' dicts, and read into a tuple of its values with `read_values()`,
+  its columns' in a tuple of their own, as views. The
+  vector is written from a tuple of each item's values, each pair's in place
+  of it, with `serialize_values()`, and read into them with the
+  `field_values()` of the view that its getter returns, which reads every
+  item's values at once. The array of structs is written from the
+  workload's own items, whose attributes `TripleFields`, the struct's
+  protocol of fields, types, as an application's objects would be, and read
+  with its view's `iter_field_values()`, into a tuple of each struct's
   values. It takes the workloads' dataclasses, as the other codecs do, so it
-  creates the dicts of the document and the vector from them in each call,
-  as the protobuf codec builds its messages, and reading creates the
+  creates the document's dicts and the vector's tuples from them in each
+  call, as the protobuf codec builds its messages, and reading creates the
   workloads' dataclasses from the generated readers' values. Every suite has
   a copy of the schema; after changing them, regenerate the code as
   `rust/gen/README.md` describes.
@@ -174,12 +184,20 @@ comparison uses its counterpart:
 pyperf 2.11.0 runs each benchmark in worker processes of its own. The first
 calibrates the number of calls that one value times, so that it takes at least
 100 ms, and each of the others runs a warm-up and then 3 values. A full run
-runs the suite 4 times, with 5 workers per benchmark, and appends their values
-to one file: 20 workers and 60 values per benchmark. The runs alternate the
-order of the codecs in each group, so that each benchmark's workers are spread
-over the whole run. `tafla_benchmarks.report` then prints each benchmark's
-fastest value, and its ratio to tafla's, as the TypeScript comparison reports
-the fastest round, since load from other processes only slows values down.
+runs the suite twice, with 5 workers per benchmark, and appends their values
+to one file: 10 workers and 30 values per benchmark. The second run reverses
+the order of the codecs in each group, so that each benchmark's workers are
+spread over the whole run. `tafla_benchmarks.report` then prints each
+benchmark's fastest value, and its ratio to tafla's, as the TypeScript
+comparison reports the fastest round, since load from other processes only
+slows values down.
+
+Until 2026-11-14, a full run ran the suite 4 times, alternating the order,
+which took twice as long. On that day, eight runs of the suite in alternating
+order were split into two sets of 4 and four pairs. Each pair's fastest values
+were 0.1% to 0.2% slower in the median benchmark than those of the set of 4
+that it wasn't part of, and within 1.0% for 90% of the benchmarks, where the
+two sets of 4 differed by 0.7%.
 
 - A worker runs one benchmark, so CPython's specializing interpreter
   specializes its timing loop for one operation, as the TypeScript harness's
@@ -219,7 +237,7 @@ the fastest round, since load from other processes only slows values down.
 
 pyperf doesn't interleave the codecs as the TypeScript harness does: it runs
 one benchmark's workers after another's. Within a run, a burst of load can slow
-one codec's workers and not another's, but the 4 runs spread each benchmark
+one codec's workers and not another's, but the 2 runs spread each benchmark
 over the whole run, and its fastest value is unaffected unless the load lasts
 for all of them. Check `uptime` before a run, and compare the fastest values
 with pyperf's means, which the report summarizes.
@@ -228,7 +246,7 @@ with pyperf's means, which the report summarizes.
 
 ```sh
 uptime
-for order in "" --reverse "" --reverse; do
+for order in "" --reverse; do
     uv run --python 3.14+gil python -m tafla_benchmarks --processes 5 --append results.json $order
     PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m tafla_benchmarks --codec protobuf --processes 5 --append results.json $order
     TAFLA_PUREPYTHON=1 uv run --python 3.14+gil python -m tafla_benchmarks --codec '^tafla' --inherit-environ TAFLA_PUREPYTHON --processes 5 --append results-pure.json $order
@@ -240,7 +258,7 @@ PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python uv run --python 3.14+gil python -m
 TAFLA_PUREPYTHON=1 uv run --python 3.14+gil python -m tafla_benchmarks.allocation --codec '^tafla'
 ```
 
-The full run takes about 55 minutes, and the allocation reports about half a
+The full run takes about 28 minutes, and the allocation reports about half a
 minute, of which CI runs the first two. `--append` adds to an existing file,
 so remove the last run's `results.json` and `results-pure.json` first.
 `--filter <regex>` runs only the groups whose name matches, and `--reverse`
@@ -303,7 +321,7 @@ generated code:
   numbers don't describe.
 - protobuf's pure-Python implementation, and tafla's pure-Python classes, run
   in invocations of the suite of their own, so their workers follow every
-  other codec's in each run, rather than running among them. The 4 runs still
+  other codec's in each run, rather than running among them. The 2 runs still
   spread them over the whole run.
 - `uv run` builds the native module with the tests' hooks, which the wheels
   leave out. The only one that the timed code reaches checks the host's byte

@@ -16,8 +16,9 @@ namespace tafla::benchmarks {
 
 /// tafla's runtime, as its README shows.
 ///
-/// Tables are nested from their builders, which view the columns, and arrays
-/// are read in place as `ArrayView`s, whose `as_span()` views them when
+/// Nested tables are recorded in place among their parent builder's fields,
+/// with `set_table(fields, fill)` and `set_vector(count, fields, fill)`. The
+/// builders view the columns, and arrays are read in place as `ArrayView`s, whose `as_span()` views them when
 /// they're aligned on a little-endian host.
 ///
 /// The runtime writes tables, and leaves fixed-size records to
@@ -55,17 +56,16 @@ struct Tafla {
     }
 
     [[nodiscard]] Bytes serialize(DocumentShape, const Document& input) const {
-        TableBuilder columns(4, TableLayout());
-        columns.set_int64(input.base);
-        columns.set_uint32_array(input.keys.span());
-        columns.set_float32_array(input.a.span());
-        columns.set_float32_array(input.b.span());
-
         TableBuilder document(4, kDocumentLayout, kDocumentVersion);
         document.set_float64(input.x);
         document.set_float64(input.y);
         document.set_string(input.name.view());
-        document.set_table(std::move(columns));
+        document.set_table(4, [&](TableBuilder::Item& columns) {
+            columns.set_int64(input.base);
+            columns.set_uint32_array(input.keys.span());
+            columns.set_float32_array(input.a.span());
+            columns.set_float32_array(input.b.span());
+        });
         return document.to_bytes();
     }
 
@@ -89,16 +89,12 @@ struct Tafla {
         return sum_column(buffer.get_float32_array(buffer.field_offset(buffer.root_offset(3), 2)));
     }
 
-    /// Nests each item from its builder, collected first
     [[nodiscard]] Bytes serialize(ListShape, const List& input) const {
-        std::vector<NestedTable> items;
-        items.reserve(input.items.size());
-        for (const auto& item : input.items) {
-            items.emplace_back(item_builder(item));
-        }
+        const auto& items = input.items;
 
         TableBuilder builder(1, TableLayout());
-        builder.set_vector(std::move(items));
+        builder.set_vector(items.size(), 2,
+                           [&](std::size_t index, TableBuilder::Item& item) { set_item(item, items[index]); });
         return builder.to_bytes();
     }
 
@@ -115,7 +111,8 @@ struct Tafla {
     }
 
     /// Writes the structs one after another into a vector, which the builder
-    /// owns, as tafla-gen's code writes an array of them
+    /// views until it writes the table, as tafla-gen's code writes an array
+    /// of them
     [[nodiscard]] Bytes serialize(StructsShape, const List& input) const {
         std::vector<std::uint8_t> structs(input.items.size() * kItemSize);
         for (std::size_t index = 0; index < input.items.size(); ++index) {
@@ -123,7 +120,7 @@ struct Tafla {
         }
 
         TableBuilder builder(1, TableLayout());
-        builder.set_struct_array(std::move(structs), kItemSize, kItemAlignment);
+        builder.set_struct_array(std::span<const std::uint8_t>(structs), kItemSize, kItemAlignment);
         return builder.to_bytes();
     }
 
@@ -171,15 +168,12 @@ struct Tafla {
         return Column<T>::owned(view.to_vector());
     }
 
-    static TableBuilder item_builder(const Item& item) {
-        TableBuilder pair(2, TableLayout());
-        pair.set_float32(item.first);
-        pair.set_float32(item.second);
-
-        TableBuilder builder(2, TableLayout());
-        builder.set_float32(item.value);
-        builder.set_table(std::move(pair));
-        return builder;
+    static void set_item(TableBuilder::Item& table, const Item& item) {
+        table.set_float32(item.value);
+        table.set_table(2, [&](TableBuilder::Item& pair) {
+            pair.set_float32(item.first);
+            pair.set_float32(item.second);
+        });
     }
 
     /// Reads an item of the vector in place, a table without a header, whose

@@ -1,7 +1,8 @@
 //! The fields whose sizes the schema fixes: scalars, structs, and nested
 //! tables of only such fields, which have no padding. Generated code that
 //! lays them out itself, at positions that the generator works out, writes
-//! them without the runtime's sizer and writer, as Go's and C++'s do.
+//! them without the runtime's sizer and writer, as Go's, Rust's and C++'s
+//! do.
 
 use crate::model::{FieldType, Kind, OffsetType, Schema};
 
