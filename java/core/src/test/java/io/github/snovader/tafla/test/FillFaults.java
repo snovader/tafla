@@ -2,10 +2,12 @@ package io.github.snovader.tafla.test;
 
 import org.jspecify.annotations.*;
 
+import java.util.function.*;
+
 /**
- * A fault to inject into one of the tables and vectors that fills record in place, the one at
- * index {@code at} in the order that their setters are called. Two builders given the same calls
- * fail at the same one. It's paused while a field that failed is set again.
+ * A fault to inject into one of the tables and vectors that fills write in place, the one at
+ * index {@code at} in the order that their setters are called. It's paused while a field that
+ * failed is set again.
  */
 final class FillFaults {
     /** What goes wrong with the table or vector */
@@ -70,11 +72,11 @@ final class FillFaults {
         }
     }
 
-    /** Runs {@code set} without faults */
-    void paused(Runnable set) {
+    /** {@return what {@code set} returns}, run without faults */
+    <T> T paused(Supplier<T> set) {
         paused = true;
         try {
-            set.run();
+            return set.get();
         } finally {
             paused = false;
         }

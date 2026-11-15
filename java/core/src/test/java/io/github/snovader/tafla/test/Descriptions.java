@@ -144,6 +144,45 @@ final class Descriptions {
     }
 
     /**
+     * {@return the table with the elements of each array, array of structs and string repeated
+     * {@code times} times}, in its nested tables and vector items too, each table's offsets widened
+     * as far as its fields need. Builders keep runs of 256 bytes or more apart from the bytes they
+     * copy fields into, and descriptions' arrays and strings are shorter, so this makes them
+     * common.
+     */
+    static TableDescription lengthened(TableDescription table, int times) {
+        var fields = table.fields().stream().map(field -> lengthened(field, times)).toList();
+        return fitted(new Header(table.layout(), table.version()), fields);
+    }
+
+    private static FieldDescription lengthened(FieldDescription field, int times) {
+        return switch (field) {
+            case ArrayField array -> new ArrayField(array.type(), repeated(array.values(), times));
+            case StringField string -> new StringField(string.value().repeat(times));
+            case StructArrayField array -> new StructArrayField(
+                array.fields(),
+                Collections.nCopies(times, array.items()).stream().flatMap(List::stream).toList()
+            );
+            case TableField nested -> new TableField(nested.from(), lengthened(nested.table(), times), nested.alignment());
+            case VectorField vector -> new VectorField(vector.items().stream()
+                .map(item -> new NestedTable(item.from(), lengthened(item.table(), times)))
+                .toList());
+            case ScalarField scalar -> scalar;
+            case BoolField bool -> bool;
+            case StructField struct -> struct;
+        };
+    }
+
+    private static long[] repeated(long[] values, int times) {
+        var repeated = new long[values.length * times];
+        for (int i = 0; i < times; i++) {
+            System.arraycopy(values, 0, repeated, i * values.length, values.length);
+        }
+
+        return repeated;
+    }
+
+    /**
      * {@return tables of the layouts, with fields that nest tables {@code depth} levels deep}. The
      * fields and the header are generated apart, rather than one from the other with
      * {@code flatMap()}, which made generating them ten times slower.

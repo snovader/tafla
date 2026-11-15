@@ -7,12 +7,12 @@ import java.util.*;
 import java.util.function.*;
 
 /**
- * Builds tables as {@link Tables#build} does, but records each table nested from a builder that a
+ * Builds tables as {@link Tables#build} does, but writes each table nested from a builder that a
  * {@link TableWriter} writes in place, at its own alignment, with
  * {@link TableBuilder#setTable(int, Consumer)}, and each vector of them whose items hold as many
  * fields with {@link TableBuilder#setVector(int, int, ObjIntConsumer)}, rather than from their
  * builders. It remembers whether a vector failed before its fill set any item, and injects its
- * {@link FillFaults} into the tables and vectors that it records in place.
+ * {@link FillFaults} into the tables and vectors that it writes in place.
  */
 final class InPlaceTables {
     private final FillFaults faults;
@@ -51,14 +51,14 @@ final class InPlaceTables {
     }
 
     /**
-     * Sets a field of a table of {@code offsetType} offsets on its builder, recording a table or
+     * Sets a field of a table of {@code offsetType} offsets on its builder, writing a table or
      * vector in place when it can
      */
     void setField(TableBuilder builder, FieldDescription field, OffsetType offsetType) {
         switch (field) {
-            case TableField nested when recordsInPlace(nested, offsetType) ->
+            case TableField nested when writesInPlace(nested, offsetType) ->
                 setTable(builder::setTable, nested.table(), offsetType);
-            case VectorField vector when recordsInPlace(vector, offsetType) ->
+            case VectorField vector when writesInPlace(vector, offsetType) ->
                 setVector(builder::setVector, vector.items(), offsetType);
             default -> Tables.setField(builder, field);
         }
@@ -82,16 +82,16 @@ final class InPlaceTables {
                 StructBytes.size(array.fields()),
                 StructBytes.alignment(array.fields())
             );
-            case TableField nested when recordsInPlace(nested, offsetType) ->
+            case TableField nested when writesInPlace(nested, offsetType) ->
                 setTable(item::setTable, nested.table(), offsetType);
             case TableField nested -> setTable(item, nested);
-            case VectorField vector when recordsInPlace(vector, offsetType) ->
+            case VectorField vector when writesInPlace(vector, offsetType) ->
                 setVector(item::setVector, vector.items(), offsetType);
             case VectorField vector -> setVector(item, vector.items());
         }
     }
 
-    /** Sets a table that isn't recorded in place on the item, as {@link Tables#setField} does */
+    /** Sets a table that isn't written in place on the item, as {@link Tables#setField} does */
     private static void setTable(TableBuilder.Item item, TableField field) {
         var nested = Tables.build(field.table());
         var alignment = field.alignment();
@@ -114,7 +114,7 @@ final class InPlaceTables {
         }
     }
 
-    /** Sets a vector that isn't recorded in place on the item, as {@link Tables#setField} does */
+    /** Sets a vector that isn't written in place on the item, as {@link Tables#setField} does */
     private static void setVector(TableBuilder.Item item, List<NestedTable> items) {
         var builders = items.stream().map(nested -> Tables.build(nested.table())).toList();
 
@@ -162,23 +162,23 @@ final class InPlaceTables {
     }
 
     /**
-     * {@return whether the field's table is recorded in place in a table of {@code offsetType}
+     * {@return whether the field's table is written in place in a table of {@code offsetType}
      * offsets}: from a builder without a header and of those offsets, at its own alignment
      */
-    static boolean recordsInPlace(TableField field, OffsetType offsetType) {
-        return field.alignment().isEmpty() && recordsInPlace(field.from(), field.table(), offsetType);
+    static boolean writesInPlace(TableField field, OffsetType offsetType) {
+        return field.alignment().isEmpty() && writesInPlace(field.from(), field.table(), offsetType);
     }
 
-    /** {@return whether the vector's items are each recorded in place, and hold as many fields} */
-    static boolean recordsInPlace(VectorField vector, OffsetType offsetType) {
+    /** {@return whether the vector's items are each written in place, and hold as many fields} */
+    static boolean writesInPlace(VectorField vector, OffsetType offsetType) {
         var items = vector.items();
         return items.stream().allMatch(item ->
-            recordsInPlace(item.from(), item.table(), offsetType)
+            writesInPlace(item.from(), item.table(), offsetType)
                 && item.table().fields().size() == items.getFirst().table().fields().size()
         );
     }
 
-    private static boolean recordsInPlace(Source from, TableDescription table, OffsetType offsetType) {
+    private static boolean writesInPlace(Source from, TableDescription table, OffsetType offsetType) {
         return from == Source.BUILDER
             && table.layout().equals(LayoutDescription.headerless(offsetType))
             && table.version().isEmpty();

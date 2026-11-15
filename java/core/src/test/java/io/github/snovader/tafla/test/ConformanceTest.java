@@ -50,7 +50,7 @@ public class ConformanceTest {
         }
     }
 
-    static List<Case> cases(String kind) {
+    private static List<Case> cases(String kind) {
         return SUITE.getJsonArray(kind).stream().map(value -> new Case(value.asJsonObject())).toList();
     }
 
@@ -65,7 +65,7 @@ public class ConformanceTest {
     }
 
     /** {@return the description of the valid case's table} */
-    static TableDescription tableOf(Case validCase) {
+    private static TableDescription tableOf(Case validCase) {
         return DescriptionJson.readTable(validCase.description().getJsonObject("table"));
     }
 
@@ -94,6 +94,20 @@ public class ConformanceTest {
     @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
     void should_rebuild_every_valid_table_byte_for_byte(@ForAll("validCases") Case validCase) {
         assertArrayEquals(validCase.bytes(), Tables.build(tableOf(validCase)).bytes());
+    }
+
+    /**
+     * A builder writes tables in place, as {@link TableWriter} writes them, and from builders and
+     * bytes alike, so each valid table, with every table nested in it made one that it writes in
+     * place, holds the bytes that the writer writes
+     */
+    @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
+    void should_write_every_valid_table_with_its_nested_tables_in_place_as_a_table_writer_writes_it(
+        @ForAll("validCases") Case validCase
+    ) {
+        var table = Tables.nestedInPlace(tableOf(validCase));
+
+        assertArrayEquals(Tables.write(table), new InPlaceTables().build(table).bytes());
     }
 
     /**
