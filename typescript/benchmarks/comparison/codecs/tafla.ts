@@ -121,7 +121,9 @@ export const tafla: Codec = {
     },
     structs: {
         serialize({ items }) {
-            // As tafla-gen's code writes an array of structs
+            // tafla-gen's code writes the structs straight into the table,
+            // with TableWriter.reserveStructArray(). TableBuilder takes their
+            // bytes, so StructWriter writes them first.
             const structs = new Uint8Array(items.length * ITEM_SIZE);
             const writer = new StructWriter(structs);
             for (const { value, first, second } of items) {
