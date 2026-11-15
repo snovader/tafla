@@ -17,6 +17,7 @@ export {
     readUint16,
     readUint32,
     readUint64,
+    viewOf,
     writeFloat32,
     writeFloat64,
     writeInt8,
@@ -26,5 +27,7 @@ export {
     writeUint8,
     writeUint16,
     writeUint32,
-    writeUint64
+    writeUint64,
+    writeUtf8
 } from './utils.ts';
+export { utf8Length } from './encoding.ts';

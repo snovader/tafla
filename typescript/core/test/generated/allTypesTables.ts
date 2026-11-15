@@ -398,11 +398,20 @@ export function documentedBytes(fields: DocumentedFields): Uint8Array {
 // arrays and vectors
 
 const MAX_LENGTH = 8;
+/**
+ * The most structs of a long array, which writes them from 16 Points, 8
+ * Segments and 19 Documented, 128 bytes or more, through a DataView rather
+ * than the write functions
+ */
+const LONG_RUN = 48;
 /** How deep trees nest below the vector of `Nested` */
 const TREE_DEPTH = 3;
 
-function arrays<T>(values: fc.Arbitrary<T>): fc.Arbitrary<T[]> {
-    return fc.array(values, { maxLength: MAX_LENGTH });
+function arrays<T>(
+    values: fc.Arbitrary<T>,
+    maxLength = MAX_LENGTH
+): fc.Arbitrary<T[]> {
+    return fc.array(values, { maxLength });
 }
 
 /** A value of every scalar type and a bool, as `Scalars` and `Packed` hold them */
@@ -478,10 +487,19 @@ const SEGMENTS: fc.Arbitrary<SegmentFields> = fc.record({
     end: POINTS
 });
 
-export const STRUCTS_FIELDS: fc.Arbitrary<StructsFields> = fc.record({
-    packed: SCALARS_FIELDS,
-    documented: arrays(DOCUMENTED_FIELDS),
-    segment: SEGMENTS,
-    segments: arrays(SEGMENTS),
-    path: fc.record({ start: POINTS, points: arrays(POINTS) })
-});
+function structsFields(maxLength: number): fc.Arbitrary<StructsFields> {
+    return fc.record({
+        packed: SCALARS_FIELDS,
+        documented: arrays(DOCUMENTED_FIELDS, maxLength),
+        segment: SEGMENTS,
+        segments: arrays(SEGMENTS, maxLength),
+        path: fc.record({ start: POINTS, points: arrays(POINTS, maxLength) })
+    });
+}
+
+export const STRUCTS_FIELDS: fc.Arbitrary<StructsFields> =
+    structsFields(MAX_LENGTH);
+
+/** Structs of short arrays and of long ones, written through a DataView */
+export const LONG_STRUCTS_FIELDS: fc.Arbitrary<StructsFields> =
+    structsFields(LONG_RUN);

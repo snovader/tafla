@@ -13,6 +13,8 @@ import {
     readUint32,
     readUint64,
     StructWriter,
+    utf8Length,
+    viewOf,
     writeFloat32,
     writeFloat64,
     writeInt8,
@@ -22,9 +24,10 @@ import {
     writeUint8,
     writeUint16,
     writeUint32,
-    writeUint64
+    writeUint64,
+    writeUtf8
 } from 'tafla';
-import { SLICES, sliceOf } from './conformance/arbitraries.ts';
+import { SLICES, STRINGS, sliceOf } from './conformance/arbitraries.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;
 
@@ -294,3 +297,59 @@ it('should convert a value once, as DataView does, and throw its TypeError for a
     expect(() => writeInt64(bytes, 0, 1 as unknown as bigint)).toThrow(TypeError);
     expect(readUint32(bytes, 0)).toBe(0x1234_5678);
 });
+
+const ENCODER = new TextEncoder();
+
+it.prop([
+    fc.oneof(STRINGS, fc.string({ unit: 'binary' })),
+    fc.nat({ max: 8 }),
+    fc.nat({ max: 40 }),
+    SLICES
+])(
+    'should write a string as UTF-8 at an offset within the bytes, returning its utf8Length(), and throw RangeError past them',
+    (string, offset, length, slice) => {
+        const bytes = sliceOf(new Uint8Array(length), slice);
+        // TextEncoder replaces lone surrogates with U+FFFD, as tables hold them
+        const encoded = ENCODER.encode(string);
+        expect(utf8Length(string)).toBe(encoded.length);
+
+        if (offset + encoded.length <= length) {
+            expect(writeUtf8(bytes, offset, string)).toBe(encoded.length);
+            expect(bytes.subarray(offset, offset + encoded.length)).toStrictEqual(encoded);
+        } else {
+            expect(() => writeUtf8(bytes, offset, string)).toThrow(RangeError);
+        }
+    }
+);
+
+it.each([-1, 0.5, Number.NaN, 9])(
+    'should throw RangeError for a string at an offset of %s',
+    offset => {
+        expect(() => writeUtf8(new Uint8Array(8), offset, '')).toThrow(RangeError);
+    }
+);
+
+it.prop([
+    fc.nat({ max: 16 }),
+    fc.integer({ min: -2, max: 18 }),
+    fc.integer({ min: -1, max: 18 }),
+    SLICES
+])(
+    'should make a DataView of bytes within the bytes, and throw RangeError for any past them',
+    (length, offset, byteLength, slice) => {
+        const bytes = sliceOf(new Uint8Array(length), slice);
+
+        if (offset >= 0 && byteLength >= 0 && offset + byteLength <= length) {
+            const view = viewOf(bytes, offset, byteLength);
+            expect(view.buffer).toBe(bytes.buffer);
+            expect(view.byteOffset).toBe(bytes.byteOffset + offset);
+            expect(view.byteLength).toBe(byteLength);
+        } else {
+            expect(() => viewOf(bytes, offset, byteLength)).toThrow(
+                new RangeError(
+                    `Write exceeds the supplied buffer: ${byteLength} bytes at ${offset} of ${length}`
+                )
+            );
+        }
+    }
+);

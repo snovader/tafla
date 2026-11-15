@@ -175,8 +175,17 @@ export function sampleBytes({ key, a, b }: SampleFields): Uint8Array {
 
 const MAX_LENGTH = 8;
 
-function arrays<T>(values: fc.Arbitrary<T>): fc.Arbitrary<T[]> {
-    return fc.array(values, { maxLength: MAX_LENGTH });
+/**
+ * The most items of a long vector, which writes its items from 5, 140 bytes,
+ * through a DataView rather than the write functions
+ */
+const LONG_RUN = 24;
+
+function arrays<T>(
+    values: fc.Arbitrary<T>,
+    maxLength = MAX_LENGTH
+): fc.Arbitrary<T[]> {
+    return fc.array(values, { maxLength });
 }
 
 export const POINT_FIELDS: fc.Arbitrary<PointFields> = fc.record({
@@ -198,16 +207,21 @@ export const DOCUMENT_FIELDS: fc.Arbitrary<DocumentFields> = fc.record({
     })
 });
 
+const ITEMS: fc.Arbitrary<ItemListFields['items'][number]> = fc.record({
+    value: SCALAR_VALUES.float32,
+    pair: fc.record({
+        first: SCALAR_VALUES.float32,
+        second: SCALAR_VALUES.float32
+    })
+});
+
 export const ITEM_LIST_FIELDS: fc.Arbitrary<ItemListFields> = fc.record({
-    items: arrays(
-        fc.record({
-            value: SCALAR_VALUES.float32,
-            pair: fc.record({
-                first: SCALAR_VALUES.float32,
-                second: SCALAR_VALUES.float32
-            })
-        })
-    )
+    items: arrays(ITEMS)
+});
+
+/** Item lists of short vectors and of long ones, written through a DataView */
+export const LONG_ITEM_LIST_FIELDS: fc.Arbitrary<ItemListFields> = fc.record({
+    items: arrays(ITEMS, LONG_RUN)
 });
 
 export const SAMPLE_FIELDS: fc.Arbitrary<SampleFields> = fc.record({
