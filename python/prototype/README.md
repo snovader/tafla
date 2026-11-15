@@ -57,7 +57,13 @@ From `python/`:
 ```sh
 uv run python -m unittest discover -s prototype/prototype_tests -t prototype
 TAFLA_PUREPYTHON=1 uv run python -m unittest discover -s prototype/prototype_tests -t prototype
+uv run ruff format --check prototype
+uv run ruff check prototype
+uv run ty check --config 'src.include=["prototype"]' --extra-search-path prototype --extra-search-path core
 ```
+
+CI runs none of these, and the workspace's ty configuration leaves the
+prototype out.
 
 They check every builder, and builders that keep every run, or runs of 8
 bytes or more, as segments, so that segments meet every part of the format,
@@ -99,8 +105,9 @@ uv run python -m tafla_prototype.allocation
 TAFLA_PUREPYTHON=1 uv run python -m tafla_prototype.allocation
 ```
 
-The development environment's native module has the tests' hooks, which
-cost a little on each array. The PR's figures come from a release wheel
+`--only <regex>` times only the builders whose name matches. The
+development environment's native module has the tests' hooks, which cost a
+little on each array. The PR's figures come from a release wheel
 built with only the feature `prototype`, and its allocations from one built
 with `count-allocations`, from `core/`:
 
