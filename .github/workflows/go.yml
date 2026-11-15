@@ -162,6 +162,13 @@ jobs:
         working-directory: go/tests
         run: go test -tags tafla_portable ./...
 
+      # Keeps every array, string and nested table's bytes rather than copying
+      # them, and grows the builder's buffer from a byte, so that the tests'
+      # small tables take those paths
+      - name: Run tests of the builder's kept runs
+        working-directory: go/tests
+        run: go test -tags tafla_builder_stress ./...
+
   # A big-endian host, which reads and writes every array through its
   # byte-swapping path, and a 32-bit one, where an int doesn't hold every
   # uint32 offset
@@ -222,7 +229,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzByteBuffer, FuzzConformance]
+        target: [FuzzByteBuffer, FuzzConformance, FuzzTableBuilder]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7

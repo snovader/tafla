@@ -11,11 +11,11 @@
 // [TableSizer] and [TableWriter] write a table whose fields are known before
 // it's written, as the code that tafla-gen generates writes its tables: the
 // sizer counts the table's length from its fields, and its writer writes the
-// same fields, in the same order, into bytes of that length, without
-// recording them first as TableBuilder does. Fields whose sizes a schema
-// fixes, the generated code lays out itself: the sizer and the writer take
-// them together, and [AppendTable] appends a table that its caller lays out
-// entirely.
+// same fields, in the same order, straight into bytes of that length, rather
+// than into a buffer to copy, as TableBuilder does. Fields whose sizes a
+// schema fixes, the generated code lays out itself: the sizer and the writer
+// take them together, and [AppendTable] appends a table that its caller lays
+// out entirely.
 //
 // # Format
 //
@@ -43,14 +43,14 @@
 //
 // # Sharing and copying
 //
-// Builders keep their values: a setter of an array, a string or a struct's
-// bytes keeps the slice or string, and nesting a builder keeps the builder,
-// until the table is written, so their elements must not change in between.
-// Nesting a builder rather than bytes writes it straight into its parent,
-// so that the outermost table allocates and writes all the bytes once.
-// [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] record a
-// nested table, or each item of a vector, among the builder's own fields,
-// without a builder of its own.
+// Builders write each field when it's set, but keep long values: a setter of
+// an array, a string or the bytes of structs or of a nested table may keep
+// the slice or string until the table is written, rather than copy it, so
+// their elements must not change in between. A nested builder is copied into
+// its parent when it's set, and its parent keeps what it kept.
+// [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] write a
+// nested table, or each item of a vector, straight into the builder's own
+// bytes, without a builder of its own, nor copying it.
 //
 // Readers share the bytes: [ArrayView] reads an array's elements in place,
 // at any alignment and in any host byte order, and [ArrayView.AsSlice]

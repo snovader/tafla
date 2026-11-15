@@ -27,13 +27,13 @@ var layout = tafla.TableLayout{}.Sized().Versioned()
 const formatVersion = 1
 
 series, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
-err = series.SetUint32Array([]uint32{0, 86_400}) // kept until the table is written
+err = series.SetUint32Array([]uint32{0, 86_400}) // mustn't change until the table is written
 err = series.SetFloat32Array([]float32{21.75, 18.5})
 
 builder, err := tafla.NewVersionedTableBuilder(3, layout, formatVersion)
 err = builder.SetFloat64(59.3293)
 err = builder.SetString("Europe/Stockholm")
-err = builder.SetTable(series) // written straight into the table
+err = builder.SetTable(series) // its bytes copied in
 bytes, err := builder.Bytes()
 
 buffer := tafla.NewByteBuffer(bytes, layout)
@@ -95,26 +95,28 @@ with the code that tafla-gen generates.
 
 ## Sharing and copying
 
-- **Builders keep their values.** A setter of an array, a string or a
-  struct's bytes keeps the slice or string, and `SetTable()` and
-  `SetVector()` keep the builder or the `TableBytes`, until `Bytes()` writes
-  the table, so their elements must not change in between. A table's length
-  is counted when each field is set, so a value that changed length couldn't
-  be written, but a slice's length can't change.
+- **Builders write each field when it's set, but keep long values.** A
+  setter writes the field's offset and bytes into a buffer of 128 bytes
+  within the builder, and then into one on the heap, which doubles as it
+  grows, and `Bytes()` copies the table into new bytes of its exact length.
+  Arrays, strings, arrays of structs and `TableBytes` of 256 bytes or more
+  are kept until `Bytes()` copies them in, rather than copied when they're
+  set, so their elements must not change until the table is written. A
+  table's length is counted when each field is set, so a value that changed
+  length couldn't be written, but a slice's length can't change.
 - **Nest builders rather than bytes.** `SetTable()` and `SetVector()` take a
-  `*TableBuilder` or `TableBytes`, and write a builder of the parent's offset
-  type and no header straight into its parent, so that the outermost table
-  allocates and writes all the bytes once. A builder of another layout is
-  written by a writer of its own into the bytes that it takes in its parent.
-- **Nested tables can be recorded in place.** `SetTableFunc()` and
-  `SetVectorFunc()` record a nested table, or each item of a vector,
-  straight among the builder's fields, through the `Item` that their
-  function sets the fields on, rather than from a builder of its own. They
-  write the bytes that nested builders write, and leave the builder as it
-  was if the function returns an error or leaves fields unset. The
-  benchmarks' vector of 100 nested tables took about 5.8 µs so, in 6
-  allocations, against 10.3 µs and 204 allocations from a builder per item,
-  and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
+  `*TableBuilder` or `TableBytes`, and copy a builder's bytes into its parent
+  when they're set, without the allocation of its own `Bytes()`. Its parent
+  keeps the long values that it kept.
+- **Nested tables can be written in place.** `SetTableFunc()` and
+  `SetVectorFunc()` write a nested table, or each item of a vector,
+  straight into the builder's bytes, through the `Item` that their
+  function sets the fields on, rather than from a builder of its own, which
+  would be copied in. They write the bytes that nested builders write, and
+  leave the builder as it was if the function returns an error or leaves
+  fields unset. The benchmarks' vector of 100 nested tables took about
+  5.8 µs so, in 6 allocations, against 10.3 µs and 204 allocations from a
+  builder per item, and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
   with `SetTable()` and `SetVector()`, is still what a table built
   elsewhere, or reused, needs.
 - **Arrays are read in place.** `ByteBuffer`'s array getters return an
@@ -193,10 +195,11 @@ can cause, as Go's standard library panics for an index out of range:
 `TableSizer` and `TableWriter` write a table whose fields are known before
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, and its writer writes the
-same fields, in the same order, into bytes of that length, without recording
-them first as `TableBuilder` does. `TableSizer.AppendWriter()` writes the table
-after the bytes of a slice, into its capacity when it has room, as `append`
-does, so that a caller can reuse bytes.
+same fields, in the same order, straight into bytes of that length, rather
+than into a buffer to copy, as `TableBuilder` does.
+`TableSizer.AppendWriter()` writes the table after the bytes of a slice, into
+its capacity when it has room, as `append` does, so that a caller can reuse
+bytes.
 
 Fields whose sizes the schema fixes, scalars, structs and nested tables of
 only such fields, the generated code lays out itself, at positions that the
@@ -262,6 +265,7 @@ staticcheck ./...
 go test ./...
 go test -race ./...
 go test -tags tafla_portable ./...
+go test -tags tafla_builder_stress ./...
 ```
 
 `staticcheck` installs with `go install honnef.co/go/tools/cmd/staticcheck@latest`.
@@ -269,7 +273,8 @@ The tests in `tests/` are:
 
 - `conformance_test.go`: reads and rebuilds the conformance suite.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
-  `table_builder_test.go` and `table_writer_test.go`: properties of tables
+  `table_builder_test.go`, `builder_failures_test.go` and
+  `table_writer_test.go`: properties of tables
   built from the conformance suite's descriptions, which
   `tests/internal/tables` parses, generates with rapid, builds and reads, as Rust's `tests/common`
   does, and examples of the errors and of every boundary: signed zero, NaN,
@@ -288,6 +293,13 @@ The tests in `tests/` are:
 The property tests run 256 cases each, as proptest does in Rust's, which
 `-rapid.checks` changes, and save a failing case's input under the
 package's `testdata/rapid`, which `.gitignore` leaves out.
+
+`TableBuilder` copies arrays, strings and nested tables' bytes shorter than
+256 bytes when they're set, and keeps longer ones until `Bytes()`. The build
+tag `tafla_builder_stress` makes it keep every one, and grow its buffer from
+a byte rather than start with 128 bytes of its own, so that
+`go test -tags tafla_builder_stress ./...` takes those paths with the tests'
+small tables.
 
 ### Byte orders and word sizes
 
@@ -310,8 +322,10 @@ docker run --rm --platform linux/386 -v "$root:$root" -w "$PWD" alpine ./tafla-3
 
 ### Fuzzing
 
-`tests/fuzz_test.go` holds the fuzz targets. A panic, a hang, a run out of memory
-or a read that disagrees with `SPEC.md` is a finding:
+`tests/fuzz_test.go` holds the readers' fuzz targets, and
+`tests/builder_failures_test.go` the builder's. A panic, a hang, a run out of
+memory, a read that disagrees with `SPEC.md` or a table that the builder
+writes otherwise than its property says is a finding:
 
 - `FuzzByteBuffer` reads arbitrary bytes with every getter of `ByteBuffer`,
   at every position and past the end, in every offset type and header, and
@@ -320,6 +334,9 @@ or a read that disagrees with `SPEC.md` is a finding:
   within the input, and the decode error otherwise.
 - `FuzzConformance` mutates the conformance suite's tables and reads them as
   every valid case's description, as the conformance test reads them.
+- `FuzzTableBuilder` generates tables from the fuzzer's bytes, as the
+  property tests generate them, and checks that a setter that fails, or
+  whose fill function fails, leaves the builder as it was.
 
 Run each from `tests/` with `-fuzz`, and stop it with Ctrl-C or `-fuzztime`. Go writes an
 input that fails to `testdata/fuzz/<target>/`, where `go test` runs it again
@@ -330,6 +347,7 @@ for five minutes, from the corpus that its earlier runs grew.
 ```sh
 go test -run '^$' -fuzz FuzzByteBuffer -fuzztime 5m
 go test -run '^$' -fuzz FuzzConformance -fuzztime 5m
+go test -run '^$' -fuzz FuzzTableBuilder -fuzztime 5m
 ```
 
 The generator's fuzz target, `gen` in `rust/fuzz`, generates Go too.

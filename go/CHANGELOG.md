@@ -57,6 +57,22 @@ first commits, for code built from its source before the release.
   and errors. The benchmarks' hand-written reader of the record takes about
   22.7 ns rather than 28.2, and of the vector of 100 nested tables 1.43 µs
   rather than 1.66.
+- `TableBuilder` writes each field when it's set, into 128 bytes within the
+  builder and then into a buffer on the heap, rather than recording the field
+  and writing every field in `Bytes()`. Its API, the bytes that it writes and
+  its errors are the same, a setter that fails still leaves the builder as it
+  was, and `Bytes()` still returns new bytes of the table's exact length.
+  Arrays, strings, arrays of structs and `TableBytes` of 256 bytes or more
+  are kept until `Bytes()`, as every one was, and shorter ones are copied
+  when they're set. A nested builder is copied into its parent when it's
+  set. A builder that its caller doesn't keep, and calls neither
+  `SetTableFunc()` nor `SetVectorFunc()` on, stays on the caller's stack. The
+  benchmarks' record takes about 42 ns rather than 93, in 1 allocation
+  rather than 2, the document of 100 rows 267 ns rather than 338, and the
+  vector of 100 nested tables 3.27 µs rather than 5.95, in 4 allocations of
+  7.8 KB rather than 6 of 17.6 KB. The document of 100,000 rows and the
+  array of structs take as long, in an allocation fewer. A vector of 100
+  nested builders, which the comparison doesn't time, takes 4% longer.
 
 ### Fixed
 

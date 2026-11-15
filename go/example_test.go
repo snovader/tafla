@@ -20,7 +20,7 @@ func Example() {
 	if err != nil {
 		panic(err)
 	}
-	_ = series.SetUint32Array(timestamps) // kept until the table is written
+	_ = series.SetUint32Array(timestamps) // mustn't change until the table is written
 	_ = series.SetFloat32Array(values)
 
 	builder, err := tafla.NewVersionedTableBuilder(3, layout, formatVersion)
@@ -29,7 +29,7 @@ func Example() {
 	}
 	_ = builder.SetFloat64(59.3293)
 	_ = builder.SetString("Europe/Stockholm")
-	_ = builder.SetTable(series) // written straight into the table
+	_ = builder.SetTable(series) // its bytes copied in
 	bytes, err := builder.Bytes()
 	if err != nil {
 		panic(err)
