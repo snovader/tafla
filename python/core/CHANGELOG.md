@@ -41,7 +41,7 @@ repository's first commits, for code built from its source before the release.
   it reaches the item, so that the code that tafla-gen generates iterates
   over a vector's values without reading them all at once.
 - `TableBuilder.set_table_in_place()` and `set_vector_in_place()`, which
-  record a nested table, or each item of a vector, among the builder's own
+  write a nested table, or each item of a vector, among the builder's own
   fields, from a function that sets them on the builder, rather than from a
   builder of its own. They write the bytes that nested builders write, and
   the benchmarks' vector of 100 nested tables took 28% to 30% less time so
@@ -63,6 +63,28 @@ repository's first commits, for code built from its source before the release.
   100, with the native module built for the Python it runs on, and 55% and
   48% less with the abi3 wheels', whose stable ABI makes a call for each
   element.
+
+- `TableBuilder` writes each field into the table's bytes when it's set,
+  rather than recording it and writing every field through a `TableWriter`
+  in `finalize()`, and has a native implementation, in `tafla._native`, as
+  the other classes do, with the pure-Python one elsewhere. Its API and the
+  bytes it writes are unchanged, and so are its errors, but for when some of
+  them are raised:
+  - A scalar that its type can't hold raises `ValueError` from its setter,
+    rather than from `finalize()` or `bytes()`, and isn't added.
+  - Arrays, structs and tables given as buffers are copied when they're set,
+    so a buffer changed after its setter returns doesn't change the table,
+    and one whose length changed no longer raises from `finalize()`.
+  - A nested builder is copied into its parent as its bytes, and one whose
+    layout has a header is no longer finalized by nesting it.
+  - `finalize()` or `bytes()` within a `fill`, or nesting the builder in
+    another table there, raises `ValueError` itself, rather than the
+    in-place setter raising once `fill` returns.
+  - A table written in place whose slots alone are longer than the offset
+    type addresses raises `ValueError` before `fill` runs, as
+    `TableWriter.start_table()` does.
+  - The native `TableBuilder` can't be subclassed, and is for one thread at a
+    time, as the native `TableWriter` is.
 
 ### Removed
 

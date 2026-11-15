@@ -1,26 +1,34 @@
 import unittest
 from array import array
-from collections.abc import Buffer, Callable
+from collections.abc import Buffer, Callable, Generator
+from contextlib import contextmanager
 from struct import pack
 from typing import Any, cast, override
+from unittest.mock import patch
 
-from hypothesis import given
-from hypothesis.strategies import integers, one_of
+from hypothesis import given, settings
+from hypothesis.strategies import integers, sampled_from
 
 from tafla import (
     ByteBuffer,
     TableBuilder,
     TableLayout,
 )
-from tests.descriptions import tables
+from tests import tables as described
+from tests.descriptions import KINDS_OF_FIELDS, UNSIZED_UINT8, any_tables, tables
 from tests.tables import (
-    LONGEST,
+    FORMATS,
     Description,
     OffsetType,
     alignment_of,
     build_table,
     build_table_in_place,
+    create_builder,
+    nested_in_place,
     offset_size_of,
+    set_field,
+    set_field_in_place,
+    write_table,
 )
 
 MAX_LENGTHS: list[tuple[OffsetType, int]] = [
@@ -87,13 +95,29 @@ class TestTableBuilder(unittest.TestCase):
     def test_finalizes_an_empty_table(self) -> None:
         self.assertEqual(TableBuilder(0).bytes(), b"")
 
-    def test_rejects_a_scalar_that_doesnt_fit_its_type_from_finalize(self) -> None:
-        for setter, value in [("set_uint32", 2**32), ("set_float32", 1e300)]:
-            builder = TableBuilder(1)
-            getattr(builder, setter)(value)
+    def test_rejects_a_scalar_that_doesnt_fit_its_type_from_its_setter_and_stays_as_it_was(
+        self,
+    ) -> None:
+        cases = [
+            ("set_uint32", 2**32, "Can't write 4294967296 at 9: "),
+            ("set_int8", -129, "Can't write -129 at 9: "),
+            ("set_float32", 1e300, "Can't write 1e\\+300 at 9: "),
+            ("set_uint16", 1.5, "Can't write 1.5 at 9: "),
+        ]
+        expected = TableBuilder(2)
+        expected.set_uint8(1)
+        expected.set_uint8(2)
 
-            with self.subTest(setter=setter), self.assertRaises(ValueError):
-                builder.finalize()
+        for setter, value, message in cases:
+            with self.subTest(setter=setter, value=value):
+                builder = TableBuilder(2)
+                builder.set_uint8(1)
+
+                with self.assertRaisesRegex(ValueError, message):
+                    getattr(builder, setter)(value)
+
+                builder.set_uint8(2)
+                self.assertEqual(builder.bytes(), expected.bytes())
 
     def test_rejects_a_field_beyond_the_number_the_table_holds(self) -> None:
         builder = TableBuilder(1)
@@ -122,7 +146,7 @@ class TestTableBuilder(unittest.TestCase):
         with self.assertRaises(TypeError):
             builder.set_float64_array(array("d", [1.5]))
 
-    def test_writes_values_as_they_are_when_finalizing(self) -> None:
+    def test_writes_a_buffer_as_it_was_when_set(self) -> None:
         values = array("f", [1, 2])
         builder = TableBuilder(1)
         builder.set_float32_array(values)
@@ -131,7 +155,7 @@ class TestTableBuilder(unittest.TestCase):
         buffer = builder.finalize()
 
         self.assertEqual(
-            buffer.get_float32_array(buffer.root_offset(0)).tolist(), [3, 2]
+            buffer.get_float32_array(buffer.root_offset(0)).tolist(), [1, 2]
         )
 
     def test_keeps_a_converted_list_as_it_was_when_set(self) -> None:
@@ -217,12 +241,12 @@ class TestStructs(unittest.TestCase):
         ]
 
         for strided in strided_views:
-            for name, set_field in setters:
+            for name, setter in setters:
                 with self.subTest(setter=name, format=strided.format):
                     builder = TableBuilder(1)
 
                     with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
-                        set_field(builder, strided)
+                        setter(builder, strided)
 
                     builder.set_struct(b"\x01\x02")
                     self.assertEqual(builder.bytes(), pack("<I", 4) + b"\x01\x02")
@@ -254,55 +278,55 @@ class TestStructs(unittest.TestCase):
         # structs, 8 bytes from its start, start at 24
         self.assertEqual(parent.finalize().root_offset(1), 16)
 
+    def test_aligns_a_nested_builder_to_its_arrays_from_buffers_and_lists(
+        self,
+    ) -> None:
+        for kind, code in FORMATS.items():
+            size = array(code).itemsize
+            for values in (array(code, [1]), [1]):
+                with self.subTest(kind=kind, values=type(values).__name__):
+                    nested = TableBuilder(1)
+                    getattr(nested, f"set_{kind}_array")(values)
+
+                    parent = TableBuilder(2)
+                    parent.set_uint8(7)
+                    parent.set_table(nested)
+
+                    # After the uint8 at 8, the nested table is padded to the
+                    # next multiple of its elements' size
+                    offset = parent.finalize().root_offset(1)
+                    self.assertEqual(offset, -(-9 // size) * size)
+
+    def test_checks_a_nested_tables_alignment_before_the_number_of_fields(
+        self,
+    ) -> None:
+        builder = TableBuilder(1)
+        builder.set_uint8(1)
+
+        for name, table in [
+            ("bytes", b""),
+            ("builder", TableBuilder(0)),
+            ("itself", builder),
+        ]:
+            with (
+                self.subTest(table=name),
+                self.assertRaisesRegex(ValueError, "An alignment of 3 isn't"),
+            ):
+                builder.set_table(table, cast(Any, 3))
+
 
 def nested_uint8_array(values: bytearray) -> TableBuilder:
-    """A builder of one uint8[] of ``values``, which a parent writes in place"""
+    """A builder of one uint8[] of ``values``, which a parent nests"""
     nested = TableBuilder(1)
     nested.set_uint8_array(values)
     return nested
 
 
-def float64s_and_uint8(values: array[float]) -> TableBuilder:
-    """A float64[] after the header at 8: its count at 12, after 4 bytes of
-    padding, and its elements from 16, followed by a uint8"""
-    builder = TableBuilder(2)
-    builder.set_float64_array(values)
-    builder.set_uint8(7)
-    return builder
+class TestBuffersChangedAfterTheyreSet(unittest.TestCase):
+    """A setter copies its value, so a buffer that changes after it returns
+    leaves the table as it was"""
 
-
-class TestChangedLengths(unittest.TestCase):
-    """Buffers whose length changed after they were set, which the builder's
-    contract rules out. The writer writes each offset as it reaches its
-    field, so the table's length is what shows the change."""
-
-    def test_raises_value_error_for_an_array_that_grew_or_shrank_and_writes_it_once_restored(
-        self,
-    ) -> None:
-        expected = bytes(float64s_and_uint8(array("d", [1, 2, 3])).bytes())
-        cases = [
-            ("grew", [1, 2, 3, 4], "The fields wrote 49 bytes rather than the 41"),
-            ("shrank", [1, 2], "The fields wrote 33 bytes rather than the 41"),
-        ]
-
-        for change, changed, message in cases:
-            with self.subTest(change=change):
-                values = array("d", [1, 2, 3])
-                builder = float64s_and_uint8(values)
-
-                values[:] = array("d", changed)
-                with self.assertRaisesRegex(ValueError, message):
-                    builder.bytes()
-                with self.assertRaisesRegex(ValueError, message):
-                    builder.finalize()
-
-                values[:] = array("d", [1, 2, 3])
-                self.assertEqual(builder.bytes(), expected)
-                self.assertEqual(builder.finalize().bytes(), expected)
-
-    def test_raises_value_error_for_any_buffer_whose_length_changed_the_tables(
-        self,
-    ) -> None:
+    def test_writes_each_kind_of_buffer_as_it_was_when_set(self) -> None:
         cases: list[tuple[str, Callable[[TableBuilder, Any], None], Any]] = [
             ("uint8 array", TableBuilder.set_uint8_array, bytearray(b"ab")),
             ("float64 array", TableBuilder.set_float64_array, array("d", [1.5, 2.5])),
@@ -322,47 +346,26 @@ class TestChangedLengths(unittest.TestCase):
         ]
 
         for name, set_buffer, values in cases:
-            for change in ["pop", "append"]:
+            original = values[:]
+            expected = TableBuilder(2)
+            set_buffer(expected, original[:])
+            expected.set_uint8(7)
+
+            for change in ["pop", "append", "replace"]:
                 with self.subTest(field=name, change=change):
+                    changed = values[:]
                     builder = TableBuilder(2)
-                    set_buffer(builder, values)
+                    set_buffer(builder, changed)
                     builder.set_uint8(7)
 
-                    original = values[:]
                     if change == "pop":
-                        values.pop()
+                        changed.pop()
+                    elif change == "append":
+                        changed.append(0)
                     else:
-                        values.append(0)
+                        changed[0] = changed[1]
 
-                    with self.assertRaisesRegex(ValueError, "The fields wrote"):
-                        builder.finalize()
-
-                    values[:] = original
-                    unchanged = TableBuilder(2)
-                    set_buffer(unchanged, original)
-                    unchanged.set_uint8(7)
-                    self.assertEqual(builder.bytes(), unchanged.bytes())
-
-    def test_writes_the_values_of_buffers_whose_lengths_changed_but_not_the_tables(
-        self,
-    ) -> None:
-        # The uint8[]'s count is at 8 and its bytes at 12, and the float64[]'s
-        # count at 20, after padding, and its elements at 24. A uint8[] of up
-        # to 8 bytes takes some of that padding, and leaves the table's length
-        # as it was.
-        values = bytearray(b"ab")
-        builder = TableBuilder(2)
-        builder.set_uint8_array(values)
-        builder.set_float64_array([1.5])
-
-        values.append(ord("c"))
-        buffer = builder.finalize()
-
-        self.assertEqual(bytes(buffer.get_uint8_array(buffer.root_offset(0))), b"abc")
-        self.assertEqual(
-            buffer.get_float64_array(buffer.root_offset(1)).tolist(), [1.5]
-        )
-        self.assertEqual(buffer.root_offset(1), 20)
+                    self.assertEqual(builder.bytes(), expected.bytes())
 
 
 class TestVersions(unittest.TestCase):
@@ -449,9 +452,9 @@ class TestNestedBuilders(unittest.TestCase):
     def test_writes_a_builder_that_was_finalized_or_of_any_layout_as_the_bytes_that_it_writes(
         self, table: Description, length: int
     ) -> None:
-        """A builder that was finalized, or whose layout has a header or
-        another offset type than its parent's, is copied as a table nested as
-        bytes is; any other is written in place, as the same bytes"""
+        """A builder is copied as the bytes that it writes, whether it was
+        finalized or not, and whatever its layout, as a table nested as bytes
+        is"""
         own = bytes(build_table(table).bytes())
         finalized = build_table(table)
         finalized.finalize()
@@ -489,7 +492,7 @@ class TestNestedBuilders(unittest.TestCase):
         nested.set_float64_array([1, 2])
         nested.set_string("nested")
 
-        # Written straight into the parent, and then copied once finalized
+        # Copied before it's finalized and after
         first = TableBuilder(2)
         first.set_table(nested)
         first.set_vector([nested, nested])
@@ -503,48 +506,85 @@ class TestNestedBuilders(unittest.TestCase):
         self.assertEqual(second.bytes(), written)
         self.assertEqual(root_vector(second.finalize(), 1), [own, own])
 
-    def test_writes_a_nested_builders_values_as_they_are_when_finalized(self) -> None:
+    def test_writes_a_nested_builders_values_as_they_were_when_set(self) -> None:
         values = array("f", [1, 2])
         nested = TableBuilder(1)
         nested.set_float32_array(values)
+        values[0] = 3
 
         parent = TableBuilder(1)
         parent.set_table(nested)
-        values[0] = 3
 
         buffer = parent.finalize()
         position = buffer.field_offset(buffer.root_offset(0), 0)
 
-        self.assertEqual(buffer.get_float32_array(position).tolist(), [3, 2])
+        self.assertEqual(buffer.get_float32_array(position).tolist(), [1, 2])
 
 
-def with_offset_type(table: Description, offset_type: OffsetType) -> Description:
-    """Returns a table's description with every table in it, nested ones
-    included, of ``offset_type``, and versions that fit its slots, so that a
-    table of short offsets may be too long for them"""
-    layout = {**table["layout"], "offsetType": offset_type}
-    shortened: Description = {**table, "layout": layout}
-    if "version" in table:
-        shortened["version"] = min(table["version"], LONGEST[offset_type])
-
-    shortened["fields"] = [
-        _field_with_offset_type(field, offset_type) for field in table["fields"]
-    ]
-    return shortened
+class FillError(Exception):
+    """What a fill raises, which no builder raises itself"""
 
 
-def _field_with_offset_type(field: Description, offset_type: OffsetType) -> Description:
-    if field["type"] == "table":
-        return {**field, "table": with_offset_type(field["table"], offset_type)}
+@contextmanager
+def fills_raising_at(call: int | None) -> Generator[None]:
+    """Makes the ``call``th fill of a table written in place set half its
+    fields and raise ``FillError``, and every other fill set all its fields"""
+    fill = described._set_fields_in_place
+    calls = 0
 
-    if field["type"] == "vector":
-        items = [
-            {**item, "table": with_offset_type(item["table"], offset_type)}
-            for item in field["items"]
-        ]
-        return {**field, "items": items}
+    def raising(builder: Any, fields: list[Description], offset_type: Any) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == call:
+            fill(builder, fields[: len(fields) // 2], offset_type)
+            raise FillError
 
-    return field
+        fill(builder, fields, offset_type)
+
+    with patch.object(described, "_set_fields_in_place", raising):
+        yield
+
+
+def attempt(call: Callable[[], object]) -> object:
+    """What a call returns, or the type and message of what it raises"""
+    try:
+        return call()
+    except (TypeError, ValueError, FillError) as error:
+        return type(error).__name__, str(error)
+
+
+def outcomes(
+    table: Description,
+    *,
+    extra_fields: int = 0,
+    in_place: bool,
+    raise_at: int | None = None,
+    retry: bool = False,
+) -> list[object]:
+    """Sets each field of ``table`` on a builder whose header has
+    ``extra_fields`` more fields than the table, carrying on past a field
+    that raises, and then writes it. With ``retry``, a field whose fill
+    raised is set again. Returns what each call returned or raised."""
+    fields = max(len(table["fields"]) + extra_fields, 0)
+    builder = create_builder({**table, "fields": [None] * fields})
+    offset_type = table["layout"]["offsetType"]
+
+    def set_one(field: Description) -> None:
+        if in_place:
+            set_field_in_place(builder, field, offset_type)
+        else:
+            set_field(builder, field)
+
+    results: list[object] = []
+    with fills_raising_at(raise_at):
+        for field in table["fields"]:
+            result = attempt(lambda field=field: set_one(field))
+            if retry and result == (FillError.__name__, ""):
+                result = attempt(lambda field=field: set_one(field))
+            results.append(result)
+    results.append(attempt(lambda: bytes(builder.bytes())))
+
+    return results
 
 
 def built_by(
@@ -596,19 +636,96 @@ def _item_builder(value: float) -> TableBuilder:
 VALUES = [1.0, 2.0, 3.0]
 
 
+def written_by_a_writer(table: Description) -> object:
+    """The bytes that a ``TableWriter`` writes for a table whose nested tables
+    it writes in place, or the type of what it raises, which is
+    ``ValueError`` for a table too long for its offsets"""
+    try:
+        return bytes(write_table(table))
+    except ValueError as error:
+        return type(error)
+
+
+class TestFieldsAtTheLimit(unittest.TestCase):
+    def test_each_kind_of_field_fits_or_raises_as_a_writer_writes_it(self) -> None:
+        """After an array that starts it at every offset near the limit of
+        uint8 offsets, each kind of field, nested from builders or written in
+        place, fits or makes the table too long as it does for a
+        ``TableWriter``, which checks the table's length on its own"""
+        for field in KINDS_OF_FIELDS:
+            for length in range(200, 256):
+                array_field = {"type": "uint8[]", "value": [0] * length}
+                table = {"layout": UNSIZED_UINT8, "fields": [array_field, field]}
+                expected = written_by_a_writer(nested_in_place(table))
+                for build in (build_table, build_table_in_place):
+                    with self.subTest(field=field, length=length, build=build.__name__):
+                        self.assertEqual(built_by(build, table), expected)
+
+
 class TestTablesInPlace(unittest.TestCase):
-    @given(
-        one_of(tables(), tables().map(lambda table: with_offset_type(table, "uint8")))
-    )
-    def test_tables_recorded_in_place_write_what_their_builders_write(
+    @settings(max_examples=300)
+    @given(any_tables())
+    def test_tables_written_in_place_write_what_their_builders_write(
         self, table: Description
     ) -> None:
-        """Tables nested from builders and recorded in place write the bytes
+        """Tables nested from builders and written in place write the bytes
         that their builders write, and raise as they raise, for tables of any
-        offset type and of uint8 offsets, whose limits the fields reach"""
+        offset type and of short offsets, whose limits the fields reach, and
+        long vectors and tables, which often make their parent too long"""
         self.assertEqual(
             built_by(build_table_in_place, table), built_by(build_table, table)
         )
+
+    @settings(max_examples=300)
+    @given(any_tables(), sampled_from([-1, 0, 1]), integers(1, 6))
+    def test_a_fill_that_raises_leaves_the_builder_as_it_was(
+        self, table: Description, extra_fields: int, raise_at: int
+    ) -> None:
+        """A fill that sets half its fields and raises, at any depth of
+        tables and vectors written in place, leaves the builder as it was: set
+        again, the field writes what it would have, and so does every call
+        after it, whether it fits or raises, in a table with a field more or
+        fewer than its header holds"""
+        expected = outcomes(table, extra_fields=extra_fields, in_place=True)
+
+        retried = outcomes(
+            table,
+            extra_fields=extra_fields,
+            in_place=True,
+            raise_at=raise_at,
+            retry=True,
+        )
+
+        self.assertEqual(retried, expected)
+
+    def test_rejects_an_in_place_table_whose_slots_are_too_long_before_fill_runs(
+        self,
+    ) -> None:
+        filled: list[object] = []
+
+        def fill(item: TableBuilder, *values: object) -> None:
+            filled.append(values)
+
+        builder = TableBuilder(2, TableLayout(offset_type="uint8"))
+        builder.set_uint8(1)
+        # The parent's 2 slots and its uint8 make 3 bytes
+        with self.assertRaisesRegex(ValueError, "Field 2 makes the table 259 bytes"):
+            builder.set_table_in_place(fill, fields=256)
+        with self.assertRaisesRegex(
+            ValueError, "Field 2 makes the table <1001-bit integer> bytes"
+        ):
+            builder.set_table_in_place(fill, fields=2**1000)
+        # The vector's count and end make 5 bytes
+        with self.assertRaisesRegex(ValueError, "Field 2 makes the table 261 bytes"):
+            builder.set_vector_in_place([1], fill, fields=256)
+        with self.assertRaisesRegex(ValueError, "negative count"):
+            builder.set_table_in_place(fill, fields=-1)
+        with self.assertRaisesRegex(ValueError, "negative count"):
+            builder.set_vector_in_place([1], fill, fields=-1)
+
+        self.assertEqual(filled, [])
+        builder.set_vector_in_place([], fill, fields=256)
+        self.assertEqual(builder.bytes(), bytes([2, 3, 1, 0]))
 
     def test_writes_the_vector_of_nested_tables_as_its_builders_do(self) -> None:
         self.assertEqual(items_of(VALUES, TableBuilder(1)), items_from_builders(VALUES))
@@ -701,10 +818,16 @@ class TestTablesInPlace(unittest.TestCase):
         self,
     ) -> None:
         """The builder holds the nested table's fields while fill runs, so
-        writing it there writes them as a table of their own, which the
-        in-place setter undoes once fill returns"""
-        for write in (TableBuilder.bytes, TableBuilder.finalize):
-            with self.subTest(write=write.__name__):
+        writing it there, or nesting it in another table, raises, and the
+        in-place setter undoes the nested table"""
+        writes: list[tuple[str, Callable[[TableBuilder], object]]] = [
+            ("bytes", TableBuilder.bytes),
+            ("finalize", TableBuilder.finalize),
+            ("set_table", lambda item: TableBuilder(1).set_table(item)),
+            ("set_vector", lambda item: TableBuilder(1).set_vector([item])),
+        ]
+        for name, write in writes:
+            with self.subTest(write=name):
 
                 def fill(
                     item: TableBuilder,

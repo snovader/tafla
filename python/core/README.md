@@ -1,12 +1,12 @@
 # tafla
 
 Binary tables of scalars, strings and typed arrays, in tafla's format.
-`TableBuilder` writes a table at its exact size, copying typed arrays in bulk,
-and `ByteBuffer` reads fields back by offset, with arrays as views of the
-bytes. Every read checks that it stays within the bytes it was given.
-`TableWriter` writes a table whose fields are known as it's written, as the
-code that tafla-gen generates writes its tables, without recording them first
-as `TableBuilder` does.
+`TableBuilder` writes a table, checking each field as it's set and copying
+typed arrays in bulk, and `ByteBuffer` reads fields back by offset, with
+arrays as views of the bytes. Every read checks that it stays within the
+bytes it was given. `TableWriter` writes a table as the code that tafla-gen
+generates writes its tables, without `TableBuilder`'s checks, since the
+generated calls follow from the schema.
 
 ```pycon
 >>> from array import array
@@ -20,7 +20,7 @@ as `TableBuilder` does.
 >>> builder = TableBuilder(3, LAYOUT, 1)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
->>> builder.set_table(series)  # written straight into the table
+>>> builder.set_table(series)  # copied into the table
 >>> data = builder.bytes()
 
 >>> buffer = ByteBuffer(data, LAYOUT)
@@ -34,14 +34,14 @@ as `TableBuilder` does.
 ```
 
 The package's docstring, `help(tafla)`, has a longer example, with structs
-and a vector of tables recorded in place, and describes the format and how
+and a vector of tables written in place, and describes the format and how
 each value converts to its field's type. The tests run both examples as
 doctests.
 
-The classes that the code that tafla-gen generates calls are native, written
-in Rust, in the wheels for common platforms, which take about half the time
-of the pure-Python ones. On other platforms, pip installs the pure-Python
-wheel, which works the same way, with the same API and errors. Setting
+tafla's classes are native, written in Rust, in the wheels for common
+platforms, which take half the time of the pure-Python ones or less. On
+other platforms, pip installs the pure-Python wheel, which works the same
+way, with the same API and errors. Setting
 `TAFLA_PUREPYTHON=1` uses the pure-Python classes anywhere, and
 `tafla.IMPLEMENTATION` says which are in use: `"native"` or `"python"`. The
 docstring's Implementations section describes the few ways in which they

@@ -1,7 +1,7 @@
 import builtins
 from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
-from typing import Any, Literal, Self, cast, overload
+from typing import Any, Literal, cast, overload
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
@@ -47,18 +47,17 @@ _FIELD_ERRORS = (*_PACK_ERRORS, UnicodeEncodeError)
 class TableWriter:
     """Writes a table forward, appending each field to its bytes as it's set,
     for code that knows a table's fields as it writes them, such as the code
-    that tafla-gen generates. Unlike ``TableBuilder``, it doesn't record the
-    fields first, which takes most of a small table's time.
+    that tafla-gen generates. Unlike ``TableBuilder``, it takes each field's
+    index and doesn't check its calls, which follow from the schema there.
 
     Fields are set in order, each with its index in its table. A nested table
     follows its parent's ``set_table()``, between ``start_table()`` and
     ``end_table()``; the items of a vector follow its ``set_vector()`` the same
     way, each followed by ``set_item_end()``, which writes where it ends. Each
     field's offset is written as the writer reaches the field. ``TableBuilder``
-    writes through a writer too, once it has recorded its fields and counted
-    their length, so the two write the same bytes for the same fields, and
-    convert arrays, strings and structs the same way, with the same errors: a
-    struct that isn't a C-contiguous buffer raises ``TypeError``.
+    writes the same bytes for the same fields, and converts arrays, strings and
+    structs the same way, with the same errors: a struct that isn't a
+    C-contiguous buffer raises ``TypeError``.
 
     ``set_fields()`` writes a table's leading fields whose offsets depend on no
     value, which a ``FixedFields`` describes, in one call: scalars, structs,
@@ -149,35 +148,6 @@ class TableWriter:
         if version is not None:
             self.__length.pack_into(data, size if self.__sized else 0, version)
 
-    @classmethod
-    def _checked(cls, fields: int, layout: TableLayout, version: int | None) -> Self:
-        """Returns a writer as the constructor does, for arguments that
-        ``TableBuilder``'s constructor checked already, without checking them
-        again."""
-        # The constructor's assignments, repeated, since a helper that both
-        # called would add a call to the public constructor, which generated
-        # code makes for every message. Without the checks, the builder wrote
-        # its record 4% faster.
-        writer = cls.__new__(cls)
-        size = layout.offset_size()
-        sized = layout.sized()
-        header_size = layout.header_size()
-        data = bytearray(header_size + fields * size)
-
-        writer.__size = size
-        writer.__length = OFFSET_STRUCTS[size]
-        writer.__max_length = MAX_LENGTHS[size]
-        writer.__sized = sized
-        writer.__header_size = header_size
-        writer.__data = data
-        writer.__table = 0
-        writer.__slots = header_size
-
-        if version is not None:
-            writer.__length.pack_into(data, size if sized else 0, version)
-
-        return writer
-
     @staticmethod
     def write_fields(
         fields: FixedFields,
@@ -254,17 +224,6 @@ class TableWriter:
         """Exports the view that ``bytes()`` returns, so that
         ``memoryview(writer)`` is ``writer.bytes()``"""
         return self.bytes()
-
-    def _copy_table(self, table: Buffer) -> None:
-        """Writes a table that was written already, from its bytes as they
-        are, in place of the fields that ``start_table()`` and ``end_table()``
-        would enclose: after its parent's ``set_table()``, or as a vector item
-        before its ``set_item_end()``. ``TableBuilder`` copies the tables that
-        it can't write in place with it: tables nested as bytes, builders that
-        were written already, and builders whose layout has a header or
-        another offset type. Generated code writes every nested table in
-        place, so it isn't public."""
-        self.__data += table
 
     def start_table(self, fields: int) -> int:
         """Starts the fields of a nested table or vector item of ``fields``
@@ -545,17 +504,6 @@ class TableWriter:
         ``ValueError``, if it has a lone surrogate, which UTF-8 can't encode."""
         encoded = string.encode()
 
-        self.__set_offset(index)
-        self.__set_count(len(encoded), len(encoded))
-        self.__data += encoded
-
-    def _set_encoded_string(self, index: int, encoded: builtins.bytes) -> None:
-        """Writes a string that's encoded as UTF-8 already, as ``set_string()``
-        writes it. ``TableBuilder`` encodes a string outside ASCII when it's
-        set, to count its bytes, and writes them with it. Generated code
-        writes strings with ``set_string()``, so it isn't public, and this
-        repeats its write rather than ``set_string()`` calling it, which would
-        add a call to every string that the generated code writes."""
         self.__set_offset(index)
         self.__set_count(len(encoded), len(encoded))
         self.__data += encoded

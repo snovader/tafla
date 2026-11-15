@@ -4,7 +4,7 @@
 [package]
 name = "tafla-python"
 version = "0.0.0"
-description = "The native implementation of the classes of tafla's Python runtime that generated code uses"
+description = "The native implementation of the classes of tafla's Python runtime"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
@@ -25,13 +25,6 @@ tafla = { path = "../../../rust/core" }
 # development environment's build enables, through python/pyproject.toml,
 # and the wheels leave out, since each array's call would check it
 test-hooks = []
-# The prototype of a builder that writes each field when it's set,
-# DirectTableBuilder, which python/prototype/README.md describes. Only the
-# prototype's own builds enable it.
-prototype = []
-# Counts the Rust heap's allocations, for the prototype's allocation report,
-# in a build of its own that isn't timed
-count-allocations = ["prototype"]
 
 [build-dependencies]
 pyo3-build-config = "=0.30.1"

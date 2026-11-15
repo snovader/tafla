@@ -11,13 +11,15 @@ import subprocess
 import sys
 import unittest
 from array import array
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from types import ModuleType
 from typing import Any, override
+from unittest.mock import patch
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis.strategies import (
     DataObject,
     DrawFn,
@@ -34,15 +36,19 @@ from hypothesis.strategies import (
     lists,
     none,
     one_of,
+    recursive,
     sampled_from,
     text,
     tuples,
 )
 
 import tafla
-from tafla import byte_buffer, fixed_fields, layout, table_writer
-from tests.tables import FORMATS
+from tafla import byte_buffer, fixed_fields, layout, table_builder, table_writer
+from tests import tables
+from tests.descriptions import KINDS_OF_FIELDS, UNSIZED_UINT8, any_tables
+from tests.tables import FORMATS, LONGEST, Description
 from tests.test_fixed_fields import Misreported
+from tests.test_table_builder import outcomes as building_outcomes
 
 try:
     from tafla import _native
@@ -188,6 +194,7 @@ class Implementation:
     name: str
     ByteBuffer: Any
     FixedFields: Any
+    TableBuilder: Any
     TableLayout: Any
     TableWriter: Any
 
@@ -196,6 +203,7 @@ PURE = Implementation(
     "python",
     byte_buffer.ByteBuffer,
     fixed_fields.FixedFields,
+    table_builder.TableBuilder,
     layout.TableLayout,
     table_writer.TableWriter,
 )
@@ -206,6 +214,7 @@ def native_implementation(module: ModuleType) -> Implementation:
         "native",
         module.ByteBuffer,
         module.FixedFields,
+        module.TableBuilder,
         module.TableLayout,
         module.TableWriter,
     )
@@ -325,18 +334,24 @@ class TestImplementations(unittest.TestCase):
     def test_tafla_uses_the_native_classes_unless_pure_python_is_forced(self) -> None:
         if tafla.IMPLEMENTATION == "native":
             self.assertIs(tafla.TableWriter, self.native.TableWriter)
+            self.assertIs(tafla.TableBuilder, self.native.TableBuilder)
             self.assertIs(tafla.ByteBuffer, self.native.ByteBuffer)
         else:
             self.assertIs(tafla.TableWriter, PURE.TableWriter)
+            self.assertIs(tafla.TableBuilder, PURE.TableBuilder)
             self.assertIs(tafla.ByteBuffer, PURE.ByteBuffer)
 
     def test_have_the_same_methods_with_the_same_parameters(self) -> None:
-        for name in ["ByteBuffer", "FixedFields", "TableLayout", "TableWriter"]:
+        for name in [
+            "ByteBuffer",
+            "FixedFields",
+            "TableBuilder",
+            "TableLayout",
+            "TableWriter",
+        ]:
             pure, native = getattr(PURE, name), getattr(self.native, name)
             names = {
-                attribute
-                for attribute in dir(pure)
-                if not attribute.startswith("_") or attribute in BUILDER_METHODS
+                attribute for attribute in dir(pure) if not attribute.startswith("_")
             }
             for attribute in sorted(names):
                 with self.subTest(cls=name, attribute=attribute):
@@ -690,6 +705,117 @@ class TestImplementations(unittest.TestCase):
                 ]
                 self.assertEqual(read[1], read[0])
 
+    @settings(max_examples=300)
+    @given(
+        any_tables(),
+        sampled_from([-1, 0, 1]),
+        booleans(),
+        one_of(none(), integers(1, 6)),
+    )
+    def test_build_the_same_tables_and_raise_the_same_errors_call_by_call(
+        self,
+        table: Description,
+        extra_fields: int,
+        in_place: bool,
+        raise_at: int | None,
+    ) -> None:
+        """Every field of tables of any offset type, and of short offsets
+        whose limits they reach, from builders or written in place, with a
+        field more or fewer than the header holds, and fills that raise
+        partway, returns and raises the same, messages included"""
+        built = []
+        for implementation in (PURE, self.native):
+            with building_with(implementation):
+                built.append(
+                    building_outcomes(
+                        table,
+                        extra_fields=extra_fields,
+                        in_place=in_place,
+                        raise_at=raise_at,
+                    )
+                )
+
+        self.assertEqual(built[1], built[0])
+
+    def test_build_each_kind_of_field_at_every_position_near_the_limit(
+        self,
+    ) -> None:
+        """After an array that starts it at every offset near the limit of
+        uint8 offsets, each kind of field, nested from builders or written in
+        place, fits or raises the same"""
+        for field in KINDS_OF_FIELDS:
+            for length in range(200, 256):
+                array_field = {"type": "uint8[]", "value": [0] * length}
+                table = {"layout": UNSIZED_UINT8, "fields": [array_field, field]}
+                for in_place in (False, True):
+                    built = []
+                    for implementation in (PURE, self.native):
+                        with building_with(implementation):
+                            built.append(building_outcomes(table, in_place=in_place))
+                    self.assertEqual(built[1], built[0], (field, length, in_place))
+
+    @given(
+        layout_arguments(),
+        one_of(integers(0, 6), COUNTS),
+        one_of(none(), integers(-1, 300), INTEGERS),
+    )
+    def test_construct_builders_the_same_whatever_the_arguments(
+        self, arguments: dict[str, Any], fields: int, version: int | None
+    ) -> None:
+        built = []
+        for implementation in (PURE, self.native):
+            table_layout = implementation.TableLayout(**arguments)
+            if version is None:
+                create = partial(implementation.TableBuilder, fields, table_layout)
+            else:
+                create = partial(
+                    implementation.TableBuilder, fields, table_layout, version
+                )
+            # The constructor's error, or the bytes of a table of no fields
+            built.append(outcome(lambda create=create: create().bytes()))
+
+        self.assertEqual(built[1], built[0])
+
+    @settings(max_examples=300)
+    @given(data())
+    def test_build_the_same_bytes_and_raise_the_same_errors_whatever_the_calls(
+        self, draw: DataObject
+    ) -> None:
+        """Any calls with any arguments, nested builders and tables written
+        in place among them, whose fills make calls of their own and may
+        raise, return and raise the same, and leave the builders the same"""
+        arguments = draw.draw(layout_arguments())
+        fields = draw.draw(integers(0, 6))
+        offset_type = arguments["offset_type"]
+        version = (
+            draw.draw(integers(0, LONGEST[offset_type]))
+            if arguments["versioned"]
+            else None
+        )
+        calls = draw.draw(lists(BUILDS, max_size=8))
+
+        builders = []
+        for implementation in (PURE, self.native):
+            table_layout = implementation.TableLayout(**arguments)
+            if version is None:
+                builder = implementation.TableBuilder(fields, table_layout)
+            else:
+                builder = implementation.TableBuilder(fields, table_layout, version)
+            builders.append((implementation, builder))
+
+        for method, args in calls:
+            results = []
+            for implementation, builder in builders:
+                made: list[object] = []
+                result = outcome(
+                    partial(build, builder, implementation, method, args, made)
+                )
+                results.append((result, made))
+            self.assertEqual(results[1], results[0], describe_call(method, args))
+
+        written = [outcome(builder.bytes) for _, builder in builders]
+        self.assertEqual(written[1], written[0])
+
 
 def _write_message(
     implementation: Implementation,
@@ -859,10 +985,6 @@ def describe_call(method: str, args: tuple[Any, ...]) -> str:
         return f"{method}{args!r}"
     except ValueError:
         return f"{method}(...)"
-
-
-# The writer's private methods that TableBuilder calls
-BUILDER_METHODS = {"_checked", "_copy_table", "_set_encoded_string"}
 
 
 def parameters(method: Callable[..., object]) -> list[str]:
@@ -1073,6 +1195,160 @@ def write(
         length = max(len(tables) + misreported, 0)
         return writer.set_vector_tables(index, fields, Misreported(tables, length))
     return getattr(writer, method)(*args)
+
+
+@contextmanager
+def building_with(implementation: Implementation) -> Generator[None]:
+    """Makes ``tests.tables`` build tables with ``implementation``'s builder
+    and layouts"""
+    with (
+        patch.object(tables, "TableBuilder", implementation.TableBuilder),
+        patch.object(tables, "TableLayout", implementation.TableLayout),
+    ):
+        yield
+
+
+# Tables to nest, which build() makes with the builder's implementation: a
+# complete builder, one with a field left to set, one that was finalized,
+# one with a header, one of uint8 offsets, and the builder itself
+NESTED_BUILDERS = ["complete", "incomplete", "finalized", "sized", "uint8", "itself"]
+NESTED: SearchStrategy[Any] = one_of(sampled_from(NESTED_BUILDERS), STRUCTS)
+
+# Counts of fields of tables written in place: those of no table, and those
+# whose slots no offset type addresses
+IN_PLACE_FIELDS: SearchStrategy[int] = one_of(
+    integers(0, 3), integers(-3, -1), integers(60, 300), HUGE_COUNTS, LARGE_INTEGERS
+)
+
+SETTERS: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
+    tuples(sampled_from([f"set_{kind}" for kind in sorted(FORMATS)]), tuples(VALUES)),
+    tuples(
+        sampled_from([f"set_{kind}_array" for kind in sorted(FORMATS)]),
+        tuples(ARRAYS),
+    ),
+    tuples(
+        just("set_string"),
+        tuples(one_of(text(characters(codec="utf-8"), max_size=6), just("\ud800"))),
+    ),
+    tuples(just("set_struct"), tuples(STRUCTS)),
+    tuples(
+        just("set_struct_array"),
+        tuples(STRUCTS, one_of(integers(-1, 4), INTEGERS), ALIGNMENTS),
+    ),
+    tuples(just("set_table"), tuples(NESTED, one_of(none(), ALIGNMENTS))),
+    tuples(just("set_vector"), tuples(lists(NESTED, max_size=3))),
+    tuples(sampled_from(["bytes", "finalize"]), just(())),
+)
+
+
+def _in_place(
+    calls: SearchStrategy[list[tuple[str, tuple[Any, ...]]]],
+) -> SearchStrategy[tuple[str, tuple[Any, ...]]]:
+    """In-place setters whose fills make ``calls`` and may raise: a table's,
+    with up to 9 arguments for its fill, and a vector's, whose values' len()
+    may be off by one"""
+    return one_of(
+        tuples(
+            just("set_table_in_place"),
+            tuples(IN_PLACE_FIELDS, integers(0, 9), calls, booleans()),
+        ),
+        tuples(
+            just("set_vector_in_place"),
+            tuples(
+                IN_PLACE_FIELDS,
+                integers(0, 3),
+                sampled_from([0, 0, -1, 1]),
+                calls,
+                booleans(),
+            ),
+        ),
+    )
+
+
+BUILDS: SearchStrategy[tuple[str, tuple[Any, ...]]] = recursive(
+    SETTERS, lambda calls: _in_place(lists(calls, max_size=4)), max_leaves=12
+)
+
+
+class FillRaised(Exception):
+    """What a fill raises once it has made its calls"""
+
+
+def build(
+    builder: Any,
+    implementation: Implementation,
+    method: str,
+    args: tuple[Any, ...],
+    made: list[object],
+) -> object:
+    """Makes a call of ``BUILDS`` to ``builder``. A fill appends the outcome
+    of each call that it makes to ``made``."""
+    if method == "finalize":
+        return ("buffer", bytes(builder.finalize().bytes()))
+    if method == "set_table":
+        nested, alignment = args
+        table = nested_table(builder, implementation, nested)
+        if alignment is None:
+            return builder.set_table(table)
+        return builder.set_table(table, alignment)
+    if method == "set_vector":
+        (items,) = args
+        return builder.set_vector(
+            [nested_table(builder, implementation, item) for item in items]
+        )
+    if method == "set_table_in_place":
+        fields, arguments, calls, raises = args
+
+        def fill_table(item: Any, *values: object) -> None:
+            made.append(values)
+            fill(item, implementation, calls, raises, made)
+
+        return builder.set_table_in_place(fill_table, *range(arguments), fields=fields)
+    if method == "set_vector_in_place":
+        fields, count, misreported, calls, raises = args
+        values = Misreported([(value,) for value in range(count)], count + misreported)
+
+        def fill_item(item: Any, value: tuple[int]) -> None:
+            made.append(value)
+            fill(item, implementation, calls, raises and value[0] == count - 1, made)
+
+        return builder.set_vector_in_place(values, fill_item, fields=fields)
+    return getattr(builder, method)(*args)
+
+
+def fill(
+    builder: Any,
+    implementation: Implementation,
+    calls: list[tuple[str, tuple[Any, ...]]],
+    raises: bool,
+    made: list[object],
+) -> None:
+    for method, args in calls:
+        made.append(
+            outcome(partial(build, builder, implementation, method, args, made))
+        )
+    if raises:
+        raise FillRaised
+
+
+def nested_table(builder: Any, implementation: Implementation, nested: Any) -> Any:
+    """A table to nest in ``builder``, as ``NESTED`` describes it"""
+    if nested == "itself":
+        return builder
+    if not isinstance(nested, str):
+        return nested
+
+    table_layout = implementation.TableLayout(
+        sized=nested == "sized",
+        offset_type="uint8" if nested == "uint8" else "uint32",
+    )
+    table = implementation.TableBuilder(2, table_layout)
+    table.set_uint8(1)
+    if nested != "incomplete":
+        table.set_float64_array([1.5])
+    if nested == "finalized":
+        table.finalize()
+    return table
 
 
 if __name__ == "__main__":
