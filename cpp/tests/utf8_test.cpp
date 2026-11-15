@@ -163,12 +163,13 @@ TEST(Utf8, RejectsIllFormedSequences) {
     }
 }
 
-/// ASCII is checked a word at a time from the first byte, and the end of a
-/// string by a word that overlaps the one before it, so a byte that isn't
-/// ASCII is found at any position of a string of any length to five words,
-/// at any address
+/// ASCII is checked from the first byte in blocks of four words, the last of
+/// which overlaps the one before it, and in a string of a block or less in
+/// fewer words, halves of a word or bytes, which overlap, so a byte that
+/// isn't ASCII is found at any position of a string of any length to three
+/// blocks and a word, at any address
 TEST(Utf8, FindsAByteThatIsNotAsciiAtAnyPositionOfAnyLength) {
-    for (std::size_t length = 0; length <= 40; ++length) {
+    for (std::size_t length = 0; length <= 104; ++length) {
         std::vector<std::uint8_t> bytes(length, 'a');
         EXPECT_TRUE(valid(bytes)) << length;
         EXPECT_TRUE(validates_as_table(bytes)) << length;

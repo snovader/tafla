@@ -172,17 +172,28 @@ type, offset size, vector, builder and decode error.
   Writing through a `BasicTableWriter<false>` then made `to_bytes()` of that
   vector a further 13% faster, 1.27 µs against 1.45 µs, with half the
   machine code.
-- **Strings are checked a word at a time.** A read checks that a string is
-  UTF-8, and most strings are ASCII, so `valid_utf8()` checks 8 bytes at a
-  time from the first, with a last word that overlaps the one before it, and
-  a string shorter than 8 bytes by two halves of a word, which overlap, or by
-  its first, middle and last bytes. Reading the comparison's record, whose
-  name is 16 bytes of ASCII, took 3.0 ns rather than 6.2 ns, and its document
-  of 100 rows 7.1 ns rather than 9.9 ns, against a check of words only from
-  the second byte, and of single bytes at the end. A string that holds a byte
-  that isn't ASCII is checked character by character from the word that
-  holds it, which took 1.2 to 1.8 ns longer for such strings of 6 to 40
-  bytes.
+- **Strings are checked for ASCII in words OR-ed together, and then from
+  their first byte that isn't.** A read checks that a string is UTF-8, and
+  most strings are ASCII, so `valid_utf8()` ORs a string's 8-byte words
+  together from the first byte and tests their high bits once: its first
+  word and its last, which overlap, for 8 to 16 bytes, its first two and its
+  last two for 17 to 32, and blocks of four words for a longer string, the
+  last of which overlaps the one before it. A string shorter than 8 bytes is
+  checked by two halves of a word, which overlap, or by its first, middle
+  and last bytes. Reading the comparison's record, whose name is 16 bytes of
+  ASCII, took 3.0 ns rather than 6.2 ns, and its document of 100 rows 7.1 ns
+  rather than 9.9 ns, once words were checked from the first byte rather
+  than the second, and with a last word rather than single bytes at the end.
+  Testing them once rather than a word at a time then took the record to
+  2.7 ns and the document to 6.7 to 6.9 ns, and, timed alone, ASCII strings
+  of 9 to 40 bytes to 0.7 to 1.5 ns rather than 1.1 to 2.4 ns. Where the
+  test fails, the high bits of the words that it OR-ed, taken in turn,
+  locate the first byte that isn't ASCII, from which `valid_utf8_from()`
+  checks the characters one by one, rather than from the start of the word
+  that holds it. Strings of 6 to 40 bytes with ASCII before that byte then
+  took as long or up to 55% less time. A string whose first byte isn't
+  ASCII, which a branch tests on its own, took up to 0.8 ns longer, such as
+  6-byte strings of 2- and 3-byte characters, 14 to 17% longer.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
