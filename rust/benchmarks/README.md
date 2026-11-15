@@ -95,10 +95,11 @@ comparison uses its counterpart:
   fields, with `set_table_with()` and `set_vector_with()`. The builders
   borrow the columns and write each array in bulk into a table of its exact
   size. Readers check the document's version, and read columns as
-  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec`, which the
-  builder takes with `set_struct_array()`, and read from
-  `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`, as
-  tafla-gen's code does.
+  `ArrayView`s, whose `to_cow()` borrows them. The array of structs is written with `to_le_bytes()` into a `Vec` reused between calls, which the
+  builder borrows with `set_struct_array()`, and read from
+  `get_struct_array()`'s bytes with `as_chunks()` and `from_le_bytes()`.
+  tafla-gen's code converts each struct in the same way, but writes them
+  straight into the table.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
   in `src/codecs/tafla_gen/`. A message's `serialize()` counts the table's
   length with a `TableSizer`, and then writes every field, nested tables

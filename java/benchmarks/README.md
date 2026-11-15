@@ -94,9 +94,11 @@ comparison uses its counterpart:
 - **tafla** records nested tables in place among their parent builder's
   fields, with `setTable(fields, fill)` and `setVector(count, fields, fill)`.
   Arrays of the elements' own Java type are copied in bulk, and the uint32
-  keys are narrowed and widened element by element. The array of structs is written into a `byte[]` through a
+  keys are narrowed and widened element by element. The array of structs is written into a `byte[]` reused between calls through a
   little-endian `VarHandle` and set with `setStructArray()`, and read from
-  `getStructArray()`'s little-endian view, as tafla-gen's code does.
+  `getStructArray()`'s little-endian view. tafla-gen's code writes each struct
+  through the same `VarHandle`, but straight into the table, and reads them
+  from the same view.
 - **tafla-gen** is the code that tafla-gen generates from
   `src/main/tafla/workloads.tafla`, in the package
   `io.github.snovader.tafla.benchmarks.generated.tafla`. A message's

@@ -137,13 +137,39 @@ def deserialize_list(data: Buffer) -> ListInput:
     return ListInput(items)
 
 
+class _ReusedStructArray:
+    """The bytes that an array of structs is packed into before
+    ``TableBuilder.set_struct_array()`` takes it, kept between tables. The
+    builder copies them into its table before ``bytes()`` returns, so the next
+    table's structs can be packed over them. Sharing them makes
+    ``serialize_structs()`` unsafe to call from several threads at once."""
+
+    __slots__ = ("__data",)
+
+    def __init__(self) -> None:
+        self.__data = bytearray()
+
+    def data(self, length: int) -> bytearray:
+        """Exactly ``length`` bytes: the last array's, or new ones when its
+        length differs"""
+        data = self.__data
+        if len(data) != length:
+            data = self.__data = bytearray(length)
+
+        return data
+
+
+_item_structs = _ReusedStructArray()
+
+
 def serialize_structs(input: ListInput) -> memoryview:
     """Packs the structs one after another with ``struct``, as tafla-gen's code
-    writes an array of them"""
+    writes an array of them, but into bytes reused between calls, where its
+    code packs new bytes"""
     items = input.items
     size = ITEM_STRUCT.size
 
-    data = bytearray(len(items) * size)
+    data = _item_structs.data(len(items) * size)
     for index, item in enumerate(items):
         ITEM_STRUCT.pack_into(data, index * size, item.value, item.first, item.second)
 

@@ -104,7 +104,7 @@ comparison uses its counterpart:
   columns and write each array in bulk into a table of its exact size.
   Readers check the document's version, return each read's error as it
   comes, as the runtime's examples do, and read columns as `ArrayView`s, whose
-  `Slice()` shares the bytes. The array of structs is written with `encoding/binary` into a slice, which the
+  `Slice()` shares the bytes. The array of structs is written with `encoding/binary` into a slice reused between calls, which the
   builder takes with `SetStructArray()`, and read from `GetStructArray()`'s
   bytes with `encoding/binary`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,

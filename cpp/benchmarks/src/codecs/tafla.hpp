@@ -110,13 +110,21 @@ struct Tafla {
         return list;
     }
 
-    /// Writes the structs one after another into a vector, which the builder
-    /// views until it writes the table, as tafla-gen's code writes an array
-    /// of them
+    /// Writes the structs one after another into bytes that the codec reuses
+    /// between calls, which the builder views until it writes the table.
+    /// tafla-gen's code writes them straight into the table, with
+    /// `TableWriter::set_structs()`.
     [[nodiscard]] Bytes serialize(StructsShape, const List& input) const {
-        std::vector<std::uint8_t> structs(input.items.size() * kItemSize);
-        for (std::size_t index = 0; index < input.items.size(); ++index) {
-            write_item_struct(input.items[index], structs.data() + index * kItemSize);
+        auto& structs = item_structs_;
+        structs.resize(input.items.size() * kItemSize);
+
+        // Both in locals: a byte that the loop stores could otherwise alias
+        // the member's pointer or the items' vector, which it would then load
+        // again for every struct, rather than copying 8 structs at a time
+        auto* const bytes = structs.data();
+        const std::span<const Item> items(input.items);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            write_item_struct(items[index], bytes + index * kItemSize);
         }
 
         TableBuilder builder(1, TableLayout());
@@ -197,6 +205,14 @@ struct Tafla {
     static Item read_item_struct(const std::uint8_t* bytes) {
         return {load_le<float>(bytes), load_le<float>(bytes + 4), load_le<float>(bytes + 8)};
     }
+
+private:
+    /// The last array of structs that `serialize()` wrote, which it writes
+    /// the next one over. The builder copies them into its table before
+    /// `to_bytes()` returns, so they're free again once it has. Sharing them
+    /// between calls makes a codec unsafe for concurrent use; each copy of
+    /// it has its own.
+    mutable std::vector<std::uint8_t> item_structs_;
 };
 
 }  // namespace tafla::benchmarks

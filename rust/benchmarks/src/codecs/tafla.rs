@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 
 use tafla::{
     Alignment, BuildError, ByteBuffer, DecodeError, InPlaceTable, TableBuilder, TableLayout,
@@ -19,6 +20,13 @@ const SAMPLE_SIZE: usize = 12;
 /// An item as a struct: its three float32s, aligned to 4 in an array
 const ITEM_SIZE: usize = 12;
 const ITEM_ALIGNMENT: Alignment = Alignment::Four;
+
+thread_local! {
+    /// The last array of structs that the thread wrote, which it writes the
+    /// next one over: the builder borrows them, and copies them into its
+    /// table in `to_bytes()`, so they're free again once it's dropped
+    static ITEM_STRUCTS: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+}
 
 /// tafla's runtime, as its README shows.
 ///
@@ -140,18 +148,22 @@ impl Workload<ListShape> for Tafla {
 impl Workload<StructsShape> for Tafla {
     type Bytes = Vec<u8>;
 
-    /// Writes the structs one after another into a `Vec`, which the builder
-    /// owns, as tafla-gen's code writes an array of them
+    /// Writes the structs one after another into bytes reused between calls,
+    /// which the builder borrows. tafla-gen's code writes them straight into
+    /// the table, with `TableWriter::set_structs()`.
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
-        let mut structs = Vec::with_capacity(input.items.len() * ITEM_SIZE);
-        for item in &input.items {
-            structs.extend_from_slice(&item_struct(item));
-        }
+        ITEM_STRUCTS.with_borrow_mut(|structs| {
+            structs.clear();
+            structs.reserve(input.items.len() * ITEM_SIZE);
+            for item in &input.items {
+                structs.extend_from_slice(&item_struct(item));
+            }
 
-        let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
-        builder.set_struct_array(structs, ITEM_SIZE, ITEM_ALIGNMENT)?;
+            let mut builder = TableBuilder::new(1, TableLayout::DEFAULT)?;
+            builder.set_struct_array(structs.as_slice(), ITEM_SIZE, ITEM_ALIGNMENT)?;
 
-        Ok(builder.to_bytes()?)
+            Ok(builder.to_bytes()?)
+        })
     }
 
     fn deserialize(self, bytes: &[u8]) -> Result<List, Error> {

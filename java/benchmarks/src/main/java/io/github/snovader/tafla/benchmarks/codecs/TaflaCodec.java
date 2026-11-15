@@ -11,8 +11,9 @@ import java.util.*;
  * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
  * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
  * package documentation says. The fixed-size record is written through little-endian
- * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of structs is written through them too, and read from
- * {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
+ * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of
+ * structs is written through them too, into bytes that {@link TableBuilder#setStructArray} takes,
+ * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code reads it.
  */
 public final class TaflaCodec {
     private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
@@ -165,11 +166,23 @@ public final class TaflaCodec {
         }
     }
 
+    /**
+     * Writes the structs into bytes reused between calls, which makes it unsafe for concurrent use,
+     * as SBE's flyweights are. tafla-gen's code writes them straight into the table, with
+     * {@link TableWriter#setStructs}.
+     */
     private static final class Structs implements Workload<ListInput> {
+        /**
+         * The last array of structs written, which the next one is written over. The builder copies
+         * them into its table before {@link TableBuilder#bytes()} returns, so they're free again
+         * once it has.
+         */
+        private byte[] structs = new byte[0];
+
         @Override
         public byte[] serialize(ListInput input) {
             var items = input.items();
-            var structs = new byte[items.size() * ITEM_SIZE];
+            var structs = bytesFor(items.size() * ITEM_SIZE);
             for (int i = 0; i < items.size(); i++) {
                 writeItem(items.get(i), structs, i * ITEM_SIZE);
             }
@@ -196,6 +209,20 @@ public final class TaflaCodec {
             }
 
             return new ListInput(Arrays.asList(items));
+        }
+
+        /**
+         * The reused bytes, of exactly {@code length}, which {@link TableBuilder#setStructArray}
+         * takes whole: new bytes when the length differs from the last array's
+         */
+        private byte[] bytesFor(int length) {
+            var structs = this.structs;
+            if (structs.length != length) {
+                structs = new byte[length];
+                this.structs = structs;
+            }
+
+            return structs;
         }
 
         private static void writeItem(ItemInput item, byte[] bytes, int offset) {

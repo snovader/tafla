@@ -102,9 +102,9 @@ comparison uses its counterpart:
   views of the bytes. Arrays of the columns' element types are copied as bytes, and lists
   are converted as `array()` converts them. Summing a column indexes its view,
   as tafla's documentation advises over a getter call per element. The array
-  of structs is packed into a `bytearray` and unpacked from
+  of structs is packed into a `bytearray` reused between calls and unpacked from
   `get_struct_array()`'s view with a precompiled `Struct("<fff")`, as
-  tafla-gen's code does.
+  tafla-gen's code does, though it packs new bytes for each table.
 - **tafla-gen** is the code that tafla-gen generates from
   `generated/workloads.tafla`, in `generated/tafla/`. A message's
   `serialize()` appends every field, nested tables included, to a

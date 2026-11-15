@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"slices"
 
 	tafla "github.com/snovader/tafla/go"
 	"github.com/snovader/tafla/go/benchmarks/workloads"
@@ -301,13 +302,24 @@ func readListItem(buffer tafla.ByteBuffer) (workloads.Item, error) {
 // tripleSize is the size of a struct of an item's three float32s
 const tripleSize = 12
 
+// itemStructs holds the last array of structs that SerializeStructs wrote,
+// which it writes the next one over. The builder copies them into its table
+// before Bytes() returns, so they're free again once it has. Sharing them
+// between calls makes SerializeStructs unsafe for concurrent use.
+var itemStructs []byte
+
+// SerializeStructs writes the structs one after another into bytes reused
+// between calls, which the builder keeps until it writes the table.
+// tafla-gen's code writes them straight into the table, with
+// TableWriter.ReserveStructArray().
 func (Tafla) SerializeStructs(list workloads.List) ([]byte, error) {
-	structs := make([]byte, 0, len(list.Items)*tripleSize)
+	structs := slices.Grow(itemStructs[:0], len(list.Items)*tripleSize)
 	for _, item := range list.Items {
 		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.Value))
 		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.First))
 		structs = binary.LittleEndian.AppendUint32(structs, math.Float32bits(item.Second))
 	}
+	itemStructs = structs
 
 	builder, err := tafla.NewTableBuilder(1, tafla.TableLayout{})
 	if err != nil {

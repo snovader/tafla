@@ -106,7 +106,7 @@ comparison uses its counterpart:
   table of its exact size. A builder records its first fields within itself,
   so a small table allocates nothing until it's written. Readers check the
   document's version, and read columns as `ArrayView`s, whose `as_span()`
-  views them. The array of structs is written with `store_le()` into a vector, which the
+  views them. The array of structs is written with `store_le()` into a vector reused between calls, which the
   builder views through `set_struct_array()` until it writes the table, and read from
   `get_struct_array()`'s bytes with `load_le()`.
 - **tafla-gen** is the code that tafla-gen generates from `workloads.tafla`,
