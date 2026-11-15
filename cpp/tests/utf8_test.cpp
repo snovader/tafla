@@ -71,8 +71,10 @@ bool well_formed(std::span<const std::uint8_t> bytes) {
 }
 
 /// Whether `bytes` are valid UTF-8 at `offset` from the start of an
-/// allocation that ends where they do, so that AddressSanitizer reports a read
-/// past either end of them, after bytes that aren't UTF-8
+/// allocation that ends where they do, after `offset` bytes that aren't
+/// UTF-8, so that a read past their end is reported by AddressSanitizer at
+/// every offset, and a read before their start is reported at offset 0 and
+/// reads bytes that aren't UTF-8 at the others
 bool valid_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
     const auto buffer = std::make_unique<std::uint8_t[]>(offset + bytes.size());
     std::fill_n(buffer.get(), offset, std::uint8_t{0xff});
