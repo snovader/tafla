@@ -28,6 +28,7 @@ import {
     writeUtf8
 } from 'tafla';
 import { SLICES, STRINGS, sliceOf } from './conformance/arbitraries.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;
 
@@ -319,6 +320,32 @@ it.prop([
         } else {
             expect(() => writeUtf8(bytes, offset, string)).toThrow(RangeError);
         }
+    }
+);
+
+/**
+ * Expects `writeUtf8()` to write `string` at `offset` in bytes that end where
+ * it does, as the code that tafla-gen generates sizes them, and to throw
+ * RangeError in a byte fewer
+ */
+function expectWrittenExactly(string: string, offset: number): void {
+    const encoded = ENCODER.encode(string);
+    const bytes = new Uint8Array(offset + encoded.length);
+
+    expect(writeUtf8(bytes, offset, string)).toBe(encoded.length);
+    expect(bytes.subarray(offset)).toStrictEqual(encoded);
+    expect(() => writeUtf8(bytes.subarray(0, -1), offset, string)).toThrow(RangeError);
+}
+
+it.prop([LONG_STRINGS, fc.nat({ max: 8 })])(
+    'should write a long string into bytes of exactly its length, and throw RangeError in a byte fewer',
+    expectWrittenExactly
+);
+
+it.each(Object.entries(SHORTFALL_STRINGS))(
+    'should write a %s string that encodeInto() stops short of into bytes of exactly its length',
+    (_, string) => {
+        expectWrittenExactly(string, 0);
     }
 );
 
