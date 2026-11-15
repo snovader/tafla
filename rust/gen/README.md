@@ -248,7 +248,18 @@ such a message whole too, into the bytes that the runtime's
 `TableWriter::table_bytes()` returns with its header, and its nested tables
 of only those fields have a `SIZE` and a `to_bytes()` too, whose bytes the
 parent's writer copies whole, and whose `SIZE` its sizer adds for every item
-of a vector of them at once. Each nested
+of a vector of them at once. TypeScript and JavaScript write such a message
+whole too, into the bytes that the runtime's `TableWriter.tableBytes()`
+returns with its header, with the runtime's write functions. A nested table
+of only those fields has a `SIZE` and a `writeAt()`, which writes it at an
+offset in the bytes that its parent's writer reserves for it, and its parent's
+sizer adds the `SIZE` of every item of a vector of them at once. The items of
+such a vector, and the structs of an array of them, are written one after
+another where the writer reserves them, rather than into bytes of their own:
+a run of fewer than 128 bytes with `writeAt()`, and a longer one through a
+`DataView` with `writeView()`, which writes each scalar faster but takes
+longer to create, the longest for bytes of up to 64 that V8 keeps on its heap.
+Each nested
 table has an `ALIGNMENT`, which its parent pads it to: the largest alignment
 of its arrays and nested tables. Structs are read and written whole, and
 arrays of
@@ -482,8 +493,8 @@ It also has a default constructor, of no bytes, whose getters throw a
 
 In TypeScript and JavaScript, a message's `serializeInto(fields, bytes)`
 writes it into the start of the caller's bytes rather than new ones, through
-the runtime's `TableSizer.writer(bytes)`, and returns the view of them that
-holds it. The bytes stay the caller's, so the view, and what's read from it,
+the runtime's `TableSizer.writer(bytes)`, or `TableWriter.tableBytes()` for a
+message written whole, and returns the view of them that holds it. The bytes stay the caller's, so the view, and what's read from it,
 change when they're written again, as by the next message written into them.
 Reusing bytes saves allocating and zeroing new ones: in Node 27, about
 0.2 µs for a table of a few KB, a third of the write of a document of 100

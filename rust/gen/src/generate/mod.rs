@@ -7,8 +7,14 @@
 
 #[cfg(feature = "cpp")]
 mod cpp;
-// The fields that Go's, Rust's and C++'s generated code lays out itself
-#[cfg(any(feature = "go", feature = "rust", feature = "cpp"))]
+// The fields that Go's, Rust's, C++'s and TypeScript's generated code lays
+// out itself
+#[cfg(any(
+    feature = "go",
+    feature = "rust",
+    feature = "cpp",
+    feature = "typescript"
+))]
 mod fixed;
 #[cfg(feature = "go")]
 mod go;

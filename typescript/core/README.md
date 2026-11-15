@@ -74,6 +74,27 @@ that the generated code hands back already carries the count. The others don't
 keep that count for each nested table, so the contract doesn't promise it.
 Hand-written tables use `TableBuilder`, which checks every field.
 
+The generated code lays out the fields whose sizes the schema fixes itself,
+at positions that the generator works out, through API that's for it and may
+change with it:
+
+- The sizer's `addTableBytes(count, byteLength)` adds a nested table, or a
+  vector's items, of fixed length in one call.
+- The writer's `reserveTableBytes()`, `reserveTableVector()` and
+  `reserveStructArray()` write a field's offset, and a vector's count and
+  item ends or an array's count and padding, and return the position in
+  `target()`, the writer's bytes, where the caller writes the nested table,
+  the vector's items or the structs.
+- `TableWriter.tableBytes()` and `versionedTableBytes()` return the bytes of
+  a message written whole, without a sizer and a writer, with its header
+  written, and check its header and length as the sizer and its `writer()`
+  check them. `utf8Length()` and `writeUtf8()` count and write a string after
+  its fields of fixed size.
+- `viewOf()` makes a `DataView` of a range of bytes, through which the
+  generated code writes a run of 128 bytes or more of structs or nested
+  tables, and writes shorter runs with the write functions, since a
+  `DataView` writes each scalar faster but takes longer to create.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field

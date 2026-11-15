@@ -1,3 +1,4 @@
+import { encodeInto, utf8Length } from './encoding.ts';
 import { outOfRange, writeOutOfRange } from './errors.ts';
 
 // Little-endian reads straight from a Uint8Array, for small records at fixed
@@ -221,6 +222,57 @@ function copy8(bytes: Uint8Array, offset: number): void {
     bytes[offset + 5] = scratchBytes[5];
     bytes[offset + 6] = scratchBytes[6];
     bytes[offset + 7] = scratchBytes[7];
+}
+
+/**
+ * Writes `string` as UTF-8 at `offset` in `bytes`, with lone surrogates
+ * replaced by U+FFFD, as a table's string holds it after its length, and
+ * returns the number of bytes written, which `utf8Length()` counts first.
+ * It's for the code that tafla-gen generates, which writes the string after
+ * a message's fields of fixed size itself.
+ *
+ * @throws {RangeError} If the string doesn't lie within `bytes`, having
+ * written what fits of it when it isn't a short ASCII string.
+ */
+export function writeUtf8(
+    bytes: Uint8Array,
+    offset: number,
+    string: string
+): number {
+    if (!within(bytes, offset, 0)) {
+        throw writeOutOfRange(offset, utf8Length(string), bytes.length);
+    }
+
+    return encodeInto(string, bytes, offset);
+}
+
+/**
+ * A `DataView` of `byteLength` bytes at `offset` in `bytes`, through which
+ * the code that tafla-gen generates writes a long run of structs, or of
+ * nested tables of fixed size. A `DataView` writes each scalar faster than
+ * the write functions do, but takes longer to create, the longest over bytes
+ * of up to 64 that V8 keeps on its heap until something asks for their
+ * `ArrayBuffer`, so the generated code writes short runs with the write
+ * functions.
+ *
+ * @throws {RangeError} If the bytes don't lie within `bytes`.
+ */
+export function viewOf(
+    bytes: Uint8Array,
+    offset: number,
+    byteLength: number
+): DataView {
+    if (
+        !(
+            Number.isSafeInteger(byteLength) &&
+            byteLength >= 0 &&
+            within(bytes, offset, byteLength)
+        )
+    ) {
+        throw writeOutOfRange(offset, byteLength, bytes.length);
+    }
+
+    return new DataView(bytes.buffer, bytes.byteOffset + offset, byteLength);
 }
 
 /** Whether `byteLength` bytes at `offset` lie within `bytes` */
