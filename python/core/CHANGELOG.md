@@ -68,11 +68,12 @@ repository's first commits, for code built from its source before the release.
   rather than recording it and writing every field through a `TableWriter`
   in `finalize()`, and has a native implementation, in `tafla._native`, as
   the other classes do, with the pure-Python one elsewhere. With the native
-  module, the comparison's vector of 100 nested tables took 84% less time,
-  the record 76% less and the 100-row document 79% less, and documents
+  module, the comparison's vector of 100 nested tables took 83% less time,
+  the record 77% less and the 100-row document 79% less, and documents
   written from lists 85% to 88% less, since their lists are converted
-  natively too. With the pure-Python classes, the vector took 37% less and
-  the 100-row document 46% less. No row took longer. Its API and the bytes it
+  natively too. With the pure-Python classes, the vector took 36% less and
+  the 100-row document 45% less. No row of the comparison took longer, but a
+  table that nests a large builder does, as below. Its API and the bytes it
   writes are unchanged, and so are its errors, but for when some of them are
   raised:
   - A scalar that its type can't hold raises `ValueError` from its setter,
@@ -80,8 +81,12 @@ repository's first commits, for code built from its source before the release.
   - Arrays, structs and tables given as buffers are copied when they're set,
     so a buffer changed after its setter returns doesn't change the table,
     and one whose length changed no longer raises from `finalize()`.
-  - A nested builder is copied into its parent as its bytes, and one whose
-    layout has a header is no longer finalized by nesting it.
+  - A nested builder is copied into its parent as its bytes, so the parent
+    holds and copies a large nested table twice: nesting a builder of
+    1,000,000 float64s took 2.6 times as long as before, and peaked at 16 MB
+    rather than 8. Written in place with `set_table_in_place()`, the same
+    table takes as long as before and is held once. A builder whose layout
+    has a header is no longer finalized by nesting it.
   - `finalize()` or `bytes()` within a `fill`, or nesting the builder in
     another table there, raises `ValueError` itself, rather than the
     in-place setter raising once `fill` returns.

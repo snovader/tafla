@@ -160,12 +160,17 @@ and the pure-Python classes:
 - **Read arrays whole.** Each scalar getter is a call with a range check:
   summing a 27,028-element float32 array with ``get_float32()`` took 3.4 ms,
   against 0.24 ms through the array's view.
-- **Write vectors of small tables in place.** A table nested from its
-  builder is copied into its parent as its bytes, as one nested as bytes is.
-  ``set_vector_in_place()`` and ``set_table_in_place()`` write nested tables
-  among their parent's fields instead, from a function that sets them,
-  without a builder for each or a copy. A table built elsewhere, or nested
-  more than once, still needs a builder.
+- **Write nested tables in place, especially large ones.** A table nested
+  from its builder is copied into its parent as its bytes, as one nested as
+  bytes is, so the parent holds and copies a large nested table twice:
+  nesting a builder of 1,000,000 float64s took 0.36 ms and held 16 MB at its
+  peak. ``set_table_in_place()`` and ``set_vector_in_place()`` write nested
+  tables among their parent's fields instead, from a function that sets
+  them, without a builder for each or a copy: the same table took 0.13 ms
+  and held 8 MB. A table written in place moves forward by its padding when
+  a field raises its alignment, so set its arrays of the widest elements
+  first, while it's small. A table built elsewhere, or nested more than
+  once, still needs a builder.
 - **Small tables cost their calls.** Each field is a call to set, which
   writes it: one call into native code with the native classes, and several
   Python calls with the pure-Python ones, which take far more than
