@@ -36,22 +36,15 @@ interface VariantSpec {
 const VARIANTS: VariantSpec[] = [
     { name: 'TableBuilder' },
     { name: 'TableBuilder A/A' },
-    { name: 'direct', options: {} },
-    { name: 'direct A/A', options: {} },
-    { name: 'direct, new buffers', options: { reuse: false } },
+    { name: 'direct, buffer reused', options: { arenaBytes: 0 } },
+    { name: 'direct, arena of 64 KiB', options: {} },
+    { name: 'direct, arena of 64 KiB A/A', options: {} },
+    { name: 'direct, arena of 16 KiB', options: { arenaBytes: 16 * 1024 } },
+    { name: 'direct, arena of 256 KiB', options: { arenaBytes: 256 * 1024 } },
     {
-        name: 'direct, copying',
-        options: { segmentBytes: Number.POSITIVE_INFINITY }
-    },
-    { name: 'direct, 256-byte segments', options: { segmentBytes: 256 } },
-    { name: 'direct, scalars as bytes', options: { scalars: 'bytes' } },
-    {
-        name: 'direct, strings counted without room',
-        options: { strings: 'room' }
-    },
-    { name: 'direct, strings counted', options: { strings: 'count' } },
-    { name: 'direct, transfer() growth', options: { growth: 'transfer' } },
-    { name: 'direct, transfer() result', options: { result: 'transfer' } }
+        name: 'direct, arena of 64 KiB, scalars as bytes',
+        options: { scalars: 'bytes' }
+    }
 ];
 
 const args = process.argv.slice(2);
@@ -220,6 +213,7 @@ function withOptions(source: string, options: Partial<Options>): string {
         scalars: 'view',
         segmentBytes: 1024,
         reuse: true,
+        arenaBytes: 64 * 1024,
         ...options
     };
     const segmentBytes = Number.isFinite(values.segmentBytes)
@@ -251,10 +245,15 @@ function withOptions(source: string, options: Partial<Options>): string {
         'let segmentBytes = 1024;',
         `let segmentBytes = ${segmentBytes};`
     );
-    return replaceOnce(
+    replaced = replaceOnce(
         replaced,
         'let reuse = true;',
         `let reuse = ${values.reuse};`
+    );
+    return replaceOnce(
+        replaced,
+        'let arenaBytes = 64 * 1024;',
+        `let arenaBytes = ${values.arenaBytes};`
     );
 }
 

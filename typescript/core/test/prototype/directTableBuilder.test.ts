@@ -41,25 +41,39 @@ const DEFAULTS: Options = {
     strings: 'short',
     scalars: 'view',
     segmentBytes: 1024,
-    reuse: true
+    reuse: true,
+    arenaBytes: 64 * 1024
 };
 
 /** The variants of the design, each tested as the proposed one is */
 const VARIANTS: Array<[string, Partial<Options>]> = [
-    ['proposed: buffers reused, runs of 1 KiB as segments', {}],
-    ['buffers not reused', { reuse: false }],
+    ['proposed: an arena of 64 KiB, runs of 1 KiB as segments', {}],
+    ['an arena of 256 bytes', { arenaBytes: 256 }],
+    ['an arena of 256 bytes, scalars written as bytes', { arenaBytes: 256, scalars: 'bytes' }],
     ['every run of a byte or more a segment', { segmentBytes: 1 }],
     ['runs of 8 bytes or more segments', { segmentBytes: 8 }],
     ['runs of 256 bytes or more segments', { segmentBytes: 256 }],
     ['no segments', { segmentBytes: Number.POSITIVE_INFINITY }],
-    ['grown and returned by transfer()', { growth: 'transfer', result: 'transfer' }],
-    ['a resizable buffer, sliced', { growth: 'resizable' }],
-    ['a resizable buffer, transferred', { growth: 'resizable', result: 'transfer' }],
     ['strings counted before they are written', { strings: 'count' }],
     ['strings counted when the buffer has no room for them', { strings: 'room' }],
     ['strings given room for their longest UTF-8', { strings: 'worst' }],
     ['scalars written as bytes', { scalars: 'bytes' }],
-    ['scalars written as bytes, buffers not reused', { scalars: 'bytes', reuse: false }]
+    ['no arena, buffers reused', { arenaBytes: 0 }],
+    ['no arena, buffers not reused', { arenaBytes: 0, reuse: false }],
+    ['no arena, every run of a byte or more a segment', { arenaBytes: 0, segmentBytes: 1 }],
+    [
+        'no arena, scalars written as bytes, buffers not reused',
+        { arenaBytes: 0, scalars: 'bytes', reuse: false }
+    ],
+    [
+        'no arena, grown and returned by transfer()',
+        { arenaBytes: 0, growth: 'transfer', result: 'transfer' }
+    ],
+    ['no arena, a resizable buffer, sliced', { arenaBytes: 0, growth: 'resizable' }],
+    [
+        'no arena, a resizable buffer, transferred',
+        { arenaBytes: 0, growth: 'resizable', result: 'transfer' }
+    ]
 ];
 
 describe.each(VARIANTS)('%s', (_, variant) => {
@@ -138,6 +152,103 @@ describe('tables written in place', () => {
             expect(builder.bytes()).toStrictEqual(expected.bytes());
         }
     );
+});
+
+describe.each([64 * 1024, 256])('an arena of %i bytes', arenaBytes => {
+    beforeAll(() => configure({ ...DEFAULTS, arenaBytes }));
+    afterAll(() => configure(DEFAULTS));
+
+    function setFields(builder: TableItem, value: number): void {
+        builder.setUint32(value);
+        builder.setString('x'.repeat(value));
+    }
+
+    it("should keep a builder's bytes when an earlier builder is written, and give them to no other builder", () => {
+        const first = new Direct(2);
+        setFields(first, 1);
+        const second = new Direct(2);
+        setFields(second, 2);
+
+        // The first builder's bytes aren't the arena's last, so the third
+        // builder, whose string reaches past them, takes bytes after the
+        // second's
+        const firstBytes = first.bytes();
+        const third = new Direct(2);
+        setFields(third, 40);
+        const nested = new Direct(1);
+        nested.setTable(second);
+
+        expect(firstBytes).toStrictEqual(expectedBytes(2, table => setFields(table, 1)));
+        expect(third.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 40)));
+        expect(second.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 2)));
+        expect(nested.bytes()).toStrictEqual(
+            expectedBytes(1, table => table.setTable(second.bytes(), 1))
+        );
+    });
+
+    it('should give back the bytes of a builder written after the last only when no builder holds bytes after them', () => {
+        const builders = [1, 2, 3].map(value => {
+            const builder = new Direct(2);
+            setFields(builder, value);
+            return builder;
+        });
+        const [first, second, third] = builders;
+
+        // The third gives its bytes back, but the first's are below the
+        // second's, which a fourth builder mustn't take
+        third.bytes();
+        first.bytes();
+        const fourth = new Direct(2);
+        setFields(fourth, 40);
+
+        expect(second.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 2)));
+        expect(fourth.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 40)));
+    });
+
+    it("should keep the bytes that a setter made room for when a value's valueOf() makes a builder", () => {
+        const inner: TableBuilder[] = [];
+        const value = {
+            valueOf(): number {
+                const builder = new Direct(2);
+                setFields(builder, 5);
+                inner.push(builder);
+                return 2.5;
+            }
+        };
+
+        const builder = new Direct(3);
+        builder.setUint32(1);
+        builder.setFloat64(value as unknown as number);
+        builder.setFloat64Array([1, value as unknown as number, 3]);
+
+        expect(builder.bytes()).toStrictEqual(
+            expectedBytes(3, table => {
+                table.setUint32(1);
+                table.setFloat64(2.5);
+                table.setFloat64Array([1, 2.5, 3]);
+            })
+        );
+        expect(inner).toHaveLength(2);
+        for (const made of inner) {
+            expect(made.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 5)));
+        }
+    });
+
+    it('should move a builder that grows after a later one took bytes, and keep both', () => {
+        const growing = new Direct(2);
+        growing.setUint32(1);
+        const later = new Direct(2);
+        setFields(later, 4);
+        growing.setString('y'.repeat(300));
+
+        expect(growing.bytes()).toStrictEqual(
+            expectedBytes(2, table => {
+                table.setUint32(1);
+                table.setString('y'.repeat(300));
+            })
+        );
+        expect(later.bytes()).toStrictEqual(expectedBytes(2, table => setFields(table, 4)));
+    });
 });
 
 describe('values kept until the table is written', () => {

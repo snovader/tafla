@@ -103,6 +103,17 @@ export interface Options {
      * `bytes()`, up to {@link SPARE_BYTES}, rather than a new one
      */
     reuse: boolean;
+    /**
+     * The length of the chunks of an arena that builders take their bytes
+     * from, one after another, or 0 for a buffer of each builder's own. The
+     * last builder to take bytes holds the rest of the chunk, and keeps
+     * those it has written or made room for when the next takes bytes. A
+     * builder that outgrows its bytes moves to the rest of the chunk, or of
+     * a new one, and the last gives its bytes back in `bytes()`. With an
+     * arena, `reuse` doesn't apply, the buffer grows by copying and `bytes()`
+     * slices it.
+     */
+    arenaBytes: number;
 }
 
 // The variant of the design. The tests set them with configure(), and the
@@ -114,6 +125,7 @@ let stringRoom: StringRoom = 'short';
 let scalars: Scalars = 'view';
 let segmentBytes = 1024;
 let reuse = true;
+let arenaBytes = 64 * 1024;
 
 /** Sets the variant of the design, for the tests */
 export function configure(options: Partial<Options>): void {
@@ -123,8 +135,13 @@ export function configure(options: Partial<Options>): void {
     scalars = options.scalars ?? scalars;
     segmentBytes = options.segmentBytes ?? segmentBytes;
     reuse = options.reuse ?? reuse;
+    arenaBytes = options.arenaBytes ?? arenaBytes;
     spare = undefined;
     spareView = undefined;
+    chunk = undefined;
+    chunkView = undefined;
+    top = 0;
+    last = undefined;
 }
 
 /** The variant of the design in use */
@@ -135,7 +152,8 @@ export function options(): Options {
         strings: stringRoom,
         scalars,
         segmentBytes,
-        reuse
+        reuse,
+        arenaBytes
     };
 }
 
@@ -165,6 +183,25 @@ const SPARE_BYTES = 64 * 1024;
 let spare: Uint8Array | undefined;
 /** The view of the spare buffer, for the variants that write through one */
 let spareView: DataView | undefined;
+
+/**
+ * The arena's chunk that builders take their bytes from, its view for the
+ * variants that write through one, and where its bytes that no builder holds
+ * start. Earlier chunks stay alive while builders hold bytes of them.
+ */
+let chunk: Uint8Array | undefined;
+let chunkView: DataView | undefined;
+let top = 0;
+/**
+ * The builder that holds the rest of the chunk, as the last to take bytes
+ * from it, until another builder takes bytes or it writes its table
+ */
+let last: DirectTableBuilder | undefined;
+
+const EMPTY = new Uint8Array(0);
+
+/** The bytes that a builder takes from the arena, besides its header */
+const ARENA_ROOM = 16;
 
 // The kinds of segment, which bytes() switches on to write each
 const INT8_ARRAY = 0;
@@ -222,8 +259,22 @@ export class DirectTableBuilder {
     /** The longest table that the layout's offsets and lengths address */
     readonly #maxLength: number;
 
-    /** The buffer, whose length is its capacity */
-    #bytes: Uint8Array;
+    /** The buffer, or the arena's chunk that the builder's bytes are in */
+    #bytes: Uint8Array = EMPTY;
+    /**
+     * Where the builder's bytes start in the buffer, which every position
+     * below counts from, so that they stay valid when the bytes move
+     */
+    #base = 0;
+    /** The builder's bytes in the buffer, written or not */
+    #capacity = 0;
+    /**
+     * The end of the bytes that the builder last made room for, which it
+     * keeps, with those written, when another builder takes the rest of the
+     * arena's chunk: a setter may call code that makes a builder, such as a
+     * value's `valueOf()`, before it writes them
+     */
+    #claim = 0;
     /** A view of the buffer, for the variants that write through one */
     #view: DataView | undefined;
     /** The bytes of the buffer written so far */
@@ -282,17 +333,21 @@ export class DirectTableBuilder {
         this.#fields = fields;
 
         const length = Math.max(INITIAL_BYTES, header);
-        if (growth === 'resizable') {
+        if (arenaBytes !== 0) {
+            this.#take(header + ARENA_ROOM);
+        } else if (growth === 'resizable') {
             const buffer = new ArrayBuffer(length, {
                 maxByteLength: Math.max(RESIZABLE_RESERVE, length)
             });
             this.#bytes = new Uint8Array(buffer);
             this.#view = new DataView(buffer);
+            this.#capacity = length;
         } else {
             const buffer = spare;
             if (reuse && buffer !== undefined && buffer.length >= length) {
                 this.#bytes = buffer;
                 this.#view = spareView;
+                this.#capacity = buffer.length;
                 spare = undefined;
                 spareView = undefined;
             } else {
@@ -301,6 +356,7 @@ export class DirectTableBuilder {
                     scalars === 'view' && length > INITIAL_BYTES
                         ? new DataView(this.#bytes.buffer)
                         : undefined;
+                this.#capacity = length;
             }
         }
 
@@ -351,10 +407,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_8);
 
         if (this.#view !== undefined) {
-            this.#view.setInt8(at, value);
+            this.#view.setInt8(this.#base + at, value);
         } else {
             SCRATCH.setInt8(0, value);
-            this.#bytes[at] = SCRATCH_BYTES[0];
+            this.#bytes[this.#base + at] = SCRATCH_BYTES[0];
         }
 
         this.#endScalar(index, at, SIZEOF_8);
@@ -365,10 +421,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_8);
 
         if (this.#view !== undefined) {
-            this.#view.setUint8(at, value);
+            this.#view.setUint8(this.#base + at, value);
         } else {
             SCRATCH.setUint8(0, value);
-            this.#bytes[at] = SCRATCH_BYTES[0];
+            this.#bytes[this.#base + at] = SCRATCH_BYTES[0];
         }
 
         this.#endScalar(index, at, SIZEOF_8);
@@ -379,10 +435,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_16);
 
         if (this.#view !== undefined) {
-            this.#view.setInt16(at, value, true);
+            this.#view.setInt16(this.#base + at, value, true);
         } else {
             SCRATCH.setInt16(0, value, true);
-            copy2(this.#bytes, at);
+            copy2(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_16);
@@ -393,10 +449,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_16);
 
         if (this.#view !== undefined) {
-            this.#view.setUint16(at, value, true);
+            this.#view.setUint16(this.#base + at, value, true);
         } else {
             SCRATCH.setUint16(0, value, true);
-            copy2(this.#bytes, at);
+            copy2(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_16);
@@ -407,10 +463,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_32);
 
         if (this.#view !== undefined) {
-            this.#view.setInt32(at, value, true);
+            this.#view.setInt32(this.#base + at, value, true);
         } else {
             SCRATCH.setInt32(0, value, true);
-            copy4(this.#bytes, at);
+            copy4(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_32);
@@ -421,10 +477,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_32);
 
         if (this.#view !== undefined) {
-            this.#view.setUint32(at, value, true);
+            this.#view.setUint32(this.#base + at, value, true);
         } else {
             SCRATCH.setUint32(0, value, true);
-            copy4(this.#bytes, at);
+            copy4(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_32);
@@ -435,10 +491,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_64);
 
         if (this.#view !== undefined) {
-            this.#view.setBigInt64(at, value, true);
+            this.#view.setBigInt64(this.#base + at, value, true);
         } else {
             SCRATCH.setBigInt64(0, value, true);
-            copy8(this.#bytes, at);
+            copy8(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_64);
@@ -449,10 +505,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_64);
 
         if (this.#view !== undefined) {
-            this.#view.setBigUint64(at, value, true);
+            this.#view.setBigUint64(this.#base + at, value, true);
         } else {
             SCRATCH.setBigUint64(0, value, true);
-            copy8(this.#bytes, at);
+            copy8(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_64);
@@ -463,10 +519,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_32);
 
         if (this.#view !== undefined) {
-            this.#view.setFloat32(at, value, true);
+            this.#view.setFloat32(this.#base + at, value, true);
         } else {
             SCRATCH.setFloat32(0, value, true);
-            copy4(this.#bytes, at);
+            copy4(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_32);
@@ -477,10 +533,10 @@ export class DirectTableBuilder {
         const at = this.#reserve(SIZEOF_64);
 
         if (this.#view !== undefined) {
-            this.#view.setFloat64(at, value, true);
+            this.#view.setFloat64(this.#base + at, value, true);
         } else {
             SCRATCH.setFloat64(0, value, true);
-            copy8(this.#bytes, at);
+            copy8(this.#bytes, this.#base + at);
         }
 
         this.#endScalar(index, at, SIZEOF_64);
@@ -503,7 +559,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_8, SIZEOF_8);
-        setInt8Elements(this.#bytes, elements, values, count);
+        setInt8Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_8, SIZEOF_8);
     }
 
@@ -521,7 +577,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_8, SIZEOF_8);
-        setUint8Elements(this.#bytes, elements, values, count);
+        setUint8Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_8, SIZEOF_8);
     }
 
@@ -539,7 +595,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_16, SIZEOF_16);
-        setInt16Elements(this.#bytes, elements, values, count);
+        setInt16Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_16, SIZEOF_16);
     }
 
@@ -557,7 +613,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_16, SIZEOF_16);
-        setUint16Elements(this.#bytes, elements, values, count);
+        setUint16Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_16, SIZEOF_16);
     }
 
@@ -575,7 +631,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_32, SIZEOF_32);
-        setInt32Elements(this.#bytes, elements, values, count);
+        setInt32Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -593,7 +649,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_32, SIZEOF_32);
-        setUint32Elements(this.#bytes, elements, values, count);
+        setUint32Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -611,7 +667,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_64, SIZEOF_64);
-        setInt64Elements(this.#bytes, elements, values, count);
+        setInt64Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -629,7 +685,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_64, SIZEOF_64);
-        setUint64Elements(this.#bytes, elements, values, count);
+        setUint64Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -647,7 +703,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_32, SIZEOF_32);
-        setFloat32Elements(this.#bytes, elements, values, count);
+        setFloat32Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -665,7 +721,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(count * SIZEOF_64, SIZEOF_64);
-        setFloat64Elements(this.#bytes, elements, values, count);
+        setFloat64Elements(this.#bytes, this.#base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -683,7 +739,7 @@ export class DirectTableBuilder {
         if (
             stringRoom === 'count' ||
             !(before + room <= this.#maxLength) ||
-            (start + room > this.#bytes.length &&
+            (start + room > this.#capacity &&
                 (stringRoom === 'room' ||
                     (stringRoom === 'short' && units > SHORT_STRING_UNITS)))
         ) {
@@ -691,11 +747,12 @@ export class DirectTableBuilder {
             this.#checkLength(index, before + room);
         }
 
-        if (start + room > this.#bytes.length) {
+        if (start + room > this.#capacity) {
             this.#grow(start + room);
         }
+        this.#claim = start + room;
 
-        const length = encodeInto(string, this.#bytes, start);
+        const length = encodeInto(string, this.#bytes, this.#base + start);
         this.#setOffset(index, at);
         this.#setUnsigned(at, length);
         this.#end = start + length;
@@ -739,7 +796,7 @@ export class DirectTableBuilder {
         }
 
         const elements = this.#startArray(byteLength, alignment);
-        copyBytes(bytes, 0, byteLength, this.#bytes, elements);
+        copyBytes(bytes, 0, byteLength, this.#bytes, this.#base + elements);
         this.#endArray(count, elements, byteLength, alignment);
     }
 
@@ -1017,9 +1074,10 @@ export class DirectTableBuilder {
     #moveTable(at: number, segments: number, pad: number): void {
         const end = this.#reserve(pad);
         const bytes = this.#bytes;
+        const base = this.#base;
 
-        bytes.copyWithin(at + pad, at, end);
-        bytes.fill(0, at, at + pad);
+        bytes.copyWithin(base + at + pad, base + at, base + end);
+        bytes.fill(0, base + at, base + at + pad);
         this.#end = end + pad;
 
         const list = this.#segments;
@@ -1045,10 +1103,12 @@ export class DirectTableBuilder {
         this.#check(pad, this.#size + byteLength);
 
         const elements = start + pad;
-        if (elements + byteLength > this.#bytes.length) {
-            this.#grow(elements + byteLength);
+        const claim = elements + byteLength;
+        if (claim > this.#capacity) {
+            this.#grow(claim);
         }
 
+        this.#claim = claim;
         return elements;
     }
 
@@ -1125,7 +1185,7 @@ export class DirectTableBuilder {
         }
 
         const at = this.#reserve(byteLength);
-        copyBytes(bytes, 0, byteLength, this.#bytes, at);
+        copyBytes(bytes, 0, byteLength, this.#bytes, this.#base + at);
         this.#end = at + byteLength;
     }
 
@@ -1147,9 +1207,20 @@ export class DirectTableBuilder {
 
         const length = table.#end;
         const at = this.#reserve(length);
-        copyBytes(table.#bytes, 0, length, this.#bytes, at);
+        copyBytes(
+            table.#bytes,
+            table.#base,
+            table.#base + length,
+            this.#bytes,
+            this.#base + at
+        );
         if (table.#layout.sized()) {
-            writeUnsigned(this.#bytes, at, table.#size, length + table.#shift);
+            writeUnsigned(
+                this.#bytes,
+                this.#base + at,
+                table.#size,
+                length + table.#shift
+            );
         }
 
         const segments = table.#segments;
@@ -1181,15 +1252,16 @@ export class DirectTableBuilder {
             return;
         }
 
-        if (at > this.#bytes.length) {
+        if (at > this.#capacity) {
             this.#grow(at);
         }
 
-        // The buffer's bytes may have been written before a truncation, or
-        // as room for a string
+        // The buffer's bytes may have been written before a truncation, as
+        // room for a string, or by an earlier builder
         const bytes = this.#bytes;
+        const base = this.#base;
         for (let i = end; i < at; i++) {
-            bytes[i] = 0;
+            bytes[base + i] = 0;
         }
         this.#end = at;
     }
@@ -1215,14 +1287,15 @@ export class DirectTableBuilder {
      */
     #setUnsigned(at: number, value: number): void {
         const view = this.#view;
+        const position = this.#base + at;
         if (view === undefined) {
-            writeUnsigned(this.#bytes, at, this.#size, value);
+            writeUnsigned(this.#bytes, position, this.#size, value);
         } else if (this.#size === SIZEOF_32) {
-            view.setUint32(at, value, true);
+            view.setUint32(position, value, true);
         } else if (this.#size === SIZEOF_16) {
-            view.setUint16(at, value, true);
+            view.setUint16(position, value, true);
         } else {
-            view.setUint8(at, value);
+            view.setUint8(position, value);
         }
     }
 
@@ -1232,17 +1305,25 @@ export class DirectTableBuilder {
      */
     #reserve(byteLength: number): number {
         const end = this.#end;
-        if (end + byteLength > this.#bytes.length) {
-            this.#grow(end + byteLength);
+        const claim = end + byteLength;
+        if (claim > this.#capacity) {
+            this.#grow(claim);
         }
 
+        this.#claim = claim;
         return end;
     }
 
     /** Grows the buffer to at least `length` bytes, at least doubling it */
     #grow(length: number): void {
+        if (arenaBytes !== 0) {
+            this.#growInArena(length);
+            return;
+        }
+
         const bytes = this.#bytes;
         const capacity = Math.max(length, 2 * bytes.length, FIRST_GROWTH);
+        this.#capacity = capacity;
 
         if (growth === 'resizable') {
             const buffer = bytes.buffer as ArrayBuffer;
@@ -1273,6 +1354,62 @@ export class DirectTableBuilder {
         if (scalars === 'view') {
             this.#view = new DataView(this.#bytes.buffer);
         }
+    }
+
+    /**
+     * Moves the builder's bytes in the arena to bytes with room for at least
+     * `length`: the rest of the chunk, or of a new chunk
+     */
+    #growInArena(length: number): void {
+        const bytes = this.#bytes;
+        const base = this.#base;
+
+        this.#take(Math.max(length, 2 * this.#end));
+        copyBytes(bytes, base, base + this.#end, this.#bytes, this.#base);
+    }
+
+    /**
+     * Gives the builder the rest of the arena's chunk, of at least `length`
+     * bytes, or of a new chunk when it hasn't room, and makes it the last
+     * builder. The builder that was the last keeps the bytes that it has
+     * written or claimed. Bytes longer than half a chunk are a buffer of the
+     * builder's own instead.
+     */
+    #take(length: number): void {
+        const previous = last;
+        if (previous !== undefined) {
+            const end =
+                previous.#base + Math.max(previous.#end, previous.#claim);
+            previous.#capacity = end - previous.#base;
+            top = end;
+            last = undefined;
+        }
+
+        if (length > arenaBytes / 2) {
+            const bytes = new Uint8Array(length);
+            this.#bytes = bytes;
+            this.#view =
+                scalars === 'view' ? new DataView(bytes.buffer) : undefined;
+            this.#base = 0;
+            this.#capacity = length;
+            return;
+        }
+
+        let bytes = chunk;
+        if (bytes === undefined || top + length > bytes.length) {
+            bytes = new Uint8Array(arenaBytes);
+            chunk = bytes;
+            chunkView =
+                scalars === 'view' ? new DataView(bytes.buffer) : undefined;
+            top = 0;
+        }
+
+        this.#bytes = bytes;
+        this.#view = chunkView;
+        this.#base = top;
+        this.#capacity = bytes.length - top;
+        top = bytes.length;
+        last = this;
     }
 
     #alignTo(alignment: ElementSize): void {
@@ -1399,8 +1536,19 @@ export class DirectTableBuilder {
         }
 
         // Release the buffer and the values, which may be large arrays, and
-        // leave the buffer for the next builder
-        if (
+        // leave the buffer, or the bytes taken from the arena when they're
+        // the last, for the next builder
+        if (arenaBytes !== 0) {
+            if (this === last) {
+                top = this.#base;
+                last = undefined;
+            } else if (
+                this.#bytes === chunk &&
+                this.#base + this.#capacity === top
+            ) {
+                top = this.#base;
+            }
+        } else if (
             reuse &&
             result === 'slice' &&
             growth !== 'resizable' &&
@@ -1420,8 +1568,8 @@ export class DirectTableBuilder {
 
     /** The buffer's first `length` bytes, as bytes of their own */
     #resultOf(length: number): Uint8Array {
-        if (result === 'slice') {
-            return this.#bytes.slice(0, length);
+        if (result === 'slice' || arenaBytes !== 0) {
+            return this.#bytes.slice(this.#base, this.#base + length);
         }
 
         const buffer = this.#bytes.buffer as ArrayBuffer;
@@ -1441,6 +1589,7 @@ export class DirectTableBuilder {
      */
     #writeSegments(segments: unknown[], length: number): Uint8Array {
         const bytes = this.#bytes;
+        const base = this.#base;
         const table = new Uint8Array(length);
 
         let from = 0;
@@ -1449,7 +1598,7 @@ export class DirectTableBuilder {
             const at = segments[slot] as number;
             const byteLength = segments[slot + 1] as number;
 
-            copyBytes(bytes, from, at, table, position);
+            copyBytes(bytes, base + from, base + at, table, position);
             position += at - from;
             from = at;
 
@@ -1464,7 +1613,7 @@ export class DirectTableBuilder {
             position += byteLength;
         }
 
-        copyBytes(bytes, from, this.#end, table, position);
+        copyBytes(bytes, base + from, base + this.#end, table, position);
 
         return table;
     }
@@ -1561,6 +1710,8 @@ function copyBytes(
         for (let i = 0; i < length; i++) {
             target[at + i] = source[from + i];
         }
+    } else if (source === target) {
+        target.copyWithin(at, from, to);
     } else {
         target.set(source.subarray(from, to), at);
     }
@@ -1587,8 +1738,6 @@ function writeUnsigned(
         }
     }
 }
-
-const EMPTY = new Uint8Array(0);
 
 // A scalar is set little-endian in the scratch, whatever the host's byte
 // order, and its bytes copied into the buffer, as TableWriter does
