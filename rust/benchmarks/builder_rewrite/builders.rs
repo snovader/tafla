@@ -195,6 +195,7 @@ serializers!(segments_64_serializers, tafla::rewrite_segments_64);
 serializers!(room_64_serializers, tafla::rewrite_room_64);
 serializers!(room_128_serializers, tafla::rewrite_room_128);
 serializers!(growth_4_serializers, tafla::rewrite_growth_4);
+serializers!(room_64_growth_4_serializers, tafla::rewrite_room_64_growth_4);
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
     let mut bytes = [0; ITEM_SIZE];
@@ -274,6 +275,7 @@ builder!(Segments64, segments_64_serializers);
 builder!(Room64, room_64_serializers);
 builder!(Room128, room_128_serializers);
 builder!(Growth4, growth_4_serializers);
+builder!(Room64Growth4, room_64_growth_4_serializers);
 
 /// Another builder's functions again, as functions of their own, for an
 /// A/A pair
@@ -330,7 +332,8 @@ pub trait Visit {
 /// the rewrite's variants: without the room that a vector in place makes
 /// for its items after the first, with an owned builder boxed in a
 /// `NestedTable`, keeping runs of 128 or 64 bytes or more as segments,
-/// starting with room for 64 or 128 bytes a field, and growing fourfold
+/// starting with room for 64 or 128 bytes a field, growing fourfold, and
+/// both
 pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Main>("main");
     visitor.visit::<Again<Main>>("main A/A");
@@ -343,4 +346,5 @@ pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Room64>("room 64 a field");
     visitor.visit::<Room128>("room 128 a field");
     visitor.visit::<Growth4>("growth 4x");
+    visitor.visit::<Room64Growth4>("room 64, growth 4x");
 }

@@ -13,10 +13,10 @@ cargo build --release -p tafla-benchmarks --features main-builder \
 ```
 
 - `builder_comparison` times main's builder, the rewrite, each twice as an
-  A/A pair, and seven variants of the rewrite (without the room for a
+  A/A pair, and eight variants of the rewrite (without the room for a
   vector's items, with an owned builder boxed in a `NestedTable`, keeping
   values from 128 or from 64 bytes rather than 256, starting with room for
-  64 or 128 bytes a field, and growing fourfold), on the
+  64 or 128 bytes a field, growing fourfold, and both), on the
   comparison's rows that build tables, a vector of 100 nested tables from a
   builder per table, and tables of 32 medium values, of 128 and 192 bytes,
   and of 32 short values, of 64 and 96 bytes. Each builder makes
