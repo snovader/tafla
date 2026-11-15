@@ -68,7 +68,12 @@ pub fn with_elements<R>(
 /// `int` out of the code's range, and if `destination` returns `None`, so that
 /// `with_elements()` converts them, with `array()`'s errors. `destination`
 /// may hold elements converted before one that failed.
-pub fn convert_sequence<'a>(
+///
+/// # Safety
+///
+/// `destination` must run no Python code and keep the thread attached, as
+/// it's called while the sequence's items are borrowed.
+pub unsafe fn convert_sequence<'a>(
     values: &Bound<'_, PyAny>,
     code: char,
     destination: impl FnOnce(usize) -> Option<&'a mut [MaybeUninit<u8>]>,
@@ -80,7 +85,8 @@ pub fn convert_sequence<'a>(
 
     let convert = || {
         // SAFETY: an exact list or tuple, which nothing changes while it's
-        // read, as no Python code runs and no other thread holds the list
+        // read, as no Python code runs, in the conversions or in the
+        // destination, and no other thread holds the list
         let items = unsafe { Items::of(values.as_ptr(), list) };
         match code {
             'b' => items.convert(destination, |item| narrow(item, i8::to_ne_bytes)),

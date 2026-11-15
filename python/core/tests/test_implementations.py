@@ -448,6 +448,34 @@ class TestImplementations(unittest.TestCase):
 
         self.assert_same_writes(arguments, leading + 1, None, (0, [], False), calls)
 
+    def test_write_a_list_as_it_was_before_the_tables_start_changes_it(self) -> None:
+        """Regression: the native writer subtracted from the table's start
+        while it read a list's items, so a start from ``end_table()`` whose
+        subtraction changed the list made it read the changed items, or
+        freed ones of a list that it cleared. ``array()`` has converted the
+        list by then, so its elements convert, and only the start fails."""
+        outcomes = []
+        for implementation in (PURE, self.native):
+            values: list[Any] = [1.0, 2.0, 3.0]
+
+            class Start(int):
+                @override
+                def __sub__(self, other: int) -> int:
+                    values[0] = "not an element"  # noqa: B023
+                    return int(self) - other
+
+            writer = implementation.TableWriter(1)
+            writer.end_table(Start(2**70))
+            written = outcome(partial(writer.set_float64_array, 0, values))
+
+            self.assertEqual(values[0], "not an element", "the subtraction ran")
+            outcomes.append((written, outcome(writer.bytes)))
+
+        written = outcomes[0][0]
+        assert isinstance(written, Raised)
+        self.assertIs(written.error, ValueError)
+        self.assertEqual(outcomes[1], outcomes[0])
+
     def test_write_what_appends_no_bytes_while_a_view_is_held(self) -> None:
         """Regressions: the native writer raised BufferError for any write
         while a view was held, rather than for those that change the bytes'

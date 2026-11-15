@@ -245,15 +245,22 @@ impl Mark {
     /// from this start
     #[inline]
     fn padding(&self, py: Python<'_>, position: usize, alignment: usize) -> PyResult<usize> {
-        // Modulo a power of two, which wrapping keeps, and which an int's
-        // bits give, as they're its two's complement
-        let mask = alignment - 1;
         match self {
-            Self::Small(start) => {
-                Ok((start.wrapping_sub(position as i128).cast_unsigned() as usize) & mask)
-            }
-            Self::Big(start) => start.bind(py).sub(position)?.bitand(mask)?.extract(),
+            Self::Small(start) => Ok(Self::small_padding(*start, position, alignment)),
+            // An int's bits give the same, as they're its two's complement
+            Self::Big(start) => start
+                .bind(py)
+                .sub(position)?
+                .bitand(alignment - 1)?
+                .extract(),
         }
+    }
+
+    /// The padding from a start within an `i128`, which runs no Python code
+    #[inline]
+    const fn small_padding(start: i128, position: usize, alignment: usize) -> usize {
+        // Modulo a power of two, which wrapping keeps
+        (start.wrapping_sub(position as i128).cast_unsigned() as usize) & (alignment - 1)
     }
 }
 
@@ -669,7 +676,10 @@ impl TableWriter {
     /// either is written, rather than into an `array` that's copied again.
     /// Returns `false`, having written nothing, for elements that it doesn't
     /// convert, so that `with_elements()` converts them, and raises what the
-    /// pure-Python runtime raises.
+    /// pure-Python runtime raises. So it does for a table whose start is the
+    /// caller's own object, from `end_table()`: its arithmetic may run the
+    /// caller's code, which nothing may while the sequence is read, and
+    /// which the pure-Python runtime runs after it has converted the elements.
     fn set_sequence(
         &mut self,
         py: Python<'_>,
@@ -680,17 +690,22 @@ impl TableWriter {
     ) -> PyResult<bool> {
         // The elements follow the padding and the count, which start_array()
         // writes once they're converted
+        let Mark::Small(table) = self.table else {
+            return Ok(false);
+        };
         let unpadded = self.len() + self.size();
-        let mut start = 0;
-        let table = &self.table;
+        let start = unpadded + Mark::small_padding(table, unpadded, item_size);
+
         let data = &mut self.data;
         let destination = |byte_length| {
             // Moved into the call, so that the capacity it returns outlives it
             let data = data;
-            start = unpadded + table.padding(py, unpadded, item_size).ok()?;
             data.spare(start, byte_length)
         };
-        let Some(byte_length) = elements::convert_sequence(values, code, destination) else {
+        // SAFETY: the destination only grows the bytes, which runs no Python
+        // code and keeps the thread attached
+        let converted = unsafe { elements::convert_sequence(values, code, destination) };
+        let Some(byte_length) = converted else {
             return Ok(false);
         };
 
