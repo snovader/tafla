@@ -12,8 +12,11 @@ and in it:
   `tafla::rewrite_no_reservation`, without the room that a vector in place
   makes for its items after the first, `tafla::rewrite_segments_128` and
   `tafla::rewrite_segments_64`, which keep runs of 128 or 64 bytes or more
-  as segments rather than 256, and `tafla::rewrite_boxed`, with an owned
-  builder boxed in a `NestedTable`;
+  as segments rather than 256, `tafla::rewrite_room_64` and
+  `tafla::rewrite_room_128`, whose bytes start with room for 64 or 128
+  bytes a field beyond the header, up to 64 KiB, `tafla::rewrite_growth_4`,
+  whose bytes grow fourfold rather than twofold, and `tafla::rewrite_boxed`,
+  with an owned builder boxed in a `NestedTable`;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
 
@@ -49,6 +52,65 @@ VARIANTS = {
         (
             "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };",
             "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };",
+        ),
+    ],
+    "rewrite_room_64": [
+        (
+            "bytes.rs",
+            """    #[inline(always)]
+    pub fn new() -> Self {""",
+            """    /// Room for `room` bytes, at least the first capacity's, and the
+    /// header's and up to 64 KiB more
+    pub fn with_room(header: usize, room: usize) -> Self {
+        Self {
+            vec: Vec::with_capacity(FIRST_CAPACITY.max(header + room.min(64 * 1024))),
+        }
+    }
+
+    #[inline(always)]
+    pub fn new() -> Self {""",
+        ),
+        (
+            """        let mut bytes = Bytes::new();
+        bytes.reserve(header as usize);""",
+            """        let mut bytes = Bytes::with_room(header as usize, fields.saturating_mul(64));
+        bytes.reserve(header as usize);""",
+        ),
+    ],
+    "rewrite_room_128": [
+        (
+            "bytes.rs",
+            """    #[inline(always)]
+    pub fn new() -> Self {""",
+            """    /// Room for `room` bytes, at least the first capacity's, and the
+    /// header's and up to 64 KiB more
+    pub fn with_room(header: usize, room: usize) -> Self {
+        Self {
+            vec: Vec::with_capacity(FIRST_CAPACITY.max(header + room.min(64 * 1024))),
+        }
+    }
+
+    #[inline(always)]
+    pub fn new() -> Self {""",
+        ),
+        (
+            """        let mut bytes = Bytes::new();
+        bytes.reserve(header as usize);""",
+            """        let mut bytes = Bytes::with_room(header as usize, fields.saturating_mul(128));
+        bytes.reserve(header as usize);""",
+        ),
+    ],
+    "rewrite_growth_4": [
+        (
+            "bytes.rs",
+            """    fn grow(&mut self, additional: usize) {
+        self.vec.reserve(additional);
+    }""",
+            """    fn grow(&mut self, additional: usize) {
+        let needed = self.vec.len().saturating_add(additional);
+        let capacity = needed.max(self.vec.capacity().saturating_mul(4));
+        self.vec.reserve_exact(capacity - self.vec.len());
+    }""",
         ),
     ],
     "rewrite_boxed": [
@@ -101,8 +163,12 @@ def main():
     for variant, edits in VARIANTS.items():
         shutil.copy(source / "table_builder.rs", source / f"{variant}.rs")
         shutil.copytree(source / "table_builder", source / variant)
-        for old, new in edits:
-            edit(source / f"{variant}.rs", old, new)
+        for edited in edits:
+            # (old, new) edits the variant's table_builder.rs, and
+            # (file, old, new) a file of its submodules
+            file, old, new = edited if len(edited) == 3 else ("", *edited)
+            path = source / variant / file if file else source / f"{variant}.rs"
+            edit(path, old, new)
 
     modules = "".join(
         f'#[cfg(feature = "main-builder")]\n#[doc(hidden)]\n'

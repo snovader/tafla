@@ -192,6 +192,9 @@ serializers!(no_reservation_serializers, tafla::rewrite_no_reservation);
 serializers!(boxed_serializers, tafla::rewrite_boxed);
 serializers!(segments_128_serializers, tafla::rewrite_segments_128);
 serializers!(segments_64_serializers, tafla::rewrite_segments_64);
+serializers!(room_64_serializers, tafla::rewrite_room_64);
+serializers!(room_128_serializers, tafla::rewrite_room_128);
+serializers!(growth_4_serializers, tafla::rewrite_growth_4);
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
     let mut bytes = [0; ITEM_SIZE];
@@ -268,6 +271,9 @@ builder!(NoReservation, no_reservation_serializers);
 builder!(Boxed, boxed_serializers);
 builder!(Segments128, segments_128_serializers);
 builder!(Segments64, segments_64_serializers);
+builder!(Room64, room_64_serializers);
+builder!(Room128, room_128_serializers);
+builder!(Growth4, growth_4_serializers);
 
 /// Another builder's functions again, as functions of their own, for an
 /// A/A pair
@@ -323,7 +329,8 @@ pub trait Visit {
 /// Visits main's builder and the rewrite, twice each, as A/A pairs, and
 /// the rewrite's variants: without the room that a vector in place makes
 /// for its items after the first, with an owned builder boxed in a
-/// `NestedTable`, and keeping runs of 128 or 64 bytes or more as segments
+/// `NestedTable`, keeping runs of 128 or 64 bytes or more as segments,
+/// starting with room for 64 or 128 bytes a field, and growing fourfold
 pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Main>("main");
     visitor.visit::<Again<Main>>("main A/A");
@@ -333,4 +340,7 @@ pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Boxed>("boxed");
     visitor.visit::<Segments128>("segments from 128");
     visitor.visit::<Segments64>("segments from 64");
+    visitor.visit::<Room64>("room 64 a field");
+    visitor.visit::<Room128>("room 128 a field");
+    visitor.visit::<Growth4>("growth 4x");
 }
