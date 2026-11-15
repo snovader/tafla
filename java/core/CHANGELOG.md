@@ -64,6 +64,13 @@ repository's first commits, for code built from its source before the release.
   `VarHandle`s, rather than through a wrapped `java.nio.ByteBuffer`, with
   the same checks and `DecodeException`s. The benchmarks' hand-written read
   of the vector of 100 nested tables takes 0.48 µs rather than 0.54.
+- `TableBuilder` copies arrays in bulk inline, as tafla-gen's code did.
+  Before any copy compiles, the runtime loads the JDK class that C2 needs in
+  order to inline NIO's bulk copies. The JDK loaded it itself after
+  `TableBuilder`'s copies had compiled, in every run of the benchmarks'
+  document of 100 rows, so that each copy was a call that allocated two
+  views. The document took 0.128 µs to write rather than 0.146, and 1,704
+  bytes rather than 1,928.
 
 ### Removed
 
