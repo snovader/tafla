@@ -158,6 +158,20 @@ impl Bytes {
         Ok(())
     }
 
+    /// Gives back the capacity beyond `capacity`, which is at least the
+    /// length, such as what `spare()` grew for bytes that weren't written
+    /// after all. Keeps it if the allocator can't.
+    #[cold]
+    fn shrink_to(&mut self, capacity: usize) {
+        debug_assert!(capacity >= self.len && capacity > 0);
+        if capacity < self.capacity
+            && let Ok(pointer) = allocate(self.pointer.as_ptr(), capacity)
+        {
+            self.pointer = pointer;
+            self.capacity = capacity;
+        }
+    }
+
     /// Grows the capacity to at least `required`, so that appending is
     /// amortized: by half again while it's small, and by an eighth, as a
     /// `bytearray` grows, once it's large, so that a large table holds
@@ -696,6 +710,7 @@ impl TableWriter {
         let unpadded = self.len() + self.size();
         let start = unpadded + Mark::small_padding(table, unpadded, item_size);
 
+        let capacity = self.data.capacity;
         let data = &mut self.data;
         let destination = |byte_length| {
             // Moved into the call, so that the capacity it returns outlives it
@@ -706,6 +721,10 @@ impl TableWriter {
         // code and keeps the thread attached
         let converted = unsafe { elements::convert_sequence(values, code, destination) };
         let Some(byte_length) = converted else {
+            // What the elements grew, which array() now converts into bytes
+            // of its own, so that a list that fails holds no more memory
+            // than it would without this conversion
+            self.data.shrink_to(capacity);
             return Ok(false);
         };
 

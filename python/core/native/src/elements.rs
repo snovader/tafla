@@ -254,11 +254,11 @@ fn unsigned(object: *mut ffi::PyObject) -> Option<u64> {
 /// and `d`, or `None` for another object, or an `int` too large for a double
 #[inline]
 fn real(object: *mut ffi::PyObject) -> Option<f64> {
-    #[cfg(not(Py_LIMITED_API))]
     if unsafe { ffi::PyFloat_CheckExact(object) } != 0 {
+        // The stable ABI reads a float through PyFloat_AsDouble(), below
+        #[cfg(not(Py_LIMITED_API))]
         return Some(unsafe { ffi::PyFloat_AS_DOUBLE(object) });
-    }
-    if unsafe { ffi::PyFloat_CheckExact(object) } == 0 && !is_int(object) {
+    } else if !is_int(object) {
         return None;
     }
 
