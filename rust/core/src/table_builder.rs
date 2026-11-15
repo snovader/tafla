@@ -189,8 +189,7 @@ impl<'a> TableBuilder<'a> {
         let offset_type = layout.offset_type();
         let sized = layout.is_sized();
 
-        let mut bytes = Bytes::new();
-        bytes.reserve(header as usize);
+        let mut bytes = Bytes::for_table(header as usize, fields);
         if sized {
             bytes.push_zeros(offset_type.size());
         }
