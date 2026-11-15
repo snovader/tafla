@@ -68,11 +68,27 @@ first commits, for code built from its source before the release.
   set. A builder that its caller doesn't keep, and calls neither
   `SetTableFunc()` nor `SetVectorFunc()` on, stays on the caller's stack. The
   benchmarks' record takes about 42 ns rather than 93, in 1 allocation
-  rather than 2, the document of 100 rows 267 ns rather than 338, and the
-  vector of 100 nested tables 3.27 µs rather than 5.95, in 4 allocations of
+  rather than 2, the document of 100 rows 273 ns rather than 353, and the
+  vector of 100 nested tables 3.32 µs rather than 5.87, in 4 allocations of
   7.8 KB rather than 6 of 17.6 KB. The document of 100,000 rows and the
   array of structs take as long, in an allocation fewer. A vector of 100
-  nested builders, which the comparison doesn't time, takes 4% longer.
+  nested builders, which the comparison doesn't time, takes 2.5% longer.
+- `TableBuilder` uses memory differently, since it writes into a buffer:
+  - `NewTableBuilder()` allocates the header's offsets past the 128 bytes
+    within the builder, 1 to 4 bytes per field, where it allocated a 32-byte
+    record per field past the fourth. A builder of many fields still
+    allocates for them when it's created.
+  - Arrays, strings, arrays of structs and `TableBytes` shorter than 256
+    bytes are copied when they're set. Longer ones are read when the table is
+    written, so their elements mustn't change until then, as before.
+  - A table longer than 128 bytes holds a buffer of up to about twice its
+    bytes, besides the long values, until it's written, and a setter that
+    fails leaves the buffer's capacity as it grew. A builder that wrote much
+    before a setter failed holds that memory until it's dropped.
+  - A vector of items written in place makes room for its items after the
+    first, up to 64 KiB, and doesn't keep items once they make the table too
+    long, so that a vector that fails holds little more than a table that
+    fits.
 
 ### Fixed
 

@@ -9,4 +9,5 @@ const (
 	inlineBytes    = 0
 	firstHeapBytes = 1
 	runMin         = 1
+	itemRoom       = 64 << 10
 )

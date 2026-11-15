@@ -30,7 +30,8 @@ import (
 // A setter returns a *[BuildError], and leaves the builder as it was, when
 // the table already holds all its fields or the field would make it too long
 // for the layout's offset type: longer than 255 bytes, 64 KiB or 4 GiB, or
-// than an int on a 32-bit host.
+// than an int on a 32-bit host. The buffer keeps the capacity that it grew
+// to, which the builder holds until it's dropped.
 //
 // [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] write a
 // nested table, or each item of a vector, in place, straight into the
@@ -94,7 +95,10 @@ type checkpoint struct {
 
 // run is a run of bytes that the builder keeps rather than copying, which
 // comes before the buffer's byte at. data points into the caller's slice or
-// string, so that the garbage collector keeps it while the builder does.
+// string, so that the garbage collector keeps it while the builder does. It's
+// a pointer and a length rather than a slice, whose capacity would make the
+// builder 32 bytes longer: with slices, the benchmarks' vector of 100 nested
+// builders took 12% longer.
 type run struct {
 	at     int
 	data   unsafe.Pointer
@@ -345,9 +349,9 @@ func (b *TableBuilder) setScalar(bits uint64, size int) error {
 		return b.tooLong(length)
 	}
 
-	// reserve's work, written out, since a call to it doesn't inline: a call
-	// fewer per scalar took the benchmarks' vector of 100 nested tables 7%
-	// less time
+	// reserve's work, written out, since a call to it doesn't inline. With
+	// the calls to reserve here and in startInPlace, the benchmarks' record
+	// took 7% longer, and their vector of 100 nested tables 10% longer.
 	at := b.written
 	buffer := b.buffer()
 	if size > len(buffer)-at {
@@ -518,7 +522,7 @@ func (b *TableBuilder) setTable(table NestedTable, alignment Alignment) error {
 	}
 
 	buffer, at := b.reserve(int(padding))
-	clear(buffer[at:])
+	clear(buffer[at : at+int(padding)])
 	b.putOffset(buffer, b.length+uint32(padding))
 	b.appendNested(table)
 	b.setField(length, alignment)
@@ -672,7 +676,7 @@ func (b *TableBuilder) SetVectorFunc(count, fields int, fill func(index int, ite
 	// Each end counts from the vector's count, after the ends
 	end := (uint64(count) + 1) * width
 	for index := range count {
-		start := b.written
+		start, kept := b.written, b.count
 		b.startInPlace(fields, header)
 		err := fill(index, Item{builder: b})
 		if err == nil {
@@ -683,7 +687,15 @@ func (b *TableBuilder) SetVectorFunc(count, fields int, fill func(index int, ite
 			return err
 		}
 
+		// Once the items make the table too long, which fails once they're
+		// all written, unless one fails first, they aren't kept, so that the
+		// buffer holds no more than a table that fits
 		end += uint64(b.length)
+		if uint64(saved.length)+end > uint64(b.limit) {
+			b.truncate(start, kept)
+			continue
+		}
+
 		putSlot(b.buffer(), vector+(index+1)*int(width), int(width), uint32(end))
 		if index == 0 {
 			b.reserveItems(count-1, b.written-start)
@@ -792,10 +804,14 @@ func (b *TableBuilder) moveForward(saved checkpoint, padding int) {
 
 // reserveItems makes room in the buffer for count more items of a vector of
 // bytes bytes each, as its first item, so that writing them grows it once,
-// unless they're longer. It never makes room for more than a table that
-// fits in the offset type.
+// unless they're longer. Growing the buffer as they were written took the
+// benchmarks' vector of 100 nested tables 15% longer, in 6 allocations of
+// 11.5 KB rather than 4 of 7.8 KB. It makes room for at most itemRoom bytes,
+// so that a long first item doesn't make room for many short ones, and never
+// for more than a table that fits in the offset type.
 func (b *TableBuilder) reserveItems(count, bytes int) {
-	room := min(uint64(count)*uint64(bytes), uint64(b.limit)-uint64(b.written))
+	left := uint64(b.limit) - min(uint64(b.written), uint64(b.limit))
+	room := min(uint64(count)*uint64(bytes), itemRoom, left)
 	if end := b.written + int(room); end > len(b.buffer()) {
 		b.grow(end)
 	}
@@ -806,19 +822,25 @@ func (b *TableBuilder) checkpoint() checkpoint {
 }
 
 // rollBack truncates the buffer and the runs back to saved, and counts the
-// fields of its table again, leaving the builder as it was
+// fields of its table again, leaving the builder as it was, but for the
+// buffer's capacity
 func (b *TableBuilder) rollBack(saved checkpoint) {
+	b.truncate(saved.written, saved.count)
+	b.counters = saved.counters
+}
+
+// truncate truncates the buffer to written bytes, and the runs to count
+func (b *TableBuilder) truncate(written, count int) {
 	// Cleared, so that the builder doesn't keep their bytes
-	for index := saved.count; index < b.count; index++ {
+	for index := count; index < b.count; index++ {
 		*b.run(index) = run{}
 	}
 	if b.count > inlineRuns {
-		b.more = b.more[:max(saved.count-inlineRuns, 0)]
+		b.more = b.more[:max(count-inlineRuns, 0)]
 	}
 
-	b.count = saved.count
-	b.written = saved.written
-	b.counters = saved.counters
+	b.count = count
+	b.written = written
 }
 
 func (b *TableBuilder) checkComplete() error {

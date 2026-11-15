@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -330,10 +331,88 @@ func TestRejectsAVectorTooLongForItsOffsetType(t *testing.T) {
 	err = builder.SetVectorFunc(2, 1, func(_ int, item tafla.Item) error { return item.SetUint8Array(array) })
 	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: 258, OffsetType: tafla.Uint8})
 
+	// As long as fits: the offset, the count, and an end of 254 for each empty
+	// item
 	check(t, builder.SetVectorFunc(253, 0, func(int, tafla.Item) error { return nil }))
-	if table := must(builder.Bytes()); len(table) != 255 {
-		t.Errorf("wrote %d bytes", len(table))
+	expected := append([]byte{1, 253}, bytes.Repeat([]byte{254}, 253)...)
+	if table := must(builder.Bytes()); !bytes.Equal(table, expected) {
+		t.Errorf("wrote % x", table)
 	}
+}
+
+// Items that make a vector too long fail it once they're all written, with
+// the vector's whole length, unless an item fails first, without the builder
+// holding much more than the longest table that fits: here 30,000 items of
+// 6 KB each, which make 184 MB, in a table of uint16 offsets
+func TestAVectorOfItemsTooLongFailsWithoutHoldingThem(t *testing.T) {
+	layout := tafla.TableLayout{}.WithOffsetType(tafla.Uint16)
+	value := strings.Repeat("a", 200)
+	fill := func(failing int) func(index int, item tafla.Item) error {
+		return func(index int, item tafla.Item) error {
+			if index == failing {
+				return errFill
+			}
+			for range 30 {
+				if err := item.SetString(value); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}
+
+	builder := must(tafla.NewTableBuilder(1, layout))
+	var err error
+	allocated := allocatedBy(func() { err = builder.SetVectorFunc(30_000, 30, fill(-1)) })
+	// The offset, the count and the ends, then 30,000 items of 30 offsets and
+	// 30 strings of a count and 200 bytes
+	length := 2 + 2 + 30_000*2 + 30_000*30*(2+2+200)
+	expectError(t, err, &tafla.BuildError{Kind: tafla.TooLong, Index: 0, Length: uint64(length), OffsetType: tafla.Uint16})
+	if allocated > 1<<20 {
+		t.Errorf("allocated %d bytes", allocated)
+	}
+
+	if err := builder.SetVectorFunc(30_000, 30, fill(29_999)); err != errFill {
+		t.Errorf("returned %v", err)
+	}
+	check(t, builder.SetVectorFunc(0, 0, nil))
+	if table := must(builder.Bytes()); !bytes.Equal(table, []byte{2, 0, 0, 0}) {
+		t.Errorf("wrote % x", table)
+	}
+}
+
+// A vector of items of different lengths allocates in proportion to its
+// table, however long its first item is against the others: here a vector of
+// 100,000 tables, of which the first holds a string of 250 bytes and the
+// others an empty one
+func TestAVectorOfUnevenItemsAllocatesInProportionToItsTable(t *testing.T) {
+	value := strings.Repeat("a", 250)
+	var table []byte
+	allocated := allocatedBy(func() {
+		builder := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+		err := builder.SetVectorFunc(100_000, 1, func(index int, item tafla.Item) error {
+			if index == 0 {
+				return item.SetString(value)
+			}
+			return item.SetString("")
+		})
+		check(t, err)
+		table = must(builder.Bytes())
+	})
+
+	if allocated > 8*uint64(len(table)) {
+		t.Errorf("allocated %d bytes for a table of %d", allocated, len(table))
+	}
+}
+
+// allocatedBy returns the bytes that call allocates on the heap
+func allocatedBy(call func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	call()
+	runtime.ReadMemStats(&after)
+
+	return after.TotalAlloc - before.TotalAlloc
 }
 
 func TestPanicsForANegativeCountOrNumberOfFields(t *testing.T) {
