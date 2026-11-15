@@ -92,12 +92,48 @@ export function encodeInto(
         bytes.subarray(position)
     );
     if (read !== length) {
-        throw new RangeError(
-            `A string of ${length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
-        );
+        return written + encodeRest(string, read, bytes, position, written);
     }
 
     return written;
+}
+
+/**
+ * Writes the rest of `string`, from its `read`th UTF-16 code unit, after the
+ * `written` bytes at `position` in `bytes` at which `TextEncoder.encodeInto()`
+ * stopped, and returns the number of bytes in the rest.
+ *
+ * Node 26.13 and 27's `encodeInto()` sometimes stops a unit short of bytes
+ * of exactly a string's UTF-8 length, for strings of more than 256 units
+ * that aren't all ASCII: about 1% of random strings with lone surrogates,
+ * and well-formed ones too, such as `'aé'.repeat(133) + 'a'`. It never stops
+ * within a surrogate pair, so the rest starts at a code point.
+ *
+ * @throws {RangeError} If the rest doesn't fit in `bytes`.
+ */
+function encodeRest(
+    string: string,
+    read: number,
+    bytes: Uint8Array,
+    position: number,
+    written: number
+): number {
+    const start = position + written;
+    const available = bytes.length - start;
+
+    // Each unit takes at least a byte, so a rest of more units than there
+    // are bytes left doesn't fit, and isn't encoded to find that out
+    if (string.length - read <= available) {
+        const rest = encoder.encode(string.slice(read));
+        if (rest.length <= available) {
+            bytes.set(rest, start);
+            return rest.length;
+        }
+    }
+
+    throw new RangeError(
+        `A string of ${string.length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
+    );
 }
 
 /**
