@@ -754,6 +754,33 @@ class TestImplementations(unittest.TestCase):
                             built.append(building_outcomes(table, in_place=in_place))
                     self.assertEqual(built[1], built[0], (field, length, in_place))
 
+    def test_raise_the_same_errors_for_counts_and_sizes_that_arent_ints(
+        self,
+    ) -> None:
+        """A struct size or a count of fields that isn't an int, which
+        ``__index__()`` converts if it has one, raises ``TypeError`` from each
+        builder, or is taken as the int, as the random calls draw them only
+        now and then"""
+        not_ints = [4.0, 2.5, "4", None, b"4", Index(None), Index(4), True]
+
+        def set_struct_array(table: Any, size: Any) -> None:
+            table.set_struct_array(bytes(8), size, 4)
+
+        def set_table_in_place(table: Any, fields: Any) -> None:
+            table.set_table_in_place(lambda _: None, fields=fields)
+
+        def set_vector_in_place(table: Any, fields: Any) -> None:
+            table.set_vector_in_place([], lambda _, __: None, fields=fields)
+
+        for call in (set_struct_array, set_table_in_place, set_vector_in_place):
+            for value in not_ints:
+                built = []
+                for implementation in (PURE, self.native):
+                    builder = implementation.TableBuilder(2)
+                    result = outcome(partial(call, builder, value))
+                    built.append((result, outcome(builder.bytes)))
+                self.assertEqual(built[1], built[0], (call.__name__, value))
+
     @given(
         layout_arguments(),
         one_of(integers(0, 6), COUNTS),

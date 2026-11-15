@@ -6,10 +6,13 @@
 //!   zeros for its ends, and each item's end once the item is written.
 //! - A table nested in place is written where its parent ends, unpadded, and
 //!   moved forward by more padding whenever a field raises its alignment,
-//!   which is known only once its fields are set. A large array raises it
-//!   before it's written, so the move is of the table so far, which is often
-//!   its slots alone. Its offsets count from its own start, so none of them
-//!   changes.
+//!   which is known only once its fields are set. The field raises the
+//!   alignment of the tables that it's nested in too, and pads those nested
+//!   in place, before it's written. So a large array moves the tables so
+//!   far, which are often their slots alone, and its tables are never moved
+//!   once it's written. Offsets count from their table's start, so none of
+//!   them changes. A nested table that fails takes back the padding that its
+//!   fields gave the tables it's nested in.
 //! - Values are copied when they're set, and a nested builder as its bytes.
 //! - A setter checks its field before it writes anything. A nested table or
 //!   vector whose `fill` raises, or that's incomplete or too long, is undone
@@ -23,7 +26,7 @@ use std::ffi::c_int;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use pyo3::exceptions::{PyTypeError, PyValueError};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::ffi;
 use pyo3::prelude::*;
 use pyo3::types::{PyString, PyTuple};
@@ -70,15 +73,21 @@ impl Table {
     }
 }
 
-/// What an in-place setter restores: the end of the bytes before it started,
-/// and its parent's counters
+/// What an in-place setter restores: the end of the bytes where its table or
+/// vector starts, and its parent's counters. The parent's positions move
+/// with it whenever a field pads the tables it's nested in.
 struct Checkpoint {
     start: usize,
     base: usize,
     slots: usize,
     fields: usize,
     index: usize,
+    /// The parent's alignment from its own fields, which a nested table that
+    /// fails restores, and as the nested table's fields raised it, which
+    /// pads the parent if it's nested in place too, and which the parent
+    /// takes once the nested table ends
     alignment: usize,
+    raised: usize,
     in_place: Option<usize>,
     padding: usize,
 }
@@ -159,9 +168,18 @@ pub struct TableBuilder {
     /// alignment so far
     in_place: Option<usize>,
     padding: usize,
+    /// The checkpoints of the tables being written in place, from the
+    /// outermost, each of which holds its parent's counters
+    open: Vec<Checkpoint>,
     shape: Shape,
     layout: Option<Py<PyAny>>,
     written: Option<Written>,
+}
+
+/// The zeros that pad a table `offset` bytes into its parent to `alignment`
+#[inline]
+const fn padding_to(offset: usize, alignment: usize) -> usize {
+    offset.wrapping_neg() & (alignment - 1)
 }
 
 impl TableBuilder {
@@ -231,33 +249,132 @@ impl TableBuilder {
         Ok(())
     }
 
-    /// The zeros to insert before a table nested in place, so that it's
-    /// padded to `alignment` once a field raises its alignment to that: none
-    /// for the root, a vector item, or an alignment it has already
+    /// The zeros that `raise_alignment(alignment)` inserts, for a field that
+    /// needs `alignment`: before this table, if it's nested in place, and
+    /// before each table that it's nested in, out to the first that's
+    /// aligned to `alignment` already or isn't nested in place. None for the
+    /// root, a vector item, or an alignment this table has already.
     #[inline]
-    const fn more_padding(&self, alignment: usize) -> usize {
-        match self.in_place {
-            Some(offset) if alignment > self.alignment => {
-                (offset.wrapping_neg() & (alignment - 1)) - self.padding
-            }
-            _ => 0,
+    fn padding_to_raise(&self, alignment: usize) -> usize {
+        let Some(offset) = self.in_place else {
+            return 0;
+        };
+        if alignment <= self.alignment {
+            return 0;
         }
+
+        let mut padding = padding_to(offset, alignment) - self.padding;
+        for parent in self.open.iter().rev() {
+            let Some(offset) = parent.in_place else {
+                break;
+            };
+            if parent.raised >= alignment {
+                break;
+            }
+            padding += padding_to(offset, alignment) - parent.padding;
+        }
+        padding
     }
 
-    /// Raises the table's alignment to `alignment`, if it's more, after
-    /// moving the table forward by `more_padding(alignment)`, which there's
-    /// room for
-    #[inline]
-    fn align_to(&mut self, alignment: usize, more: usize) {
-        if more > 0 {
-            self.data.insert_zeros_within(self.base, more);
-            self.base += more;
-            self.slots += more;
-            self.padding += more;
+    /// Raises the table's alignment to `alignment`, if it's more, and that of
+    /// the tables it's nested in, as far as it's more than theirs, and pads
+    /// each that's nested in place to it, by inserting the
+    /// `padding_to_raise(alignment)` zeros that there's room for. The bytes
+    /// move once: from the innermost table out, each moves forward by its
+    /// own padding and that of the tables it's nested in.
+    fn raise_alignment(&mut self, alignment: usize, padding: usize) {
+        if alignment <= self.alignment {
+            return;
         }
-        if alignment > self.alignment {
-            self.alignment = alignment;
+        self.alignment = alignment;
+        let Some(offset) = self.in_place else {
+            return;
+        };
+
+        let mut shift = padding;
+        let more = padding_to(offset, alignment) - self.padding;
+        self.data
+            .move_forward_within(self.base, self.data.len, shift, more);
+        let mut end = self.base;
+        self.base += shift;
+        self.slots += shift;
+        self.padding += more;
+        shift -= more;
+
+        for parent in self.open.iter_mut().rev() {
+            // Where the nested table starts, in its parent's bytes
+            parent.start += shift;
+            if parent.raised >= alignment {
+                break;
+            }
+            parent.raised = alignment;
+            let Some(offset) = parent.in_place else {
+                break;
+            };
+
+            let more = padding_to(offset, alignment) - parent.padding;
+            self.data.move_forward_within(parent.base, end, shift, more);
+            end = parent.base;
+            parent.base += shift;
+            parent.slots += shift;
+            parent.padding += more;
+            shift -= more;
         }
+        debug_assert_eq!(shift, 0, "each table moved by the padding before it");
+        self.data.extend_moved(padding);
+    }
+
+    /// Lowers the alignment of the tables that this table is nested in, once
+    /// a table nested in it fails, to what their own fields and the tables
+    /// still nested in them need, and removes the padding that they no
+    /// longer need from before each that's nested in place, and from before
+    /// this table. The bytes move once: from the outermost table in, each
+    /// moves back by its own padding removed and that of the tables it's
+    /// nested in.
+    #[cold]
+    fn lower_alignment(&mut self) {
+        let Some(offset) = self.in_place else {
+            return;
+        };
+
+        let mut alignment = self.alignment;
+        let mut outermost = self.open.len();
+        for parent in self.open.iter_mut().rev() {
+            let lowered = parent.alignment.max(alignment);
+            if lowered == parent.raised {
+                break;
+            }
+            parent.raised = lowered;
+            if parent.in_place.is_none() {
+                break;
+            }
+            alignment = lowered;
+            outermost -= 1;
+        }
+
+        let mut shift = 0;
+        for level in outermost..self.open.len() {
+            let end = self.open.get(level + 1).map_or(self.base, |next| next.base);
+            let parent = &mut self.open[level];
+            let needed = parent
+                .in_place
+                .map_or(0, |offset| padding_to(offset, parent.raised));
+            let less = parent.padding - needed;
+            shift += less;
+            self.data.move_back_within(parent.base, end, shift);
+            parent.base -= shift;
+            parent.slots -= shift;
+            parent.padding -= less;
+            parent.start -= shift;
+        }
+
+        let less = self.padding - padding_to(offset, self.alignment);
+        shift += less;
+        self.data.move_back_within(self.base, self.data.len, shift);
+        self.base -= shift;
+        self.slots -= shift;
+        self.padding -= less;
+        self.data.truncate(self.data.len - shift);
     }
 
     #[inline]
@@ -288,12 +405,7 @@ impl TableBuilder {
     ) -> PyResult<()> {
         // A builder that holds all its fields, or is written, raises once the
         // values are converted, as the pure-Python one does
-        // The fast path converts the elements beyond the bytes, which a move
-        // would leave behind, so a table that the array moves takes the other
-        if self.index < self.fields
-            && self.more_padding(item_size) == 0
-            && self.set_sequence(code, item_size, values)?
-        {
+        if self.index < self.fields && self.set_sequence(code, item_size, values)? {
             return Ok(());
         }
 
@@ -309,6 +421,10 @@ impl TableBuilder {
     /// again. Returns `false`, having written nothing, for elements that it
     /// doesn't convert, which `with_elements()` then converts, raising what
     /// the pure-Python builder raises.
+    ///
+    /// The room is after the zeros that the array's alignment inserts before
+    /// the tables it's nested in, which are inserted only once the elements
+    /// are converted, moving the tables up to the room.
     fn set_sequence(
         &mut self,
         code: char,
@@ -318,8 +434,9 @@ impl TableBuilder {
         let index = self.index;
         let size = self.size();
         let offset = self.offset();
-        let padding = (offset + size).wrapping_neg() & (item_size - 1);
-        let start = self.data.len + padding + size;
+        let padding = padding_to(offset + size, item_size);
+        let raise = self.padding_to_raise(item_size);
+        let start = self.data.len + raise + padding + size;
 
         let capacity = self.data.capacity;
         let data = &mut self.data;
@@ -344,6 +461,8 @@ impl TableBuilder {
             return Err(self.too_long(index, length));
         }
 
+        // Within the room that the destination made
+        self.raise_alignment(item_size, raise);
         self.data.zeros_within(padding);
         self.write_slot(self.slots + index * size, offset + padding);
         self.push_count(byte_length / item_size);
@@ -353,7 +472,6 @@ impl TableBuilder {
         self.make_little_endian(start, item_size);
 
         self.index = index + 1;
-        self.align_to(item_size, 0);
         Ok(true)
     }
 
@@ -364,12 +482,12 @@ impl TableBuilder {
         let size = self.size();
         let byte_length = bytes.len();
         let offset = self.offset();
-        let padding = (offset + size).wrapping_neg() & (item_size - 1);
+        let padding = padding_to(offset + size, item_size);
         self.check_length(index, offset + padding + size + byte_length)?;
 
-        let more = self.more_padding(item_size);
-        self.room(more + padding + size + byte_length)?;
-        self.align_to(item_size, more);
+        let raise = self.padding_to_raise(item_size);
+        self.room(raise + padding + size + byte_length)?;
+        self.raise_alignment(item_size, raise);
         self.data.zeros_within(padding);
         self.write_slot(self.slots + index * size, offset + padding);
         self.push_count(byte_length / item_size);
@@ -447,22 +565,16 @@ impl TableBuilder {
             fields: self.fields,
             index,
             alignment: self.alignment,
+            raised: self.alignment,
             in_place: self.in_place,
             padding: self.padding,
         }
     }
 
-    /// Starts a table of `fields` fields at the end of the bytes, with zeros
-    /// for its `slot_bytes` bytes of slots, for `fill` to set its fields: one
-    /// nested in place at `in_place` in its parent, or a vector's item, which
-    /// isn't padded
-    fn start_table(
-        &mut self,
-        fields: usize,
-        slot_bytes: usize,
-        in_place: Option<usize>,
-    ) -> PyResult<()> {
-        self.room(slot_bytes)?;
+    /// Starts a table of `fields` fields, unpadded, at the end of the bytes,
+    /// with zeros for its `slot_bytes` bytes of slots, for `fill` to set its
+    /// fields
+    fn begin(&mut self, fields: usize, slot_bytes: usize, in_place: Option<usize>) {
         let start = self.data.len;
         self.base = start;
         self.slots = start;
@@ -472,7 +584,41 @@ impl TableBuilder {
         self.in_place = in_place;
         self.padding = 0;
         self.data.zeros_within(slot_bytes);
+    }
+
+    /// Starts a table nested in place as field `index`, and keeps this
+    /// table's checkpoint until it ends
+    fn start_table(&mut self, index: usize, fields: usize, slot_bytes: usize) -> PyResult<()> {
+        self.room(slot_bytes)?;
+        let offset = self.offset();
+        self.open.push(self.checkpoint(index));
+        self.begin(fields, slot_bytes, Some(offset));
         Ok(())
+    }
+
+    /// Starts a vector's item, which isn't padded, and counts its offsets
+    /// and alignment from its own start, as a builder does
+    fn start_item(&mut self, fields: usize, slot_bytes: usize) -> PyResult<()> {
+        self.room(slot_bytes)?;
+        self.begin(fields, slot_bytes, None);
+        Ok(())
+    }
+
+    /// Takes the checkpoint of the table that the in-place setter of `depth`
+    /// started, once its `fill` returns, with whether a table nested in it
+    /// is unfinished, which the setter then rolls back with its own: one
+    /// whose setter was interrupted while it waited for another thread's
+    /// call, or that another thread's call started. Raises `RuntimeError` if
+    /// another thread's call took the checkpoint, leaving the builder as it
+    /// is.
+    fn take_checkpoint(&mut self, depth: usize) -> PyResult<(Checkpoint, bool)> {
+        if self.open.len() < depth {
+            return Err(changed_error());
+        }
+        let unfinished = self.open.len() > depth;
+        self.open.truncate(depth);
+        let checkpoint = self.open.pop().ok_or_else(changed_error)?;
+        Ok((checkpoint, unfinished))
     }
 
     fn roll_back(&mut self, checkpoint: &Checkpoint) {
@@ -486,43 +632,42 @@ impl TableBuilder {
         self.padding = checkpoint.padding;
     }
 
+    /// Rolls back a table nested in place that failed, and the padding that
+    /// its fields gave the tables it's nested in
+    fn roll_back_table(&mut self, checkpoint: &Checkpoint) {
+        self.roll_back(checkpoint);
+        self.lower_alignment();
+    }
+
     /// Ends a table nested in place, once `fill` has set its fields, which
-    /// padded it as they raised its alignment: restores its parent's
-    /// counters, raises the parent's alignment, which moves the parent if
-    /// it's in place too, and writes the table's offset. Rolls it back if
-    /// it's incomplete or makes its parent too long.
+    /// padded it, and the tables it's nested in, as they raised their
+    /// alignment: restores its parent's counters, with the alignment that
+    /// the table's fields raised it to, and writes the table's offset. Rolls
+    /// it back if it's incomplete or makes its parent too long.
     fn end_table(&mut self, checkpoint: &Checkpoint, fields: usize) -> PyResult<()> {
         if self.index != fields {
             let error = unset_fields_error(self.index, fields, "the nested table's");
-            self.roll_back(checkpoint);
+            self.roll_back_table(checkpoint);
             return Err(error);
         }
 
         // Padded from its parent's start, as a nested builder is
-        let alignment = self.alignment;
         let padding = self.padding;
         let offset = checkpoint.start - checkpoint.base;
-        debug_assert_eq!(padding, offset.wrapping_neg() & (alignment - 1));
+        debug_assert_eq!(padding, padding_to(offset, self.alignment));
+        debug_assert!(checkpoint.raised >= self.alignment);
         let length = offset + self.data.len - checkpoint.start;
         if length > self.shape.max_length() {
-            self.roll_back(checkpoint);
+            self.roll_back_table(checkpoint);
             return Err(self.too_long(checkpoint.index, length));
         }
 
         self.base = checkpoint.base;
         self.slots = checkpoint.slots;
         self.fields = checkpoint.fields;
-        self.alignment = checkpoint.alignment;
+        self.alignment = checkpoint.raised;
         self.in_place = checkpoint.in_place;
         self.padding = checkpoint.padding;
-        let more = self.more_padding(alignment);
-        if let Err(error) = self.room(more) {
-            self.roll_back(checkpoint);
-            return Err(error);
-        }
-        self.align_to(alignment, more);
-
-        // The parent's slots, which moved with it
         self.write_slot(
             self.slots + checkpoint.index * self.size(),
             offset + padding,
@@ -614,13 +759,13 @@ impl TableBuilder {
     /// raised this table's alignment
     fn place_table(&mut self, byte_length: usize, alignment: usize) -> PyResult<usize> {
         let offset = self.offset();
-        let padding = offset.wrapping_neg() & (alignment - 1);
+        let padding = padding_to(offset, alignment);
         let index = self.next_index()?;
         self.check_length(index, offset + padding + byte_length)?;
 
-        let more = self.more_padding(alignment);
-        self.room(more + padding + byte_length)?;
-        self.align_to(alignment, more);
+        let raise = self.padding_to_raise(alignment);
+        self.room(raise + padding + byte_length)?;
+        self.raise_alignment(alignment, raise);
         self.data.zeros_within(padding);
         self.write_slot(self.slots + index * self.size(), offset + padding);
         Ok(index)
@@ -754,13 +899,20 @@ fn call_fill<'a, 'py>(
 /// thread detached, while another thread's call holds it, since returning
 /// that thread's `RuntimeError` would leave the builder in the nested
 /// table's state. Its call holds the builder only while it runs.
-fn borrow_to_finish<'py>(slf: &Bound<'py, TableBuilder>) -> PyRefMut<'py, TableBuilder> {
+///
+/// Raises what a signal's handler raises while it waits, such as
+/// `KeyboardInterrupt` for Ctrl-C, rather than wait for a call that may be
+/// waiting for this thread. That leaves the nested table unfinished: writing
+/// the builder raises then, as within a fill, and an in-place setter that
+/// it's nested in rolls it back once its own fill returns.
+fn borrow_to_finish<'py>(slf: &Bound<'py, TableBuilder>) -> PyResult<PyRefMut<'py, TableBuilder>> {
+    let py = slf.py();
     loop {
         if let Ok(builder) = slf.try_borrow_mut() {
-            return builder;
+            return Ok(builder);
         }
-        slf.py()
-            .detach(|| std::thread::sleep(std::time::Duration::from_micros(50)));
+        py.check_signals()?;
+        py.detach(|| std::thread::sleep(std::time::Duration::from_micros(50)));
     }
 }
 
@@ -781,6 +933,16 @@ fn count_error(count: usize) -> PyErr {
 #[cold]
 fn written_in_place_error() -> PyErr {
     PyValueError::new_err("The builder was written while it recorded a nested table")
+}
+
+#[cold]
+fn unfinished_error() -> PyErr {
+    PyRuntimeError::new_err("A table nested in this one was left unfinished")
+}
+
+#[cold]
+fn changed_error() -> PyErr {
+    PyRuntimeError::new_err("Another thread's call ended the nested table")
 }
 
 macro_rules! scalar_setters {
@@ -876,6 +1038,7 @@ impl TableBuilder {
             alignment: 1,
             in_place: None,
             padding: 0,
+            open: Vec::new(),
             shape,
             layout: layout.map(|layout| layout.clone().unbind()),
             written: None,
@@ -959,14 +1122,14 @@ impl TableBuilder {
             let offset_size = self.size();
             let offset = self.offset();
             let alignment = self::alignment(alignment)?;
-            let padding = (offset + offset_size).wrapping_neg() & (alignment - 1);
+            let padding = padding_to(offset + offset_size, alignment);
 
             let index = self.next_index()?;
             self.check_length(index, offset + padding + offset_size + byte_length)?;
 
-            let more = self.more_padding(alignment);
-            self.room(more + padding + offset_size + byte_length)?;
-            self.align_to(alignment, more);
+            let raise = self.padding_to_raise(alignment);
+            self.room(raise + padding + offset_size + byte_length)?;
+            self.raise_alignment(alignment, raise);
             self.data.zeros_within(padding);
             self.write_slot(self.slots + index * offset_size, offset + padding);
             self.push_count(count);
@@ -1091,27 +1254,26 @@ impl TableBuilder {
         args: &Bound<'_, PyTuple>,
         fields: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        let (checkpoint, fields) = {
+        let (depth, fields) = {
             let mut builder = slf.try_borrow_mut()?;
             let index = builder.next_index()?;
             let offset = builder.offset();
             let (fields, slot_bytes) = builder.slots_of(index, offset, &Int::new(fields)?)?;
-            let checkpoint = builder.checkpoint(index);
-            if let Err(error) = builder.start_table(fields, slot_bytes, Some(offset)) {
-                builder.roll_back(&checkpoint);
-                return Err(error);
-            }
-            (checkpoint, fields)
+            builder.start_table(index, fields, slot_bytes)?;
+            (builder.open.len(), fields)
         };
 
         let filled = call_fill(fill, slf.as_any(), args.iter_borrowed());
 
-        let mut builder = borrow_to_finish(slf);
-        if let Err(error) = filled {
-            builder.roll_back(&checkpoint);
-            return Err(error);
+        let mut builder = borrow_to_finish(slf)?;
+        let (checkpoint, unfinished) = builder.take_checkpoint(depth)?;
+        match filled {
+            Ok(()) if !unfinished => builder.end_table(&checkpoint, fields),
+            filled => {
+                builder.roll_back_table(&checkpoint);
+                Err(filled.err().unwrap_or_else(unfinished_error))
+            }
         }
-        builder.end_table(&checkpoint, fields)
     }
 
     #[pyo3(signature = (values, fill, *, fields))]
@@ -1123,8 +1285,14 @@ impl TableBuilder {
     ) -> PyResult<()> {
         let count = values.len()?;
         let fields = Int::new(fields)?;
-        let (checkpoint, fields, slot_bytes) =
-            slf.try_borrow_mut()?.start_vector(count, &fields)?;
+        // The vector's checkpoint stays here, rather than among those of the
+        // tables nested in place, since its items' fields don't pad the
+        // tables it's nested in
+        let (checkpoint, fields, slot_bytes, depth) = {
+            let mut builder = slf.try_borrow_mut()?;
+            let (checkpoint, fields, slot_bytes) = builder.start_vector(count, &fields)?;
+            (checkpoint, fields, slot_bytes, builder.open.len())
+        };
 
         let filled = (|| -> PyResult<()> {
             let mut item = 0;
@@ -1134,11 +1302,13 @@ impl TableBuilder {
                     return Err(count_error(count));
                 }
 
-                // Each item counts its offsets and alignment from its own
-                // start, as a builder does
-                borrow_to_finish(slf).start_table(fields, slot_bytes, None)?;
+                borrow_to_finish(slf)?.start_item(fields, slot_bytes)?;
                 call_fill(fill, slf.as_any(), std::iter::once(value.as_borrowed()))?;
-                borrow_to_finish(slf).end_item(&checkpoint, item, fields)?;
+                let mut builder = borrow_to_finish(slf)?;
+                if builder.open.len() != depth {
+                    return Err(unfinished_error());
+                }
+                builder.end_item(&checkpoint, item, fields)?;
                 item += 1;
             }
 
@@ -1148,7 +1318,11 @@ impl TableBuilder {
             Ok(())
         })();
 
-        let mut builder = borrow_to_finish(slf);
+        let mut builder = borrow_to_finish(slf)?;
+        if builder.open.len() < depth {
+            return Err(changed_error());
+        }
+        builder.open.truncate(depth);
         if let Err(error) = filled {
             builder.roll_back(&checkpoint);
             return Err(error);

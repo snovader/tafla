@@ -46,6 +46,25 @@ _encode = str.encode
 # takes a table's alignment after its fields are set for any of them.
 _UNALIGNED: ElementSize = SIZEOF_8
 
+# The items of the checkpoint, a list, that the builder keeps for a table
+# nested in place while it's written: where the table starts, which it's
+# truncated to if it fails, its parent's counters, and the builder's previous
+# checkpoint, which is the parent's if the parent is nested in place too. The
+# parent's alignment is that of its own fields, which a table that fails
+# restores, and as the table's fields raised it, which pads the parent if
+# it's nested in place too, and which the parent takes once the table ends.
+# The positions move whenever a field pads the tables they're nested in.
+_START = 0
+_BASE = 1
+_SLOTS = 2
+_FIELDS = 3
+_INDEX = 4
+_ALIGNMENT = 5
+_RAISED = 6
+_IN_PLACE = 7
+_PADDING = 8
+_PREVIOUS = 9
+
 # Comparisons rather than max() for alignments, and counted indices rather
 # than enumerate(), whose iteration Python 3.14 doesn't specialize: each made
 # writing the vector of 100 nested tables a few percent faster.
@@ -80,6 +99,7 @@ class TableBuilder:
     __slots__ = [
         "__alignment",
         "__base",
+        "__checkpoint",
         "__data",
         "__fields",
         "__header_size",
@@ -113,6 +133,8 @@ class TableBuilder:
     # alignment so far
     __in_place: int
     __padding: int
+    # The checkpoint of the innermost table being written in place, or None
+    __checkpoint: list[Any] | None
     # The table once written: its bytes, and then the buffer of them that
     # finalize() returns
     __written: memoryview[int] | ByteBuffer | None
@@ -168,6 +190,7 @@ class TableBuilder:
         self.__alignment = _UNALIGNED
         self.__in_place = -1
         self.__padding = 0
+        self.__checkpoint = None
         self.__written = None
 
         if version is not None:
@@ -498,8 +521,12 @@ class TableBuilder:
 
         Raises ``ValueError`` if a builder has fields left to set.
         """
+        # Bytes, which can't change, are kept as they are, rather than as a
+        # view, which holds a few hundred bytes for each item
         items = [
-            TableBuilder.__bytes_of(item)
+            item
+            if type(item) is bytes
+            else TableBuilder.__bytes_of(item)
             if isinstance(item, TableBuilder)
             else byte_view(item)
             for item in vector
@@ -537,8 +564,11 @@ class TableBuilder:
     # of the bytes, with the builder's counters set to it, and restore its
     # parent's once fill has set its fields. A nested table is written
     # unpadded, since its alignment is known only once its fields are set,
-    # and then moved forward by its padding. Its offsets count from its own
-    # start, so none of them changes. One that fails is truncated away.
+    # and moved forward by more padding whenever a field raises it, as are
+    # the tables it's nested in in place, whose alignment the field raises
+    # too. Offsets count from their table's start, so none of them changes.
+    # One that fails is truncated away, with the padding that its fields gave
+    # the tables it's nested in.
     #
     # fill() is given the builder itself, whose setters write the nested
     # table's fields. Writing the builder, or nesting it in another table,
@@ -581,16 +611,20 @@ class TableBuilder:
         offset = start - base
         slot_bytes = self.__slot_bytes(index, offset, fields)
 
-        parent = (
+        alignment = self.__alignment
+        checkpoint: list[Any] = [
             start,
             base,
             self.__slots,
             self.__fields,
             index,
-            self.__alignment,
+            alignment,
+            alignment,
             self.__in_place,
             self.__padding,
-        )
+            self.__checkpoint,
+        ]
+        self.__checkpoint = checkpoint
         self.__base = start
         self.__slots = start
         self.__fields = fields
@@ -606,32 +640,37 @@ class TableBuilder:
             if self.__index != fields:
                 raise _unset_fields_error(self.__index, fields, "the nested table's")
         except BaseException:
-            self.__roll_back(*parent)
+            self.__roll_back_table(checkpoint)
             raise
 
         # Padded from its parent's start, as a nested builder is, which its
-        # fields did as they raised its alignment
-        alignment = self.__alignment
+        # fields did as they raised its alignment, and its parent's with it
         padding = self.__padding
-        length = offset + len(data) - start
-        if length > self.__max_length:
-            self.__roll_back(*parent)
-            raise self.__too_long(index, length)
-
         (
             _,
-            self.__base,
-            self.__slots,
-            self.__fields,
+            base,
+            slots,
+            parent_fields,
             _,
-            self.__alignment,
-            self.__in_place,
-            self.__padding,
-        ) = parent
-        if alignment > self.__alignment:
-            self.__align_to(alignment)
-        # The parent's slots, which moved with it if its alignment moved it
-        self.__length.pack_into(data, self.__slots + index * size, offset + padding)
+            _,
+            alignment,
+            in_place,
+            parent_padding,
+            previous,
+        ) = checkpoint
+        length = len(data) - base
+        if length > self.__max_length:
+            self.__roll_back_table(checkpoint)
+            raise self.__too_long(index, length)
+
+        self.__base = base
+        self.__slots = slots
+        self.__fields = parent_fields
+        self.__alignment = alignment
+        self.__in_place = in_place
+        self.__padding = parent_padding
+        self.__checkpoint = previous
+        self.__length.pack_into(data, slots + index * size, offset + padding)
         self.__index = index + 1
 
     def set_vector_in_place[T](
@@ -774,6 +813,28 @@ class TableBuilder:
             start, base, slots, fields, index, alignment, in_place, padding
         )
 
+    def __roll_back_table(self, checkpoint: list[Any]) -> None:
+        """Rolls back a table nested in place that failed, with the alignment
+        of its parent's own fields, and the padding that its fields gave the
+        tables it's nested in"""
+        (
+            start,
+            base,
+            slots,
+            fields,
+            index,
+            alignment,
+            _,
+            in_place,
+            padding,
+            previous,
+        ) = checkpoint
+        self.__checkpoint = previous
+        self.__roll_back(
+            start, base, slots, fields, index, alignment, in_place, padding
+        )
+        self.__lower_alignment()
+
     def __roll_back_counters(
         self,
         _start: int,
@@ -797,19 +858,102 @@ class TableBuilder:
 
     def __align_to(self, alignment: ElementSize) -> None:
         """Raises the table's alignment to ``alignment``, which is more than
-        it is, after moving a table nested in place forward by the padding
-        that it then needs. A large array raises it before it's written, so
-        the move is of the table so far, which is often its slots alone."""
-        in_place = self.__in_place
-        if in_place >= 0:
-            more = -in_place % alignment - self.__padding
-            if more:
-                base = self.__base
-                self.__data[base:base] = _ZEROS[more]
-                self.__base = base + more
-                self.__slots += more
-                self.__padding += more
+        it is, and that of the tables it's nested in, as far as it's more
+        than theirs, and pads each that's nested in place to it, this table
+        included. A field raises it before it's written, so a large array
+        moves the tables so far, which are often their slots alone.
+
+        From the outermost table in, each moves forward by its own padding
+        and that of the tables it's nested in."""
         self.__alignment = alignment
+        in_place = self.__in_place
+        if in_place < 0:
+            return
+
+        # The checkpoints of the tables nested in place that it pads, from
+        # this table's parent out, which hold their counters. A table nested
+        # in place has a checkpoint, and so does its parent if it's nested in
+        # place too.
+        padded = []
+        parent: Any = self.__checkpoint
+        while parent[_RAISED] < alignment:
+            parent[_RAISED] = alignment
+            if parent[_IN_PLACE] < 0:
+                break
+            padded.append(parent)
+            parent = parent[_PREVIOUS]
+
+        data = self.__data
+        shift = 0
+        for parent in reversed(padded):
+            base = parent[_BASE] + shift
+            more = -parent[_IN_PLACE] % alignment - parent[_PADDING]
+            if more:
+                data[base:base] = _ZEROS[more]
+                shift += more
+            parent[_BASE] = base + more
+            parent[_SLOTS] += shift
+            parent[_PADDING] += more
+            # Where its nested table starts, after its slots
+            parent[_START] += shift
+
+        base = self.__base + shift
+        more = -in_place % alignment - self.__padding
+        if more:
+            data[base:base] = _ZEROS[more]
+            shift += more
+        self.__base = base + more
+        self.__slots += shift
+        self.__padding += more
+
+    def __lower_alignment(self) -> None:
+        """Lowers the alignment of the tables that this table is nested in,
+        once a table nested in it fails, to what their own fields and the
+        tables still nested in them need, and removes the padding that they
+        no longer need from before each that's nested in place, and from
+        before this table. From the outermost table in, each moves back by
+        its own padding removed and that of the tables it's nested in."""
+        in_place = self.__in_place
+        if in_place < 0:
+            return
+
+        padded = []
+        alignment = self.__alignment
+        parent = self.__checkpoint
+        while parent is not None:
+            lowered = max(parent[_ALIGNMENT], alignment)
+            if lowered == parent[_RAISED]:
+                break
+            parent[_RAISED] = lowered
+            if parent[_IN_PLACE] < 0:
+                break
+            padded.append(parent)
+            alignment = lowered
+            parent = parent[_PREVIOUS]
+
+        data = self.__data
+        shift = 0
+        for parent in reversed(padded):
+            base = parent[_BASE] - shift
+            needed = -parent[_IN_PLACE] % parent[_RAISED]
+            less = parent[_PADDING] - needed
+            if less:
+                del data[base - less : base]
+                shift += less
+            parent[_BASE] = base - less
+            parent[_SLOTS] -= shift
+            parent[_PADDING] -= less
+            parent[_START] -= shift
+
+        base = self.__base - shift
+        needed = -in_place % self.__alignment
+        less = self.__padding - needed
+        if less:
+            del data[base - less : base]
+            shift += less
+        self.__base = base - less
+        self.__slots -= shift
+        self.__padding -= less
 
     def __set_array(
         self,

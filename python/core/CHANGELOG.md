@@ -90,6 +90,15 @@ repository's first commits, for code built from its source before the release.
   - `finalize()` or `bytes()` within a `fill`, or nesting the builder in
     another table there, raises `ValueError` itself, rather than the
     in-place setter raising once `fill` returns.
+  - `set_vector_in_place()` iterates its values with the builder in the
+    vector's state, as between items, so a field set or the builder written
+    from the values' iterator raises `ValueError`, rather than writing over
+    the vector.
+  - Arguments of the wrong type raise `TypeError` from the pure-Python
+    builder too, as the native one takes them: `set_string()` of anything but
+    a `str`, which raised `AttributeError`, and a struct size or a count of
+    fields that isn't an integer, which raised `struct.error` or was taken.
+    A `str` subclass's own `encode()` isn't called.
   - A table written in place whose slots alone are longer than the offset
     type addresses raises `ValueError` before `fill` runs, as
     `TableWriter.start_table()` does.

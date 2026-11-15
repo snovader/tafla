@@ -246,20 +246,49 @@ impl Bytes {
         self.len += count;
     }
 
-    /// Inserts `count` zeros at `at`, within the capacity, moving the bytes
-    /// after it forward
-    pub fn insert_zeros_within(&mut self, at: usize, count: usize) {
+    /// Moves the bytes from `start` to `end`, which is at most the length,
+    /// forward by `by`, within the capacity, and writes `zeros` zeros, at
+    /// most `by`, just before where they then start. The length stays: the
+    /// bytes after `end`, `by` of them, are overwritten, so zeros inserted in
+    /// several places move the last bytes first, and `extend_moved()` then
+    /// adds them to the length.
+    pub fn move_forward_within(&mut self, start: usize, end: usize, by: usize, zeros: usize) {
         assert!(
-            at <= self.len && count <= self.capacity - self.len,
-            "the zeros fit in the capacity"
+            start <= end && end <= self.len && by <= self.capacity - end && zeros <= by,
+            "the bytes move within the capacity"
         );
         debug_assert_eq!(self.exports, 0);
         unsafe {
-            let start = self.pointer.as_ptr().add(at);
-            ptr::copy(start, start.add(count), self.len - at);
-            ptr::write_bytes(start, 0, count);
+            let from = self.pointer.as_ptr().add(start);
+            ptr::copy(from, from.add(by), end - start);
+            ptr::write_bytes(from.add(by - zeros), 0, zeros);
         }
+    }
+
+    /// Adds `count` bytes after the length to it, which `move_forward_within()`
+    /// wrote
+    pub fn extend_moved(&mut self, count: usize) {
+        assert!(
+            count <= self.capacity - self.len,
+            "the moved bytes are within the capacity"
+        );
         self.len += count;
+    }
+
+    /// Moves the bytes from `start` to `end`, which is at most the length,
+    /// back by `by`, at most `start`, over the bytes before them. The length
+    /// stays, for `truncate()` to shorten once bytes are removed from several
+    /// places, the first bytes first.
+    pub fn move_back_within(&mut self, start: usize, end: usize, by: usize) {
+        assert!(
+            start <= end && end <= self.len && by <= start,
+            "the bytes move within the length"
+        );
+        debug_assert_eq!(self.exports, 0);
+        unsafe {
+            let from = self.pointer.as_ptr().add(start);
+            ptr::copy(from, from.sub(by), end - start);
+        }
     }
 
     /// Shortens the bytes to `len`, which is at most their length, keeping

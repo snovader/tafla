@@ -120,7 +120,11 @@ and their messages included. They differ only in these ways:
   Free-threaded Python runs threads in parallel, and a native one then
   raises ``RuntimeError`` for a call while another thread's call to it runs,
   other than a ``fill`` that the call runs, where the pure-Python one writes
-  undefined bytes. A ``ByteBuffer`` can be read by several threads at
+  undefined bytes. A native in-place setter whose ``fill`` returns while
+  another thread's call runs waits for that call to end, and an interrupt
+  meanwhile, such as Ctrl-C's ``KeyboardInterrupt``, raises from it and
+  leaves the nested table unfinished, which an in-place setter that it's
+  nested in rolls back. A ``ByteBuffer`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
   implementation's array reads do, and the pure-Python one's string reads,

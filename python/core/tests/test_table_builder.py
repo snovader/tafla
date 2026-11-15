@@ -819,8 +819,8 @@ class TestTablesInPlace(unittest.TestCase):
         self,
     ) -> None:
         """A table in place is moved forward whenever a field raises its
-        alignment, and so is its parent, in place too, once the table ends,
-        with the parent's own slots: each lands where builders put it"""
+        alignment, and so is its parent, in place too, with the parent's own
+        slots: each lands where builders put it"""
 
         def inner(table: TableBuilder) -> None:
             table.set_uint8(1)
@@ -846,6 +846,152 @@ class TestTablesInPlace(unittest.TestCase):
                 expected = TableBuilder(2)
                 expected.set_uint8_array(bytes(leading))
                 expected.set_table(outer_builder)
+
+                self.assertEqual(builder.bytes(), expected.bytes())
+
+    def test_pads_tables_nested_in_place_at_any_depth_where_builders_put_them(
+        self,
+    ) -> None:
+        """An array in the innermost of tables nested in place, each after a
+        uint8, raises the alignment of every table it's nested in, which
+        pads each where builders pad it"""
+
+        def level(table: TableBuilder, left: int) -> None:
+            table.set_uint8(left)
+            if left == 0:
+                table.set_float64_array([0.5, 1.5])
+            else:
+                table.set_table_in_place(level, left - 1, fields=2)
+
+        def level_builder(left: int) -> TableBuilder:
+            table = TableBuilder(2)
+            table.set_uint8(left)
+            if left == 0:
+                table.set_float64_array([0.5, 1.5])
+            else:
+                table.set_table(level_builder(left - 1))
+            return table
+
+        for depth in range(1, 6):
+            for leading in range(8):
+                with self.subTest(depth=depth, leading=leading):
+                    builder = TableBuilder(2)
+                    builder.set_uint8_array(bytes(leading))
+                    builder.set_table_in_place(level, depth - 1, fields=2)
+
+                    expected = TableBuilder(2)
+                    expected.set_uint8_array(bytes(leading))
+                    expected.set_table(level_builder(depth - 1))
+
+                    self.assertEqual(builder.bytes(), expected.bytes())
+
+    def test_a_table_keeps_the_alignment_that_a_table_in_place_gave_it(
+        self,
+    ) -> None:
+        """A table takes the alignment of a table written in place in it once
+        that table ends: a later array of its own pads it no further, and
+        nesting its builder pads it to that alignment, as builders do"""
+
+        def inner(table: TableBuilder) -> None:
+            table.set_float64_array([0.5])
+
+        def middle(table: TableBuilder) -> None:
+            table.set_uint8(1)
+            table.set_table_in_place(inner, fields=1)
+            table.set_uint16_array([2])
+
+        for leading in range(8):
+            with self.subTest(leading=leading):
+                in_place = TableBuilder(2)
+                in_place.set_uint8_array(bytes(leading))
+                in_place.set_table_in_place(middle, fields=3)
+
+                middle_builder = TableBuilder(3)
+                middle(middle_builder)
+                from_builder = TableBuilder(2)
+                from_builder.set_uint8_array(bytes(leading))
+                from_builder.set_table(middle_builder)
+
+                inner_builder = TableBuilder(1)
+                inner(inner_builder)
+                builders = TableBuilder(3)
+                builders.set_uint8(1)
+                builders.set_table(inner_builder)
+                builders.set_uint16_array([2])
+                expected = TableBuilder(2)
+                expected.set_uint8_array(bytes(leading))
+                expected.set_table(builders)
+
+                self.assertEqual(in_place.bytes(), expected.bytes())
+                self.assertEqual(from_builder.bytes(), expected.bytes())
+
+    def test_a_fill_that_raises_takes_back_the_padding_its_fields_gave(
+        self,
+    ) -> None:
+        """The innermost of three tables nested in place pads the two it's
+        nested in as its float64 array raises their alignment, and then
+        raises: the middle table, which sets a uint16 instead, and the outer
+        one are padded as if it had never been set"""
+
+        def inner(table: TableBuilder) -> None:
+            table.set_uint8(1)
+            table.set_float64_array([0.5])
+            raise FillError
+
+        def middle(table: TableBuilder) -> None:
+            table.set_uint8(2)
+            with self.assertRaises(FillError):
+                table.set_table_in_place(inner, fields=2)
+            table.set_uint16(3)
+
+        def outer(table: TableBuilder) -> None:
+            table.set_uint8(4)
+            table.set_int16_array([5])
+            table.set_table_in_place(middle, fields=2)
+
+        for leading in range(8):
+            with self.subTest(leading=leading):
+                builder = TableBuilder(2)
+                builder.set_uint8_array(bytes(leading))
+                builder.set_table_in_place(outer, fields=3)
+
+                middle_builder = TableBuilder(2)
+                middle_builder.set_uint8(2)
+                middle_builder.set_uint16(3)
+                outer_builder = TableBuilder(3)
+                outer_builder.set_uint8(4)
+                outer_builder.set_int16_array([5])
+                outer_builder.set_table(middle_builder)
+                expected = TableBuilder(2)
+                expected.set_uint8_array(bytes(leading))
+                expected.set_table(outer_builder)
+
+                self.assertEqual(builder.bytes(), expected.bytes())
+
+    def test_an_array_from_a_list_that_raises_leaves_the_tables_unpadded(
+        self,
+    ) -> None:
+        """A list whose elements don't convert, in a table in place that its
+        array would pad, raises and leaves the table as it was, and a list
+        that converts is then written where a builder writes it, whatever the
+        table's offset"""
+        for leading in range(8):
+            with self.subTest(leading=leading):
+
+                def fill(table: TableBuilder) -> None:
+                    with self.assertRaises(TypeError):
+                        table.set_float64_array(cast(Any, [0.5, "1.5"]))
+                    table.set_float64_array([0.5, 1.5])
+
+                builder = TableBuilder(2)
+                builder.set_uint8_array(bytes(leading))
+                builder.set_table_in_place(fill, fields=1)
+
+                nested = TableBuilder(1)
+                nested.set_float64_array([0.5, 1.5])
+                expected = TableBuilder(2)
+                expected.set_uint8_array(bytes(leading))
+                expected.set_table(nested)
 
                 self.assertEqual(builder.bytes(), expected.bytes())
 
@@ -909,6 +1055,23 @@ class TestTablesInPlace(unittest.TestCase):
         try:
             builder = TableBuilder(1)
             builder.set_vector_in_place(range(2_000), fill, fields=1)
+            length = len(builder.bytes())
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertLess(peak, 2 * length + 64 * 1024)
+
+    def test_holds_memory_in_proportion_to_a_vector_of_bytes(self) -> None:
+        """Regression: the pure-Python builder held a view of each item of
+        ``set_vector()``, a few hundred bytes for each, so 300,000 items of 8
+        bytes held 102 MB for a table of 3.6 MB"""
+        items = [bytes(8)] * 100_000
+
+        tracemalloc.start()
+        try:
+            builder = TableBuilder(1)
+            builder.set_vector(items)
             length = len(builder.bytes())
             _, peak = tracemalloc.get_traced_memory()
         finally:
