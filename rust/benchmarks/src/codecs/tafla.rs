@@ -141,7 +141,8 @@ impl Workload<StructsShape> for Tafla {
     type Bytes = Vec<u8>;
 
     /// Writes the structs one after another into a `Vec`, which the builder
-    /// owns, as tafla-gen's code writes an array of them
+    /// owns. tafla-gen's code writes them straight into the table, with
+    /// `TableWriter::set_structs()`.
     fn serialize(self, input: &List) -> Result<Vec<u8>, Error> {
         let mut structs = Vec::with_capacity(input.items.len() * ITEM_SIZE);
         for item in &input.items {

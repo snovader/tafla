@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 import {
     ARRAY_FIELDS,
     FIELDS,
@@ -100,38 +101,60 @@ it('should count the padding of a struct array, a nested table and a vector as T
 
 describe('strings', () => {
     // Any UTF-16 code units, lone surrogates too, around the length up to
-    // which strings are written a byte at a time when they're ASCII
+    // which strings are written a byte at a time when they're ASCII, and
+    // strings long enough that TextEncoder.encodeInto() stops short of some
     const codeUnits = fc.integer({ min: 0, max: 0xffff }).map(unit => String.fromCharCode(unit));
     const strings = fc.oneof(
         fc.string({ unit: 'binary-ascii', maxLength: 80 }),
         fc.string({ unit: codeUnits, maxLength: 80 }),
-        fc.string({ unit: 'binary', maxLength: 40 })
+        fc.string({ unit: 'binary', maxLength: 40 }),
+        LONG_STRINGS
     );
 
-    // TextEncoder, rather than TableBuilder, which encodes through the writer
+    function stringTable(value: string, offsetType: OffsetType): TableDescription {
+        return {
+            layout: { sized: false, versioned: false, offsetType },
+            fields: [{ type: 'string', value }]
+        };
+    }
+
+    /**
+     * Expects the writer and the builder to write a table of `value` alone as
+     * TextEncoder encodes it, rather than as TableBuilder does, which encodes
+     * through the writer
+     */
+    function expectEncoded(value: string, offsetType: OffsetType): void {
+        // The field's offset and its length, little-endian and as wide as
+        // the offset type, and then its bytes
+        const size = OFFSET_SIZES[offsetType];
+        const unsigned = (integer: number): number[] =>
+            Array.from({ length: size }, (_, i) => (integer >>> (8 * i)) & 0xff);
+        const encoded = new TextEncoder().encode(value);
+        const expected = Uint8Array.from([
+            ...unsigned(size),
+            ...unsigned(encoded.length),
+            ...encoded
+        ]);
+
+        const table = stringTable(value, offsetType);
+        expect(writeTable(table)).toStrictEqual(expected);
+        expect(buildTable(table).bytes()).toStrictEqual(expected);
+    }
+
     it.prop([strings, fc.constantFrom(...OFFSET_TYPES)])(
         'should write any string as TextEncoder encodes it, with lone surrogates as U+FFFD',
         (value, offsetType) => {
-            const table: TableDescription = {
-                layout: { sized: false, versioned: false, offsetType },
-                fields: [{ type: 'string', value }]
-            };
-            fc.pre(fitsItsLayout(table));
+            fc.pre(fitsItsLayout(stringTable(value, offsetType)));
+            expectEncoded(value, offsetType);
+        }
+    );
 
-            // The field's offset and its length, little-endian and as wide as
-            // the offset type, and then its bytes
-            const size = OFFSET_SIZES[offsetType];
-            const unsigned = (integer: number): number[] =>
-                Array.from({ length: size }, (_, i) => (integer >>> (8 * i)) & 0xff);
-            const encoded = new TextEncoder().encode(value);
-            const expected = Uint8Array.from([
-                ...unsigned(size),
-                ...unsigned(encoded.length),
-                ...encoded
-            ]);
-
-            expect(writeTable(table)).toStrictEqual(expected);
-            expect(buildTable(table).bytes()).toStrictEqual(expected);
+    // The sizer counts the string's UTF-8, so the writer has no bytes past
+    // it when it's the table's last field
+    it.each(Object.entries(SHORTFALL_STRINGS))(
+        'should write a %s string that encodeInto() stops short of as the last field',
+        (_, value) => {
+            expectEncoded(value, 'uint16');
         }
     );
 });
