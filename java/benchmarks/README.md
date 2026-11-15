@@ -91,7 +91,7 @@ of its own, and `ItemAccesses` holds them:
 Each library is used as its documentation shows, and as the TypeScript
 comparison uses its counterpart:
 
-- **tafla** records nested tables in place among their parent builder's
+- **tafla** writes nested tables in place among their parent builder's
   fields, with `setTable(fields, fill)` and `setVector(count, fields, fill)`.
   Arrays of the elements' own Java type are copied in bulk, and the uint32
   keys are narrowed and widened element by element. The array of structs is written into a `byte[]` through a

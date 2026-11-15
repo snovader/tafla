@@ -71,6 +71,16 @@ repository's first commits, for code built from its source before the release.
   document of 100 rows, so that each copy was a call that allocated two
   views. The document took 0.128 µs to write rather than 0.146, and 1,704
   bytes rather than 1,928.
+- `TableBuilder` writes each field, and its offset, when it's set, into bytes
+  that grow, and `bytes()` copies them into the table, rather than recording
+  each field and writing them all in `bytes()`. Arrays, strings and tables
+  of 256 bytes or more are still copied once, by `bytes()`, and a nested
+  builder is copied when it's nested. The API, the bytes and the exceptions
+  are the same, and arrays still mustn't change before `bytes()`. In the
+  benchmarks, the record took 19.5 ns rather than 38.2, the vector of 100
+  nested tables 1.75 µs rather than 3.90 and 8.0 KB rather than 13.0, and the
+  document of 100 rows 0.113 µs rather than 0.128. The array of 100 structs
+  took 147 ns rather than 143, and the document of 100,000 rows 1.4% longer.
 
 ### Removed
 
