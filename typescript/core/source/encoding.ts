@@ -92,12 +92,52 @@ export function encodeInto(
         bytes.subarray(position)
     );
     if (read !== length) {
-        throw new RangeError(
-            `A string of ${length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
-        );
+        return written + encodeRest(string, read, bytes, position, written);
     }
 
     return written;
+}
+
+/**
+ * Writes the rest of `string`, from its `read`th UTF-16 code unit, after the
+ * `written` bytes at `position` in `bytes` at which `TextEncoder.encodeInto()`
+ * stopped, and returns the number of bytes in the rest.
+ *
+ * From Node 25.4, `encodeInto()` can stop before characters that fit, as
+ * https://github.com/nodejs/node/issues/65994 reports. Near the end of the
+ * bytes, it counts 3 bytes for characters that take 2, U+0400 to U+07FF and,
+ * in a string that V8 holds as Latin-1 on a host whose `char` is signed,
+ * U+0080 to U+00FF, and 6 for a surrogate pair, which takes 4. In bytes of
+ * exactly a string's UTF-8 length, it then leaves out the last unit of some
+ * strings of more than 256 units with such characters, such as
+ * `'aé'.repeat(133) + 'a'`. It never stops within a surrogate pair, so the
+ * rest starts at a code point.
+ *
+ * @throws {RangeError} If the rest doesn't fit in `bytes`.
+ */
+function encodeRest(
+    string: string,
+    read: number,
+    bytes: Uint8Array,
+    position: number,
+    written: number
+): number {
+    const start = position + written;
+    const available = bytes.length - start;
+
+    // Each unit takes at least a byte, so a rest of more units than there
+    // are bytes left doesn't fit, and isn't encoded to find that out
+    if (string.length - read <= available) {
+        const rest = encoder.encode(string.slice(read));
+        if (rest.length <= available) {
+            bytes.set(rest, start);
+            return rest.length;
+        }
+    }
+
+    throw new RangeError(
+        `A string of ${string.length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
+    );
 }
 
 /**
