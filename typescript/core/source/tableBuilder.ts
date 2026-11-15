@@ -59,27 +59,14 @@ const SPARE_BYTES = 64 * 1024;
  */
 const SEGMENT_BYTES = 1024;
 /**
- * The longest string, in UTF-16 code units, that's given room for its
- * longest UTF-8, 3 bytes for each unit, when the buffer has to grow for it.
- * A longer one is counted first, so that the buffer grows only by what it
- * needs.
- */
-const SHORT_STRING_UNITS = 1024;
-/**
- * The bytes past a string's UTF-8 that `TextEncoder.encodeInto()` is given.
- * Given exactly its UTF-8 length, it stopped a UTF-16 code unit short of
+ * The bytes past a string's room that `TextEncoder.encodeInto()` is given.
+ * Given exactly a string's UTF-8 length, as a string counted for a table
+ * near its offset type's limit is, it stopped a UTF-16 code unit short of
  * about 1% of strings of 300 units or more with lone surrogates in Node 26
- * and 27, and one byte more always sufficed, in 18,000 random strings.
- * The bytes are the buffer's, not the table's.
+ * and 27, and one byte more always sufficed, in 18,000 random strings. The
+ * bytes are the buffer's, not the table's.
  */
 const ENCODE_SLACK = 1;
-/**
- * The most room that a vector written in place makes for its items after the
- * first, as long as the first: it grows the buffer once for a vector of short
- * items, rather than in a few steps, without allocating out of proportion to
- * the items when the first is longer than the others
- */
-const MAX_ITEMS_ROOM = 64 * 1024;
 
 /**
  * The buffer that a builder left when it wrote its table, which the next
@@ -87,7 +74,10 @@ const MAX_ITEMS_ROOM = 64 * 1024;
  * table out of it, so no table holds it, and builders write every byte of
  * their tables, padding included, so what it held before isn't read.
  * Allocating a buffer of more than 64 bytes for each builder made a document
- * of 100 rows take 1.2 times as long as recording its fields did.
+ * of 100 rows take 1.2 times as long as recording its fields did. The longer
+ * of two is kept, so that a parent's buffer isn't displaced by those of the
+ * small tables nested in it as bytes: the vector of 100 such tables then
+ * allocated 3.2 KB outside V8's heap rather than 10.9 KB.
  */
 let spare: Uint8Array | undefined;
 let spareView: DataView | undefined;
@@ -668,7 +658,12 @@ export class TableBuilder {
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
-    /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
+    /**
+     * Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD. The
+     * builder's buffer makes room for its longest UTF-8, 3 bytes for each
+     * UTF-16 code unit, and grows to it for a long string; the table holds
+     * only the bytes written.
+     */
     setString(string: string): void {
         const index = this.#checkRoom();
         const units = string.length;
@@ -676,16 +671,12 @@ export class TableBuilder {
         const start = at + this.#size;
         const before = at + this.#shift - this.#table + this.#size;
 
-        // With room for its longest UTF-8, a string that fits the table needs
-        // no count, and only one too long for it is counted, for its error.
-        // A long string is counted rather than given room that the buffer
-        // would grow for.
+        // With room for its longest UTF-8, 3 bytes for each UTF-16 code
+        // unit, a string needs no count, which took 10-14 times as long as
+        // encoding a long one. Only a string whose longest UTF-8 would be too
+        // long for the table is counted, so that it fails only if it is.
         let room = 3 * units;
-        if (
-            !(before + room <= this.#maxLength) ||
-            (start + room + ENCODE_SLACK > this.#bytes.length &&
-                units > SHORT_STRING_UNITS)
-        ) {
+        if (!(before + room <= this.#maxLength)) {
             room = utf8Length(string);
             this.#checkLength(index, before + room);
         }
@@ -939,26 +930,15 @@ export class TableBuilder {
 
         try {
             for (let item = 0; item < count; item++) {
-                const itemStart = this.#end;
                 this.#startTable(fields, header);
                 fill(this, item);
                 this.#assertSet();
                 this.#nesting = nesting;
 
-                const end = this.#end;
                 this.#setUnsigned(
                     ends + item * size,
-                    end + this.#shift - position
+                    this.#end + this.#shift - position
                 );
-
-                if (item === 0 && count > 1) {
-                    this.#reserve(
-                        Math.min(
-                            (count - 1) * (end - itemStart),
-                            MAX_ITEMS_ROOM
-                        )
-                    );
-                }
             }
         } catch (error) {
             this.#restore(parentFields, index, parentTable, slots, alignment);
@@ -1382,8 +1362,8 @@ export class TableBuilder {
     /**
      * Writes the table into bytes of its exact length: the buffer, with the
      * segments between its bytes, and the length in a sized header. It then
-     * leaves the buffer for the next builder, unless one is left already or
-     * it's longer than {@link SPARE_BYTES}.
+     * leaves the buffer for the next builder, unless as long a one is left
+     * already or it's longer than {@link SPARE_BYTES}.
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * an array kept as a segment has changed its length.
@@ -1403,7 +1383,10 @@ export class TableBuilder {
         }
 
         // Release the buffer and the values, which may be large arrays
-        if (spare === undefined && this.#bytes.length <= SPARE_BYTES) {
+        if (
+            (spare === undefined || spare.length < this.#bytes.length) &&
+            this.#bytes.length <= SPARE_BYTES
+        ) {
             spare = this.#bytes;
             spareView = this.#view;
         }

@@ -30,8 +30,8 @@ import {
 /**
  * Fields of about 1 KiB, around the length from which the builder keeps an
  * array or an array of structs until the table is written, rather than
- * copying it when it's set, and strings around the length from which it
- * counts their UTF-8 rather than giving them room for their longest
+ * copying it when it's set, and strings of about 1,000 code units, whose
+ * room for their longest UTF-8 grows the buffer
  */
 const KIB_FIELDS: fc.Arbitrary<FieldDescription> = fc.oneof(
     fc.integer({ min: 1000, max: 1100 }).map(length => arrayField('uint8', length)),
@@ -115,22 +115,29 @@ describe('strings', () => {
         .map(symbol => SYMBOLS[Number(symbol)])
         .join('');
 
-    it.each([
-        ['on its own', ''],
-        // Over 128 KiB of UTF-8, twice the longest buffer that a builder
-        // leaves for the next, so that the buffer grows to the string's end
-        ['after 45,000 three-byte characters', '€'.repeat(45000)]
-    ])(
-        'should write a string with lone surrogates that a TextEncoder takes a byte more than its UTF-8 for, %s',
-        (_, before) => {
-            const string = before + SHORT_BY_A_UNIT;
-            const builder = new TableBuilder(1);
-            builder.setString(string);
+    it('should write a string with lone surrogates that a TextEncoder takes a byte more than its UTF-8 for', () => {
+        const builder = new TableBuilder(1);
+        builder.setString(SHORT_BY_A_UNIT);
 
-            const buffer = builder.finalize();
-            expect(buffer.getString(buffer.rootOffset(0))).toBe(string.toWellFormed());
-        }
-    );
+        const buffer = builder.finalize();
+        expect(buffer.getString(buffer.rootOffset(0))).toBe(SHORT_BY_A_UNIT.toWellFormed());
+    });
+
+    it("should write such a string when it's counted, into a buffer grown to its end", () => {
+        // Its longest UTF-8, 3 bytes for each code unit, is too long for
+        // uint16 offsets, so it's counted, and its buffer is a new one of 64
+        // bytes, which grows to the string's end: the buffer that an earlier
+        // builder left is taken
+        const taken = new TableBuilder(0);
+        const string = 'a'.repeat(22_104) + SHORT_BY_A_UNIT;
+        const layout = TableLayout.create({ offsetType: 'uint16' });
+        const builder = new TableBuilder(1, layout);
+        builder.setString(string);
+        taken.bytes();
+
+        const buffer = new ByteBuffer(builder.bytes(), layout);
+        expect(buffer.getString(buffer.rootOffset(0))).toBe(string.toWellFormed());
+    });
 });
 
 it('should write zeros as padding, rather than the bytes of a table built before it', () => {

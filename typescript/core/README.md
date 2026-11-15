@@ -168,16 +168,15 @@ byte; its README describes them. This package writes them, and
   ```
 
   In Node 26, the comparison suite's vector of 100 nested tables took
-  11.5 µs so, against 13.7 µs from a builder per item, and allocated 31 KB
-  on V8's heap rather than 47 KB. V8 optimizes the builder's code for every
-  way that a program uses it, so in a program that writes tables in place,
-  tables built from builders took 2–8% longer than in one that doesn't.
+  5.6 µs so, against 21 µs from a builder per item and 29 µs from the bytes
+  of each, and allocated 16 KB on V8's heap rather than 92 KB and 113 KB.
 - **Nest builders rather than bytes.** `setTable()` and `setVector()` copy
   a `TableBuilder`'s table into its parent from the builder's buffer, without
   bytes of its own. A table nested as bytes was copied out of a builder into
-  bytes of its own first. In Node, a vector of 100 tables that each nest
-  another took 12 µs to build from builders and 49 µs from bytes, and a table
-  nesting 100,000 rows of three columns took 30 µs and 77 µs.
+  bytes of its own first. In Node 26, the vector of 100 tables that each
+  nest another took 21 µs from builders and 29 µs from bytes, and the
+  comparison suite's document of 100,000 rows took 37 µs with its columns
+  from a builder and 83 µs from bytes, against 34 µs written in place.
 - **Write records of fixed size as arrays of structs.** An array of 100
   structs of three float32s took about 1 µs to write and 1,208 bytes, against
   13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of

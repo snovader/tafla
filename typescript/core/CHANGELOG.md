@@ -48,8 +48,8 @@ repository's first commits, for code built from its source before the release.
   builder as it was if `fill` throws or leaves fields unset. They're the way
   to nest tables that a program builds as it writes their parent: in Node
   26, the comparison suite's vector of 100 nested tables took 5.6 µs so,
-  against 21.6 µs from a builder per item, and allocated 16 KB on V8's heap
-  rather than 92 KB.
+  against 21 µs from a builder per item and 29 µs from the bytes of each,
+  and allocated 16 KB on V8's heap rather than 92 KB and 113 KB.
 
 ### Changed
 
@@ -89,7 +89,8 @@ repository's first commits, for code built from its source before the release.
   and leave it as it was when they throw. Arrays, arrays of structs, structs
   and tables given as bytes of 1 KiB or more are kept until the table is
   written and copied into it once; shorter values are copied when they're
-  set, rather than all of them when the table is written. So:
+  set, rather than all of them when the table is written. A string is given
+  room in the buffer for its longest UTF-8 rather than counted first. So:
   - A number for an `int64` field, or a `bigint` for another, throws its
     `TypeError` from the setter, which leaves the builder as it was, rather
     than from `finalize()`, except in an array of 1 KiB or more.
@@ -101,13 +102,18 @@ repository's first commits, for code built from its source before the release.
     its layout, rather than written into it when the parent is written.
 
   In the comparison suite in Node 26, the builder wrote the record in
-  0.125 µs rather than 0.187, the document of 100 rows in 0.458 µs rather
-  than 0.620, or 0.688 µs rather than 0.846 from `number[]` columns, and the
+  0.125 µs rather than 0.180, the document of 100 rows in 0.462 µs rather
+  than 0.624, or 0.632 µs rather than 0.796 from `number[]` columns, and the
   vector of 100 nested tables, written in place, in 5.6 µs rather than
-  11.9, with half the bytes on V8's heap. The documents of 100,000 rows and
-  the array of 100 structs took as long as before. A vector of 100 nested
-  tables from a builder per item took 1.4 times as long, 21.6 µs rather than
-  15.1, since each builder's table is copied into its parent.
+  11.8, with half the bytes on V8's heap; in Node 27, in 0.69, 0.76, 0.84
+  and 0.52 times the time. The documents of 100,000 rows and the array of
+  100 structs took as long as before. A string of 2,000 ASCII characters
+  took 0.34 µs rather than 3.9, and one of 50,000 took 6.8 µs rather than
+  106, though it allocates 200 KB outside V8's heap rather than 50 KB while
+  it's written, since its room is 3 bytes for each character. A vector of
+  100 nested tables from a builder per item took 1.4 times as long, 21.4 µs
+  rather than 15.3, since each builder's table is copied into its parent,
+  and one from the bytes of each 1.2 times, 29.2 µs rather than 24.7.
 
 ### Removed
 
