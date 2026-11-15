@@ -216,6 +216,26 @@ fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
     }
 }
 
+/// The macros of C's headers, such as `EOF` and `NULL`, are names of only
+/// C++'s generated code, which renames the types named after them, so every
+/// target generates code for a schema that declares them
+#[test]
+fn declarations_named_after_c_macros_generate_for_every_target() {
+    let source = "message NAN { eof: EOF; nulls: [NULL]; }\n\
+                  table EOF { x: uint8; }\n\
+                  struct NULL { x: float64; }\n";
+
+    for name in Target::names() {
+        let files = generate("macros.tafla", source, name, &Options::default());
+        assert_ne!(files, Vec::new(), "{name}");
+    }
+
+    let header = &generate("macros.tafla", source, "cpp", &Options::default())[0].contents;
+    for declaration in ["class NAN_ {", "class EOF_ {", "struct NULL_ {"] {
+        assert!(header.contains(declaration), "{declaration}");
+    }
+}
+
 #[test]
 fn a_java_package_is_identifiers_separated_by_dots() {
     for name in ["generated", "org.example.tables", "a1.$b._c", "org.Example"] {

@@ -1,6 +1,7 @@
 // Names that compilers', C's, glibc's and Windows' macros take, which the
-// C++ that tafla-gen generates renames. macros_test.cpp defines them before
-// it includes the generated code, which lies in the namespace of a package
+// C++ that tafla-gen generates renames, as fields and as types. C's headers
+// define `EOF` and `NULL`, and macros_test.cpp defines the others before it
+// includes the generated code, which lies in the namespace of a package
 // whose names are macros and reserved names too.
 // rust/gen/tests/cpp_schemas.rs keeps macros/macros.hpp the generated code.
 
@@ -18,9 +19,19 @@ message Macros {
     far: uint8;
     small: uint8;
     interface: Interface;
+    eof: EOF;
+    nulls: [NULL];
 }
 
 table Interface {
     min: [float32];
     max: [float32];
+}
+
+table EOF {
+    x: uint8;
+}
+
+struct NULL {
+    x: float64;
 }
