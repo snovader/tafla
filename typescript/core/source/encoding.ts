@@ -103,11 +103,15 @@ export function encodeInto(
  * `written` bytes at `position` in `bytes` at which `TextEncoder.encodeInto()`
  * stopped, and returns the number of bytes in the rest.
  *
- * Node 26.13 and 27's `encodeInto()` sometimes stops a unit short of bytes
- * of exactly a string's UTF-8 length, for strings of more than 256 units
- * that aren't all ASCII: about 1% of random strings with lone surrogates,
- * and well-formed ones too, such as `'aé'.repeat(133) + 'a'`. It never stops
- * within a surrogate pair, so the rest starts at a code point.
+ * From Node 25.4, `encodeInto()` can stop before characters that fit, as
+ * https://github.com/nodejs/node/issues/65994 reports. Near the end of the
+ * bytes, it counts 3 bytes for characters that take 2, U+0400 to U+07FF and,
+ * in a string that V8 holds as Latin-1 on a host whose `char` is signed,
+ * U+0080 to U+00FF, and 6 for a surrogate pair, which takes 4. In bytes of
+ * exactly a string's UTF-8 length, it then leaves out the last unit of some
+ * strings of more than 256 units with such characters, such as
+ * `'aé'.repeat(133) + 'a'`. It never stops within a surrogate pair, so the
+ * rest starts at a code point.
  *
  * @throws {RangeError} If the rest doesn't fit in `bytes`.
  */
