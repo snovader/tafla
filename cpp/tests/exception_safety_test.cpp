@@ -1,8 +1,10 @@
 // A setter that throws leaves its builder as it was, even when an allocation
-// fails partway through it. The test replaces the global `operator new`, so
-// that it can fail each allocation of a setter in turn, and every other
-// unaligned form of `new` and `delete`, so that memory from any of them is
-// freed by its own, as AddressSanitizer checks.
+// fails partway through it: growing its bytes, keeping a value where it is or
+// owning it, or moving a table written in place by its padding. The test
+// replaces the global `operator new`, so that it can fail each allocation of
+// a setter in turn, and every other unaligned form of `new` and `delete`, so
+// that memory from any of them is freed by its own, as AddressSanitizer
+// checks.
 
 #include <gtest/gtest.h>
 
@@ -10,6 +12,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <new>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -105,6 +108,11 @@ private:
 /// `arm()`, so that only the setter's allocations fail
 using Setter = void (*)(TableBuilder& parent, const Arm& arm);
 
+/// Values that the builders borrow, long enough that a builder keeps them
+/// where they are rather than copying them
+const std::vector<double> kDoubles(100, 2.5);
+const std::vector<std::uint8_t> kBytes(300, 7);
+
 /// A builder of a table without a header, which owns a string and an array
 TableBuilder owning() {
     TableBuilder builder(2, TableLayout());
@@ -113,13 +121,16 @@ TableBuilder owning() {
     return builder;
 }
 
-/// A builder of a sized table, which is nested as its own bytes
+/// A builder of a sized table, which borrows a long array
 TableBuilder sized() {
-    TableBuilder builder(1, TableLayout().sized());
+    TableBuilder builder(2, TableLayout().sized());
     builder.set_string(std::string(40, 'z'));
+    builder.set_uint8_array(std::span<const std::uint8_t>(kBytes));
     return builder;
 }
 
+/// Setters of every value that a builder copies, keeps or owns, and of
+/// tables, nested and written in place, whose bytes grow and move
 const std::vector<Setter> setters{
     [](TableBuilder& parent, const Arm& arm) {
         std::string value(40, 's');
@@ -127,9 +138,23 @@ const std::vector<Setter> setters{
         parent.set_string(std::move(value));
     },
     [](TableBuilder& parent, const Arm& arm) {
+        std::string value(400, 'l');
+        arm();
+        parent.set_string(std::move(value));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
         std::vector<std::uint16_t> values{1, 2, 3};
         arm();
         parent.set_uint16_array(std::move(values));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
+        std::vector<double> values(kDoubles);
+        arm();
+        parent.set_float64_array(std::move(values));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
+        arm();
+        parent.set_float64_array(std::span<const double>(kDoubles));
     },
     [](TableBuilder& parent, const Arm& arm) {
         std::vector<std::uint8_t> bytes{1, 2, 3, 4};
@@ -152,9 +177,25 @@ const std::vector<Setter> setters{
         parent.set_table(nested);
     },
     [](TableBuilder& parent, const Arm& arm) {
-        auto bytes = owning().to_bytes();
+        auto bytes = sized().to_bytes();
         arm();
         parent.set_table(std::move(bytes));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
+        arm();
+        parent.set_table(3, [](TableBuilder::Item& nested) {
+            nested.set_uint8(1);
+            nested.set_string(std::string(200, 'n'));
+            nested.set_float64_array(std::span<const double>(kDoubles));
+        });
+    },
+    [](TableBuilder& parent, const Arm& arm) {
+        arm();
+        parent.set_vector(20, 2, [](std::size_t index, TableBuilder::Item& item) {
+            item.set_uint32(static_cast<std::uint32_t>(index));
+            item.set_table(
+                1, [&](TableBuilder::Item& pair) { pair.set_uint16_array(std::vector<std::uint16_t>(index, 3)); });
+        });
     },
     [](TableBuilder& parent, const Arm& arm) {
         const auto borrowed = owning();
@@ -162,8 +203,9 @@ const std::vector<Setter> setters{
         items.emplace_back(owning());
         items.emplace_back(borrowed);
         items.emplace_back(sized());
-        items.emplace_back(owning().to_bytes());
-        items.emplace_back(owning().to_bytes().to_vector());
+        items.emplace_back(sized().to_bytes());
+        items.emplace_back(sized().to_bytes().to_vector());
+        items.emplace_back(std::span<const std::uint8_t>(kBytes));
         items.emplace_back(owning());
         arm();
         parent.set_vector(std::move(items));

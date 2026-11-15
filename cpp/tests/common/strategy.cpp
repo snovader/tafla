@@ -19,29 +19,37 @@ constexpr unsigned kDepth = 2;
 constexpr std::array kOffsetTypes = {OffsetType::uint8, OffsetType::uint16, OffsetType::uint32};
 
 /// The most fields, array elements, characters, structs in an array and
-/// vector items that a table holds. A table of `uint8` offsets, or nested in
-/// one, holds few enough to fit in its 255 bytes more often than not, and
-/// others hold enough for `uint16` lengths and offsets past 255.
+/// vector items that a table holds, and whether it holds long values. A
+/// table of `uint8` offsets, or nested in one, holds few enough to fit in its
+/// 255 bytes more often than not, and others hold enough for `uint16`
+/// lengths and offsets past 255.
 struct Limits {
     std::size_t fields;
     std::size_t elements;
     std::size_t characters;
     std::size_t structs;
     std::size_t items;
+    bool long_values;
 
     static Limits of(bool small) {
         if (small) {
-            return {5, 6, 6, 2, 2};
+            return {5, 6, 6, 2, 2, false};
         }
-        return {8, 24, 16, 6, 4};
+        return {8, 24, 16, 6, 4, true};
     }
 };
+
+/// Vectors of `min..=max` values of `values`
+template <class T>
+rc::Gen<std::vector<T>> vectors(std::size_t min, std::size_t max, rc::Gen<T> values) {
+    return rc::gen::mapcat(rc::gen::inRange<std::size_t>(min, max + 1),
+                           [values](std::size_t count) { return rc::gen::container<std::vector<T>>(count, values); });
+}
 
 /// Vectors of `0..=max` values of `values`
 template <class T>
 rc::Gen<std::vector<T>> vectors(std::size_t max, rc::Gen<T> values) {
-    return rc::gen::mapcat(rc::gen::inRange<std::size_t>(0, max + 1),
-                           [values](std::size_t count) { return rc::gen::container<std::vector<T>>(count, values); });
+    return vectors(0, max, std::move(values));
 }
 
 /// Integers across their range, and their limits and 0 more often than chance
@@ -192,6 +200,23 @@ rc::Gen<Field> struct_array(std::size_t structs) {
     });
 }
 
+/// Arrays of 128 to 1,024 bytes of `values`
+template <class T>
+rc::Gen<Field> long_array(rc::Gen<T> values) {
+    return fields_of(vectors(128 / sizeof(T), 1024 / sizeof(T), std::move(values)));
+}
+
+/// Arrays, strings and arrays of structs of up to about a kilobyte, across
+/// the 256 bytes from which `TableBuilder` keeps a value where it is, rather
+/// than copying it when it's set
+rc::Gen<Field> long_value() {
+    return rc::gen::oneOf(long_array(integers<std::int8_t>()), long_array(integers<std::uint8_t>()),
+                          long_array(integers<std::int16_t>()), long_array(integers<std::uint16_t>()),
+                          long_array(integers<std::int32_t>()), long_array(integers<std::uint32_t>()),
+                          long_array(integers<std::int64_t>()), long_array(integers<std::uint64_t>()),
+                          long_array(float32()), long_array(float64()), fields_of(strings(256)), struct_array(48));
+}
+
 /// Scalars, arrays, strings and structs, which hold values rather than tables
 rc::Gen<Field> value(Limits limits) {
     const auto elements = limits.elements;
@@ -208,13 +233,19 @@ rc::Gen<Field> value(Limits limits) {
 
     // Each type of scalar and of array as likely as any other, and strings,
     // structs and arrays of structs each as likely as three of them
-    return rc::gen::weightedOneOf<Field>({
+    auto values = rc::gen::weightedOneOf<Field>({
         {10, scalars},
         {10, arrays},
         {3, fields_of(strings(limits.characters))},
         {3, struct_field()},
         {3, struct_array(limits.structs)},
     });
+    if (!limits.long_values) {
+        return values;
+    }
+
+    // And long values as likely as strings
+    return rc::gen::weightedOneOf<Field>({{29, std::move(values)}, {3, long_value()}});
 }
 
 /// The generators of scalars, arrays, strings and structs, which a generator
