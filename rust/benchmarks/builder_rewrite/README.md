@@ -13,11 +13,11 @@ cargo build --release -p tafla-benchmarks --features main-builder \
 ```
 
 - `builder_comparison` times main's builder, the rewrite, each twice as an
-  A/A pair, and six variants of the rewrite: without the room that its
-  segments make past the first four, keeping values from 128 or from 64
-  bytes rather than 256, and with 64, growing twofold rather than fourfold
-  while short, starting with room for 16 bytes a field rather than 64, or
-  both. Its rows are those of `builders::for_each_row()`: the comparison's
+  A/A pair, and seven variants of the rewrite: starting with room for 16
+  bytes a field rather than 64, keeping a run of 64 bytes or more as a
+  segment rather than grow bytes of 64 KiB or more for it, both, and
+  keeping values from 128 bytes rather than 256, with room for 64, 32 or
+  16 bytes a field, or from 64, with room for 16. Its rows are those of `builders::for_each_row()`: the comparison's
   rows that build tables, a vector of 100 nested tables from a builder per
   table, tables of 32 medium values, of 128 and 192 bytes, and of 32 short
   values, of 64 and 96 bytes, and the shapes of the second review: tables
@@ -47,4 +47,5 @@ one process after another, under the repository's benchmark lock, and
 held the variants that chose the room and growth of the first review
 (room for 64 or 128 bytes a field, growing fourfold, and both), and the
 room that a vector in place makes for its items and an owned builder
-boxed in a `NestedTable`.
+boxed in a `NestedTable`, and of the second review's first run: without
+the room that segments make past the first four, and growing twofold.
