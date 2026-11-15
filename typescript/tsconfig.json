@@ -7,8 +7,10 @@
     "references": [
         { "path": "./benchmarks" },
         { "path": "./core" },
+        { "path": "./core/prototype" },
         { "path": "./core/test" },
         { "path": "./core/test/conformance" },
-        { "path": "./core/test/generated" }
+        { "path": "./core/test/generated" },
+        { "path": "./core/test/prototype" }
     ]
 }

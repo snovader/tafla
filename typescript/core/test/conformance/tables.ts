@@ -56,11 +56,20 @@ export function layoutOf({
     return TableLayout.create({ sized, versioned, offsetType });
 }
 
+/**
+ * The builder class that the helpers build tables with: `TableBuilder`, or
+ * another with its API, such as a prototype
+ */
+export type Builder = typeof TableBuilder;
+
 /** Builds a table as its description sets it out */
-export function buildTable(table: TableDescription): TableBuilder {
-    const builder = createBuilder(table);
+export function buildTable(
+    table: TableDescription,
+    Builder: Builder = TableBuilder
+): TableBuilder {
+    const builder = createBuilder(table, Builder);
     for (const field of table.fields) {
-        setField(builder, field);
+        setField(builder, field, Builder);
     }
 
     return builder;
@@ -72,10 +81,13 @@ export function buildTable(table: TableDescription): TableBuilder {
  * each vector of them whose items hold as many fields with
  * `setVectorInPlace()`, rather than from their builders
  */
-export function buildTableInPlace(table: TableDescription): TableBuilder {
-    const builder = createBuilder(table);
+export function buildTableInPlace(
+    table: TableDescription,
+    Builder: Builder = TableBuilder
+): TableBuilder {
+    const builder = createBuilder(table, Builder);
     for (const field of table.fields) {
-        setFieldInPlace(builder, field, table.layout.offsetType);
+        setFieldInPlace(builder, field, table.layout.offsetType, Builder);
     }
 
     return builder;
@@ -86,10 +98,11 @@ export function buildTableInPlace(table: TableDescription): TableBuilder {
  * offsets or a table that it records in place, and records the tables nested
  * in it in place as {@link buildTableInPlace} does
  */
-function setFieldInPlace(
+export function setFieldInPlace(
     target: TableItem,
     field: FieldDescription,
-    offsetType: OffsetType
+    offsetType: OffsetType,
+    Builder: Builder = TableBuilder
 ): void {
     if (
         field.type === 'table' &&
@@ -99,7 +112,7 @@ function setFieldInPlace(
         const { fields } = field.table;
         target.setTableInPlace(fields.length, table => {
             for (const nested of fields) {
-                setFieldInPlace(table, nested, offsetType);
+                setFieldInPlace(table, nested, offsetType, Builder);
             }
         });
     } else if (
@@ -110,11 +123,11 @@ function setFieldInPlace(
         const fields = items.length === 0 ? 0 : items[0].table.fields.length;
         target.setVectorInPlace(items.length, fields, (item, index) => {
             for (const nested of items[index].table.fields) {
-                setFieldInPlace(item, nested, offsetType);
+                setFieldInPlace(item, nested, offsetType, Builder);
             }
         });
     } else {
-        setField(target, field);
+        setField(target, field, Builder);
     }
 }
 
@@ -144,22 +157,21 @@ function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
 }
 
 /** Creates the builder of a table, with none of its fields set */
-export function createBuilder({
-    layout,
-    version,
-    fields
-}: TableDescription): TableBuilder {
+export function createBuilder(
+    { layout, version, fields }: TableDescription,
+    Builder: Builder = TableBuilder
+): TableBuilder {
     const { sized, offsetType } = layout;
 
     if (layout.versioned) {
-        return new TableBuilder(
+        return new Builder(
             fields.length,
             TableLayout.create({ sized, versioned: true, offsetType }),
             version as number
         );
     }
 
-    return new TableBuilder(
+    return new Builder(
         fields.length,
         TableLayout.create({ sized, offsetType })
     );
@@ -169,7 +181,11 @@ export function createBuilder({
  * Sets a field as its description sets it out, on a builder or a table that
  * one records in place
  */
-export function setField(builder: TableItem, field: FieldDescription): void {
+export function setField(
+    builder: TableItem,
+    field: FieldDescription,
+    Builder: Builder = TableBuilder
+): void {
     switch (field.type) {
         case 'int8':
             builder.setInt8(fromJsonNumber(field.value));
@@ -277,11 +293,13 @@ export function setField(builder: TableItem, field: FieldDescription): void {
             break;
 
         case 'table':
-            builder.setTable(buildNested(field), field.alignment);
+            builder.setTable(buildNested(field, Builder), field.alignment);
             break;
 
         case 'vector':
-            builder.setVector(field.items.map(buildNested));
+            builder.setVector(
+                field.items.map(item => buildNested(item, Builder))
+            );
             break;
     }
 }
@@ -820,8 +838,11 @@ function readScalar(
     }
 }
 
-function buildNested({ from, table }: NestedTable): TableBuilder | Uint8Array {
-    const builder = buildTable(table);
+function buildNested(
+    { from, table }: NestedTable,
+    Builder: Builder
+): TableBuilder | Uint8Array {
+    const builder = buildTable(table, Builder);
     return from === 'builder' ? builder : builder.bytes();
 }
 
