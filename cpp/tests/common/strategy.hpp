@@ -12,6 +12,9 @@
 
 #include <rapidcheck.h>
 
+#include <cstddef>
+#include <string>
+
 #include "common/description.hpp"
 
 namespace tafla::test::strategy {
@@ -36,6 +39,11 @@ rc::Gen<float> float32();
 
 /// Floats like `float32()`'s, as doubles
 rc::Gen<double> float64();
+
+/// Strings of up to `characters` characters of ASCII, of two, three and four
+/// bytes in UTF-8, the last outside the Basic Multilingual Plane, and U+FEFF,
+/// which isn't a byte order mark within a table, leading or not
+rc::Gen<std::string> strings(std::size_t characters);
 
 }  // namespace tafla::test::strategy
 

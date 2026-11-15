@@ -346,6 +346,112 @@ export function writeTableThrough(
 }
 
 /**
+ * Writes a table with a `TableSizer` and a `TableWriter`, as
+ * {@link writeTable} does, but with the fields that the code that tafla-gen
+ * generates writes into the room that the writer reserves for them, as their
+ * bytes: its nested tables, the items of its vectors of tables of one length,
+ * and its arrays of structs. Its nested tables must be in place, as
+ * {@link nestedInPlace} makes them.
+ */
+export function writeTableReserving(table: TableDescription): Uint8Array {
+    const sizer = createSizer(table);
+    for (const field of table.fields) {
+        addReserved(sizer, field);
+    }
+
+    const writer = sizer.writer();
+    for (const [index, field] of table.fields.entries()) {
+        writeReserved(writer, index, field);
+    }
+
+    return writer.bytes();
+}
+
+/** Adds a field as {@link writeTableReserving} writes it */
+function addReserved(sizer: TableSizer, field: FieldDescription): void {
+    switch (field.type) {
+        case 'table':
+            sizer.addTable(alignmentOf(field));
+            sizer.addTableBytes(1, writeTable(field.table).length);
+            break;
+
+        case 'vector': {
+            const length = itemLength(field.items);
+            if (length === undefined) {
+                addField(sizer, field);
+                break;
+            }
+
+            sizer.addVector(field.items.length);
+            sizer.addTableBytes(field.items.length, length);
+            break;
+        }
+
+        default:
+            addField(sizer, field);
+    }
+}
+
+/** Writes field `index` into the room that the writer reserves for it */
+function writeReserved(
+    writer: TableWriter,
+    index: number,
+    field: FieldDescription
+): void {
+    switch (field.type) {
+        case 'struct[]': {
+            const structs = packStructs(field.fields, field.items);
+            const position = writer.reserveStructArray(
+                index,
+                field.items.length,
+                structSize(field.fields),
+                structAlignment(field.fields)
+            );
+            writer.target().set(structs, position);
+            break;
+        }
+
+        case 'table': {
+            const nested = writeTable(field.table);
+            writer.setTable(index, alignmentOf(field));
+            writer
+                .target()
+                .set(nested, writer.reserveTableBytes(nested.length));
+            break;
+        }
+
+        case 'vector': {
+            const length = itemLength(field.items);
+            if (length === undefined) {
+                writeField(writer, index, field);
+                break;
+            }
+
+            let position = writer.reserveTableVector(
+                index,
+                field.items.length,
+                length
+            );
+            for (const { table } of field.items) {
+                writer.target().set(writeTable(table), position);
+                position += length;
+            }
+            break;
+        }
+
+        default:
+            writeField(writer, index, field);
+    }
+}
+
+/** The byte length of each of a vector's items, when they're of one length */
+function itemLength(items: readonly NestedTable[]): number | undefined {
+    const lengths = new Set(items.map(({ table }) => writeTable(table).length));
+
+    return lengths.size > 1 ? undefined : ([...lengths][0] ?? 0);
+}
+
+/**
  * Returns the description with every table nested in it made one that a
  * `TableWriter` writes in place: from its builder, without a header, and
  * with the root's offset type
