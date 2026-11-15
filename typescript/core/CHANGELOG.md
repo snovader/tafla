@@ -119,6 +119,30 @@ repository's first commits, for code built from its source before the release.
   `readUint64()`. `readFloat64()` took 2.75 ns, as before. The code that
   tafla-gen generates for a struct of every scalar type, which has one field
   of each, read its fields in 0.050 µs rather than 0.089.
+- The write functions, `writeInt8()` to `writeFloat64()`, and `TableWriter`'s
+  scalar setters, offsets and lengths write through one set of little-endian
+  stores, and write the same bytes. A write that doesn't fit now throws its
+  `RangeError` before converting its value, so a value of the wrong type at an
+  offset outside the bytes throws a `RangeError` rather than a `TypeError`,
+  and its `valueOf()` isn't called. `TableWriter`'s int64 and float setters
+  copy their value's 32-bit words, as the write functions do, rather than its
+  bytes. In Node 26 and 27, 100 integers of up to 32 bits took 0.55–0.89
+  times as long to write with the write functions, and 0.85–0.99 with
+  `TableWriter`; 100 float32s took 0.89–1.02 with `writeFloat32()`, and 100
+  int64s and floats 0.95–1.02 with `TableWriter`. `TableBuilder`'s setters,
+  which write through `TableWriter`, took 0.86–1.06 by median, and its int8
+  setter up to 1.15: V8 inlines only some of `TableWriter`'s setters into the
+  function that writes `TableBuilder`'s fields, and the others are now small
+  enough to fit ahead of it. Main's int64 setter took 1.2–1.3 times as long as
+  its uint64 setter for the same reason. The 64-bit write functions check
+  their offset in a function of their own, so that V8 inlines them into
+  tafla-gen's serializers without counting them against its budget. In Node 26
+  the comparison suite's record then took as long to write as before, 78 ns,
+  and 100 64-bit writes in a loop 1.04–1.07 times as long; in Node 27 the
+  record took 0.99–1.02, and the 64-bit writes as long as before. In Node 26,
+  an integer held as a double could make the write functions take 3.7–4.3
+  times as long for the rest of the process, as V8 stopped inlining the
+  `DataView` setter that they called; the stores call none.
 
 ### Removed
 

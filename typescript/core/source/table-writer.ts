@@ -20,6 +20,14 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
+import {
+    storeFloat32,
+    storeFloat64,
+    storeInt8,
+    storeInt16,
+    storeInt32,
+    storeInt64
+} from './scalars.ts';
 import { assertStructSize } from './table-reader.ts';
 import type { ElementSize, OffsetSize } from './types.ts';
 
@@ -374,7 +382,9 @@ type CheckedTableWriter = new (
  * array-like, such as a `number[]` or a typed array of another type, is
  * converted as the typed array's constructor would. Values that don't fit
  * their type are written as `DataView`'s setters write them, and a `number`
- * given for an `int64` throws a `TypeError`, as they do.
+ * given for an `int64` throws a `TypeError`, as they do. A scalar is checked
+ * before its value is converted, so one that doesn't fit throws the
+ * `RangeError` whatever its value.
  */
 export class TableWriter {
     // Scalars, offsets and lengths are written as bytes rather than through
@@ -526,76 +536,77 @@ export class TableWriter {
         this.#slots = parent === 0 ? this.#headerSize : parent;
     }
 
-    // A scalar is converted and copied into the bytes before its offset is
-    // written, so that one that doesn't fit, or a number for an int64,
-    // writes nothing
+    // A scalar's room is checked, and its value converted and stored, before
+    // its offset is written, so that one that doesn't fit, or a number for an
+    // int64, writes nothing. One that doesn't fit throws before its value is
+    // converted.
 
     setInt8(index: number, value: number): void {
-        SCRATCH.setInt8(0, value);
-        copy1(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_8);
+        storeInt8(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_8;
     }
 
     setUint8(index: number, value: number): void {
-        SCRATCH.setUint8(0, value);
-        copy1(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_8);
+        storeInt8(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_8;
     }
 
     setInt16(index: number, value: number): void {
-        SCRATCH.setInt16(0, value, true);
-        copy2(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_16);
+        storeInt16(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_16;
     }
 
     setUint16(index: number, value: number): void {
-        SCRATCH.setUint16(0, value, true);
-        copy2(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_16);
+        storeInt16(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_16;
     }
 
     setInt32(index: number, value: number): void {
-        SCRATCH.setInt32(0, value, true);
-        copy4(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_32);
+        storeInt32(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setUint32(index: number, value: number): void {
-        SCRATCH.setUint32(0, value, true);
-        copy4(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_32);
+        storeInt32(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setInt64(index: number, value: bigint): void {
-        SCRATCH.setBigInt64(0, value, true);
-        copy8(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_64);
+        storeInt64(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
 
     setUint64(index: number, value: bigint): void {
-        SCRATCH.setBigUint64(0, value, true);
-        copy8(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_64);
+        storeInt64(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
 
     setFloat32(index: number, value: number): void {
-        SCRATCH.setFloat32(0, value, true);
-        copy4(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_32);
+        storeFloat32(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_32;
     }
 
     setFloat64(index: number, value: number): void {
-        SCRATCH.setFloat64(0, value, true);
-        copy8(this.#bytes, this.#position);
+        assertFits(this.#bytes, this.#position + SIZEOF_64);
+        storeFloat64(this.#bytes, this.#position, value);
         this.#setOffset(index);
         this.#position += SIZEOF_64;
     }
@@ -963,15 +974,12 @@ function setSlot(
     size: OffsetSize,
     value: number
 ): void {
-    bytes[position] = value;
-
-    if (size !== SIZEOF_8) {
-        bytes[position + 1] = value >>> 8;
-
-        if (size === SIZEOF_32) {
-            bytes[position + 2] = value >>> 16;
-            bytes[position + 3] = value >>> 24;
-        }
+    if (size === SIZEOF_32) {
+        storeInt32(bytes, position, value);
+    } else if (size === SIZEOF_16) {
+        storeInt16(bytes, position, value);
+    } else {
+        storeInt8(bytes, position, value);
     }
 }
 
@@ -1101,56 +1109,6 @@ function assertWritable(
             `A table of ${bytes.length} bytes is too long for ${layout.offsetType()} offsets`
         );
     }
-}
-
-// A scalar is set little-endian in the scratch, whatever the host's byte
-// order, and its bytes copied into the table once they fit. A function per
-// width keeps each small enough for V8 to inline into the setters, and
-// each checks inline and builds its error out of line to stay so.
-const SCRATCH = new DataView(new ArrayBuffer(SIZEOF_64));
-const SCRATCH_BYTES = new Uint8Array(SCRATCH.buffer);
-
-function copy1(bytes: Uint8Array, position: number): void {
-    if (!(position + SIZEOF_8 <= bytes.length)) {
-        throw tooLong(bytes, position + SIZEOF_8);
-    }
-
-    bytes[position] = SCRATCH_BYTES[0];
-}
-
-function copy2(bytes: Uint8Array, position: number): void {
-    if (!(position + SIZEOF_16 <= bytes.length)) {
-        throw tooLong(bytes, position + SIZEOF_16);
-    }
-
-    bytes[position] = SCRATCH_BYTES[0];
-    bytes[position + 1] = SCRATCH_BYTES[1];
-}
-
-function copy4(bytes: Uint8Array, position: number): void {
-    if (!(position + SIZEOF_32 <= bytes.length)) {
-        throw tooLong(bytes, position + SIZEOF_32);
-    }
-
-    bytes[position] = SCRATCH_BYTES[0];
-    bytes[position + 1] = SCRATCH_BYTES[1];
-    bytes[position + 2] = SCRATCH_BYTES[2];
-    bytes[position + 3] = SCRATCH_BYTES[3];
-}
-
-function copy8(bytes: Uint8Array, position: number): void {
-    if (!(position + SIZEOF_64 <= bytes.length)) {
-        throw tooLong(bytes, position + SIZEOF_64);
-    }
-
-    bytes[position] = SCRATCH_BYTES[0];
-    bytes[position + 1] = SCRATCH_BYTES[1];
-    bytes[position + 2] = SCRATCH_BYTES[2];
-    bytes[position + 3] = SCRATCH_BYTES[3];
-    bytes[position + 4] = SCRATCH_BYTES[4];
-    bytes[position + 5] = SCRATCH_BYTES[5];
-    bytes[position + 6] = SCRATCH_BYTES[6];
-    bytes[position + 7] = SCRATCH_BYTES[7];
 }
 
 /**

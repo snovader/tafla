@@ -1,6 +1,14 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
 import { outOfRange, writeOutOfRange } from './errors.ts';
+import {
+    storeFloat32,
+    storeFloat64,
+    storeInt8,
+    storeInt16,
+    storeInt32,
+    storeInt64
+} from './scalars.ts';
 
 // Little-endian reads straight from a Uint8Array, for small records at fixed
 // offsets, such as structs and stream frames, that aren't worth a TableReader.
@@ -84,37 +92,35 @@ function assertReadable(
 }
 
 // Little-endian writes straight into a Uint8Array, the reads' counterparts,
-// as the code that tafla-gen generates writes structs. Each converts its
+// as the code that tafla-gen generates writes structs. Each throws a
+// RangeError if the value wouldn't lie within `bytes`, and then converts the
 // value as DataView's setter does, so a number for an int64 throws a
-// TypeError, and then throws a RangeError, and writes nothing, if the value
-// doesn't lie within `bytes`.
-//
-// The value is set little-endian in the scratch, whatever the host's byte
-// order, and its bytes copied, as TableWriter copies them: V8 keeps a
-// Uint8Array of up to 64 bytes on its heap until a DataView asks for its
-// ArrayBuffer. A function per width keeps each small enough to inline, and
-// checks inline, building its error out of line.
+// TypeError; either way, it writes nothing. Unlike DataView, which converts
+// the value before it checks the range, a write checks first: an offset
+// outside the bytes throws the RangeError whatever the value, without
+// converting it. The stores in `scalars.ts` convert and write the values, as
+// they do for TableWriter's setters.
 //
 // TurboFan inlines up to 920 bytes of bytecode into a function, and the
 // serializers that tafla-gen generates spend them on these writes, their
-// table's checks and their string. So each copy checks its offset itself,
+// table's checks and their string. So each write checks its offset itself,
 // rather than through within(), which V8 would inline into each write as
-// well, and the copy of 8 bytes is a loop over its two 32-bit words, 25%
-// less bytecode than 8 copies, which V8 unrolls, as it unrolls any loop of
-// fewer than 4 iterations. 100 writeFloat64()s took 383 ns rather than
-// 398 in Node 26, and 333 ns rather than 346 in Node 27, where a loop over
-// the 8 bytes took 28% to 30% longer than 8 copies.
-
-const scratch = new DataView(new ArrayBuffer(SIZEOF_64));
-const scratchBytes = new Uint8Array(scratch.buffer);
+// well. A 64-bit write checks through assertWritable64(), which builds its
+// error out of line from two arguments, since they take less bytecode than
+// three. The write is then 27 bytes, which TurboFan inlines without
+// counting them, as it does any function of up to 30, so that a serializer
+// pays for the check and the store but not for the write around them.
 
 export function writeInt8(
     bytes: Uint8Array,
     offset: number,
     value: number
 ): void {
-    scratch.setInt8(0, value);
-    copy1(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_8)) {
+        throw writeOutOfRange(offset, SIZEOF_8, bytes.length);
+    }
+
+    storeInt8(bytes, offset, value);
 }
 
 export function writeUint8(
@@ -122,8 +128,11 @@ export function writeUint8(
     offset: number,
     value: number
 ): void {
-    scratch.setUint8(0, value);
-    copy1(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_8)) {
+        throw writeOutOfRange(offset, SIZEOF_8, bytes.length);
+    }
+
+    storeInt8(bytes, offset, value);
 }
 
 export function writeInt16(
@@ -131,8 +140,11 @@ export function writeInt16(
     offset: number,
     value: number
 ): void {
-    scratch.setInt16(0, value, true);
-    copy2(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_16)) {
+        throw writeOutOfRange(offset, SIZEOF_16, bytes.length);
+    }
+
+    storeInt16(bytes, offset, value);
 }
 
 export function writeUint16(
@@ -140,8 +152,11 @@ export function writeUint16(
     offset: number,
     value: number
 ): void {
-    scratch.setUint16(0, value, true);
-    copy2(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_16)) {
+        throw writeOutOfRange(offset, SIZEOF_16, bytes.length);
+    }
+
+    storeInt16(bytes, offset, value);
 }
 
 export function writeInt32(
@@ -149,8 +164,11 @@ export function writeInt32(
     offset: number,
     value: number
 ): void {
-    scratch.setInt32(0, value, true);
-    copy4(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_32)) {
+        throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
+    }
+
+    storeInt32(bytes, offset, value);
 }
 
 export function writeUint32(
@@ -158,8 +176,11 @@ export function writeUint32(
     offset: number,
     value: number
 ): void {
-    scratch.setUint32(0, value, true);
-    copy4(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_32)) {
+        throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
+    }
+
+    storeInt32(bytes, offset, value);
 }
 
 export function writeInt64(
@@ -167,8 +188,8 @@ export function writeInt64(
     offset: number,
     value: bigint
 ): void {
-    scratch.setBigInt64(0, value, true);
-    copy8(bytes, offset);
+    assertWritable64(bytes, offset);
+    storeInt64(bytes, offset, value);
 }
 
 export function writeUint64(
@@ -176,8 +197,8 @@ export function writeUint64(
     offset: number,
     value: bigint
 ): void {
-    scratch.setBigUint64(0, value, true);
-    copy8(bytes, offset);
+    assertWritable64(bytes, offset);
+    storeInt64(bytes, offset, value);
 }
 
 export function writeFloat32(
@@ -185,8 +206,11 @@ export function writeFloat32(
     offset: number,
     value: number
 ): void {
-    scratch.setFloat32(0, value, true);
-    copy4(bytes, offset);
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_32)) {
+        throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
+    }
+
+    storeFloat32(bytes, offset, value);
 }
 
 export function writeFloat64(
@@ -194,55 +218,19 @@ export function writeFloat64(
     offset: number,
     value: number
 ): void {
-    scratch.setFloat64(0, value, true);
-    copy8(bytes, offset);
+    assertWritable64(bytes, offset);
+    storeFloat64(bytes, offset, value);
 }
 
-function copy1(bytes: Uint8Array, offset: number): void {
-    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_8)) {
-        throw writeOutOfRange(offset, SIZEOF_8, bytes.length);
-    }
-
-    bytes[offset] = scratchBytes[0];
-}
-
-function copy2(bytes: Uint8Array, offset: number): void {
-    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_16)) {
-        throw writeOutOfRange(offset, SIZEOF_16, bytes.length);
-    }
-
-    bytes[offset] = scratchBytes[0];
-    bytes[offset + 1] = scratchBytes[1];
-}
-
-function copy4(bytes: Uint8Array, offset: number): void {
-    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_32)) {
-        throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
-    }
-
-    bytes[offset] = scratchBytes[0];
-    bytes[offset + 1] = scratchBytes[1];
-    bytes[offset + 2] = scratchBytes[2];
-    bytes[offset + 3] = scratchBytes[3];
-}
-
-function copy8(bytes: Uint8Array, offset: number): void {
+/** Checks that a 64-bit write at `offset` lies within `bytes` */
+function assertWritable64(bytes: Uint8Array, offset: number): void {
     if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_64)) {
-        throw copy8Error(bytes, offset);
-    }
-
-    for (let i = 0; i < SIZEOF_64; i += SIZEOF_32) {
-        const word = scratch.getInt32(i, true);
-        const position = offset + i;
-        bytes[position] = word;
-        bytes[position + 1] = word >> 8;
-        bytes[position + 2] = word >> 16;
-        bytes[position + 3] = word >> 24;
+        throw write64OutOfRange(bytes, offset);
     }
 }
 
-/** copy8()'s error, built with two arguments, which take less bytecode */
-function copy8Error(bytes: Uint8Array, offset: number): RangeError {
+/** The `RangeError` of a 64-bit write, built from two arguments */
+function write64OutOfRange(bytes: Uint8Array, offset: number): RangeError {
     return writeOutOfRange(offset, SIZEOF_64, bytes.length);
 }
 
