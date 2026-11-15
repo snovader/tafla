@@ -32,12 +32,7 @@ impl Bytes {
     const MIN_CAPACITY: usize = 64;
 
     pub fn zeroed(len: usize) -> PyResult<Self> {
-        Self::zeroed_with(len, Self::MIN_CAPACITY)
-    }
-
-    /// `len` zeros, in a capacity of at least `min_capacity`
-    pub fn zeroed_with(len: usize, min_capacity: usize) -> PyResult<Self> {
-        let capacity = len.max(min_capacity).max(1);
+        let capacity = len.max(Self::MIN_CAPACITY);
         let pointer = allocate(ptr::null_mut(), capacity)?;
         unsafe { ptr::write_bytes(pointer.as_ptr(), 0, len) };
 
@@ -209,14 +204,7 @@ impl Bytes {
         } else {
             self.capacity / 8
         };
-        self.grow_to(required.max(self.capacity + growth))
-    }
-
-    /// Grows the capacity to `capacity` exactly, which is more than it is,
-    /// for an owner that grows it by a policy of its own
-    #[cold]
-    pub fn grow_to(&mut self, capacity: usize) -> PyResult<()> {
-        debug_assert!(capacity > self.capacity);
+        let capacity = required.max(self.capacity + growth);
         self.pointer = allocate(self.allocation(), capacity)?;
         self.capacity = capacity;
 

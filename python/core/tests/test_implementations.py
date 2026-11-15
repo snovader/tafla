@@ -1212,12 +1212,44 @@ def building_with(implementation: Implementation) -> Generator[None]:
 # complete builder, one with a field left to set, one that was finalized,
 # one with a header, one of uint8 offsets, and the builder itself
 NESTED_BUILDERS = ["complete", "incomplete", "finalized", "sized", "uint8", "itself"]
-NESTED: SearchStrategy[Any] = one_of(sampled_from(NESTED_BUILDERS), STRUCTS)
+NESTED: SearchStrategy[Any] = one_of(
+    sampled_from(NESTED_BUILDERS), STRUCTS, one_of(none(), integers(-1, 3))
+)
+
+
+class Encoded(str):
+    """A string whose own encode() the builders don't call"""
+
+    @override
+    def encode(self, encoding: str = "utf-8", errors: str = "strict") -> bytes:
+        return b"encode() of the subclass"
+
+
+# Strings, and the other objects that set_string() rejects
+STRINGS: SearchStrategy[Any] = one_of(
+    text(characters(codec="utf-8"), max_size=6),
+    just("\ud800"),
+    builds(Encoded, text(max_size=3)),
+    one_of(none(), integers(-1, 3), binary(max_size=3)),
+)
+
+# Objects that aren't ints, which arguments taken as ints reject, or take
+# through __index__()
+NOT_INTS: SearchStrategy[Any] = one_of(
+    none(),
+    sampled_from([1.0, 2.5, True, "2"]),
+    builds(Index, one_of(none(), integers(0, 3))),
+)
 
 # Counts of fields of tables written in place: those of no table, and those
 # whose slots no offset type addresses
-IN_PLACE_FIELDS: SearchStrategy[int] = one_of(
-    integers(0, 3), integers(-3, -1), integers(60, 300), HUGE_COUNTS, LARGE_INTEGERS
+IN_PLACE_FIELDS: SearchStrategy[Any] = one_of(
+    integers(0, 3),
+    integers(-3, -1),
+    integers(60, 300),
+    HUGE_COUNTS,
+    LARGE_INTEGERS,
+    NOT_INTS,
 )
 
 SETTERS: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
@@ -1226,17 +1258,16 @@ SETTERS: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         sampled_from([f"set_{kind}_array" for kind in sorted(FORMATS)]),
         tuples(ARRAYS),
     ),
-    tuples(
-        just("set_string"),
-        tuples(one_of(text(characters(codec="utf-8"), max_size=6), just("\ud800"))),
-    ),
-    tuples(just("set_struct"), tuples(STRUCTS)),
+    tuples(just("set_string"), tuples(STRINGS)),
+    tuples(just("set_struct"), tuples(one_of(STRUCTS, none(), integers(-1, 3)))),
     tuples(
         just("set_struct_array"),
-        tuples(STRUCTS, one_of(integers(-1, 4), INTEGERS), ALIGNMENTS),
+        tuples(STRUCTS, one_of(integers(-1, 4), INTEGERS, NOT_INTS), ALIGNMENTS),
     ),
     tuples(just("set_table"), tuples(NESTED, one_of(none(), ALIGNMENTS))),
-    tuples(just("set_vector"), tuples(lists(NESTED, max_size=3))),
+    # A vector's items, from an iterator that finalizes each builder that it
+    # gave already, or not
+    tuples(just("set_vector"), tuples(lists(NESTED, max_size=3), booleans())),
     tuples(sampled_from(["bytes", "finalize"]), just(())),
 )
 
@@ -1252,6 +1283,7 @@ def _in_place(
             just("set_table_in_place"),
             tuples(IN_PLACE_FIELDS, integers(0, 9), calls, booleans()),
         ),
+        # The values' iterator may use the builder too
         tuples(
             just("set_vector_in_place"),
             tuples(
@@ -1259,6 +1291,7 @@ def _in_place(
                 integers(0, 3),
                 sampled_from([0, 0, -1, 1]),
                 calls,
+                booleans(),
                 booleans(),
             ),
         ),
@@ -1292,9 +1325,10 @@ def build(
             return builder.set_table(table)
         return builder.set_table(table, alignment)
     if method == "set_vector":
-        (items,) = args
+        items, finalizing = args
+        tables = [nested_table(builder, implementation, item) for item in items]
         return builder.set_vector(
-            [nested_table(builder, implementation, item) for item in items]
+            finalizing_taken(tables, made) if finalizing else tables
         )
     if method == "set_table_in_place":
         fields, arguments, calls, raises = args
@@ -1305,8 +1339,12 @@ def build(
 
         return builder.set_table_in_place(fill_table, *range(arguments), fields=fields)
     if method == "set_vector_in_place":
-        fields, count, misreported, calls, raises = args
-        values = Misreported([(value,) for value in range(count)], count + misreported)
+        fields, count, misreported, calls, raises, using = args
+        items = [(value,) for value in range(count)]
+        if using:
+            values: Any = UsingBuilder(builder, items, count + misreported, made)
+        else:
+            values = Misreported(items, count + misreported)
 
         def fill_item(item: Any, value: tuple[int]) -> None:
             made.append(value)
@@ -1329,6 +1367,39 @@ def fill(
         )
     if raises:
         raise FillRaised
+
+
+def finalizing_taken(tables: list[Any], made: list[object]) -> Iterator[Any]:
+    """Gives each table, finalizing each builder that it gave already before
+    it gives the next"""
+    for index, table in enumerate(tables):
+        yield table
+        for taken in tables[: index + 1]:
+            if hasattr(taken, "finalize"):
+                made.append(outcome(lambda taken=taken: taken.finalize().bytes()))
+
+
+class UsingBuilder(Misreported):
+    """Values whose iterator sets a field on the builder and writes it, before
+    each value that it gives"""
+
+    def __init__(
+        self,
+        builder: Any,
+        items: list[tuple[Any, ...]],
+        length: int,
+        made: list[object],
+    ) -> None:
+        super().__init__(items, length)
+        self.builder = builder
+        self.made = made
+
+    @override
+    def __iter__(self) -> Iterator[tuple[Any, ...]]:
+        for item in self.items:
+            self.made.append(outcome(partial(self.builder.set_uint8, 1)))
+            self.made.append(outcome(self.builder.bytes))
+            yield item
 
 
 def nested_table(builder: Any, implementation: Implementation, nested: Any) -> Any:

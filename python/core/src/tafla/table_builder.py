@@ -1,5 +1,6 @@
 from array import array
 from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
+from operator import index as _index
 from struct import Struct, error as StructError
 from typing import TYPE_CHECKING, Any, Literal, overload
 
@@ -33,6 +34,11 @@ _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 # for an integer out of range or of another type, and OverflowError for a float
 # too large for a float32
 _VALUE_ERRORS = (StructError, OverflowError)
+
+# Encodes a string as UTF-8 as str's own method, so that a subclass's encode()
+# isn't called, and anything but a str raises TypeError, as the native builder
+# takes them
+_encode = str.encode
 
 # The alignment of a table before any field needs one, as a parent pads a
 # table without arrays, which is 1 in effect, since every offset is a
@@ -346,7 +352,7 @@ class TableBuilder:
     def set_string(self, string: str) -> None:
         """Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a
         ``ValueError``, if it has a lone surrogate, which UTF-8 can't encode."""
-        encoded = string.encode()
+        encoded = _encode(string)
         index = self.__index
         if index == self.__fields:
             raise self.__full()
@@ -394,6 +400,10 @@ class TableBuilder:
         """
         view = byte_view(data)
         byte_length = view.nbytes
+        # Any integer, as the native builder takes it, and TypeError for
+        # anything else, such as a float that struct would raise for later
+        if type(size) is not int:
+            size = _index(size)
         count = struct_count(byte_length, size)
         buffer = self.__data
         offset_size = self.__size
@@ -552,6 +562,8 @@ class TableBuilder:
         index = self.__index
         if index == self.__fields:
             raise self.__full()
+        if type(fields) is not int:
+            fields = _index(fields)
 
         data = self.__data
         size = self.__size
@@ -617,6 +629,8 @@ class TableBuilder:
         raises, leaving the builder as it was either way.
         """
         count = len(values)
+        if type(fields) is not int:
+            fields = _index(fields)
         index = self.__index
         if index == self.__fields:
             raise self.__full()
@@ -630,7 +644,10 @@ class TableBuilder:
         length = offset + size * (1 + count)
         if length > max_length:
             raise self.__too_long(index, length)
-        slot_bytes = self.__slot_bytes(index, length, fields) if count else 0
+        if count:
+            slot_bytes = self.__slot_bytes(index, length, fields)
+        else:
+            fields = slot_bytes = 0
 
         slots = self.__slots
         parent_fields = self.__fields
@@ -641,7 +658,16 @@ class TableBuilder:
 
         data += packing.pack(count)
         data += _ZEROS[ends] if ends < len(_ZEROS) else bytes(ends)
+        # Until the first item starts, and between items, the builder holds
+        # the vector's state, in which any field raises, as a table that holds
+        # all its fields does, and writing the builder raises, as within a
+        # fill. The values' iterator runs then, and in its parent's state
+        # could set the vector's own field or write the builder over the
+        # vector's bytes.
+        self.__base = start
+        self.__slots = start
         self.__fields = fields
+        self.__index = fields
         try:
             # Each item counts its offsets and alignment from its own start,
             # as a builder does

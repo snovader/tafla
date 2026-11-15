@@ -34,16 +34,6 @@ use crate::python::{Int, buffer_bytes, contiguous_error, objects, utf8, with_byt
 use crate::values::{self, Kind};
 use crate::writer::{alignment, header_length};
 
-/// The room that a builder allocates first, which holds a small table, and
-/// the least that it grows to after that
-const INITIAL_CAPACITY: usize = 128;
-const LEAST_GROWTH: usize = 512;
-
-/// The room beyond which the bytes grow by an eighth, as a `bytearray`'s
-/// do, rather than doubling, so that a large table holds little more than
-/// its bytes
-const LARGE: usize = 64 * 1024;
-
 /// The bytes of a written table, which ``TableBuilder.bytes()`` returns a
 /// view of
 #[pyclass(frozen, module = "tafla._native", name = "_Table")]
@@ -94,6 +84,14 @@ struct Checkpoint {
 struct Written {
     table: Py<Table>,
     buffer: Option<Py<PyAny>>,
+}
+
+/// A vector's item as `set_vector()` takes it from the iterator: a builder,
+/// not yet borrowed, or the bytes of a buffer
+enum Taken<'py> {
+    Builder(Bound<'py, TableBuilder>),
+    Bytes(HeldBytes),
+    Itself,
 }
 
 /// A table nested from a builder or from bytes, held while its parent's
@@ -169,32 +167,19 @@ impl TableBuilder {
         self.shape.size()
     }
 
-    /// Makes room for `additional` bytes at the end
+    /// Makes room for `additional` bytes at the end, growing the bytes as
+    /// `TableWriter`'s grow
     #[inline]
     fn room(&mut self, additional: usize) -> PyResult<()> {
         if self.data.capacity - self.data.len < additional {
-            self.grow(additional)?;
+            let required = self
+                .data
+                .len
+                .checked_add(additional)
+                .ok_or_else(memory_error)?;
+            self.data.grow(required)?;
         }
         Ok(())
-    }
-
-    /// Grows the room to twice its length while it's small, and by an
-    /// eighth once it's large, or to what's required if that's more
-    #[cold]
-    fn grow(&mut self, additional: usize) -> PyResult<()> {
-        let required = self
-            .data
-            .len
-            .checked_add(additional)
-            .ok_or_else(memory_error)?;
-        let capacity = self.data.capacity;
-        let growth = if capacity < LARGE {
-            capacity
-        } else {
-            capacity / 8
-        };
-        self.data
-            .grow_to(required.max(capacity + growth).max(LEAST_GROWTH))
     }
 
     /// Writes `value`, which the offset type holds, in the slot at
@@ -487,7 +472,13 @@ impl TableBuilder {
 
     /// Writes a vector's count and zeros for its ends, after checking that
     /// they and the first item's slots fit, and returns the checkpoint that
-    /// the items roll back to, and the items' fields and slot bytes
+    /// the items roll back to, and the items' fields and slot bytes.
+    ///
+    /// Until the first item starts, and between items, the builder holds the
+    /// vector's state, in which any field raises, as a table that holds all
+    /// its fields does, and writing the builder raises, as within a fill. The
+    /// values' iterator runs then, and in its parent's state could set the
+    /// vector's own field or write the builder over the vector's bytes.
     fn start_vector(
         &mut self,
         count: usize,
@@ -502,27 +493,25 @@ impl TableBuilder {
         let (fields, slot_bytes) = if count > 0 {
             self.slots_of(index, length, fields)?
         } else {
-            (fields.index().unwrap_or(0), 0)
+            (0, 0)
         };
 
         let checkpoint = self.checkpoint(index);
         self.room(size + ends)?;
         self.push_count(count);
         self.data.zeros_within(ends);
+
+        self.base = checkpoint.start;
+        self.slots = checkpoint.start;
+        self.fields = fields;
+        self.index = fields;
         Ok((checkpoint, fields, slot_bytes))
     }
 
     /// Ends item `item` of a vector at `checkpoint.start`, once `fill` has
     /// set its fields, by writing its end. An end that its slot can't hold
     /// makes the table too long, which `end_vector()` raises.
-    fn end_item(
-        &mut self,
-        checkpoint: &Checkpoint,
-        item: usize,
-        count: usize,
-        fields: usize,
-        item_start: usize,
-    ) -> PyResult<()> {
+    fn end_item(&mut self, checkpoint: &Checkpoint, item: usize, fields: usize) -> PyResult<()> {
         if self.index != fields {
             return Err(unset_fields_error(
                 self.index,
@@ -531,17 +520,7 @@ impl TableBuilder {
             ));
         }
 
-        let end = self.data.len;
-        if item == 0 && count > 1 {
-            // Room for the other items, each as long as the first, up to
-            // what the offset type addresses
-            let room = (count - 1)
-                .saturating_mul(end - item_start)
-                .min(self.shape.max_length());
-            self.room(room)?;
-        }
-
-        let last = end - checkpoint.start;
+        let last = self.data.len - checkpoint.start;
         if last <= self.shape.max_length() {
             self.write_slot(checkpoint.start + (item + 1) * self.size(), last);
         }
@@ -705,6 +684,21 @@ fn call_fill<'a, 'py>(
     unsafe { Bound::from_owned_ptr_or_err(py, result) }.map(drop)
 }
 
+/// Borrows the builder to end or roll back the nested table or vector that
+/// an in-place setter started, once Python code has run: waiting, with the
+/// thread detached, while another thread's call holds it, since returning
+/// that thread's `RuntimeError` would leave the builder in the nested
+/// table's state. Its call holds the builder only while it runs.
+fn borrow_to_finish<'py>(slf: &Bound<'py, TableBuilder>) -> PyRefMut<'py, TableBuilder> {
+    loop {
+        if let Ok(builder) = slf.try_borrow_mut() {
+            return builder;
+        }
+        slf.py()
+            .detach(|| std::thread::sleep(std::time::Duration::from_micros(50)));
+    }
+}
+
 #[cold]
 fn unset_fields_error(set_fields: usize, fields: usize, whose: &str) -> PyErr {
     PyValueError::new_err(format!(
@@ -800,7 +794,7 @@ impl TableBuilder {
             return Err(PyValueError::new_err("negative count"));
         };
 
-        let mut data = Bytes::zeroed_with(length, INITIAL_CAPACITY)?;
+        let mut data = Bytes::zeroed(length)?;
         if let Some(version) = version.and_then(|version| version.index()) {
             let slot = if shape.sized { shape.size() } else { 0 };
             #[allow(clippy::cast_possible_truncation)]
@@ -958,22 +952,34 @@ impl TableBuilder {
     }
 
     fn set_vector(slf: &Bound<'_, Self>, vector: &Bound<'_, PyAny>) -> PyResult<()> {
-        let mut items = Vec::new();
+        // Each builder is checked as it's taken, as the pure-Python builder
+        // checks it, but borrowed only once the iterator is done, since the
+        // iterator may call an item that it gave already
+        let mut taken = Vec::new();
         for item in vector.try_iter()? {
             let item = item?;
-            items.push(if let Ok(nested) = item.cast::<Self>() {
+            taken.push(if let Ok(nested) = item.cast::<Self>() {
                 if nested.is(slf) {
                     slf.try_borrow()?.nested_bytes()?;
-                    Nested::Itself
+                    Taken::Itself
                 } else {
-                    let nested = nested.try_borrow()?;
-                    nested.nested_bytes()?;
-                    Nested::Builder(nested)
+                    nested.try_borrow()?.nested_bytes()?;
+                    Taken::Builder(nested.clone())
                 }
             } else {
-                Nested::Bytes(HeldBytes::of(&item)?)
+                Taken::Bytes(HeldBytes::of(&item)?)
             });
         }
+        let items = taken
+            .into_iter()
+            .map(|item| {
+                Ok(match item {
+                    Taken::Builder(nested) => Nested::Builder(nested.try_borrow()?),
+                    Taken::Bytes(held) => Nested::Bytes(held),
+                    Taken::Itself => Nested::Itself,
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
 
         let mut builder = slf.try_borrow_mut()?;
         let index = builder.next_index()?;
@@ -1032,7 +1038,7 @@ impl TableBuilder {
 
         let filled = call_fill(fill, slf.as_any(), args.iter_borrowed());
 
-        let mut builder = slf.try_borrow_mut()?;
+        let mut builder = borrow_to_finish(slf);
         if let Err(error) = filled {
             builder.roll_back(&checkpoint);
             return Err(error);
@@ -1062,15 +1068,9 @@ impl TableBuilder {
 
                 // Each item counts its offsets and alignment from its own
                 // start, as a builder does
-                let item_start = {
-                    let mut builder = slf.try_borrow_mut()?;
-                    let item_start = builder.data.len;
-                    builder.start_table(fields, slot_bytes)?;
-                    item_start
-                };
+                borrow_to_finish(slf).start_table(fields, slot_bytes)?;
                 call_fill(fill, slf.as_any(), std::iter::once(value.as_borrowed()))?;
-                slf.try_borrow_mut()?
-                    .end_item(&checkpoint, item, count, fields, item_start)?;
+                borrow_to_finish(slf).end_item(&checkpoint, item, fields)?;
                 item += 1;
             }
 
@@ -1080,7 +1080,7 @@ impl TableBuilder {
             Ok(())
         })();
 
-        let mut builder = slf.try_borrow_mut()?;
+        let mut builder = borrow_to_finish(slf);
         if let Err(error) = filled {
             builder.roll_back(&checkpoint);
             return Err(error);

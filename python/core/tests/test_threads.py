@@ -4,9 +4,11 @@ at a time may use, rejects another's call rather than racing it"""
 
 import sys
 import threading
+import time
 import unittest
 from array import array
 from collections.abc import Callable
+from typing import Any, override
 
 import tafla
 from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
@@ -140,6 +142,59 @@ class TestThreads(unittest.TestCase):
         for index in range(len(set_fields)):
             written = buffer.get_float64_array(buffer.root_offset(index))
             self.assertEqual(written[-1], 9999)
+
+    @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python",
+        "a pure-Python builder used by threads at once writes undefined bytes",
+    )
+    def test_ends_a_nested_table_once_another_threads_call_lets_go_of_the_builder(
+        self,
+    ) -> None:
+        """A fill that returns while another thread's call holds the builder:
+        the in-place setter waits for that call to end, rather than raising
+        RuntimeError and leaving the builder in the nested table's state. The
+        other call holds the builder while array() reads a list's items,
+        which can take any time, with the GIL released or without one."""
+        builder = TableBuilder(2)
+        inside = threading.Event()
+
+        class Slow(list[float]):
+            """A list that array() reads item by item, through
+            __getitem__(), which takes a while"""
+
+            @override
+            def __getitem__(self, index: Any) -> Any:
+                inside.set()
+                time.sleep(0.2)
+                return super().__getitem__(index)
+
+        raised: list[BaseException] = []
+
+        def set_array() -> None:
+            try:
+                builder.set_float64_array(Slow([1.5]))
+            except BaseException as error:  # noqa: BLE001
+                raised.append(error)
+
+        other = threading.Thread(target=set_array)
+
+        def fill(table: TableBuilder) -> None:
+            # The other thread's array is this table's second field
+            table.set_float32(0.5)
+            other.start()
+            inside.wait()
+
+        builder.set_table_in_place(fill, fields=2)
+        other.join()
+        builder.set_uint8(7)
+
+        buffer = builder.finalize()
+        table = buffer.root_offset(0)
+        self.assertEqual(raised, [])
+        self.assertEqual(buffer.get_float32(buffer.field_offset(table, 0)), 0.5)
+        array_field = buffer.field_offset(table, 1)
+        self.assertEqual(buffer.get_float64_array(array_field).tolist(), [1.5])
+        self.assertEqual(buffer.get_uint8(buffer.root_offset(1)), 7)
 
     @unittest.skipIf(
         tafla.IMPLEMENTATION == "python" and not sys._is_gil_enabled(),

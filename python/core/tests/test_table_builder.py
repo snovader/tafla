@@ -1,6 +1,7 @@
+import tracemalloc
 import unittest
 from array import array
-from collections.abc import Buffer, Callable, Generator
+from collections.abc import Buffer, Callable, Generator, Iterator
 from contextlib import contextmanager
 from struct import pack
 from typing import Any, cast, override
@@ -813,6 +814,73 @@ class TestTablesInPlace(unittest.TestCase):
             builder.set_vector_in_place(Shrinking(VALUES), set_item, fields=2)
 
         self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
+
+    def test_values_whose_iterator_uses_the_builder_leave_it_as_it_was(
+        self,
+    ) -> None:
+        """The values' iterator runs before the first item and between items,
+        when the builder holds the vector rather than its parent: a field or
+        a write there raises, as within a fill, rather than writing over the
+        vector"""
+        attempts: list[str] = []
+
+        class Using(list[float]):
+            def __init__(self, builder: TableBuilder, values: list[float]) -> None:
+                super().__init__(values)
+                self.builder = builder
+
+            @override
+            def __iter__(self) -> Iterator[float]:
+                for value in super().__iter__():
+                    for name, use in [
+                        ("set_uint8", lambda: self.builder.set_uint8(7)),
+                        ("bytes", self.builder.bytes),
+                        ("finalize", self.builder.finalize),
+                    ]:
+                        try:
+                            use()
+                        except ValueError as error:
+                            attempts.append(f"{name}: {error}")
+                    yield value
+
+        builder = TableBuilder(2)
+        builder.set_float32(0)
+        builder.set_vector_in_place(Using(builder, VALUES), set_item, fields=2)
+
+        expected = TableBuilder(2)
+        expected.set_float32(0)
+        expected.set_vector([_item_builder(value) for value in VALUES])
+        self.assertEqual(builder.bytes(), expected.bytes())
+        self.assertEqual(
+            attempts,
+            3
+            * [
+                "set_uint8: Can't add field 3 to a table of 2",
+                "bytes: The builder was written while it recorded a nested table",
+                "finalize: The builder was written while it recorded a nested table",
+            ],
+        )
+
+    def test_holds_memory_in_proportion_to_a_vector_of_items_of_any_size(
+        self,
+    ) -> None:
+        """Regression: the native builder made room for the rest of a vector's
+        items as long as its first, so a first item of 10 KB before 2,000
+        items of a few bytes held 20 MB for a table of 34 KB"""
+
+        def fill(item: TableBuilder, value: int) -> None:
+            item.set_uint8_array(bytes(10_000 if value == 0 else 4))
+
+        tracemalloc.start()
+        try:
+            builder = TableBuilder(1)
+            builder.set_vector_in_place(range(2_000), fill, fields=1)
+            length = len(builder.bytes())
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+
+        self.assertLess(peak, 2 * length + 64 * 1024)
 
     def test_a_builder_written_within_fill_raises_and_is_left_as_it_was(
         self,
