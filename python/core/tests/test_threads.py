@@ -1,6 +1,6 @@
 """Use from several threads at once, which free-threaded Python runs in
-parallel: readers share a buffer, and a writer, which one thread at a time
-may use, rejects another's call rather than racing it"""
+parallel: readers share a buffer, and a writer or builder, which one thread
+at a time may use, rejects another's call rather than racing it"""
 
 import sys
 import threading
@@ -112,6 +112,36 @@ class TestThreads(unittest.TestCase):
         self.assertGreater(len(writer.bytes()), 0)
 
     @unittest.skipIf(
+        tafla.IMPLEMENTATION == "python",
+        "a pure-Python builder used by threads at once writes undefined bytes",
+    )
+    def test_rejects_a_call_to_a_builder_that_another_thread_is_using(self) -> None:
+        """Each call borrows the builder, and another thread's call meanwhile
+        raises RuntimeError, so every field that a call set reads back whole;
+        with the GIL, calls don't overlap"""
+        fields = THREADS * 50
+        builder = TableBuilder(fields)
+        values = array("d", range(10_000))
+        set_fields: list[None] = []
+
+        def write() -> None:
+            for _ in range(50):
+                try:
+                    builder.set_float64_array(values)
+                    set_fields.append(None)
+                except RuntimeError:
+                    pass
+
+        self.assertEqual(run_together(write), [])
+        for _ in range(fields - len(set_fields)):
+            builder.set_uint8(0)
+
+        buffer = builder.finalize()
+        for index in range(len(set_fields)):
+            written = buffer.get_float64_array(buffer.root_offset(index))
+            self.assertEqual(written[-1], 9999)
+
+    @unittest.skipIf(
         tafla.IMPLEMENTATION == "python" and not sys._is_gil_enabled(),
         "array() reads a list item by item, which another thread changes "
         "between them on a free-threaded build",
@@ -135,10 +165,13 @@ class TestThreads(unittest.TestCase):
             for _ in range(200):
                 writer = TableWriter(1)
                 writer.set_float64_array(0, values)
-                buffer = ByteBuffer(bytes(writer.bytes()))
-                written = buffer.get_float64_array(buffer.root_offset(0))
-                assert len(set(written)) == 1, "the elements of two states"
-                assert len(written) == 1000 + int(written[0]) % 3, "another length"
+                builder = TableBuilder(1)
+                builder.set_float64_array(values)
+                for data in (writer.bytes(), builder.bytes()):
+                    buffer = ByteBuffer(bytes(data))
+                    written = buffer.get_float64_array(buffer.root_offset(0))
+                    assert len(set(written)) == 1, "the elements of two states"
+                    assert len(written) == 1000 + int(written[0]) % 3, "another length"
 
         replacer = threading.Thread(target=replace)
         replacer.start()
