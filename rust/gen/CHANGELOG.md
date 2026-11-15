@@ -166,6 +166,15 @@ first commits, for code built from its source before the release.
   into the bytes that the runtime's `TableWriter::table_bytes()` returns. The
   benchmarks' vector of 100 nested tables took 0.15 µs to write rather than
   0.83 µs, and the record 20 ns rather than 30 ns.
+- Generated TypeScript and JavaScript write a nested table whose fields'
+  sizes the schema fixes whole, with its `writeAt()`, where its parent's
+  writer reserves its `SIZE` bytes, and size a vector of them in one call, as
+  Go, C++ and Rust do. A message of such fields, with or without a string
+  after them, is written whole too, at constant positions, into the bytes
+  that the runtime's `TableWriter.tableBytes()` returns. Arrays of structs,
+  and vectors of such tables, are written where the writer reserves them,
+  rather than into bytes of their own: a run of fewer than 128 bytes with the
+  runtime's write functions, and a longer one through a `DataView`.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,

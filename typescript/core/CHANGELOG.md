@@ -28,6 +28,18 @@ repository's first commits, for code built from its source before the release.
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
   caller's bytes rather than new ones.
+- API for the code that tafla-gen generates, which lays out the fields whose
+  sizes the schema fixes itself, and may change with it:
+  `TableSizer.addTableBytes()`, which adds a nested table or a vector's items
+  of fixed length in one call; `TableWriter.reserveTableBytes()`,
+  `reserveTableVector()` and `reserveStructArray()`, which write a field's
+  offset, and a vector's count and item ends or an array's count, and return
+  where in `target()`, the writer's bytes, the caller writes the table, the
+  items or the structs; `TableWriter.tableBytes()` and
+  `versionedTableBytes()`, the bytes of a message written without a sizer and
+  a writer, with its header, which check it as a sizer does; `utf8Length()`
+  and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
+  `DataView` of a range of bytes, for a long run of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
   `setVectorInPlace(count, fields, fill)`, which record a nested table, or
   each item of a vector, among the builder's own fields, through the
