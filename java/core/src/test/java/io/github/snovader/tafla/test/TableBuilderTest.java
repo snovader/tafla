@@ -254,7 +254,8 @@ public class TableBuilderTest {
         var actual = settings(table, fields, new FillFaults(fault, faultAt));
 
         Statistics.label("fill").collect(actual.failures() > expected.failures() ? "failed" : "didn't fail");
-        Statistics.label("table").collect(expected.outcomes().getLast().startsWith("java") ? "exception" : "bytes");
+        var written = expected.outcomes().get(expected.outcomes().size() - 2);
+        Statistics.label("table").collect(written.startsWith("java") ? "exception" : "bytes");
         Statistics.label("fill").coverage(coverage -> coverage.check("failed").percentage(p -> p > 15));
         Statistics.label("table").coverage(coverage -> coverage.check("bytes").percentage(p -> p > 30));
 
@@ -277,7 +278,8 @@ public class TableBuilderTest {
     /**
      * What setting each of a table's fields did, "set" or the exception that it threw, set again
      * without faults if it threw, followed by the table's bytes in hexadecimal or the exception
-     * that writing them threw, and how many fields threw the first time
+     * that writing them threw, then those of a parent that nests its builder after a byte, which
+     * pads it to its alignment, and how many fields threw the first time
      */
     private record Settings(List<String> outcomes, int failures) {}
 
@@ -299,6 +301,12 @@ public class TableBuilderTest {
             outcomes.add(outcome);
         }
         outcomes.add(outcome(builder::bytes));
+        outcomes.add(outcome(() -> {
+            var parent = new TableBuilder(2);
+            parent.setUint8((short) 1);
+            parent.setTable(builder);
+            return parent.bytes();
+        }));
 
         return new Settings(outcomes, failures);
     }
