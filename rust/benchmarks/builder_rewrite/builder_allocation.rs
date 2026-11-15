@@ -96,12 +96,13 @@ struct Counts {
 
 impl Visit for Counts {
     fn visit<T: Builder>(&mut self, name: &'static str) {
+        let inputs = self.inputs;
         let mut counter = Counter {
             builder: name,
             row: 0,
             counts: self,
         };
-        for_each_row::<T>(self.inputs, &mut counter);
+        for_each_row::<T>(inputs, &mut counter);
 
         let name_of = |length| "x".repeat(length);
         let uneven = peak(|| T::uneven(&name_of(UNEVEN_NAME)));

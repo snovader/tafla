@@ -106,7 +106,8 @@ struct Timers {
 
 impl Visit for Timers {
     fn visit<T: Builder>(&mut self, name: &'static str) {
-        if let Err(error) = check::<T>(self.inputs) {
+        let inputs = self.inputs;
+        if let Err(error) = check::<T>(inputs) {
             self.error
                 .get_or_insert_with(|| format!("{name}: {error}").into());
             return;
@@ -117,7 +118,7 @@ impl Visit for Timers {
             row: 0,
             timers: self,
         };
-        for_each_row::<T>(self.inputs, &mut adder);
+        for_each_row::<T>(inputs, &mut adder);
     }
 }
 
