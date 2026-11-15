@@ -76,7 +76,9 @@ bool well_formed(std::span<const std::uint8_t> bytes) {
 /// every offset, and a read before their start is reported at offset 0 and
 /// reads bytes that aren't UTF-8 at the others
 bool valid_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
-    const auto buffer = std::make_unique<std::uint8_t[]>(offset + bytes.size());
+    // Not zeroed, since every byte is written below. Zeroed, the bytes made
+    // GCC 15's -Wrestrict see the copy as overlapping on 32-bit x86 and s390x
+    const auto buffer = std::make_unique_for_overwrite<std::uint8_t[]>(offset + bytes.size());
     std::fill_n(buffer.get(), offset, std::uint8_t{0xff});
     std::ranges::copy(bytes, buffer.get() + offset);
 
