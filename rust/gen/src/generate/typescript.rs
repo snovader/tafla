@@ -1,7 +1,11 @@
 //! TypeScript, and JavaScript with `JSDoc` types, for `tafla`. Messages
 //! and tables are classes that read fields lazily from their bytes, and are
-//! written from interfaces of their fields. Structs are read eagerly.
+//! written from interfaces of their fields. Structs are read eagerly. The
+//! fields whose sizes the schema fixes are written at positions that the
+//! generator works out: nested tables of them whole, and messages of them,
+//! and a string after them, without a sizer and a writer.
 
+use super::fixed::{self, FixedSizes, NESTED_OFFSET_SIZE};
 use super::prose::article;
 use super::writer::{
     CodeWriter, Expr, Style, call, comment_text, doc_comment, escape_outside_code_spans, text,
@@ -40,6 +44,20 @@ const MEMBERS: [&str; 9] = [
     "toString",
     "valueOf",
 ];
+
+/// The longest nested table that the generated code writes whole, the
+/// longest that `uint32` offsets address
+const MAX_WHOLE_TABLE: usize = 0xffff_ffff;
+
+/// The shortest run of structs, or of nested tables of fixed size, in bytes,
+/// that the generated code writes through a `DataView` rather than with the
+/// runtime's write functions. A `DataView` writes each scalar about 2 ns
+/// faster, but takes about 56 ns to create over bytes outside V8's heap, and
+/// 120 ns over bytes of up to 64 that V8 keeps on its heap until something
+/// asks for their `ArrayBuffer`, which a table holding a run this long never
+/// is. In Node 27, the two broke even at 8 structs of three float32s, 96
+/// bytes, and between 4 and 8 tables of three float32s, 112 and 224 bytes.
+const MIN_VIEW_RUN: usize = 128;
 
 /// The read of a field's value, which `suffix` follows
 struct Read<'d> {
@@ -82,10 +100,13 @@ pub fn generate(
     options: &Options,
     typed: bool,
 ) -> Vec<GeneratedFile> {
+    let fixed = FixedSizes::new(schema, MAX_WHOLE_TABLE);
     let generator = Generator {
         schema,
         typed,
         reads: Reads::of(schema),
+        runs: Runs::of(schema, &fixed),
+        fixed,
     };
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
 
@@ -102,7 +123,7 @@ pub fn generate(
                 match definition.kind {
                     Kind::Message(layout) => generator.message(&mut writer, index, layout),
                     Kind::Table => generator.table(&mut writer, index),
-                    Kind::Struct(_) => generator.structure(&mut writer, definition),
+                    Kind::Struct(_) => generator.structure(&mut writer, index),
                 }
                 writer.blank();
                 generator.fields_type(&mut writer, definition);
@@ -258,6 +279,70 @@ struct Generator<'a> {
     /// TypeScript, rather than JavaScript with `JSDoc`
     typed: bool,
     reads: Reads,
+    /// The byte length of each nested table whose fields' sizes the schema
+    /// fixes, which the generated code writes whole
+    fixed: FixedSizes,
+    runs: Runs,
+}
+
+/// Which structs and nested tables the generated code writes in runs, one
+/// after another: those that arrays of structs and vectors of tables of
+/// fixed size hold, and the structs and tables in them
+struct Runs {
+    /// Items of arrays and vectors, which get `writeItemsAt()`
+    items: Vec<bool>,
+    /// Items and what they hold, which get `writeView()`
+    viewed: Vec<bool>,
+}
+
+impl Runs {
+    fn of(schema: &Schema, fixed: &FixedSizes) -> Self {
+        let mut items = vec![false; schema.definitions.len()];
+        for field in schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+        {
+            match field.field_type {
+                FieldType::StructArray(index) => items[index] = true,
+                FieldType::Vector(index) if fixed.table(index).is_some() => items[index] = true,
+                _ => {}
+            }
+        }
+
+        // Structs and tables of fixed size hold neither themselves nor
+        // anything but structs and such tables, and each is visited once
+        let mut viewed = items.clone();
+        let mut pending: Vec<usize> = (0..items.len()).filter(|&index| items[index]).collect();
+        while let Some(index) = pending.pop() {
+            for field in &schema.definition(index).fields {
+                if let FieldType::Struct(nested) | FieldType::Table(nested) = field.field_type
+                    && !viewed[nested]
+                {
+                    viewed[nested] = true;
+                    pending.push(nested);
+                }
+            }
+        }
+
+        Self { items, viewed }
+    }
+}
+
+/// How the generated code writes a message whole, at constant positions,
+/// without a sizer and a writer: one of fields whose sizes the schema fixes,
+/// and a string after them, which fits in its offset type
+struct WholeMessage {
+    /// The width of its header slots, offsets and string length
+    width: usize,
+    /// The position of its first offset, after its header
+    header: usize,
+    /// The position of each field, a string's length's included
+    positions: Vec<usize>,
+    /// Whether its last field is a string, whose bytes end the table
+    string: bool,
+    /// Its byte length, but for the string's bytes
+    length: usize,
 }
 
 /// Which tables `fields()` reads whole in one call, which allocates in
@@ -365,8 +450,24 @@ impl Generator<'_> {
             )
         });
 
-        let readers = self.struct_scalar_functions("read");
-        let writers = self.struct_scalar_functions("write");
+        // Messages written field by field make sizers, messages written
+        // whole make bytes with TableWriter's static functions, and tables
+        // take sizers and writers
+        let wholes = self.whole_messages();
+        let has_whole = wholes.iter().any(Option::is_some);
+        let has_sized = self
+            .schema
+            .definitions
+            .iter()
+            .zip(&wholes)
+            .any(|(definition, whole)| {
+                matches!(definition.kind, Kind::Message(_)) && whole.is_none()
+            });
+        let has_whole_string = wholes.iter().flatten().any(|whole| whole.string);
+        let has_runs = self.runs.items.iter().any(|&item| item);
+
+        let readers = self.read_functions();
+        let writers = self.write_functions(&wholes);
 
         // (name, whether it's only a type here)
         let mut names = Vec::new();
@@ -383,14 +484,22 @@ impl Generator<'_> {
         if has_message {
             names.push(("TableLayout", false));
         }
-        // Messages make sizers, and tables take them and their writers
-        if has_table {
-            names.push(("TableSizer", !has_message));
+        if has_sized || has_nested {
+            names.push(("TableSizer", !has_sized));
         }
-        if has_nested {
-            names.push(("TableWriter", true));
+        if has_whole || has_nested {
+            names.push(("TableWriter", !has_whole));
+        }
+        if has_whole_string {
+            names.push(("utf8Length", false));
+        }
+        if has_runs {
+            names.push(("viewOf", false));
         }
         names.extend(writers.iter().map(|writer| (writer.as_str(), false)));
+        if has_whole_string {
+            names.push(("writeUtf8", false));
+        }
 
         let mut values = Vec::new();
         let mut types = Vec::new();
@@ -429,38 +538,48 @@ impl Generator<'_> {
         }
     }
 
-    /// The functions that read or write the scalars of structs, such as
-    /// `readUint32` or `writeUint32`, in the order that the runtime exports
-    /// them
-    fn struct_scalar_functions(&self, verb: &str) -> Vec<String> {
+    /// The functions that read the scalars of structs, such as
+    /// `readUint32`, in the order that the runtime exports them
+    fn read_functions(&self) -> Vec<String> {
         // A bool is read and written as the uint8 that stores it
-        let mut scalars: Vec<Scalar> = Scalar::ALL
-            .into_iter()
-            .filter(|&scalar| {
-                self.schema
-                    .definitions
-                    .iter()
-                    .filter(|definition| definition.is_struct())
-                    .flat_map(|definition| &definition.fields)
-                    .any(|field| match field.field_type {
-                        FieldType::Scalar(field_scalar) => field_scalar.stored() == scalar,
-                        _ => false,
-                    })
+        let stored: Vec<Scalar> = self
+            .schema
+            .definitions
+            .iter()
+            .filter(|definition| definition.is_struct())
+            .flat_map(|definition| &definition.fields)
+            .filter_map(|field| match field.field_type {
+                FieldType::Scalar(scalar) => Some(scalar.stored()),
+                _ => None,
             })
             .collect();
-        // `float32` before `float64`, `int8` before `int16`, and so on
-        scalars.sort_by_key(|scalar| {
-            let name = scalar.name();
-            let digits = name
-                .find(|c: char| c.is_ascii_digit())
-                .unwrap_or(name.len());
-            (&name[..digits], scalar.size())
-        });
 
-        scalars
-            .into_iter()
-            .map(|scalar| format!("{verb}{}", scalar_method(scalar)))
-            .collect()
+        scalar_functions("read", &stored)
+    }
+
+    /// The write functions of the scalars that structs, nested tables of
+    /// fixed size and messages written whole hold, such as `writeUint32`, in
+    /// the order that the runtime exports them. Their offsets are written as
+    /// bytes.
+    fn write_functions(&self, wholes: &[Option<WholeMessage>]) -> Vec<String> {
+        let stored: Vec<Scalar> = self
+            .schema
+            .definitions
+            .iter()
+            .enumerate()
+            .filter(|&(index, definition)| match definition.kind {
+                Kind::Struct(_) => true,
+                Kind::Table => self.fixed.table(index).is_some(),
+                Kind::Message(_) => wholes[index].is_some(),
+            })
+            .flat_map(|(_, definition)| &definition.fields)
+            .filter_map(|field| match field.field_type {
+                FieldType::Scalar(scalar) => Some(scalar.stored()),
+                _ => None,
+            })
+            .collect();
+
+        scalar_functions("write", &stored)
     }
 
     fn message(&self, writer: &mut CodeWriter, index: usize, layout: Layout) {
@@ -606,6 +725,12 @@ impl Generator<'_> {
             }
         }
 
+        if let Some(whole) = self.whole_message(definition, layout) {
+            self.whole_message_writes(writer, definition, layout, &whole, output);
+            writer.close("}");
+            return;
+        }
+
         let mut arguments = vec![
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
@@ -629,6 +754,186 @@ impl Generator<'_> {
         writer.blank();
         writer.line("return writer.bytes();");
         writer.close("}");
+    }
+
+    /// How the generated code writes each message whole, by each
+    /// definition's index, and `None` for every other definition
+    fn whole_messages(&self) -> Vec<Option<WholeMessage>> {
+        self.schema
+            .definitions
+            .iter()
+            .map(|definition| match definition.kind {
+                Kind::Message(layout) => self.whole_message(definition, layout),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// How the generated code writes a message whole, when its fields'
+    /// sizes are all fixed, but for a string after them, and they fit in
+    /// its offset type
+    fn whole_message(&self, definition: &Definition, layout: Layout) -> Option<WholeMessage> {
+        let width = fixed::offset_size(layout.offset_type);
+        let header = (usize::from(layout.sized) + usize::from(layout.version.is_some())) * width;
+        let (string, fixed_fields) = match definition.fields.split_last() {
+            Some((last, fixed_fields)) if last.field_type == FieldType::String => {
+                (true, fixed_fields)
+            }
+            _ => (false, definition.fields.as_slice()),
+        };
+
+        let mut positions = Vec::with_capacity(definition.fields.len());
+        let mut position = header + definition.fields.len() * width;
+        for field in fixed_fields {
+            positions.push(position);
+            position += self.fixed.field(self.schema, field.field_type)?;
+        }
+        if string {
+            positions.push(position);
+            position += width;
+        }
+
+        let max = usize::try_from(layout.offset_type.max_value()).unwrap_or(usize::MAX);
+        (position <= max).then_some(WholeMessage {
+            width,
+            header,
+            positions,
+            string,
+            length: position,
+        })
+    }
+
+    /// The body of a message's serializer that writes it whole: into the
+    /// bytes that the runtime's `TableWriter.tableBytes()` returns with the
+    /// header, its offsets and fields at constant positions, and then the
+    /// string after them. The string is read once, as its length must be
+    /// the length of what's written.
+    fn whole_message_writes(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        whole: &WholeMessage,
+        output: Output,
+    ) {
+        let name = &definition.name;
+        // Named after the field's index, since its name may be a reserved
+        // word
+        let string = whole.string.then(|| {
+            let index = definition.fields.len() - 1;
+            let field = &definition.fields[index];
+            let local = format!("string{index}");
+            writer.line(format!(
+                "const {local} = fields.{};",
+                identifier(&field.name)
+            ));
+            local
+        });
+
+        let mut length = whole.length.to_string();
+        if let Some(string) = &string {
+            length = format!("{length} + utf8Length({string})");
+        }
+        let mut arguments = vec![
+            text(definition.fields.len().to_string()),
+            text(format!("{name}.#LAYOUT")),
+        ];
+        let make = if layout.version.is_some() {
+            arguments.push(text(format!("{name}.FORMAT_VERSION")));
+            "TableWriter.versionedTableBytes"
+        } else {
+            "TableWriter.tableBytes"
+        };
+        arguments.push(text(length));
+        if let Output::Into = output {
+            arguments.push(text("bytes"));
+        }
+        writer.statement(&STYLE, "const table = ", &call(make, arguments), ";");
+        writer.blank();
+
+        for (index, &position) in whole.positions.iter().enumerate() {
+            let slot = whole.header + index * whole.width;
+            slot_stores(
+                writer,
+                "table",
+                None,
+                slot,
+                whole.width,
+                &Slot::Constant(position),
+            );
+        }
+        writer.blank();
+        for (index, (field, &position)) in
+            definition.fields.iter().zip(&whole.positions).enumerate()
+        {
+            match &string {
+                Some(string) if field.field_type == FieldType::String => {
+                    // The string's length is what's written of it
+                    let length = format!("length{index}");
+                    let bytes = text((position + whole.width).to_string());
+                    writer.statement(
+                        &STYLE,
+                        &format!("const {length} = "),
+                        &call("writeUtf8", vec![text("table"), bytes, text(string)]),
+                        ";",
+                    );
+                    slot_stores(
+                        writer,
+                        "table",
+                        None,
+                        position,
+                        whole.width,
+                        &Slot::Local(&length),
+                    );
+                }
+                _ => {
+                    let write = self.fixed_write(field, "table", text(position.to_string()));
+                    writer.statement(&STYLE, "", &write, ";");
+                }
+            }
+        }
+
+        writer.blank();
+        writer.line("return table;");
+    }
+
+    /// The write of a field whose size the schema fixes at `position` in
+    /// `bytes`: a scalar's with the runtime's write function, and a struct's
+    /// or a nested table's with its `writeAt()`
+    fn fixed_write(&self, field: &Field, bytes: &str, position: Expr) -> Expr {
+        let value = format!("fields.{}", identifier(&field.name));
+        match field.field_type {
+            FieldType::Scalar(scalar) => call(
+                format!("write{}", scalar_method(scalar)),
+                vec![text(bytes), position, stored_value(scalar, &value)],
+            ),
+            FieldType::Struct(index) | FieldType::Table(index) => call(
+                format!("{}.writeAt", self.schema.definition(index).name),
+                vec![text(bytes), position, text(value)],
+            ),
+            _ => unreachable!("fields of fixed size are scalars, structs and such tables"),
+        }
+    }
+
+    /// The write of a field whose size the schema fixes at `position` in a
+    /// `DataView`, `view`, as [`Generator::fixed_write`] writes it into bytes
+    fn fixed_view_write(&self, field: &Field, position: Expr) -> Expr {
+        let value = format!("fields.{}", identifier(&field.name));
+        match field.field_type {
+            FieldType::Scalar(scalar) => {
+                let mut arguments = vec![position, stored_value(scalar, &value)];
+                // A byte has no byte order
+                if scalar.size() > 1 {
+                    arguments.push(text("true"));
+                }
+                call(format!("view.set{}", data_view_method(scalar)), arguments)
+            }
+            FieldType::Struct(index) | FieldType::Table(index) => call(
+                format!("{}.writeView", self.schema.definition(index).name),
+                vec![text("view"), position, text(value)],
+            ),
+            _ => unreachable!("fields of fixed size are scalars, structs and such tables"),
+        }
     }
 
     fn table(&self, writer: &mut CodeWriter, index: usize) {
@@ -656,6 +961,21 @@ impl Generator<'_> {
             self.static_readonly()
         ));
         writer.blank();
+        if let Some(size) = self.fixed.table(index) {
+            self.doc(
+                writer,
+                &[
+                    format!(
+                        "The byte length of {}: its offsets and its fields, whose sizes",
+                        article(name)
+                    ),
+                    "the schema fixes, so that its parent writes it whole".to_owned(),
+                ],
+                &[],
+            );
+            writer.line(format!("{}SIZE = {size};", self.static_readonly()));
+            writer.blank();
+        }
         self.private_field(writer, "buffer", "ByteBuffer");
         self.private_field(writer, "position", "number");
         writer.blank();
@@ -683,7 +1003,11 @@ impl Generator<'_> {
             self.static_read(writer, definition);
             writer.blank();
         }
-        self.nested_size_and_write(writer, definition);
+        if self.fixed.table(index).is_some() {
+            self.whole_table(writer, index);
+        } else {
+            self.nested_size_and_write(writer, definition);
+        }
         self.getters(writer, definition, false);
         if whole {
             writer.blank();
@@ -873,8 +1197,304 @@ impl Generator<'_> {
         writer.close("}");
     }
 
+    /// The static functions with which a parent sizes and writes a nested
+    /// table whose fields' sizes the schema fixes, as the `SIZE` bytes of its
+    /// offsets and its fields, which `writeAt()` writes whole
+    fn whole_table(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
+        let name = &definition.name;
+
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Adds {} to its parent's sizer, after the field or",
+                    article(name)
+                ),
+                "vector that holds it".to_owned(),
+            ],
+            &[
+                "@param {TableSizer} sizer".to_owned(),
+                format!("@param {{{name}Fields}} _fields"),
+                "@returns {void}".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static size(sizer{}, _fields{}){} {{",
+            self.annotation("TableSizer"),
+            self.annotation(&format!("{name}Fields")),
+            self.annotation("void")
+        ));
+        writer.line(format!("sizer.addTableBytes(1, {name}.SIZE);"));
+        writer.close("}");
+        writer.blank();
+
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Writes {} where its parent's writer is, after the",
+                    article(name)
+                ),
+                "field that holds it".to_owned(),
+            ],
+            &[
+                "@param {TableWriter} writer".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+            ],
+        );
+        writer.open(format!(
+            "static write(writer{}, fields{}){} {{",
+            self.annotation("TableWriter"),
+            self.annotation(&format!("{name}Fields")),
+            self.annotation("void")
+        ));
+        let reserve = call(
+            "writer.reserveTableBytes",
+            vec![text(format!("{name}.SIZE"))],
+        );
+        writer.statement(
+            &STYLE,
+            "",
+            &call(
+                format!("{name}.writeAt"),
+                vec![text("writer.target()"), reserve, text("fields")],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.blank();
+
+        self.whole_table_write_at(writer, definition);
+        if self.runs.viewed[index] {
+            writer.blank();
+            self.write_view(writer, definition);
+        }
+        if self.runs.items[index] {
+            writer.blank();
+            self.write_items_at(writer, definition);
+        }
+    }
+
+    /// A nested table's `writeAt()`, which writes its offsets, and then its
+    /// fields at them, one after another, as a writer would
+    fn whole_table_write_at(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Writes {} at `offset` in `bytes`, as its parent holds it: its",
+                    article(name)
+                ),
+                "offsets, and then its fields at them".to_owned(),
+            ],
+            &[
+                "@param {Uint8Array} bytes".to_owned(),
+                "@param {number} offset".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+                format!("@throws {{RangeError}} If `bytes` end before the `{name}` does."),
+            ],
+        );
+        self.signature(
+            writer,
+            "static writeAt",
+            &[
+                ("bytes", "Uint8Array".to_owned()),
+                ("offset", "number".to_owned()),
+                ("fields", format!("{name}Fields")),
+            ],
+            "void",
+        );
+        for (slot, position) in self.whole_table_offsets(definition) {
+            slot_stores(
+                writer,
+                "bytes",
+                Some("offset"),
+                slot,
+                NESTED_OFFSET_SIZE,
+                &Slot::Constant(position),
+            );
+        }
+        writer.blank();
+        for (field, (_, position)) in definition
+            .fields
+            .iter()
+            .zip(self.whole_table_offsets(definition))
+        {
+            let write = self.fixed_write(field, "bytes", struct_position("offset", position));
+            writer.statement(&STYLE, "", &write, ";");
+        }
+        writer.close("}");
+    }
+
+    /// The position of each offset of a nested table of fixed size, and the
+    /// offset that it holds, from the table's start
+    fn whole_table_offsets(&self, definition: &Definition) -> Vec<(usize, usize)> {
+        let mut position = definition.fields.len() * NESTED_OFFSET_SIZE;
+        let mut offsets = Vec::with_capacity(definition.fields.len());
+        for (index, field) in definition.fields.iter().enumerate() {
+            offsets.push((index * NESTED_OFFSET_SIZE, position));
+            position += self
+                .fixed
+                .field(self.schema, field.field_type)
+                .expect("a whole table's fields have fixed sizes");
+        }
+
+        offsets
+    }
+
+    /// The `writeView()` of a struct or a nested table of fixed size, which
+    /// writes it through a `DataView` as `writeAt()` writes it into bytes, so
+    /// that `writeItemsAt()` can write a long run of them through one
+    fn write_view(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+
+        self.doc(
+            writer,
+            &[
+                format!(
+                    "Writes {} at `offset` in `view`, as `writeAt()` writes it",
+                    article(name)
+                ),
+                "into bytes".to_owned(),
+            ],
+            &[
+                "@param {DataView} view".to_owned(),
+                "@param {number} offset".to_owned(),
+                format!("@param {{{name}Fields}} fields"),
+                "@returns {void}".to_owned(),
+                format!("@throws {{RangeError}} If `view` ends before the `{name}` does."),
+            ],
+        );
+        self.signature(
+            writer,
+            "static writeView",
+            &[
+                ("view", "DataView".to_owned()),
+                ("offset", "number".to_owned()),
+                ("fields", format!("{name}Fields")),
+            ],
+            "void",
+        );
+        let mut statements = Vec::new();
+        if definition.is_struct() {
+            let mut offset = 0;
+            for field in &definition.fields {
+                statements.push(self.fixed_view_write(field, struct_position("offset", offset)));
+                offset += self
+                    .fixed
+                    .field(self.schema, field.field_type)
+                    .expect("structs hold scalars and structs only");
+            }
+        } else {
+            let offsets = self.whole_table_offsets(definition);
+            for &(slot, position) in &offsets {
+                statements.push(call(
+                    "view.setUint32",
+                    vec![
+                        struct_position("offset", slot),
+                        text(position.to_string()),
+                        text("true"),
+                    ],
+                ));
+            }
+            for (field, (_, position)) in definition.fields.iter().zip(offsets) {
+                statements.push(self.fixed_view_write(field, struct_position("offset", position)));
+            }
+        }
+        for statement in statements {
+            writer.statement(&STYLE, "", &statement, ";");
+        }
+        writer.close("}");
+    }
+
+    /// The `writeItemsAt()` of a struct or a nested table of fixed size that
+    /// an array or a vector holds, which writes the items one after another:
+    /// a short run with `writeAt()`, and a long one through a `DataView` with
+    /// `writeView()`
+    fn write_items_at(&self, writer: &mut CodeWriter, definition: &Definition) {
+        let name = &definition.name;
+        let holder = if definition.is_struct() {
+            "an array"
+        } else {
+            "a vector"
+        };
+
+        self.doc(
+            writer,
+            &[
+                format!("Writes `{name}`s one after another at `offset` in `bytes`, as {holder}"),
+                format!("of them holds them. A run shorter than {MIN_VIEW_RUN} bytes is written with the"),
+                "runtime's write functions, and a longer one through a `DataView`, which"
+                    .to_owned(),
+                "writes each scalar faster but takes longer to create.".to_owned(),
+            ],
+            &[
+                "@param {Uint8Array} bytes".to_owned(),
+                "@param {number} offset".to_owned(),
+                format!("@param {{readonly {name}Fields[]}} items"),
+                "@returns {void}".to_owned(),
+                format!("@throws {{RangeError}} If `bytes` end before the last `{name}` does."),
+            ],
+        );
+        self.signature(
+            writer,
+            "static writeItemsAt",
+            &[
+                ("bytes", "Uint8Array".to_owned()),
+                ("offset", "number".to_owned()),
+                ("items", format!("readonly {name}Fields[]")),
+            ],
+            "void",
+        );
+        writer.line("const count = items.length;");
+        writer.line(format!("const length = count * {name}.SIZE;"));
+        writer.open(format!("if (length < {MIN_VIEW_RUN}) {{"));
+        writer.open("for (let i = 0; i < count; i++) {");
+        writer.statement(
+            &STYLE,
+            "",
+            &call(
+                format!("{name}.writeAt"),
+                vec![
+                    text("bytes"),
+                    text(format!("offset + i * {name}.SIZE")),
+                    text("items[i]"),
+                ],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.blank();
+        writer.line("return;");
+        writer.close("}");
+        writer.blank();
+        writer.line("const view = viewOf(bytes, offset, length);");
+        writer.open("for (let i = 0; i < count; i++) {");
+        writer.statement(
+            &STYLE,
+            "",
+            &call(
+                format!("{name}.writeView"),
+                vec![
+                    text("view"),
+                    text(format!("i * {name}.SIZE")),
+                    text("items[i]"),
+                ],
+            ),
+            ";",
+        );
+        writer.close("}");
+        writer.close("}");
+    }
+
     #[allow(clippy::too_many_lines)]
-    fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn structure(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
 
         writer.lines(&doc_comment(&schema_docs(&definition.docs)));
@@ -1099,32 +1719,23 @@ impl Generator<'_> {
         );
         let mut offset = 0;
         for field in &definition.fields {
-            let position = struct_position("offset", offset);
-            let value = format!("fields.{}", identifier(&field.name));
-            let (write, size) = match field.field_type {
-                FieldType::Scalar(scalar) => (
-                    call(
-                        format!("write{}", scalar_method(scalar)),
-                        vec![text("bytes"), position, stored_value(scalar, &value)],
-                    ),
-                    usize::from(scalar.size()),
-                ),
-                FieldType::Struct(index) => {
-                    let inner = self.schema.definition(index);
-                    (
-                        call(
-                            format!("{}.writeAt", inner.name),
-                            vec![text("bytes"), position, text(value)],
-                        ),
-                        inner.struct_layout().size,
-                    )
-                }
-                _ => unreachable!("structs hold scalars and structs only"),
-            };
+            let write = self.fixed_write(field, "bytes", struct_position("offset", offset));
             writer.statement(&STYLE, "", &write, ";");
-            offset += size;
+            offset += self
+                .fixed
+                .field(self.schema, field.field_type)
+                .expect("structs hold scalars and structs only");
         }
         writer.close("}");
+
+        if self.runs.viewed[index] {
+            writer.blank();
+            self.write_view(writer, definition);
+        }
+        if self.runs.items[index] {
+            writer.blank();
+            self.write_items_at(writer, definition);
+        }
 
         for field in &definition.fields {
             let field_name = identifier(&field.name);
@@ -1546,6 +2157,15 @@ impl Generator<'_> {
                 FieldType::Vector(index) => {
                     let table = &self.schema.definition(index).name;
                     writer.line(format!("sizer.addVector({value}.length);"));
+                    // Items of the same length are added at once
+                    if self.fixed.table(index).is_some() {
+                        let arguments = vec![
+                            text(format!("{value}.length")),
+                            text(format!("{table}.SIZE")),
+                        ];
+                        writer.statement(&STYLE, "", &call("sizer.addTableBytes", arguments), ";");
+                        continue;
+                    }
                     writer.open(format!("for (const item of {value}) {{"));
                     writer.line(format!("{table}.size(sizer, item);"));
                     writer.close("}");
@@ -1582,16 +2202,20 @@ impl Generator<'_> {
                     )
                 }
                 FieldType::StructArray(struct_index) => {
+                    // Written into the table's bytes where the writer
+                    // reserves them, rather than into bytes of their own
                     let structure = &self.schema.definition(struct_index).name;
-                    (
-                        "setStructArray".to_owned(),
+                    let reserve = call(
+                        "writer.reserveStructArray",
                         vec![
                             position,
-                            call(format!("{structure}.serializeArray"), vec![text(value)]),
+                            text(format!("{value}.length")),
                             text(format!("{structure}.SIZE")),
                             text(format!("{structure}.ALIGNMENT")),
                         ],
-                    )
+                    );
+                    items_writes(writer, index, structure, &reserve, &value);
+                    continue;
                 }
                 FieldType::Table(table_index) => {
                     let table = &self.schema.definition(table_index).name;
@@ -1602,6 +2226,19 @@ impl Generator<'_> {
                         &call(format!("{table}.write"), vec![text("writer"), text(value)]),
                         ";",
                     );
+                    continue;
+                }
+                FieldType::Vector(table_index) if self.fixed.table(table_index).is_some() => {
+                    let table = &self.schema.definition(table_index).name;
+                    let reserve = call(
+                        "writer.reserveTableVector",
+                        vec![
+                            position,
+                            text(format!("{value}.length")),
+                            text(format!("{table}.SIZE")),
+                        ],
+                    );
+                    items_writes(writer, index, table, &reserve, &value);
                     continue;
                 }
                 FieldType::Vector(table_index) => {
@@ -1856,6 +2493,24 @@ fn writer_fits(_writer: &CodeWriter, line: &str) -> bool {
     STYLE.indent.len() + line.len() <= STYLE.width
 }
 
+/// The writes of field `index`, an array of structs or a vector of tables of
+/// fixed size, `item`s, in `value`: the writer's `reserve` of them, whose
+/// position the local takes, named after the field's index, since its name
+/// may be a reserved word, and then the items' writes
+fn items_writes(writer: &mut CodeWriter, index: usize, item: &str, reserve: &Expr, value: &str) {
+    let items = format!("items{index}");
+    writer.statement(&STYLE, &format!("const {items} = "), reserve, ";");
+    writer.statement(
+        &STYLE,
+        "",
+        &call(
+            format!("{item}.writeItemsAt"),
+            vec![text("writer.target()"), text(items), text(value)],
+        ),
+        ";",
+    );
+}
+
 /// A schema's documentation for `JSDoc`, with `@` outside code spans as an
 /// HTML entity, which editors render as `@`, so that it can't start a tag,
 /// such as `@deprecated` or `@internal`, which TypeScript reads, or `@type`,
@@ -1917,6 +2572,74 @@ fn struct_position(base: &str, offset: usize) -> Expr {
         text(base)
     } else {
         text(format!("{base} + {offset}"))
+    }
+}
+
+/// The functions of `verb` for each of the `stored` scalars once, such as
+/// `readUint32`, in the order that the runtime exports them
+fn scalar_functions(verb: &str, stored: &[Scalar]) -> Vec<String> {
+    let mut scalars: Vec<Scalar> = Scalar::ALL
+        .into_iter()
+        .filter(|scalar| stored.contains(scalar))
+        .collect();
+    // `float32` before `float64`, `int8` before `int16`, and so on
+    scalars.sort_by_key(|scalar| {
+        let name = scalar.name();
+        let digits = name
+            .find(|c: char| c.is_ascii_digit())
+            .unwrap_or(name.len());
+        (&name[..digits], scalar.size())
+    });
+
+    scalars
+        .into_iter()
+        .map(|scalar| format!("{verb}{}", scalar_method(scalar)))
+        .collect()
+}
+
+/// The value of an offset or a length that generated code writes as bytes
+enum Slot<'a> {
+    /// An offset that the generator works out
+    Constant(usize),
+    /// A local that holds a length
+    Local(&'a str),
+}
+
+/// Writes `value`, an offset or a length of `width` bytes, little-endian at
+/// `slot` from `base`, or from the start, in `bytes`, a byte at a time. The
+/// runtime's write functions convert a value through a `DataView` and check
+/// its range, which made writing a record of 60 bytes take 0.120 µs rather
+/// than 0.100 µs in Node 27. The slots lie within the bytes, which the table's
+/// writes of its fields check.
+fn slot_stores(
+    writer: &mut CodeWriter,
+    bytes: &str,
+    base: Option<&str>,
+    slot: usize,
+    width: usize,
+    value: &Slot,
+) {
+    for byte in 0..width {
+        let position = match base {
+            Some(base) => struct_position(base, slot + byte).flat(),
+            None => (slot + byte).to_string(),
+        };
+        let stored = match value {
+            Slot::Constant(constant) => ((constant >> (8 * byte)) & 0xff).to_string(),
+            Slot::Local(local) if byte == 0 => (*local).to_owned(),
+            Slot::Local(local) => format!("{local} >>> {}", 8 * byte),
+        };
+        writer.line(format!("{bytes}[{position}] = {stored};"));
+    }
+}
+
+/// `Float32` in `setFloat32()` of a `DataView`, `BigInt64` for an `int64`,
+/// and `Uint8` for a bool
+fn data_view_method(scalar: Scalar) -> String {
+    match scalar.stored() {
+        Scalar::Int64 => "BigInt64".to_owned(),
+        Scalar::Uint64 => "BigUint64".to_owned(),
+        stored => scalar_method(stored),
     }
 }
 

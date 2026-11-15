@@ -14,6 +14,7 @@ import {
     describeScalars,
     describeStructs,
     documentedBytes,
+    LONG_STRUCTS_FIELDS,
     NESTED_FIELDS,
     packedBytes,
     RESERVED_FIELDS,
@@ -168,6 +169,15 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
 
         it.prop([STRUCTS_FIELDS])(
             'should write the bytes of Structs, with its arrays aligned to their structs, that TableBuilder writes',
+            fields => {
+                const byHand = buildTable(describeStructs(fields)).bytes();
+
+                expect(allTypes.Structs.serialize(fields)).toStrictEqual(byHand);
+            }
+        );
+
+        it.prop([LONG_STRUCTS_FIELDS])(
+            'should write the bytes of Structs whose arrays it writes through a DataView that TableBuilder writes',
             fields => {
                 const byHand = buildTable(describeStructs(fields)).bytes();
 
