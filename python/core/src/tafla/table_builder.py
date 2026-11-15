@@ -83,10 +83,12 @@ class TableBuilder:
         "__data",
         "__fields",
         "__header_size",
+        "__in_place",
         "__index",
         "__layout",
         "__length",
         "__max_length",
+        "__padding",
         "__size",
         "__sized",
         "__slots",
@@ -106,6 +108,11 @@ class TableBuilder:
     __fields: int
     __index: int
     __alignment: ElementSize
+    # For a table nested in place, its offset in its parent before its
+    # padding, or -1, and the padding before it so far, which aligns it to its
+    # alignment so far
+    __in_place: int
+    __padding: int
     # The table once written: its bytes, and then the buffer of them that
     # finalize() returns
     __written: memoryview[int] | ByteBuffer | None
@@ -159,6 +166,8 @@ class TableBuilder:
         self.__fields = fields
         self.__index = 0
         self.__alignment = _UNALIGNED
+        self.__in_place = -1
+        self.__padding = 0
         self.__written = None
 
         if version is not None:
@@ -418,6 +427,8 @@ class TableBuilder:
         if length > self.__max_length:
             raise self.__too_long(index, length)
 
+        if alignment > self.__alignment:
+            self.__align_to(alignment)
         if padding:
             buffer += _ZEROS[padding]
         self.__length.pack_into(
@@ -426,8 +437,6 @@ class TableBuilder:
         buffer += self.__length.pack(count)
         buffer += view
         self.__index = index + 1
-        if alignment > self.__alignment:  # noqa: PLR1730
-            self.__alignment = alignment
 
     def set_table(
         self, table: TableBuilder | Buffer, alignment: ElementSize | None = None
@@ -470,6 +479,8 @@ class TableBuilder:
         if length > self.__max_length:
             raise self.__too_long(index, length)
 
+        if alignment > self.__alignment:
+            self.__align_to(alignment)
         if padding:
             data += _ZEROS[padding]
         self.__length.pack_into(
@@ -477,8 +488,6 @@ class TableBuilder:
         )
         data += nested
         self.__index = index + 1
-        if alignment > self.__alignment:  # noqa: PLR1730
-            self.__alignment = alignment
 
     def set_vector(self, vector: Sequence[TableBuilder | Buffer]) -> None:
         """Writes a vector of tables, from their builders or their bytes, after
@@ -572,14 +581,23 @@ class TableBuilder:
         offset = start - base
         slot_bytes = self.__slot_bytes(index, offset, fields)
 
-        slots = self.__slots
-        parent_fields = self.__fields
-        parent_alignment = self.__alignment
+        parent = (
+            start,
+            base,
+            self.__slots,
+            self.__fields,
+            index,
+            self.__alignment,
+            self.__in_place,
+            self.__padding,
+        )
         self.__base = start
         self.__slots = start
         self.__fields = fields
         self.__index = 0
         self.__alignment = _UNALIGNED
+        self.__in_place = offset
+        self.__padding = 0
         try:
             data += (
                 _ZEROS[slot_bytes] if slot_bytes < len(_ZEROS) else bytes(slot_bytes)
@@ -588,26 +606,33 @@ class TableBuilder:
             if self.__index != fields:
                 raise _unset_fields_error(self.__index, fields, "the nested table's")
         except BaseException:
-            self.__roll_back(start, base, slots, parent_fields, index, parent_alignment)
+            self.__roll_back(*parent)
             raise
 
-        # Padded from its parent's start, as a nested builder is
+        # Padded from its parent's start, as a nested builder is, which its
+        # fields did as they raised its alignment
         alignment = self.__alignment
-        padding = -offset % alignment
-        length = offset + padding + len(data) - start
+        padding = self.__padding
+        length = offset + len(data) - start
         if length > self.__max_length:
-            self.__roll_back(start, base, slots, parent_fields, index, parent_alignment)
+            self.__roll_back(*parent)
             raise self.__too_long(index, length)
 
-        if padding:
-            data[start:start] = _ZEROS[padding]
-        self.__length.pack_into(data, slots + index * size, offset + padding)
-
-        self.__base = base
-        self.__slots = slots
-        self.__fields = parent_fields
+        (
+            _,
+            self.__base,
+            self.__slots,
+            self.__fields,
+            _,
+            self.__alignment,
+            self.__in_place,
+            self.__padding,
+        ) = parent
+        if alignment > self.__alignment:
+            self.__align_to(alignment)
+        # The parent's slots, which moved with it if its alignment moved it
+        self.__length.pack_into(data, self.__slots + index * size, offset + padding)
         self.__index = index + 1
-        self.__alignment = max(parent_alignment, alignment)
 
     def set_vector_in_place[T](
         self,
@@ -649,9 +674,16 @@ class TableBuilder:
         else:
             fields = slot_bytes = 0
 
-        slots = self.__slots
-        parent_fields = self.__fields
-        alignment = self.__alignment
+        parent = (
+            start,
+            base,
+            self.__slots,
+            self.__fields,
+            index,
+            self.__alignment,
+            self.__in_place,
+            self.__padding,
+        )
         packing = self.__length
         ends = count * size
         zeros = _ZEROS[slot_bytes] if slot_bytes < len(_ZEROS) else bytes(slot_bytes)
@@ -668,6 +700,8 @@ class TableBuilder:
         self.__slots = start
         self.__fields = fields
         self.__index = fields
+        self.__in_place = -1
+        self.__padding = 0
         try:
             # Each item counts its offsets and alignment from its own start,
             # as a builder does
@@ -681,6 +715,7 @@ class TableBuilder:
                 self.__slots = item_start
                 self.__index = 0
                 self.__alignment = _UNALIGNED
+                self.__padding = 0
                 data += zeros
                 fill(self, value)
                 if self.__index != fields:
@@ -696,20 +731,17 @@ class TableBuilder:
             if item != count:
                 raise _count_error(count)
         except BaseException:
-            self.__roll_back(start, base, slots, parent_fields, index, alignment)
+            self.__roll_back(*parent)
             raise
 
         length = len(data) - base
         if length > max_length:
-            self.__roll_back(start, base, slots, parent_fields, index, alignment)
+            self.__roll_back(*parent)
             raise self.__too_long(index, length)
 
-        packing.pack_into(data, slots + index * size, offset)
-        self.__base = base
-        self.__slots = slots
-        self.__fields = parent_fields
+        self.__roll_back_counters(*parent)
+        packing.pack_into(data, self.__slots + index * size, offset)
         self.__index = index + 1
-        self.__alignment = alignment
 
     def __slot_bytes(self, index: int, length: int, fields: int) -> int:
         """The bytes of the slots of a table of ``fields`` fields nested in
@@ -732,14 +764,51 @@ class TableBuilder:
         fields: int,
         index: int,
         alignment: ElementSize,
+        in_place: int,
+        padding: int,
     ) -> None:
         """Truncates the bytes to ``start``, where a nested table or vector
         that failed starts, and restores its parent's counters"""
         del self.__data[start:]
+        self.__roll_back_counters(
+            start, base, slots, fields, index, alignment, in_place, padding
+        )
+
+    def __roll_back_counters(
+        self,
+        _start: int,
+        base: int,
+        slots: int,
+        fields: int,
+        index: int,
+        alignment: ElementSize,
+        in_place: int,
+        padding: int,
+    ) -> None:
+        """Restores the counters of a nested table's or vector's parent, which
+        its checkpoint holds with where it started"""
         self.__base = base
         self.__slots = slots
         self.__fields = fields
         self.__index = index
+        self.__alignment = alignment
+        self.__in_place = in_place
+        self.__padding = padding
+
+    def __align_to(self, alignment: ElementSize) -> None:
+        """Raises the table's alignment to ``alignment``, which is more than
+        it is, after moving a table nested in place forward by the padding
+        that it then needs. A large array raises it before it's written, so
+        the move is of the table so far, which is often its slots alone."""
+        in_place = self.__in_place
+        if in_place >= 0:
+            more = -in_place % alignment - self.__padding
+            if more:
+                base = self.__base
+                self.__data[base:base] = _ZEROS[more]
+                self.__base = base + more
+                self.__slots += more
+                self.__padding += more
         self.__alignment = alignment
 
     def __set_array(
@@ -772,14 +841,14 @@ class TableBuilder:
         if not elements.IS_LITTLE_ENDIAN:
             converted = little_endian_bytes(type_code, converted)
 
+        if item_size > self.__alignment:
+            self.__align_to(item_size)
         if padding:
             data += _ZEROS[padding]
         self.__length.pack_into(data, self.__slots + index * size, offset + padding)
         data += self.__length.pack(byte_length // item_size)
         data += converted
         self.__index = index + 1
-        if item_size > self.__alignment:  # noqa: PLR1730
-            self.__alignment = item_size
 
     @staticmethod
     def __bytes_of(table: TableBuilder) -> memoryview[int] | bytearray:

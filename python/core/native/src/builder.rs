@@ -5,9 +5,11 @@
 //! - A field's offset is written when it's set. A vector writes its count and
 //!   zeros for its ends, and each item's end once the item is written.
 //! - A table nested in place is written where its parent ends, unpadded, and
-//!   moved forward by its padding once `fill` has set its fields, since only
-//!   then is its alignment known. Its offsets count from its own start, so
-//!   none of them changes.
+//!   moved forward by more padding whenever a field raises its alignment,
+//!   which is known only once its fields are set. A large array raises it
+//!   before it's written, so the move is of the table so far, which is often
+//!   its slots alone. Its offsets count from its own start, so none of them
+//!   changes.
 //! - Values are copied when they're set, and a nested builder as its bytes.
 //! - A setter checks its field before it writes anything. A nested table or
 //!   vector whose `fill` raises, or that's incomplete or too long, is undone
@@ -77,6 +79,8 @@ struct Checkpoint {
     fields: usize,
     index: usize,
     alignment: usize,
+    in_place: Option<usize>,
+    padding: usize,
 }
 
 /// The table once written: its bytes, and the ``ByteBuffer`` of them that
@@ -150,6 +154,11 @@ pub struct TableBuilder {
     fields: usize,
     index: usize,
     alignment: usize,
+    /// For a table nested in place, its offset in its parent before its
+    /// padding, and the padding before it so far, which aligns it to its
+    /// alignment so far
+    in_place: Option<usize>,
+    padding: usize,
     shape: Shape,
     layout: Option<Py<PyAny>>,
     written: Option<Written>,
@@ -222,6 +231,35 @@ impl TableBuilder {
         Ok(())
     }
 
+    /// The zeros to insert before a table nested in place, so that it's
+    /// padded to `alignment` once a field raises its alignment to that: none
+    /// for the root, a vector item, or an alignment it has already
+    #[inline]
+    const fn more_padding(&self, alignment: usize) -> usize {
+        match self.in_place {
+            Some(offset) if alignment > self.alignment => {
+                (offset.wrapping_neg() & (alignment - 1)) - self.padding
+            }
+            _ => 0,
+        }
+    }
+
+    /// Raises the table's alignment to `alignment`, if it's more, after
+    /// moving the table forward by `more_padding(alignment)`, which there's
+    /// room for
+    #[inline]
+    fn align_to(&mut self, alignment: usize, more: usize) {
+        if more > 0 {
+            self.data.insert_zeros_within(self.base, more);
+            self.base += more;
+            self.slots += more;
+            self.padding += more;
+        }
+        if alignment > self.alignment {
+            self.alignment = alignment;
+        }
+    }
+
     #[inline]
     fn set_scalar(&mut self, kind: Kind, value: &Bound<'_, PyAny>) -> PyResult<()> {
         let index = self.next_index()?;
@@ -250,7 +288,12 @@ impl TableBuilder {
     ) -> PyResult<()> {
         // A builder that holds all its fields, or is written, raises once the
         // values are converted, as the pure-Python one does
-        if self.index < self.fields && self.set_sequence(code, item_size, values)? {
+        // The fast path converts the elements beyond the bytes, which a move
+        // would leave behind, so a table that the array moves takes the other
+        if self.index < self.fields
+            && self.more_padding(item_size) == 0
+            && self.set_sequence(code, item_size, values)?
+        {
             return Ok(());
         }
 
@@ -310,7 +353,7 @@ impl TableBuilder {
         self.make_little_endian(start, item_size);
 
         self.index = index + 1;
-        self.alignment = self.alignment.max(item_size);
+        self.align_to(item_size, 0);
         Ok(true)
     }
 
@@ -324,7 +367,9 @@ impl TableBuilder {
         let padding = (offset + size).wrapping_neg() & (item_size - 1);
         self.check_length(index, offset + padding + size + byte_length)?;
 
-        self.room(padding + size + byte_length)?;
+        let more = self.more_padding(item_size);
+        self.room(more + padding + size + byte_length)?;
+        self.align_to(item_size, more);
         self.data.zeros_within(padding);
         self.write_slot(self.slots + index * size, offset + padding);
         self.push_count(byte_length / item_size);
@@ -333,7 +378,6 @@ impl TableBuilder {
         self.make_little_endian(start, item_size);
 
         self.index = index + 1;
-        self.alignment = self.alignment.max(item_size);
         Ok(())
     }
 
@@ -403,12 +447,21 @@ impl TableBuilder {
             fields: self.fields,
             index,
             alignment: self.alignment,
+            in_place: self.in_place,
+            padding: self.padding,
         }
     }
 
     /// Starts a table of `fields` fields at the end of the bytes, with zeros
-    /// for its `slot_bytes` bytes of slots, for `fill` to set its fields
-    fn start_table(&mut self, fields: usize, slot_bytes: usize) -> PyResult<()> {
+    /// for its `slot_bytes` bytes of slots, for `fill` to set its fields: one
+    /// nested in place at `in_place` in its parent, or a vector's item, which
+    /// isn't padded
+    fn start_table(
+        &mut self,
+        fields: usize,
+        slot_bytes: usize,
+        in_place: Option<usize>,
+    ) -> PyResult<()> {
         self.room(slot_bytes)?;
         let start = self.data.len;
         self.base = start;
@@ -416,6 +469,8 @@ impl TableBuilder {
         self.fields = fields;
         self.index = 0;
         self.alignment = 1;
+        self.in_place = in_place;
+        self.padding = 0;
         self.data.zeros_within(slot_bytes);
         Ok(())
     }
@@ -427,12 +482,15 @@ impl TableBuilder {
         self.fields = checkpoint.fields;
         self.index = checkpoint.index;
         self.alignment = checkpoint.alignment;
+        self.in_place = checkpoint.in_place;
+        self.padding = checkpoint.padding;
     }
 
-    /// Ends a table nested in place, once `fill` has set its fields: moves
-    /// it forward by its padding, writes its offset and restores its
-    /// parent's counters. Rolls it back if it's incomplete or makes its
-    /// parent too long.
+    /// Ends a table nested in place, once `fill` has set its fields, which
+    /// padded it as they raised its alignment: restores its parent's
+    /// counters, raises the parent's alignment, which moves the parent if
+    /// it's in place too, and writes the table's offset. Rolls it back if
+    /// it's incomplete or makes its parent too long.
     fn end_table(&mut self, checkpoint: &Checkpoint, fields: usize) -> PyResult<()> {
         if self.index != fields {
             let error = unset_fields_error(self.index, fields, "the nested table's");
@@ -442,31 +500,34 @@ impl TableBuilder {
 
         // Padded from its parent's start, as a nested builder is
         let alignment = self.alignment;
+        let padding = self.padding;
         let offset = checkpoint.start - checkpoint.base;
-        let padding = offset.wrapping_neg() & (alignment - 1);
-        let length = offset + padding + self.data.len - checkpoint.start;
+        debug_assert_eq!(padding, offset.wrapping_neg() & (alignment - 1));
+        let length = offset + self.data.len - checkpoint.start;
         if length > self.shape.max_length() {
             self.roll_back(checkpoint);
             return Err(self.too_long(checkpoint.index, length));
         }
 
-        if padding > 0 {
-            if let Err(error) = self.room(padding) {
-                self.roll_back(checkpoint);
-                return Err(error);
-            }
-            self.data.insert_zeros_within(checkpoint.start, padding);
-        }
-        self.write_slot(
-            checkpoint.slots + checkpoint.index * self.size(),
-            offset + padding,
-        );
-
         self.base = checkpoint.base;
         self.slots = checkpoint.slots;
         self.fields = checkpoint.fields;
+        self.alignment = checkpoint.alignment;
+        self.in_place = checkpoint.in_place;
+        self.padding = checkpoint.padding;
+        let more = self.more_padding(alignment);
+        if let Err(error) = self.room(more) {
+            self.roll_back(checkpoint);
+            return Err(error);
+        }
+        self.align_to(alignment, more);
+
+        // The parent's slots, which moved with it
+        self.write_slot(
+            self.slots + checkpoint.index * self.size(),
+            offset + padding,
+        );
         self.index = checkpoint.index + 1;
-        self.alignment = alignment.max(checkpoint.alignment);
         Ok(())
     }
 
@@ -505,6 +566,8 @@ impl TableBuilder {
         self.slots = checkpoint.start;
         self.fields = fields;
         self.index = fields;
+        self.in_place = None;
+        self.padding = 0;
         Ok((checkpoint, fields, slot_bytes))
     }
 
@@ -541,28 +604,30 @@ impl TableBuilder {
         self.fields = checkpoint.fields;
         self.index = checkpoint.index + 1;
         self.alignment = checkpoint.alignment;
+        self.in_place = checkpoint.in_place;
+        self.padding = checkpoint.padding;
         Ok(())
     }
 
     /// Pads a nested table of `byte_length` bytes to `alignment` and writes
-    /// its offset, after checking that it fits, and makes room for it
+    /// its offset, after checking that it fits, and makes room for it, having
+    /// raised this table's alignment
     fn place_table(&mut self, byte_length: usize, alignment: usize) -> PyResult<usize> {
         let offset = self.offset();
         let padding = offset.wrapping_neg() & (alignment - 1);
         let index = self.next_index()?;
         self.check_length(index, offset + padding + byte_length)?;
 
-        self.room(padding + byte_length)?;
+        let more = self.more_padding(alignment);
+        self.room(more + padding + byte_length)?;
+        self.align_to(alignment, more);
         self.data.zeros_within(padding);
         self.write_slot(self.slots + index * self.size(), offset + padding);
         Ok(index)
     }
 
-    const fn finish_table(&mut self, index: usize, alignment: usize) {
+    const fn finish_table(&mut self, index: usize) {
         self.index = index + 1;
-        if alignment > self.alignment {
-            self.alignment = alignment;
-        }
     }
 
     /// Writes the table's length into a sized header, and moves its bytes
@@ -809,6 +874,8 @@ impl TableBuilder {
             fields: field_count,
             index: 0,
             alignment: 1,
+            in_place: None,
+            padding: 0,
             shape,
             layout: layout.map(|layout| layout.clone().unbind()),
             written: None,
@@ -897,13 +964,14 @@ impl TableBuilder {
             let index = self.next_index()?;
             self.check_length(index, offset + padding + offset_size + byte_length)?;
 
-            self.room(padding + offset_size + byte_length)?;
+            let more = self.more_padding(alignment);
+            self.room(more + padding + offset_size + byte_length)?;
+            self.align_to(alignment, more);
             self.data.zeros_within(padding);
             self.write_slot(self.slots + index * offset_size, offset + padding);
             self.push_count(count);
             self.data.push_within(bytes);
             self.index = index + 1;
-            self.alignment = self.alignment.max(alignment);
             Ok(())
         })
     }
@@ -934,7 +1002,7 @@ impl TableBuilder {
             };
             let index = builder.place_table(byte_length, alignment)?;
             builder.push_builder(&nested)?;
-            builder.finish_table(index, alignment);
+            builder.finish_table(index);
             return Ok(());
         }
 
@@ -946,7 +1014,7 @@ impl TableBuilder {
             };
             let index = builder.place_table(bytes.len(), alignment)?;
             builder.data.push_within(bytes);
-            builder.finish_table(index, alignment);
+            builder.finish_table(index);
             Ok(())
         })
     }
@@ -1029,7 +1097,7 @@ impl TableBuilder {
             let offset = builder.offset();
             let (fields, slot_bytes) = builder.slots_of(index, offset, &Int::new(fields)?)?;
             let checkpoint = builder.checkpoint(index);
-            if let Err(error) = builder.start_table(fields, slot_bytes) {
+            if let Err(error) = builder.start_table(fields, slot_bytes, Some(offset)) {
                 builder.roll_back(&checkpoint);
                 return Err(error);
             }
@@ -1068,7 +1136,7 @@ impl TableBuilder {
 
                 // Each item counts its offsets and alignment from its own
                 // start, as a builder does
-                borrow_to_finish(slf).start_table(fields, slot_bytes)?;
+                borrow_to_finish(slf).start_table(fields, slot_bytes, None)?;
                 call_fill(fill, slf.as_any(), std::iter::once(value.as_borrowed()))?;
                 borrow_to_finish(slf).end_item(&checkpoint, item, fields)?;
                 item += 1;

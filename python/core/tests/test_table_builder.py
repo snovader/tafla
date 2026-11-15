@@ -815,6 +815,40 @@ class TestTablesInPlace(unittest.TestCase):
 
         self.assertEqual(items_of(VALUES, builder), items_from_builders(VALUES))
 
+    def test_pads_tables_in_place_as_their_fields_raise_their_alignment(
+        self,
+    ) -> None:
+        """A table in place is moved forward whenever a field raises its
+        alignment, and so is its parent, in place too, once the table ends,
+        with the parent's own slots: each lands where builders put it"""
+
+        def inner(table: TableBuilder) -> None:
+            table.set_uint8(1)
+            table.set_float64_array([0.5, 1.5])
+
+        def outer(table: TableBuilder) -> None:
+            table.set_uint8(2)
+            table.set_int16_array([3])
+            table.set_table_in_place(inner, fields=2)
+
+        for leading in range(8):
+            with self.subTest(leading=leading):
+                builder = TableBuilder(2)
+                builder.set_uint8_array(bytes(leading))
+                builder.set_table_in_place(outer, fields=3)
+
+                inner_builder = TableBuilder(2)
+                inner(inner_builder)
+                outer_builder = TableBuilder(3)
+                outer_builder.set_uint8(2)
+                outer_builder.set_int16_array([3])
+                outer_builder.set_table(inner_builder)
+                expected = TableBuilder(2)
+                expected.set_uint8_array(bytes(leading))
+                expected.set_table(outer_builder)
+
+                self.assertEqual(builder.bytes(), expected.bytes())
+
     def test_values_whose_iterator_uses_the_builder_leave_it_as_it_was(
         self,
     ) -> None:
