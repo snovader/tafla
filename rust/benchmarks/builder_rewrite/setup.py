@@ -10,8 +10,10 @@ and in it:
   the main that the rewrite was measured against), as `tafla::main_builder`;
 - copies of the rewrite with one change each, as
   `tafla::rewrite_no_reservation`, without the room that a vector in place
-  makes for its items after the first, and `tafla::rewrite_boxed`, with an
-  owned builder boxed in a `NestedTable`;
+  makes for its items after the first, `tafla::rewrite_segments_128` and
+  `tafla::rewrite_segments_64`, which keep runs of 128 or 64 bytes or more
+  as segments rather than 256, and `tafla::rewrite_boxed`, with an owned
+  builder boxed in a `NestedTable`;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
 
@@ -36,6 +38,18 @@ VARIANTS = {
             """            }""",
         ),
         ("    fn reserve_items_like(", "    #[allow(dead_code)]\n    fn reserve_items_like("),
+    ],
+    "rewrite_segments_128": [
+        (
+            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };",
+            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };",
+        ),
+    ],
+    "rewrite_segments_64": [
+        (
+            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };",
+            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };",
+        ),
     ],
     "rewrite_boxed": [
         ("    OwnedBuilder(TableBuilder<'a>),", "    OwnedBuilder(Box<TableBuilder<'a>>),"),

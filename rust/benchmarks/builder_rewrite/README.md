@@ -13,10 +13,12 @@ cargo build --release -p tafla-benchmarks --features main-builder \
 ```
 
 - `builder_comparison` times main's builder, the rewrite, each twice as an
-  A/A pair, and two variants of the rewrite, on the comparison's rows that
-  build tables, a vector of 100 nested tables from a builder per table, and
-  a table of 32 values of 128 and 192 bytes, shorter than the 256 bytes from
-  which the rewrite keeps a value rather than copying it. Each builder makes
+  A/A pair, and four variants of the rewrite (without the room for a
+  vector's items, with an owned builder boxed in a `NestedTable`, and
+  keeping values from 128 or from 64 bytes rather than 256), on the
+  comparison's rows that build tables, a vector of 100 nested tables from a
+  builder per table, and tables of 32 medium values, of 128 and 192 bytes,
+  and of 32 short values, of 64 and 96 bytes. Each builder makes
   the tafla codec's calls in a function of its own, in a loop of its own,
   after a check that it writes the codec's bytes; rounds rotate the
   builders' order and reverse it every other round, after warm-up rounds,

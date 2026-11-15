@@ -1,7 +1,8 @@
 //! Times main's `TableBuilder` against the rewrite, and its variants, on
 //! the comparison's rows that build tables: the record, the documents of
 //! 100 and 100,000 rows, the vector of 100 nested tables, in place and from
-//! builders, the array of 100 structs, and a table of 32 medium values.
+//! builders, the array of 100 structs, and tables of 32 medium and 32 short
+//! values.
 //!
 //! Every builder writes each row in a loop of its own, after a check that it
 //! writes the tafla codec's bytes, which the codec reads back, or main's
@@ -25,7 +26,7 @@ use tafla_benchmarks::workloads::{
     StructsShape,
 };
 
-const ROWS: [&str; 7] = [
+const ROWS: [&str; 8] = [
     "record: serialize",
     "document of 100 rows: serialize",
     "document of 100,000 rows: serialize",
@@ -33,6 +34,7 @@ const ROWS: [&str; 7] = [
     "array of 100 structs: serialize",
     "vector of 100 nested tables from builders: serialize",
     "table of 32 medium values: serialize",
+    "table of 32 short values: serialize",
 ];
 
 /// The workloads' inputs, which every timing loop borrows
@@ -42,6 +44,7 @@ struct Inputs {
     large: Document<'static>,
     list: List,
     medium: Medium,
+    short: Medium,
 }
 
 /// A loop that calls a builder's function on a row's input, as many times
@@ -72,6 +75,7 @@ fn main() -> Result<(), Error> {
         large: workloads::document(100_000),
         list: workloads::list(LIST_ITEMS),
         medium: builders::medium(),
+        short: builders::short(),
     }));
 
     println!("{}", load_average());
@@ -134,7 +138,7 @@ impl Visit for Timers {
         }
 
         let inputs = self.inputs;
-        let loops: [Loop; 7] = [
+        let loops: [Loop; 8] = [
             timing_loop(&inputs.record, T::record),
             timing_loop(&inputs.small, T::document),
             timing_loop(&inputs.large, T::document),
@@ -142,6 +146,7 @@ impl Visit for Timers {
             timing_loop(&inputs.list, T::structs),
             timing_loop(&inputs.list, T::builders),
             timing_loop(&inputs.medium, T::medium),
+            timing_loop(&inputs.short, T::medium),
         ];
         for (row, run) in loops.into_iter().enumerate() {
             self.added.push(Timer {
@@ -188,8 +193,10 @@ fn check<T: Builder>(inputs: &Inputs) -> Result<(), Error> {
         &Workload::<StructsShape>::serialize(Tafla, &inputs.list)?,
     )?;
 
-    if T::medium(&inputs.medium)? != Main::medium(&inputs.medium)? {
-        return Err("wrote other bytes of the medium values".into());
+    for values in [&inputs.medium, &inputs.short] {
+        if T::medium(values)? != Main::medium(values)? {
+            return Err("wrote other bytes of the medium or short values".into());
+        }
     }
     Ok(())
 }

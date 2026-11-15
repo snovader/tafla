@@ -7,9 +7,9 @@
 //! the codec's `serialize()` is compiled, so that every loop that calls it
 //! times the same code, with the fills inlined into it. Beside the
 //! comparison's rows, it writes the vector of 100 nested tables from a
-//! builder per table, rather than in place, and a table of 32 values
-//! shorter than the 256 bytes from which the rewrite keeps a value rather
-//! than copying it. `uneven()` and `too_long()` are the vectors whose peak
+//! builder per table, rather than in place, and tables of 32 medium and 32
+//! short values, shorter than the 256 bytes from which the rewrite keeps a
+//! value rather than copying it. `uneven()` and `too_long()` are the vectors whose peak
 //! memory `builder_allocation` counts.
 
 use std::marker::PhantomData;
@@ -25,23 +25,32 @@ const DOCUMENT_VERSION: u32 = 1;
 const ITEM_SIZE: usize = 12;
 const ITEM_ALIGNMENT: Alignment = Alignment::Four;
 
-/// The pairs of values of the table of medium values
-const MEDIUM_PAIRS: usize = 16;
+/// The pairs of values of the tables of medium and short values
+const PAIRS: usize = 16;
 
-/// A table's values shorter than a segment: 16 strings of 128 bytes and 16
-/// float32 arrays of 48 elements, 192 bytes
+/// A table's values shorter than a segment of 256 bytes: 16 strings and 16
+/// float32 arrays
 pub struct Medium {
     pub strings: Vec<String>,
     pub arrays: Vec<Vec<f32>>,
 }
 
-/// The values of the table of medium values
+/// Medium values: strings of 128 bytes and arrays of 48 elements, 192 bytes
 pub fn medium() -> Medium {
-    let strings = (0..MEDIUM_PAIRS)
-        .map(|index| format!("{index:03}").repeat(43)[..128].to_owned())
+    values(128, 48)
+}
+
+/// Short values: strings of 64 bytes and arrays of 24 elements, 96 bytes
+pub fn short() -> Medium {
+    values(64, 24)
+}
+
+fn values(characters: usize, elements: u16) -> Medium {
+    let strings = (0..PAIRS)
+        .map(|index| format!("{index:03}").repeat(characters)[..characters].to_owned())
         .collect();
-    let arrays = (0..MEDIUM_PAIRS)
-        .map(|index| (0..48_u16).map(|element| f32::from(element) + index as f32).collect())
+    let arrays = (0..PAIRS)
+        .map(|index| (0..elements).map(|element| f32::from(element) + index as f32).collect())
         .collect();
 
     Medium { strings, arrays }
@@ -142,7 +151,7 @@ macro_rules! serializers {
 
             #[inline(never)]
             pub fn medium(input: &Medium) -> Result<Vec<u8>, Error> {
-                let mut builder = TableBuilder::new(2 * MEDIUM_PAIRS, TableLayout::DEFAULT)?;
+                let mut builder = TableBuilder::new(2 * PAIRS, TableLayout::DEFAULT)?;
                 for (string, array) in input.strings.iter().zip(&input.arrays) {
                     builder.set_str(string.as_str())?;
                     builder.set_f32_array(array.as_slice())?;
@@ -181,6 +190,8 @@ serializers!(main_serializers, tafla::main_builder);
 serializers!(rewrite_serializers, tafla);
 serializers!(no_reservation_serializers, tafla::rewrite_no_reservation);
 serializers!(boxed_serializers, tafla::rewrite_boxed);
+serializers!(segments_128_serializers, tafla::rewrite_segments_128);
+serializers!(segments_64_serializers, tafla::rewrite_segments_64);
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
     let mut bytes = [0; ITEM_SIZE];
@@ -255,6 +266,8 @@ builder!(Main, main_serializers);
 builder!(Rewrite, rewrite_serializers);
 builder!(NoReservation, no_reservation_serializers);
 builder!(Boxed, boxed_serializers);
+builder!(Segments128, segments_128_serializers);
+builder!(Segments64, segments_64_serializers);
 
 /// Another builder's functions again, as functions of their own, for an
 /// A/A pair
@@ -309,8 +322,8 @@ pub trait Visit {
 
 /// Visits main's builder and the rewrite, twice each, as A/A pairs, and
 /// the rewrite's variants: without the room that a vector in place makes
-/// for its items after the first, and with an owned builder boxed in a
-/// `NestedTable`
+/// for its items after the first, with an owned builder boxed in a
+/// `NestedTable`, and keeping runs of 128 or 64 bytes or more as segments
 pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Main>("main");
     visitor.visit::<Again<Main>>("main A/A");
@@ -318,4 +331,6 @@ pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Again<Rewrite>>("rewrite A/A");
     visitor.visit::<NoReservation>("no reservation");
     visitor.visit::<Boxed>("boxed");
+    visitor.visit::<Segments128>("segments from 128");
+    visitor.visit::<Segments64>("segments from 64");
 }

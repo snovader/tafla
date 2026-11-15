@@ -31,7 +31,7 @@ static PEAK: AtomicUsize = AtomicUsize::new(0);
 /// Calls of each row that the counts are divided among
 const CALLS: usize = 100;
 
-const ROWS: [&str; 7] = [
+const ROWS: [&str; 8] = [
     "record",
     "document of 100 rows",
     "document of 100,000 rows",
@@ -39,6 +39,7 @@ const ROWS: [&str; 7] = [
     "array of 100 structs",
     "vector of 100 nested tables from builders",
     "table of 32 medium values",
+    "table of 32 short values",
 ];
 
 /// The system's allocator, which counts allocations and their bytes
@@ -102,12 +103,13 @@ struct Inputs {
     large: Document<'static>,
     list: List,
     medium: Medium,
+    short: Medium,
 }
 
 /// The counts of each builder, per row
 struct Counts<'i> {
     inputs: &'i Inputs,
-    rows: [Vec<String>; 7],
+    rows: [Vec<String>; 8],
     peaks: Vec<String>,
 }
 
@@ -122,6 +124,7 @@ impl Visit for Counts<'_> {
             counts(|| T::structs(&inputs.list)),
             counts(|| T::builders(&inputs.list)),
             counts(|| T::medium(&inputs.medium)),
+            counts(|| T::medium(&inputs.short)),
         ];
 
         for (row, (bytes, allocations)) in counts.into_iter().enumerate() {
@@ -159,6 +162,7 @@ fn main() {
         large: workloads::document(100_000),
         list: workloads::list(LIST_ITEMS),
         medium: builders::medium(),
+        short: builders::short(),
     };
 
     let mut counts = Counts {
