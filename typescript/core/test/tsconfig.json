@@ -4,7 +4,7 @@
         "outDir": "../../.cache/typescript/core/test"
     },
     "include": ["."],
-    "exclude": ["conformance", "generated", "prototype"],
+    "exclude": ["conformance", "generated"],
     "references": [
         { "path": ".." },
         { "path": "./conformance" }

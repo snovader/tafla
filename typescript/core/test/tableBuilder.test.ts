@@ -1,10 +1,61 @@
 import { describe, expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
-import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
-import type { FieldDescription, TableDescription } from './conformance/description.ts';
+import { ByteBuffer, TableBuilder, type TableItem, TableLayout } from 'tafla';
+import {
+    FIELDS,
+    fitsItsLayout,
+    MAX_VALUES,
+    OFFSET_TYPES,
+    tables
+} from './conformance/arbitraries.ts';
+import type {
+    FieldDescription,
+    LayoutDescription,
+    OffsetType,
+    ScalarType,
+    TableDescription
+} from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
-import { alignmentOf, buildTable, buildTableInPlace, nestedInPlace } from './conformance/tables.ts';
+import {
+    alignmentOf,
+    buildTable,
+    buildTableInPlace,
+    createBuilder,
+    nestedInPlace,
+    setField,
+    setFieldInPlace,
+    writeTable
+} from './conformance/tables.ts';
+
+/**
+ * Fields of about 1 KiB, around the length from which the builder keeps an
+ * array or an array of structs until the table is written, rather than
+ * copying it when it's set, and strings around the length from which it
+ * counts their UTF-8 rather than giving them room for their longest
+ */
+const KIB_FIELDS: fc.Arbitrary<FieldDescription> = fc.oneof(
+    fc.integer({ min: 1000, max: 1100 }).map(length => arrayField('uint8', length)),
+    fc.integer({ min: 120, max: 140 }).map(length => arrayField('float64', length)),
+    fc.integer({ min: 100, max: 130 }).map(
+        (count): FieldDescription => ({
+            type: 'struct[]',
+            fields: ['float64', 'uint8'],
+            items: Array.from({ length: count }, () => [1, 2])
+        })
+    ),
+    fc
+        .integer({ min: 1000, max: 1100 })
+        .map((length): FieldDescription => ({ type: 'string', value: 'é'.repeat(length) }))
+);
+
+/** Tables, nested from builders or bytes, with fields of about 1 KiB */
+const tablesWithKibFields = fc
+    .tuple(
+        tables({ offsetTypes: ['uint16', 'uint32'] }),
+        fc.array(KIB_FIELDS, { minLength: 1, maxLength: 2 })
+    )
+    .map(([table, long]) => ({ ...table, fields: [...table.fields, ...long] }))
+    .filter(fitsItsLayout);
 
 it('should reject a field beyond the number the table holds', () => {
     const builder = new TableBuilder(1);
@@ -39,55 +90,111 @@ it('should finalize once and return the same buffer', () => {
     expect(builder.bytes()).toBe(builder.finalize().bytes());
 });
 
-it('should write values as they are when finalizing', () => {
-    const values = new Float32Array([1, 2]);
+it('should throw TypeError from the setter of a number for an int64, and leave the builder as it was', () => {
     const builder = new TableBuilder(1);
-    builder.setFloat32Array(values);
-    values[0] = 3;
 
-    const buffer = builder.finalize();
-    expect(buffer.getFloat32Array(buffer.rootOffset(0))).toStrictEqual(new Float32Array([3, 2]));
+    expect(() => builder.setInt64(1 as unknown as bigint)).toThrow(TypeError);
+    builder.setInt64(1n);
+    expect(builder.bytes()).toStrictEqual(writeTable(tableOf([{ type: 'int64', value: '1' }])));
 });
 
-describe('arrays whose length changes before finalizing', () => {
-    // A float64[] of 3 after the header at 8: its count at 8, 4 bytes of
-    // padding and its elements at 16, and then a uint8 at 40
-    function builderOf(values: ArrayLike<number>): TableBuilder {
+// Arrays, arrays of structs, structs and tables given as bytes of 1 KiB or
+// more are kept until the table is written, and shorter ones copied when
+// they're set
+describe('values of 1 KiB or more', () => {
+    it('should copy a shorter array when it is set, and write a longer one as it is when the table is written', () => {
+        const short = new Float32Array([1, 2]);
+        const long = new Float32Array(256).fill(1);
         const builder = new TableBuilder(2);
-        builder.setFloat64Array(values);
-        builder.setUint8(7);
-        return builder;
-    }
+        builder.setFloat32Array(short);
+        builder.setFloat32Array(long);
+        short[0] = 3;
+        long[0] = 3;
 
-    const EXPECTED = builderOf([1, 2, 3]).bytes();
+        const buffer = builder.finalize();
+        expect(buffer.getFloat32Array(buffer.rootOffset(0))).toStrictEqual(
+            new Float32Array([1, 2])
+        );
+        expect(buffer.getFloat32Array(buffer.rootOffset(1))[0]).toBe(3);
+    });
+
+    it('should write a struct as it is when the table is written', () => {
+        const struct = Uint8Array.from({ length: 1500 }, (_, i) => i);
+        const builder = new TableBuilder(2);
+        builder.setStruct(struct);
+        builder.setUint8(7);
+        struct[0] = 99;
+
+        const buffer = builder.finalize();
+        expect(buffer.getStruct(buffer.rootOffset(0), struct.length)).toStrictEqual(struct);
+        expect(buffer.getUint8(buffer.rootOffset(1))).toBe(7);
+    });
 
     it.each([
-        ['grew', [1, 2, 3, 4], "The fields need 48 bytes, more than the table's 41"],
-        ['shrank', [1, 2], "The fields wrote 33 of the table's 41 bytes"]
+        ['grew', 257],
+        ['shrank', 255]
     ])(
-        'should throw RangeError for an array that %s, and finalize once it is restored',
-        (_, changed, message) => {
-            const values = [1, 2, 3];
-            const builder = builderOf(values);
+        'should throw RangeError for an array that %s, and write it once it is restored',
+        (_, length) => {
+            const values = new Array<number>(256).fill(1);
+            const builder = new TableBuilder(2);
+            builder.setFloat64Array(values);
+            builder.setUint8(7);
 
-            values.splice(0, values.length, ...changed);
+            values.length = length;
+            values.fill(1);
+            const message = `An array of 256 elements held ${length} when the table was written`;
             expect(() => builder.bytes()).toThrow(new RangeError(message));
             expect(() => builder.finalize()).toThrow(new RangeError(message));
 
-            values.splice(0, values.length, 1, 2, 3);
-            expect(builder.bytes()).toStrictEqual(EXPECTED);
+            values.length = 256;
+            values.fill(1);
+            expect(builder.bytes()).toStrictEqual(
+                writeTable(
+                    tableOf([
+                        { type: 'float64[]', value: values },
+                        { type: 'uint8', value: 7 }
+                    ])
+                )
+            );
         }
     );
 
-    it('should throw the TypeError of copying a typed array whose buffer was transferred', () => {
-        const values = new Float64Array([1, 2, 3]);
-        const builder = builderOf(values);
+    it('should throw RangeError for a typed array whose buffer was transferred, and stay unfinalized', () => {
+        const values = new Float64Array(256);
+        const builder = new TableBuilder(2);
+        builder.setFloat64Array(values);
+        builder.setUint8(7);
 
         values.buffer.transfer();
-        expect(() => builder.finalize()).toThrow(TypeError);
+        expect(() => builder.finalize()).toThrow(
+            new RangeError('An array of 256 elements held 0 when the table was written')
+        );
         // It's still unfinalized, so a field past its last is a RangeError
         // rather than a finalized table's TypeError
-        expect(() => builder.setUint8(1)).toThrow(RangeError);
+        expect(() => builder.setUint8(1)).toThrow(
+            new RangeError("Can't add field 3 to a table of 2")
+        );
+    });
+
+    it("should copy a nested builder's table when it is nested, with its arrays of 1 KiB or more as they are when its parent is written", () => {
+        const short = new Float32Array([1, 2]);
+        const long = new Float32Array(256).fill(1);
+        const nested = new TableBuilder(2);
+        nested.setFloat32Array(short);
+        nested.setFloat32Array(long);
+
+        const parent = new TableBuilder(1);
+        parent.setTable(nested);
+        short[0] = 3;
+        long[0] = 3;
+
+        const buffer = parent.finalize();
+        const table = buffer.rootOffset(0);
+        expect(buffer.getFloat32Array(buffer.fieldOffset(table, 0))).toStrictEqual(
+            new Float32Array([1, 2])
+        );
+        expect(buffer.getFloat32Array(buffer.fieldOffset(table, 1))[0]).toBe(3);
     });
 });
 
@@ -176,22 +283,16 @@ describe('tables nested from their builders', () => {
         }
     );
 
-    // A builder that was finalized, or whose layout has a header or another
-    // offset type than its parent's, is copied as a table nested as bytes is
+    // A builder is copied as the bytes that it writes, whatever its layout,
+    // and whether or not it was finalized
     it.prop([tables(), fc.nat({ max: 7 })])(
         'should write a builder that was finalized, or of any layout, as the bytes that it writes',
-        (table, length) => {
-            const bytes = buildTable(table).bytes();
-            const finalized = buildTable(table);
-            finalized.finalize();
+        expectNestedAsBytes
+    );
 
-            const expected = parentOf(() => bytes, length);
-            expect(parentOf(() => buildTable(table), length)).toStrictEqual(expected);
-            expect(parentOf(() => finalized, length)).toStrictEqual(expected);
-
-            const buffer = new ByteBuffer(expected);
-            expect(buffer.getVector(buffer.rootOffset(2))).toStrictEqual([bytes, bytes]);
-        }
+    it.prop([tablesWithKibFields, fc.nat({ max: 7 })])(
+        'should write a builder with values of 1 KiB or more as the bytes that it writes',
+        expectNestedAsBytes
     );
 
     it('should reject a builder with fields left to set, and leave the table as it was', () => {
@@ -233,25 +334,11 @@ describe('tables nested from their builders', () => {
         const buffer = second.finalize();
         expect(buffer.getVector(buffer.rootOffset(1))).toStrictEqual([own, own]);
     });
-
-    it("should write a nested builder's values as they are when its parent is finalized", () => {
-        const values = new Float32Array([1, 2]);
-        const nested = new TableBuilder(1);
-        nested.setFloat32Array(values);
-
-        const parent = new TableBuilder(1);
-        parent.setTable(nested);
-        values[0] = 3;
-
-        const buffer = parent.finalize();
-        const read = buffer.getFloat32Array(buffer.fieldOffset(buffer.rootOffset(0), 0));
-        expect(read).toStrictEqual(new Float32Array([3, 2]));
-    });
 });
 
-describe('tables recorded in place', () => {
+describe('tables written in place', () => {
     // Every nested table is made one that a builder writes in place, so
-    // that it's recorded in place too, except those with an alignment of
+    // that it's written in place too, except those with an alignment of
     // their own and vectors of items of different numbers of fields
     it.prop([tables()])(
         'should write the bytes of the builders that they replace, and fail as they fail',
@@ -347,7 +434,7 @@ describe('tables recorded in place', () => {
         expect(builder.bytes()).toStrictEqual(EXPECTED);
     });
 
-    it('should reject a field beyond the number a table recorded in place holds', () => {
+    it('should reject a field beyond the number a table written in place holds', () => {
         const builder = new TableBuilder(1);
 
         expect(() =>
@@ -382,7 +469,50 @@ describe('tables recorded in place', () => {
         expect(builder.bytes()).toHaveLength(MAX_VALUES.uint8);
     });
 
-    it('should reject finalizing or nesting a builder while it records a table in place', () => {
+    it("should zero the padding of a field written over a failed fill's bytes", () => {
+        const set = (builder: TableItem, fail: boolean): void => {
+            builder.setUint8(1);
+            if (fail) {
+                expect(() =>
+                    builder.setTableInPlace(1, table => {
+                        table.setFloat64(Number.NaN);
+                        throw new Error("The caller's");
+                    })
+                ).toThrow("The caller's");
+            }
+            // Padded to 8 over the failed table's offset and float64
+            builder.setFloat64Array([1]);
+        };
+
+        const builder = new TableBuilder(2);
+        set(builder, true);
+        const expected = new TableBuilder(2);
+        set(expected, false);
+        expect(builder.bytes()).toStrictEqual(expected.bytes());
+    });
+
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject a %s table made too long by a table or vector that fits itself, and leave the builder as it was',
+        offsetType => {
+            const layout = TableLayout.create({ offsetType });
+            const room = MAX_VALUES[offsetType] - 2 * OFFSET_SIZES[offsetType];
+            const long = new Uint8Array(room - 2 * OFFSET_SIZES[offsetType]);
+            const fill = (table: TableItem): void => table.setUint8Array(long);
+
+            const builder = new TableBuilder(2, layout);
+            builder.setUint8(1);
+            expect(() => builder.setTableInPlace(1, fill)).toThrow(RangeError);
+            expect(() => builder.setVectorInPlace(1, 1, fill)).toThrow(RangeError);
+            builder.setUint8(2);
+
+            const expected = new TableBuilder(2, layout);
+            expected.setUint8(1);
+            expected.setUint8(2);
+            expect(builder.bytes()).toStrictEqual(expected.bytes());
+        }
+    );
+
+    it('should reject finalizing or nesting a builder while it writes a table in place', () => {
         const builder = new TableBuilder(1);
         const message =
             "A table can't be finalized or nested while a table is recorded in place in it";
@@ -401,7 +531,7 @@ describe('tables recorded in place', () => {
 
 /**
  * What building a table gives: its bytes, or the class and message of its
- * error. A vector recorded in place checks its count, its item ends and its
+ * error. A vector written in place checks its count, its item ends and its
  * items' offsets before its items, and fails with the table's length up to
  * them, rather than with the items' whole lengths, so the length is left out
  * of a message of a table too long.
@@ -465,3 +595,276 @@ function fieldNestedTheOtherWay(field: FieldDescription): FieldDescription {
             return field;
     }
 }
+
+/**
+ * Nests a table, from its builder, from a builder that was finalized and
+ * from its bytes, after a uint8[] of `length` bytes, and expects the same
+ * bytes from each
+ */
+function expectNestedAsBytes(table: TableDescription, length: number): void {
+    const bytes = buildTable(table).bytes();
+    const finalized = buildTable(table);
+    finalized.finalize();
+
+    const expected = parentOf(() => bytes, length);
+    expect(parentOf(() => buildTable(table), length)).toStrictEqual(expected);
+    expect(parentOf(() => finalized, length)).toStrictEqual(expected);
+
+    const buffer = new ByteBuffer(expected);
+    expect(buffer.getVector(buffer.rootOffset(2))).toStrictEqual([bytes, bytes]);
+}
+
+/** A table of the default layout that holds `fields` */
+function tableOf(fields: FieldDescription[]): TableDescription {
+    return { layout: { sized: false, versioned: false, offsetType: 'uint32' }, fields };
+}
+
+/** An array of `length` elements of 1 */
+function arrayField(type: ScalarType, length: number): FieldDescription {
+    const value = type === 'int64' || type === 'uint64' ? '1' : 1;
+    return { type: `${type}[]`, value: new Array(length).fill(value) } as FieldDescription;
+}
+
+/**
+ * What a builder is asked to do: build `table` with `fields` fields in its
+ * header, which may be one more or fewer than it sets, with its tables
+ * nested from builders or in place, and with the `throwAt`th call of a
+ * setter, counted from 1, throwing before it runs, or none if it's 0
+ */
+interface Script {
+    table: TableDescription;
+    fields: number;
+    inPlace: boolean;
+    throwAt: number;
+}
+
+/** Strings with lone surrogates, which are written as U+FFFD */
+const LONE_SURROGATES = fc
+    .tuple(
+        fc.string({ unit: 'binary', maxLength: 4 }),
+        fc.constantFrom('\ud800', '\udbff', '\udc00', '\udfff'),
+        fc.string({ unit: 'binary', maxLength: 4 })
+    )
+    .map(
+        ([before, surrogate, after]): FieldDescription => ({
+            type: 'string',
+            value: before + surrogate + after
+        })
+    );
+
+/**
+ * Long fields for a table of `offsetType` offsets: arrays of bytes about as
+ * long as it can be, or longer, and fields of about 1 KiB, which the builder
+ * may keep until the table is written
+ */
+function longFields(offsetType: OffsetType): fc.Arbitrary<FieldDescription> {
+    const max = MAX_VALUES[offsetType];
+    const nearMax = fc
+        .integer({ min: Math.max(max - 300, 0), max: max + 8 })
+        .map(length => arrayField('uint8', length));
+
+    switch (offsetType) {
+        case 'uint8':
+            return nearMax;
+
+        case 'uint16':
+            return fc.oneof(nearMax, KIB_FIELDS);
+
+        case 'uint32':
+            return KIB_FIELDS;
+    }
+}
+
+/**
+ * Tables and vectors whose items hold a long field among others, which may
+ * make the table that they're nested in too long, though they fit
+ * themselves, and which tables written in place are moved with when they're
+ * padded
+ */
+function longNestedFields(offsetType: OffsetType): fc.Arbitrary<FieldDescription> {
+    const layout = { sized: false, versioned: false, offsetType };
+    const nested = fc
+        .tuple(
+            fc.array(FIELDS, { maxLength: 2 }),
+            longFields(offsetType),
+            fc.array(FIELDS, { maxLength: 1 })
+        )
+        .map(
+            ([before, long, after]): TableDescription => ({
+                layout,
+                fields: [...before, long, ...after]
+            })
+        );
+
+    return fc.oneof(
+        nested.map((table): FieldDescription => ({ type: 'table', from: 'builder', table })),
+        fc.array(nested, { minLength: 1, maxLength: 2 }).map(
+            (items): FieldDescription => ({
+                type: 'vector',
+                items: items.map(table => ({ from: 'builder' as const, table }))
+            })
+        )
+    );
+}
+
+function layouts(
+    offsetType: OffsetType
+): fc.Arbitrary<Pick<TableDescription, 'layout' | 'version'>> {
+    return fc
+        .record({
+            sized: fc.boolean(),
+            versioned: fc.boolean(),
+            version: fc.integer({ min: 0, max: MAX_VALUES[offsetType] })
+        })
+        .map(({ sized, versioned, version }) => {
+            const layout: LayoutDescription = { sized, versioned, offsetType };
+            return versioned ? { layout, version } : { layout };
+        });
+}
+
+/**
+ * Tables of every offset type, which may be too long for it, with any of
+ * their fields set, and fills that throw. Their nested tables have no
+ * header and their offset type, so that a `TableWriter` writes the same
+ * bytes, and they're written in place or from builders.
+ */
+function scripts(): fc.Arbitrary<Script> {
+    return fc.constantFrom(...OFFSET_TYPES).chain(offsetType => {
+        const fields = fc.oneof(
+            { arbitrary: FIELDS, weight: 8 },
+            { arbitrary: LONE_SURROGATES, weight: 1 },
+            { arbitrary: longFields(offsetType), weight: 1 },
+            { arbitrary: longNestedFields(offsetType), weight: 1 }
+        );
+
+        return fc
+            .record({
+                header: layouts(offsetType),
+                fields: fc.array(fields, { maxLength: 6 }),
+                extra: fc.integer({ min: -1, max: 1 }),
+                inPlace: fc.boolean(),
+                throwAt: fc.oneof(fc.constant(0), fc.nat({ max: 12 }))
+            })
+            .map(
+                ({ header, fields, extra, inPlace, throwAt }): Script => ({
+                    table: nestedInPlace({ ...header, fields }),
+                    fields: Math.max(fields.length + extra, 0),
+                    inPlace,
+                    throwAt
+                })
+            );
+    });
+}
+
+/** The error that a script's `throwAt` throws */
+class ScriptError extends Error {}
+
+/**
+ * Runs a script, and returns the fields whose setters returned, the errors
+ * that the others threw, and what `bytes()` and then `finalize()` gave
+ */
+function run(script: Script): {
+    set: FieldDescription[];
+    errors: unknown[];
+    outcomes: unknown[];
+} {
+    const builder = createBuilder({
+        ...script.table,
+        fields: new Array<FieldDescription>(script.fields)
+    });
+    const target = throwing(builder, { count: 0, throwAt: script.throwAt });
+    const { offsetType } = script.table.layout;
+
+    const set: FieldDescription[] = [];
+    const errors: unknown[] = [];
+    for (const field of script.table.fields) {
+        try {
+            if (script.inPlace) {
+                setFieldInPlace(target, field, offsetType);
+            } else {
+                setField(target, field);
+            }
+            set.push(field);
+        } catch (error) {
+            errors.push(error);
+        }
+    }
+
+    const outcomes = [resultOf(() => builder.bytes()), resultOf(() => builder.finalize().bytes())];
+
+    return { set, errors, outcomes };
+}
+
+/**
+ * What `bytes()` and `finalize()` give for a builder of the script's header
+ * that was given only the fields in `set`: the bytes that a `TableWriter`
+ * writes for them, once they're all the header's fields
+ */
+function expectedOutcomes(script: Script, set: FieldDescription[]): unknown[] {
+    if (set.length !== script.fields) {
+        const error = [
+            'RangeError',
+            `Only ${set.length} of the table's ${script.fields} fields were set`
+        ];
+        return [error, error];
+    }
+
+    const bytes = writeTable({ ...script.table, fields: set });
+    return [bytes, bytes];
+}
+
+/**
+ * A view of a builder, or of a table that it writes in place, whose setters
+ * count their calls, and throw a {@link ScriptError} before the call that the
+ * script names. The tables that its fills are given are such views too.
+ */
+function throwing(item: TableItem, calls: { count: number; throwAt: number }): TableItem {
+    return new Proxy(item, {
+        get(target, key) {
+            const value = Reflect.get(target, key) as unknown;
+            if (typeof value !== 'function' || typeof key !== 'string' || !key.startsWith('set')) {
+                return value;
+            }
+
+            return (...args: unknown[]) => {
+                calls.count++;
+                if (calls.count === calls.throwAt) {
+                    throw new ScriptError(`Call ${calls.count}`);
+                }
+
+                const last = args.length - 1;
+                if (key === 'setTableInPlace' || key === 'setVectorInPlace') {
+                    const fill = args[last] as (table: TableItem, index: number) => void;
+                    args[last] = (table: TableItem, index: number) =>
+                        fill(throwing(table, calls), index);
+                }
+
+                return (value as (...args: unknown[]) => unknown).apply(target, args);
+            };
+        }
+    });
+}
+
+/** The bytes that `write` returns, or the class and message of its error */
+function resultOf(write: () => Uint8Array): unknown {
+    try {
+        return write();
+    } catch (error) {
+        const thrown = error as Error;
+        return [thrown.constructor.name, thrown.message];
+    }
+}
+
+describe('setters that throw', () => {
+    it.prop([scripts()], { numRuns: 300 })(
+        'should leave the builder as it was, so that it writes the table of the fields whose setters returned',
+        script => {
+            const { set, errors, outcomes } = run(script);
+
+            for (const error of errors) {
+                expect(error instanceof ScriptError || error instanceof RangeError).toBe(true);
+            }
+            expect(outcomes).toStrictEqual(expectedOutcomes(script, set));
+        }
+    );
+});

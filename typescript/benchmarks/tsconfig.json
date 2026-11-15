@@ -4,8 +4,5 @@
         "outDir": "../.cache/typescript/benchmarks"
     },
     "include": ["."],
-    "references": [
-        { "path": "../core" },
-        { "path": "../core/prototype" }
-    ]
+    "references": [{ "path": "../core" }]
 }

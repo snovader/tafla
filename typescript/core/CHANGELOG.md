@@ -41,13 +41,15 @@ repository's first commits, for code built from its source before the release.
   and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
   `DataView` of a range of bytes, for a long run of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
-  `setVectorInPlace(count, fields, fill)`, which record a nested table, or
+  `setVectorInPlace(count, fields, fill)`, which write a nested table, or
   each item of a vector, among the builder's own fields, through the
   `TableItem` that `fill` sets its fields on, rather than from a builder of
   its own. They write the bytes that nested builders write, and leave the
-  builder as it was if `fill` throws or leaves fields unset. The comparison
-  suite's vector of 100 nested tables took 11.5 µs rather than 13.7 µs, and
-  allocated 31 KB on V8's heap rather than 47 KB.
+  builder as it was if `fill` throws or leaves fields unset. They're the way
+  to nest tables that a program builds as it writes their parent: in Node
+  26, the comparison suite's vector of 100 nested tables took 5.6 µs so,
+  against 21.6 µs from a builder per item, and allocated 16 KB on V8's heap
+  rather than 92 KB.
 
 ### Changed
 
@@ -79,6 +81,33 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
+- `TableBuilder` writes each field, and its offset, into a buffer when it's
+  set, rather than recording it and writing every field through a
+  `TableWriter` in `bytes()` and `finalize()`, which now copy the table out
+  of the buffer into bytes of its length and leave the buffer for the next
+  builder. It writes the same bytes, and its setters throw the same errors
+  and leave it as it was when they throw. Arrays, arrays of structs, structs
+  and tables given as bytes of 1 KiB or more are kept until the table is
+  written and copied into it once; shorter values are copied when they're
+  set, rather than all of them when the table is written. So:
+  - A number for an `int64` field, or a `bigint` for another, throws its
+    `TypeError` from the setter, which leaves the builder as it was, rather
+    than from `finalize()`, except in an array of 1 KiB or more.
+  - Only an array of 1 KiB or more whose length has changed when the table
+    is written makes `finalize()` and `bytes()` throw a `RangeError`, with a
+    message of its own, and one whose buffer was transferred throws a
+    `RangeError` rather than a `TypeError`.
+  - A nested builder is copied into its parent when it's nested, whatever
+    its layout, rather than written into it when the parent is written.
+
+  In the comparison suite in Node 26, the builder wrote the record in
+  0.125 µs rather than 0.187, the document of 100 rows in 0.458 µs rather
+  than 0.620, or 0.688 µs rather than 0.846 from `number[]` columns, and the
+  vector of 100 nested tables, written in place, in 5.6 µs rather than
+  11.9, with half the bytes on V8's heap. The documents of 100,000 rows and
+  the array of 100 structs took as long as before. A vector of 100 nested
+  tables from a builder per item took 1.4 times as long, 21.6 µs rather than
+  15.1, since each builder's table is copied into its parent.
 
 ### Removed
 

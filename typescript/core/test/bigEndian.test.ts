@@ -87,9 +87,10 @@ it.prop([tables(), SLICES])(
     }
 );
 
-// TableBuilder writes through a TableWriter too, so this compares the sizer's
-// count of each table with the builder's, and their calls of the writer. The
-// tests above check the bytes that the builder writes through it.
+// TableBuilder and a TableWriter write the same bytes in code of their own,
+// so this compares the two on a big-endian host, where each swaps the bytes
+// of the arrays that it writes. The tests above check the bytes that the
+// builder writes.
 it.prop([tables().map(nestedInPlace).filter(fitsItsLayout)])(
     'should count each table as long as TableBuilder does on a big-endian host, and write the same bytes',
     table => {

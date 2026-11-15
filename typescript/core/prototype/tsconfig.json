@@ -1,8 +1,0 @@
-{
-    "extends": "../../tsconfig.isomorphic.json",
-    "compilerOptions": {
-        "outDir": "../../.cache/typescript/core/prototype"
-    },
-    "include": ["./*.ts"],
-    "references": [{ "path": ".." }]
-}
