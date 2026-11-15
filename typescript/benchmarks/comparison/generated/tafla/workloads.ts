@@ -8,9 +8,14 @@ import {
     StructWriter,
     TableLayout,
     TableSizer,
-    type TableWriter,
+    TableWriter,
+    utf8Length,
+    viewOf,
     writeFloat32,
-    writeUint32
+    writeFloat64,
+    writeInt64,
+    writeUint32,
+    writeUtf8
 } from 'tafla';
 
 /** A small table: two float64s, an int64 and a 16-byte string */
@@ -25,19 +30,40 @@ export class Record {
 
     /** Writes a `Record` with every field */
     static serialize(fields: RecordFields): Uint8Array {
-        const sizer = new TableSizer(4, Record.#LAYOUT);
-        sizer.addFloat64();
-        sizer.addFloat64();
-        sizer.addInt64();
-        sizer.addString(fields.name);
+        const string3 = fields.name;
+        const table = TableWriter.tableBytes(
+            4,
+            Record.#LAYOUT,
+            44 + utf8Length(string3)
+        );
 
-        const writer = sizer.writer();
-        writer.setFloat64(0, fields.x);
-        writer.setFloat64(1, fields.y);
-        writer.setInt64(2, fields.id);
-        writer.setString(3, fields.name);
+        table[0] = 16;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
+        table[4] = 24;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 32;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 40;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
 
-        return writer.bytes();
+        writeFloat64(table, 16, fields.x);
+        writeFloat64(table, 24, fields.y);
+        writeInt64(table, 32, fields.id);
+        const length3 = writeUtf8(table, 44, string3);
+        table[40] = length3;
+        table[41] = length3 >>> 8;
+        table[42] = length3 >>> 16;
+        table[43] = length3 >>> 24;
+
+        return table;
     }
 
     /**
@@ -51,19 +77,41 @@ export class Record {
      * any of them is written.
      */
     static serializeInto(fields: RecordFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(4, Record.#LAYOUT);
-        sizer.addFloat64();
-        sizer.addFloat64();
-        sizer.addInt64();
-        sizer.addString(fields.name);
+        const string3 = fields.name;
+        const table = TableWriter.tableBytes(
+            4,
+            Record.#LAYOUT,
+            44 + utf8Length(string3),
+            bytes
+        );
 
-        const writer = sizer.writer(bytes);
-        writer.setFloat64(0, fields.x);
-        writer.setFloat64(1, fields.y);
-        writer.setInt64(2, fields.id);
-        writer.setString(3, fields.name);
+        table[0] = 16;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
+        table[4] = 24;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 32;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 40;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
 
-        return writer.bytes();
+        writeFloat64(table, 16, fields.x);
+        writeFloat64(table, 24, fields.y);
+        writeInt64(table, 32, fields.id);
+        const length3 = writeUtf8(table, 44, string3);
+        table[40] = length3;
+        table[41] = length3 >>> 8;
+        table[42] = length3 >>> 16;
+        table[43] = length3 >>> 24;
+
+        return table;
     }
 
     x(): number {
@@ -344,6 +392,12 @@ export class Pair {
      */
     static readonly ALIGNMENT = 1;
 
+    /**
+     * The byte length of a `Pair`: its offsets and its fields, whose sizes
+     * the schema fixes, so that its parent writes it whole
+     */
+    static readonly SIZE = 16;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -369,21 +423,56 @@ export class Pair {
      * vector that holds it
      */
     static size(sizer: TableSizer, _fields: PairFields): void {
-        const parent = sizer.startTable(2);
-        sizer.addFloat32();
-        sizer.addFloat32();
-        sizer.endTable(parent);
+        sizer.addTableBytes(1, Pair.SIZE);
     }
 
     /**
      * Writes a `Pair` where its parent's writer is, after the
-     * field or vector that holds it
+     * field that holds it
      */
     static write(writer: TableWriter, fields: PairFields): void {
-        const parent = writer.startTable(2);
-        writer.setFloat32(0, fields.first);
-        writer.setFloat32(1, fields.second);
-        writer.endTable(parent);
+        Pair.writeAt(
+            writer.target(),
+            writer.reserveTableBytes(Pair.SIZE),
+            fields
+        );
+    }
+
+    /**
+     * Writes a `Pair` at `offset` in `bytes`, as its parent holds it: its
+     * offsets, and then its fields at them
+     *
+     * @throws {RangeError} If `bytes` end before the `Pair` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: PairFields
+    ): void {
+        bytes[offset] = 8;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        bytes[offset + 3] = 0;
+        bytes[offset + 4] = 12;
+        bytes[offset + 5] = 0;
+        bytes[offset + 6] = 0;
+        bytes[offset + 7] = 0;
+
+        writeFloat32(bytes, offset + 8, fields.first);
+        writeFloat32(bytes, offset + 12, fields.second);
+    }
+
+    /**
+     * Writes a `Pair` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Pair` does.
+     */
+    static writeView(view: DataView, offset: number, fields: PairFields): void {
+        view.setUint32(offset, 8, true);
+        view.setUint32(offset + 4, 12, true);
+        view.setFloat32(offset + 8, fields.first, true);
+        view.setFloat32(offset + 12, fields.second, true);
     }
 
     first(): number {
@@ -421,6 +510,12 @@ export class Item {
      */
     static readonly ALIGNMENT = 1;
 
+    /**
+     * The byte length of an `Item`: its offsets and its fields, whose sizes
+     * the schema fixes, so that its parent writes it whole
+     */
+    static readonly SIZE = 28;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -445,24 +540,86 @@ export class Item {
      * Adds an `Item` to its parent's sizer, after the field or
      * vector that holds it
      */
-    static size(sizer: TableSizer, fields: ItemFields): void {
-        const parent = sizer.startTable(2);
-        sizer.addFloat32();
-        sizer.addTable(Pair.ALIGNMENT);
-        Pair.size(sizer, fields.pair);
-        sizer.endTable(parent);
+    static size(sizer: TableSizer, _fields: ItemFields): void {
+        sizer.addTableBytes(1, Item.SIZE);
     }
 
     /**
      * Writes an `Item` where its parent's writer is, after the
-     * field or vector that holds it
+     * field that holds it
      */
     static write(writer: TableWriter, fields: ItemFields): void {
-        const parent = writer.startTable(2);
-        writer.setFloat32(0, fields.value);
-        writer.setTable(1, Pair.ALIGNMENT);
-        Pair.write(writer, fields.pair);
-        writer.endTable(parent);
+        Item.writeAt(
+            writer.target(),
+            writer.reserveTableBytes(Item.SIZE),
+            fields
+        );
+    }
+
+    /**
+     * Writes an `Item` at `offset` in `bytes`, as its parent holds it: its
+     * offsets, and then its fields at them
+     *
+     * @throws {RangeError} If `bytes` end before the `Item` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: ItemFields
+    ): void {
+        bytes[offset] = 8;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        bytes[offset + 3] = 0;
+        bytes[offset + 4] = 12;
+        bytes[offset + 5] = 0;
+        bytes[offset + 6] = 0;
+        bytes[offset + 7] = 0;
+
+        writeFloat32(bytes, offset + 8, fields.value);
+        Pair.writeAt(bytes, offset + 12, fields.pair);
+    }
+
+    /**
+     * Writes an `Item` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Item` does.
+     */
+    static writeView(view: DataView, offset: number, fields: ItemFields): void {
+        view.setUint32(offset, 8, true);
+        view.setUint32(offset + 4, 12, true);
+        view.setFloat32(offset + 8, fields.value, true);
+        Pair.writeView(view, offset + 12, fields.pair);
+    }
+
+    /**
+     * Writes `Item`s one after another at `offset` in `bytes`, as a vector
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Item` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly ItemFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Item.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Item.writeAt(bytes, offset + i * Item.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Item.writeView(view, i * Item.SIZE, items[i]);
+        }
     }
 
     value(): number {
@@ -564,16 +721,15 @@ export class ItemList {
     static serialize(fields: ItemListFields): Uint8Array {
         const sizer = new TableSizer(1, ItemList.#LAYOUT);
         sizer.addVector(fields.items.length);
-        for (const item of fields.items) {
-            Item.size(sizer, item);
-        }
+        sizer.addTableBytes(fields.items.length, Item.SIZE);
 
         const writer = sizer.writer();
-        const vector0 = writer.setVector(0, fields.items.length);
-        for (let i = 0; i < fields.items.length; i++) {
-            Item.write(writer, fields.items[i]);
-            writer.setItemEnd(vector0, i);
-        }
+        const items0 = writer.reserveTableVector(
+            0,
+            fields.items.length,
+            Item.SIZE
+        );
+        Item.writeItemsAt(writer.target(), items0, fields.items);
 
         return writer.bytes();
     }
@@ -594,16 +750,15 @@ export class ItemList {
     ): Uint8Array {
         const sizer = new TableSizer(1, ItemList.#LAYOUT);
         sizer.addVector(fields.items.length);
-        for (const item of fields.items) {
-            Item.size(sizer, item);
-        }
+        sizer.addTableBytes(fields.items.length, Item.SIZE);
 
         const writer = sizer.writer(bytes);
-        const vector0 = writer.setVector(0, fields.items.length);
-        for (let i = 0; i < fields.items.length; i++) {
-            Item.write(writer, fields.items[i]);
-            writer.setItemEnd(vector0, i);
-        }
+        const items0 = writer.reserveTableVector(
+            0,
+            fields.items.length,
+            Item.SIZE
+        );
+        Item.writeItemsAt(writer.target(), items0, fields.items);
 
         return writer.bytes();
     }
@@ -708,6 +863,51 @@ export class Triple {
         writeFloat32(bytes, offset, fields.value);
         writeFloat32(bytes, offset + 4, fields.first);
         writeFloat32(bytes, offset + 8, fields.second);
+    }
+
+    /**
+     * Writes a `Triple` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Triple` does.
+     */
+    static writeView(
+        view: DataView,
+        offset: number,
+        fields: TripleFields
+    ): void {
+        view.setFloat32(offset, fields.value, true);
+        view.setFloat32(offset + 4, fields.first, true);
+        view.setFloat32(offset + 8, fields.second, true);
+    }
+
+    /**
+     * Writes `Triple`s one after another at `offset` in `bytes`, as an array
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Triple` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly TripleFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Triple.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Triple.writeAt(bytes, offset + i * Triple.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Triple.writeView(view, i * Triple.SIZE, items[i]);
+        }
     }
 
     value(): number {
@@ -829,12 +1029,13 @@ export class Triples {
         );
 
         const writer = sizer.writer();
-        writer.setStructArray(
+        const items0 = writer.reserveStructArray(
             0,
-            Triple.serializeArray(fields.items),
+            fields.items.length,
             Triple.SIZE,
             Triple.ALIGNMENT
         );
+        Triple.writeItemsAt(writer.target(), items0, fields.items);
 
         return writer.bytes();
     }
@@ -858,12 +1059,13 @@ export class Triples {
         );
 
         const writer = sizer.writer(bytes);
-        writer.setStructArray(
+        const items0 = writer.reserveStructArray(
             0,
-            Triple.serializeArray(fields.items),
+            fields.items.length,
             Triple.SIZE,
             Triple.ALIGNMENT
         );
+        Triple.writeItemsAt(writer.target(), items0, fields.items);
 
         return writer.bytes();
     }
