@@ -44,8 +44,24 @@ public final class DirectTableBuilder {
      */
     private static final boolean RESERVE_ITEMS = !"false".equals(System.getProperty("tafla.prototype.reserveItems"));
 
+    /**
+     * Arrays of 16-, 32- and 64-bit values shorter than this many bytes are written element by
+     * element through {@link Elements}' VarHandles, and longer ones in bulk with its setters, through
+     * NIO views. A bulk copy is inlined only when C2 compiles it after the JDK has loaded a class in
+     * its signature, which our own calls load at a time that varies from run to run. When it isn't,
+     * each array costs a native {@code copyMemory()} call and two views that escape. The prototype
+     * reads it from {@code tafla.prototype.loopsBelow}, so that other lengths can be measured.
+     */
+    private static final int LOOPS_BELOW = Integer.getInteger("tafla.prototype.loopsBelow", 4096);
+
+    /** The number of segments kept in the builder's fields, after which they go in arrays */
+    private static final int FIELD_SEGMENTS = 4;
+
     private static final byte[] NO_BYTES = {};
-    private static final Segment[] NO_SEGMENTS = {};
+    /** The values of a segment that isn't set */
+    private static final Object NO_VALUES = NO_BYTES;
+    private static final Object[] NO_OBJECTS = {};
+    private static final long[] NO_PLACES = {};
 
     // The types of a segment's values, each written by its Elements setter
     private static final int INT8 = 0;
@@ -57,16 +73,6 @@ public final class DirectTableBuilder {
     private static final int INT64 = 6;
     private static final int FLOAT32 = 7;
     private static final int FLOAT64 = 8;
-
-    /**
-     * A run of {@code byteLength} bytes that goes before byte {@code at} of the builder's bytes:
-     * {@code values}, an array of the type that {@code type} names
-     */
-    private record Segment(int at, int type, Object values, int byteLength) {
-        Segment movedBy(int distance) {
-            return new Segment(at + distance, type, values, byteLength);
-        }
-    }
 
     /** The table's bytes, once written, after which it takes no more fields */
     private byte @Nullable [] written;
@@ -85,8 +91,24 @@ public final class DirectTableBuilder {
      * pass an {@code int} while a vector in place records items that make it too long.
      */
     private long position;
-    private Segment[] segments = NO_SEGMENTS;
+
+    // The segments: runs that go between the buffer's bytes, each an array of values of a type, and
+    // its place, which holds the index in the buffer that it goes before in its low 32 bits, and its
+    // type in the high ones. The first 4 are kept in fields, which escape analysis removes along with
+    // the builder, rather than in arrays and records, as C++ keeps its first 4 in the builder.
+
     private int segmentCount;
+    private Object values0 = NO_VALUES;
+    private Object values1 = NO_VALUES;
+    private Object values2 = NO_VALUES;
+    private Object values3 = NO_VALUES;
+    private long place0;
+    private long place1;
+    private long place2;
+    private long place3;
+    /** The segments after the first 4 */
+    private Object[] moreValues = NO_OBJECTS;
+    private long[] morePlaces = NO_PLACES;
 
     // The table whose fields are being set: the builder's own, or one that a fill records in place
 
@@ -172,8 +194,7 @@ public final class DirectTableBuilder {
 
         // Release the segments, whose values may be large arrays
         this.buffer = NO_BYTES;
-        this.segments = NO_SEGMENTS;
-        this.segmentCount = 0;
+        clearSegments(0);
         this.written = written;
 
         return written;
@@ -255,7 +276,7 @@ public final class DirectTableBuilder {
         if (segment) {
             addSegment(at, INT16, values, (int) byteLength);
         } else {
-            Elements.setInt16(buffer, at, values);
+            writeInt16(buffer, at, values);
         }
     }
 
@@ -277,7 +298,7 @@ public final class DirectTableBuilder {
         if (segment) {
             addSegment(at, INT32, values, (int) byteLength);
         } else {
-            Elements.setInt32(buffer, at, values);
+            writeInt32(buffer, at, values);
         }
     }
 
@@ -299,7 +320,7 @@ public final class DirectTableBuilder {
         if (segment) {
             addSegment(at, INT64, values, (int) byteLength);
         } else {
-            Elements.setInt64(buffer, at, values);
+            writeInt64(buffer, at, values);
         }
     }
 
@@ -315,7 +336,7 @@ public final class DirectTableBuilder {
         if (segment) {
             addSegment(at, FLOAT32, values, (int) byteLength);
         } else {
-            Elements.setFloat32(buffer, at, values);
+            writeFloat32(buffer, at, values);
         }
     }
 
@@ -326,7 +347,7 @@ public final class DirectTableBuilder {
         if (segment) {
             addSegment(at, FLOAT64, values, (int) byteLength);
         } else {
-            Elements.setFloat64(buffer, at, values);
+            writeFloat64(buffer, at, values);
         }
     }
 
@@ -687,8 +708,9 @@ public final class DirectTableBuilder {
         }
 
         for (int i = 0; i < table.segmentCount; i++) {
-            var segment = table.segments[i];
-            addSegment(at + segment.at(), segment.type(), segment.values(), segment.byteLength());
+            var place = table.placeOf(i);
+            var values = table.valuesOf(i);
+            addSegment(at + atOf(place), typeOf(place), values, byteLengthOf(typeOf(place), values));
         }
     }
 
@@ -707,12 +729,91 @@ public final class DirectTableBuilder {
      * bytes so far, which a setter checked
      */
     private void addSegment(int at, int type, Object values, int byteLength) {
-        if (segmentCount == segments.length) {
-            segments = Arrays.copyOf(segments, Math.max(4, 2 * segments.length));
+        setSegment(segmentCount++, values, (long) type << 32 | at);
+        position += byteLength;
+    }
+
+    private Object valuesOf(int segment) {
+        return switch (segment) {
+            case 0 -> values0;
+            case 1 -> values1;
+            case 2 -> values2;
+            case 3 -> values3;
+            default -> moreValues[segment - FIELD_SEGMENTS];
+        };
+    }
+
+    private long placeOf(int segment) {
+        return switch (segment) {
+            case 0 -> place0;
+            case 1 -> place1;
+            case 2 -> place2;
+            case 3 -> place3;
+            default -> morePlaces[segment - FIELD_SEGMENTS];
+        };
+    }
+
+    private void setSegment(int segment, Object values, long place) {
+        switch (segment) {
+            case 0 -> {
+                values0 = values;
+                place0 = place;
+            }
+            case 1 -> {
+                values1 = values;
+                place1 = place;
+            }
+            case 2 -> {
+                values2 = values;
+                place2 = place;
+            }
+            case 3 -> {
+                values3 = values;
+                place3 = place;
+            }
+            default -> setMoreSegment(segment - FIELD_SEGMENTS, values, place);
+        }
+    }
+
+    private void setMoreSegment(int index, Object values, long place) {
+        if (index == moreValues.length) {
+            var length = Math.max(FIELD_SEGMENTS, 2 * index);
+            moreValues = Arrays.copyOf(moreValues, length);
+            morePlaces = Arrays.copyOf(morePlaces, length);
         }
 
-        segments[segmentCount++] = new Segment(at, type, values, byteLength);
-        position += byteLength;
+        moreValues[index] = values;
+        morePlaces[index] = place;
+    }
+
+    /** Releases the values of the segments from {@code segment}, which may be large arrays */
+    private void clearSegments(int segment) {
+        for (int i = segment; i < segmentCount; i++) {
+            setSegment(i, NO_VALUES, 0);
+        }
+        segmentCount = segment;
+    }
+
+    private static int atOf(long place) {
+        return (int) place;
+    }
+
+    private static int typeOf(long place) {
+        return (int) (place >>> 32);
+    }
+
+    private static int byteLengthOf(int type, Object values) {
+        return switch (type) {
+            case INT8 -> ((byte[]) values).length;
+            case UINT8 -> ((short[]) values).length;
+            case INT16 -> ((short[]) values).length * Short.BYTES;
+            case UINT16 -> ((int[]) values).length * Short.BYTES;
+            case INT32 -> ((int[]) values).length * Integer.BYTES;
+            case UINT32 -> ((long[]) values).length * Integer.BYTES;
+            case INT64 -> ((long[]) values).length * Long.BYTES;
+            case FLOAT32 -> ((float[]) values).length * Float.BYTES;
+            default -> ((double[]) values).length * Double.BYTES;
+        };
     }
 
     /** Writes the table, with its segments and a sized table's length, into {@code bytes} at {@code at} */
@@ -720,14 +821,13 @@ public final class DirectTableBuilder {
         var from = 0;
         var to = at;
         for (int i = 0; i < segmentCount; i++) {
-            var segment = segments[i];
-            var run = segment.at() - from;
+            var place = placeOf(i);
+            var run = atOf(place) - from;
             System.arraycopy(buffer, from, bytes, to, run);
-            from = segment.at();
+            from = atOf(place);
             to += run;
 
-            writeSegment(segment, bytes, to);
-            to += segment.byteLength();
+            to = writeSegment(typeOf(place), valuesOf(i), bytes, to);
         }
         System.arraycopy(buffer, from, bytes, to, length - from);
 
@@ -736,19 +836,79 @@ public final class DirectTableBuilder {
         }
     }
 
-    private static void writeSegment(Segment segment, byte[] bytes, int at) {
-        var values = segment.values();
-        switch (segment.type()) {
+    /** Writes a segment's values at {@code at}, {@return where they end} */
+    private static int writeSegment(int type, Object values, byte[] bytes, int at) {
+        switch (type) {
             case INT8 -> Elements.setInt8(bytes, at, (byte[]) values);
             case UINT8 -> Elements.setUint8(bytes, at, (short[]) values);
-            case INT16 -> Elements.setInt16(bytes, at, (short[]) values);
+            case INT16 -> writeInt16(bytes, at, (short[]) values);
             case UINT16 -> Elements.setUint16(bytes, at, (int[]) values);
-            case INT32 -> Elements.setInt32(bytes, at, (int[]) values);
+            case INT32 -> writeInt32(bytes, at, (int[]) values);
             case UINT32 -> Elements.setUint32(bytes, at, (long[]) values);
-            case INT64 -> Elements.setInt64(bytes, at, (long[]) values);
-            case FLOAT32 -> Elements.setFloat32(bytes, at, (float[]) values);
-            case FLOAT64 -> Elements.setFloat64(bytes, at, (double[]) values);
-            default -> throw new AssertionError("A segment of type " + segment.type());
+            case INT64 -> writeInt64(bytes, at, (long[]) values);
+            case FLOAT32 -> writeFloat32(bytes, at, (float[]) values);
+            case FLOAT64 -> writeFloat64(bytes, at, (double[]) values);
+            default -> throw new AssertionError("A segment of type " + type);
+        }
+
+        return at + byteLengthOf(type, values);
+    }
+
+    // Arrays of 16-, 32- and 64-bit values, written element by element if they're shorter than
+    // LOOPS_BELOW bytes, and otherwise in bulk
+
+    private static void writeInt16(byte[] bytes, int at, short[] values) {
+        if ((long) values.length * Short.BYTES >= LOOPS_BELOW) {
+            Elements.setInt16(bytes, at, values);
+            return;
+        }
+
+        for (int i = 0; i < values.length; i++) {
+            Elements.INT16.set(bytes, at + i * Short.BYTES, values[i]);
+        }
+    }
+
+    private static void writeInt32(byte[] bytes, int at, int[] values) {
+        if ((long) values.length * Integer.BYTES >= LOOPS_BELOW) {
+            Elements.setInt32(bytes, at, values);
+            return;
+        }
+
+        for (int i = 0; i < values.length; i++) {
+            Elements.INT32.set(bytes, at + i * Integer.BYTES, values[i]);
+        }
+    }
+
+    private static void writeInt64(byte[] bytes, int at, long[] values) {
+        if ((long) values.length * Long.BYTES >= LOOPS_BELOW) {
+            Elements.setInt64(bytes, at, values);
+            return;
+        }
+
+        for (int i = 0; i < values.length; i++) {
+            Elements.INT64.set(bytes, at + i * Long.BYTES, values[i]);
+        }
+    }
+
+    private static void writeFloat32(byte[] bytes, int at, float[] values) {
+        if ((long) values.length * Float.BYTES >= LOOPS_BELOW) {
+            Elements.setFloat32(bytes, at, values);
+            return;
+        }
+
+        for (int i = 0; i < values.length; i++) {
+            Elements.FLOAT32.set(bytes, at + i * Float.BYTES, values[i]);
+        }
+    }
+
+    private static void writeFloat64(byte[] bytes, int at, double[] values) {
+        if ((long) values.length * Double.BYTES >= LOOPS_BELOW) {
+            Elements.setFloat64(bytes, at, values);
+            return;
+        }
+
+        for (int i = 0; i < values.length; i++) {
+            Elements.FLOAT64.set(bytes, at + i * Double.BYTES, values[i]);
         }
     }
 
@@ -811,7 +971,7 @@ public final class DirectTableBuilder {
         System.arraycopy(buffer, startLength, buffer, startLength + distance, length - startLength);
         Arrays.fill(buffer, startLength, startLength + distance, (byte) 0);
         for (int i = startSegments; i < segmentCount; i++) {
-            segments[i] = segments[i].movedBy(distance);
+            setSegment(i, valuesOf(i), placeOf(i) + distance);
         }
 
         length += distance;
@@ -832,8 +992,7 @@ public final class DirectTableBuilder {
         this.length = length;
         this.position = position;
 
-        Arrays.fill(segments, segmentCount, this.segmentCount, null);
-        this.segmentCount = segmentCount;
+        clearSegments(segmentCount);
     }
 
     /** Makes room for {@code byteLength} more bytes */
