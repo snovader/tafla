@@ -175,30 +175,29 @@ and rkyv crates on the workloads that every language's benchmarks run, as
 its README describes. Its fastest samples, on an Apple M2 Pro:
 
 - **Arrays are written in bulk.** A document of 100,000 rows of three
-  columns, 1.2 MB, took 18 µs to write, about as long as rkyv, which copies
-  arrays whole too, and 6 to 43 times faster than flatbuffers, prost and
+  columns, 1.2 MB, took 19 µs to write, about as long as rkyv, which copies
+  arrays whole too, and 6 to 41 times faster than flatbuffers, prost and
   rmp-serde, which write them element by element. The builder writes the
   table at its exact size, appending to reserved capacity rather than zeroing
   it first.
 - **Arrays are read in place.** Reading the document, with its columns as
-  slices from `ArrayView::to_cow()`, took 34 ns at 100 rows and at 100,000
-  alike. rkyv took 15 µs to copy the large document's columns out of its
-  archive, and the others 0.2 to 1.2 ms.
+  slices from `ArrayView::to_cow()`, took 28 ns at 100 rows and at
+  100,000. rkyv took 15 µs to copy the large document's columns out of its
+  archive, and the others 0.2 to 1.3 ms.
 - **Read arrays whole.** An `ArrayView`'s iterator reads each element
   without a check of its own: summing the document's 100,000 floats through
   it took 86 µs, bound by the additions, as long as through flatbuffers' and
   rkyv's accessors. `get_f32()` at each position would check every read and
   return early from the loop on an error.
 - **Small tables are quick to write and read.** A table of two `f64`s, an
-  `i64` and a 16-byte string took 79 ns to write, including allocating the
-  builder's record of fields and the table, and 13 ns to read.
-- **Each nested builder allocates.** A vector of 100 tables that each nest
-  another took 9.0 µs to write, 2.5 to 6.4 times as long as flatbuffers,
-  rmp-serde and prost, which took 1.4 µs: each of its 200 tables is a
-  builder, which allocates its record of fields. It took 0.30 µs to read.
-  Recorded in place with `set_vector_with()` and `set_table_with()`, it took
-  4.4 µs, in 4 allocations rather than 208, against 8.8 µs from a builder
-  per item and 3.5 µs through flatbuffers in the same runs.
+  `i64` and a 16-byte string took 84 ns to write, including allocating the
+  builder's record of fields and the table, and 6.8 ns to read.
+- **Record nested tables in place.** A vector of 100 tables that each nest
+  another, recorded in place with `set_vector_with()` and
+  `set_table_with()`, took 4.4 µs to write, in 4 allocations, against
+  1.4 to 3.5 µs through prost, rmp-serde and flatbuffers. A builder for each
+  of its 200 tables took 8.8 µs, in 208 allocations, since each allocates
+  its record of fields. It took 0.28 µs to read.
 
 ## Conversions
 
