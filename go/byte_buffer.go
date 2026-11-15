@@ -90,6 +90,19 @@ const maxIndex = (math.MaxInt - 8) / 4
 // fails with OutOfRange if the field's offset doesn't lie within the bytes,
 // and panics if index is negative.
 func (b ByteBuffer) RootOffset(index int) (int, error) {
+	// Uint32 offsets are read as the generated code reads them, without the
+	// cases of the other widths, in one call rather than two. A 32-bit int
+	// reads them in the general case, which fails at their slot past the
+	// largest int, where Uint32FieldOffset fails at the table.
+	if intIs64 && b.layout.offsetType == Uint32 && uint(index) <= maxIndex {
+		return Uint32FieldOffset(b.bytes, 0, b.layout.HeaderSize()+4*index)
+	}
+
+	return b.rootOffset(index)
+}
+
+// rootOffset is RootOffset of any offset type and index
+func (b ByteBuffer) rootOffset(index int) (int, error) {
 	if index < 0 {
 		panic("tafla: a negative field index")
 	}
@@ -108,6 +121,18 @@ func (b ByteBuffer) RootOffset(index int) (int, error) {
 // the field that holds it. It fails with OutOfRange if the field's offset
 // doesn't lie within the bytes, and panics if index is negative.
 func (b ByteBuffer) FieldOffset(tablePosition, index int) (int, error) {
+	// Uint32 offsets are read as the generated code reads them, which fails
+	// as the general case does, without the cases of the other widths, in
+	// one call rather than two
+	if b.layout.offsetType == Uint32 && uint(index) <= maxIndex && tablePosition >= 0 {
+		return Uint32FieldOffset(b.bytes, tablePosition, tablePosition+4*index)
+	}
+
+	return b.fieldOffset(tablePosition, index)
+}
+
+// fieldOffset is FieldOffset of any offset type, position and index
+func (b ByteBuffer) fieldOffset(tablePosition, index int) (int, error) {
 	if index < 0 {
 		panic("tafla: a negative field index")
 	}

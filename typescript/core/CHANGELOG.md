@@ -28,6 +28,18 @@ repository's first commits, for code built from its source before the release.
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
   caller's bytes rather than new ones.
+- API for the code that tafla-gen generates, which lays out the fields whose
+  sizes the schema fixes itself, and may change with it:
+  `TableSizer.addTableBytes()`, which adds a nested table or a vector's items
+  of fixed length in one call; `TableWriter.reserveTableBytes()`,
+  `reserveTableVector()` and `reserveStructArray()`, which write a field's
+  offset, and a vector's count and item ends or an array's count, and return
+  where in `target()`, the writer's bytes, the caller writes the table, the
+  items or the structs; `TableWriter.tableBytes()` and
+  `versionedTableBytes()`, the bytes of a message written without a sizer and
+  a writer, with its header, which check it as a sizer does; `utf8Length()`
+  and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
+  `DataView` of a range of bytes, for a long run of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
   `setVectorInPlace(count, fields, fill)`, which record a nested table, or
   each item of a vector, among the builder's own fields, through the
@@ -59,6 +71,14 @@ repository's first commits, for code built from its source before the release.
   0.91 µs rather than 1.85. `getVectorLength()` and `getVectorItemOffset()`
   check a vector's ends with one comparison, which takes the vector's position
   to be an integer, as `rootOffset()` and `fieldOffset()` find it.
+- `ByteBuffer.getString()` reads a string of up to 32 bytes of ASCII a byte
+  at a time, without a view of its bytes or a `TextDecoder`, and any other
+  string with the fatal decoder as before, so it reads the same strings and
+  throws the same `DecodeError`. The comparison suite read its record, whose
+  name is 16 bytes, in 0.116 µs rather than 0.159 in Node 26, and 0.108 µs
+  rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
+  rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
+  outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
 
 ### Removed
 

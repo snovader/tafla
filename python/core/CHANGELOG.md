@@ -55,6 +55,14 @@ repository's first commits, for code built from its source before the release.
   in the API and its errors.
 - `ByteBuffer` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
+- The native `TableWriter` converts an array from an exact `list` or `tuple`
+  of `int`s, `float`s and `bool`s itself, straight into the table's bytes,
+  rather than into an `array` that it copies, with the values and errors of
+  `array()`, which still converts anything else. The benchmarks' documents
+  written from lists took 87% less time for 100,000 rows and 69% less for
+  100, with the native module built for the Python it runs on, and 55% and
+  48% less with the abi3 wheels', whose stable ABI makes a call for each
+  element.
 
 ### Removed
 

@@ -18,6 +18,7 @@ import {
     describeItemList,
     describePoint,
     ITEM_LIST_FIELDS,
+    LONG_ITEM_LIST_FIELDS,
     type ItemList,
     POINT_FIELDS,
     readDocument,
@@ -87,6 +88,15 @@ describe.each(SHAPES)('%s', (_, shapes) => {
 
         it.prop([ITEM_LIST_FIELDS])(
             'should write the bytes of an ItemList that TableBuilder writes',
+            fields => {
+                const byHand = buildTable(describeItemList(fields)).bytes();
+
+                expect(shapes.ItemList.serialize(fields)).toStrictEqual(byHand);
+            }
+        );
+
+        it.prop([LONG_ITEM_LIST_FIELDS])(
+            'should write the bytes of an ItemList whose items it writes through a DataView that TableBuilder writes',
             fields => {
                 const byHand = buildTable(describeItemList(fields)).bytes();
 

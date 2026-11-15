@@ -13,6 +13,44 @@ export function decode(bytes: Uint8Array): string {
 }
 
 /**
+ * Reads the `length` bytes from `start` in `bytes`, which must lie within
+ * them, as a string when they're a short ASCII string, of up to
+ * {@link SHORT_STRING} bytes below 0x80, which UTF-8 decodes to the same code
+ * points. Otherwise it returns `undefined`, for `decode()` to read them.
+ *
+ * Through `ByteBuffer.getString()`, the loop read 8, 16 and 32 bytes of
+ * ASCII in 30, 45 and 78 ns in Node 26, and in 28, 43 and 72 ns in Node 27,
+ * where `decode()` took 84–89 ns for any of them, and broke even at about 37
+ * bytes in Node 26 and 41 in Node 27. A string with a byte of 0x80 or more
+ * pays for the loop until that byte, and then for `decode()`: 8 ns more when
+ * it's the first of 32 bytes, and 37 ns when it's the last. Adding each
+ * character to a string took longer than `decode()` from 16 bytes, adding 4
+ * at a time longer than this loop from 16, and `fromCharCode()` of a
+ * `subarray()` longer than this loop at every length.
+ */
+export function decodeShortAscii(
+    bytes: Uint8Array,
+    start: number,
+    length: number
+): string | undefined {
+    if (length > SHORT_STRING) {
+        return undefined;
+    }
+
+    const codes = new Array<number>(length);
+    for (let i = 0; i < length; i++) {
+        const byte = bytes[start + i];
+        if (byte >= 0x80) {
+            return undefined;
+        }
+
+        codes[i] = byte;
+    }
+
+    return String.fromCharCode.apply(null, codes);
+}
+
+/**
  * Writes `string` as UTF-8 at `position` in `bytes`, which must have room for
  * it, with lone surrogates replaced by U+FFFD, as `encode()` writes them.
  *
@@ -62,7 +100,10 @@ export function encodeInto(
     return written;
 }
 
-/** The longest string that `encodeInto()` writes a byte at a time */
+/**
+ * The longest string that `encodeInto()` writes, and `decodeShortAscii()`
+ * reads, a byte at a time
+ */
 const SHORT_STRING = 32;
 
 /**

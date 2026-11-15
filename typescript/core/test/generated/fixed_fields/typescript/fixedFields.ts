@@ -8,9 +8,15 @@ import {
     StructWriter,
     TableLayout,
     TableSizer,
-    type TableWriter,
+    TableWriter,
+    utf8Length,
+    viewOf,
     writeFloat32,
-    writeFloat64
+    writeFloat64,
+    writeUint8,
+    writeUint16,
+    writeUint32,
+    writeUtf8
 } from 'tafla';
 
 /** Two coordinates */
@@ -368,6 +374,12 @@ export class Range {
      */
     static readonly ALIGNMENT = 1;
 
+    /**
+     * The byte length of a `Range`: its offsets and its fields, whose sizes
+     * the schema fixes, so that its parent writes it whole
+     */
+    static readonly SIZE = 16;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -393,21 +405,89 @@ export class Range {
      * vector that holds it
      */
     static size(sizer: TableSizer, _fields: RangeFields): void {
-        const parent = sizer.startTable(2);
-        sizer.addUint32();
-        sizer.addUint32();
-        sizer.endTable(parent);
+        sizer.addTableBytes(1, Range.SIZE);
     }
 
     /**
      * Writes a `Range` where its parent's writer is, after the
-     * field or vector that holds it
+     * field that holds it
      */
     static write(writer: TableWriter, fields: RangeFields): void {
-        const parent = writer.startTable(2);
-        writer.setUint32(0, fields.start);
-        writer.setUint32(1, fields.end);
-        writer.endTable(parent);
+        Range.writeAt(
+            writer.target(),
+            writer.reserveTableBytes(Range.SIZE),
+            fields
+        );
+    }
+
+    /**
+     * Writes a `Range` at `offset` in `bytes`, as its parent holds it: its
+     * offsets, and then its fields at them
+     *
+     * @throws {RangeError} If `bytes` end before the `Range` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: RangeFields
+    ): void {
+        bytes[offset] = 8;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        bytes[offset + 3] = 0;
+        bytes[offset + 4] = 12;
+        bytes[offset + 5] = 0;
+        bytes[offset + 6] = 0;
+        bytes[offset + 7] = 0;
+
+        writeUint32(bytes, offset + 8, fields.start);
+        writeUint32(bytes, offset + 12, fields.end);
+    }
+
+    /**
+     * Writes a `Range` at `offset` in `view`, as `writeAt()` writes it
+     * into bytes
+     *
+     * @throws {RangeError} If `view` ends before the `Range` does.
+     */
+    static writeView(
+        view: DataView,
+        offset: number,
+        fields: RangeFields
+    ): void {
+        view.setUint32(offset, 8, true);
+        view.setUint32(offset + 4, 12, true);
+        view.setUint32(offset + 8, fields.start, true);
+        view.setUint32(offset + 12, fields.end, true);
+    }
+
+    /**
+     * Writes `Range`s one after another at `offset` in `bytes`, as a vector
+     * of them holds them. A run shorter than 128 bytes is written with the
+     * runtime's write functions, and a longer one through a `DataView`, which
+     * writes each scalar faster but takes longer to create.
+     *
+     * @throws {RangeError} If `bytes` end before the last `Range` does.
+     */
+    static writeItemsAt(
+        bytes: Uint8Array,
+        offset: number,
+        items: readonly RangeFields[]
+    ): void {
+        const count = items.length;
+        const length = count * Range.SIZE;
+        if (length < 128) {
+            for (let i = 0; i < count; i++) {
+                Range.writeAt(bytes, offset + i * Range.SIZE, items[i]);
+            }
+
+            return;
+        }
+
+        const view = viewOf(bytes, offset, length);
+        for (let i = 0; i < count; i++) {
+            Range.writeView(view, i * Range.SIZE, items[i]);
+        }
     }
 
     start(): number {
@@ -505,6 +585,12 @@ export class Frame {
      */
     static readonly ALIGNMENT = 1;
 
+    /**
+     * The byte length of a `Frame`: its offsets and its fields, whose sizes
+     * the schema fixes, so that its parent writes it whole
+     */
+    static readonly SIZE = 38;
+
     readonly #buffer: ByteBuffer;
     readonly #position: number;
 
@@ -530,26 +616,49 @@ export class Frame {
      * Adds a `Frame` to its parent's sizer, after the field or
      * vector that holds it
      */
-    static size(sizer: TableSizer, fields: FrameFields): void {
-        const parent = sizer.startTable(3);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addTable(Range.ALIGNMENT);
-        Range.size(sizer, fields.range);
-        sizer.addUint16();
-        sizer.endTable(parent);
+    static size(sizer: TableSizer, _fields: FrameFields): void {
+        sizer.addTableBytes(1, Frame.SIZE);
     }
 
     /**
      * Writes a `Frame` where its parent's writer is, after the
-     * field or vector that holds it
+     * field that holds it
      */
     static write(writer: TableWriter, fields: FrameFields): void {
-        const parent = writer.startTable(3);
-        writer.setStruct(0, Vec2.serialize(fields.origin));
-        writer.setTable(1, Range.ALIGNMENT);
-        Range.write(writer, fields.range);
-        writer.setUint16(2, fields.flags);
-        writer.endTable(parent);
+        Frame.writeAt(
+            writer.target(),
+            writer.reserveTableBytes(Frame.SIZE),
+            fields
+        );
+    }
+
+    /**
+     * Writes a `Frame` at `offset` in `bytes`, as its parent holds it: its
+     * offsets, and then its fields at them
+     *
+     * @throws {RangeError} If `bytes` end before the `Frame` does.
+     */
+    static writeAt(
+        bytes: Uint8Array,
+        offset: number,
+        fields: FrameFields
+    ): void {
+        bytes[offset] = 12;
+        bytes[offset + 1] = 0;
+        bytes[offset + 2] = 0;
+        bytes[offset + 3] = 0;
+        bytes[offset + 4] = 20;
+        bytes[offset + 5] = 0;
+        bytes[offset + 6] = 0;
+        bytes[offset + 7] = 0;
+        bytes[offset + 8] = 36;
+        bytes[offset + 9] = 0;
+        bytes[offset + 10] = 0;
+        bytes[offset + 11] = 0;
+
+        Vec2.writeAt(bytes, offset + 12, fields.origin);
+        Range.writeAt(bytes, offset + 20, fields.range);
+        writeUint16(bytes, offset + 36, fields.flags);
     }
 
     origin(): Vec2 {
@@ -606,15 +715,15 @@ export class Tiny {
 
     /** Writes a `Tiny` with every field */
     static serialize(fields: TinyFields): Uint8Array {
-        const sizer = new TableSizer(2, Tiny.#LAYOUT);
-        sizer.addUint16();
-        sizer.addUint8();
+        const table = TableWriter.tableBytes(2, Tiny.#LAYOUT, 6);
 
-        const writer = sizer.writer();
-        writer.setUint16(0, fields.id);
-        writer.setUint8(1, fields.kind);
+        table[1] = 3;
+        table[2] = 5;
 
-        return writer.bytes();
+        writeUint16(table, 3, fields.id);
+        writeUint8(table, 5, fields.kind);
+
+        return table;
     }
 
     /**
@@ -628,15 +737,15 @@ export class Tiny {
      * any of them is written.
      */
     static serializeInto(fields: TinyFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(2, Tiny.#LAYOUT);
-        sizer.addUint16();
-        sizer.addUint8();
+        const table = TableWriter.tableBytes(2, Tiny.#LAYOUT, 6, bytes);
 
-        const writer = sizer.writer(bytes);
-        writer.setUint16(0, fields.id);
-        writer.setUint8(1, fields.kind);
+        table[1] = 3;
+        table[2] = 5;
 
-        return writer.bytes();
+        writeUint16(table, 3, fields.id);
+        writeUint8(table, 5, fields.kind);
+
+        return table;
     }
 
     id(): number {
@@ -708,17 +817,24 @@ export class Tagged {
 
     /** Writes a `Tagged` with every field */
     static serialize(fields: TaggedFields): Uint8Array {
-        const sizer = new TableSizer(3, Tagged.#LAYOUT, Tagged.FORMAT_VERSION);
-        sizer.addUint32();
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addString(fields.label);
+        const string2 = fields.label;
+        const table = TableWriter.versionedTableBytes(
+            3,
+            Tagged.#LAYOUT,
+            Tagged.FORMAT_VERSION,
+            18 + utf8Length(string2)
+        );
 
-        const writer = sizer.writer();
-        writer.setUint32(0, fields.id);
-        writer.setStruct(1, Vec2.serialize(fields.position));
-        writer.setString(2, fields.label);
+        table[2] = 5;
+        table[3] = 9;
+        table[4] = 17;
 
-        return writer.bytes();
+        writeUint32(table, 5, fields.id);
+        Vec2.writeAt(table, 9, fields.position);
+        const length2 = writeUtf8(table, 18, string2);
+        table[17] = length2;
+
+        return table;
     }
 
     /**
@@ -732,17 +848,25 @@ export class Tagged {
      * any of them is written.
      */
     static serializeInto(fields: TaggedFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(3, Tagged.#LAYOUT, Tagged.FORMAT_VERSION);
-        sizer.addUint32();
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addString(fields.label);
+        const string2 = fields.label;
+        const table = TableWriter.versionedTableBytes(
+            3,
+            Tagged.#LAYOUT,
+            Tagged.FORMAT_VERSION,
+            18 + utf8Length(string2),
+            bytes
+        );
 
-        const writer = sizer.writer(bytes);
-        writer.setUint32(0, fields.id);
-        writer.setStruct(1, Vec2.serialize(fields.position));
-        writer.setString(2, fields.label);
+        table[2] = 5;
+        table[3] = 9;
+        table[4] = 17;
 
-        return writer.bytes();
+        writeUint32(table, 5, fields.id);
+        Vec2.writeAt(table, 9, fields.position);
+        const length2 = writeUtf8(table, 18, string2);
+        table[17] = length2;
+
+        return table;
     }
 
     id(): number {
@@ -904,15 +1028,22 @@ export class Pixel {
 
     /** Writes a `Pixel` with every field */
     static serialize(fields: PixelFields): Uint8Array {
-        const sizer = new TableSizer(2, Pixel.#LAYOUT, Pixel.FORMAT_VERSION);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addUint32();
+        const table = TableWriter.versionedTableBytes(
+            2,
+            Pixel.#LAYOUT,
+            Pixel.FORMAT_VERSION,
+            20
+        );
 
-        const writer = sizer.writer();
-        writer.setStruct(0, Vec2.serialize(fields.position));
-        writer.setUint32(1, fields.color);
+        table[4] = 8;
+        table[5] = 0;
+        table[6] = 16;
+        table[7] = 0;
 
-        return writer.bytes();
+        Vec2.writeAt(table, 8, fields.position);
+        writeUint32(table, 16, fields.color);
+
+        return table;
     }
 
     /**
@@ -926,15 +1057,23 @@ export class Pixel {
      * any of them is written.
      */
     static serializeInto(fields: PixelFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(2, Pixel.#LAYOUT, Pixel.FORMAT_VERSION);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addUint32();
+        const table = TableWriter.versionedTableBytes(
+            2,
+            Pixel.#LAYOUT,
+            Pixel.FORMAT_VERSION,
+            20,
+            bytes
+        );
 
-        const writer = sizer.writer(bytes);
-        writer.setStruct(0, Vec2.serialize(fields.position));
-        writer.setUint32(1, fields.color);
+        table[4] = 8;
+        table[5] = 0;
+        table[6] = 16;
+        table[7] = 0;
 
-        return writer.bytes();
+        Vec2.writeAt(table, 8, fields.position);
+        writeUint32(table, 16, fields.color);
+
+        return table;
     }
 
     position(): Vec2 {
@@ -1083,19 +1222,31 @@ export class Box {
 
     /** Writes a `Box` with every field */
     static serialize(fields: BoxFields): Uint8Array {
-        const sizer = new TableSizer(3, Box.#LAYOUT, Box.FORMAT_VERSION);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addTable(Range.ALIGNMENT);
-        Range.size(sizer, fields.range);
+        const table = TableWriter.versionedTableBytes(
+            3,
+            Box.#LAYOUT,
+            Box.FORMAT_VERSION,
+            48
+        );
 
-        const writer = sizer.writer();
-        writer.setStruct(0, Vec2.serialize(fields.min));
-        writer.setStruct(1, Vec2.serialize(fields.max));
-        writer.setTable(2, Range.ALIGNMENT);
-        Range.write(writer, fields.range);
+        table[4] = 16;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 24;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 32;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
 
-        return writer.bytes();
+        Vec2.writeAt(table, 16, fields.min);
+        Vec2.writeAt(table, 24, fields.max);
+        Range.writeAt(table, 32, fields.range);
+
+        return table;
     }
 
     /**
@@ -1109,19 +1260,32 @@ export class Box {
      * any of them is written.
      */
     static serializeInto(fields: BoxFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(3, Box.#LAYOUT, Box.FORMAT_VERSION);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addStruct(Vec2.SIZE);
-        sizer.addTable(Range.ALIGNMENT);
-        Range.size(sizer, fields.range);
+        const table = TableWriter.versionedTableBytes(
+            3,
+            Box.#LAYOUT,
+            Box.FORMAT_VERSION,
+            48,
+            bytes
+        );
 
-        const writer = sizer.writer(bytes);
-        writer.setStruct(0, Vec2.serialize(fields.min));
-        writer.setStruct(1, Vec2.serialize(fields.max));
-        writer.setTable(2, Range.ALIGNMENT);
-        Range.write(writer, fields.range);
+        table[4] = 16;
+        table[5] = 0;
+        table[6] = 0;
+        table[7] = 0;
+        table[8] = 24;
+        table[9] = 0;
+        table[10] = 0;
+        table[11] = 0;
+        table[12] = 32;
+        table[13] = 0;
+        table[14] = 0;
+        table[15] = 0;
 
-        return writer.bytes();
+        Vec2.writeAt(table, 16, fields.min);
+        Vec2.writeAt(table, 24, fields.max);
+        Range.writeAt(table, 32, fields.range);
+
+        return table;
     }
 
     min(): Vec2 {
@@ -1276,13 +1440,25 @@ export class Label {
 
     /** Writes a `Label` with every field */
     static serialize(fields: LabelFields): Uint8Array {
-        const sizer = new TableSizer(1, Label.#LAYOUT);
-        sizer.addString(fields.text);
+        const string0 = fields.text;
+        const table = TableWriter.tableBytes(
+            1,
+            Label.#LAYOUT,
+            8 + utf8Length(string0)
+        );
 
-        const writer = sizer.writer();
-        writer.setString(0, fields.text);
+        table[0] = 4;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
 
-        return writer.bytes();
+        const length0 = writeUtf8(table, 8, string0);
+        table[4] = length0;
+        table[5] = length0 >>> 8;
+        table[6] = length0 >>> 16;
+        table[7] = length0 >>> 24;
+
+        return table;
     }
 
     /**
@@ -1296,13 +1472,26 @@ export class Label {
      * any of them is written.
      */
     static serializeInto(fields: LabelFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(1, Label.#LAYOUT);
-        sizer.addString(fields.text);
+        const string0 = fields.text;
+        const table = TableWriter.tableBytes(
+            1,
+            Label.#LAYOUT,
+            8 + utf8Length(string0),
+            bytes
+        );
 
-        const writer = sizer.writer(bytes);
-        writer.setString(0, fields.text);
+        table[0] = 4;
+        table[1] = 0;
+        table[2] = 0;
+        table[3] = 0;
 
-        return writer.bytes();
+        const length0 = writeUtf8(table, 8, string0);
+        table[4] = length0;
+        table[5] = length0 >>> 8;
+        table[6] = length0 >>> 16;
+        table[7] = length0 >>> 24;
+
+        return table;
     }
 
     text(): string {
@@ -1344,9 +1533,7 @@ export class Span {
         sizer.addTable(Frame.ALIGNMENT);
         Frame.size(sizer, fields.frame);
         sizer.addVector(fields.ranges.length);
-        for (const item of fields.ranges) {
-            Range.size(sizer, item);
-        }
+        sizer.addTableBytes(fields.ranges.length, Range.SIZE);
 
         const writer = sizer.writer();
         writer.setString(0, fields.name);
@@ -1354,11 +1541,12 @@ export class Span {
         Range.write(writer, fields.range);
         writer.setTable(2, Frame.ALIGNMENT);
         Frame.write(writer, fields.frame);
-        const vector3 = writer.setVector(3, fields.ranges.length);
-        for (let i = 0; i < fields.ranges.length; i++) {
-            Range.write(writer, fields.ranges[i]);
-            writer.setItemEnd(vector3, i);
-        }
+        const items3 = writer.reserveTableVector(
+            3,
+            fields.ranges.length,
+            Range.SIZE
+        );
+        Range.writeItemsAt(writer.target(), items3, fields.ranges);
 
         return writer.bytes();
     }
@@ -1381,9 +1569,7 @@ export class Span {
         sizer.addTable(Frame.ALIGNMENT);
         Frame.size(sizer, fields.frame);
         sizer.addVector(fields.ranges.length);
-        for (const item of fields.ranges) {
-            Range.size(sizer, item);
-        }
+        sizer.addTableBytes(fields.ranges.length, Range.SIZE);
 
         const writer = sizer.writer(bytes);
         writer.setString(0, fields.name);
@@ -1391,11 +1577,12 @@ export class Span {
         Range.write(writer, fields.range);
         writer.setTable(2, Frame.ALIGNMENT);
         Frame.write(writer, fields.frame);
-        const vector3 = writer.setVector(3, fields.ranges.length);
-        for (let i = 0; i < fields.ranges.length; i++) {
-            Range.write(writer, fields.ranges[i]);
-            writer.setItemEnd(vector3, i);
-        }
+        const items3 = writer.reserveTableVector(
+            3,
+            fields.ranges.length,
+            Range.SIZE
+        );
+        Range.writeItemsAt(writer.target(), items3, fields.ranges);
 
         return writer.bytes();
     }
