@@ -12,11 +12,9 @@ and in it:
   `tafla::rewrite_no_reservation`, without the room that a vector in place
   makes for its items after the first, `tafla::rewrite_segments_128` and
   `tafla::rewrite_segments_64`, which keep runs of 128 or 64 bytes or more
-  as segments rather than 256, `tafla::rewrite_room_64` and
-  `tafla::rewrite_room_128`, whose bytes start with room for 64 or 128
-  bytes a field beyond the header, up to 64 KiB, `tafla::rewrite_growth_4`,
-  whose bytes grow fourfold rather than twofold,
-  `tafla::rewrite_room_64_growth_4`, with both, and `tafla::rewrite_boxed`,
+  as segments rather than 256, `tafla::rewrite_256_twofold`, whose bytes
+  start with room for 256 and grow twofold, rather than with room for each
+  field and fourfold while they're short, and `tafla::rewrite_boxed`,
   with an owned builder boxed in a `NestedTable`;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
@@ -30,52 +28,6 @@ import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-
-def room(per_field):
-    """The edits that start a builder's bytes with room for `per_field`
-    bytes a field beyond its header, up to 64 KiB, and at least the first
-    capacity"""
-    return [
-        (
-            "bytes.rs",
-            """    #[inline(always)]
-    pub fn new() -> Self {""",
-            """    /// Room for the header and up to 64 KiB more, at least the first
-    /// capacity
-    #[inline(always)]
-    pub fn with_room(header: usize, room: usize) -> Self {
-        Self {
-            vec: Vec::with_capacity(FIRST_CAPACITY.max(header + room.min(64 * 1024))),
-        }
-    }
-
-    #[inline(always)]
-    pub fn new() -> Self {""",
-        ),
-        (
-            """        let mut bytes = Bytes::new();
-        bytes.reserve(header as usize);""",
-            f"""        let mut bytes = Bytes::with_room(header as usize, fields.saturating_mul({per_field}));
-        bytes.reserve(header as usize);""",
-        ),
-    ]
-
-
-#: The edits that grow a builder's bytes fourfold rather than twofold
-GROWTH_4 = [
-    (
-        "bytes.rs",
-        """    fn grow(&mut self, additional: usize) {
-        self.vec.reserve(additional);
-    }""",
-        """    fn grow(&mut self, additional: usize) {
-        let needed = self.vec.len().saturating_add(additional);
-        let capacity = needed.max(self.vec.capacity().saturating_mul(4));
-        self.vec.reserve_exact(capacity - self.vec.len());
-    }""",
-    ),
-]
-
 
 #: The edits that make each variant of the rewrite, as (old, new) pairs of
 #: `table_builder.rs`'s text, or (file, old, new) of a file of its
@@ -102,10 +54,10 @@ VARIANTS = {
             "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };",
         ),
     ],
-    "rewrite_room_64": room(64),
-    "rewrite_room_128": room(128),
-    "rewrite_growth_4": GROWTH_4,
-    "rewrite_room_64_growth_4": room(64) + GROWTH_4,
+    "rewrite_256_twofold": [
+        ("bytes.rs", "const ROOM_FOR_A_FIELD: usize = 64;", "const ROOM_FOR_A_FIELD: usize = 0;"),
+        ("bytes.rs", "const FOURFOLD_BELOW: usize = 64 * 1024;", "const FOURFOLD_BELOW: usize = 0;"),
+    ],
     "rewrite_boxed": [
         ("    OwnedBuilder(TableBuilder<'a>),", "    OwnedBuilder(Box<TableBuilder<'a>>),"),
         (
