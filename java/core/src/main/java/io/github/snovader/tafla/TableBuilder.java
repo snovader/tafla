@@ -52,11 +52,8 @@ public final class TableBuilder {
      */
     private static final int MAX_ITEM_ROOM = 64 * 1024;
 
-    /**
-     * The number of segments kept in the builder's fields, which escape analysis removes along with
-     * the builder, after which they go in arrays
-     */
-    private static final int FIELD_SEGMENTS = 4;
+    /** The segments that a builder makes room for with its first */
+    private static final int INITIAL_SEGMENTS = 4;
 
     private static final String WRITING_IN_PLACE = "The table can't be written while a fill writes a table in it";
 
@@ -101,21 +98,12 @@ public final class TableBuilder {
 
     // The segments: runs that go between the buffer's bytes, each an array of values of a type, and
     // its place, which holds the index in the buffer that it goes before in its low 32 bits, and its
-    // type in the high ones. The first 4 are kept in fields rather than in arrays and records, which
-    // escape analysis doesn't remove.
+    // type in the high ones. Keeping the first 4 in fields, which escape analysis removes along with
+    // the builder, took as long on every benchmark row, and saved 80 bytes on those with segments.
 
     private int segmentCount;
-    private Object values0 = NO_VALUES;
-    private Object values1 = NO_VALUES;
-    private Object values2 = NO_VALUES;
-    private Object values3 = NO_VALUES;
-    private long place0;
-    private long place1;
-    private long place2;
-    private long place3;
-    /** The segments after the first 4 */
-    private Object[] moreValues = NO_OBJECTS;
-    private long[] morePlaces = NO_PLACES;
+    private Object[] segmentValues = NO_OBJECTS;
+    private long[] segmentPlaces = NO_PLACES;
 
     // The table whose fields are being set: the builder's own, or one that a fill writes in place
 
@@ -619,22 +607,10 @@ public final class TableBuilder {
         var startSegments = segmentCount;
         try {
             startVector(count, (int) slotBytes);
-
-            // The first item, after which the others have room as long as it, if the table does
-            var reach = parentStart + maxLength;
-            var item = new Item();
-            long dropped = 0;
-            if (count > 0) {
-                var itemLength = length;
-                dropped = writeItem(item, 0, fill, fields, header, vector, start, reach, dropped);
-                reserveItems(count - 1, length - itemLength, reach);
-            }
-            for (int i = 1; i < count; i++) {
-                dropped = writeItem(item, i, fill, fields, header, vector, start, reach, dropped);
-            }
+            var counted = writeItems(count, fields, fill, header, vector, start, parentStart + maxLength);
             endInPlace(parentStart, parentSlots, parentFields, index, parentAlignment);
 
-            var end = offset + (position - start) + dropped;
+            var end = offset + (position - start) + counted;
             if (end > maxLength) {
                 throw tooLong(index, end);
             }
@@ -657,39 +633,84 @@ public final class TableBuilder {
     }
 
     /**
-     * Writes item {@code i} of a vector of tables in place, whose count is at {@code vector} in the
-     * bytes, and {@code start} in the table, and then its end, {@return the bytes of the items
-     * dropped so far}. Once the vector, with the {@code dropped} bytes of the items before, reaches
-     * past {@code reach}, the vector will be rejected for its length, so each item from there on is
-     * counted and dropped rather than kept, which bounds the bytes to what the table can address.
+     * Writes the {@code count} items of a vector of tables in place, whose count is at
+     * {@code vector} in the bytes, and {@code start} in the table, {@return the bytes of the items
+     * that it counted but didn't keep}. The first item is written before the others, so that room
+     * for them is made outside their loop, which C2 compiles faster without the call. Once the
+     * items pass {@code reach}, where the table's offsets end, the vector will be rejected, so the
+     * rest are counted rather than kept, which bounds the bytes to what the table addresses.
      */
-    private long writeItem(
+    private long writeItems(
+        int count,
+        int fields,
+        ObjIntConsumer<Item> fill,
+        int header,
+        int vector,
+        long start,
+        long reach
+    ) {
+        var item = new Item();
+        if (count > 0) {
+            var itemLength = length;
+            writeItem(item, 0, fill, fields, header, vector, start);
+            reserveItems(count - 1, length - itemLength, reach);
+        }
+        for (int i = 1; i < count; i++) {
+            if (position > reach) {
+                return countItems(item, i, count, fill, fields, header, vector, start);
+            }
+            writeItem(item, i, fill, fields, header, vector, start);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Writes items {@code from} to {@code count} of a vector of tables in place, each over the one
+     * before, {@return their bytes}, which aren't kept
+     */
+    private long countItems(
+        Item item,
+        int from,
+        int count,
+        ObjIntConsumer<Item> fill,
+        int fields,
+        int header,
+        int vector,
+        long start
+    ) {
+        long counted = 0;
+        for (int i = from; i < count; i++) {
+            var itemLength = length;
+            var itemStart = position;
+            var itemSegments = segmentCount;
+            writeItem(item, i, fill, fields, header, vector, start);
+
+            counted += position - itemStart;
+            truncate(itemLength, itemStart, itemSegments);
+        }
+
+        return counted;
+    }
+
+    /**
+     * Writes item {@code i} of a vector of tables in place, whose count is at {@code vector} in the
+     * bytes, and {@code start} in the table, and then its end
+     */
+    private void writeItem(
         Item item,
         int i,
         ObjIntConsumer<Item> fill,
         int fields,
         int header,
         int vector,
-        long start,
-        long reach,
-        long dropped
+        long start
     ) {
-        var itemLength = length;
-        var itemStart = position;
-        var itemSegments = segmentCount;
-
         startInPlace(fields, header);
         fill.accept(item, i);
         checkComplete();
 
-        if (position + dropped > reach) {
-            var itemBytes = position - itemStart;
-            truncate(itemLength, itemStart, itemSegments);
-            return dropped + itemBytes;
-        }
-
         store(buffer, vector + (i + 1) * offsetSize, offsetSize, position - start);
-        return dropped;
     }
 
     /**
@@ -821,8 +842,8 @@ public final class TableBuilder {
         }
 
         for (int i = 0; i < table.segmentCount; i++) {
-            var place = table.placeOf(i);
-            var values = table.valuesOf(i);
+            var place = table.segmentPlaces[i];
+            var values = table.segmentValues[i];
             addSegment(at + atOf(place), typeOf(place), values, byteLengthOf(typeOf(place), values));
         }
     }
@@ -842,68 +863,27 @@ public final class TableBuilder {
      * bytes so far, which a setter checked
      */
     private void addSegment(int at, int type, Object values, int byteLength) {
-        setSegment(segmentCount++, values, (long) type << 32 | at);
+        var segment = segmentCount;
+        if (segment == segmentValues.length) {
+            growSegments();
+        }
+
+        segmentValues[segment] = values;
+        segmentPlaces[segment] = (long) type << 32 | at;
+        segmentCount = segment + 1;
         position += byteLength;
     }
 
-    private Object valuesOf(int segment) {
-        return switch (segment) {
-            case 0 -> values0;
-            case 1 -> values1;
-            case 2 -> values2;
-            case 3 -> values3;
-            default -> moreValues[segment - FIELD_SEGMENTS];
-        };
-    }
-
-    private long placeOf(int segment) {
-        return switch (segment) {
-            case 0 -> place0;
-            case 1 -> place1;
-            case 2 -> place2;
-            case 3 -> place3;
-            default -> morePlaces[segment - FIELD_SEGMENTS];
-        };
-    }
-
-    private void setSegment(int segment, Object values, long place) {
-        switch (segment) {
-            case 0 -> {
-                values0 = values;
-                place0 = place;
-            }
-            case 1 -> {
-                values1 = values;
-                place1 = place;
-            }
-            case 2 -> {
-                values2 = values;
-                place2 = place;
-            }
-            case 3 -> {
-                values3 = values;
-                place3 = place;
-            }
-            default -> setMoreSegment(segment - FIELD_SEGMENTS, values, place);
-        }
-    }
-
-    private void setMoreSegment(int index, Object values, long place) {
-        if (index == moreValues.length) {
-            var length = Math.max(FIELD_SEGMENTS, 2 * index);
-            moreValues = Arrays.copyOf(moreValues, length);
-            morePlaces = Arrays.copyOf(morePlaces, length);
-        }
-
-        moreValues[index] = values;
-        morePlaces[index] = place;
+    /** Copies the segments into arrays with room for twice as many, or {@link #INITIAL_SEGMENTS} */
+    private void growSegments() {
+        var length = Math.max(INITIAL_SEGMENTS, 2 * segmentValues.length);
+        segmentValues = Arrays.copyOf(segmentValues, length);
+        segmentPlaces = Arrays.copyOf(segmentPlaces, length);
     }
 
     /** Releases the values of the segments from {@code segment}, which may be large arrays */
     private void clearSegments(int segment) {
-        for (int i = segment; i < segmentCount; i++) {
-            setSegment(i, NO_VALUES, 0);
-        }
+        Arrays.fill(segmentValues, segment, segmentCount, NO_VALUES);
         segmentCount = segment;
     }
 
@@ -934,13 +914,13 @@ public final class TableBuilder {
         var from = 0;
         var to = at;
         for (int i = 0; i < segmentCount; i++) {
-            var place = placeOf(i);
+            var place = segmentPlaces[i];
             var run = atOf(place) - from;
             System.arraycopy(buffer, from, bytes, to, run);
             from = atOf(place);
             to += run;
 
-            to = writeSegment(typeOf(place), valuesOf(i), bytes, to);
+            to = writeSegment(typeOf(place), segmentValues[i], bytes, to);
         }
         System.arraycopy(buffer, from, bytes, to, length - from);
 
@@ -1027,7 +1007,7 @@ public final class TableBuilder {
         System.arraycopy(buffer, startLength, buffer, startLength + distance, length - startLength);
         Arrays.fill(buffer, startLength, startLength + distance, (byte) 0);
         for (int i = startSegments; i < segmentCount; i++) {
-            setSegment(i, valuesOf(i), placeOf(i) + distance);
+            segmentPlaces[i] += distance;
         }
 
         length += distance;
@@ -1189,9 +1169,10 @@ public final class TableBuilder {
         /**
          * Each fill is given an item of its own rather than one that the builder keeps, which the
          * JIT removes when it inlines the fill, knowing that the item's builder is the one that
-         * writes the table. When the builder recorded fields to write them later, recording the
-         * benchmarks' vector of nested tables took 4.4 µs with an item kept in a field of the
-         * builder, and 3.8 µs so.
+         * writes the table. An item kept in a field of every builder, which refers back to it,
+         * kept escape analysis from removing builders: the benchmarks' record took 26.6 ns rather
+         * than 19.7, and allocated 376 bytes rather than 224, and their vector of nested tables
+         * took 2.41 µs rather than 1.87.
          */
         private Item() {}
 
