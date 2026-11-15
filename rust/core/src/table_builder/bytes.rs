@@ -56,6 +56,14 @@ impl Bytes {
         }
     }
 
+    /// Makes room for `additional` more bytes if the allocator can, which
+    /// is room that the bytes may need, rather than room they do
+    pub fn try_reserve(&mut self, additional: usize) {
+        if additional > self.vec.capacity() - self.vec.len() {
+            let _ = self.vec.try_reserve(additional);
+        }
+    }
+
     #[inline(always)]
     pub fn push(&mut self, bytes: &[u8]) {
         self.reserve(bytes.len());

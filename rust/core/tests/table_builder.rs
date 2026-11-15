@@ -14,7 +14,8 @@ use proptest::{
     sample::{Index, select},
 };
 use tafla::{
-    Alignment, BuildError, ByteBuffer, NestedTable, OffsetType, TableBuilder, TableLayout,
+    Alignment, BuildError, ByteBuffer, InPlaceTable, NestedTable, OffsetType, TableBuilder,
+    TableLayout,
 };
 
 proptest! {
@@ -834,4 +835,125 @@ fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
     assert_eq!(table, 320);
     let array = buffer.field_offset(table, 1).unwrap();
     assert_eq!(buffer.get_f64_array(array).unwrap().to_vec(), column);
+}
+
+/// A vector written in place whose first item is far longer than the
+/// others, so that room for 3,000 more like it would be 2.4 GB, is written:
+/// the room that the builder makes for the items after the first is
+/// bounded, as a 32-bit target can't allocate 2.4 GB
+#[test]
+fn test_an_uneven_vector_in_place_is_written() {
+    const ITEMS: usize = 3_001;
+    const NAMES: usize = 3_000;
+    let name = "x".repeat(250);
+
+    let mut builder = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
+    builder
+        .set_vector_with(ITEMS, 1, |index, item| {
+            let names = if index == 0 { NAMES } else { 0 };
+            item.set_vector_with(names, 1, |_, entry| entry.set_str(name.as_str()))
+        })
+        .unwrap();
+    let bytes = builder.to_bytes().unwrap();
+
+    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let vector = buffer.get_vector(buffer.root_offset(0).unwrap()).unwrap();
+    assert_eq!(vector.len(), ITEMS);
+    let names_of = |index: usize| {
+        let item = vector.get_in_place(index).unwrap().unwrap();
+        let item = ByteBuffer::new(item, TableLayout::DEFAULT);
+        item.get_vector(item.root_offset(0).unwrap()).unwrap()
+    };
+
+    let first = names_of(0);
+    assert_eq!(first.len(), NAMES);
+    let entry = first.get_in_place(NAMES - 1).unwrap().unwrap();
+    let entry = ByteBuffer::new(entry, TableLayout::DEFAULT);
+    assert_eq!(
+        entry.get_str(entry.root_offset(0).unwrap()),
+        Ok(name.as_str())
+    );
+    assert!(names_of(ITEMS - 1).is_empty());
+}
+
+/// A vector written in place that makes its table too long runs every
+/// item's fill, as one that doesn't would, and fails with the length that
+/// all its items make, or with the first error that a fill returns after
+/// the table was too long
+#[test]
+fn test_a_vector_in_place_that_makes_its_table_too_long_runs_every_item() {
+    const ITEMS: usize = 330;
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
+    let values = [7_u8; 200];
+    let column = |item: &mut InPlaceTable<'_, '_>| item.set_u8_array(values.to_vec());
+
+    let mut builder = TableBuilder::new(1, layout).unwrap();
+    let mut calls = 0;
+    let error = builder.set_vector_with(ITEMS, 1, |_, item| {
+        calls += 1;
+        column(item)
+    });
+    // The count and the ends, after a header of 2 bytes, then each item's
+    // header, count and values
+    let length = 2 + 2 * (ITEMS + 1) + ITEMS * (2 + 2 + values.len());
+    assert_eq!(calls, ITEMS);
+    assert_eq!(
+        error,
+        Err(BuildError::TooLong {
+            index: 0,
+            length: length as u64,
+            offset_type: OffsetType::Uint16
+        })
+    );
+
+    let error = builder.set_vector_with(ITEMS, 1, |index, item| {
+        if index == ITEMS - 1 {
+            return Err(CallerError::Caller);
+        }
+        Ok(column(item)?)
+    });
+    assert_eq!(error, Err(CallerError::Caller));
+
+    builder
+        .set_vector_with(2, 1, |_, item| column(item))
+        .unwrap();
+    let mut expected = TableBuilder::new(1, layout).unwrap();
+    expected
+        .set_vector_with(2, 1, |_, item| column(item))
+        .unwrap();
+    assert_eq!(builder.to_bytes(), expected.to_bytes());
+}
+
+/// Tables longer than their `uint32` offsets address are rejected on every
+/// target, those that borrow one array several times too, past 4 GiB, which
+/// a 32-bit `usize` doesn't count
+#[test]
+#[cfg_attr(miri, ignore = "allocates 1 GiB")]
+fn test_reject_tables_in_place_past_4_gib_of_borrowed_arrays() {
+    const GIB: u64 = 1 << 30;
+    fn twice<'a>(table: &mut InPlaceTable<'_, 'a>, array: &'a [u8]) -> Result<(), BuildError> {
+        table.set_u8_array(array)?;
+        table.set_u8_array(array)
+    }
+    let array = vec![0_u8; 1 << 30];
+
+    let mut builder = TableBuilder::new(5, TableLayout::DEFAULT).unwrap();
+    for _ in 0..3 {
+        builder.set_u8_array(array.as_slice()).unwrap();
+    }
+    // The header's 5 offsets and three arrays, then a table of two
+    let root = 20 + 3 * (4 + GIB);
+    let table = 8 + 2 * (4 + GIB);
+    let too_long = |length| BuildError::TooLong {
+        index: 3,
+        length,
+        offset_type: OffsetType::Uint32,
+    };
+
+    for _ in 0..2 {
+        let error = builder.set_table_with(2, |table| twice(table, &array));
+        assert_eq!(error, Err(too_long(root + table)));
+        let error = builder.set_vector_with(1, 2, |_, item| twice(item, &array));
+        assert_eq!(error, Err(too_long(root + 8 + table)));
+    }
 }
