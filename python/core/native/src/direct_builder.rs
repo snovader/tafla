@@ -728,19 +728,22 @@ impl DirectTableBuilder {
     }
 }
 
-/// Calls `fill(builder, *args)`
-fn call_fill(
-    fill: &Bound<'_, PyAny>,
-    builder: &Bound<'_, PyAny>,
-    args: &[Borrowed<'_, '_, PyAny>],
+/// Calls `fill(builder, *args)`, with the arguments on the stack, without
+/// allocating, unless there are more than `MAX_ARGS`. Collecting them into a
+/// `Vec` first took an allocation for every table nested in place.
+fn call_fill<'a, 'py>(
+    fill: &Bound<'py, PyAny>,
+    builder: &Bound<'py, PyAny>,
+    args: impl ExactSizeIterator<Item = Borrowed<'a, 'py, PyAny>>,
 ) -> PyResult<()> {
     const MAX_ARGS: usize = 8;
     let py = fill.py();
+    let count = args.len();
 
-    if args.len() >= MAX_ARGS {
-        let mut all = Vec::with_capacity(args.len() + 1);
+    if count >= MAX_ARGS {
+        let mut all = Vec::with_capacity(count + 1);
         all.push(builder.clone());
-        all.extend(args.iter().map(|arg| Borrowed::to_owned(*arg)));
+        all.extend(args.map(Borrowed::to_owned));
         fill.call1(PyTuple::new(py, all)?)?;
         return Ok(());
     }
@@ -756,7 +759,7 @@ fn call_fill(
         ffi::PyObject_Vectorcall(
             fill.as_ptr(),
             stack.as_ptr().add(1),
-            (args.len() + 1) | ffi::PY_VECTORCALL_ARGUMENTS_OFFSET,
+            (count + 1) | ffi::PY_VECTORCALL_ARGUMENTS_OFFSET,
             ptr::null_mut(),
         )
     };
@@ -1178,8 +1181,7 @@ impl DirectTableBuilder {
             checkpoint
         };
 
-        let args: Vec<_> = args.iter_borrowed().collect();
-        let filled = call_fill(fill, slf.as_any(), &args);
+        let filled = call_fill(fill, slf.as_any(), args.iter_borrowed());
 
         let mut builder = slf.try_borrow_mut()?;
         if let Err(error) = filled {
@@ -1216,7 +1218,7 @@ impl DirectTableBuilder {
                     builder.start_slots(fields)?;
                     item_start
                 };
-                call_fill(fill, slf.as_any(), &[value.as_borrowed()])?;
+                call_fill(fill, slf.as_any(), std::iter::once(value.as_borrowed()))?;
                 slf.try_borrow_mut()?
                     .end_item(&checkpoint, item, count, fields, item_start)?;
                 item += 1;

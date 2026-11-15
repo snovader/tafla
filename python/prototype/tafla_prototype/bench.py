@@ -11,11 +11,13 @@ as an A/A pair, each pure-Python prototype, and with the native
 implementation, the native prototype twice and in its other variants, and
 tafla-gen's code, msgpack and protobuf for reference. Run it from
 ``python/`` as ``python -m tafla_prototype.bench``, with pyperf's options,
-and ``--reverse`` to run each row's builders in reverse order;
+``--reverse`` to run each row's builders in reverse order, and ``--only`` to
+run only the builders whose name matches a regular expression;
 ``tafla_prototype.report`` prints the results.
 """
 
 import argparse
+import re
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -152,10 +154,17 @@ def main() -> None:
         action="store_true",
         help="run each row's builders in reverse order",
     )
+    runner.argparser.add_argument(
+        "--only",
+        default="",
+        metavar="REGEX",
+        help="run only the builders whose name matches",
+    )
     args = runner.parse_args()
     _inherit_implementation(args)
 
-    chosen = variants()
+    pattern = re.compile(args.only)
+    chosen = [variant for variant in variants() if pattern.search(variant.name)]
     for row in ROWS:
         ordered = reversed(chosen) if args.reverse else chosen
         for variant in ordered:
@@ -180,6 +189,7 @@ def _inherit_implementation(args: argparse.Namespace) -> None:
 
 
 def _add_worker_options(command: list[str], args: argparse.Namespace) -> None:
+    command.extend(("--only", args.only))
     if args.reverse:
         command.append("--reverse")
 
