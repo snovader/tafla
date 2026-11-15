@@ -8,14 +8,13 @@ and in it:
 
 - main's `rust/core/src/table_builder.rs`, from the revision given (7238a1b,
   the main that the rewrite was measured against), as `tafla::main_builder`;
-- copies of the rewrite with a change or two each, as
-  `tafla::rewrite_no_segment_room`, without the room that its segments make
-  for more past the first four, `tafla::rewrite_segments_128` and
-  `tafla::rewrite_segments_64`, which keep runs of 128 or 64 bytes or more
-  as segments rather than 256, and with 64, `..._64_twofold`, whose bytes
-  grow twofold rather than fourfold while they're short,
-  `..._64_room_16`, whose bytes start with room for 16 bytes a field rather
-  than 64, and `..._64_room_16_twofold`, with both;
+- copies of the rewrite with a change or two each: `..._room_16`, whose
+  bytes start with room for 16 bytes a field rather than 64,
+  `..._long_segments`, which keeps a run of 64 bytes or more as a segment
+  rather than grow bytes of 64 KiB or more for it, `..._room_16_long_segments`,
+  with both, and `..._segments_128` and `..._segments_64`, which keep runs
+  of 128 or 64 bytes or more as segments rather than 256, with room for 64,
+  32 or 16 bytes a field;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
 
@@ -33,27 +32,34 @@ HERE = pathlib.Path(__file__).resolve().parent
 #: `table_builder.rs`'s text, or (file, old, new) of a file of its
 #: submodules, each of which must be found once
 VARIANTS = {
-    'rewrite_no_segment_room': [
-        ('segments.rs', '            if self.others.capacity() == 0 {\n                self.others.reserve(more);\n            }\n', '            let _ = more;\n'),
+    'rewrite_room_16': [
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
+    ],
+    'rewrite_long_segments': [
+        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(run(values), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(run(values), byte_length);'),
+        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(Run::U8(bytes), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(Run::U8(bytes), byte_length);'),
+        ('bytes.rs', '    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {', '    /// Whether `additional` more bytes would grow bytes of 64 KiB or more\n    #[inline(always)]\n    pub fn would_grow_long(&self, additional: usize) -> bool {\n        additional > self.vec.capacity() - self.vec.len() && self.vec.capacity() >= FOURFOLD_BELOW\n    }\n\n    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {'),
+    ],
+    'rewrite_room_16_long_segments': [
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
+        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(run(values), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(run(values), byte_length);'),
+        ('        if byte_length >= SEGMENT_BYTES {\n            self.push_segment(Run::U8(bytes), byte_length);', '        if byte_length >= SEGMENT_BYTES || (byte_length >= 64 && self.bytes.would_grow_long(byte_length)) {\n            self.push_segment(Run::U8(bytes), byte_length);'),
+        ('bytes.rs', '    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {', '    /// Whether `additional` more bytes would grow bytes of 64 KiB or more\n    #[inline(always)]\n    pub fn would_grow_long(&self, additional: usize) -> bool {\n        additional > self.vec.capacity() - self.vec.len() && self.vec.capacity() >= FOURFOLD_BELOW\n    }\n\n    #[inline(always)]\n    pub fn push(&mut self, bytes: &[u8]) {'),
     ],
     'rewrite_segments_128': [
         ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
     ],
-    'rewrite_segments_64': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
+    'rewrite_segments_128_room_32': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 32;'),
     ],
-    'rewrite_segments_64_twofold': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
-        ('bytes.rs', 'const FOURFOLD_BELOW: usize = 64 * 1024;', 'const FOURFOLD_BELOW: usize = 0;'),
+    'rewrite_segments_128_room_16': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
     ],
     'rewrite_segments_64_room_16': [
         ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
         ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-    ],
-    'rewrite_segments_64_room_16_twofold': [
-        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
-        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
-        ('bytes.rs', 'const FOURFOLD_BELOW: usize = 64 * 1024;', 'const FOURFOLD_BELOW: usize = 0;'),
     ],
 }
 

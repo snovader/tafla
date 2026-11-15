@@ -344,12 +344,13 @@ macro_rules! serializers {
 
 serializers!(main_serializers, tafla::main_builder);
 serializers!(rewrite_serializers, tafla);
-serializers!(no_segment_room_serializers, tafla::rewrite_no_segment_room);
+serializers!(room_16_serializers, tafla::rewrite_room_16);
+serializers!(long_segments_serializers, tafla::rewrite_long_segments);
+serializers!(room_16_long_segments_serializers, tafla::rewrite_room_16_long_segments);
 serializers!(segments_128_serializers, tafla::rewrite_segments_128);
-serializers!(segments_64_serializers, tafla::rewrite_segments_64);
-serializers!(segments_64_twofold_serializers, tafla::rewrite_segments_64_twofold);
+serializers!(segments_128_room_32_serializers, tafla::rewrite_segments_128_room_32);
+serializers!(segments_128_room_16_serializers, tafla::rewrite_segments_128_room_16);
 serializers!(segments_64_room_16_serializers, tafla::rewrite_segments_64_room_16);
-serializers!(segments_64_room_16_twofold_serializers, tafla::rewrite_segments_64_room_16_twofold);
 
 fn item_struct(item: &Item) -> [u8; ITEM_SIZE] {
     let mut bytes = [0; ITEM_SIZE];
@@ -452,12 +453,13 @@ macro_rules! builder {
 
 builder!(Main, main_serializers);
 builder!(Rewrite, rewrite_serializers);
-builder!(NoSegmentRoom, no_segment_room_serializers);
+builder!(Room16, room_16_serializers);
+builder!(LongSegments, long_segments_serializers);
+builder!(Room16LongSegments, room_16_long_segments_serializers);
 builder!(Segments128, segments_128_serializers);
-builder!(Segments64, segments_64_serializers);
-builder!(Segments64Twofold, segments_64_twofold_serializers);
+builder!(Segments128Room32, segments_128_room_32_serializers);
+builder!(Segments128Room16, segments_128_room_16_serializers);
 builder!(Segments64Room16, segments_64_room_16_serializers);
-builder!(Segments64Room16Twofold, segments_64_room_16_twofold_serializers);
 
 /// Another builder's functions again, as functions of their own, for an
 /// A/A pair
@@ -536,21 +538,23 @@ pub trait Visit {
 }
 
 /// Visits main's builder and the rewrite, twice each, as A/A pairs, and
-/// the rewrite's variants: without the room for the segments past the first
-/// four, keeping runs of 128 or 64 bytes or more as segments, and with 64,
-/// growing twofold, starting with room for 16 bytes a field rather than 64,
-/// or both
+/// the rewrite's variants: starting with room for 16 bytes a field rather
+/// than 64, keeping runs of 64 bytes or more as segments rather than grow
+/// bytes of 64 KiB or more, both, and keeping runs of 128 bytes or more as
+/// segments, with room for 64, 32 or 16 bytes a field, or of 64 bytes or
+/// more, with room for 16
 pub fn for_each_builder(visitor: &mut impl Visit) {
     visitor.visit::<Main>("main");
     visitor.visit::<Again<Main>>("main A/A");
     visitor.visit::<Rewrite>("rewrite");
     visitor.visit::<Again<Rewrite>>("rewrite A/A");
-    visitor.visit::<NoSegmentRoom>("no segment room");
-    visitor.visit::<Segments128>("segments from 128");
-    visitor.visit::<Segments64>("segments from 64");
-    visitor.visit::<Segments64Twofold>("64, twofold");
+    visitor.visit::<Room16>("room 16");
+    visitor.visit::<LongSegments>("long segments");
+    visitor.visit::<Room16LongSegments>("room 16, long segments");
+    visitor.visit::<Segments128>("128");
+    visitor.visit::<Segments128Room32>("128, room 32");
+    visitor.visit::<Segments128Room16>("128, room 16");
     visitor.visit::<Segments64Room16>("64, room 16");
-    visitor.visit::<Segments64Room16Twofold>("64, room 16, twofold");
 }
 
 /// The inputs of every row
@@ -585,6 +589,8 @@ impl Inputs {
                 (4, 255),
                 (8, 255),
                 (100_000, 255),
+                (4, 127),
+                (8, 127),
                 (4, 63),
                 (8, 63),
                 (100_000, 63),
