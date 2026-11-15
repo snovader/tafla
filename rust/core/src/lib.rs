@@ -5,8 +5,6 @@ mod byte_buffer;
 mod element;
 mod errors;
 mod layout;
-#[cfg(feature = "prototype")]
-pub mod prototype;
 mod table_builder;
 mod table_writer;
 mod vector;

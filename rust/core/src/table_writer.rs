@@ -355,10 +355,11 @@ pub struct SizerParent {
 /// Writes a table forward into bytes of exactly its length, which a
 /// [`TableSizer`] counted.
 ///
-/// It doesn't record the fields first, as `TableBuilder` does before it
-/// writes them through a writer of its own. It comes from
-/// [`TableSizer::writer()`], and takes the fields that the sizer added, in
-/// the same order, each with its index in its table.
+/// It writes into bytes of the table's exact length, which the sizer
+/// counted, where `TableBuilder` writes into bytes that grow, and copies
+/// them into the table's own. It comes from [`TableSizer::writer()`], and
+/// takes the fields that the sizer added, in the same order, each with its
+/// index in its table.
 ///
 /// Each field's offset is written as the writer reaches the field. A nested
 /// table follows its parent's [`TableWriter::set_table()`], between
@@ -392,7 +393,7 @@ pub struct TableWriter {
     /// tables of a float32 and a nested table of two 0.92 µs rather than
     /// 0.69 µs, but still a tenth of `TableBuilder`'s 8.6 µs.
     bytes: Vec<u8>,
-    /// The table's length, which the sizer or `TableBuilder` counted
+    /// The table's length, which the sizer counted
     length: usize,
     offset_type: OffsetType,
     /// The byte length of the root's header slots, which its offsets follow
@@ -431,9 +432,8 @@ macro_rules! array_setters {
 
 impl TableWriter {
     /// Writes the header of the root table of `fields` fields, into new
-    /// bytes with `length` reserved, which the sizer or `TableBuilder`
-    /// checked are at least the header and at most what the offset type
-    /// addresses
+    /// bytes with `length` reserved, which the sizer checked are at least
+    /// the header and at most what the offset type addresses
     pub(crate) fn new(
         length: usize,
         fields: usize,
@@ -782,10 +782,8 @@ impl TableWriter {
     ///
     /// It's for the tables that tafla-gen's code writes whole, those of
     /// fields whose sizes the schema fixes, as C++'s `copy_table()` writes
-    /// them, and for those that `TableBuilder` can't write in place: tables
-    /// nested as bytes, and builders with a header or another offset type.
-    /// Like [`TableSizer::add_table_bytes()`], it's outside the compatibility
-    /// promise of the rest of the API.
+    /// them. Like [`TableSizer::add_table_bytes()`], it's outside the
+    /// compatibility promise of the rest of the API.
     #[inline]
     pub fn copy_table(&mut self, table: &[u8]) {
         self.push(table);
@@ -974,7 +972,7 @@ fn new_table_bytes(
 
 /// Copies `value` to the start of `bytes`, if they're as long
 #[inline]
-fn set_le<const N: usize>(bytes: &mut [u8], value: [u8; N]) -> bool {
+pub fn set_le<const N: usize>(bytes: &mut [u8], value: [u8; N]) -> bool {
     bytes
         .first_chunk_mut::<N>()
         .map(|slot| *slot = value)

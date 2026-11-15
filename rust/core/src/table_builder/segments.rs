@@ -1,14 +1,18 @@
-//! The runs that a `DirectTableBuilder` keeps as segments, borrowed or owned,
-//! rather than copying them into its bytes, and which `to_bytes()` copies
-//! between its bytes
+//! The runs of a table that a `TableBuilder` keeps as segments, borrowed or
+//! owned, rather than copying them into its bytes, and which `to_bytes()`
+//! copies between its bytes
 
 use std::borrow::Cow;
 
 use crate::element::extend_elements;
 
-/// A run of a table's bytes that a builder keeps rather than copies: an
-/// array's elements, which are written little-endian when they're copied,
-/// or bytes, of a string, a struct, an array of structs or a nested table
+/// The segments that a builder keeps within itself, before it needs a `Vec`
+/// for more
+const FIRST_SEGMENTS: usize = 4;
+
+/// A run of a table that a builder keeps rather than copies: an array's
+/// elements, which are written little-endian when they're copied, or bytes,
+/// of a string, a struct, an array of structs or a nested table
 #[derive(Debug)]
 pub enum Run<'a> {
     I8(Cow<'a, [i8]>),
@@ -94,19 +98,19 @@ pub struct Segment<'a> {
     pub run: Run<'a>,
 }
 
-/// A builder's segments, in the order of the table: the first `N` within
-/// the builder, and the others in a `Vec`
+/// A builder's segments, in the order of the table: the first few within the
+/// builder, and the others in a `Vec`
 #[derive(Debug)]
-pub struct Segments<'a, const N: usize> {
-    first: [Option<Segment<'a>>; N],
+pub struct Segments<'a> {
+    first: [Option<Segment<'a>>; FIRST_SEGMENTS],
     others: Vec<Segment<'a>>,
     len: usize,
 }
 
-impl<'a, const N: usize> Segments<'a, N> {
+impl<'a> Segments<'a> {
     pub const fn new() -> Self {
         Self {
-            first: [const { None }; N],
+            first: [const { None }; FIRST_SEGMENTS],
             others: Vec::new(),
             len: 0,
         }
@@ -114,10 +118,6 @@ impl<'a, const N: usize> Segments<'a, N> {
 
     pub const fn len(&self) -> usize {
         self.len
-    }
-
-    pub const fn is_empty(&self) -> bool {
-        self.len == 0
     }
 
     #[inline]
@@ -139,7 +139,7 @@ impl<'a, const N: usize> Segments<'a, N> {
         for slot in self.first.iter_mut().take(self.len).skip(len) {
             *slot = None;
         }
-        self.others.truncate(len.saturating_sub(N));
+        self.others.truncate(len.saturating_sub(FIRST_SEGMENTS));
         self.len = len;
     }
 
@@ -157,10 +157,10 @@ impl<'a, const N: usize> Segments<'a, N> {
     }
 }
 
-impl<'a, const N: usize> IntoIterator for Segments<'a, N> {
+impl<'a> IntoIterator for Segments<'a> {
     type Item = Segment<'a>;
     type IntoIter = std::iter::Chain<
-        std::iter::Flatten<std::array::IntoIter<Option<Segment<'a>>, N>>,
+        std::iter::Flatten<std::array::IntoIter<Option<Segment<'a>>, FIRST_SEGMENTS>>,
         std::vec::IntoIter<Segment<'a>>,
     >;
 

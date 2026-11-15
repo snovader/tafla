@@ -7,6 +7,4 @@ pub mod check;
 pub mod codec;
 pub mod codecs;
 pub mod item_access;
-#[cfg(feature = "prototype")]
-pub mod prototype;
 pub mod workloads;
