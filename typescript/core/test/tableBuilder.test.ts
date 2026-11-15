@@ -98,6 +98,69 @@ it('should throw TypeError from the setter of a number for an int64, and leave t
     expect(builder.bytes()).toStrictEqual(writeTable(tableOf([{ type: 'int64', value: '1' }])));
 });
 
+describe('strings', () => {
+    // A string with lone surrogates that TextEncoder.encodeInto() stops a
+    // code unit short of when it's given exactly its UTF-8 length, in Node 26
+    // and 27, as about 1% of such strings of 300 units or more. Its symbols
+    // index SYMBOLS.
+    const SYMBOLS = ['a', 'é', '€', '😀', '\udc00', '\ud800'];
+    const SHORT_BY_A_UNIT = [
+        '4225552353214043133003054111452042500042325143235501302505252510' +
+            '3240511413522215255212200412001010550144140132555220235131333504' +
+            '0244550301340250221304232042134034043504402211334424233214055030' +
+            '245230523325155542425055111152130'
+    ]
+        .join('')
+        .split('')
+        .map(symbol => SYMBOLS[Number(symbol)])
+        .join('');
+
+    it.each([
+        ['on its own', ''],
+        // Over 128 KiB of UTF-8, twice the longest buffer that a builder
+        // leaves for the next, so that the buffer grows to the string's end
+        ['after 45,000 three-byte characters', '€'.repeat(45000)]
+    ])(
+        'should write a string with lone surrogates that a TextEncoder takes a byte more than its UTF-8 for, %s',
+        (_, before) => {
+            const string = before + SHORT_BY_A_UNIT;
+            const builder = new TableBuilder(1);
+            builder.setString(string);
+
+            const buffer = builder.finalize();
+            expect(buffer.getString(buffer.rootOffset(0))).toBe(string.toWellFormed());
+        }
+    );
+});
+
+it('should write zeros as padding, rather than the bytes of a table built before it', () => {
+    // Leaves a buffer of 64 KiB of 0xff for the next builder
+    const filled = new TableBuilder(60);
+    for (let i = 0; i < 60; i++) {
+        filled.setUint8Array(new Uint8Array(1000).fill(0xff));
+    }
+    filled.bytes();
+
+    // Padding before each array, the array of structs and the nested table
+    const table = tableOf([
+        { type: 'uint8', value: 1 },
+        { type: 'float64[]', value: [2] },
+        { type: 'uint8', value: 3 },
+        { type: 'struct[]', fields: ['float64'], items: [[4]] },
+        { type: 'uint8', value: 5 },
+        {
+            type: 'table',
+            from: 'builder',
+            table: tableOf([
+                { type: 'uint8', value: 6 },
+                { type: 'float64[]', value: [7] }
+            ])
+        }
+    ]);
+    expect(buildTable(table).bytes()).toStrictEqual(writeTable(table));
+    expect(buildTableInPlace(table).bytes()).toStrictEqual(writeTable(table));
+});
+
 // Arrays, arrays of structs, structs and tables given as bytes of 1 KiB or
 // more are kept until the table is written, and shorter ones copied when
 // they're set

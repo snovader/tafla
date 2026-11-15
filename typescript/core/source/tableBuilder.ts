@@ -66,6 +66,14 @@ const SEGMENT_BYTES = 1024;
  */
 const SHORT_STRING_UNITS = 1024;
 /**
+ * The bytes past a string's UTF-8 that `TextEncoder.encodeInto()` is given.
+ * Given exactly its UTF-8 length, it stopped a UTF-16 code unit short of
+ * about 1% of strings of 300 units or more with lone surrogates in Node 26
+ * and 27, and one byte more always sufficed, in 18,000 random strings.
+ * The bytes are the buffer's, not the table's.
+ */
+const ENCODE_SLACK = 1;
+/**
  * The most room that a vector written in place makes for its items after the
  * first, as long as the first: it grows the buffer once for a vector of short
  * items, rather than in a few steps, without allocating out of proportion to
@@ -675,14 +683,15 @@ export class TableBuilder {
         let room = 3 * units;
         if (
             !(before + room <= this.#maxLength) ||
-            (start + room > this.#bytes.length && units > SHORT_STRING_UNITS)
+            (start + room + ENCODE_SLACK > this.#bytes.length &&
+                units > SHORT_STRING_UNITS)
         ) {
             room = utf8Length(string);
             this.#checkLength(index, before + room);
         }
 
-        if (start + room > this.#bytes.length) {
-            this.#grow(start + room);
+        if (start + room + ENCODE_SLACK > this.#bytes.length) {
+            this.#grow(start + room + ENCODE_SLACK);
         }
 
         const length = encodeInto(string, this.#bytes, start);
