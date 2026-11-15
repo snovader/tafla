@@ -21,6 +21,47 @@ const sampleWriter = new StructWriter(new Uint8Array(SAMPLE_SIZE));
 const ITEM_SIZE = 3 * SIZEOF_32;
 const ITEM_ALIGNMENT = SIZEOF_32;
 
+/**
+ * The bytes that an array of structs is written into before
+ * `TableBuilder.setStructArray()` takes it, kept between tables as
+ * `sampleWriter` is. The builder copies them into its table before `bytes()`
+ * returns, so the next table's structs can be written over them.
+ */
+class ReusedStructArray {
+    /** Exactly the last array's bytes, at the start of the longest one's */
+    #bytes = new Uint8Array(0);
+    #writer = new StructWriter(this.#bytes);
+
+    /**
+     * Rewinds the writer over exactly `length` bytes, which grow when
+     * they're shorter
+     */
+    writer(length: number): StructWriter {
+        if (length !== this.#bytes.length) {
+            this.#resize(length);
+        }
+
+        this.#writer.reset();
+        return this.#writer;
+    }
+
+    /** The bytes that the writer was last rewound over */
+    bytes(): Uint8Array {
+        return this.#bytes;
+    }
+
+    #resize(length: number): void {
+        const { buffer } = this.#bytes;
+        const reused =
+            buffer.byteLength >= length ? buffer : new ArrayBuffer(length);
+
+        this.#bytes = new Uint8Array(reused, 0, length);
+        this.#writer = new StructWriter(this.#bytes);
+    }
+}
+
+const itemStructs = new ReusedStructArray();
+
 export const tafla: Codec = {
     name: 'tafla',
     record: {
@@ -121,9 +162,10 @@ export const tafla: Codec = {
     },
     structs: {
         serialize({ items }) {
-            // As tafla-gen's code writes an array of structs
-            const structs = new Uint8Array(items.length * ITEM_SIZE);
-            const writer = new StructWriter(structs);
+            // tafla-gen's code writes the structs straight into the table,
+            // with TableWriter.reserveStructArray(). TableBuilder takes their
+            // bytes, so they're written into bytes reused between calls.
+            const writer = itemStructs.writer(items.length * ITEM_SIZE);
             for (const { value, first, second } of items) {
                 writer.setFloat32(value);
                 writer.setFloat32(first);
@@ -131,7 +173,11 @@ export const tafla: Codec = {
             }
 
             const builder = new TableBuilder(1);
-            builder.setStructArray(structs, ITEM_SIZE, ITEM_ALIGNMENT);
+            builder.setStructArray(
+                itemStructs.bytes(),
+                ITEM_SIZE,
+                ITEM_ALIGNMENT
+            );
 
             return builder.bytes();
         },
