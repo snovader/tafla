@@ -14,6 +14,7 @@
 #include <new>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -24,9 +25,15 @@ namespace {
 /// The allocations left before one fails, or -1 while none is to fail
 long allocations_left = -1;
 
+/// The most bytes that an allocation may ask for before it fails
+std::size_t largest_allocation = SIZE_MAX;
+
 }  // namespace
 
 void* operator new(std::size_t size) {
+    if (size > largest_allocation) {
+        throw std::bad_alloc();
+    }
     if (allocations_left == 0) {
         allocations_left = -1;
         throw std::bad_alloc();
@@ -257,6 +264,41 @@ TEST(ExceptionSafety, ASetterWhoseAllocationFailsLeavesTheBuilderAsItWas) {
             EXPECT_EQ(parent_after(parent, set), expected) << "setter " << setter << ", allocation " << allocations;
         }
     }
+}
+
+/// Fails the allocations of more than `bytes` while it lives
+class AllocationsUpTo {
+public:
+    explicit AllocationsUpTo(std::size_t bytes) noexcept {
+        largest_allocation = bytes;
+    }
+
+    AllocationsUpTo(const AllocationsUpTo&) = delete;
+    AllocationsUpTo& operator=(const AllocationsUpTo&) = delete;
+
+    ~AllocationsUpTo() {
+        largest_allocation = SIZE_MAX;
+    }
+};
+
+/// A vector written in place whose first item is far longer than the
+/// others, here a vector of 5,000 strings of 200 bytes before 9,999 items of
+/// one byte, allocates in proportion to the table of 1.15 MB, rather than
+/// making room for 9,999 more items as long as the first
+TEST(Allocation, AVectorOfUnevenItemsAllocatesInProportionToItsTable) {
+    const std::string string(200, 's');
+    const AllocationsUpTo limit(8 << 20);
+
+    TableBuilder builder(1, TableLayout());
+    builder.set_vector(10'000, 1, [&](std::size_t index, TableBuilder::Item& item) {
+        if (index == 0) {
+            item.set_vector(
+                5'000, 1, [&](std::size_t, TableBuilder::Item& inner) { inner.set_string(std::string_view(string)); });
+        } else {
+            item.set_uint8(1);
+        }
+    });
+    EXPECT_EQ(builder.to_bytes().size(), 1'150'011U);
 }
 
 }  // namespace

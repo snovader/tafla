@@ -647,6 +647,33 @@ TEST(TableBuilder, RejectsATableOf32BitOffsetsPast4GiBBeforeWritingIt) {
     builder.set_vector(items(63));
 }
 
+// Tables written in place whose borrowed arrays add up past 4 GiB, more than
+// a 32-bit host addresses, are rejected as too long for their parent, which
+// a 32-bit host checks in 64 bits too: a vector's 65 items of 64 MiB each,
+// and a table of 33 such items after a vector of as many
+TEST(TableBuilder, RejectsTablesWrittenInPlaceThatMakeTheirParentLongerThan4GiB) {
+    const std::vector<std::uint8_t> bytes(std::size_t{1} << 26, 0);
+    const auto items = [&bytes](TableBuilder::Item& table, std::size_t count) {
+        table.set_vector(count, 1, [&bytes](std::size_t, TableBuilder::Item& item) { item.set_uint8_array(bytes); });
+    };
+
+    TableBuilder vector(1, TableLayout());
+    const auto in_vector = build_error_of([&] {
+        vector.set_vector(65, 1, [&bytes](std::size_t, TableBuilder::Item& item) { item.set_uint8_array(bytes); });
+    });
+    EXPECT_EQ(in_vector.kind(), BuildError::Kind::too_long);
+    EXPECT_EQ(in_vector.index(), 0U);
+    EXPECT_GT(in_vector.length(), std::uint64_t{1} << 32);
+
+    TableBuilder table(2, TableLayout());
+    table.set_table(1, [&](TableBuilder::Item& first) { items(first, 33); });
+    const auto in_table =
+        build_error_of([&] { table.set_table(1, [&](TableBuilder::Item& second) { items(second, 33); }); });
+    EXPECT_EQ(in_table.kind(), BuildError::Kind::too_long);
+    EXPECT_EQ(in_table.index(), 1U);
+    EXPECT_GT(in_table.length(), std::uint64_t{1} << 32);
+}
+
 TEST(TableBuilder, RejectsAVersionTooLargeForItsSlot) {
     for (const auto& [offset_type, version] :
          {std::pair{OffsetType::uint8, 0x100U}, std::pair{OffsetType::uint16, 0x1'0000U}}) {
@@ -723,6 +750,27 @@ TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
 
     EXPECT_THROW(builder.set_uint8_array(std::move(values)), BuildError);
     EXPECT_EQ(values.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
+}
+
+/// Structs of 256 bytes or more, borrowed or owned, which the builder keeps
+/// where they are rather than copying them, read back as they were set
+TEST(TableBuilder, WritesLongStructs) {
+    std::vector<std::uint8_t> borrowed(300);
+    for (std::size_t index = 0; index < borrowed.size(); ++index) {
+        borrowed[index] = static_cast<std::uint8_t>(index);
+    }
+    const std::vector<std::uint8_t> reversed(borrowed.rbegin(), borrowed.rend());
+
+    TableBuilder builder(3, TableLayout());
+    builder.set_struct(borrowed);
+    builder.set_struct(std::vector<std::uint8_t>(reversed));
+    builder.set_uint8(7);
+
+    const auto bytes = builder.to_bytes();
+    const ByteBuffer buffer(bytes, TableLayout());
+    EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(0), 300), borrowed));
+    EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(1), 300), reversed));
+    EXPECT_EQ(buffer.get_uint8(buffer.root_offset(2)), 7);
 }
 
 TEST(TableBuilder, WritesAnEmptyArrayOfStructsOfAnySize) {

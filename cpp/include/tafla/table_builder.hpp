@@ -72,9 +72,15 @@ concept Temporary = std::ranges::contiguous_range<Range> && !std::ranges::borrow
 /// that a builder keeps rather than copies leave it few bytes to grow.
 class GrowingBytes {
 public:
+    /// Enough for the comparison's record and document of 100 rows, apart
+    /// from their columns, so that they allocate only the table: with 64,
+    /// the document took 1.3 times as long. With 256, a builder is larger,
+    /// and nesting 100 builders took 4% longer.
     static constexpr std::size_t Inline = 128;
     /// The least that the bytes grow to on the heap, so that a table that
-    /// outgrows the builder's own bytes doesn't grow again soon
+    /// outgrows the builder's own bytes doesn't grow again soon. The
+    /// comparison's vector of 100 nested tables took 1 to 2% longer from 256
+    /// or 1,024.
     static constexpr std::size_t FirstHeap = 512;
 
     GrowingBytes() noexcept = default;
@@ -182,6 +188,35 @@ private:
     std::size_t capacity_ = Inline;
 };
 
+/// Copies `length` bytes, as `copy()` does, with loads and stores of up to 8
+/// bytes, which may overlap, when it's 16 or fewer, rather than a call. The
+/// bytes between a table's segments are often a few offsets and a count:
+/// copying them so made building the comparison's document of 100 rows,
+/// which has 3 segments, 6% faster.
+TAFLA_ALWAYS_INLINE void copy_short(std::uint8_t* to, const std::uint8_t* from, std::size_t length) noexcept {
+    if (length > 16) {
+        std::memcpy(to, from, length);
+    } else if (length >= 8) {
+        std::uint64_t first = 0;
+        std::uint64_t last = 0;
+        std::memcpy(&first, from, 8);
+        std::memcpy(&last, from + length - 8, 8);
+        std::memcpy(to, &first, 8);
+        std::memcpy(to + length - 8, &last, 8);
+    } else if (length >= 4) {
+        std::uint32_t first = 0;
+        std::uint32_t last = 0;
+        std::memcpy(&first, from, 4);
+        std::memcpy(&last, from + length - 4, 4);
+        std::memcpy(to, &first, 4);
+        std::memcpy(to + length - 4, &last, 4);
+    } else {
+        for (std::size_t index = 0; index < length; ++index) {
+            to[index] = from[index];
+        }
+    }
+}
+
 /// A run of bytes that a builder borrows or owns rather than copying, which
 /// lies in its table before the builder's own byte at `at`
 struct Segment {
@@ -195,23 +230,24 @@ struct Segment {
 /// all once they don't fit
 class Segments {
 public:
+    /// The comparison's document of 100 rows keeps 3. Without any within the
+    /// builder, it took 1.7 times as long, and the array of 100 structs 1.2
+    /// times; with 8, nesting 100 builders took 5% longer.
     static constexpr std::size_t Inline = 4;
 
     Segments() = default;
 
     /// Leaves `other` without segments, and without a vector, whose room
     /// would otherwise say that it holds them
-    Segments(Segments&& other) noexcept
-        : inline_(other.inline_), spilled_(std::move(other.spilled_)), size_(std::exchange(other.size_, 0)) {
-        other.spilled_ = {};
+    Segments(Segments&& other) noexcept : spilled_(std::move(other.spilled_)), size_(std::exchange(other.size_, 0)) {
+        take_inline(other);
     }
 
     Segments& operator=(Segments&& other) noexcept {
         if (this != &other) {
-            inline_ = other.inline_;
             spilled_ = std::move(other.spilled_);
             size_ = std::exchange(other.size_, 0);
-            other.spilled_ = {};
+            take_inline(other);
         }
         return *this;
     }
@@ -287,6 +323,16 @@ private:
         return spilled_.capacity() != 0;
     }
 
+    /// Copies the segments within `other`, unless its vector, now this one's,
+    /// held them, and leaves `other` without a vector. The segments past its
+    /// size aren't initialized, so they aren't copied.
+    void take_inline(Segments& other) noexcept {
+        if (!spilled()) {
+            std::copy_n(other.inline_.begin(), size_, inline_.begin());
+        }
+        other.spilled_ = {};
+    }
+
     // Not initialized: only the first `size_` are read. Zeroing them made
     // building the comparison's record 2 ns slower.
     std::array<Segment, Inline> inline_;
@@ -328,7 +374,9 @@ private:
 ///
 /// A setter throws a `BuildError`, and leaves the builder as it was, when the
 /// table already holds all its fields or the field would make it too long
-/// for the layout's offset type: longer than 255 bytes, 64 KiB or 4 GiB.
+/// for the layout's offset type: longer than 255 bytes, 64 KiB or 4 GiB. One
+/// whose allocation fails throws `std::bad_alloc`, and leaves the builder as
+/// it was too.
 class TableBuilder {
 public:
     /// Starts a table of `fields` fields in `layout`, which its readers must
@@ -337,7 +385,8 @@ public:
     /// layout.
     ///
     /// Throws a `BuildError` if the header alone is too long for the
-    /// layout's offset type.
+    /// layout's offset type, and `std::bad_alloc` if a header longer than the
+    /// 128 bytes that a builder holds within itself can't be allocated.
     TableBuilder(std::size_t fields, TableLayout<false> layout)
         : TableBuilder(fields, detail::header_length(fields, layout.is_sized(), false, layout.offset_type()),
                        layout.is_sized(), std::nullopt, layout.offset_type()) {}
@@ -347,7 +396,8 @@ public:
     /// reading any field.
     ///
     /// Throws a `BuildError` if `version` doesn't fit in the layout's offset
-    /// type, or the header alone is too long for it.
+    /// type, or the header alone is too long for it, and `std::bad_alloc` as
+    /// the constructor above does.
     TableBuilder(std::size_t fields, TableLayout<true> layout, std::uint32_t version)
         : TableBuilder(fields, versioned_header(fields, layout, version), layout.is_sized(), version,
                        layout.offset_type()) {}
@@ -369,17 +419,19 @@ public:
     [[nodiscard]] Bytes to_bytes() const {
         check_complete();
 
-        auto bytes = Bytes::for_overwrite(position());
+        // The table's length, which its setters checked fits its offsets
+        const auto length = static_cast<std::size_t>(position());
+        auto bytes = Bytes::for_overwrite(length);
         copy_into(bytes.data());
         if (sized_) {
-            detail::store_slot(bytes.data(), position(), offset_type_);
+            detail::store_slot(bytes.data(), length, offset_type_);
         }
         return bytes;
     }
 
     /// The table's byte length with the fields set so far
     [[nodiscard]] std::size_t byte_length() const noexcept {
-        return restarting_ ? header_length(restart_fields_) : position();
+        return restarting_ ? header_length(restart_fields_) : static_cast<std::size_t>(position());
     }
 
     /// The largest alignment that a field needs from the table's start,
@@ -688,8 +740,18 @@ private:
     /// builder's bytes when they're set. Copying every run when it's set made
     /// building the comparison's document of 100,000 rows 3.8 times slower,
     /// since each 400 KB column was copied into the bytes, which grew to
-    /// hold them, and then into the table.
+    /// hold them, and then into the table. Keeping runs of 64 bytes or more
+    /// measured the same; from 512, the document of 100 rows, whose columns
+    /// are 400 bytes, took 2.1 times as long.
     static constexpr std::size_t kSegmentBytes = 256;
+
+    /// The most room that a vector written in place makes for its items
+    /// after its first, as `reserve_items_like()` describes. Without that
+    /// room, the comparison's vector of 100 nested tables, of 3.2 KB, took 8%
+    /// longer, growing its bytes twice more, and with room for twice the
+    /// least that the other items write, their headers, as the builder that
+    /// this one replaced bounded its records, 5% longer.
+    static constexpr std::uint64_t kItemsRoom = 64 << 10;
 
     using Owner = std::shared_ptr<const detail::Owned>;
 
@@ -704,7 +766,7 @@ private:
     /// What the builder counts of the table that it's writing: its own, or
     /// one that it writes in place
     struct Counters {
-        std::size_t table;
+        std::uint64_t table;
         std::size_t slots;
         std::uint32_t fields;
         std::uint32_t set;
@@ -716,7 +778,7 @@ private:
     struct Checkpoint {
         Counters counters;
         std::size_t bytes;
-        std::size_t shift;
+        std::uint64_t shift;
         std::size_t segments;
         std::size_t owned;
     };
@@ -788,14 +850,16 @@ private:
     }
 
     /// The position in the table of the next byte: the bytes written and
-    /// the segments before them
-    [[nodiscard]] std::size_t position() const noexcept {
+    /// the segments before them. It's 64 bits wide whatever the host's, since
+    /// the segments, which a builder borrows, can add up past what a 32-bit
+    /// host addresses before a table in place is checked against its parent.
+    [[nodiscard]] std::uint64_t position() const noexcept {
         return bytes_.size() + shift_;
     }
 
     /// The length of the table being written, which is where its next field
     /// goes
-    [[nodiscard]] std::size_t table_length() const noexcept {
+    [[nodiscard]] std::uint64_t table_length() const noexcept {
         return position() - table_;
     }
 
@@ -900,12 +964,13 @@ private:
 
         const auto length = table_length();
         check_length(detail::saturating_sum(length, detail::array_bytes(length, width(), byte_length, alignment)));
-        return detail::padding(length + width(), alignment);
+        return static_cast<std::size_t>(detail::padding(length + width(), alignment));
     }
 
     /// Writes the offset of the field being set, which starts at `position`
-    TAFLA_ALWAYS_INLINE void write_offset(std::size_t position) noexcept {
-        detail::store_slot(bytes_.data() + slots_ + std::size_t{set_} * width(), position - table_, offset_type_);
+    TAFLA_ALWAYS_INLINE void write_offset(std::uint64_t position) noexcept {
+        detail::store_slot(bytes_.data() + slots_ + std::size_t{set_} * width(),
+                           static_cast<std::size_t>(position - table_), offset_type_);
     }
 
     /// Counts the field just written, which needs `alignment` from the
@@ -1096,7 +1161,7 @@ private:
         auto* at = bytes_.extend(size);
         detail::copy(at, builder.bytes_.data(), size);
         if (builder.sized_) {
-            detail::store_slot(at, builder.position(), builder.offset_type_);
+            detail::store_slot(at, static_cast<std::size_t>(builder.position()), builder.offset_type_);
         }
 
         for (const auto& segment : builder.segments_) {
@@ -1108,12 +1173,12 @@ private:
     /// Makes room, after the first of a vector's `count` items wrote `first`
     /// bytes, for the others: as many bytes each as the first's, so that
     /// items alike, as a vector's usually are, grow the bytes at most once,
-    /// but for no more than the table's offsets address. A first item much
-    /// longer than the others leaves room unused until the builder is
-    /// destroyed.
+    /// but for no more than `kItemsRoom`, so that a first item far longer
+    /// than the others leaves little room unused, and the bytes grow past it
+    /// twofold as they would anyway
     void reserve_items_like(std::size_t first, std::size_t count) {
         const auto like_first = detail::saturating_product(count - 1, first);
-        bytes_.reserve_more(static_cast<std::size_t>((std::min<std::uint64_t>)(like_first, max_value(offset_type_))));
+        bytes_.reserve_more(static_cast<std::size_t>((std::min<std::uint64_t>)(like_first, kItemsRoom)));
     }
 
     /// Starts a table of `fields` fields in place, whose header of `header`
@@ -1145,13 +1210,13 @@ private:
         std::size_t from = 0;
         for (const auto& segment : segments_) {
             const auto before = segment.at - from;
-            detail::copy(to, bytes_.data() + from, before);
+            detail::copy_short(to, bytes_.data() + from, before);
             to += before;
             detail::copy(to, segment.data, segment.size);
             to += segment.size;
             from = segment.at;
         }
-        detail::copy(to, bytes_.data() + from, bytes_.size() - from);
+        detail::copy_short(to, bytes_.data() + from, bytes_.size() - from);
     }
 
     detail::GrowingBytes bytes_;
@@ -1164,10 +1229,10 @@ private:
     std::vector<Owner> owned_;
     /// The bytes of the segments, by which the table's positions are past
     /// the builder's bytes
-    std::size_t shift_ = 0;
+    std::uint64_t shift_ = 0;
     /// The position of the table being written, which its offsets count
     /// from: 0 for the builder's own
-    std::size_t table_ = 0;
+    std::uint64_t table_ = 0;
     /// The position in the builder's bytes of that table's first offset
     std::size_t slots_ = 0;
     /// The number of fields that the table being written holds, which a
@@ -1512,7 +1577,7 @@ TAFLA_ALWAYS_INLINE void TableBuilder::set_table(std::size_t fields, Fill&& fill
         const auto start = table_;
         const auto alignment = alignment_;
         restore(saved.counters);
-        const std::size_t padding = detail::padding(start - table_, alignment);
+        const auto padding = static_cast<std::size_t>(detail::padding(start - table_, alignment));
         check_length(detail::saturating_sum(table_length(), padding));
 
         if (padding != 0) [[unlikely]] {
@@ -1551,7 +1616,9 @@ void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill
             check_filled();
             restore(saved.counters);
 
-            detail::store_slot(bytes_.data() + ends + index * width(), position() - vector, offset_type_);
+            // Within the offsets once the vector is checked, or discarded
+            detail::store_slot(bytes_.data() + ends + index * width(), static_cast<std::size_t>(position() - vector),
+                               offset_type_);
 
             if (index == 0 && count > 1) {
                 reserve_items_like(bytes_.size() - item_start, count);
@@ -1617,7 +1684,7 @@ inline void TableBuilder::set_table(NestedTable table, Alignment alignment) {
     check_room();
 
     // Padded from the table's length, unlike an array, since it has no count
-    const std::size_t padding = detail::padding(table_length(), alignment);
+    const auto padding = static_cast<std::size_t>(detail::padding(table_length(), alignment));
     check_length(detail::saturating_sum(table_length(), detail::saturating_sum(padding, table.byte_length())));
 
     Room room;
@@ -1665,7 +1732,9 @@ inline void TableBuilder::set_vector(std::vector<NestedTable> items) {
 
         for (std::size_t index = 0; index < items.size(); ++index) {
             append_nested(items[index]);
-            detail::store_slot(bytes_.data() + ends + index * width(), position() - vector, offset_type_);
+            // Within the offsets once the vector is checked, or discarded
+            detail::store_slot(bytes_.data() + ends + index * width(), static_cast<std::size_t>(position() - vector),
+                               offset_type_);
         }
     } catch (...) {
         truncate(saved);

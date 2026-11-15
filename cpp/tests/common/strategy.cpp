@@ -164,9 +164,9 @@ rc::Gen<std::string> strings(std::size_t characters) {
 
 namespace {
 
-/// The types of the scalars of a struct, of one to four
-rc::Gen<std::vector<ScalarType>> struct_scalar_types() {
-    return rc::gen::mapcat(rc::gen::inRange<std::size_t>(1, 5), [](std::size_t count) {
+/// The types of the scalars of a struct, of `min` to `max`
+rc::Gen<std::vector<ScalarType>> struct_scalar_types(std::size_t min = 1, std::size_t max = 4) {
+    return rc::gen::mapcat(rc::gen::inRange<std::size_t>(min, max + 1), [](std::size_t count) {
         const std::vector<ScalarType> types(std::begin(kScalarTypes), std::end(kScalarTypes));
         return rc::gen::container<std::vector<ScalarType>>(count, rc::gen::elementOf(types));
     });
@@ -183,9 +183,9 @@ rc::Gen<std::vector<Field>> struct_scalars(const std::vector<ScalarType>& types)
     });
 }
 
-/// Structs of one to four scalars of any types
-rc::Gen<Field> struct_field() {
-    return rc::gen::mapcat(struct_scalar_types(), [](const std::vector<ScalarType>& types) {
+/// Structs of `min` to `max` scalars of any types, one to four by default
+rc::Gen<Field> struct_field(std::size_t min = 1, std::size_t max = 4) {
+    return rc::gen::mapcat(struct_scalar_types(min, max), [](const std::vector<ScalarType>& types) {
         return rc::gen::map(struct_scalars(types),
                             [](std::vector<Field> scalars) { return Field{Struct{std::move(scalars)}}; });
     });
@@ -206,15 +206,17 @@ rc::Gen<Field> long_array(rc::Gen<T> values) {
     return fields_of(vectors(128 / sizeof(T), 1024 / sizeof(T), std::move(values)));
 }
 
-/// Arrays, strings and arrays of structs of up to about a kilobyte, across
-/// the 256 bytes from which `TableBuilder` keeps a value where it is, rather
-/// than copying it when it's set
+/// Arrays, strings, structs and arrays of structs of up to about a
+/// kilobyte, across the 256 bytes from which `TableBuilder` keeps a value
+/// where it is, rather than copying it when it's set: a struct of 64 to 160
+/// scalars, of 4.2 bytes on average, is about 270 to 670 bytes
 rc::Gen<Field> long_value() {
     return rc::gen::oneOf(long_array(integers<std::int8_t>()), long_array(integers<std::uint8_t>()),
                           long_array(integers<std::int16_t>()), long_array(integers<std::uint16_t>()),
                           long_array(integers<std::int32_t>()), long_array(integers<std::uint32_t>()),
                           long_array(integers<std::int64_t>()), long_array(integers<std::uint64_t>()),
-                          long_array(float32()), long_array(float64()), fields_of(strings(256)), struct_array(48));
+                          long_array(float32()), long_array(float64()), fields_of(strings(256)), struct_field(64, 160),
+                          struct_array(48));
 }
 
 /// Scalars, arrays, strings and structs, which hold values rather than tables
