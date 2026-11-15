@@ -52,8 +52,11 @@ public final class TableBuilder {
      */
     private static final int MAX_ITEM_ROOM = 64 * 1024;
 
-    /** The segments that a builder makes room for with its first */
-    private static final int INITIAL_SEGMENTS = 4;
+    /**
+     * The number of segments kept in the builder's fields, which escape analysis removes along with
+     * the builder, after which they go in arrays
+     */
+    private static final int FIELD_SEGMENTS = 4;
 
     private static final String WRITING_IN_PLACE = "The table can't be written while a fill writes a table in it";
 
@@ -98,12 +101,23 @@ public final class TableBuilder {
 
     // The segments: runs that go between the buffer's bytes, each an array of values of a type, and
     // its place, which holds the index in the buffer that it goes before in its low 32 bits, and its
-    // type in the high ones. Keeping the first 4 in fields, which escape analysis removes along with
-    // the builder, took as long on every benchmark row, and saved 80 bytes on those with segments.
+    // type in the high ones. The first 4 are kept in fields, which escape analysis removes along
+    // with a builder, where arrays aren't removed. With every segment in arrays, the benchmarks'
+    // document of 100 rows took 158 ns rather than 121 with its columns nested from a builder, and
+    // 106 rather than 115 with its columns written in place.
 
     private int segmentCount;
-    private Object[] segmentValues = NO_OBJECTS;
-    private long[] segmentPlaces = NO_PLACES;
+    private Object values0 = NO_VALUES;
+    private Object values1 = NO_VALUES;
+    private Object values2 = NO_VALUES;
+    private Object values3 = NO_VALUES;
+    private long place0;
+    private long place1;
+    private long place2;
+    private long place3;
+    /** The segments after the first 4 */
+    private Object[] moreValues = NO_OBJECTS;
+    private long[] morePlaces = NO_PLACES;
 
     // The table whose fields are being set: the builder's own, or one that a fill writes in place
 
@@ -842,8 +856,8 @@ public final class TableBuilder {
         }
 
         for (int i = 0; i < table.segmentCount; i++) {
-            var place = table.segmentPlaces[i];
-            var values = table.segmentValues[i];
+            var place = table.placeOf(i);
+            var values = table.valuesOf(i);
             addSegment(at + atOf(place), typeOf(place), values, byteLengthOf(typeOf(place), values));
         }
     }
@@ -863,27 +877,68 @@ public final class TableBuilder {
      * bytes so far, which a setter checked
      */
     private void addSegment(int at, int type, Object values, int byteLength) {
-        var segment = segmentCount;
-        if (segment == segmentValues.length) {
-            growSegments();
-        }
-
-        segmentValues[segment] = values;
-        segmentPlaces[segment] = (long) type << 32 | at;
-        segmentCount = segment + 1;
+        setSegment(segmentCount++, values, (long) type << 32 | at);
         position += byteLength;
     }
 
-    /** Copies the segments into arrays with room for twice as many, or {@link #INITIAL_SEGMENTS} */
-    private void growSegments() {
-        var length = Math.max(INITIAL_SEGMENTS, 2 * segmentValues.length);
-        segmentValues = Arrays.copyOf(segmentValues, length);
-        segmentPlaces = Arrays.copyOf(segmentPlaces, length);
+    private Object valuesOf(int segment) {
+        return switch (segment) {
+            case 0 -> values0;
+            case 1 -> values1;
+            case 2 -> values2;
+            case 3 -> values3;
+            default -> moreValues[segment - FIELD_SEGMENTS];
+        };
+    }
+
+    private long placeOf(int segment) {
+        return switch (segment) {
+            case 0 -> place0;
+            case 1 -> place1;
+            case 2 -> place2;
+            case 3 -> place3;
+            default -> morePlaces[segment - FIELD_SEGMENTS];
+        };
+    }
+
+    private void setSegment(int segment, Object values, long place) {
+        switch (segment) {
+            case 0 -> {
+                values0 = values;
+                place0 = place;
+            }
+            case 1 -> {
+                values1 = values;
+                place1 = place;
+            }
+            case 2 -> {
+                values2 = values;
+                place2 = place;
+            }
+            case 3 -> {
+                values3 = values;
+                place3 = place;
+            }
+            default -> setMoreSegment(segment - FIELD_SEGMENTS, values, place);
+        }
+    }
+
+    private void setMoreSegment(int index, Object values, long place) {
+        if (index == moreValues.length) {
+            var length = Math.max(FIELD_SEGMENTS, 2 * index);
+            moreValues = Arrays.copyOf(moreValues, length);
+            morePlaces = Arrays.copyOf(morePlaces, length);
+        }
+
+        moreValues[index] = values;
+        morePlaces[index] = place;
     }
 
     /** Releases the values of the segments from {@code segment}, which may be large arrays */
     private void clearSegments(int segment) {
-        Arrays.fill(segmentValues, segment, segmentCount, NO_VALUES);
+        for (int i = segment; i < segmentCount; i++) {
+            setSegment(i, NO_VALUES, 0);
+        }
         segmentCount = segment;
     }
 
@@ -914,13 +969,13 @@ public final class TableBuilder {
         var from = 0;
         var to = at;
         for (int i = 0; i < segmentCount; i++) {
-            var place = segmentPlaces[i];
+            var place = placeOf(i);
             var run = atOf(place) - from;
             System.arraycopy(buffer, from, bytes, to, run);
             from = atOf(place);
             to += run;
 
-            to = writeSegment(typeOf(place), segmentValues[i], bytes, to);
+            to = writeSegment(typeOf(place), valuesOf(i), bytes, to);
         }
         System.arraycopy(buffer, from, bytes, to, length - from);
 
@@ -1007,7 +1062,7 @@ public final class TableBuilder {
         System.arraycopy(buffer, startLength, buffer, startLength + distance, length - startLength);
         Arrays.fill(buffer, startLength, startLength + distance, (byte) 0);
         for (int i = startSegments; i < segmentCount; i++) {
-            segmentPlaces[i] += distance;
+            setSegment(i, valuesOf(i), placeOf(i) + distance);
         }
 
         length += distance;

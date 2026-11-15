@@ -93,14 +93,15 @@
  *     {@code TableBuilder}'s bytes into its parent, apart from its arrays and strings of 256 bytes
  *     or more, which are copied once, when the outermost table is written. A table nested as bytes
  *     was built into an array of its own, its long arrays copied into it, and is copied again, as
- *     is a builder written already. A vector of 100 tables that each nest
- *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 54 µs and 108 µs.</li>
+ *     is a builder written already. As the fastest of 4 rounds of JMH's iterations, a vector of
+ *     100 tables that each nest another took 3.6 µs to build from builders and 4.0 µs from bytes,
+ *     and a table nesting 100,000 rows of three columns took 42 µs and 90 µs.</li>
  *   <li><b>Write nested tables in place.</b> {@code setTable(int, Consumer)} and
  *     {@code setVector(int, int, ObjIntConsumer)} write a nested table, or each item of a vector,
  *     among its parent's fields, without a builder of its own. The vector of 100 tables that each
- *     nest another took 12% less time so than from a builder per item, as the fastest of JMH's
- *     iterations, and allocated 13.0 KB rather than 29.1 KB.</li>
+ *     nest another took 1.8 µs so, half as long as from a builder per table, and allocated 8.0 KB
+ *     rather than 62.0 KB, mostly the 128-byte buffers that each of the 200 builders starts
+ *     with.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>

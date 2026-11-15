@@ -73,14 +73,26 @@ repository's first commits, for code built from its source before the release.
   bytes rather than 1,928.
 - `TableBuilder` writes each field, and its offset, when it's set, into bytes
   that grow, and `bytes()` copies them into the table, rather than recording
-  each field and writing them all in `bytes()`. Arrays, strings and tables
-  of 256 bytes or more are still copied once, by `bytes()`, and a nested
-  builder is copied when it's nested. The API, the bytes and the exceptions
-  are the same, and arrays still mustn't change before `bytes()`. In the
-  benchmarks, the record took 19.5 ns rather than 38.2, the vector of 100
-  nested tables 1.75 µs rather than 3.90 and 8.0 KB rather than 13.0, and the
-  document of 100 rows 0.113 µs rather than 0.128. The array of 100 structs
-  took 147 ns rather than 143, and the document of 100,000 rows 1.4% longer.
+  each field and writing them all in `bytes()`. The API and the bytes are the
+  same. Arrays, strings and tables shorter than 256 bytes are now read when
+  they're set, and longer ones still when `bytes()` runs, and a nested
+  builder is read when it's nested, so arrays still mustn't change before
+  `bytes()`. As the fastest of 4 rounds, the benchmarks' record took 19.4 ns
+  rather than 37.8, the vector of 100 nested tables 1.75 µs rather than 3.85
+  and 8.0 KB rather than 13.0, and the document of 100 rows 0.113 µs rather
+  than 0.130. Three cases are slower:
+  - the array of 100 structs, by 1% to 3%, allocating 144 bytes more for the
+    builder's buffer;
+  - the document of 100,000 rows, by 1.4% to 1.6%, for a reason not found;
+  - a document of 100 rows whose columns are nested as bytes, by 18%.
+
+  A vector of tables nested from a builder per table took 19% less time but
+  allocated 62 KB rather than 29 KB, mostly the 128-byte buffer that each
+  builder starts with.
+- `TableBuilder` rejects a builder nested while a fill writes a table in it
+  with an `IllegalArgumentException`, rather than writing a table that the
+  parent's `bytes()` then failed on. The message of `bytes()` in that state
+  says that a fill writes the table, rather than records it.
 
 ### Removed
 
