@@ -19,6 +19,10 @@ final class Elements {
     static final VarHandle FLOAT32 = MethodHandles.byteArrayViewVarHandle(float[].class, ByteOrder.LITTLE_ENDIAN);
     static final VarHandle FLOAT64 = MethodHandles.byteArrayViewVarHandle(double[].class, ByteOrder.LITTLE_ENDIAN);
 
+    static {
+        loadCopySignature();
+    }
+
     private Elements() {}
 
     static void setInt8(byte[] bytes, int position, byte[] values) {
@@ -70,5 +74,24 @@ final class Elements {
     private static java.nio.ByteBuffer view(byte[] bytes, int position, int byteLength) {
         // A typed view starts at the buffer's position, which wrap() sets to the offset
         return java.nio.ByteBuffer.wrap(bytes, position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
+    }
+
+    /**
+     * Loads {@code jdk.internal.foreign.MemorySessionImpl}, a class in the signature of the JDK's
+     * {@code ScopedMemoryAccess.copyMemory()}, in which the bulk copies of NIO's typed views end,
+     * those of {@link ByteBuffer}'s array getters too. C2 inlines that copy into a caller only if
+     * the class is loaded when it compiles the caller. HotSpot loads it only when it queues the
+     * copy itself for compilation, which grows hot as early as its callers do. A caller compiled
+     * before then calls the copy, and allocates the two views, for every array, as
+     * {@link TableBuilder}'s writes of arrays did in every run of the benchmarks' document of 100
+     * rows. Loading the class first makes every bulk copy inline, in whatever order they compile.
+     * A JDK without the class leaves the copies as they are.
+     */
+    private static void loadCopySignature() {
+        try {
+            Class.forName("jdk.internal.foreign.MemorySessionImpl", false, null);
+        } catch (ClassNotFoundException exception) {
+            // A JDK whose copy has another signature
+        }
     }
 }
