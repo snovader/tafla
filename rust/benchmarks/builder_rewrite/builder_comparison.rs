@@ -1,15 +1,14 @@
 //! Times main's `TableBuilder` against the rewrite, and its variants, on
-//! the comparison's rows that build tables: the record, the documents of
-//! 100 and 100,000 rows, the vector of 100 nested tables, in place and from
-//! builders, the array of 100 structs, and tables of 32 medium and 32 short
-//! values.
+//! the rows of `builders::for_each_row()`: the comparison's rows that build
+//! tables, the vector of 100 nested tables from builders, tables of 32
+//! medium and 32 short values, and the shapes of the second review.
 //!
 //! Every builder writes each row in a loop of its own, after a check that it
-//! writes the tafla codec's bytes, which the codec reads back, or main's
-//! builder's bytes of the medium values. Rounds run
-//! the builders of each row in rotating order, reversed every other round,
-//! after warm-up rounds, and the fastest round's time per call is reported,
-//! with the median. Each builder runs twice, as an A/A pair.
+//! writes main's builder's bytes, and of the comparison's rows, the tafla
+//! codec's bytes, which the codec reads back. Rounds run the builders of
+//! each row in rotating order, reversed every other round, after warm-up
+//! rounds, and the fastest round's time per call is reported, with the
+//! median. Main's builder and the rewrite run twice, as A/A pairs.
 //!
 //! Options: `--rounds <n>` (30), `--warm-up <n>` (5) and `--sample-ms <n>`
 //! (10), the time that each builder's loop takes in each round.
@@ -18,34 +17,10 @@ use std::hint::black_box;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use tafla_benchmarks::builders::{Builder, Inputs, Rows, Visit, for_each_builder, for_each_row};
 use tafla_benchmarks::codec::{Error, Workload};
 use tafla_benchmarks::codecs::Tafla;
-use tafla_benchmarks::builders::{self, Builder, Main, Medium, Visit, for_each_builder};
-use tafla_benchmarks::workloads::{
-    self, Document, DocumentShape, LIST_ITEMS, List, ListShape, RECORD, Record, RecordShape, Shape,
-    StructsShape,
-};
-
-const ROWS: [&str; 8] = [
-    "record: serialize",
-    "document of 100 rows: serialize",
-    "document of 100,000 rows: serialize",
-    "vector of 100 nested tables: serialize",
-    "array of 100 structs: serialize",
-    "vector of 100 nested tables from builders: serialize",
-    "table of 32 medium values: serialize",
-    "table of 32 short values: serialize",
-];
-
-/// The workloads' inputs, which every timing loop borrows
-struct Inputs {
-    record: Record<'static>,
-    small: Document<'static>,
-    large: Document<'static>,
-    list: List,
-    medium: Medium,
-    short: Medium,
-}
+use tafla_benchmarks::workloads::{DocumentShape, ListShape, RecordShape, Shape, StructsShape};
 
 /// A loop that calls a builder's function on a row's input, as many times
 /// as it's given, and returns how long that took
@@ -69,18 +44,13 @@ struct Options {
 
 fn main() -> Result<(), Error> {
     let options = options()?;
-    let inputs: &'static Inputs = Box::leak(Box::new(Inputs {
-        record: RECORD,
-        small: workloads::document(100),
-        large: workloads::document(100_000),
-        list: workloads::list(LIST_ITEMS),
-        medium: builders::medium(),
-        short: builders::short(),
-    }));
+    let inputs: &'static Inputs = Box::leak(Box::new(Inputs::new()));
 
     println!("{}", load_average());
     let mut timers = Timers {
         inputs,
+        rows: Vec::new(),
+        expected: Vec::new(),
         added: Vec::new(),
         error: None,
     };
@@ -88,6 +58,8 @@ fn main() -> Result<(), Error> {
     if let Some(error) = timers.error {
         return Err(error);
     }
+    let rows = timers.rows;
+    drop(timers.expected);
     let mut timers = timers.added;
 
     for timer in &mut timers {
@@ -95,7 +67,7 @@ fn main() -> Result<(), Error> {
     }
 
     for round in 0..options.warm_up + options.rounds {
-        for row in 0..ROWS.len() {
+        for row in 0..rows.len() {
             let mut order: Vec<usize> = (0..timers.len())
                 .filter(|&index| timers[index].row == row)
                 .collect();
@@ -116,15 +88,18 @@ fn main() -> Result<(), Error> {
     }
 
     println!("{}", load_average());
-    print_report(&mut timers);
+    print_report(&rows, &mut timers);
 
     Ok(())
 }
 
 /// Adds each builder's loops, after checking that it writes each row as
-/// `TableBuilder` does
+/// main's builder does, which it visits first
 struct Timers {
     inputs: &'static Inputs,
+    rows: Vec<&'static str>,
+    /// Main's bytes of each row
+    expected: Vec<Vec<u8>>,
     added: Vec<Timer>,
     error: Option<Error>,
 }
@@ -137,26 +112,53 @@ impl Visit for Timers {
             return;
         }
 
-        let inputs = self.inputs;
-        let loops: [Loop; 8] = [
-            timing_loop(&inputs.record, T::record),
-            timing_loop(&inputs.small, T::document),
-            timing_loop(&inputs.large, T::document),
-            timing_loop(&inputs.list, T::list),
-            timing_loop(&inputs.list, T::structs),
-            timing_loop(&inputs.list, T::builders),
-            timing_loop(&inputs.medium, T::medium),
-            timing_loop(&inputs.short, T::medium),
-        ];
-        for (row, run) in loops.into_iter().enumerate() {
-            self.added.push(Timer {
-                builder: name,
-                row,
-                run,
-                iterations: 0,
-                times: Vec::new(),
-            });
+        let mut adder = Adder {
+            builder: name,
+            row: 0,
+            timers: self,
+        };
+        for_each_row::<T>(self.inputs, &mut adder);
+    }
+}
+
+/// Adds a builder's loop of each row
+struct Adder<'t> {
+    builder: &'static str,
+    row: usize,
+    timers: &'t mut Timers,
+}
+
+impl Rows for Adder<'_> {
+    fn row<I, F>(&mut self, name: &'static str, input: &'static I, write: F)
+    where
+        I: 'static,
+        F: Fn(&I) -> Result<Vec<u8>, Error> + Copy + 'static,
+    {
+        let timers = &mut *self.timers;
+        match write(input) {
+            Ok(bytes) if self.row == timers.expected.len() => {
+                timers.rows.push(name);
+                timers.expected.push(bytes);
+            }
+            Ok(bytes) if bytes == timers.expected[self.row] => {}
+            Ok(_) => {
+                let error = format!("{}: wrote other bytes of the {name}", self.builder);
+                timers.error.get_or_insert_with(|| error.into());
+            }
+            Err(error) => {
+                let error = format!("{}: {name}: {error}", self.builder);
+                timers.error.get_or_insert_with(|| error.into());
+            }
         }
+
+        timers.added.push(Timer {
+            builder: self.builder,
+            row: self.row,
+            run: timing_loop(input, write),
+            iterations: 0,
+            times: Vec::new(),
+        });
+        self.row += 1;
     }
 }
 
@@ -175,8 +177,8 @@ where
     })
 }
 
-/// Checks that the builder writes the tafla codec's bytes of every row, and
-/// that the codec reads them back
+/// Checks that the builder writes the tafla codec's bytes of the
+/// comparison's rows, and that the codec reads them back
 fn check<T: Builder>(inputs: &Inputs) -> Result<(), Error> {
     let record: Vec<u8> = Workload::<RecordShape>::serialize(Tafla, &inputs.record)?;
     same::<RecordShape>(&T::record(&inputs.record)?, &record)?;
@@ -191,14 +193,7 @@ fn check<T: Builder>(inputs: &Inputs) -> Result<(), Error> {
     same::<StructsShape>(
         &T::structs(&inputs.list)?,
         &Workload::<StructsShape>::serialize(Tafla, &inputs.list)?,
-    )?;
-
-    for values in [&inputs.medium, &inputs.short] {
-        if T::medium(values)? != Main::medium(values)? {
-            return Err("wrote other bytes of the medium or short values".into());
-        }
-    }
-    Ok(())
+    )
 }
 
 fn same<S: Shape>(bytes: &[u8], expected: &[u8]) -> Result<(), Error>
@@ -233,8 +228,8 @@ fn calibrate(run: &mut Loop, sample: Duration) -> u64 {
     }
 }
 
-fn print_report(timers: &mut [Timer]) {
-    for (row, name) in ROWS.iter().enumerate() {
+fn print_report(rows: &[&str], timers: &mut [Timer]) {
+    for (row, name) in rows.iter().enumerate() {
         println!("\n{name}: ns per call, fastest and median of each builder's rounds");
 
         let reference = fastest_of(timers, row, "main");

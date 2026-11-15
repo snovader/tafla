@@ -8,14 +8,14 @@ and in it:
 
 - main's `rust/core/src/table_builder.rs`, from the revision given (7238a1b,
   the main that the rewrite was measured against), as `tafla::main_builder`;
-- copies of the rewrite with one change each, as
-  `tafla::rewrite_no_reservation`, without the room that a vector in place
-  makes for its items after the first, `tafla::rewrite_segments_128` and
+- copies of the rewrite with a change or two each, as
+  `tafla::rewrite_no_segment_room`, without the room that its segments make
+  for more past the first four, `tafla::rewrite_segments_128` and
   `tafla::rewrite_segments_64`, which keep runs of 128 or 64 bytes or more
-  as segments rather than 256, `tafla::rewrite_256_twofold`, whose bytes
-  start with room for 256 and grow twofold, rather than with room for each
-  field and fourfold while they're short, and `tafla::rewrite_boxed`,
-  with an owned builder boxed in a `NestedTable`;
+  as segments rather than 256, and with 64, `..._64_twofold`, whose bytes
+  grow twofold rather than fourfold while they're short,
+  `..._64_room_16`, whose bytes start with room for 16 bytes a field rather
+  than 64, and `..._64_room_16_twofold`, with both;
 - the `main-builder` feature of the runtime and the benchmarks that builds
   them, and this directory's binaries and differential test.
 
@@ -33,47 +33,27 @@ HERE = pathlib.Path(__file__).resolve().parent
 #: `table_builder.rs`'s text, or (file, old, new) of a file of its
 #: submodules, each of which must be found once
 VARIANTS = {
-    "rewrite_no_reservation": [
-        (
-            """            } else if index == 0 {
-                builder.reserve_items_like(builder.bytes.len() - item.bytes, count - 1);
-            }""",
-            """            }""",
-        ),
-        ("    fn reserve_items_like(", "    #[allow(dead_code)]\n    fn reserve_items_like("),
+    'rewrite_no_segment_room': [
+        ('segments.rs', '            if self.others.capacity() == 0 {\n                self.others.reserve(more);\n            }\n', '            let _ = more;\n'),
     ],
-    "rewrite_segments_128": [
-        (
-            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };",
-            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };",
-        ),
+    'rewrite_segments_128': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 128 };'),
     ],
-    "rewrite_segments_64": [
-        (
-            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };",
-            "const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };",
-        ),
+    'rewrite_segments_64': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
     ],
-    "rewrite_256_twofold": [
-        ("bytes.rs", "const ROOM_FOR_A_FIELD: usize = 64;", "const ROOM_FOR_A_FIELD: usize = 0;"),
-        ("bytes.rs", "const FOURFOLD_BELOW: usize = 64 * 1024;", "const FOURFOLD_BELOW: usize = 0;"),
+    'rewrite_segments_64_twofold': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
+        ('bytes.rs', 'const FOURFOLD_BELOW: usize = 64 * 1024;', 'const FOURFOLD_BELOW: usize = 0;'),
     ],
-    "rewrite_boxed": [
-        ("    OwnedBuilder(TableBuilder<'a>),", "    OwnedBuilder(Box<TableBuilder<'a>>),"),
-        (
-            "Nested::OwnedBuilder(builder) => self.append_owned_builder(builder),",
-            "Nested::OwnedBuilder(builder) => self.append_owned_builder(*builder),",
-        ),
-        (
-            "        Self(Nested::OwnedBuilder(builder))",
-            "        Self(Nested::OwnedBuilder(Box::new(builder)))",
-        ),
-        ("    const fn alignment(&self) -> Alignment {", "    fn alignment(&self) -> Alignment {"),
-        ("    const fn aligned(mut self,", "    fn aligned(mut self,"),
-        (
-            "    const fn check_complete(&self) -> Result<(), BuildError> {\n        match",
-            "    fn check_complete(&self) -> Result<(), BuildError> {\n        match",
-        ),
+    'rewrite_segments_64_room_16': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
+    ],
+    'rewrite_segments_64_room_16_twofold': [
+        ('const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };', 'const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 64 };'),
+        ('bytes.rs', 'const ROOM_FOR_A_FIELD: usize = 64;', 'const ROOM_FOR_A_FIELD: usize = 16;'),
+        ('bytes.rs', 'const FOURFOLD_BELOW: usize = 64 * 1024;', 'const FOURFOLD_BELOW: usize = 0;'),
     ],
 }
 

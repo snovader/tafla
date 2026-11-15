@@ -972,7 +972,7 @@ fn new_table_bytes(
 
 /// Copies `value` to the start of `bytes`, if they're as long
 #[inline]
-pub fn set_le<const N: usize>(bytes: &mut [u8], value: [u8; N]) -> bool {
+fn set_le<const N: usize>(bytes: &mut [u8], value: [u8; N]) -> bool {
     bytes
         .first_chunk_mut::<N>()
         .map(|slot| *slot = value)

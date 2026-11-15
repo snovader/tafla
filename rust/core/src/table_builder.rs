@@ -11,7 +11,7 @@ use std::{borrow::Cow, mem};
 use bytes::Bytes;
 use segments::{Run, Segment, Segments};
 
-use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, table_writer::set_le};
+use crate::{Alignment, BuildError, Element, OffsetType, TableLayout};
 
 /// The shortest run of a table that a builder keeps as a segment, rather
 /// than copying it into its bytes when it's set: an array's elements, a
@@ -27,6 +27,10 @@ const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };
 /// The most room that a vector written in place makes for its items after
 /// its first, each as long as the first
 const MOST_ROOM_FOR_ITEMS: usize = 64 * 1024;
+
+/// The padding before a table nested in place, which is less than its
+/// alignment, when it's kept as a segment
+static PADDING: [u8; 7] = [0; 7];
 
 /// Builds a table, which a `ByteBuffer` reads back.
 ///
@@ -62,6 +66,9 @@ pub struct TableBuilder<'a> {
     /// The table's bytes but for its segments
     bytes: Bytes,
     segments: Segments<'a>,
+    /// Whether a table nested in place was padded with a segment before
+    /// segments that it holds, which `to_bytes()` then sorts
+    unordered: bool,
     /// The bytes that the table holds besides the builder's own: its
     /// segments', and those of the items that a vector in place dropped once
     /// it made the table too long. The table's length so far is
@@ -202,6 +209,7 @@ impl<'a> TableBuilder<'a> {
         Self {
             bytes,
             segments: Segments::new(),
+            unordered: false,
             shift: 0,
             current: Counters {
                 table: 0,
@@ -427,7 +435,7 @@ impl<'a> TableBuilder<'a> {
     /// has no header and this table's offset type, and is padded as
     /// [`TableBuilder::set_table()`] pads a builder: to start at a multiple
     /// of the largest alignment of its fields. It's written where this table
-    /// ends, and moved forward by that padding once its fields are set.
+    /// ends, and padded once its fields are set.
     ///
     /// The builder is borrowed while `fill` runs, which sets the table's
     /// fields only through the `InPlaceTable`.
@@ -467,7 +475,7 @@ impl<'a> TableBuilder<'a> {
         let padding = padding_at(table.alignment, table.table - builder.current.table);
         builder.check_field(padding as u64)?;
         if padding != 0 {
-            builder.move_by(padding, checkpoint.saved);
+            builder.pad_in_place(padding, checkpoint.saved);
         }
 
         builder.write_offset(table.table + padding as u64);
@@ -482,11 +490,9 @@ impl<'a> TableBuilder<'a> {
     /// sets the fields of item `index`, for each in order. It writes the
     /// bytes that [`TableBuilder::set_vector()`] writes from a builder per
     /// item, without their allocations. Items aren't padded, as
-    /// `set_vector()` doesn't pad them. After the first item, it makes room
-    /// for the others, each as long as the first, up to 64 KiB, if it can.
-    /// Once the items make the table too long, those that follow still
-    /// run, as they would otherwise, but the builder keeps only their
-    /// lengths, for the error.
+    /// `set_vector()` doesn't pad them. `fill` runs for every item, even
+    /// once the items make the table too long, which the vector then fails
+    /// with.
     ///
     /// ```
     /// use tafla::{BuildError, TableBuilder, TableLayout};
@@ -556,6 +562,9 @@ impl<'a> TableBuilder<'a> {
 
             builder.current = parent;
             builder.write_item_end(ends, index, vector);
+            // Once the table is too long, the items that follow, which fail
+            // with it, are kept only as lengths. After the first item, there's
+            // room for the others, up to 64 KiB, each as long.
             if builder.table_length() > max_length {
                 builder.keep_length_only(item);
             } else if index == 0 {
@@ -639,12 +648,15 @@ impl<'a> TableBuilder<'a> {
         self.bytes.push(builder.bytes.as_slice());
         builder.write_length(&mut self.bytes.as_mut_slice()[start..]);
 
-        for segment in builder.segments.iter() {
-            self.segments.push(Segment {
+        let count = builder.segments.len();
+        for (index, segment) in builder.segments.iter().enumerate() {
+            let segment = Segment {
                 at: start + segment.at,
                 run: segment.run.reborrow(),
-            });
+            };
+            self.segments.push(segment, count - index);
         }
+        self.unordered |= builder.unordered;
         self.shift += builder.shift;
     }
 
@@ -654,12 +666,15 @@ impl<'a> TableBuilder<'a> {
         self.bytes.push(builder.bytes.as_slice());
         builder.write_length(&mut self.bytes.as_mut_slice()[start..]);
 
-        for segment in builder.segments {
-            self.segments.push(Segment {
+        let count = builder.segments.len();
+        for (index, segment) in builder.segments.into_iter().enumerate() {
+            let segment = Segment {
                 at: start + segment.at,
                 run: segment.run,
-            });
+            };
+            self.segments.push(segment, count - index);
         }
+        self.unordered |= builder.unordered;
         self.shift += builder.shift;
     }
 
@@ -675,13 +690,16 @@ impl<'a> TableBuilder<'a> {
     }
 
     /// Keeps a run of `byte_length` bytes as a segment, at the end of the
-    /// bytes so far
+    /// bytes so far, with room past the first few segments for one for each
+    /// field left to set
     #[inline(always)]
     fn push_segment(&mut self, run: Run<'a>, byte_length: usize) {
-        self.segments.push(Segment {
+        let segment = Segment {
             at: self.bytes.len(),
             run,
-        });
+        };
+        let fields_left = self.current.fields - self.current.set;
+        self.segments.push(segment, fields_left as usize);
         self.shift += byte_length as u64;
     }
 
@@ -709,19 +727,32 @@ impl<'a> TableBuilder<'a> {
         };
     }
 
-    /// Moves the table written in place since `saved` forward by `padding`,
-    /// with its segments, and zeros the padding before it. A table of the
-    /// benchmarks never needs it, so it's out of line.
+    /// Pads the table written in place since `saved` with `padding` zeros
+    /// before it. A table of fewer bytes than a segment is moved forward,
+    /// with its segments. A longer one stays, and its padding is kept as a
+    /// segment before it, which `to_bytes()` sorts into place: moved, tables
+    /// nested in place one in another, each padded, would each be moved
+    /// again by every table that holds it. A table of the benchmarks never
+    /// needs padding, so it's out of line.
     #[cold]
     #[inline(never)]
-    fn move_by(&mut self, padding: usize, saved: Saved) {
+    fn pad_in_place(&mut self, padding: usize, saved: Saved) {
         let (start, end) = (saved.bytes, self.bytes.len());
-        self.bytes.push_zeros(padding);
-
-        let bytes = self.bytes.as_mut_slice();
-        bytes.copy_within(start..end, start + padding);
-        bytes[start..start + padding].fill(0);
-        self.segments.shift_from(saved.segments, padding);
+        if end - start < SEGMENT_BYTES {
+            self.bytes.push_zeros(padding);
+            let bytes = self.bytes.as_mut_slice();
+            bytes.copy_within(start..end, start + padding);
+            bytes[start..start + padding].fill(0);
+            self.segments.shift_from(saved.segments, padding);
+        } else {
+            let segment = Segment {
+                at: start,
+                run: Run::U8(Cow::Borrowed(&PADDING[..padding])),
+            };
+            self.unordered |= self.segments.len() > saved.segments;
+            self.segments.push(segment, 1);
+            self.shift += padding as u64;
+        }
     }
 
     /// Makes room, after a vector's first item wrote `first` bytes, for its
@@ -850,9 +881,26 @@ impl<'a> TableBuilder<'a> {
 
     /// Copies the table's bytes, with its segments in their places
     fn copy_into(&self, to: &mut Vec<u8>) {
+        if self.unordered {
+            let mut segments: Vec<_> = self.segments.iter().collect();
+            // A stable sort, which keeps a table's padding after the
+            // segments before the table, at the same byte
+            segments.sort_by_key(|segment| segment.at);
+            self.copy_with(segments, to);
+        } else {
+            self.copy_with(self.segments.iter(), to);
+        }
+    }
+
+    /// Copies the table's bytes, with `segments`, in order, in their places
+    #[inline]
+    fn copy_with<'s>(&self, segments: impl IntoIterator<Item = &'s Segment<'a>>, to: &mut Vec<u8>)
+    where
+        'a: 's,
+    {
         let bytes = self.bytes.as_slice();
         let mut from = 0;
-        for segment in self.segments.iter() {
+        for segment in segments {
             to.extend_from_slice(&bytes[from..segment.at]);
             segment.run.copy_into(to);
             from = segment.at;
@@ -1134,20 +1182,19 @@ fn push_slot(bytes: &mut Bytes, value: usize, offset_type: OffsetType) {
 }
 
 /// Writes an offset, item end or length into the slot at `at`, which the
-/// bytes hold, since the slots are written before their values. A value is
-/// at most the table's length, which the setters checked fits in the
-/// offsets, but for the item ends of a vector that makes its table too
-/// long, which then fails.
+/// bytes hold, since the slots are written before their values, and panics
+/// if they don't, rather than write a table without it. A value is at most
+/// the table's length, which the setters checked fits in the offsets, but
+/// for the item ends of a vector that makes its table too long, which then
+/// fails.
 #[allow(clippy::cast_possible_truncation)]
 #[inline(always)]
 fn write_slot(bytes: &mut [u8], at: usize, value: u64, offset_type: OffsetType) {
-    let slot = bytes.get_mut(at..).unwrap_or_default();
-    let written = match offset_type {
-        OffsetType::Uint8 => set_le(slot, [value as u8]),
-        OffsetType::Uint16 => set_le(slot, (value as u16).to_le_bytes()),
-        OffsetType::Uint32 => set_le(slot, (value as u32).to_le_bytes()),
-    };
-    debug_assert!(written, "a slot at {at} lies past the builder's bytes");
+    match offset_type {
+        OffsetType::Uint8 => bytes[at] = value as u8,
+        OffsetType::Uint16 => bytes[at..at + 2].copy_from_slice(&(value as u16).to_le_bytes()),
+        OffsetType::Uint32 => bytes[at..at + 4].copy_from_slice(&(value as u32).to_le_bytes()),
+    }
 }
 
 /// The padding that brings `offset` to a multiple of `alignment`. Only the

@@ -1,11 +1,12 @@
 //! Prints the allocations, and the bytes that they ask for, of each builder
 //! that `builder_comparison` times, per call of each row, counted by a global
 //! allocator that wraps the system's, as the `allocation` binary counts the
-//! codecs'. A reallocation counts as an allocation of its new size, and
-//! freeing isn't counted. Then it prints the most bytes that each builder
-//! held at once while it wrote an uneven vector in place, whose first item
-//! is long and the others empty, and a vector in place that makes a table of
-//! `uint16` offsets too long.
+//! codecs', and the most bytes that it held at once in a call. A
+//! reallocation counts as an allocation of its new size, and freeing isn't
+//! counted. Then it prints the most bytes that each builder held at once
+//! while it wrote an uneven vector in place, whose first item is long and
+//! the others empty, and a vector in place that makes a table of `uint16`
+//! offsets too long.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::hint::black_box;
@@ -13,10 +14,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tafla::{NestedTable, TableBuilder, main_builder};
 use tafla_benchmarks::builders::{
-    self, Builder, Medium, TOO_LONG_ITEMS, UNEVEN_ITEMS, UNEVEN_NAME, Visit, for_each_builder,
+    Builder, Inputs, Rows, TOO_LONG_ITEMS, UNEVEN_ITEMS, UNEVEN_NAME, Visit, for_each_builder,
+    for_each_row,
 };
 use tafla_benchmarks::codec::Error;
-use tafla_benchmarks::workloads::{self, Document, LIST_ITEMS, List, RECORD, Record};
 
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
@@ -29,18 +30,7 @@ static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 
 /// Calls of each row that the counts are divided among
-const CALLS: usize = 100;
-
-const ROWS: [&str; 8] = [
-    "record",
-    "document of 100 rows",
-    "document of 100,000 rows",
-    "vector of 100 nested tables",
-    "array of 100 structs",
-    "vector of 100 nested tables from builders",
-    "table of 32 medium values",
-    "table of 32 short values",
-];
+const CALLS: usize = 10;
 
 /// The system's allocator, which counts allocations and their bytes
 struct Counting;
@@ -97,45 +87,55 @@ fn peak<T>(call: impl FnOnce() -> T) -> usize {
     PEAK.load(Ordering::Relaxed) - before
 }
 
-struct Inputs {
-    record: Record<'static>,
-    small: Document<'static>,
-    large: Document<'static>,
-    list: List,
-    medium: Medium,
-    short: Medium,
-}
-
 /// The counts of each builder, per row
-struct Counts<'i> {
-    inputs: &'i Inputs,
-    rows: [Vec<String>; 8],
+struct Counts {
+    inputs: &'static Inputs,
+    rows: Vec<(&'static str, Vec<String>)>,
     peaks: Vec<String>,
 }
 
-impl Visit for Counts<'_> {
+impl Visit for Counts {
     fn visit<T: Builder>(&mut self, name: &'static str) {
-        let inputs = self.inputs;
-        let counts = [
-            counts(|| T::record(&inputs.record)),
-            counts(|| T::document(&inputs.small)),
-            counts(|| T::document(&inputs.large)),
-            counts(|| T::list(&inputs.list)),
-            counts(|| T::structs(&inputs.list)),
-            counts(|| T::builders(&inputs.list)),
-            counts(|| T::medium(&inputs.medium)),
-            counts(|| T::medium(&inputs.short)),
-        ];
-
-        for (row, (bytes, allocations)) in counts.into_iter().enumerate() {
-            let line = format!("  {name:22} {bytes:>12} B {allocations:>6} allocations");
-            self.rows[row].push(line);
-        }
+        let mut counter = Counter {
+            builder: name,
+            row: 0,
+            counts: self,
+        };
+        for_each_row::<T>(self.inputs, &mut counter);
 
         let name_of = |length| "x".repeat(length);
         let uneven = peak(|| T::uneven(&name_of(UNEVEN_NAME)));
         let too_long = peak(|| T::too_long(&name_of(250)));
         self.peaks.push(format!("  {name:22} {uneven:>12} B {too_long:>12} B"));
+    }
+}
+
+/// Counts a builder's calls of each row
+struct Counter<'c> {
+    builder: &'static str,
+    row: usize,
+    counts: &'c mut Counts,
+}
+
+impl Rows for Counter<'_> {
+    fn row<I, F>(&mut self, name: &'static str, input: &'static I, write: F)
+    where
+        I: 'static,
+        F: Fn(&I) -> Result<Vec<u8>, Error> + Copy + 'static,
+    {
+        let (bytes, allocations) = counts(|| write(input));
+        let held = peak(|| write(input));
+        let line = format!(
+            "  {:22} {bytes:>12} B {allocations:>7} allocations, held {held:>12} B",
+            self.builder
+        );
+
+        let rows = &mut self.counts.rows;
+        if self.row == rows.len() {
+            rows.push((name, Vec::new()));
+        }
+        rows[self.row].1.push(line);
+        self.row += 1;
     }
 }
 
@@ -156,26 +156,18 @@ fn counts(call: impl Fn() -> Result<Vec<u8>, Error>) -> (usize, usize) {
 }
 
 fn main() {
-    let inputs = Inputs {
-        record: RECORD,
-        small: workloads::document(100),
-        large: workloads::document(100_000),
-        list: workloads::list(LIST_ITEMS),
-        medium: builders::medium(),
-        short: builders::short(),
-    };
-
+    let inputs: &'static Inputs = Box::leak(Box::new(Inputs::new()));
     let mut counts = Counts {
-        inputs: &inputs,
-        rows: Default::default(),
+        inputs,
+        rows: Vec::new(),
         peaks: Vec::new(),
     };
     for_each_builder(&mut counts);
 
     print_sizes();
 
-    println!("\nAllocations and bytes allocated per call of each builder");
-    for (name, lines) in ROWS.iter().zip(&counts.rows) {
+    println!("\nBytes allocated and allocations per call of each builder, and the most bytes held at once");
+    for (name, lines) in &counts.rows {
         println!("\n{name}: serialize");
         for line in lines {
             println!("{line}");
@@ -195,19 +187,9 @@ fn main() {
 /// Prints the sizes of the builders, which a builder that nests another
 /// holds within its own
 fn print_sizes() {
-    use tafla::{rewrite_boxed, rewrite_no_reservation};
-
     println!("Sizes in bytes");
     println!("  main TableBuilder         {:>4}", size_of::<main_builder::TableBuilder<'_>>());
     println!("  main NestedTable          {:>4}", size_of::<main_builder::NestedTable<'_>>());
     println!("  rewrite TableBuilder      {:>4}", size_of::<TableBuilder<'_>>());
     println!("  rewrite NestedTable       {:>4}", size_of::<NestedTable<'_>>());
-    println!(
-        "  no reservation TableBuilder {:>2}",
-        size_of::<rewrite_no_reservation::TableBuilder<'_>>()
-    );
-    println!(
-        "  boxed NestedTable         {:>4}",
-        size_of::<rewrite_boxed::NestedTable<'_>>()
-    );
 }

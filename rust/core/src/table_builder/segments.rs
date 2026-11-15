@@ -98,8 +98,10 @@ pub struct Segment<'a> {
     pub run: Run<'a>,
 }
 
-/// A builder's segments, in the order of the table: the first few within the
-/// builder, and the others in a `Vec`
+/// A builder's segments: the first few within the builder, and the others
+/// in a `Vec`. They're in the order of the table, but for the padding of a
+/// table nested in place, which the builder pushes once the table is
+/// written, after the table's own segments.
 #[derive(Debug)]
 pub struct Segments<'a> {
     first: [Option<Segment<'a>>; FIRST_SEGMENTS],
@@ -120,11 +122,17 @@ impl<'a> Segments<'a> {
         self.len
     }
 
+    /// Pushes a segment, and when it's the first past the first few, makes
+    /// room for `more`, which the builder expects, such as one for each
+    /// field of its table left to set
     #[inline]
-    pub fn push(&mut self, segment: Segment<'a>) {
+    pub fn push(&mut self, segment: Segment<'a>, more: usize) {
         if let Some(slot) = self.first.get_mut(self.len) {
             *slot = Some(segment);
         } else {
+            if self.others.capacity() == 0 {
+                self.others.reserve(more);
+            }
             self.others.push(segment);
         }
         self.len += 1;
