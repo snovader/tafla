@@ -7,7 +7,9 @@
 //! that their fields often pass its limits, with a field more or fewer than
 //! they hold, from borrowed or owned values, and with the tables nested in
 //! them from builders or in place. A table built whole reads back the values
-//! that it was built from.
+//! that it was built from. Vectors in place that make their tables too long,
+//! with vectors in place in their items, fail as from builders, whatever
+//! fails while their items run.
 
 mod common;
 
@@ -18,11 +20,13 @@ use std::{
 };
 
 use common::{
-    description::{Field, Nested, Source, Table, struct_alignment, struct_bytes, struct_size},
+    description::{
+        Field, Layout, Nested, Source, Table, struct_alignment, struct_bytes, struct_size,
+    },
     read::read_table,
     strategy,
 };
-use proptest::{option, prelude::*, sample::select};
+use proptest::{collection::vec, option, prelude::*, sample::select};
 use tafla::{BuildError, InPlaceTable, NestedTable, OffsetType, TableBuilder, TableLayout};
 
 /// The message of the panics that a test's fill raises, which the panic hook
@@ -423,6 +427,62 @@ fn plan() -> impl Strategy<Value = Plan> {
         })
 }
 
+/// Plans that build tables in place, and fail one of the first 80 fills,
+/// mostly once a vector has made its table too long
+fn in_place_plan() -> impl Strategy<Value = Plan> {
+    let failure = (
+        0..80_usize,
+        0..3_usize,
+        select(vec![Fails::Error, Fails::Panics, Fails::Returns]),
+    )
+        .prop_map(|(fill, before, how)| Failure { fill, before, how });
+
+    (any::<bool>(), option::of(failure)).prop_map(|(owned, failure)| Plan {
+        extra_fields: 0,
+        in_place: true,
+        owned,
+        failure,
+    })
+}
+
+/// A table of `uint8` or `uint16` offsets of a uint8 and a vector in place,
+/// whose items, each a string and a vector in place of strings, make the
+/// table too long more often than not
+fn long_vectors() -> impl Strategy<Value = Table> {
+    select(vec![OffsetType::Uint8, OffsetType::Uint16]).prop_flat_map(|offset_type| {
+        let longest: usize = if offset_type == OffsetType::Uint8 { 24 } else { 2_400 };
+        let string = move || (0..=longest).prop_map(|length| Field::String("x".repeat(length)));
+        let entry = string().prop_map(move |name| in_place(offset_type, vec![name]));
+        let item = (string(), vec(entry, 0..=3)).prop_map(move |(name, entries)| {
+            in_place(offset_type, vec![name, Field::Vector(entries)])
+        });
+
+        vec(item, 1..=40).prop_map(move |items| Table {
+            layout: in_place(offset_type, Vec::new()).table.layout,
+            version: None,
+            fields: vec![Field::U8(1), Field::Vector(items)],
+        })
+    })
+}
+
+/// A table of `fields` to nest in place in a table of `offset_type` offsets
+fn in_place(offset_type: OffsetType, fields: Vec<Field>) -> Nested {
+    let layout = Layout {
+        sized: false,
+        versioned: false,
+        offset_type,
+    };
+
+    Nested {
+        from: Source::Builder,
+        table: Table {
+            layout,
+            version: None,
+            fields,
+        },
+    }
+}
+
 /// Generated tables, as described or with tables nested from builders that
 /// can be nested in place, in their own offset types or all in one, more
 /// often than not, so that their fields often pass its limits
@@ -508,6 +568,49 @@ proptest! {
             }
             _ => {}
         }
+    }
+
+    /// A vector in place, and the vectors in place in its items, fail as
+    /// from builders, with the length that all the items make, when they
+    /// make the table too long
+    #[test]
+    fn test_a_vector_in_place_fails_as_from_builders(table in long_vectors()) {
+        let in_place = Plan {
+            extra_fields: 0,
+            in_place: true,
+            owned: false,
+            failure: None,
+        };
+        let from_builders = Plan {
+            in_place: false,
+            ..in_place
+        };
+
+        let expected = build(&table, from_builders);
+        let outcome = build(&table, in_place);
+        prop_assert_eq!(&outcome.steps, &expected.steps);
+        prop_assert_eq!(&outcome.bytes, &expected.bytes);
+    }
+
+    /// A fill that fails, panics or returns early while a vector in place
+    /// runs its items, after they made the table too long too, changes
+    /// nothing but the failed setter's result
+    #[test]
+    fn test_a_failure_in_a_vector_too_long_leaves_the_builder_as_it_was(
+        table in long_vectors(),
+        plan in in_place_plan(),
+    ) {
+        quiet_injected_panics();
+        let unfailing = Plan {
+            owned: false,
+            failure: None,
+            ..plan
+        };
+
+        let expected = build(&table, unfailing);
+        let outcome = build(&table, plan);
+        prop_assert_eq!(&outcome.steps, &expected.steps);
+        prop_assert_eq!(&outcome.bytes, &expected.bytes);
     }
 }
 

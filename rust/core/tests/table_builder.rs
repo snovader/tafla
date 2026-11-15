@@ -837,6 +837,140 @@ fn test_a_table_moved_by_its_padding_moves_the_values_kept_from_it() {
     assert_eq!(buffer.get_f64_array(array).unwrap().to_vec(), column);
 }
 
+/// Writes `depth` tables nested one in another, in place or each from a
+/// builder, each after a uint8 and a string of 300 bytes, which the builder
+/// keeps, around a table of a uint8, a float64 array, which needs each of
+/// them padded, and `strings` strings of 30 bytes, which it copies
+fn nested_tables(depth: usize, strings: usize, in_place: bool) -> Result<Vec<u8>, BuildError> {
+    fn level<'a>(
+        table: &mut InPlaceTable<'_, 'a>,
+        depth: usize,
+        strings: usize,
+    ) -> Result<(), BuildError> {
+        table.set_u8(1)?;
+        table.set_str(LONG_NAME)?;
+        if depth > 0 {
+            return table.set_table_with(3, |inner| level(inner, depth - 1, strings));
+        }
+
+        table.set_table_with(2 + strings, |inner| {
+            inner.set_u8(2)?;
+            inner.set_f64_array(COLUMN.as_slice())?;
+            (0..strings).try_for_each(|_| inner.set_str(SHORT_NAME))
+        })
+    }
+
+    fn builder(depth: usize, strings: usize) -> Result<TableBuilder<'static>, BuildError> {
+        let nested = if depth > 0 {
+            builder(depth - 1, strings)?
+        } else {
+            let mut innermost = TableBuilder::new(2 + strings, TableLayout::DEFAULT)?;
+            innermost.set_u8(2)?;
+            innermost.set_f64_array(COLUMN.as_slice())?;
+            (0..strings).try_for_each(|_| innermost.set_str(SHORT_NAME))?;
+            innermost
+        };
+
+        let mut table = TableBuilder::new(3, TableLayout::DEFAULT)?;
+        table.set_u8(1)?;
+        table.set_str(LONG_NAME)?;
+        table.set_table(nested)?;
+        Ok(table)
+    }
+
+    const LONG_NAME: &str = match str::from_utf8(&[b'x'; 300]) {
+        Ok(name) => name,
+        Err(_) => unreachable!(),
+    };
+    const SHORT_NAME: &str = LONG_NAME.split_at(30).0;
+    const COLUMN: [f64; 3] = [0.5, 1.5, -2.5];
+
+    let mut root = TableBuilder::new(1, TableLayout::DEFAULT)?;
+    if in_place {
+        root.set_table_with(3, |table| level(table, depth - 1, strings))?;
+    } else {
+        root.set_table(builder(depth - 1, strings)?)?;
+    }
+    root.to_bytes()
+}
+
+/// Tables nested in place one in another, each padded once its fields are
+/// set, are written as builders nested one in another are, those longer
+/// than a segment, whose padding the builder keeps as a segment, and those
+/// shorter, which it moves, and their arrays are aligned from the root
+#[test]
+fn test_tables_nested_in_place_one_in_another_are_each_padded() {
+    const DEPTH: usize = 40;
+    for strings in [0, 12] {
+        let bytes = nested_tables(DEPTH, strings, true).unwrap();
+        assert_eq!(nested_tables(DEPTH, strings, false).as_ref(), Ok(&bytes));
+
+        let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+        let mut table = buffer.root_offset(0).unwrap();
+        for _ in 0..DEPTH {
+            table = buffer.field_offset(table, 2).unwrap();
+        }
+        let array = buffer.field_offset(table, 1).unwrap();
+        // The elements follow the array's count of 4 bytes
+        assert_eq!((array + 4) % 8, 0);
+        let column = buffer.get_f64_array(array).unwrap();
+        assert_eq!(column.to_vec(), [0.5, 1.5, -2.5]);
+    }
+}
+
+/// A vector written in place in each item of a vector in place that makes
+/// its table too long is written in each item, and the outer vector fails
+/// as it does from builders, after every item ran, those whose inner vector
+/// failed and were set again too
+#[test]
+fn test_vectors_in_place_in_the_items_of_one_that_makes_its_table_too_long() {
+    const ITEMS: usize = 40;
+    fn names<'a>(item: &mut InPlaceTable<'_, 'a>, name: &'a str, count: usize) -> Result<(), BuildError> {
+        item.set_vector_with(count, 1, |_, entry| entry.set_str(name))
+    }
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint16);
+    let name = "x".repeat(250);
+    let from_builders = || -> Result<(), BuildError> {
+        let mut items = Vec::new();
+        for _ in 0..ITEMS {
+            let mut entries = Vec::new();
+            for _ in 0..10 {
+                let mut entry = TableBuilder::new(1, layout)?;
+                entry.set_str(name.as_str())?;
+                entries.push(entry);
+            }
+            let mut item = TableBuilder::new(1, layout)?;
+            item.set_vector(entries)?;
+            items.push(item);
+        }
+        TableBuilder::new(1, layout)?.set_vector(items)
+    };
+    let expected = from_builders();
+    assert!(matches!(expected, Err(BuildError::TooLong { index: 0, .. })));
+
+    let mut builder = TableBuilder::new(1, layout).unwrap();
+    let mut calls = 0;
+    let error = builder.set_vector_with(ITEMS, 1, |_, item| {
+        calls += 1;
+        names(item, &name, 10)
+    });
+    assert_eq!((error, calls), (expected, ITEMS));
+
+    // 300 names make an item too long, and the fill sets 10 instead
+    let error = builder.set_vector_with(ITEMS, 1, |_, item| {
+        if names(item, &name, 300).is_err() {
+            names(item, &name, 10)?;
+        }
+        Ok::<_, BuildError>(())
+    });
+    assert_eq!(error, expected);
+
+    builder.set_vector_with(2, 1, |_, item| names(item, &name, 1)).unwrap();
+    let mut written = TableBuilder::new(1, layout).unwrap();
+    written.set_vector_with(2, 1, |_, item| names(item, &name, 1)).unwrap();
+    assert_eq!(builder.to_bytes(), written.to_bytes());
+}
+
 /// A vector written in place whose first item is far longer than the
 /// others, so that room for 3,000 more like it would be 2.4 GB, is written:
 /// the room that the builder makes for the items after the first is
