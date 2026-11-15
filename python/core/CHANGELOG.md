@@ -67,9 +67,14 @@ repository's first commits, for code built from its source before the release.
 - `TableBuilder` writes each field into the table's bytes when it's set,
   rather than recording it and writing every field through a `TableWriter`
   in `finalize()`, and has a native implementation, in `tafla._native`, as
-  the other classes do, with the pure-Python one elsewhere. Its API and the
-  bytes it writes are unchanged, and so are its errors, but for when some of
-  them are raised:
+  the other classes do, with the pure-Python one elsewhere. With the native
+  module, the comparison's vector of 100 nested tables took 84% less time,
+  the record 76% less and the 100-row document 79% less, and documents
+  written from lists 85% to 88% less, since their lists are converted
+  natively too. With the pure-Python classes, the vector took 37% less and
+  the 100-row document 46% less. No row took longer. Its API and the bytes it
+  writes are unchanged, and so are its errors, but for when some of them are
+  raised:
   - A scalar that its type can't hold raises `ValueError` from its setter,
     rather than from `finalize()` or `bytes()`, and isn't added.
   - Arrays, structs and tables given as buffers are copied when they're set,
