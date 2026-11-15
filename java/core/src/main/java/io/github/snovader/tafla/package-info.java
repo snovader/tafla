@@ -155,11 +155,12 @@
  *     or while a fill writes a table in it, and for a field set after writing. It throws an
  *     {@link IllegalArgumentException} for a version missing from or given for a layout, a version
  *     that doesn't fit, a negative number of fields or count, a nested builder or a table written
- *     in place with fields left to set, an alignment other than 1, 2, 4 or 8, and a struct size
- *     below 1 or bytes that aren't a whole number of structs. A field that would make the table
- *     too long for its offset type throws an {@code IllegalArgumentException} from its setter and
- *     isn't added. A table written in place passes on what its fill throws, and leaves the
- *     builder as it was whatever is thrown.</li>
+ *     in place with fields left to set, a nested builder while a fill writes a table in it, an
+ *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
+ *     number of structs. A field that would make the table too long for its offset type throws
+ *     an {@code IllegalArgumentException} from its setter and isn't added. A table written in
+ *     place passes on what its fill throws, and leaves the builder as it was whatever is
+ *     thrown.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and

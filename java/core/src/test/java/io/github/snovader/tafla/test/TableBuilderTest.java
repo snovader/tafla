@@ -471,6 +471,96 @@ public class TableBuilderTest {
         assertArrayEquals(new byte[] {1, 0}, builder.bytes());
     }
 
+    /**
+     * A vector in place whose items make it longer than the table can address is rejected with its
+     * whole length once every item is filled, without keeping the items past that: 16,000 items of
+     * 51 KB, in a table of uint16 offsets, would take 813 MB
+     */
+    @Example
+    void should_reject_a_vector_in_place_whose_items_make_it_too_long_without_keeping_them() {
+        var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
+        var bytes = new byte[250];
+        var filled = new int[1];
+        ObjIntConsumer<TableBuilder.Item> fill = (item, index) -> {
+            filled[0]++;
+            item.setTable(200, table -> {
+                for (int i = 0; i < 200; i++) {
+                    table.setInt8Array(bytes);
+                }
+            });
+        };
+
+        // An item's bytes, after the field's offset, the vector's count and the item's end
+        var one = new TableBuilder(1, layout);
+        one.setVector(1, 1, fill);
+        var itemLength = one.bytes().length - 3 * Short.BYTES;
+
+        var count = 16_000;
+        var builder = new TableBuilder(1, layout);
+        filled[0] = 0;
+        var exception = assertThrows(IllegalArgumentException.class, () -> builder.setVector(count, 1, fill));
+        var length = 2 * Short.BYTES + (long) count * (Short.BYTES + itemLength);
+        assertEquals(String.format("Field 1 makes the table %d bytes, too long for uint16 offsets", length), exception.getMessage());
+        assertEquals(count, filled[0]);
+
+        builder.setVector(1, 1, fill);
+        assertArrayEquals(one.bytes(), builder.bytes());
+    }
+
+    /**
+     * A vector in place whose first item is far longer than the others takes no room for as many
+     * items of the first one's length, which uint32 offsets could address: the first item's 2 KB
+     * of arrays shorter than 256 bytes, which the builder copies as they're set, 2,000,000 times
+     * would take 4 GB, where the vector takes 16 MB
+     */
+    @Example
+    void should_write_a_vector_in_place_whose_first_item_is_far_longer_than_the_others() {
+        var count = 2_000_000;
+        var bytes = new byte[255];
+
+        var builder = new TableBuilder(1);
+        builder.setVector(count, 1, (item, index) -> {
+            var arrays = index == 0 ? 8 : 0;
+            item.setTable(arrays, table -> {
+                for (int i = 0; i < arrays; i++) {
+                    table.setInt8Array(bytes);
+                }
+            });
+        });
+
+        var buffer = new ByteBuffer(builder.bytes());
+        var vector = buffer.rootOffset(0);
+        assertEquals(count, buffer.getVectorLength(vector));
+        var first = buffer.fieldOffset(buffer.getVectorOffset(vector, 0), 0);
+        assertArrayEquals(bytes, buffer.getInt8Array(buffer.fieldOffset(first, 7)));
+    }
+
+    /**
+     * A builder whose fill is writing a table in it holds that table's fields so far, and only
+     * some of its own, so it can't be nested, as it can't be written
+     */
+    @Example
+    void should_reject_nesting_a_builder_while_a_fill_writes_a_table_in_it() {
+        var builder = new TableBuilder(2);
+        var parent = new TableBuilder(2);
+        var message = "The table can't be written while a fill writes a table in it";
+
+        builder.setTable(1, table -> {
+            table.setInt8((byte) 7);
+            assertEquals(message, assertThrows(IllegalArgumentException.class, () -> parent.setTable(builder)).getMessage());
+        });
+        builder.setVector(1, 1, (item, index) -> {
+            item.setInt8((byte) 8);
+            var items = List.of(builder);
+            assertEquals(message, assertThrows(IllegalArgumentException.class, () -> parent.setVector(items)).getMessage());
+        });
+
+        parent.setTable(builder);
+        parent.setVector(List.of(builder));
+        var buffer = new ByteBuffer(parent.bytes());
+        assertArrayEquals(new byte[][] {builder.bytes()}, buffer.getVector(buffer.rootOffset(1)));
+    }
+
     @Example
     void should_reject_writing_the_builder_within_a_fill() {
         var builder = new TableBuilder(1);

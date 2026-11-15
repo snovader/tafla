@@ -46,10 +46,19 @@ public final class TableBuilder {
     private static final int INITIAL_CAPACITY = 128;
 
     /**
+     * The most room that a vector in place makes for its other items once its first is written,
+     * each as long as the first, so that a long first item doesn't make room for many more of it
+     * than the table holds
+     */
+    private static final int MAX_ITEM_ROOM = 64 * 1024;
+
+    /**
      * The number of segments kept in the builder's fields, which escape analysis removes along with
      * the builder, after which they go in arrays
      */
     private static final int FIELD_SEGMENTS = 4;
+
+    private static final String WRITING_IN_PLACE = "The table can't be written while a fill writes a table in it";
 
     private static final byte[] NO_BYTES = {};
     /** The values of a segment that isn't set */
@@ -177,7 +186,7 @@ public final class TableBuilder {
         }
 
         if (tableStart != 0) {
-            throw new IllegalStateException("The table can't be written while a fill records a table in it");
+            throw new IllegalStateException(WRITING_IN_PLACE);
         }
         if (fieldsSet != fields) {
             throw new IllegalStateException(
@@ -393,7 +402,8 @@ public final class TableBuilder {
      * Embeds a table from its builder, padded to the largest alignment of its arrays, arrays of
      * structs and nested tables, or not at all if it has none of them.
      *
-     * @throws IllegalArgumentException if the builder has fields left to set
+     * @throws IllegalArgumentException if the builder has fields left to set, or a fill is writing
+     *     a table in it
      * @see #setTable(TableBuilder, int)
      */
     public void setTable(TableBuilder table) {
@@ -411,7 +421,8 @@ public final class TableBuilder {
      * too, since a complete builder doesn't change.</p>
      *
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
-     * @throws IllegalArgumentException if the builder has fields left to set
+     * @throws IllegalArgumentException if the builder has fields left to set, or a fill is writing
+     *     a table in it
      */
     public void setTable(TableBuilder table, int alignment) {
         var padding = TableLayout.padding(position - tableStart, alignment);
@@ -457,7 +468,8 @@ public final class TableBuilder {
      * any item without reading the others. Builders must have all their fields set, and are copied
      * into this table as {@link #setTable(TableBuilder)} copies them. Items aren't padded.
      *
-     * @throws IllegalArgumentException if a builder has fields left to set
+     * @throws IllegalArgumentException if a builder has fields left to set, or a fill is writing a
+     *     table in it
      */
     public void setVector(List<TableBuilder> tables) {
         var items = tables.toArray(new TableBuilder[0]);
@@ -578,8 +590,9 @@ public final class TableBuilder {
      * <p>The vector's count, its items' ends and their offsets, which every item takes whatever its
      * fields, are checked before any item is written. A vector that they alone make too long fails
      * without calling {@code fill}, as a vector of as many tables of their offsets' bytes would.
-     * What {@code fill} throws is passed on, and whatever is thrown, the builder is left as it
-     * was.</p>
+     * Once the items make the vector longer than the table can address, the rest are still filled
+     * and counted, so that the exception gives the vector's whole length, but not kept. What
+     * {@code fill} throws is passed on, and whatever is thrown, the builder is left as it was.</p>
      *
      * @throws IllegalArgumentException if the count or the number of fields is negative, if an
      *     item's offsets don't fit in the offset type, if the vector would make the table too long
@@ -608,18 +621,20 @@ public final class TableBuilder {
             startVector(count, (int) slotBytes);
 
             // The first item, after which the others have room as long as it, if the table does
+            var reach = parentStart + maxLength;
             var item = new Item();
+            long dropped = 0;
             if (count > 0) {
                 var itemLength = length;
-                writeItem(item, 0, fill, fields, header, vector, start);
-                reserveItems(count - 1, length - itemLength, parentStart);
+                dropped = writeItem(item, 0, fill, fields, header, vector, start, reach, dropped);
+                reserveItems(count - 1, length - itemLength, reach);
             }
             for (int i = 1; i < count; i++) {
-                writeItem(item, i, fill, fields, header, vector, start);
+                dropped = writeItem(item, i, fill, fields, header, vector, start, reach, dropped);
             }
             endInPlace(parentStart, parentSlots, parentFields, index, parentAlignment);
 
-            var end = offset + (position - start);
+            var end = offset + (position - start) + dropped;
             if (end > maxLength) {
                 throw tooLong(index, end);
             }
@@ -643,22 +658,38 @@ public final class TableBuilder {
 
     /**
      * Writes item {@code i} of a vector of tables in place, whose count is at {@code vector} in the
-     * bytes, and {@code start} in the table, and then its end
+     * bytes, and {@code start} in the table, and then its end, {@return the bytes of the items
+     * dropped so far}. Once the vector, with the {@code dropped} bytes of the items before, reaches
+     * past {@code reach}, the vector will be rejected for its length, so each item from there on is
+     * counted and dropped rather than kept, which bounds the bytes to what the table can address.
      */
-    private void writeItem(
+    private long writeItem(
         Item item,
         int i,
         ObjIntConsumer<Item> fill,
         int fields,
         int header,
         int vector,
-        long start
+        long start,
+        long reach,
+        long dropped
     ) {
+        var itemLength = length;
+        var itemStart = position;
+        var itemSegments = segmentCount;
+
         startInPlace(fields, header);
         fill.accept(item, i);
         checkComplete();
 
+        if (position + dropped > reach) {
+            var itemBytes = position - itemStart;
+            truncate(itemLength, itemStart, itemSegments);
+            return dropped + itemBytes;
+        }
+
         store(buffer, vector + (i + 1) * offsetSize, offsetSize, position - start);
+        return dropped;
     }
 
     /**
@@ -1005,13 +1036,13 @@ public final class TableBuilder {
 
     /**
      * Makes room for {@code count} more items of a vector of tables in place, each of
-     * {@code itemLength} bytes, as long as its first, up to what the table can address. Growing as
-     * each item is written instead took as long on the benchmarks' vector of nested tables, and
-     * allocated a fifth more.
+     * {@code itemLength} bytes, as long as its first, up to {@link #MAX_ITEM_ROOM} and what the
+     * table can address. Growing as each item is written instead took as long on the benchmarks'
+     * vector of nested tables, and allocated a fifth more.
      */
-    private void reserveItems(int count, int itemLength, long parentStart) {
-        var room = maxLength - (position - parentStart);
-        ensure((int) Math.max(0, Math.min((long) count * itemLength, room)));
+    private void reserveItems(int count, int itemLength, long reach) {
+        var room = Math.min(Math.min((long) count * itemLength, reach - position), MAX_ITEM_ROOM);
+        ensure((int) Math.max(0, room));
     }
 
     /** Undoes what a fill wrote, from where it started */
@@ -1067,9 +1098,14 @@ public final class TableBuilder {
     /**
      * The byte length of a table to nest, which a builder knows once all its fields are set
      *
-     * @throws IllegalArgumentException if the builder has fields left to set
+     * @throws IllegalArgumentException if the builder has fields left to set, or a fill is writing
+     *     a table in it
      */
     private static long lengthOf(TableBuilder table) {
+        // Its counters are then those of the table that the fill writes
+        if (table.tableStart != 0) {
+            throw new IllegalArgumentException(WRITING_IN_PLACE);
+        }
         if (table.fieldsSet != table.fields) {
             throw new IllegalArgumentException(incomplete(table.fieldsSet, table.fields));
         }
