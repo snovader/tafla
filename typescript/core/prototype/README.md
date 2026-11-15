@@ -2,8 +2,8 @@
 
 `directTableBuilder.ts` is a prototype, not part of the package: nothing
 exports it, and the package's build leaves it out. It evaluates, for
-TypeScript, the design that the C++ prototype of #212 proposes for every
-runtime: replacing `TableBuilder`'s records, which `bytes()` replays through
+TypeScript, the design that the C++ prototype in draft PR #212 proposes
+for every runtime: replacing `TableBuilder`'s records, which `bytes()` replays through
 a `TableWriter`, with a builder that writes each field into a growing buffer
 when it's set. The draft PR that holds it describes the evidence and the
 recommendation.
@@ -31,16 +31,22 @@ recommendation.
   position, unpadded. Once its fields are set, its alignment is known, and
   it's moved forward by its padding with `copyWithin()`. Its offsets count
   from its own start, so none changes.
-- Runs of 256 bytes or more are kept as segments: an array's elements, an
-  array of structs, a struct, or a table given as bytes. `bytes()` writes
-  them between the buffer's bytes, with the functions that `TableWriter`
-  writes arrays with, so a large typed array is copied once, into the
-  result, and a `number[]` converted once. Shorter runs are copied into the
-  buffer when they're set.
+- Scalars, offsets and lengths are written through a `DataView` of the
+  buffer once it's outside V8's heap: once it grew, or reused with its view.
+  A new buffer of 64 bytes is written as `TableWriter` writes it, through a
+  scratch `DataView` and byte copies, since a view of it would make V8 give
+  it an `ArrayBuffer`.
+- Runs of 1 KiB or more are kept as segments: an array's elements, an array
+  of structs, a struct, or a table given as bytes. `bytes()` writes them
+  between the buffer's bytes, with the functions that `TableWriter` writes
+  arrays with, so a large typed array is copied once, into the result, and a
+  `number[]` converted once. Shorter runs are copied into the buffer when
+  they're set.
 - Strings are encoded into the buffer when they're set, with
-  `encodeInto()`. A string gets room for its longest UTF-8, 3 bytes for
-  each UTF-16 code unit, when the buffer has it, and is otherwise counted
-  first, so that the buffer grows only when the string needs it to.
+  `encodeInto()`. A string of up to 1,024 UTF-16 code units gets room for its
+  longest UTF-8, 3 bytes for each code unit; a longer one gets it when the
+  buffer has room for it, and is otherwise counted first, so that the buffer
+  grows only by what the string needs.
 - A nested builder, whatever its layout, is copied in as its bytes and
   segments, with its length written into a sized header.
 - A `fill` that throws, or a table or vector written in place that makes its
@@ -53,17 +59,17 @@ recommendation.
 module with other initial values instead, one copy for each variant, so that
 V8 keeps their type feedback apart.
 
-| Option         | Values                                                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `growth`       | `'copy'`: a new `Uint8Array` and `set()`. `'transfer'`: `ArrayBuffer.prototype.transfer(newLength)`. `'resizable'`: `resize()` of a resizable `ArrayBuffer` that reserves 64 KiB, under length-tracking `Uint8Array` and `DataView` views. |
-| `result`       | `'slice'`: `slice()`. `'transfer'`: `transfer(length)`, or `transferToFixedLength(length)` of a resizable buffer.                                                                                                                          |
-| `strings`      | `'room'`: the longest UTF-8 when the buffer has room for it, or else counted. `'worst'`: always the longest. `'count'`: always counted first.                                                                                              |
-| `scalars`      | `'bytes'`: a scratch `DataView` and byte copies, as `TableWriter` writes them. `'view'`: a `DataView` of the buffer, made again when it grows.                                                                                             |
-| `segmentBytes` | The shortest run kept as a segment: 256, or `Infinity` to copy every run into the buffer.                                                                                                                                                  |
-| `reuse`        | `true`: a builder starts from the buffer that the last one left. `false`: from a new one.                                                                                                                                                  |
+| Option         | Values                                                                                                                                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `growth`       | `'copy'`: a new `Uint8Array` and `set()`. `'transfer'`: `ArrayBuffer.prototype.transfer(newLength)`. `'resizable'`: `resize()` of a resizable `ArrayBuffer` that reserves 64 KiB, under length-tracking `Uint8Array` and `DataView` views.    |
+| `result`       | `'slice'`: `slice()`. `'transfer'`: `transfer(length)`, or `transferToFixedLength(length)` of a resizable buffer.                                                                                                                             |
+| `strings`      | `'short'`: the longest UTF-8 for a string of up to 1,024 code units, and otherwise as `'room'`. `'room'`: the longest UTF-8 when the buffer has room for it, or else counted. `'worst'`: always the longest. `'count'`: always counted first. |
+| `scalars`      | `'view'`: a `DataView` of the buffer once it's outside V8's heap. `'bytes'`: always a scratch `DataView` and byte copies.                                                                                                                     |
+| `segmentBytes` | The shortest run kept as a segment: 1,024, or another length, or `Infinity` to copy every run into the buffer.                                                                                                                                |
+| `reuse`        | `true`: a builder starts from the buffer that the last one left. `false`: from a new one.                                                                                                                                                     |
 
-The proposed design is the first value of each, with runs of 256 bytes or
-more as segments.
+The proposed design is the first value of each, with runs of 1 KiB or more
+as segments.
 
 ## Running
 
@@ -86,7 +92,7 @@ and making the exact bytes.
 ## Tests
 
 `core/test/prototype/directTableBuilder.test.ts` runs, for every variant and
-for builders that keep every run of 1 or 8 bytes or more as a segment:
+for builders that keep every run of 1, 8 or 256 bytes or more as a segment:
 
 - every conformance case, byte for byte, from builders and written in place;
 - a property that builds tables of every offset type and layout, from the
