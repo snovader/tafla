@@ -131,5 +131,12 @@ repository's first commits, for code built from its source before the release.
   rather than padding to it or dividing by zero.
 - `TableSizer` accepts a struct of 0 bytes and rejects an array of 0-byte
   structs, as the builders and writers do.
+- `TableWriter.setString()`, `TableBuilder.setString()` and `writeUtf8()`
+  write a string that ends their bytes, as a table's last field or the end of
+  a message that tafla-gen's code writes, rather than throwing `RangeError`
+  for some strings of more than 256 UTF-16 code units that aren't all ASCII.
+  Node 26.13 and 27's `TextEncoder.encodeInto()` stops a code unit short of
+  about 1% of such strings with lone surrogates, and of some well-formed
+  ones, and the rest of the string is now written after it.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/typescript

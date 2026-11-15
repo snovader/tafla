@@ -11,8 +11,10 @@ import java.util.*;
  * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
  * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
  * package documentation says. The fixed-size record is written through little-endian
- * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of structs is written through them too, and read from
- * {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code does.
+ * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of
+ * structs is written through them too, into bytes that {@link TableBuilder#setStructArray} takes,
+ * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code reads it. tafla-gen's
+ * code writes each struct straight into the table, with {@link TableWriter#setStructs}.
  */
 public final class TaflaCodec {
     private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
