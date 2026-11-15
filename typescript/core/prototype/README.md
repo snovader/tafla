@@ -13,28 +13,16 @@ recommendation.
 - `DirectTableBuilder` has `TableBuilder`'s setters, `bytes()` and
   `finalize()`, and writes the same bytes. Its setters throw the same errors
   in the same order, and leave the builder as it was.
-- Builders take their bytes from an arena: chunks of 64 KiB, from which
-  each builder takes bytes after the last one's. The last builder to take
-  bytes holds the rest of the chunk, so a table built on its own never
-  grows. When another builder takes bytes, the last keeps those it has
-  written or made room for, which covers a setter whose value's `valueOf()`
-  makes a builder before the setter writes. A builder that outgrows its
-  bytes moves to the rest of the chunk, or of a new one; one that needs
-  more than half a chunk gets a buffer of its own. `bytes()` copies the
-  table into bytes of its exact length, writes a sized table's length into
-  them, and gives the builder's bytes back when it's still the last, so
-  the next builder writes over them. No table holds the chunk, and builders
-  write every byte of their tables, padding included, so what it held
-  before isn't read. Earlier chunks stay alive while builders hold bytes of
-  them.
-- This stands in for the 128 bytes that C++'s builder holds within itself:
-  a JavaScript object can't hold bytes, and V8 allocates a `Uint8Array` of
-  more than 64 bytes outside its heap, in about 150 ns rather than 25. A
-  nested builder takes a few dozen bytes of the chunk rather than a buffer
-  of its own. Without the arena, `reuse` keeps the buffer that the last
-  builder to write its table left, of up to 64 KiB, and otherwise a builder
-  starts with a `Uint8Array` of 64 bytes, which V8 keeps on its heap, and
-  grows to at least 512 bytes, at least doubling.
+- The buffer starts as the one that the last builder to write its table
+  left, of up to 64 KiB, or else as a `Uint8Array` of 64 bytes, which V8
+  keeps on its heap. It grows to at least 512 bytes, at least doubling.
+  `bytes()` copies it into bytes of the table's exact length, writes a sized
+  table's length into them, and leaves the buffer for the next builder. No
+  table holds it, and builders write every byte of their tables, padding
+  included, so what it held before isn't read. This stands in for the 128
+  bytes that C++'s builder holds within itself: a JavaScript object can't
+  hold bytes, and V8 allocates a `Uint8Array` of more than 64 bytes outside
+  its heap, in about 150 ns rather than 25.
 - Each field's offset is written when the field is set. A vector writes its
   count and room for its item ends, and each item's end once the item is
   written; after the first item, it makes room for the others, each as long
@@ -71,18 +59,17 @@ recommendation.
 module with other initial values instead, one copy for each variant, so that
 V8 keeps their type feedback apart.
 
-| Option         | Values                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `growth`       | `'copy'`: a new `Uint8Array` and `set()`. `'transfer'`: `ArrayBuffer.prototype.transfer(newLength)`. `'resizable'`: `resize()` of a resizable `ArrayBuffer` that reserves 64 KiB, under length-tracking `Uint8Array` and `DataView` views.                                                                                                                                                                             |
-| `result`       | `'slice'`: `slice()`. `'transfer'`: `transfer(length)`, or `transferToFixedLength(length)` of a resizable buffer.                                                                                                                                                                                                                                                                                                      |
-| `strings`      | `'short'`: the longest UTF-8 for a string of up to 1,024 code units, and otherwise as `'room'`. `'room'`: the longest UTF-8 when the buffer has room for it, or else counted. `'worst'`: always the longest. `'count'`: always counted first.                                                                                                                                                                          |
-| `scalars`      | `'view'`: a `DataView` of the buffer once it's outside V8's heap. `'bytes'`: always a scratch `DataView` and byte copies.                                                                                                                                                                                                                                                                                              |
-| `segmentBytes` | The shortest run kept as a segment: 1,024, or another length, or `Infinity` to copy every run into the buffer.                                                                                                                                                                                                                                                                                                         |
-| `reuse`        | `true`: a builder starts from the buffer that the last one left. `false`: from a new one.                                                                                                                                                                                                                                                                                                                              |
-| `arenaBytes`   | 0: a buffer of each builder's own. Otherwise the length of the chunks of an arena that builders take their bytes from, one after another. The last builder to take bytes holds the rest of the chunk, and keeps what it has written or made room for when the next one takes bytes. A builder that outgrows its bytes moves to the rest of the chunk, or of a new one, and the last gives its bytes back in `bytes()`. |
+| Option         | Values                                                                                                                                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `growth`       | `'copy'`: a new `Uint8Array` and `set()`. `'transfer'`: `ArrayBuffer.prototype.transfer(newLength)`. `'resizable'`: `resize()` of a resizable `ArrayBuffer` that reserves 64 KiB, under length-tracking `Uint8Array` and `DataView` views.    |
+| `result`       | `'slice'`: `slice()`. `'transfer'`: `transfer(length)`, or `transferToFixedLength(length)` of a resizable buffer.                                                                                                                             |
+| `strings`      | `'short'`: the longest UTF-8 for a string of up to 1,024 code units, and otherwise as `'room'`. `'room'`: the longest UTF-8 when the buffer has room for it, or else counted. `'worst'`: always the longest. `'count'`: always counted first. |
+| `scalars`      | `'view'`: a `DataView` of the buffer once it's outside V8's heap. `'bytes'`: always a scratch `DataView` and byte copies.                                                                                                                     |
+| `segmentBytes` | The shortest run kept as a segment: 1,024, or another length, or `Infinity` to copy every run into the buffer.                                                                                                                                |
+| `reuse`        | `true`: a builder starts from the buffer that the last one left. `false`: from a new one.                                                                                                                                                     |
 
 The proposed design is the first value of each, with runs of 1 KiB or more
-as segments and an arena of 64 KiB.
+as segments.
 
 ## Running
 
