@@ -87,11 +87,23 @@ export function encodeInto(
         }
     }
 
+    return encodeIntoWithEncoder(string, bytes, position);
+}
+
+/**
+ * `encodeInto()` with `TextEncoder.encodeInto()`, out of line, so that the
+ * bytecode that V8 inlines with `encodeInto()` is the loop's
+ */
+function encodeIntoWithEncoder(
+    string: string,
+    bytes: Uint8Array,
+    position: number
+): number {
     const { read, written } = encoder.encodeInto(
         string,
         bytes.subarray(position)
     );
-    if (read !== length) {
+    if (read !== string.length) {
         return written + encodeRest(string, read, bytes, position, written);
     }
 
@@ -149,11 +161,30 @@ const SHORT_STRING = 32;
 /**
  * The byte length of `string` in UTF-8, as `encode()` writes it: a lone
  * surrogate takes the 3 bytes of U+FFFD, and a surrogate pair 4 bytes
+ *
+ * It counts from the first unit of 0x80 or more out of line, so that the
+ * bytecode that V8 inlines into its callers is only the loop over ASCII.
  */
 export function utf8Length(string: string): number {
+    const length = string.length;
+
+    for (let i = 0; i < length; i++) {
+        if (string.charCodeAt(i) >= 0x80) {
+            return utf8LengthFrom(string, i);
+        }
+    }
+
+    return length;
+}
+
+/**
+ * `utf8Length()` of a string whose units before `start` are ASCII, and
+ * take a byte each
+ */
+function utf8LengthFrom(string: string, start: number): number {
     let length = string.length;
 
-    for (let i = 0; i < string.length; i++) {
+    for (let i = start; i < string.length; i++) {
         const unit = string.charCodeAt(i);
         if (unit < 0x80) {
             continue;

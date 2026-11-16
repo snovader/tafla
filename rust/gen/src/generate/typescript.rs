@@ -863,6 +863,7 @@ impl Generator<'_> {
                 slot,
                 whole.width,
                 &Slot::Constant(position),
+                output,
             );
         }
         writer.blank();
@@ -887,6 +888,7 @@ impl Generator<'_> {
                         position,
                         whole.width,
                         &Slot::Local(&length),
+                        output,
                     );
                 }
                 _ => {
@@ -1320,6 +1322,7 @@ impl Generator<'_> {
                 slot,
                 NESTED_OFFSET_SIZE,
                 &Slot::Constant(position),
+                Output::Into,
             );
         }
         writer.blank();
@@ -2624,6 +2627,11 @@ enum Slot<'a> {
 /// its range, which made writing a record of 60 bytes take 0.120 µs rather
 /// than 0.100 µs in Node 27. The slots lie within the bytes, which the table's
 /// writes of its fields check.
+///
+/// New bytes, `Output::New`, are zero, so a constant's zero bytes are left
+/// out of them: a record's offsets of 4 bytes were 12 of its 20 stores, and
+/// 96 of the 317 bytes of bytecode of its `serialize()`, which V8 counts
+/// against the bytecode that it inlines into the function that calls it.
 fn slot_stores(
     writer: &mut CodeWriter,
     bytes: &str,
@@ -2631,6 +2639,7 @@ fn slot_stores(
     slot: usize,
     width: usize,
     value: &Slot,
+    output: Output,
 ) {
     for byte in 0..width {
         let position = match base {
@@ -2638,7 +2647,13 @@ fn slot_stores(
             None => (slot + byte).to_string(),
         };
         let stored = match value {
-            Slot::Constant(constant) => ((constant >> (8 * byte)) & 0xff).to_string(),
+            Slot::Constant(constant) => {
+                let stored = (constant >> (8 * byte)) & 0xff;
+                if stored == 0 && matches!(output, Output::New) {
+                    continue;
+                }
+                stored.to_string()
+            }
             Slot::Local(local) if byte == 0 => (*local).to_owned(),
             Slot::Local(local) => format!("{local} >>> {}", 8 * byte),
         };

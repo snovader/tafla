@@ -88,6 +88,16 @@ function assertReadable(
 // Uint8Array of up to 64 bytes on its heap until a DataView asks for its
 // ArrayBuffer. A function per width keeps each small enough to inline, and
 // checks inline, building its error out of line.
+//
+// TurboFan inlines up to 920 bytes of bytecode into a function, and the
+// serializers that tafla-gen generates spend them on these writes, their
+// table's checks and their string. So each copy checks its offset itself,
+// rather than through within(), which V8 would inline into each write as
+// well, and the copy of 8 bytes is a loop over its two 32-bit words, 20%
+// less bytecode than 8 copies, which V8 unrolls, as it unrolls any loop of
+// fewer than 4 iterations. In a loop of 100 writeFloat64()s, it took 362 ns
+// rather than 378 in Node 26, and 333 ns rather than 347 in Node 27, where
+// a loop over the 8 bytes took 485 and 535 ns.
 
 const scratch = new DataView(new ArrayBuffer(SIZEOF_64));
 const scratchBytes = new Uint8Array(scratch.buffer);
@@ -183,7 +193,7 @@ export function writeFloat64(
 }
 
 function copy1(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, SIZEOF_8)) {
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_8)) {
         throw writeOutOfRange(offset, SIZEOF_8, bytes.length);
     }
 
@@ -191,7 +201,7 @@ function copy1(bytes: Uint8Array, offset: number): void {
 }
 
 function copy2(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, SIZEOF_16)) {
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_16)) {
         throw writeOutOfRange(offset, SIZEOF_16, bytes.length);
     }
 
@@ -200,7 +210,7 @@ function copy2(bytes: Uint8Array, offset: number): void {
 }
 
 function copy4(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, SIZEOF_32)) {
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_32)) {
         throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
     }
 
@@ -211,18 +221,17 @@ function copy4(bytes: Uint8Array, offset: number): void {
 }
 
 function copy8(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, SIZEOF_64)) {
+    if (!(isOffset(offset) && offset <= bytes.length - SIZEOF_64)) {
         throw writeOutOfRange(offset, SIZEOF_64, bytes.length);
     }
 
-    bytes[offset] = scratchBytes[0];
-    bytes[offset + 1] = scratchBytes[1];
-    bytes[offset + 2] = scratchBytes[2];
-    bytes[offset + 3] = scratchBytes[3];
-    bytes[offset + 4] = scratchBytes[4];
-    bytes[offset + 5] = scratchBytes[5];
-    bytes[offset + 6] = scratchBytes[6];
-    bytes[offset + 7] = scratchBytes[7];
+    for (let i = 0; i < SIZEOF_64; i += SIZEOF_32) {
+        const word = scratch.getInt32(i, true);
+        bytes[offset + i] = word;
+        bytes[offset + i + 1] = word >> 8;
+        bytes[offset + i + 2] = word >> 16;
+        bytes[offset + i + 3] = word >> 24;
+    }
 }
 
 /**
@@ -240,11 +249,19 @@ export function writeUtf8(
     offset: number,
     string: string
 ): number {
-    if (!within(bytes, offset, 0)) {
-        throw writeOutOfRange(offset, utf8Length(string), bytes.length);
+    if (!(isOffset(offset) && offset <= bytes.length)) {
+        throw stringOutOfRange(bytes, offset, string);
     }
 
     return encodeInto(string, bytes, offset);
+}
+
+function stringOutOfRange(
+    bytes: Uint8Array,
+    offset: number,
+    string: string
+): RangeError {
+    return writeOutOfRange(offset, utf8Length(string), bytes.length);
 }
 
 /**
@@ -287,4 +304,9 @@ function within(
         offset >= 0 &&
         offset <= bytes.length - byteLength
     );
+}
+
+/** Whether `offset` is a non-negative integer, as an offset into bytes is */
+function isOffset(offset: number): boolean {
+    return Number.isSafeInteger(offset) && offset >= 0;
 }

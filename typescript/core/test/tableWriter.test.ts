@@ -266,6 +266,7 @@ describe('tables longer than the offsets address', () => {
 
 describe('versions', () => {
     const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });
+    const unversioned = TableLayout.create({ offsetType: 'uint8' });
 
     it.each([
         ['a version that the layout has no slot for', TableLayout.DEFAULT, 1, TypeError],
@@ -278,6 +279,36 @@ describe('versions', () => {
         expect(() => new TableBuilder(0, layout as never, version as never)).toThrow(error);
         expect(() => new TableSizer(0, layout as never, version as never)).toThrow(error);
         expect(() => new TableWriter(bytes, 0, layout as never, version as never)).toThrow(error);
+    });
+
+    it.each([
+        [
+            'the count before the version slot',
+            -1,
+            versioned,
+            undefined,
+            new RangeError('A count must be a non-negative integer, not -1')
+        ],
+        [
+            'the version slot before the version and the header',
+            300,
+            unversioned,
+            256,
+            new TypeError('The layout has no version slot')
+        ],
+        [
+            'the version before the header',
+            300,
+            versioned,
+            256,
+            new RangeError("Version 256 doesn't fit in a uint8 slot")
+        ]
+    ])('should reject %s, as TableBuilder does', (_, fields, layout, version, error) => {
+        expect(() => new TableBuilder(fields, layout as never, version as never)).toThrow(error);
+        expect(() => new TableSizer(fields, layout as never, version as never)).toThrow(error);
+        expect(() =>
+            TableWriter.versionedTableBytes(fields, layout as never, version as never, 1)
+        ).toThrow(error);
     });
 });
 

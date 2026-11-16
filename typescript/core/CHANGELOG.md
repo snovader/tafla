@@ -85,6 +85,22 @@ repository's first commits, for code built from its source before the release.
   optimized code. `StructWriter`'s setters write 100 scalars in 0.45–0.55×
   the time, and `TableBuilder` writes the comparison suite's vector of 100
   nested tables in 0.91–0.93×.
+- `TableWriter.tableBytes()`, `versionedTableBytes()`, the write functions,
+  `writeUtf8()` and `utf8Length()` take less bytecode on their common paths,
+  so that V8 inlines a serializer that tafla-gen generates whole: TurboFan
+  inlines up to 920 bytes of bytecode into a function, and a record's
+  serializer and what it calls took about 2,100. Their checks are one
+  condition each, which finds the error to throw out of line, a string's
+  characters outside ASCII and strings past 32 characters are encoded and
+  counted out of line, a table without header slots doesn't call the
+  function that writes them, and a write of 8 bytes copies two 32-bit words
+  in a loop that V8 unrolls. They throw the same errors, in the same order.
+  In the comparison suite, tafla-gen's record took 0.066 µs to write rather
+  than 0.085 in Node 26, and 0.066 µs rather than 0.081 in Node 27. Records
+  that aren't constants, which V8 can't fold into the benchmark's loop, took
+  0.094 µs rather than 0.114 in Node 26, and 0.093 µs rather than 0.108 in
+  Node 27. `writeFloat64()`, `writeInt64()` and
+  `writeUint64()` took 3% less, and `TableBuilder`'s setters 5% to 10% less.
 
 ### Removed
 

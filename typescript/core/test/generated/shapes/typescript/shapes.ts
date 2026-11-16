@@ -38,21 +38,9 @@ export class Point {
         );
 
         table[0] = 16;
-        table[1] = 0;
-        table[2] = 0;
-        table[3] = 0;
         table[4] = 24;
-        table[5] = 0;
-        table[6] = 0;
-        table[7] = 0;
         table[8] = 32;
-        table[9] = 0;
-        table[10] = 0;
-        table[11] = 0;
         table[12] = 40;
-        table[13] = 0;
-        table[14] = 0;
-        table[15] = 0;
 
         writeFloat64(table, 16, fields.x);
         writeFloat64(table, 24, fields.y);
