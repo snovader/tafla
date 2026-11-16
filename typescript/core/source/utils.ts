@@ -1,3 +1,4 @@
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { encodeInto, utf8Length } from './encoding.ts';
 import { outOfRange, writeOutOfRange } from './errors.ts';
 
@@ -8,14 +9,14 @@ import { outOfRange, writeOutOfRange } from './errors.ts';
 const int32s = new Int32Array(1);
 const float32s = new Float32Array(int32s.buffer);
 // A float64's words are set little-endian, whatever the host's byte order
-const float64s = new DataView(new ArrayBuffer(8));
+const float64s = new DataView(new ArrayBuffer(SIZEOF_64));
 
 export function readInt8(bytes: Uint8Array, offset: number): number {
     return (readUint8(bytes, offset) << 24) >> 24;
 }
 
 export function readUint8(bytes: Uint8Array, offset: number): number {
-    assertReadable(bytes, offset, 1);
+    assertReadable(bytes, offset, SIZEOF_8);
     return bytes[offset];
 }
 
@@ -24,12 +25,12 @@ export function readInt16(bytes: Uint8Array, offset: number): number {
 }
 
 export function readUint16(bytes: Uint8Array, offset: number): number {
-    assertReadable(bytes, offset, 2);
+    assertReadable(bytes, offset, SIZEOF_16);
     return bytes[offset] | (bytes[offset + 1] << 8);
 }
 
 export function readInt32(bytes: Uint8Array, offset: number): number {
-    assertReadable(bytes, offset, 4);
+    assertReadable(bytes, offset, SIZEOF_32);
     return (
         bytes[offset] |
         (bytes[offset + 1] << 8) |
@@ -47,7 +48,7 @@ export function readInt64(bytes: Uint8Array, offset: number): bigint {
 }
 
 export function readUint64(bytes: Uint8Array, offset: number): bigint {
-    assertReadable(bytes, offset, 8);
+    assertReadable(bytes, offset, SIZEOF_64);
     return (
         BigInt(readUint32(bytes, offset)) +
         (BigInt(readUint32(bytes, offset + 4)) << 32n)
@@ -60,7 +61,7 @@ export function readFloat32(bytes: Uint8Array, offset: number): number {
 }
 
 export function readFloat64(bytes: Uint8Array, offset: number): number {
-    assertReadable(bytes, offset, 8);
+    assertReadable(bytes, offset, SIZEOF_64);
     float64s.setInt32(0, readInt32(bytes, offset), true);
     float64s.setInt32(4, readInt32(bytes, offset + 4), true);
     return float64s.getFloat64(0, true);
@@ -88,7 +89,7 @@ function assertReadable(
 // ArrayBuffer. A function per width keeps each small enough to inline, and
 // checks inline, building its error out of line.
 
-const scratch = new DataView(new ArrayBuffer(8));
+const scratch = new DataView(new ArrayBuffer(SIZEOF_64));
 const scratchBytes = new Uint8Array(scratch.buffer);
 
 export function writeInt8(
@@ -182,16 +183,16 @@ export function writeFloat64(
 }
 
 function copy1(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, 1)) {
-        throw writeOutOfRange(offset, 1, bytes.length);
+    if (!within(bytes, offset, SIZEOF_8)) {
+        throw writeOutOfRange(offset, SIZEOF_8, bytes.length);
     }
 
     bytes[offset] = scratchBytes[0];
 }
 
 function copy2(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, 2)) {
-        throw writeOutOfRange(offset, 2, bytes.length);
+    if (!within(bytes, offset, SIZEOF_16)) {
+        throw writeOutOfRange(offset, SIZEOF_16, bytes.length);
     }
 
     bytes[offset] = scratchBytes[0];
@@ -199,8 +200,8 @@ function copy2(bytes: Uint8Array, offset: number): void {
 }
 
 function copy4(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, 4)) {
-        throw writeOutOfRange(offset, 4, bytes.length);
+    if (!within(bytes, offset, SIZEOF_32)) {
+        throw writeOutOfRange(offset, SIZEOF_32, bytes.length);
     }
 
     bytes[offset] = scratchBytes[0];
@@ -210,8 +211,8 @@ function copy4(bytes: Uint8Array, offset: number): void {
 }
 
 function copy8(bytes: Uint8Array, offset: number): void {
-    if (!within(bytes, offset, 8)) {
-        throw writeOutOfRange(offset, 8, bytes.length);
+    if (!within(bytes, offset, SIZEOF_64)) {
+        throw writeOutOfRange(offset, SIZEOF_64, bytes.length);
     }
 
     bytes[offset] = scratchBytes[0];
