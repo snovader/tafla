@@ -175,6 +175,12 @@ first commits, for code built from its source before the release.
   and vectors of such tables, are written where the writer reserves them,
   rather than into bytes of their own: a run of fewer than 128 bytes with the
   runtime's write functions, and a longer one through a `DataView`.
+- A message that generated TypeScript and JavaScript write whole leaves out
+  the zero bytes of its offsets in `serialize()`, whose new bytes are zero
+  already, and writes them in `serializeInto()`, whose bytes needn't be.
+  They were 12 of a record's 20 stores, and 96 of the 317 bytes of bytecode
+  of its `serialize()`, which V8 counts against the bytecode that it inlines
+  into the function that calls it.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,

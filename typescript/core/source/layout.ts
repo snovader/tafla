@@ -46,6 +46,7 @@ export class TableLayout<Versioned extends boolean = boolean> {
     readonly #versioned: Versioned;
     readonly #offsetType: OffsetType;
     readonly #offsetSize: OffsetSize;
+    readonly #headerSize: number;
 
     private constructor(
         sized: boolean,
@@ -56,6 +57,8 @@ export class TableLayout<Versioned extends boolean = boolean> {
         this.#versioned = versioned;
         this.#offsetType = offsetType;
         this.#offsetSize = OFFSET_SIZES[offsetType];
+        this.#headerSize =
+            ((sized ? 1 : 0) + (versioned ? 1 : 0)) * this.#offsetSize;
     }
 
     /**
@@ -103,16 +106,19 @@ export class TableLayout<Versioned extends boolean = boolean> {
 
     /** The byte length of the header slots before the field offsets */
     headerSize(): number {
-        return (
-            ((this.#sized ? 1 : 0) + (this.#versioned ? 1 : 0)) *
-            this.#offsetSize
-        );
+        return this.#headerSize;
     }
 }
 
 /**
  * The byte length of the header of a table of `fields` fields in `layout`,
  * whose writer puts `version` in the header
+ *
+ * It checks everything in one condition, and finds which check failed out
+ * of line, to keep the bytecode that V8 inlines into `TableWriter.tableBytes()`
+ * small: TurboFan inlines up to 920 bytes of it into a function, and the
+ * serializers that tafla-gen generates spend that on the table's checks,
+ * its fields' writes and its string.
  *
  * @throws {TypeError} If `version` is given for a layout without a version
  * slot, or missing for one with it.
@@ -125,25 +131,48 @@ export function headerLength(
     layout: TableLayout,
     version: number | undefined
 ): number {
-    assertCount(fields);
     const size = layout.offsetSize();
-    const offsetType = layout.offsetType();
+    const length = layout.headerSize() + fields * size;
+
+    if (
+        !(
+            isCount(fields) &&
+            length <= maxLength(size) &&
+            layout.versioned() === (version !== undefined) &&
+            (version === undefined || fitsIn(version, size))
+        )
+    ) {
+        throw headerError(fields, layout, version);
+    }
+
+    return length;
+}
+
+/** The error that `headerLength()` throws, for the first check that fails */
+function headerError(
+    fields: number,
+    layout: TableLayout,
+    version: number | undefined
+): Error {
+    if (!isCount(fields)) {
+        return countError(fields);
+    }
 
     if (layout.versioned() !== (version !== undefined)) {
-        throw new TypeError(
+        return new TypeError(
             layout.versioned()
                 ? 'A versioned layout needs a version'
                 : 'The layout has no version slot'
         );
     }
 
-    if (version !== undefined && !fitsIn(version, size)) {
-        throw new RangeError(
-            `Version ${version} doesn't fit in a ${offsetType} slot`
+    if (version !== undefined && !fitsIn(version, layout.offsetSize())) {
+        return new RangeError(
+            `Version ${version} doesn't fit in a ${layout.offsetType()} slot`
         );
     }
 
-    return fittedHeaderLength(layout.headerSize(), fields, layout);
+    return headerLengthError(fields, layout);
 }
 
 /**
@@ -177,29 +206,26 @@ function fittedHeaderLength(
 
     const length = slots + fields * size;
     if (!(length <= maxLength(size))) {
-        throw new RangeError(
-            `A header of ${fields} fields doesn't fit in ${layout.offsetType()} offsets`
-        );
+        throw headerLengthError(fields, layout);
     }
 
     return length;
 }
 
+function headerLengthError(fields: number, layout: TableLayout): RangeError {
+    return new RangeError(
+        `A header of ${fields} fields doesn't fit in ${layout.offsetType()} offsets`
+    );
+}
+
 /**
  * The longest table that offsets of `size` bytes address, which is also the
- * largest number that they hold unsigned, without a power
+ * largest number that they hold unsigned, without a power: 0xff, 0xffff or
+ * 0xffff_ffff, the 32 set bits shifted right by those that `size` bytes
+ * don't hold. A `switch` takes three times the bytecode for V8 to inline.
  */
 export function maxLength(size: OffsetSize): number {
-    switch (size) {
-        case SIZEOF_8:
-            return 0xff;
-
-        case SIZEOF_16:
-            return 0xffff;
-
-        case SIZEOF_32:
-            return 0xffff_ffff;
-    }
+    return 0xffff_ffff >>> (32 - 8 * size);
 }
 
 /**
@@ -209,11 +235,19 @@ export function maxLength(size: OffsetSize): number {
  * @throws {RangeError} If it isn't.
  */
 export function assertCount(count: number): void {
-    if (!(Number.isSafeInteger(count) && count >= 0)) {
-        throw new RangeError(
-            `A count must be a non-negative integer, not ${count}`
-        );
+    if (!isCount(count)) {
+        throw countError(count);
     }
+}
+
+function isCount(count: number): boolean {
+    return Number.isSafeInteger(count) && count >= 0;
+}
+
+function countError(count: number): RangeError {
+    return new RangeError(
+        `A count must be a non-negative integer, not ${count}`
+    );
 }
 
 /**

@@ -1036,9 +1036,7 @@ export class Pixel {
         );
 
         table[4] = 8;
-        table[5] = 0;
         table[6] = 16;
-        table[7] = 0;
 
         Vec2.writeAt(table, 8, fields.position);
         writeUint32(table, 16, fields.color);
@@ -1230,17 +1228,8 @@ export class Box {
         );
 
         table[4] = 16;
-        table[5] = 0;
-        table[6] = 0;
-        table[7] = 0;
         table[8] = 24;
-        table[9] = 0;
-        table[10] = 0;
-        table[11] = 0;
         table[12] = 32;
-        table[13] = 0;
-        table[14] = 0;
-        table[15] = 0;
 
         Vec2.writeAt(table, 16, fields.min);
         Vec2.writeAt(table, 24, fields.max);
@@ -1448,9 +1437,6 @@ export class Label {
         );
 
         table[0] = 4;
-        table[1] = 0;
-        table[2] = 0;
-        table[3] = 0;
 
         const length0 = writeUtf8(table, 8, string0);
         table[4] = length0;
