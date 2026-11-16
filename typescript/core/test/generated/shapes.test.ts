@@ -2,33 +2,33 @@ import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { DecodeError } from 'tafla';
 import {
+    corruptionOf,
+    sliceOf,
     BYTE_OFFSETS,
     CORRUPTIONS,
-    corruptionOf,
-    SLICES,
-    sliceOf
+    SLICES
 } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
 import { expectValuesOrDecodeError, withPlainArrays } from './expectations.ts';
 import {
-    DOCUMENT_FIELDS,
-    DOCUMENT_LAYOUT,
     describeDocument,
     describeItemList,
     describePoint,
-    ITEM_LIST_FIELDS,
-    LONG_ITEM_LIST_FIELDS,
-    type ItemList,
-    POINT_FIELDS,
     readDocument,
     readItem,
     readItemList,
     readPoint,
     readSample,
+    sampleBytes,
+    DOCUMENT_FIELDS,
+    DOCUMENT_LAYOUT,
+    ITEM_LIST_FIELDS,
+    LONG_ITEM_LIST_FIELDS,
+    POINT_FIELDS,
     SAMPLE_FIELDS,
     SHAPES,
-    sampleBytes
+    type ItemList
 } from './shapesTables.ts';
 
 // The code generated from schemas/shapes.tafla, in TypeScript and in

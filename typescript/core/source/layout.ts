@@ -36,11 +36,7 @@ const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
  */
 export class TableLayout<Versioned extends boolean = boolean> {
     /** No header slots, and offsets and lengths of the offset type `uint32` */
-    static readonly DEFAULT: TableLayout<false> = new TableLayout(
-        false,
-        false,
-        'uint32'
-    );
+    static readonly DEFAULT = new TableLayout<false>(false, false, 'uint32');
 
     readonly #sized: boolean;
     readonly #versioned: Versioned;

@@ -1,12 +1,12 @@
 import {
-    ByteBuffer,
     readFloat32,
     readUint32,
+    ByteBuffer,
     SIZEOF_32,
     StructWriter,
     TableBuilder,
-    type TableItem,
-    TableLayout
+    TableLayout,
+    type TableItem
 } from 'tafla';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
 import type { Codec } from './codec.ts';

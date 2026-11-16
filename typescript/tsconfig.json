@@ -3,7 +3,11 @@
     "compilerOptions": {
         "outDir": ".cache/typescript/configs"
     },
-    "include": ["*.ts", "core/vitest.config.ts"],
+    "include": [
+        "*.ts",
+        "core/vitest.config.ts",
+        "lint/*.ts"
+    ],
     "references": [
         { "path": "./benchmarks" },
         { "path": "./core" },

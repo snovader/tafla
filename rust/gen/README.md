@@ -392,7 +392,7 @@ checks, such as `Format_`. So does `then` in TypeScript and JavaScript, since a
 target's generator lists them; other targets keep the name.
 
 Each target's code is formatted as its formatter in this repository leaves
-it: Biome for TypeScript and JavaScript, Ruff for Python, rustfmt for Rust,
+it: oxfmt for TypeScript and JavaScript, Ruff for Python, rustfmt for Rust,
 gofmt for Go, which also reformats doc comments, as `go/doc/comment` parses
 them, and clang-format for C++, with Java at 100 columns. Go's files start
 with the comment that Go's tools take as generated code,

@@ -103,7 +103,7 @@ impl CodeWriter {
 pub enum Expr {
     Text(String),
     Call(String, Vec<Expr>),
-    /// An object literal of `key: value` entries, which Biome hugs
+    /// An object literal of `key: value` entries, which oxfmt hugs
     #[cfg(feature = "typescript")]
     Object(Vec<(String, String)>),
 }
@@ -179,7 +179,7 @@ impl Style {
                 lines
             }
             Expr::Call(callee, arguments) => {
-                // Hug a lone object, as Prettier and Biome do
+                // Hug a lone object, as Prettier and oxfmt do
                 #[cfg(feature = "typescript")]
                 if let [Expr::Object(_)] = arguments.as_slice() {
                     return self.render(

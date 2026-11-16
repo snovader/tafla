@@ -1,4 +1,4 @@
-import { GCProfiler, type GCProfilerResult, getHeapStatistics } from 'node:v8';
+import { getHeapStatistics, GCProfiler, type GCProfilerResult } from 'node:v8';
 
 export interface Variant {
     name: string;
@@ -138,6 +138,7 @@ function freedBytes({ statistics }: GCProfilerResult): number {
 
 function createTimer(): Timer {
     // Identical sources would share feedback through V8's compilation cache
+    // oxlint-disable-next-line typescript/no-implied-eval -- A timing loop of its own for each variant
     return new Function(
         'run',
         'repetitions',

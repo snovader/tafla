@@ -1,4 +1,4 @@
-import { ByteBuffer, readFloat32, SIZEOF_32 } from 'tafla';
+import { readFloat32, ByteBuffer, SIZEOF_32 } from 'tafla';
 import { ItemList, Triples } from './generated/tafla/workloads.ts';
 import type { ItemInput, ListInput } from './workloads.ts';
 

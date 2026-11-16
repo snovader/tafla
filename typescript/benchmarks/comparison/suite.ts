@@ -1,22 +1,22 @@
 import type { Codec, Workload } from './codecs/codec.ts';
 import {
+    measure,
     type Measurement,
     type MeasureOptions,
-    measure,
     type Variant
 } from './harness.ts';
-import { type ItemAccess, sumItem, writeItems } from './itemAccess.ts';
+import { sumItem, writeItems, type ItemAccess } from './itemAccess.ts';
 import {
-    DOCUMENT_ROWS,
-    type DocumentInput,
-    type DocumentOutput,
     documentInput,
     documentNumbers,
-    LIST_ITEMS,
-    type ListInput,
     listInput,
+    DOCUMENT_ROWS,
+    LIST_ITEMS,
     RECORD,
-    SAMPLE
+    SAMPLE,
+    type DocumentInput,
+    type DocumentOutput,
+    type ListInput
 } from './workloads.ts';
 
 export interface SuiteOptions extends MeasureOptions {
@@ -367,7 +367,9 @@ function checkItemAccess(accesses: ItemAccess[], list: ListInput): void {
         const expected = [last, every, last, every];
 
         if (!sums.every((sum, i) => Object.is(sum, expected[i]))) {
-            throw new Error(`${access.name} didn't sum the items: ${sums}`);
+            throw new Error(
+                `${access.name} didn't sum the items: ${sums.join(', ')}`
+            );
         }
     }
 }
@@ -419,7 +421,7 @@ function assertEqual(
 ): void {
     // Keys in a fixed order, and bigints as strings
     const stringify = (value: object): string =>
-        JSON.stringify(value, (_, v) =>
+        JSON.stringify(value, (_, v: unknown) =>
             typeof v === 'bigint' ? String(v) : v
         );
 

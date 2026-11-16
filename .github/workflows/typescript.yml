@@ -46,8 +46,8 @@ jobs:
               - ".github/actions/prepare-node-dependencies/action.yml"
               - ".github/actions/prepare-node-environment/action.yml"
               - ".github/workflows/typescript.yml"
-              # Biome's root configuration, which typescript/'s is nested in
-              - "biome.jsonc"
+              # oxfmt's root configuration, which typescript/'s is nested in
+              - ".oxfmtrc.jsonc"
               - "conformance/**"
               - "typescript/**"
 

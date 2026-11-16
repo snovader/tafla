@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
-import { SUITE_DIRECTORY, writeSuite } from './files.ts';
+import { writeSuite, SUITE_DIRECTORY } from './files.ts';
 import { buildTable, readTable, TableReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;
 
 // The checked-in suite, which the other implementations of tafla load too
 const json = await readFile(new URL('cases.json', directory), 'utf8');
-const suite: Suite = JSON.parse(json);
+const suite = JSON.parse(json) as Suite;
 const tables = await readTables();
 
 async function readTables(): Promise<Map<string, Uint8Array>> {

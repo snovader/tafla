@@ -2,38 +2,38 @@ import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
-import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 import {
+    fitsItsLayout,
+    sliceOf,
+    tables,
     ARRAY_FIELDS,
     FIELDS,
-    fitsItsLayout,
     MAX_VALUES,
     OFFSET_TYPES,
-    SLICES,
-    sliceOf,
-    tables
+    SLICES
 } from './conformance/arbitraries.ts';
 import {
-    type ArrayField,
     elementTypeOf,
     fromJsonNumber,
-    type FieldDescription,
     isArrayField,
+    type ArrayField,
+    type FieldDescription,
     type OffsetType,
     type TableDescription
 } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
 import {
     buildTable,
-    ELEMENT_SIZES,
     nestedInPlace,
     readTable,
     structAlignment,
     writeTable,
     writeTableInto,
     writeTableReserving,
-    writeTableThrough
+    writeTableThrough,
+    ELEMENT_SIZES
 } from './conformance/tables.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 
 /** Tables whose nested tables a TableWriter writes in place */
 function inPlaceTables(offsetTypes?: readonly OffsetType[]): fc.Arbitrary<TableDescription> {
@@ -677,12 +677,13 @@ class IndexReplacer {
     wrap(writer: TableWriter): TableWriter {
         return new Proxy(writer, {
             get: (target, name) => {
-                const member = Reflect.get(target, name);
+                const member: unknown = Reflect.get(target, name);
                 if (typeof member !== 'function') {
                     return member;
                 }
 
-                return (...args: unknown[]) => this.#forward(target, member, name, args);
+                const method = member as (...args: unknown[]) => unknown;
+                return (...args: unknown[]) => this.#forward(target, method, name, args);
             }
         });
     }

@@ -7,4 +7,5 @@ declare module 'vitest' {
     }
 }
 
+// oxlint-disable-next-line unicorn/require-module-specifiers -- A module, so that it augments vitest's
 export {};

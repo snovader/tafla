@@ -5,13 +5,13 @@ import type { FieldDescription, LayoutDescription } from '../conformance/descrip
 import { buildTable } from '../conformance/tables.ts';
 import {
     array,
-    DEFAULT_LAYOUT,
     message,
     scalar,
     string,
     struct,
     table,
-    vector
+    vector,
+    DEFAULT_LAYOUT
 } from './descriptions.ts';
 import * as javascript from './fixed_fields/javascript/fixedFields.js';
 import * as typescript from './fixed_fields/typescript/fixedFields.ts';
@@ -281,7 +281,7 @@ describe.each(TARGETS)('%s', (_, fixed) => {
     describe('round trip', () => {
         it('should read back the fields of the messages that it writes whole', () => {
             const tiny = fixed.Tiny.serialize({ id: 513, kind: 9 });
-            expect(tiny.length).toBe(6);
+            expect(tiny).toHaveLength(6);
             expect([new fixed.Tiny(tiny).id(), new fixed.Tiny(tiny).kind()]).toStrictEqual([
                 513, 9
             ]);
@@ -338,7 +338,7 @@ describe.each(TARGETS)('%s', (_, fixed) => {
                 position: ORIGIN,
                 label: 'a'.repeat(237)
             });
-            expect(fits.length).toBe(255);
+            expect(fits).toHaveLength(255);
             expect(new fixed.Tagged(fits).label()).toBe('a'.repeat(237));
 
             expect(

@@ -1,8 +1,8 @@
-import { tafla } from './codecs/tafla.ts';
-import { taflaGen } from './codecs/taflaGen.ts';
 import { flatbuffers } from './codecs/flatbuffers.ts';
 import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
+import { tafla } from './codecs/tafla.ts';
+import { taflaGen } from './codecs/taflaGen.ts';
 import { byteBufferAccess, getterAccess } from './itemAccess.ts';
 import { runSuite } from './suite.ts';
 
