@@ -166,15 +166,18 @@ and the pure-Python classes:
   against 0.24 ms through the array's view.
 - **Write nested tables in place, especially large ones.** A table nested
   from its builder is copied into its parent as its bytes, as one nested as
-  bytes is, so the parent holds and copies a large nested table twice:
-  nesting a builder of 1,000,000 float64s took 0.36 ms and held 16 MB at its
-  peak. ``set_table_in_place()`` and ``set_vector_in_place()`` write nested
-  tables among their parent's fields instead, from a function that sets
-  them, without a builder for each or a copy: the same table took 0.13 ms
-  and held 8 MB. A table written in place moves forward by its padding when
-  a field raises its alignment, so set its arrays of the widest elements
-  first, while it's small. A table built elsewhere, or nested more than
-  once, still needs a builder.
+  bytes is, so the parent holds and copies a large nested table twice, and
+  each builder that it's nested in copies it again: nesting a builder of
+  1,000,000 float64s took 0.36 ms and held 16 MB at its peak, and nesting
+  that in 7 more builders, one in each, took 1.9 ms. ``set_table_in_place()``
+  and ``set_vector_in_place()`` write nested tables among their parent's
+  fields instead, from a function that sets them, without a builder for each
+  or a copy: the same table took 0.13 ms and held 8 MB, and 0.13 to 0.14 ms
+  in the 16th of 16 tables in place, each in the next. A field that raises a
+  table's alignment pads it, and the tables in place that it's nested in,
+  which moves what they hold so far, so set the arrays of the widest
+  elements first, while the tables are small. A table built elsewhere, or
+  nested more than once, still needs a builder.
 - **Small tables cost their calls.** Each field is a call to set, which
   writes it: one call into native code with the native classes, and several
   Python calls with the pure-Python ones, which take far more than

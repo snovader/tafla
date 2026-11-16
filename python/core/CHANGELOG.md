@@ -69,11 +69,12 @@ repository's first commits, for code built from its source before the release.
   in `finalize()`, and has a native implementation, in `tafla._native`, as
   the other classes do, with the pure-Python one elsewhere. With the native
   module, the comparison's vector of 100 nested tables took 83% less time,
-  the record 77% less and the 100-row document 79% less, and documents
+  the record 76% less and the 100-row document 78% less, and documents
   written from lists 85% to 88% less, since their lists are converted
-  natively too. With the pure-Python classes, the vector took 36% less and
-  the 100-row document 45% less. No row of the comparison took longer, but a
-  table that nests a large builder does, as below. Its API and the bytes it
+  natively too. With the pure-Python classes, the vector took 35% less and
+  the 100-row document 43% less. No row of the comparison took longer, but a
+  table that nests a large builder does, and so does one written in place
+  whose wider arrays follow narrower ones, as below. Its API and the bytes it
   writes are unchanged, and so are its errors, but for when some of them are
   raised:
   - A scalar that its type can't hold raises `ValueError` from its setter,
@@ -82,11 +83,23 @@ repository's first commits, for code built from its source before the release.
     so a buffer changed after its setter returns doesn't change the table,
     and one whose length changed no longer raises from `finalize()`.
   - A nested builder is copied into its parent as its bytes, so the parent
-    holds and copies a large nested table twice: nesting a builder of
-    1,000,000 float64s took 2.6 times as long as before, and peaked at 16 MB
-    rather than 8. Written in place with `set_table_in_place()`, the same
-    table takes as long as before and is held once. A builder whose layout
-    has a header is no longer finalized by nesting it.
+    holds and copies a large nested table twice, and each builder that it's
+    nested in copies it again: nesting a builder of 1,000,000 float64s took
+    2.7 times as long as before, and peaked at 16 MB rather than 8, and
+    nesting that in 7 more builders, one in each, took 13.5 times as long.
+    Written in place with `set_table_in_place()`, the same table takes as
+    long as before, however deep the tables in place around it, and is held
+    once. A builder whose layout has a header is no longer finalized by
+    nesting it.
+  - A field that raises the alignment of a table written in place pads it,
+    and the tables in place that it's nested in, before the field is
+    written, which moves what they hold so far: 1,000,000 uint32s and then
+    as many float64s took 1.23 times as long as before natively, and 1.15
+    times with the pure-Python classes, and columns of 27,028 uint32s,
+    float32s and float64s, in that order, 1.14 and 1.20 times. Set the
+    widest first, the million of each took 0.57 times as long natively, and
+    as long as before with the pure-Python classes, since the widest array
+    first moves only what's before it, such as the slots.
   - `finalize()` or `bytes()` within a `fill`, or nesting the builder in
     another table there, raises `ValueError` itself, rather than the
     in-place setter raising once `fill` returns.

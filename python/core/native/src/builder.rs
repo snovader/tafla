@@ -22,8 +22,9 @@
 //! builder holds no buffer of itself, which a `ByteBuffer` that `finalize()`
 //! keeps would hold in a cycle with it.
 
+use std::cell::Cell;
 use std::ffi::c_int;
-use std::mem::MaybeUninit;
+use std::mem::{self, MaybeUninit};
 use std::ptr;
 
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
@@ -90,6 +91,17 @@ struct Checkpoint {
     raised: usize,
     in_place: Option<usize>,
     padding: usize,
+}
+
+/// The most checkpoints whose storage a builder leaves to the next
+const SPARE_CHECKPOINTS: usize = 64;
+
+thread_local! {
+    /// The storage of the checkpoints of the last builder that this thread
+    /// dropped, emptied, which the next builder to nest a table in place
+    /// takes rather than allocating its own: a malloc and a free that took
+    /// a few percent of a small table's time
+    static SPARE: Cell<Vec<Checkpoint>> = const { Cell::new(Vec::new()) };
 }
 
 /// The table once written: its bytes, and the ``ByteBuffer`` of them that
@@ -174,6 +186,19 @@ pub struct TableBuilder {
     shape: Shape,
     layout: Option<Py<PyAny>>,
     written: Option<Written>,
+}
+
+impl Drop for TableBuilder {
+    /// Leaves the storage of the checkpoints to the thread's next builder
+    fn drop(&mut self) {
+        let capacity = self.open.capacity();
+        if capacity != 0 && capacity <= SPARE_CHECKPOINTS {
+            let mut open = mem::take(&mut self.open);
+            open.clear();
+            // Dropped instead while the thread exits
+            let _ = SPARE.try_with(|spare| spare.set(open));
+        }
+    }
 }
 
 /// The zeros that pad a table `offset` bytes into its parent to `alignment`
@@ -281,7 +306,9 @@ impl TableBuilder {
     /// each that's nested in place to it, by inserting the
     /// `padding_to_raise(alignment)` zeros that there's room for. The bytes
     /// move once: from the innermost table out, each moves forward by its
-    /// own padding and that of the tables it's nested in.
+    /// own padding and that of the tables it's nested in. Tables with no
+    /// padding before them or the tables they're nested in stay where they
+    /// are, rather than moving onto themselves.
     fn raise_alignment(&mut self, alignment: usize, padding: usize) {
         if alignment <= self.alignment {
             return;
@@ -293,8 +320,10 @@ impl TableBuilder {
 
         let mut shift = padding;
         let more = padding_to(offset, alignment) - self.padding;
-        self.data
-            .move_forward_within(self.base, self.data.len, shift, more);
+        if shift > 0 {
+            self.data
+                .move_forward_within(self.base, self.data.len, shift, more);
+        }
         let mut end = self.base;
         self.base += shift;
         self.slots += shift;
@@ -313,7 +342,9 @@ impl TableBuilder {
             };
 
             let more = padding_to(offset, alignment) - parent.padding;
-            self.data.move_forward_within(parent.base, end, shift, more);
+            if shift > 0 {
+                self.data.move_forward_within(parent.base, end, shift, more);
+            }
             end = parent.base;
             parent.base += shift;
             parent.slots += shift;
@@ -591,6 +622,10 @@ impl TableBuilder {
     fn start_table(&mut self, index: usize, fields: usize, slot_bytes: usize) -> PyResult<()> {
         self.room(slot_bytes)?;
         let offset = self.offset();
+        if self.open.capacity() == 0 {
+            // None while the thread exits
+            self.open = SPARE.try_with(Cell::take).unwrap_or_default();
+        }
         self.open.push(self.checkpoint(index));
         self.begin(fields, slot_bytes, Some(offset));
         Ok(())

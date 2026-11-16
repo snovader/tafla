@@ -870,12 +870,34 @@ class TableBuilder:
         if in_place < 0:
             return
 
-        # The checkpoints of the tables nested in place that it pads, from
-        # this table's parent out, which hold their counters. A table nested
-        # in place has a checkpoint, and so does its parent if it's nested in
-        # place too.
-        padded = []
+        # A table nested in place has a checkpoint, which holds its parent's
+        # counters
+        shift = 0
         parent: Any = self.__checkpoint
+        if parent[_RAISED] < alignment:
+            parent[_RAISED] = alignment
+            if parent[_IN_PLACE] >= 0:
+                shift = self.__pad_parents(parent, alignment)
+
+        base = self.__base + shift
+        more = -in_place % alignment - self.__padding
+        if more:
+            self.__data[base:base] = _ZEROS[more]
+            shift += more
+        self.__base = base + more
+        self.__slots += shift
+        self.__padding += more
+
+    def __pad_parents(self, parent: list[Any], alignment: ElementSize) -> int:
+        """Raises the alignment of the tables that this table is nested in,
+        from its parent, which is nested in place too and whose checkpoint is
+        ``parent``, out, as far as it's more than theirs, and pads each that's
+        nested in place to it. Returns the zeros inserted, which move this
+        table forward."""
+        # The checkpoints of the tables that it pads, from the parent out. A
+        # parent nested in place has a checkpoint of its own.
+        padded = [parent]
+        parent = parent[_PREVIOUS]
         while parent[_RAISED] < alignment:
             parent[_RAISED] = alignment
             if parent[_IN_PLACE] < 0:
@@ -896,15 +918,7 @@ class TableBuilder:
             parent[_PADDING] += more
             # Where its nested table starts, after its slots
             parent[_START] += shift
-
-        base = self.__base + shift
-        more = -in_place % alignment - self.__padding
-        if more:
-            data[base:base] = _ZEROS[more]
-            shift += more
-        self.__base = base + more
-        self.__slots += shift
-        self.__padding += more
+        return shift
 
     def __lower_alignment(self) -> None:
         """Lowers the alignment of the tables that this table is nested in,
