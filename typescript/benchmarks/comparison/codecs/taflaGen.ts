@@ -1,10 +1,10 @@
 import {
     Document,
-    type ItemFields,
     ItemList,
     Record,
     Sample,
-    Triples
+    Triples,
+    type ItemFields
 } from '../generated/tafla/workloads.ts';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
 import type { Codec } from './codec.ts';

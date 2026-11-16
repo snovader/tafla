@@ -7,7 +7,7 @@ import {
 } from './constants.ts';
 import { decode, decodeShortAscii } from './encoding.ts';
 import { byteOrderSwapped } from './endianness.ts';
-import { DecodeError, outOfRange } from './errors.ts';
+import { outOfRange, DecodeError } from './errors.ts';
 import { TableLayout } from './layout.ts';
 import type { OffsetSize } from './types.ts';
 

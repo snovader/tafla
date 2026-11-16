@@ -6,7 +6,8 @@
     "include": [
         "*.ts",
         "core/rolldown.config.ts",
-        "core/vitest.config.ts"
+        "core/vitest.config.ts",
+        "lint/*.ts"
     ],
     "references": [
         { "path": "./benchmarks" },

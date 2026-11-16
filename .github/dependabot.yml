@@ -18,6 +18,13 @@ updates:
           - "vite"
           - "vitest"
           - "@vitest/*"
+      # oxlint requires a version of oxlint-tsgolint, and oxfmt is released
+      # with it
+      "oxc":
+        patterns:
+          - "oxfmt"
+          - "oxlint"
+          - "oxlint-tsgolint"
 
   - package-ecosystem: "uv"
     directory: "/python"

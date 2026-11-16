@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { type BuildOptions, defineConfig } from 'rolldown';
+import { defineConfig, type BuildOptions } from 'rolldown';
 
 /**
  * Bundles the package's modules into one module at `file`, as it's published

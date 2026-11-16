@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { SUITE } from './cases.ts';
-import { SUITE_DIRECTORY, writeSuite } from './files.ts';
+import { writeSuite, SUITE_DIRECTORY } from './files.ts';
 
 // Writes the conformance suite to its directory at the root of the
 // repository; run it with `yarn conformance:generate`.

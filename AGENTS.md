@@ -201,7 +201,7 @@ intent, not a requirement to preserve every detail.
 ## Formatting
 
 - Follow each language's formatter and compiler configurations, which live in
-  its directory. In TypeScript, Biome sets four-space indentation, single
+  its directory. In TypeScript, oxfmt sets four-space indentation, single
   quotes, semicolons, no trailing commas, and contextual line widths.
   Intentional whitespace and readable structure still require judgment after
   automatic formatting.

@@ -1,6 +1,6 @@
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { toUint8Array } from './converters.ts';
-import type { TypedArrayConstructor } from './types.ts';
+import type { TypedArray, TypedArrayConstructor } from './types.ts';
 
 /**
  * Copies `length` elements from `byteOffset` in `buffer` into a new array,
@@ -15,11 +15,13 @@ export function byteOrderSwapped<T extends TypedArrayConstructor>(
 ): InstanceType<T> {
     const elementSize = TypedArray.BYTES_PER_ELEMENT;
     const source = new Uint8Array(buffer, byteOffset, length * elementSize);
-    const swapped = new TypedArray(length);
+    // The constructor returns any, from which InstanceType<T> infers the array
+    // oxlint-disable-next-line typescript/no-unsafe-assignment
+    const swapped: TypedArray = new TypedArray(length);
 
     byteOrderSwap(source, toUint8Array(swapped), elementSize);
 
-    return swapped;
+    return swapped as InstanceType<T>;
 }
 
 /**

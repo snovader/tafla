@@ -469,46 +469,49 @@ impl Generator<'_> {
         let readers = self.read_functions();
         let writers = self.write_functions(&wholes);
 
-        // (name, whether it's only a type here)
-        let mut names = Vec::new();
-        if has_table {
-            names.push(("ByteBuffer", !has_message));
-        }
-        if versioned {
-            names.push(("DecodeError", false));
-        }
-        names.extend(readers.iter().map(|reader| (reader.as_str(), false)));
-        if has_struct {
-            names.push(("StructWriter", false));
-        }
-        if has_message {
-            names.push(("TableLayout", false));
-        }
-        if has_sized || has_nested {
-            names.push(("TableSizer", !has_sized));
-        }
-        if has_whole || has_nested {
-            names.push(("TableWriter", !has_whole));
-        }
+        // The names are listed in the order that the TypeScript project's
+        // oxlint configuration checks: functions, then classes, then types,
+        // each in natural order, such as `writeUint8` before `writeUint16`
+        let mut values: Vec<String> = readers;
         if has_whole_string {
-            names.push(("utf8Length", false));
+            values.push("utf8Length".to_owned());
         }
         if has_runs {
-            names.push(("viewOf", false));
+            values.push("viewOf".to_owned());
         }
-        names.extend(writers.iter().map(|writer| (writer.as_str(), false)));
+        values.extend(writers);
         if has_whole_string {
-            names.push(("writeUtf8", false));
+            values.push("writeUtf8".to_owned());
         }
 
-        let mut values = Vec::new();
-        let mut types = Vec::new();
-        for (name, type_only) in names {
-            match (type_only, self.typed) {
-                (false, _) => values.push(name.to_owned()),
-                (true, true) => values.push(format!("type {name}")),
-                (true, false) => types.push(name),
-            }
+        // (class, whether it's only a type here)
+        let mut classes = Vec::new();
+        if has_table {
+            classes.push(("ByteBuffer", !has_message));
+        }
+        if versioned {
+            classes.push(("DecodeError", false));
+        }
+        if has_struct {
+            classes.push(("StructWriter", false));
+        }
+        if has_message {
+            classes.push(("TableLayout", false));
+        }
+        if has_sized || has_nested {
+            classes.push(("TableSizer", !has_sized));
+        }
+        if has_whole || has_nested {
+            classes.push(("TableWriter", !has_whole));
+        }
+
+        let (types, classes): (Vec<_>, Vec<_>) =
+            classes.into_iter().partition(|&(_, type_only)| type_only);
+        values.extend(classes.into_iter().map(|(name, _)| name.to_owned()));
+        let mut types: Vec<&str> = types.into_iter().map(|(name, _)| name).collect();
+        // TypeScript imports types with the values, and JavaScript in JSDoc
+        if self.typed {
+            values.extend(types.drain(..).map(|name| format!("type {name}")));
         }
 
         if !types.is_empty() {
@@ -2456,7 +2459,7 @@ impl Generator<'_> {
     }
 
     /// Opens a method of `parameters`, each a name and its type, broken over
-    /// lines when it's too long, as Biome breaks it
+    /// lines when it's too long, as oxfmt breaks it
     fn signature(
         &self,
         writer: &mut CodeWriter,
@@ -2658,7 +2661,7 @@ fn stored_value(scalar: Scalar, value: &str) -> Expr {
 }
 
 /// Returns the bool that `read` reads from its byte, true when it isn't 0, in
-/// parentheses when it doesn't fit on a line, as Biome breaks a comparison
+/// parentheses when it doesn't fit on a line, as oxfmt breaks a comparison
 fn return_bool(writer: &mut CodeWriter, read: &Expr) {
     let line = format!("return {} !== 0;", read.flat());
     if writer.fits(&STYLE, &line) {
@@ -2671,7 +2674,7 @@ fn return_bool(writer: &mut CodeWriter, read: &Expr) {
 }
 
 /// Returns an object of each field's value that `reads` reads, a bool's
-/// compared with 0, broken over a line for each, as Biome keeps an object
+/// compared with 0, broken over a line for each, as oxfmt keeps an object
 /// that's broken after its brace
 fn return_object(writer: &mut CodeWriter, reads: &[Read]) {
     write_object(writer, "return ", reads);
@@ -2695,7 +2698,7 @@ fn write_object(writer: &mut CodeWriter, target: &str, reads: &[Read]) {
 }
 
 /// Assigns the bool that `read` reads from its byte to `target`, broken after
-/// the `=` or `:` when it doesn't fit on a line, as Biome breaks a comparison,
+/// the `=` or `:` when it doesn't fit on a line, as oxfmt breaks a comparison,
 /// and ends it with `suffix`
 fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str) {
     let line = format!("{target}{} !== 0{suffix}", read.flat());

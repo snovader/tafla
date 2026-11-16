@@ -1,7 +1,6 @@
 import { expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
 import {
-    DecodeError,
     readFloat32,
     readFloat64,
     readInt8,
@@ -12,7 +11,6 @@ import {
     readUint16,
     readUint32,
     readUint64,
-    StructWriter,
     utf8Length,
     viewOf,
     writeFloat32,
@@ -25,9 +23,11 @@ import {
     writeUint16,
     writeUint32,
     writeUint64,
-    writeUtf8
+    writeUtf8,
+    DecodeError,
+    StructWriter
 } from 'tafla';
-import { SLICES, STRINGS, sliceOf } from './conformance/arbitraries.ts';
+import { sliceOf, SLICES, STRINGS } from './conformance/arbitraries.ts';
 import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;

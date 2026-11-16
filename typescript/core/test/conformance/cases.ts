@@ -1,5 +1,6 @@
 import { ByteBuffer } from 'tafla';
 import {
+    toJsonNumber,
     type Alignment,
     type Corruption,
     type EquivalentCase,
@@ -14,7 +15,6 @@ import {
     type Suite,
     type TableDescription,
     type TableField,
-    toJsonNumber,
     type ValidCase
 } from './description.ts';
 import { buildTable, layoutOf } from './tables.ts';

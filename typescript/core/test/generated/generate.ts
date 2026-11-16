@@ -1,8 +1,8 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import {
+    writeShapesCases,
     SHAPES_CASES,
-    SHAPES_DIRECTORY,
-    writeShapesCases
+    SHAPES_DIRECTORY
 } from './shapesCases.ts';
 
 // Writes the cases of the generated code to conformance/generated at the root

@@ -121,10 +121,10 @@ type Setters<V extends TypedArray | unknown[]> =
         ? Exclude<Extract<keyof TableBuilder, `set${string}`>, `${string}Array`>
         : Extract<keyof TableBuilder, `set${string}Array`>;
 
-function bufferFromTypedArray<
-    V extends TypedArray | unknown[],
-    K extends Setters<V>
->(array: V, setter: K): ByteBuffer {
+function bufferFromTypedArray<V extends TypedArray | unknown[]>(
+    array: V,
+    setter: Setters<V>
+): ByteBuffer {
     const builder = new TableBuilder(array.length);
     const set = builder[setter].bind(builder) as (value: V[number]) => void;
 
