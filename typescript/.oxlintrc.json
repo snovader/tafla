@@ -154,6 +154,33 @@
 
         // Turned off
 
+        // TypeScript reports these itself, with this project's tsconfig
+        "eslint/constructor-super": "off",
+        "eslint/getter-return": "off",
+        "eslint/no-class-assign": "off",
+        "eslint/no-const-assign": "off",
+        "eslint/no-delete-var": "off",
+        "eslint/no-dupe-class-members": "off",
+        "eslint/no-dupe-keys": "off",
+        "eslint/no-fallthrough": "off",
+        "eslint/no-func-assign": "off",
+        "eslint/no-import-assign": "off",
+        "eslint/no-new-native-nonconstructor": "off",
+        "eslint/no-obj-calls": "off",
+        "eslint/no-redeclare": "off",
+        "eslint/no-setter-return": "off",
+        "eslint/no-this-before-super": "off",
+        "eslint/no-unreachable": "off",
+        "eslint/no-unsafe-negation": "off",
+        "eslint/no-unsafe-optional-chaining": "off",
+        "eslint/no-unused-labels": "off",
+        "eslint/no-unused-private-class-members": "off",
+        "eslint/no-with": "off",
+        "eslint/use-isnan": "off",
+        "eslint/valid-typeof": "off",
+        "import/default": "off",
+        "import/namespace": "off",
+
         // Typed arrays, buffers and builders are passed to be read and written
         "typescript/prefer-readonly-parameter-types": "off",
         // Low-level code asserts types it established, such as of the records
