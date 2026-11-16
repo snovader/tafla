@@ -20,6 +20,13 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout};
 /// took 2.2 times as long for the benchmarks' document of 100 rows, and 2.3
 /// times as long for 100,000.
 ///
+/// A shorter run is copied when it's set and again by `to_bytes()`, which
+/// still costs less than a segment for a run of 200 bytes. Kept from 128
+/// bytes, a table of 32 runs of 128 and 192 bytes took 1.07 times as long to
+/// write as with the builder that recorded its fields, rather than 0.88,
+/// while tables of 4 and of 100,000 runs of 255 bytes took 0.96 and 0.82
+/// times as long, rather than 1.35 and 1.62.
+///
 /// Built with `--cfg tafla_segment_stress`, every run of a byte or more is
 /// a segment, so that the tests write every value as one.
 const SEGMENT_BYTES: usize = if cfg!(tafla_segment_stress) { 1 } else { 256 };

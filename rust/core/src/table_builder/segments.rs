@@ -124,7 +124,10 @@ impl<'a> Segments<'a> {
 
     /// Pushes a segment, and when it's the first past the first few, makes
     /// room for `more`, which the builder expects, such as one for each
-    /// field of its table left to set
+    /// field of its table left to set. Grown as a `Vec` grows, from room
+    /// for 4, a table of 16 columns of 100 `float64` took 1.18 times as long
+    /// to write as with the builder that recorded its fields, rather than
+    /// 0.98.
     #[inline]
     pub fn push(&mut self, segment: Segment<'a>, more: usize) {
         if let Some(slot) = self.first.get_mut(self.len) {

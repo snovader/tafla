@@ -70,15 +70,22 @@ first commits, for code built from its source before the release.
   bytes, and writes the header into them, where it allocated room to record
   at least 8 fields, of 48 bytes each. The bytes grow fourfold below 64 KiB
   and twofold above. On an Apple M2 Pro, the benchmarks' vector of 100
-  nested tables, written in place, took 1.40 µs rather than 4.43 µs, in
-  7,696 bytes rather than 32,536; the record 59 ns rather than 80 ns; the
-  document of 100 rows 120 ns rather than 155 ns; and the vector from a
-  builder per table 6.7 µs rather than 8.7 µs, in 205 allocations rather
+  nested tables, written in place, took 1.35 µs rather than 4.40 µs, in
+  7,696 bytes rather than 32,536; the record 52 ns rather than 78 ns; the
+  document of 100 rows 122 ns rather than 157 ns; and the vector from a
+  builder per table 7.5 µs rather than 8.6 µs, in 205 allocations rather
   than 203. A table of 32 strings and arrays of 128 and 192 bytes, which are
-  copied when they're set and again by `to_bytes()`, took 428 ns rather
+  copied when they're set and again by `to_bytes()`, took 430 ns rather
   than 491 ns, in 16,256 bytes from 3 allocations rather than 6,912 from 2.
   The document of 100,000 rows and the array of 100 structs took as long as
-  before. A builder is 264 bytes rather than 48.
+  before. Some tables take longer: a table of 4 strings or arrays of 255
+  bytes, which grow the bytes, took 145 ns rather than 107 ns, and of
+  100,000 of them 3.1 ms rather than 1.9 ms, holding 56 MB at once rather
+  than 31 MB; a table of 9 arrays of 256 bytes, of which the builder keeps
+  4 within itself, 205 ns rather than 182 ns; and a vector of 100,000
+  builders of 4 `uint32` fields, which hold their room while they're
+  nested by reference, 13.3 ms rather than 10.7 ms, holding 90 MB at once
+  rather than 52 MB. A builder is 264 bytes rather than 48.
 
 ### Fixed
 

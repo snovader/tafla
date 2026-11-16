@@ -24,6 +24,15 @@ const FIRST_CAPACITY: usize = 256;
 /// bytes grew from 256 five times, and with this room and growing fourfold,
 /// 0.86 times as long, in 16.3 KB from 3. A table of 4 fields still starts
 /// with 256 bytes or about, so the record took as long.
+///
+/// A builder of scalars holds that room too, while it's kept: 100,000
+/// builders of 32 `uint32` fields, nested by reference, held 347 MB at once
+/// rather than 189 MB, and took 1.13 times as long to write. With room for
+/// 16 bytes a field, they held 194 MB and took 0.66 times as long, but the
+/// table of 32 fields of 128 and 192 bytes took 0.98 times as long rather
+/// than 0.88, of 64 and 96 bytes 0.86 rather than 0.72, and of 4 fields of
+/// 255 bytes, whose bytes grew twice rather than once, 1.89 rather than
+/// 1.35.
 const ROOM_FOR_A_FIELD: usize = 64;
 
 /// The most room that a builder's bytes start with beyond its header
