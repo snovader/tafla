@@ -1894,10 +1894,12 @@ impl Generator<'_> {
             ),
             ";",
         );
-        writer.line(format!(
-            "const items = {};",
-            self.new_array(table, "offsets.length")
-        ));
+        writer.statement(
+            &STYLE,
+            "const items = ",
+            &self.new_array(table, "offsets.length"),
+            ";",
+        );
         writer.blank();
         writer.open("for (let i = 0; i < offsets.length; i++) {");
         writer.statement(
@@ -1933,11 +1935,17 @@ impl Generator<'_> {
     }
 
     /// A new array of `length` items of a type, whose type TypeScript gives
-    fn new_array(&self, item: &str, length: &str) -> String {
+    fn new_array(&self, item: &str, length: &str) -> Expr {
         if self.typed {
-            format!("new Array<{item}Fields>({length})")
+            text(format!("new Array<{item}Fields>({length})"))
         } else {
-            format!("new Array({length})")
+            // A JSDoc cast types the array, which would otherwise be `any[]`.
+            // Its expression takes the parentheses that the cast needs, and
+            // breaks within them as a call's lone argument does.
+            call(
+                format!("/** @type {{{item}Fields[]}} */ "),
+                vec![text(format!("new Array({length})"))],
+            )
         }
     }
 
@@ -2055,10 +2063,12 @@ impl Generator<'_> {
         // The struct's reads in the loop, from the bytes in a local, rather
         // than its read() of this.#bytes, which took a quarter longer
         writer.line("const bytes = this.#bytes;");
-        writer.line(format!(
-            "const items = {};",
-            self.new_array(structure, "this.#length")
-        ));
+        writer.statement(
+            &STYLE,
+            "const items = ",
+            &self.new_array(structure, "this.#length"),
+            ";",
+        );
         writer.blank();
         writer.open("for (let i = 0; i < items.length; i++) {");
         writer.line(format!(

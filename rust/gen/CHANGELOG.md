@@ -263,6 +263,9 @@ first commits, for code built from its source before the release.
 ### Fixed
 
 - Generated TypeScript structs are written into bytes of their own.
+- The `fields()` of generated JavaScript's vectors of tables and arrays of
+  structs casts its new array to the type of its items in `JSDoc`, so that
+  it returns the type its `@returns` tag names rather than `any[]`.
 - Generated Python structs reject negative offsets and out-of-range values.
 - tafla-gen rejects fields whose names are the same in camelCase, names that
   clash with generated code, definitions too wide for a Java record, and
