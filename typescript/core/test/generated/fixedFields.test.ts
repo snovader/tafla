@@ -1,5 +1,5 @@
-import { fc, it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
+import { fc, it } from '@fast-check/vitest';
 import { SCALAR_VALUES, STRINGS } from '../conformance/arbitraries.ts';
 import type { FieldDescription, LayoutDescription } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';

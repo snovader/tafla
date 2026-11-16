@@ -1,5 +1,5 @@
-import { fc, it } from '@fast-check/vitest';
 import { expect, vi } from 'vitest';
+import { fc, it } from '@fast-check/vitest';
 import { TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import { fitsItsLayout, sliceOf, tables, ARRAY_FIELDS, SLICES } from './conformance/arbitraries.ts';

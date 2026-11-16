@@ -1,5 +1,5 @@
-import { fc, it } from '@fast-check/vitest';
 import { describe, expect, inject, test } from 'vitest';
+import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
 import { sliceOf, MAX_VALUES, SLICES, type Slice } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';

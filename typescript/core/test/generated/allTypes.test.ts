@@ -1,5 +1,5 @@
-import { fc, it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
+import { fc, it } from '@fast-check/vitest';
 import { ByteBuffer, DecodeError } from 'tafla';
 import { corruptionOf, sliceOf, CORRUPTIONS, SLICES } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
