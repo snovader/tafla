@@ -1,8 +1,11 @@
 import { defineConfig } from 'vitest/config';
+import { bigEndianProject } from './core/vitest.config.ts';
 
 const config = defineConfig({
     test: {
-        projects: ['benchmarks', 'core']
+        // Bundles the package once per run, for every project to import
+        globalSetup: ['./vitest.globalSetup.ts'],
+        projects: ['benchmarks', 'core', bigEndianProject]
     }
 });
 

@@ -3,6 +3,7 @@
 # TypeScript
 node_modules
 /typescript/.cache
+/typescript/core/.bundle
 /typescript/**/dist
 /typescript/.yarn/*
 !/typescript/.yarn/patches

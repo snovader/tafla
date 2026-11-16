@@ -5,6 +5,7 @@
         "includes": [
             "**",
             "!.cache",
+            "!core/.bundle",
             "!.yarn",
             "!**/dist",
             // Yarn writes these in a format of its own
