@@ -207,9 +207,10 @@ rc::Gen<Field> long_array(rc::Gen<T> values) {
 }
 
 /// Arrays, strings, structs and arrays of structs of up to about a
-/// kilobyte, across the 256 bytes from which `TableBuilder` keeps a value
-/// where it is, rather than copying it when it's set: a struct of 64 to 160
-/// scalars, of 4.2 bytes on average, is about 270 to 670 bytes
+/// kilobyte, past the 64 bytes from which `TableBuilder` keeps a value where
+/// it is, rather than copying it when it's set, as the other values cross
+/// them: a struct of 64 to 160 scalars, of 4.2 bytes on average, is about
+/// 270 to 670 bytes
 rc::Gen<Field> long_value() {
     return rc::gen::oneOf(long_array(integers<std::int8_t>()), long_array(integers<std::uint8_t>()),
                           long_array(integers<std::int16_t>()), long_array(integers<std::uint16_t>()),

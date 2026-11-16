@@ -72,28 +72,38 @@ type, offset size, vector, builder and decode error.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
   which must outlive them. A setter that takes a `std::span` or a
-  `std::string_view` views it until `to_bytes()`, and one that takes a
-  `std::vector`, a `std::string`, `Bytes` or a builder by rvalue owns it. A
-  temporary that a setter can't own, such as a `std::array` returned by
-  value, doesn't compile, rather than leaving the builder a view of it. A
-  builder nested by `const` reference is copied into its parent when it's
-  set, and the parent shares what it owns, so that it may then change or be
-  destroyed, and only what it borrows must outlive the parent's
-  `to_bytes()`.
+  `std::string_view` views it until `to_bytes()`, which it must outlive
+  unchanged: a value shorter than 64 bytes is copied when it's set, and a
+  longer one when the table is written. One that takes a `std::vector`, a
+  `std::string`, `Bytes` or a builder by rvalue takes it: a value of 64
+  bytes or more is moved into the builder, and a shorter one is copied and
+  left as it was. A temporary that a setter can't own, such as a
+  `std::array` returned by value, doesn't compile, rather than leaving the
+  builder a view of it. A builder nested by `const` reference is copied into
+  its parent when it's set, and the parent shares what it owns, so that it
+  may then change or be destroyed, and only what it borrows must outlive the
+  parent's `to_bytes()`.
 - **`TableBuilder` writes each field when it's set**, as FlatBuffers',
   protobuf's and MessagePack's builders do: its offset into the header, and
   its bytes after the last field's, into bytes that the builder holds, the
   first 128 within itself and the others on the heap, growing at least
   twofold. `to_bytes()` copies them into bytes of the table's exact length,
-  which is still the one allocation of a small table. Runs of 256 bytes or
+  which is still the one allocation of a small table. Runs of 64 bytes or
   more, such as a long array, aren't copied when they're set: the builder
   keeps them where they are, and `to_bytes()` copies them into the table
   between its own bytes, so that a long array is copied once, as before. It
   replaced a builder that recorded each field and wrote them all in
   `to_bytes()`, which took more than twice as long to write the benchmarks'
-  vector of 100 nested tables, and a third longer for the document of 100
-  rows. [snovader/tafla#212](https://github.com/snovader/tafla/pull/212)
-  compares them.
+  vector of 100 nested tables, and 1.6 times as long for the document of
+  100 rows. [snovader/tafla#212](https://github.com/snovader/tafla/pull/212)
+  compares them, also in shapes that favour the old one. The new one takes
+  longer for many values of 63 to 255 bytes: 20,000 strings of 100 bytes
+  took 1.11 times as long, since a value shorter than 64 bytes is copied
+  twice, into the builder's bytes and then into the table, and keeping a
+  longer one costs more than recording it. Rejecting a vector written in
+  place that's too long for its table took 1.8 times as long: its items are
+  written and removed one by one, so that the builder holds no more than the
+  table could.
 - **Nested tables can be written in place.** `set_table(fields, fill)` and
   `set_vector(count, fields, fill)` write a nested table, or each item of a
   vector, straight into the builder's bytes, through the `TableBuilder::Item`

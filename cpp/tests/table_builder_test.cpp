@@ -744,6 +744,27 @@ TEST(TableBuilder, OwnsStringsAndArraysGivenAsRvalues) {
     EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(2), 3), std::vector<std::uint8_t>{9, 8, 7}));
 }
 
+/// A value shorter than 64 bytes given as an rvalue is copied when it's
+/// set, and left as it was, rather than moved into the builder
+TEST(TableBuilder, CopiesAShortRvalueAndLeavesItAsItWas) {
+    std::string string(63, 's');
+    std::vector<std::uint16_t> values(31, 7);
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_string(std::move(string));
+    builder.set_uint16_array(std::move(values));
+
+    // NOLINTBEGIN(bugprone-use-after-move): left as it was is the point
+    EXPECT_EQ(string, std::string(63, 's'));
+    EXPECT_EQ(values, std::vector<std::uint16_t>(31, 7));
+    // NOLINTEND(bugprone-use-after-move)
+
+    const auto bytes = builder.to_bytes();
+    const ByteBuffer buffer(bytes, TableLayout());
+    EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), std::string(63, 's'));
+    EXPECT_EQ(buffer.get_uint16_array(buffer.root_offset(1)).to_vector(), std::vector<std::uint16_t>(31, 7));
+}
+
 TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
     TableBuilder builder(1, TableLayout().with_offset_type(OffsetType::uint8));
     std::vector<std::uint8_t> values(300, 1);
@@ -752,7 +773,7 @@ TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
     EXPECT_EQ(values.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
 }
 
-/// Structs of 256 bytes or more, borrowed or owned, which the builder keeps
+/// Structs of 64 bytes or more, borrowed or owned, which the builder keeps
 /// where they are rather than copying them, read back as they were set
 TEST(TableBuilder, WritesLongStructs) {
     std::vector<std::uint8_t> borrowed(300);

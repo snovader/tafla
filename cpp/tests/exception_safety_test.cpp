@@ -301,5 +301,34 @@ TEST(Allocation, AVectorOfUnevenItemsAllocatesInProportionToItsTable) {
     EXPECT_EQ(builder.to_bytes().size(), 1'150'011U);
 }
 
+/// A vector written in place that makes its table too long keeps no more
+/// than the table could hold, and an item, rather than every item until the
+/// last: here 2,000 items of 240 strings of 250 bytes, 122 MB, in a table of
+/// uint16 offsets, which hold 64 KiB. Its error has the vector's whole
+/// length, as a vector of builders' has, which is checked before they're
+/// written, and the builder is left as it was.
+TEST(Allocation, AVectorTooLongForItsTableKeepsNoMoreThanItCould) {
+    const std::string string(250, 's');
+    const AllocationsUpTo limit(1 << 20);
+
+    TableBuilder builder(1, TableLayout().with_offset_type(OffsetType::uint16));
+    try {
+        builder.set_vector(2'000, 240, [&](std::size_t, TableBuilder::Item& item) {
+            for (int field = 0; field < 240; ++field) {
+                item.set_string(std::string_view(string));
+            }
+        });
+        FAIL() << "The vector wasn't rejected";
+    } catch (const BuildError& error) {
+        // The header, the count and the items' ends, and each item's offsets
+        // and strings
+        EXPECT_EQ(error.kind(), BuildError::Kind::too_long);
+        EXPECT_EQ(error.length(), 2U + 2 * 2'001 + 2'000 * (240 * 2 + 240 * (2 + 250)));
+    }
+
+    builder.set_vector(1, 1, [&](std::size_t, TableBuilder::Item& item) { item.set_string(std::string_view(string)); });
+    EXPECT_EQ(builder.to_bytes().size(), 2U + 2 * 2 + 2 + 2 + 250);
+}
+
 }  // namespace
 }  // namespace tafla::test

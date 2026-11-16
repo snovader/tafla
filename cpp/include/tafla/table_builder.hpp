@@ -75,7 +75,7 @@ public:
     /// Enough for the comparison's record and document of 100 rows, apart
     /// from their columns, so that they allocate only the table: with 64,
     /// the document took 1.3 times as long. With 256, a builder is larger,
-    /// and nesting 100 builders took 4% longer.
+    /// and nesting 100 builders took 6% longer.
     static constexpr std::size_t Inline = 128;
     /// The least that the bytes grow to on the heap, so that a table that
     /// outgrows the builder's own bytes doesn't grow again soon. The
@@ -226,118 +226,135 @@ struct Segment {
 };
 
 /// The segments of a table, in the order of their positions: the first
-/// `Inline` within the builder, and the others in a vector, which holds them
-/// all once they don't fit
+/// `Inline` within the builder, and then on the heap, where they grow at
+/// least twofold, as `GrowingBytes` grows bytes. A `std::vector`, which held
+/// them once they outgrew the builder, made building a chain of 1,000
+/// builders, each nested in the next, 3 times slower.
 class Segments {
 public:
     /// The comparison's document of 100 rows keeps 3. Without any within the
     /// builder, it took 1.7 times as long, and the array of 100 structs 1.2
-    /// times; with 8, nesting 100 builders took 5% longer.
+    /// times; with 8, nesting 100 builders took 6% longer.
     static constexpr std::size_t Inline = 4;
 
-    Segments() = default;
+    Segments() noexcept = default;
 
-    /// Leaves `other` without segments, and without a vector, whose room
-    /// would otherwise say that it holds them
-    Segments(Segments&& other) noexcept : spilled_(std::move(other.spilled_)), size_(std::exchange(other.size_, 0)) {
-        take_inline(other);
+    Segments(Segments&& other) noexcept {
+        take(other);
     }
 
     Segments& operator=(Segments&& other) noexcept {
         if (this != &other) {
-            spilled_ = std::move(other.spilled_);
-            size_ = std::exchange(other.size_, 0);
-            take_inline(other);
+            release();
+            take(other);
         }
         return *this;
     }
 
     Segments(const Segments&) = delete;
     Segments& operator=(const Segments&) = delete;
-    ~Segments() = default;
+
+    ~Segments() {
+        release();
+    }
 
     [[nodiscard]] std::size_t size() const noexcept {
         return size_;
     }
 
     [[nodiscard]] Segment* begin() noexcept {
-        return spilled() ? spilled_.data() : inline_.data();
+        return data_;
     }
 
     [[nodiscard]] const Segment* begin() const noexcept {
-        return spilled() ? spilled_.data() : inline_.data();
+        return data_;
     }
 
     [[nodiscard]] const Segment* end() const noexcept {
-        return begin() + size_;
+        return data_ + size_;
     }
 
     [[nodiscard]] Segment& operator[](std::size_t index) noexcept {
-        return begin()[index];
+        return data_[index];
     }
 
     /// Makes room for `count` more segments, so that adding them doesn't
     /// throw
-    void reserve_more(std::size_t count) {
-        const auto size = size_ + count;
-        if (!spilled()) {
-            if (size <= Inline) {
-                return;
-            }
-            std::vector<Segment> spilled;
-            spilled.reserve((std::max)(size, 2 * Inline));
-            spilled.assign(inline_.begin(), inline_.begin() + static_cast<std::ptrdiff_t>((std::min)(size_, Inline)));
-            spilled_ = std::move(spilled);
-        } else if (size > spilled_.capacity()) {
-            spilled_.reserve((std::max)(size, 2 * spilled_.capacity()));
+    TAFLA_ALWAYS_INLINE void reserve_more(std::size_t count) {
+        if (count > capacity_ - size_) [[unlikely]] {
+            grow(count);
         }
     }
 
     /// Adds a segment, for which there's room
-    void push_back(const Segment& segment) noexcept {
-        if (spilled()) {
-            spilled_.push_back(segment);
-        } else {
-            inline_[size_] = segment;
-        }
-        ++size_;
+    TAFLA_ALWAYS_INLINE void push_back(const Segment& segment) noexcept {
+        data_[size_++] = segment;
     }
 
-    /// Removes the segments past the first `size`, keeping the vector's room
-    void truncate(std::size_t size) noexcept {
-        if (spilled()) {
-            spilled_.resize(size);
+    /// Adds `other`'s segments, `offset` bytes further on than they are in
+    /// it, for which there's room
+    void append(const Segments& other, std::size_t offset) noexcept {
+        Segment* to = data_ + size_;
+        for (const auto& segment : other) {
+            *to++ = {segment.at + offset, segment.data, segment.size};
         }
+        size_ += other.size_;
+    }
+
+    /// Removes the segments past the first `size`, keeping their room
+    void truncate(std::size_t size) noexcept {
         size_ = size;
     }
 
-    void clear() noexcept {
-        spilled_.clear();
-        size_ = 0;
-    }
-
 private:
-    /// Whether the vector holds the segments, which it does once it has
-    /// room, even for none
-    [[nodiscard]] bool spilled() const noexcept {
-        return spilled_.capacity() != 0;
+    TAFLA_COLD void grow(std::size_t count) {
+        if (count > SIZE_MAX / sizeof(Segment) / 2 - size_) {
+            throw std::bad_alloc();
+        }
+
+        const std::size_t capacity = (std::max)({size_ + count, 2 * capacity_, 4 * Inline});
+        auto* grown = static_cast<Segment*>(::operator new(capacity * sizeof(Segment)));
+        std::copy_n(data_, size_, grown);
+        release();
+        data_ = grown;
+        capacity_ = capacity;
     }
 
-    /// Copies the segments within `other`, unless its vector, now this one's,
-    /// held them, and leaves `other` without a vector. The segments past its
-    /// size aren't initialized, so they aren't copied.
-    void take_inline(Segments& other) noexcept {
-        if (!spilled()) {
-            std::copy_n(other.inline_.begin(), size_, inline_.begin());
+    [[nodiscard]] bool is_inline() const noexcept {
+        return data_ == inline_.data();
+    }
+
+    void release() noexcept {
+        if (!is_inline()) {
+            ::operator delete(data_);
         }
-        other.spilled_ = {};
+    }
+
+    /// Takes `other`'s segments, and leaves it with none, within itself. The
+    /// segments within it past its size aren't initialized, so they aren't
+    /// copied.
+    void take(Segments& other) noexcept {
+        size_ = other.size_;
+        if (other.is_inline()) {
+            std::copy_n(other.inline_.begin(), other.size_, inline_.begin());
+            data_ = inline_.data();
+            capacity_ = Inline;
+        } else {
+            data_ = other.data_;
+            capacity_ = other.capacity_;
+        }
+
+        other.data_ = other.inline_.data();
+        other.size_ = 0;
+        other.capacity_ = Inline;
     }
 
     // Not initialized: only the first `size_` are read. Zeroing them made
     // building the comparison's record 2 ns slower.
     std::array<Segment, Inline> inline_;
-    std::vector<Segment> spilled_;
+    Segment* data_ = inline_.data();
     std::size_t size_ = 0;
+    std::size_t capacity_ = Inline;
 };
 
 }  // namespace detail
@@ -357,20 +374,25 @@ private:
 /// offset into the header. It writes into bytes that it holds, the first 128
 /// within itself and the others on the heap, growing at least twofold.
 /// `to_bytes()` copies them into bytes of the table's exact length, and
-/// writes a sized table's length there. Runs of 256 bytes or more, the
+/// writes a sized table's length there. Runs of 64 bytes or more, the
 /// elements of an array, a string's bytes or a nested table's, aren't copied
 /// when they're set: the builder keeps them where they are, and `to_bytes()`
 /// copies them into the table between its own bytes, so that a long array is
 /// copied once.
 ///
 /// A setter that takes a `std::span` or a `std::string_view` borrows its
-/// value, which must outlive the builder's last `to_bytes()`, as a view
-/// would. One that takes a `std::vector`, a `std::string`, a `Bytes` or a
-/// builder by rvalue reference owns it. A call with a temporary of another
-/// container, such as a `std::array` returned by value, doesn't compile,
-/// since the builder would view it after it's destroyed. A builder nested by
-/// `const` reference is copied into this one when it's nested, as
-/// `set_table()` describes, so it needn't outlive this one.
+/// value, which must outlive the builder's last `to_bytes()`, unchanged, as
+/// a view would: a value shorter than 64 bytes is copied when it's set, and
+/// a longer one when the table is written, so a value changed in between is
+/// written as it was at either. One that takes a `std::vector`, a
+/// `std::string`, a `Bytes` or a builder by rvalue reference takes it: a
+/// value of 64 bytes or more is moved into the builder, which keeps it until
+/// it's destroyed, and a shorter one is copied, and left as it was. A call
+/// with a temporary of another container, such as a `std::array` returned by
+/// value, doesn't compile, since the builder would view it after it's
+/// destroyed. A builder nested by `const` reference is copied into this one
+/// when it's nested, as `set_table()` describes, so it needn't outlive this
+/// one.
 ///
 /// A setter throws a `BuildError`, and leaves the builder as it was, when the
 /// table already holds all its fields or the field would make it too long
@@ -737,13 +759,15 @@ private:
     /// Runs of at least this many bytes, an array's elements, a string's or a
     /// nested table's bytes, borrowed or owned, are kept as segments of the
     /// table, which `to_bytes()` copies, rather than copied into the
-    /// builder's bytes when they're set. Copying every run when it's set made
-    /// building the comparison's document of 100,000 rows 3.8 times slower,
-    /// since each 400 KB column was copied into the bytes, which grew to
-    /// hold them, and then into the table. Keeping runs of 64 bytes or more
-    /// measured the same; from 512, the document of 100 rows, whose columns
-    /// are 400 bytes, took 2.1 times as long.
-    static constexpr std::size_t kSegmentBytes = 256;
+    /// builder's bytes when they're set. A shorter run is copied twice: into
+    /// the bytes, which grow to hold it, and then into the table. Copying
+    /// every run when it's set made building the comparison's document of
+    /// 100,000 rows 3.8 times slower, for its 400 KB columns, and keeping runs
+    /// from 512 bytes made the document of 100 rows, whose columns are 400
+    /// bytes, take 2.1 times as long. From 256, 2,000 strings of 255 bytes
+    /// took 1.7 times as long, and nesting a builder of 10 KB 5,000 times 2.3
+    /// times. From 32, the times were those from 64.
+    static constexpr std::size_t kSegmentBytes = 64;
 
     /// The most room that a vector written in place makes for its items
     /// after its first, as `reserve_items_like()` describes. Without that
@@ -813,10 +837,9 @@ private:
 
     /// Writes the header of `header` bytes: its length's slot, which
     /// `to_bytes()` writes, its version and its offsets, written as each
-    /// field is set
+    /// field is set. It isn't zeroed first, as `start_in_place()` describes.
     void write_header(std::uint32_t header) {
         auto* at = bytes_.extend(header);
-        detail::zero(at, header);
 
         if (versioned_) {
             detail::store_slot(at + (sized_ ? width() : 0), version_, offset_type_);
@@ -830,7 +853,7 @@ private:
     /// that moving the builder doesn't allocate.
     void restart() noexcept {
         const auto fields = restarting_ ? restart_fields_ : fields_;
-        segments_.clear();
+        segments_.truncate(0);
         owned_.clear();
         shift_ = 0;
         table_ = 0;
@@ -1029,9 +1052,15 @@ private:
     }
 
     /// Writes a field of a count, `count`, and then `size` bytes from `data`,
-    /// after `padding` zeros, as `put_struct()` writes a struct
-    void put_counted(std::size_t padding, std::size_t count, const void* data, std::size_t size, Alignment alignment,
-                     const Owner* owner) {
+    /// after `padding` zeros, as `put_struct()` writes a struct.
+    ///
+    /// Forced inline, so that each setter that calls it has a copy fitted
+    /// to its kind of value. Called out of line, as Clang chose in a loop of
+    /// `set_string()` calls, it made setting 20,000 strings of 100 bytes
+    /// take 1.56 times as long, 2,000 of 255 bytes 1.43 times, and the
+    /// comparison's document of 100 rows 1.10 times.
+    TAFLA_ALWAYS_INLINE void put_counted(std::size_t padding, std::size_t count, const void* data, std::size_t size,
+                                         Alignment alignment, const Owner* owner) {
         const auto start = position() + padding;
         std::uint8_t* at = nullptr;
         if (is_segment(size)) {
@@ -1164,9 +1193,7 @@ private:
             detail::store_slot(at, static_cast<std::size_t>(builder.position()), builder.offset_type_);
         }
 
-        for (const auto& segment : builder.segments_) {
-            segments_.push_back({start + segment.at, segment.data, segment.size});
-        }
+        segments_.append(builder.segments_, start);
         shift_ += builder.shift_;
     }
 
@@ -1181,13 +1208,24 @@ private:
         bytes_.reserve_more(static_cast<std::size_t>((std::min<std::uint64_t>)(like_first, kItemsRoom)));
     }
 
+    /// Writes item `index` of a vector in place that already makes its table
+    /// too long, as `set_vector(count, fields, fill)` writes one, and removes
+    /// it, returning its length, which the vector's error counts. It's called
+    /// rather than inlined, since no table that fits calls it.
+    template <class Fill>
+    TAFLA_COLD std::uint64_t discard_item(std::size_t index, std::size_t fields, std::uint32_t header, Fill& fill);
+
     /// Starts a table of `fields` fields in place, whose header of `header`
     /// bytes holds only their offsets, at the next byte, and counts its
-    /// fields rather than its parent's
+    /// fields rather than its parent's.
+    ///
+    /// Its header isn't zeroed: each offset is written when its field is
+    /// set, and a table is written or nested only once every field is.
+    /// Zeroing the headers made building the comparison's record 28% slower,
+    /// a vector of 100 nested builders 23%, and builders nested 3 deep 12%.
     TAFLA_ALWAYS_INLINE void start_in_place(std::uint32_t fields, std::uint32_t header) {
         const auto start = position();
-        auto* at = bytes_.extend(header);
-        detail::zero(at, header);
+        bytes_.extend(header);
         restore({start, bytes_.size() - header, fields, 0, Alignment::one});
     }
 
@@ -1608,7 +1646,17 @@ void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill
         write_offset(vector);
         detail::store_slot(at, count, offset_type_);
 
+        // Once the vector makes its table too long, its other items are
+        // written and removed one by one, and only their lengths counted for
+        // the error, so that it keeps no more than its table holds and an item
+        bool too_long = false;
+        std::uint64_t discarded = 0;
         for (std::size_t index = 0; index < count; ++index) {
+            if (too_long) [[unlikely]] {
+                discarded = detail::saturating_sum(discarded, discard_item(index, fields, header, fill));
+                continue;
+            }
+
             const auto item_start = bytes_.size();
             start_in_place(static_cast<std::uint32_t>(fields), header);
             Item item(*this);
@@ -1616,21 +1664,33 @@ void TableBuilder::set_vector(std::size_t count, std::size_t fields, Fill&& fill
             check_filled();
             restore(saved.counters);
 
-            // Within the offsets once the vector is checked, or discarded
             detail::store_slot(bytes_.data() + ends + index * width(), static_cast<std::size_t>(position() - vector),
                                offset_type_);
-
             if (index == 0 && count > 1) {
                 reserve_items_like(bytes_.size() - item_start, count);
             }
+            too_long = table_length() > max_value(offset_type_);
         }
 
-        check_length(table_length());
+        check_length(detail::saturating_sum(table_length(), discarded));
     } catch (...) {
         truncate(saved);
         throw;
     }
     commit(Alignment::one);
+}
+
+template <class Fill>
+std::uint64_t TableBuilder::discard_item(std::size_t index, std::size_t fields, std::uint32_t header, Fill& fill) {
+    const auto item = checkpoint();
+    start_in_place(static_cast<std::uint32_t>(fields), header);
+    Item writer(*this);
+    std::invoke(fill, index, writer);
+    check_filled();
+
+    const auto length = table_length();
+    truncate(item);
+    return length;
 }
 
 inline TableBuilder::TableBuilder(TableBuilder&& other) noexcept
@@ -1732,7 +1792,7 @@ inline void TableBuilder::set_vector(std::vector<NestedTable> items) {
 
         for (std::size_t index = 0; index < items.size(); ++index) {
             append_nested(items[index]);
-            // Within the offsets once the vector is checked, or discarded
+            // Within the offsets, since the vector's length was checked
             detail::store_slot(bytes_.data() + ends + index * width(), static_cast<std::size_t>(position() - vector),
                                offset_type_);
         }
