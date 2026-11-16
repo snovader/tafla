@@ -1650,7 +1650,9 @@ export class DocumentedArray {
      */
     fields() {
         const bytes = this.#bytes;
-        const items = new Array(this.#length);
+        const items = /** @type {DocumentedFields[]} */ (
+            new Array(this.#length)
+        );
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 7;
@@ -2061,7 +2063,7 @@ export class SegmentArray {
      */
     fields() {
         const bytes = this.#bytes;
-        const items = new Array(this.#length);
+        const items = /** @type {SegmentFields[]} */ (new Array(this.#length));
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 16;
@@ -2144,7 +2146,7 @@ export class PointArray {
      */
     fields() {
         const bytes = this.#bytes;
-        const items = new Array(this.#length);
+        const items = /** @type {PointFields[]} */ (new Array(this.#length));
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 8;

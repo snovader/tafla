@@ -708,7 +708,7 @@ export class RangeVector {
      */
     fields() {
         const offsets = this.#buffer.getVectorOffsets(this.#position);
-        const items = new Array(offsets.length);
+        const items = /** @type {RangeFields[]} */ (new Array(offsets.length));
 
         for (let i = 0; i < offsets.length; i++) {
             items[i] = Range.read(this.#buffer, offsets[i]);

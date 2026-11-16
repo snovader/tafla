@@ -830,7 +830,7 @@ export class ItemVector {
      */
     fields() {
         const offsets = this.#buffer.getVectorOffsets(this.#position);
-        const items = new Array(offsets.length);
+        const items = /** @type {ItemFields[]} */ (new Array(offsets.length));
 
         for (let i = 0; i < offsets.length; i++) {
             items[i] = Item.read(this.#buffer, offsets[i]);
