@@ -26,14 +26,14 @@ import type {
 import {
     array,
     bool,
-    DEFAULT_LAYOUT,
     message,
     scalar,
     string,
     struct,
     structArray,
     table,
-    vector
+    vector,
+    DEFAULT_LAYOUT
 } from './descriptions.ts';
 import { readItems, readItemsFromLast } from './views.ts';
 

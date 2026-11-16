@@ -2,15 +2,15 @@ import { fc, it } from '@fast-check/vitest';
 import { expect, vi } from 'vitest';
 import { TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
-import { ARRAY_FIELDS, fitsItsLayout, SLICES, sliceOf, tables } from './conformance/arbitraries.ts';
+import { fitsItsLayout, sliceOf, tables, ARRAY_FIELDS, SLICES } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
 import { readScalar, readUnsigned } from './conformance/format.ts';
 import {
     buildTable,
-    ELEMENT_SIZES,
     nestedInPlace,
     readTable,
-    writeTable
+    writeTable,
+    ELEMENT_SIZES
 } from './conformance/tables.ts';
 
 // Runs tafla as if on a big-endian host. This host is little-endian, so the

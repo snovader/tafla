@@ -1,7 +1,7 @@
 import { fc, it } from '@fast-check/vitest';
 import { describe, expect, vi } from 'vitest';
-import { ByteBuffer, TableBuilder, type TableItem, TableLayout } from 'tafla';
-import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
+import { ByteBuffer, TableBuilder, TableLayout, type TableItem } from 'tafla';
+import { tables, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
 import { alignmentOf, buildTable, buildTableInPlace, nestedInPlace } from './conformance/tables.ts';

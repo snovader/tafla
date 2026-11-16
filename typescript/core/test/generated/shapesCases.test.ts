@@ -2,10 +2,10 @@ import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import {
     read,
-    SHAPES_CASES,
-    SHAPES_DIRECTORY,
     serialize,
-    writeShapesCases
+    writeShapesCases,
+    SHAPES_CASES,
+    SHAPES_DIRECTORY
 } from './shapesCases.ts';
 import { SHAPES } from './shapesTables.ts';
 

@@ -1,5 +1,4 @@
 import {
-    ByteBuffer,
     readFloat32,
     readFloat64,
     readInt8,
@@ -10,19 +9,21 @@ import {
     readUint16,
     readUint32,
     readUint64,
+    ByteBuffer,
     StructWriter,
     TableBuilder,
-    type TableItem,
     TableLayout,
     TableSizer,
-    TableWriter
+    TableWriter,
+    type TableItem
 } from 'tafla';
 import {
-    type Alignment,
     elementTypeOf,
-    type FieldDescription,
     fromJsonNumber,
     isArrayField,
+    toJsonNumber,
+    type Alignment,
+    type FieldDescription,
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
@@ -30,8 +31,7 @@ import {
     type ScalarType,
     type StructArrayField,
     type TableDescription,
-    type TableField,
-    toJsonNumber
+    type TableField
 } from './description.ts';
 
 /** The byte size of each scalar type, which its arrays are aligned to */

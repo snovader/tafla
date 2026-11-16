@@ -1,7 +1,7 @@
 import { fc, it } from '@fast-check/vitest';
 import { describe, expect, inject, test } from 'vitest';
 import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
-import { MAX_VALUES, SLICES, type Slice, sliceOf } from './conformance/arbitraries.ts';
+import { sliceOf, MAX_VALUES, SLICES, type Slice } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';
 
 const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;

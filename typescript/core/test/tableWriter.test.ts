@@ -3,35 +3,35 @@ import { describe, expect } from 'vitest';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import {
+    fitsItsLayout,
+    sliceOf,
+    tables,
     ARRAY_FIELDS,
     FIELDS,
-    fitsItsLayout,
     MAX_VALUES,
     OFFSET_TYPES,
-    SLICES,
-    sliceOf,
-    tables
+    SLICES
 } from './conformance/arbitraries.ts';
 import {
-    type ArrayField,
     elementTypeOf,
     fromJsonNumber,
-    type FieldDescription,
     isArrayField,
+    type ArrayField,
+    type FieldDescription,
     type OffsetType,
     type TableDescription
 } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
 import {
     buildTable,
-    ELEMENT_SIZES,
     nestedInPlace,
     readTable,
     structAlignment,
     writeTable,
     writeTableInto,
     writeTableReserving,
-    writeTableThrough
+    writeTableThrough,
+    ELEMENT_SIZES
 } from './conformance/tables.ts';
 import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 

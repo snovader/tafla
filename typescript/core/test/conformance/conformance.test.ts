@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
-import { SUITE_DIRECTORY, writeSuite } from './files.ts';
+import { writeSuite, SUITE_DIRECTORY } from './files.ts';
 import { buildTable, readTable, TableReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;

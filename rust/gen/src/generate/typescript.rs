@@ -469,46 +469,49 @@ impl Generator<'_> {
         let readers = self.read_functions();
         let writers = self.write_functions(&wholes);
 
-        // (name, whether it's only a type here)
-        let mut names = Vec::new();
-        if has_table {
-            names.push(("ByteBuffer", !has_message));
-        }
-        if versioned {
-            names.push(("DecodeError", false));
-        }
-        names.extend(readers.iter().map(|reader| (reader.as_str(), false)));
-        if has_struct {
-            names.push(("StructWriter", false));
-        }
-        if has_message {
-            names.push(("TableLayout", false));
-        }
-        if has_sized || has_nested {
-            names.push(("TableSizer", !has_sized));
-        }
-        if has_whole || has_nested {
-            names.push(("TableWriter", !has_whole));
-        }
+        // The names are listed in the order that the TypeScript project's
+        // oxlint configuration checks: functions, then classes, then types,
+        // each in natural order, such as `writeUint8` before `writeUint16`
+        let mut values: Vec<String> = readers;
         if has_whole_string {
-            names.push(("utf8Length", false));
+            values.push("utf8Length".to_owned());
         }
         if has_runs {
-            names.push(("viewOf", false));
+            values.push("viewOf".to_owned());
         }
-        names.extend(writers.iter().map(|writer| (writer.as_str(), false)));
+        values.extend(writers);
         if has_whole_string {
-            names.push(("writeUtf8", false));
+            values.push("writeUtf8".to_owned());
         }
 
-        let mut values = Vec::new();
-        let mut types = Vec::new();
-        for (name, type_only) in names {
-            match (type_only, self.typed) {
-                (false, _) => values.push(name.to_owned()),
-                (true, true) => values.push(format!("type {name}")),
-                (true, false) => types.push(name),
-            }
+        // (class, whether it's only a type here)
+        let mut classes = Vec::new();
+        if has_table {
+            classes.push(("ByteBuffer", !has_message));
+        }
+        if versioned {
+            classes.push(("DecodeError", false));
+        }
+        if has_struct {
+            classes.push(("StructWriter", false));
+        }
+        if has_message {
+            classes.push(("TableLayout", false));
+        }
+        if has_sized || has_nested {
+            classes.push(("TableSizer", !has_sized));
+        }
+        if has_whole || has_nested {
+            classes.push(("TableWriter", !has_whole));
+        }
+
+        let (types, classes): (Vec<_>, Vec<_>) =
+            classes.into_iter().partition(|&(_, type_only)| type_only);
+        values.extend(classes.into_iter().map(|(name, _)| name.to_owned()));
+        let mut types: Vec<&str> = types.into_iter().map(|(name, _)| name).collect();
+        // TypeScript imports types with the values, and JavaScript in JSDoc
+        if self.typed {
+            values.extend(types.drain(..).map(|name| format!("type {name}")));
         }
 
         if !types.is_empty() {

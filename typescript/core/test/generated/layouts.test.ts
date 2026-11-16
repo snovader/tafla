@@ -2,13 +2,13 @@ import { fc, it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
 import { DecodeError } from 'tafla';
 import {
-    CORRUPTIONS,
     corruptionOf,
+    sliceOf,
+    CORRUPTIONS,
     MAX_VALUES,
     SCALAR_VALUES,
     SLICES,
-    STRINGS,
-    sliceOf
+    STRINGS
 } from '../conformance/arbitraries.ts';
 import {
     corrupt,

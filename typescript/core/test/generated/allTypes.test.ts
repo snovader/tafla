@@ -1,23 +1,17 @@
 import { fc, it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
 import { ByteBuffer, DecodeError } from 'tafla';
-import { CORRUPTIONS, corruptionOf, SLICES, sliceOf } from '../conformance/arbitraries.ts';
+import { corruptionOf, sliceOf, CORRUPTIONS, SLICES } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
 import {
-    ALL_TYPES,
-    ARRAYS_FIELDS,
-    DOCUMENTED_FIELDS,
     describeArrays,
     describeNested,
     describeReserved,
     describeScalars,
     describeStructs,
     documentedBytes,
-    LONG_STRUCTS_FIELDS,
-    NESTED_FIELDS,
     packedBytes,
-    RESERVED_FIELDS,
     readArrays,
     readDocumented,
     readNested,
@@ -26,6 +20,12 @@ import {
     readScalars,
     readStructs,
     readStructsFromLast,
+    ALL_TYPES,
+    ARRAYS_FIELDS,
+    DOCUMENTED_FIELDS,
+    LONG_STRUCTS_FIELDS,
+    NESTED_FIELDS,
+    RESERVED_FIELDS,
     SCALARS_FIELDS,
     STRUCTS_FIELDS
 } from './allTypesTables.ts';

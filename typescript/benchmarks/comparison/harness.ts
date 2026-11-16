@@ -1,4 +1,4 @@
-import { GCProfiler, type GCProfilerResult, getHeapStatistics } from 'node:v8';
+import { getHeapStatistics, GCProfiler, type GCProfilerResult } from 'node:v8';
 
 export interface Variant {
     name: string;

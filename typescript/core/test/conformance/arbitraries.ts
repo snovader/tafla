@@ -1,5 +1,6 @@
 import { fc } from '@fast-check/vitest';
 import {
+    toJsonNumber,
     type Alignment,
     type ArrayField,
     type Corruption,
@@ -10,8 +11,7 @@ import {
     type OffsetType,
     type ScalarType,
     type TableDescription,
-    type TableField,
-    toJsonNumber
+    type TableField
 } from './description.ts';
 import { buildTable } from './tables.ts';
 

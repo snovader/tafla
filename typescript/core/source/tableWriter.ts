@@ -21,7 +21,7 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
-import type { OffsetSize, ElementSize } from './types.ts';
+import type { ElementSize, OffsetSize } from './types.ts';
 
 /**
  * Counts the bytes of a table, so that a {@link TableWriter} can write it

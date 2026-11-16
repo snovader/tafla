@@ -175,6 +175,9 @@ first commits, for code built from its source before the release.
   and vectors of such tables, are written where the writer reserves them,
   rather than into bytes of their own: a run of fewer than 128 bytes with the
   runtime's write functions, and a longer one through a `DataView`.
+- Generated TypeScript and JavaScript import the runtime's functions, then
+  its classes, then its types, each in natural order, as the TypeScript
+  project's oxlint configuration checks.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,

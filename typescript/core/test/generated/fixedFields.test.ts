@@ -5,13 +5,13 @@ import type { FieldDescription, LayoutDescription } from '../conformance/descrip
 import { buildTable } from '../conformance/tables.ts';
 import {
     array,
-    DEFAULT_LAYOUT,
     message,
     scalar,
     string,
     struct,
     table,
-    vector
+    vector,
+    DEFAULT_LAYOUT
 } from './descriptions.ts';
 import * as javascript from './fixed_fields/javascript/fixedFields.js';
 import * as typescript from './fixed_fields/typescript/fixedFields.ts';

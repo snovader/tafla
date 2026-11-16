@@ -6,12 +6,12 @@ import type {
 } from '../conformance/description.ts';
 import {
     array,
-    DEFAULT_LAYOUT,
     message,
     scalar,
     string,
     table,
-    vector
+    vector,
+    DEFAULT_LAYOUT
 } from './descriptions.ts';
 import * as javascript from './shapes/javascript/shapes.js';
 import * as typescript from './shapes/typescript/shapes.ts';

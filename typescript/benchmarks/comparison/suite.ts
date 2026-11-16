@@ -1,22 +1,22 @@
 import type { Codec, Workload } from './codecs/codec.ts';
 import {
+    measure,
     type Measurement,
     type MeasureOptions,
-    measure,
     type Variant
 } from './harness.ts';
-import { type ItemAccess, sumItem, writeItems } from './itemAccess.ts';
+import { sumItem, writeItems, type ItemAccess } from './itemAccess.ts';
 import {
-    DOCUMENT_ROWS,
-    type DocumentInput,
-    type DocumentOutput,
     documentInput,
     documentNumbers,
-    LIST_ITEMS,
-    type ListInput,
     listInput,
+    DOCUMENT_ROWS,
+    LIST_ITEMS,
     RECORD,
-    SAMPLE
+    SAMPLE,
+    type DocumentInput,
+    type DocumentOutput,
+    type ListInput
 } from './workloads.ts';
 
 export interface SuiteOptions extends MeasureOptions {

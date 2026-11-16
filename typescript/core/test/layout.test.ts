@@ -1,6 +1,6 @@
 import { it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
-import { type OffsetType, TableLayout, type TableLayoutOptions } from 'tafla';
+import { TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf, OFFSET_SIZES } from './conformance/format.ts';
 

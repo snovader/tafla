@@ -1,12 +1,12 @@
 import {
+    toJsonNumber,
     type JsonNumber,
     type LayoutDescription,
     type NestedTable,
     type OffsetSize,
     type OffsetType,
     type ScalarType,
-    type TableDescription,
-    toJsonNumber
+    type TableDescription
 } from './description.ts';
 
 // Reads the bytes of tables with DataView, as the README sets out the format,

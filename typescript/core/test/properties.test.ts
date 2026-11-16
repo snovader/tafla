@@ -2,23 +2,23 @@ import { fc, it } from '@fast-check/vitest';
 import { describe, expect } from 'vitest';
 import { ByteBuffer, DecodeError } from 'tafla';
 import {
+    corruptionOf,
+    fitsItsLayout,
+    sliceOf,
+    tables,
     BYTE_OFFSETS,
     CORRUPTIONS,
-    corruptionOf,
     FIELDS,
-    fitsItsLayout,
     LAYOUTS,
     MAX_VALUES,
     SCALAR_TYPES,
-    SLICES,
-    sliceOf,
-    tables
+    SLICES
 } from './conformance/arbitraries.ts';
 import {
     corrupt,
     elementTypeOf,
-    type FieldDescription,
     isArrayField,
+    type FieldDescription,
     type LayoutDescription,
     type OffsetSize,
     type OffsetType,
@@ -27,22 +27,22 @@ import {
 } from './conformance/description.ts';
 import {
     headerSizeOf,
-    OFFSET_SIZES,
     readScalar,
     readUnsigned,
-    tablesIn
+    tablesIn,
+    OFFSET_SIZES
 } from './conformance/format.ts';
 import {
     alignmentOf,
     buildTable,
     createBuilder,
-    DescriptionMismatch,
-    ELEMENT_SIZES,
     layoutOf,
     readTable,
     setField,
     structAlignment,
     structSize,
+    DescriptionMismatch,
+    ELEMENT_SIZES,
     TableReader
 } from './conformance/tables.ts';
 
