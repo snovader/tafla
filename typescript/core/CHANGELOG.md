@@ -79,6 +79,15 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
+- `StructWriter`'s setters, `ByteBuffer`'s getters, the writes of arrays'
+  elements and the checks of a table's length and alignments use literal sizes
+  rather than the `SIZEOF_` constants, which V8's optimized code loads from
+  their module, and checks for initialization, at every call. In Node 26 and
+  27, `StructWriter` wrote 100 scalars in 89–155 ns rather than 170–223, and
+  `ByteBuffer` read aligned arrays of 2- to 8-byte elements 1–4% faster. The
+  comparison suite wrote its array of 100 structs with `StructWriter` and
+  `TableBuilder` 4–5% faster, and its fixed-size record with `StructWriter`
+  2% faster, and its other rows didn't change beyond their A/A gaps.
 
 ### Removed
 

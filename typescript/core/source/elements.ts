@@ -1,9 +1,4 @@
-import {
-    IS_LITTLE_ENDIAN,
-    SIZEOF_16,
-    SIZEOF_32,
-    SIZEOF_64
-} from './constants.ts';
+import { IS_LITTLE_ENDIAN } from './constants.ts';
 import { toUint8Array } from './converters.ts';
 import { byteOrderSwap } from './endianness.ts';
 import type { TypedArray } from './types.ts';
@@ -28,6 +23,10 @@ import type { TypedArray } from './types.ts';
 // instead would share its type feedback between callers: once a loop had
 // seen typed arrays and JS arrays, writing 27,028 floats from a `number[]`
 // took 130–180 µs, against 14–20 µs for the built-in.
+//
+// The element sizes are literals rather than SIZEOF_ constants, which V8's
+// optimized code loads from their module, and checks for initialization, at
+// every call.
 
 export function setInt8Elements(
     bytes: Uint8Array,
@@ -57,7 +56,7 @@ export function setInt16Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 2 === 0) {
         new Int16Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -77,7 +76,7 @@ export function setUint16Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_16 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 2 === 0) {
         new Uint16Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -97,7 +96,7 @@ export function setInt32Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 4 === 0) {
         new Int32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -117,7 +116,7 @@ export function setUint32Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 4 === 0) {
         new Uint32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -137,7 +136,7 @@ export function setInt64Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 8 === 0) {
         new BigInt64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -157,7 +156,7 @@ export function setUint64Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 8 === 0) {
         new BigUint64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -179,7 +178,7 @@ export function setFloat32Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_32 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 4 === 0) {
         new Float32Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(
@@ -199,7 +198,7 @@ export function setFloat64Elements(
 ): void {
     const byteOffset = bytes.byteOffset + position;
 
-    if (IS_LITTLE_ENDIAN && byteOffset % SIZEOF_64 === 0) {
+    if (IS_LITTLE_ENDIAN && byteOffset % 8 === 0) {
         new Float64Array(bytes.buffer, byteOffset, count).set(values);
     } else {
         copyElements(

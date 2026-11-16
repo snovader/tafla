@@ -1,4 +1,4 @@
-import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32 } from './constants.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 export interface TableLayoutOptions<Versioned extends boolean = boolean> {
@@ -190,14 +190,17 @@ function fittedHeaderLength(
  * largest number that they hold unsigned, without a power
  */
 export function maxLength(size: OffsetSize): number {
+    // Every table written checks its length with this, so its cases are
+    // literal sizes rather than SIZEOF_ constants, which V8's optimized code
+    // loads from their module, and checks for initialization, at every call
     switch (size) {
-        case SIZEOF_8:
+        case 1:
             return 0xff;
 
-        case SIZEOF_16:
+        case 2:
             return 0xffff;
 
-        case SIZEOF_32:
+        case 4:
             return 0xffff_ffff;
     }
 }
@@ -224,12 +227,13 @@ export function assertCount(count: number): void {
  * @throws {RangeError} If `alignment` isn't 1, 2, 4 or 8.
  */
 export function assertAlignment(alignment: ElementSize): void {
+    // Literal sizes, as in maxLength()
     if (
         !(
-            alignment === SIZEOF_8 ||
-            alignment === SIZEOF_16 ||
-            alignment === SIZEOF_32 ||
-            alignment === SIZEOF_64
+            alignment === 1 ||
+            alignment === 2 ||
+            alignment === 4 ||
+            alignment === 8
         )
     ) {
         throw new RangeError(

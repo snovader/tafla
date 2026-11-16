@@ -1,5 +1,3 @@
-import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
-
 /**
  * Writes scalars one after another into the supplied bytes, without a header,
  * offsets, length prefixes or padding, so a struct is read back at fixed
@@ -37,53 +35,57 @@ export class StructWriter {
         return this.#bytes.slice();
     }
 
+    // The sizes are literals rather than SIZEOF_ constants, which V8's
+    // optimized code loads from their module, and checks for initialization,
+    // at every call
+
     setInt8(value: number): void {
         this.#view.setInt8(this.#position, value);
-        this.#position += SIZEOF_8;
+        this.#position += 1;
     }
 
     setUint8(value: number): void {
         this.#view.setUint8(this.#position, value);
-        this.#position += SIZEOF_8;
+        this.#position += 1;
     }
 
     setInt16(value: number): void {
         this.#view.setInt16(this.#position, value, true);
-        this.#position += SIZEOF_16;
+        this.#position += 2;
     }
 
     setUint16(value: number): void {
         this.#view.setUint16(this.#position, value, true);
-        this.#position += SIZEOF_16;
+        this.#position += 2;
     }
 
     setInt32(value: number): void {
         this.#view.setInt32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this.#position += 4;
     }
 
     setUint32(value: number): void {
         this.#view.setUint32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this.#position += 4;
     }
 
     setInt64(value: bigint): void {
         this.#view.setBigInt64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this.#position += 8;
     }
 
     setUint64(value: bigint): void {
         this.#view.setBigUint64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this.#position += 8;
     }
 
     setFloat32(value: number): void {
         this.#view.setFloat32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this.#position += 4;
     }
 
     setFloat64(value: number): void {
         this.#view.setFloat64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this.#position += 8;
     }
 }

@@ -1,10 +1,4 @@
-import {
-    IS_LITTLE_ENDIAN,
-    SIZEOF_8,
-    SIZEOF_16,
-    SIZEOF_32,
-    SIZEOF_64
-} from './constants.ts';
+import { IS_LITTLE_ENDIAN } from './constants.ts';
 import { decode, decodeShortAscii } from './encoding.ts';
 import { byteOrderSwapped } from './endianness.ts';
 import { DecodeError, outOfRange } from './errors.ts';
@@ -111,13 +105,15 @@ export class ByteBuffer {
     // and rethrow its error. A check of their own made reading 27,028 floats
     // one at a time 2.7 times slower in d8 and Node. They build the error in
     // readError(), out of their bytecode, which V8 inlines while it's small:
-    // see getVectorItemOffset().
+    // see getVectorItemOffset(). Their sizes are literals, as #getSize()'s
+    // are, which take 3 fewer bytes of bytecode than an imported SIZEOF_
+    // constant, loaded from its module and checked for initialization.
 
     getInt8(position: number): number {
         try {
             return this.#view.getInt8(position);
         } catch {
-            throw readError(position, SIZEOF_8, this.#bytes);
+            throw readError(position, 1, this.#bytes);
         }
     }
 
@@ -125,7 +121,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint8(position);
         } catch {
-            throw readError(position, SIZEOF_8, this.#bytes);
+            throw readError(position, 1, this.#bytes);
         }
     }
 
@@ -133,7 +129,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt16(position, true);
         } catch {
-            throw readError(position, SIZEOF_16, this.#bytes);
+            throw readError(position, 2, this.#bytes);
         }
     }
 
@@ -141,7 +137,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint16(position, true);
         } catch {
-            throw readError(position, SIZEOF_16, this.#bytes);
+            throw readError(position, 2, this.#bytes);
         }
     }
 
@@ -149,7 +145,7 @@ export class ByteBuffer {
         try {
             return this.#view.getInt32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, 4, this.#bytes);
         }
     }
 
@@ -157,7 +153,7 @@ export class ByteBuffer {
         try {
             return this.#view.getUint32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, 4, this.#bytes);
         }
     }
 
@@ -165,7 +161,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigInt64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, 8, this.#bytes);
         }
     }
 
@@ -173,7 +169,7 @@ export class ByteBuffer {
         try {
             return this.#view.getBigUint64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, 8, this.#bytes);
         }
     }
 
@@ -181,7 +177,7 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, 4, this.#bytes);
         }
     }
 
@@ -189,14 +185,16 @@ export class ByteBuffer {
         try {
             return this.#view.getFloat64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, 8, this.#bytes);
         }
     }
 
     // The array getters are written out per element type, as TableWriter's
     // setters are. The elements are stored little-endian, so a big-endian
     // host gets a copy in its own byte order; single bytes have no order to
-    // swap.
+    // swap. Their element sizes are literals, as #getSize()'s are: V8's
+    // optimized code loads an imported SIZEOF_ constant from its module, and
+    // checks it for initialization, at every read.
 
     /**
      * Reads the array at `position`, as a view of the buffer.
@@ -225,7 +223,7 @@ export class ByteBuffer {
      */
     getInt16Array(position: number): Int16Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_16;
+        const byteLength = length * 2;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -237,7 +235,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_16 === 0
+        return byteOffset % 2 === 0
             ? new Int16Array(this.#view.buffer, byteOffset, length)
             : new Int16Array(this.#copy(byteOffset, byteLength));
     }
@@ -249,7 +247,7 @@ export class ByteBuffer {
      */
     getUint16Array(position: number): Uint16Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_16;
+        const byteLength = length * 2;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -261,7 +259,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_16 === 0
+        return byteOffset % 2 === 0
             ? new Uint16Array(this.#view.buffer, byteOffset, length)
             : new Uint16Array(this.#copy(byteOffset, byteLength));
     }
@@ -273,7 +271,7 @@ export class ByteBuffer {
      */
     getInt32Array(position: number): Int32Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_32;
+        const byteLength = length * 4;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -285,7 +283,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_32 === 0
+        return byteOffset % 4 === 0
             ? new Int32Array(this.#view.buffer, byteOffset, length)
             : new Int32Array(this.#copy(byteOffset, byteLength));
     }
@@ -297,7 +295,7 @@ export class ByteBuffer {
      */
     getUint32Array(position: number): Uint32Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_32;
+        const byteLength = length * 4;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -309,7 +307,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_32 === 0
+        return byteOffset % 4 === 0
             ? new Uint32Array(this.#view.buffer, byteOffset, length)
             : new Uint32Array(this.#copy(byteOffset, byteLength));
     }
@@ -321,7 +319,7 @@ export class ByteBuffer {
      */
     getInt64Array(position: number): BigInt64Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_64;
+        const byteLength = length * 8;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -333,7 +331,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_64 === 0
+        return byteOffset % 8 === 0
             ? new BigInt64Array(this.#view.buffer, byteOffset, length)
             : new BigInt64Array(this.#copy(byteOffset, byteLength));
     }
@@ -345,7 +343,7 @@ export class ByteBuffer {
      */
     getUint64Array(position: number): BigUint64Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_64;
+        const byteLength = length * 8;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -357,7 +355,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_64 === 0
+        return byteOffset % 8 === 0
             ? new BigUint64Array(this.#view.buffer, byteOffset, length)
             : new BigUint64Array(this.#copy(byteOffset, byteLength));
     }
@@ -369,7 +367,7 @@ export class ByteBuffer {
      */
     getFloat32Array(position: number): Float32Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_32;
+        const byteLength = length * 4;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -381,7 +379,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_32 === 0
+        return byteOffset % 4 === 0
             ? new Float32Array(this.#view.buffer, byteOffset, length)
             : new Float32Array(this.#copy(byteOffset, byteLength));
     }
@@ -393,7 +391,7 @@ export class ByteBuffer {
      */
     getFloat64Array(position: number): Float64Array {
         const length = this.#getSize(position);
-        const byteLength = length * SIZEOF_64;
+        const byteLength = length * 8;
         const byteOffset = this.#arrayOffset(position, byteLength);
 
         if (!IS_LITTLE_ENDIAN) {
@@ -405,7 +403,7 @@ export class ByteBuffer {
             );
         }
 
-        return byteOffset % SIZEOF_64 === 0
+        return byteOffset % 8 === 0
             ? new Float64Array(this.#view.buffer, byteOffset, length)
             : new Float64Array(this.#copy(byteOffset, byteLength));
     }
