@@ -168,29 +168,31 @@ byte; its README describes them. This package writes them, and
   ```
 
   In Node 26, the comparison suite's vector of 100 nested tables took
-  5.6 µs so, against 21 µs from a builder per item and 29 µs from the bytes
-  of each, and allocated 16 KB on V8's heap rather than 92 KB and 113 KB.
+  5.4 µs so, against 21 µs from a builder per item and 29 µs from the bytes
+  of each, and allocated 16 KB on V8's heap rather than 94 KB and 114 KB.
 - **Nest builders rather than bytes.** `setTable()` and `setVector()` copy
   a `TableBuilder`'s table into its parent from the builder's buffer, without
-  bytes of its own. A table nested as bytes was copied out of a builder into
-  bytes of its own first. In Node 26, the vector of 100 tables that each
-  nest another took 21 µs from builders and 29 µs from bytes, and the
-  comparison suite's document of 100,000 rows took 37 µs with its columns
-  from a builder and 83 µs from bytes, against 34 µs written in place.
+  bytes of its own, or, if it's 256 bytes or longer, keep the builder and
+  write its table once, into the parent's bytes. A table nested as bytes was
+  copied out of a builder into bytes of its own first. In Node 26, the
+  vector of 100 tables that each nest another took 21 µs from builders and
+  29 µs from bytes, and the comparison suite's document of 100,000 rows took
+  34 µs with its columns from a builder and 80 µs from bytes, against 34 µs
+  written in place.
 - **Write records of fixed size as arrays of structs.** An array of 100
-  structs of three float32s took about 1 µs to write and 1,208 bytes, against
-  13 µs and 3,208 bytes for a vector of 100 tables that each nest a table of
-  two of them, since it's one field of bytes rather than 200 builders.
+  structs of three float32s took 0.78 µs to write and 1,208 bytes in Node 26,
+  against 5.4 µs and 3,208 bytes for a vector of 100 tables that each nest a
+  table of two of them, written in place, since it's one field of bytes
+  rather than 200 tables.
 - **Generated code writes tables directly.** `TableSizer` and `TableWriter`
   write each field once, into bytes of the table's length, where
-  `TableBuilder` writes it into a buffer and copies the table out of it, and
-  copies each nested builder's table into its parent. In Node 27,
-  the generated code wrote a vector of 100 nested tables of scalars in
-  4–6 µs rather than 13 µs, since it creates no builders, and a table of two
-  float64s, an int64 and a string in 0.16 µs rather than 0.18 µs.
-  `TableWriter` writes scalars as bytes, since V8 keeps a `Uint8Array` of up
-  to 64 bytes on its heap until a `DataView` or `subarray()` asks for its
-  `ArrayBuffer`, which took 140 ns.
+  `TableBuilder` writes it into a buffer and copies the table out of it. In
+  Node 27, the generated code wrote a vector of 100 nested tables of scalars
+  in 1.9–2.1 µs, against 5.3–5.5 µs from the builder writing them in place,
+  and a table of two float64s, an int64 and a string in 0.10 µs rather than
+  0.14 µs. `TableWriter` writes scalars as bytes, since V8 keeps a
+  `Uint8Array` of up to 64 bytes on its heap until a `DataView` or
+  `subarray()` asks for its `ArrayBuffer`, which took 140 ns.
 - **Reuse bytes for tables that you write again and again.** New bytes of
   more than 64 are allocated outside V8's heap and zeroed, and the pages of
   large ones are new to the process, which faults on the first write of
@@ -201,13 +203,12 @@ byte; its README describes them. This package writes them, and
   less, 5% of its write, and a table of 60 bytes, which V8 allocates on its
   heap, no less.
 - **Small tables cost about the allocation of their bytes.** A table of two
-  float64s, a string and an int64 took 0.18–0.20 µs from `bytes()` in
-  Node 27, and 0.34 µs from `finalize()`, whose `ByteBuffer` asks for the
-  bytes' `ArrayBuffer` for its `DataView`. Call `bytes()` for a table that you send
-  or store rather than read. A nested builder's table is copied from its
-  buffer, without either, so the
-  vector of 100 nested tables took 12 µs against 7–13 µs in
-  flatbuffers, protobufjs and msgpackr, and tafla read it 2–3 times as fast
+  float64s, a string and an int64 took 0.13 µs from `bytes()` in Node 27,
+  and 0.28 µs from `finalize()`, whose `ByteBuffer` asks for the bytes'
+  `ArrayBuffer` for its `DataView`. Call `bytes()` for a table that you send
+  or store rather than read. A table written in place needs neither, so the
+  vector of 100 nested tables took 5.3–5.5 µs against 7.6–14 µs in
+  protobufjs, msgpackr and flatbuffers, and tafla read it 4–7 times as fast
   as they did.
 
 ## Conversions

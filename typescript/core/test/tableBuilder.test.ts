@@ -16,6 +16,7 @@ import type {
     TableDescription
 } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
+import { SHORTFALL_STRINGS } from './longStrings.ts';
 import {
     alignmentOf,
     buildTable,
@@ -99,54 +100,36 @@ it('should throw TypeError from the setter of a number for an int64, and leave t
 });
 
 describe('strings', () => {
-    // A string with lone surrogates that TextEncoder.encodeInto() stops a
-    // code unit short of when it's given exactly its UTF-8 length, in Node 26
-    // and 27, as about 1% of such strings of 300 units or more. Its symbols
-    // index SYMBOLS.
-    const SYMBOLS = ['a', 'é', '€', '😀', '\udc00', '\ud800'];
-    const SHORT_BY_A_UNIT = [
-        '4225552353214043133003054111452042500042325143235501302505252510' +
-            '3240511413522215255212200412001010550144140132555220235131333504' +
-            '0244550301340250221304232042134034043504402211334424233214055030' +
-            '245230523325155542425055111152130'
-    ]
-        .join('')
-        .split('')
-        .map(symbol => SYMBOLS[Number(symbol)])
-        .join('');
+    it.each(Object.entries(SHORTFALL_STRINGS))(
+        'should write a %s string that encodeInto() stops short of in bytes of its length',
+        (_, string) => {
+            const builder = new TableBuilder(1);
+            builder.setString(string);
 
-    it('should write a string with lone surrogates that a TextEncoder takes a byte more than its UTF-8 for', () => {
-        const builder = new TableBuilder(1);
-        builder.setString(SHORT_BY_A_UNIT);
-
-        const buffer = builder.finalize();
-        expect(buffer.getString(buffer.rootOffset(0))).toBe(SHORT_BY_A_UNIT.toWellFormed());
-    });
+            const buffer = builder.finalize();
+            expect(buffer.getString(buffer.rootOffset(0))).toBe(string.toWellFormed());
+        }
+    );
 
     it("should write such a string when it's counted, into a buffer grown to its end", () => {
         // Its longest UTF-8, 3 bytes for each code unit, is too long for
         // uint16 offsets, so it's counted, and its buffer is a new one of 64
         // bytes, which grows to the string's end: the buffer that an earlier
-        // builder left is taken
+        // builder left is taken. encodeInto() stops a unit short of it.
         const taken = new TableBuilder(0);
-        const string = 'a'.repeat(22_104) + SHORT_BY_A_UNIT;
+        const string = 'a'.repeat(22_104) + SHORTFALL_STRINGS['well-formed'];
         const layout = TableLayout.create({ offsetType: 'uint16' });
         const builder = new TableBuilder(1, layout);
         builder.setString(string);
         taken.bytes();
 
         const buffer = new ByteBuffer(builder.bytes(), layout);
-        expect(buffer.getString(buffer.rootOffset(0))).toBe(string.toWellFormed());
+        expect(buffer.getString(buffer.rootOffset(0))).toBe(string);
     });
 });
 
 it('should write zeros as padding, rather than the bytes of a table built before it', () => {
-    // Leaves a buffer of 64 KiB of 0xff for the next builder
-    const filled = new TableBuilder(60);
-    for (let i = 0; i < 60; i++) {
-        filled.setUint8Array(new Uint8Array(1000).fill(0xff));
-    }
-    filled.bytes();
+    leaveFilledBuffer();
 
     // Padding before each array, the array of structs and the nested table
     const table = tableOf([
@@ -333,6 +316,31 @@ describe('tables longer than the offsets address', () => {
     });
 });
 
+// An array-like's length is checked as TableSizer checks a count, before
+// any of the array is written, whether it's copied or kept
+it.each([1.5, -1, Number.NaN, 2000.5])(
+    'should reject an array-like of length %s, and leave the builder as it was',
+    length => {
+        const builder = new TableBuilder(3);
+        builder.setUint8(1);
+
+        expect(() => builder.setInt8Array({ length })).toThrow(
+            new RangeError(`A count must be a non-negative integer, not ${length}`)
+        );
+        builder.setInt8Array([2]);
+        builder.setUint8(3);
+        expect(builder.bytes()).toStrictEqual(
+            writeTable(
+                tableOf([
+                    { type: 'uint8', value: 1 },
+                    { type: 'int8[]', value: [2] },
+                    { type: 'uint8', value: 3 }
+                ])
+            )
+        );
+    }
+);
+
 describe('tables nested from their builders', () => {
     // The nested table follows a uint8[] of any length up to 7, which
     // starts it at any offset from an alignment of 8
@@ -403,6 +411,144 @@ describe('tables nested from their builders', () => {
 
         const buffer = second.finalize();
         expect(buffer.getVector(buffer.rootOffset(1))).toStrictEqual([own, own]);
+    });
+
+    // A nested builder is copied into its parent while it's short, and kept
+    // until the parent is written once it holds 1 KiB, or arrays that it
+    // keeps itself
+    it.each([2, 128])(
+        'should write tables nested from builders 64 deep, each with a float64[] of %i, as the writer does',
+        elements => {
+            let table = tableOf([{ type: 'uint8', value: 0 }]);
+            for (let depth = 1; depth <= 64; depth++) {
+                table = tableOf([
+                    { type: 'uint8', value: depth },
+                    { type: 'float64[]', value: new Array<number>(elements).fill(depth) },
+                    { type: 'table', from: 'builder', table }
+                ]);
+            }
+
+            expect(buildTable(table).bytes()).toStrictEqual(writeTable(table));
+        }
+    );
+
+    it("should write a nested builder's table as it was set after the builder is finalized and others are built", () => {
+        // A string of 1 KiB or more, which the parent keeps rather than copies,
+        // in a buffer shorter than the one left meanwhile, which the nested
+        // builder then keeps too
+        const parent = new TableBuilder(1);
+        const nested = new TableBuilder(2);
+        nested.setString('n'.repeat(1500));
+        nested.setUint8(1);
+        leaveFilledBuffer();
+        parent.setTable(nested);
+
+        // A builder holds the buffer left while the nested builder is
+        // finalized, and each builder after it writes other bytes into the
+        // buffer it takes
+        const holder = new TableBuilder(0);
+        const own = nested.bytes();
+        for (let i = 0; i < 3; i++) {
+            const other = new TableBuilder(1);
+            other.setString('x'.repeat(1200));
+            other.bytes();
+        }
+        holder.bytes();
+
+        const expected = new TableBuilder(1);
+        expected.setTable(own, 1);
+        expect(parent.bytes()).toStrictEqual(expected.bytes());
+    });
+
+    it('should write a nested builder that took the buffer an earlier builder left, and the builders after it', () => {
+        // The nested builder takes the buffer left, before its parent is
+        // made
+        leaveFilledBuffer();
+
+        const nestedTable = tableOf([
+            { type: 'float64[]', value: [1, 2] },
+            { type: 'string', value: 'nested' }
+        ]);
+        const nested = buildTable(nestedTable);
+        const parent = new TableBuilder(2);
+        parent.setTable(nested);
+
+        // A builder made after the nesting, while the parent still writes
+        const other = new TableBuilder(1);
+        other.setUint8Array(new Uint8Array(1000).fill(0xee));
+        parent.setString('parent'.repeat(100));
+
+        expect(other.bytes()).toStrictEqual(
+            writeTable(tableOf([{ type: 'uint8[]', value: new Array<number>(1000).fill(0xee) }]))
+        );
+        expect(parent.bytes()).toStrictEqual(
+            writeTable(
+                tableOf([
+                    { type: 'table', from: 'builder', table: nestedTable },
+                    { type: 'string', value: 'parent'.repeat(100) }
+                ])
+            )
+        );
+        expect(nested.bytes()).toStrictEqual(writeTable(nestedTable));
+    });
+
+    it('should write tables longer than 64 KiB one after another, with builders made while they grow', () => {
+        const written: Array<[Uint8Array, Uint8Array]> = [];
+        for (let round = 0; round < 3; round++) {
+            const columns: FieldDescription[] = Array.from({ length: 70 + round }, (_, i) => ({
+                type: 'uint8[]',
+                value: new Array<number>(1000).fill(i + round)
+            }));
+            // A short nested table is copied in, and a long one kept, so that
+            // the table is cut from its buffer, or written from its segments
+            const nestedLength = round === 1 ? 1000 : 100;
+            const nestedTable = tableOf([
+                { type: 'uint8[]', value: new Array<number>(nestedLength).fill(0xee) }
+            ]);
+
+            // The nested builder is made once its parent has grown past 64 KiB
+            const builder = new TableBuilder(columns.length + 1);
+            for (const column of columns) {
+                setField(builder, column);
+            }
+            builder.setTable(buildTable(nestedTable));
+
+            written.push([
+                builder.bytes(),
+                writeTable(
+                    tableOf([...columns, { type: 'table', from: 'builder', table: nestedTable }])
+                )
+            ]);
+        }
+
+        // Each table is still as it was written, after the builders after it
+        for (const [table, expected] of written) {
+            expect(table).toStrictEqual(expected);
+        }
+    });
+
+    it('should write a builder longer than 64 KiB that a parent nests, both when it is written itself and in its parent', () => {
+        // Columns shorter than 1 KiB are copied into the builder's buffer
+        const nestedTable = tableOf(
+            Array.from({ length: 70 }, (_, i) => ({
+                type: 'uint8[]' as const,
+                value: new Array<number>(1000).fill(i)
+            }))
+        );
+        const nested = buildTable(nestedTable);
+        const parent = new TableBuilder(2);
+        parent.setTable(nested);
+        parent.setString('parent');
+
+        expect(nested.bytes()).toStrictEqual(writeTable(nestedTable));
+        expect(parent.bytes()).toStrictEqual(
+            writeTable(
+                tableOf([
+                    { type: 'table', from: 'builder', table: nestedTable },
+                    { type: 'string', value: 'parent' }
+                ])
+            )
+        );
     });
 });
 
@@ -685,6 +831,15 @@ function expectNestedAsBytes(table: TableDescription, length: number): void {
 }
 
 /** A table of the default layout that holds `fields` */
+/** Leaves a buffer of 64 KiB of 0xff for the next builder */
+function leaveFilledBuffer(): void {
+    const filled = new TableBuilder(60);
+    for (let i = 0; i < 60; i++) {
+        filled.setUint8Array(new Uint8Array(1000).fill(0xff));
+    }
+    filled.bytes();
+}
+
 function tableOf(fields: FieldDescription[]): TableDescription {
     return { layout: { sized: false, versioned: false, offsetType: 'uint32' }, fields };
 }
