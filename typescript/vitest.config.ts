@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 const config = defineConfig({
     test: {
-        projects: ['benchmarks', 'core']
+        projects: ['benchmarks', 'core', 'lint']
     }
 });
 

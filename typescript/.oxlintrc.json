@@ -17,7 +17,7 @@
         "vitest"
     ],
     // oxfmt sorts import declarations, but not the names that they import
-    "jsPlugins": ["eslint-plugin-perfectionist"],
+    "jsPlugins": ["./lint/plugin.ts"],
     // Every rule of these categories runs, except those turned off below. Rules
     // of the style and restriction categories run only when listed, as most
     // describe a house style other than this one, and a new version of oxlint
@@ -95,25 +95,7 @@
         // Named imports list functions and values whose names start in lower
         // case, then classes and constants, then types, each in natural order:
         // `SIZEOF_8` before `SIZEOF_16`
-        "perfectionist/sort-named-imports": [
-            "error",
-            {
-                "type": "natural",
-                "groups": ["lowercase", "uppercase", "unknown", "type-import"],
-                "customGroups": [
-                    {
-                        "groupName": "lowercase",
-                        "modifiers": ["value"],
-                        "elementNamePattern": "^[a-z]"
-                    },
-                    {
-                        "groupName": "uppercase",
-                        "modifiers": ["value"],
-                        "elementNamePattern": "^[A-Z]"
-                    }
-                ]
-            }
-        ],
+        "tafla/sort-named-imports": "error",
 
         "eslint/curly": "error",
         "eslint/default-param-last": "error",
@@ -259,8 +241,9 @@
             }
         },
         {
-            // Vitest reads its configurations from default exports
-            "files": ["**/vitest.config.ts"],
+            // Vitest and oxlint read configurations and plugins from default
+            // exports
+            "files": ["**/vitest.config.ts", "lint/plugin.ts"],
             "rules": {
                 "import/no-default-export": "off"
             }
