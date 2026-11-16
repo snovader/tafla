@@ -60,6 +60,12 @@
             "error",
             { "ignoreArrowShorthand": true }
         ],
+        // A JSDoc cast, `/** @type {T} */ (value)`, lies inline with the
+        // value that it types
+        "eslint/no-inline-comments": [
+            "error",
+            { "ignorePattern": "^\\*\\s*@type\\s" }
+        ],
 
         // Types at the API's boundaries
         "typescript/consistent-type-definitions": ["error", "interface"],
@@ -221,15 +227,6 @@
             "files": ["**/*.js"],
             "rules": {
                 "typescript/prefer-readonly": "off"
-            }
-        },
-        {
-            // The JavaScript that tafla-gen generates allocates the items of
-            // a struct array's `fields()` as `new Array(length)`, which its
-            // JSDoc doesn't type
-            "files": ["core/test/generated/*/javascript/*.js"],
-            "rules": {
-                "typescript/no-unsafe-return": "off"
             }
         },
         {
