@@ -95,12 +95,13 @@ repository's first commits, for code built from its source before the release.
   counted out of line, a table without header slots doesn't call the
   function that writes them, and a write of 8 bytes copies two 32-bit words
   in a loop that V8 unrolls. They throw the same errors, in the same order.
-  In the comparison suite, tafla-gen's record took 0.066 µs to write rather
-  than 0.085 in Node 26, and 0.066 µs rather than 0.081 in Node 27. Records
-  that aren't constants, which V8 can't fold into the benchmark's loop, took
-  0.094 µs rather than 0.114 in Node 26, and 0.093 µs rather than 0.108 in
-  Node 27. `writeFloat64()`, `writeInt64()` and
-  `writeUint64()` took 3% less, and `TableBuilder`'s setters 5% to 10% less.
+  In the comparison suite, with the package bundled, tafla-gen's record
+  took 0.062 µs to write rather than 0.088 in Node 26, and 0.060 µs rather
+  than 0.080 in Node 27. Records that aren't constants, which V8 can't fold
+  into the benchmark's loop, took 0.094 µs rather than 0.112 in Node 26, and
+  0.087 µs rather than 0.108 in Node 27. `writeFloat64()`, `writeInt64()`
+  and `writeUint64()` took 3% to 4% less, and `TableBuilder`'s setters 4% to
+  9% less.
 
 ### Removed
 
