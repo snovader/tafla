@@ -79,6 +79,12 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
+- The package is one module, `dist/index.js`, which rolldown bundles, with
+  the value of each constant, such as `SIZEOF_64`, written where it's used.
+  V8 loads an imported binding from its module at every use, even in
+  optimized code. `StructWriter`'s setters write 100 scalars in 0.45–0.55×
+  the time, and `TableBuilder` writes the comparison suite's vector of 100
+  nested tables in 0.91–0.93×.
 
 ### Removed
 

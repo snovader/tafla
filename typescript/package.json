@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "bench": "vitest bench --run --reporter=verbose",
-    "bench:compare": "node --conditions=tafla-source benchmarks/comparison/main.ts",
+    "bench:compare": "node bundle.ts node --conditions=tafla-bundle benchmarks/comparison/main.ts",
     "conformance:generate": "node --conditions=tafla-source core/test/conformance/generate.ts && node --conditions=tafla-source core/test/generated/generate.ts",
     "format:check": "oxfmt --check",
     "format:write": "oxfmt",
@@ -25,6 +25,7 @@
     "oxlint": "^1.93.0",
     "oxlint-tsgolint": "^7.0.2007",
     "publint": "^0.3.25",
+    "rolldown": "~1.2.18",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"

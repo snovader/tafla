@@ -1896,6 +1896,7 @@ __metadata:
     oxlint: "npm:^1.93.0"
     oxlint-tsgolint: "npm:^7.0.2007"
     publint: "npm:^0.3.25"
+    rolldown: "npm:~1.2.18"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"
@@ -1907,6 +1908,7 @@ __metadata:
   resolution: "tafla@workspace:core"
   dependencies:
     "@fast-check/vitest": "npm:^0.5.0"
+    rolldown: "npm:~1.2.18"
     typescript: "npm:^7.0.2"
     vite: "npm:^8.3.8"
     vitest: "npm:^5.1.0"

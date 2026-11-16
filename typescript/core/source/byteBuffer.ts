@@ -98,7 +98,7 @@ export class ByteBuffer {
         try {
             return (
                 tablePosition +
-                (size === 4
+                (size === SIZEOF_32
                     ? view.getUint32(position, true)
                     : readNarrowSize(view, position, size))
             );
@@ -508,7 +508,7 @@ export class ByteBuffer {
         let count: number;
         try {
             count =
-                size === 4
+                size === SIZEOF_32
                     ? view.getUint32(position, true)
                     : readNarrowSize(view, position, size);
         } catch {
@@ -584,11 +584,11 @@ export class ByteBuffer {
                 const start =
                     index === 0
                         ? (count + 1) * size
-                        : size === 4
+                        : size === SIZEOF_32
                           ? view.getUint32(startPosition, true)
                           : readNarrowSize(view, startPosition, size);
                 const end =
-                    size === 4
+                    size === SIZEOF_32
                         ? view.getUint32(endPosition, true)
                         : readNarrowSize(view, endPosition, size);
 
@@ -733,11 +733,6 @@ export class ByteBuffer {
      * read inline, and narrower ones by readNarrowSize(), which a process
      * that reads only uint32 offsets never compiles into its reads.
      *
-     * The sizes are literals rather than SIZEOF_32 and SIZEOF_16, which V8
-     * loads from their module and checks for initialization at every read:
-     * the loop that sums the vector of 100 nested tables compiled to 877
-     * instructions rather than 969.
-     *
      * fieldOffset(), getVectorLength() and getVectorItemOffset() read their
      * offsets as this does, for V8's inlining budget. A switch that called
      * getUint8(), getUint16() or getUint32() took 133 bytes of bytecode at
@@ -751,7 +746,7 @@ export class ByteBuffer {
         const size = this.#size;
         const view = this.#view;
         try {
-            return size === 4
+            return size === SIZEOF_32
                 ? view.getUint32(position, true)
                 : readNarrowSize(view, position, size);
         } catch {
@@ -766,7 +761,7 @@ function readNarrowSize(
     position: number,
     size: OffsetSize
 ): number {
-    return size === 2
+    return size === SIZEOF_16
         ? view.getUint16(position, true)
         : view.getUint8(position);
 }

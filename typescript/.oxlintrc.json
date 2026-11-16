@@ -1,6 +1,6 @@
 {
     "$schema": "./node_modules/oxlint/configuration_schema.json",
-    "ignorePatterns": [".cache", ".yarn", "**/dist"],
+    "ignorePatterns": [".cache", "core/.bundle", ".yarn", "**/dist"],
     "options": {
         // Rules marked as type-aware run through tsgolint, on TypeScript 7
         "typeAware": true,
@@ -238,9 +238,13 @@
             }
         },
         {
-            // Vitest and oxlint read configurations and plugins from default
-            // exports
-            "files": ["**/vitest.config.ts", "lint/plugin.ts"],
+            // Vitest, rolldown and oxlint read configurations and plugins from
+            // default exports
+            "files": [
+                "**/vitest.config.ts",
+                "core/rolldown.config.ts",
+                "lint/plugin.ts"
+            ],
             "rules": {
                 "import/no-default-export": "off"
             }

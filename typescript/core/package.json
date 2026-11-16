@@ -31,6 +31,7 @@
   },
   "exports": {
     ".": {
+      "tafla-bundle": "./.bundle/index.js",
       "tafla-source": "./source/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
@@ -58,11 +59,12 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p ./tsconfig.dist.json",
+    "build": "rm -rf dist && rolldown -c && tsc -p ./tsconfig.dist.json",
     "prepack": "yarn build"
   },
   "devDependencies": {
     "@fast-check/vitest": "^0.5.0",
+    "rolldown": "~1.2.18",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"

@@ -6,8 +6,9 @@ const config = defineProject({
         benchmark: {
             include: ['*.bench.ts']
         },
-        // Resolve tafla to its source rather than its build
-        execArgv: ['--conditions=tafla-source'],
+        // Resolve tafla to the bundle that the root config's global setup
+        // writes, as it's published
+        execArgv: ['--conditions=tafla-bundle'],
         experimental: {
             viteModuleRunner: false
         }

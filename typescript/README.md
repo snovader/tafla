@@ -37,12 +37,27 @@ CI runs them in Node 24 and 26.
 ## Source and build
 
 Within this project, the `tafla-source` condition resolves `tafla` and
-its `#` imports to its TypeScript source: tests pass it to Node, and the
-TypeScript configs set it in `customConditions`. Without it, as for the
-package's users, they resolve to the build in `dist`.
+its `#` imports to its TypeScript source: the TypeScript configs set it in
+`customConditions`, and the generators of the conformance suite pass it to
+Node. Without it, as for the package's users, they resolve to the build in
+`dist`.
 
-`yarn workspace tafla build` compiles the package to `dist`, and packing
-it builds it first. The package holds only `dist`, so its `publishConfig`
+Tests and benchmarks import the package bundled, as it's published. The root
+Vitest config's global setup bundles it once per run, into
+`core/.bundle`, which the `tafla-bundle` condition resolves, and
+removes the bundle after the run. The big-endian tests run in a project of
+their own, of the source, since they emulate a big-endian host by mocking
+`source/constants.ts`, which the bundle has no module of. `yarn bench:compare`
+runs the comparison
+through `bundle.ts`, which does the same around a command.
+
+`yarn workspace tafla build` bundles the package into `dist/index.js` with
+rolldown, and compiles its declarations to `dist` with tsc. In one module,
+the package's functions and classes are local, and rolldown writes the value
+of each constant, such as `SIZEOF_64`, where it's used: V8 loads an imported
+binding from its module at every use, even in optimized code.
+`core/rolldown.config.ts` configures the bundle. Packing the package builds
+it first. The package holds only `dist`, so its `publishConfig`
 replaces `exports` and `imports` with copies without the condition, which
 Yarn writes into the packed manifest. Pack and publish it with Yarn, since npm
 doesn't apply them. `yarn package:check` packs it, checks the archive with Are
