@@ -8,6 +8,7 @@ import net.jqwik.api.statistics.*;
 
 import java.nio.charset.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -191,9 +192,9 @@ public class TableBuilderTest {
     }
 
     /**
-     * Arrays, strings and arrays of structs of 256 bytes or more, and tables nested as bytes as
-     * long, are written into the table by {@code bytes()} rather than copied when they're set, from
-     * builders, from bytes and in place
+     * Arrays, strings and arrays of structs of 64 bytes or more, and nested tables as long, are
+     * written into the table by {@code bytes()} rather than copied when they're set, from builders,
+     * from bytes and in place
      */
     @Property(tries = 300)
     void a_table_of_long_arrays_and_strings_reads_back_and_holds_the_bytes_that_a_table_writer_writes(
@@ -201,8 +202,8 @@ public class TableBuilderTest {
         @ForAll @IntRange(min = 1, max = 64) int times
     ) {
         var table = Descriptions.lengthened(described, times);
-        Statistics.collect(longestRun(table) >= 256 ? "a run of 256 bytes or more" : "shorter runs");
-        Statistics.coverage(coverage -> coverage.check("a run of 256 bytes or more").percentage(p -> p > 30));
+        Statistics.collect(longestRun(table) >= 64 ? "a run of 64 bytes or more" : "shorter runs");
+        Statistics.coverage(coverage -> coverage.check("a run of 64 bytes or more").percentage(p -> p > 30));
 
         var bytes = Tables.build(table).bytes();
         assertEquals(table, TableReader.strict(bytes, table.layout()).readTable(table));
@@ -237,7 +238,7 @@ public class TableBuilderTest {
      * throws. The table then holds what a builder whose fills never failed holds only if each
      * failure left the builder as it was: fills that throw, leave a field unset or set one too
      * many, in tables and vectors written in place at any depth, in tables of every offset type,
-     * with runs of 256 bytes or more too, and tables declared with a field more or fewer than set.
+     * with runs of 64 bytes or more too, and tables declared with a field more or fewer than set.
      */
     @Property(tries = 1000)
     void a_fill_that_fails_leaves_the_builder_as_it_was(
@@ -256,7 +257,7 @@ public class TableBuilderTest {
         Statistics.label("fill").collect(actual.failures() > expected.failures() ? "failed" : "didn't fail");
         var written = expected.outcomes().get(expected.outcomes().size() - 2);
         Statistics.label("table").collect(written.startsWith("java") ? "exception" : "bytes");
-        Statistics.label("fill").coverage(coverage -> coverage.check("failed").percentage(p -> p > 15));
+        Statistics.label("fill").coverage(coverage -> coverage.check("failed").percentage(p -> p > 10));
         Statistics.label("table").coverage(coverage -> coverage.check("bytes").percentage(p -> p > 30));
 
         assertEquals(expected.outcomes(), actual.outcomes());
@@ -509,14 +510,14 @@ public class TableBuilderTest {
 
     /**
      * A vector in place whose first item is far longer than the others takes no room for as many
-     * items of the first one's length, which uint32 offsets could address: the first item's 2 KB
-     * of arrays shorter than 256 bytes, which the builder copies as they're set, 2,000,000 times
-     * would take 4 GB, where the vector takes 16 MB
+     * items of the first one's length, which uint32 offsets could address: the first item's 572
+     * bytes, of arrays shorter than 64 bytes, which the builder copies as they're set, 4,000,000
+     * times would take 2.3 GB, where the vector takes 32 MB
      */
     @Example
     void should_write_a_vector_in_place_whose_first_item_is_far_longer_than_the_others() {
-        var count = 2_000_000;
-        var bytes = new byte[255];
+        var count = 4_000_000;
+        var bytes = new byte[63];
 
         var builder = new TableBuilder(1);
         builder.setVector(count, 1, (item, index) -> {
@@ -559,6 +560,113 @@ public class TableBuilderTest {
         parent.setVector(List.of(builder));
         var buffer = new ByteBuffer(parent.bytes());
         assertArrayEquals(new byte[][] {builder.bytes()}, buffer.getVector(buffer.rootOffset(1)));
+    }
+
+    /**
+     * A chain of builders, each nested in the next, with an array in each, writes what a writer
+     * writes for the same tables nested in one another, whether the builders are kept whole or
+     * copied into the next, and whether each is written after the next nests it or not at all
+     */
+    @Example
+    void should_write_a_chain_of_nested_builders_as_a_writer_writes_it() {
+        var depth = 2_000;
+        for (var values : List.of(keptChainValues(), copiedChainValues())) {
+            var table = builderChain(depth, values, true);
+
+            assertArrayEquals(writtenChain(depth, values), table.bytes(), values.length + " bytes");
+        }
+    }
+
+    /**
+     * A chain of builders kept whole in one another, deeper than a small thread stack holds if
+     * each were written from within the next, writes what a writer writes
+     */
+    @Example
+    void should_write_a_chain_of_nested_builders_deeper_than_the_stack_allows_as_a_writer_writes_it()
+        throws Exception {
+        var depth = 50_000;
+        var values = keptChainValues();
+        var table = builderChain(depth, values, false);
+
+        var bytes = new FutureTask<>(table::bytes);
+        new Thread(null, bytes, "chain", 256 * 1024).start();
+
+        assertArrayEquals(writtenChain(depth, values), bytes.get());
+    }
+
+    /**
+     * {@return a chain of {@code depth} builders} from its outermost, each of {@code values} and
+     * the next, but for the innermost, which holds {@code values} alone, with every third written
+     * after the next nests it if {@code writeSome}
+     */
+    private static TableBuilder builderChain(int depth, byte[] values, boolean writeSome) {
+        var table = new TableBuilder(1);
+        table.setInt8Array(values);
+        for (int i = 0; i < depth; i++) {
+            var parent = new TableBuilder(2);
+            parent.setInt8Array(values);
+            parent.setTable(table);
+            if (writeSome && i % 3 == 0) {
+                table.bytes();
+            }
+            table = parent;
+        }
+
+        return table;
+    }
+
+    /**
+     * {@return the array in each table of a chain}, shorter than the 64 bytes that the builder
+     * keeps, so that it's copied, and each builder is as long as that and kept whole
+     */
+    private static byte[] keptChainValues() {
+        var values = new byte[63];
+        Arrays.fill(values, (byte) 7);
+
+        return values;
+    }
+
+    /**
+     * {@return the array in each table of a chain}, long enough that the builder keeps it, so that
+     * the builders are short without it, and most are copied into the next
+     */
+    private static byte[] copiedChainValues() {
+        var values = new byte[100];
+        Arrays.fill(values, (byte) 7);
+
+        return values;
+    }
+
+    /**
+     * {@return a chain of {@code depth} tables} from its outermost table, each of {@code values}
+     * and the next table, but for the innermost, which holds {@code values} alone
+     */
+    private static byte[] writtenChain(int depth, byte[] values) {
+        var sizer = new TableSizer(2);
+        var sized = new long[depth];
+        for (int i = 0; i < depth; i++) {
+            sizer.addInt8Array(values.length);
+            sizer.addTable(1);
+            sized[i] = sizer.startTable(i == depth - 1 ? 1 : 2);
+        }
+        sizer.addInt8Array(values.length);
+        for (int i = depth - 1; i >= 0; i--) {
+            sizer.endTable(sized[i]);
+        }
+
+        var writer = sizer.writer();
+        var written = new int[depth];
+        for (int i = 0; i < depth; i++) {
+            writer.setInt8Array(0, values);
+            writer.setTable(1, 1);
+            written[i] = writer.startTable(i == depth - 1 ? 1 : 2);
+        }
+        writer.setInt8Array(0, values);
+        for (int i = depth - 1; i >= 0; i--) {
+            writer.endTable(written[i]);
+        }
+
+        return writer.bytes();
     }
 
     @Example

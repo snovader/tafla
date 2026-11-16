@@ -146,8 +146,8 @@ final class Descriptions {
     /**
      * {@return the table with the elements of each array, array of structs and string repeated
      * {@code times} times}, in its nested tables and vector items too, each table's offsets widened
-     * as far as its fields need. Builders keep runs of 256 bytes or more apart from the bytes they
-     * copy fields into, and descriptions' arrays and strings are shorter, so this makes them
+     * as far as its fields need. Builders keep runs of 64 bytes or more apart from the bytes they
+     * copy fields into, and descriptions' arrays and strings are mostly shorter, so this makes them
      * common.
      */
     static TableDescription lengthened(TableDescription table, int times) {

@@ -15,13 +15,13 @@ import java.util.function.*;
  *
  * <p>Setting a field writes it, and its offset, at once, after the fields before it, into bytes
  * that grow to twice their length when a field doesn't fit. {@link #bytes()} then copies them into
- * an array of the table's exact length. Arrays, strings, structs and nested tables of 256 bytes or
+ * an array of the table's exact length. Arrays, strings, structs and nested tables of 64 bytes or
  * more aren't copied when they're set: {@code bytes()} copies them straight into the table, so
- * array elements must not change in between. A nested builder is copied into this table when it's
- * set, apart from its own runs of 256 bytes or more, which are copied when this table is written.
- * {@link #setTable(int, Consumer)} and {@link #setVector(int, int, ObjIntConsumer)} write a nested
- * table, or each item of a vector, in place among this table's own fields instead, without a
- * builder of its own.</p>
+ * array elements must not change in between. A nested builder is kept so too, and written straight
+ * into the table, when its bytes apart from such runs are 64 or more. A shorter one is copied into
+ * this table when it's set, and its runs are kept. {@link #setTable(int, Consumer)} and
+ * {@link #setVector(int, int, ObjIntConsumer)} write a nested table, or each item of a vector, in
+ * place among this table's own fields instead, without a builder of its own.</p>
  *
  * <p>A setter throws, and leaves the builder as it was, when the table already holds all its
  * fields, or when its field would make the table longer than the layout's offset type addresses:
@@ -33,15 +33,19 @@ public final class TableBuilder {
      * {@link #bytes()} copies into the table, rather than copied when they're set and again when
      * the table is written. So a large column is copied once, and shorter runs, whose copies cost
      * less than keeping them, are copied when they're set. Copying every run when it's set made the
-     * benchmarks' document of 100,000 rows take 3.3 times as long.
+     * benchmarks' document of 100,000 rows take 3.3 times as long. Keeping only runs of 256 bytes
+     * or more made a table of 1,000 arrays of 255 bytes take 41 µs rather than 22, and allocate 4.3
+     * times as much, and the table of eight such arrays 262 ns rather than 194.
      */
-    private static final int SEGMENT_LENGTH = 256;
+    private static final int SEGMENT_LENGTH = 64;
 
     /**
      * The bytes that a builder starts with: 128, which hold the benchmarks' record of 60 bytes with
      * room to encode its string without counting it first, and the 96 bytes of their document
      * besides its columns. With 64, the record took 26 ns rather than 20, and the document grew its
-     * bytes.
+     * bytes. Starting with 32 bytes for each field instead saved the 144 bytes that their structs,
+     * one long array, allocate for this, and took 142 ns rather than 148, but took the document of
+     * 100 rows from builders 140 ns rather than 132, and 8% more memory for 1,000 arrays.
      */
     private static final int INITIAL_CAPACITY = 128;
 
@@ -76,6 +80,8 @@ public final class TableBuilder {
     private static final int INT64 = 6;
     private static final int FLOAT32 = 7;
     private static final int FLOAT64 = 8;
+    /** A nested builder, which {@link #writeNested} writes after the rest of the table */
+    private static final int TABLE = 9;
 
     /** The table's bytes, once written, after which it takes no more fields */
     private byte @Nullable [] written;
@@ -102,11 +108,14 @@ public final class TableBuilder {
     // The segments: runs that go between the buffer's bytes, each an array of values of a type, and
     // its place, which holds the index in the buffer that it goes before in its low 32 bits, and its
     // type in the high ones. The first 4 are kept in fields, which escape analysis removes along
-    // with a builder, where arrays aren't removed. With every segment in arrays, the benchmarks'
-    // document of 100 rows took 158 ns rather than 121 with its columns nested from a builder, and
-    // 106 rather than 115 with its columns written in place.
+    // with a builder, where arrays aren't removed. With every segment in arrays, a table of one
+    // array of 100 bytes took 32 ns rather than 21, and the benchmarks' document of 100 rows 161
+    // rather than 142 with its columns nested from a builder, though 117 rather than 126 with its
+    // columns written in place.
 
     private int segmentCount;
+    /** Whether a segment may be a nested builder, which {@link #bytes()} then writes last */
+    private boolean nestsBuilders;
     private Object values0 = NO_VALUES;
     private Object values1 = NO_VALUES;
     private Object values2 = NO_VALUES;
@@ -199,6 +208,9 @@ public final class TableBuilder {
         // Every field checked that the table fits in an array
         written = new byte[(int) position];
         copyInto(written, 0);
+        if (nestsBuilders) {
+            writeNested(written);
+        }
 
         // Release the bytes, and the segments, whose values may be large arrays
         this.buffer = NO_BYTES;
@@ -418,8 +430,10 @@ public final class TableBuilder {
      * {@link TableLayout#DEFAULT}.
      *
      * <p>The builder must have all its fields set. It's copied into this table now, apart from its
-     * runs of 256 bytes or more, which {@link #bytes()} copies straight into this table, so its
-     * arrays must not change until then either. It can still be written itself or nested elsewhere
+     * runs of 64 bytes or more, which {@link #bytes()} copies straight into this table, so its
+     * arrays must not change until then either. If its bytes apart from those runs are 64 or more,
+     * it's kept whole instead, and {@code bytes()} writes it straight into this table, once,
+     * however deeply it's nested. It can still be written itself or nested elsewhere
      * too, since a complete builder doesn't change.</p>
      *
      * @param alignment what the table's start is padded to a multiple of: 1, 2, 4 or 8
@@ -540,6 +554,12 @@ public final class TableBuilder {
      * own, so it's used only through the item. What {@code fill} throws is passed on, and whatever
      * is thrown, the builder is left as it was.</p>
      *
+     * <p>The table's alignment is known once {@code fill} returns, so it's written unpadded, and
+     * then moved by its padding, if it needs any, with the tables written in it. So in a chain of
+     * tables in place that are each padded, each table is moved once for every table around it,
+     * and the time grows with the square of the chain's depth: the benchmarks' chain of 1,000
+     * tables, each of an int8 and the next, takes 166 µs.</p>
+     *
      * @throws IllegalArgumentException if the number of fields is negative or their offsets don't fit
      *     in the offset type, if {@code fill} leaves fields unset, or as the setters do
      * @throws IllegalStateException as the setters do
@@ -595,6 +615,12 @@ public final class TableBuilder {
      * Once the items make the vector longer than the table can address, the rest are still filled
      * and counted, so that the exception gives the vector's whole length, but not kept. What
      * {@code fill} throws is passed on, and whatever is thrown, the builder is left as it was.</p>
+     *
+     * <p>The items before then are kept, though: up to 64 KiB of them in a table of
+     * {@code uint16} offsets, but up to the 2 GiB that a Java array holds in one of
+     * {@code uint32} offsets. Their arrays, strings and nested builders of 64 bytes or more aren't
+     * copied, but shorter fields are, so a vector of those that makes such a table too long may
+     * need that much memory before it's rejected, and throw {@link OutOfMemoryError} first.</p>
      *
      * @throws IllegalArgumentException if the count or the number of fields is negative, if an
      *     item's offsets don't fit in the offset type, if the vector would make the table too long
@@ -849,6 +875,11 @@ public final class TableBuilder {
             append(tableBytes, at, tableBytes.length >= SEGMENT_LENGTH);
             return;
         }
+        if (table.length >= SEGMENT_LENGTH) {
+            addSegment(at, TABLE, table, (int) table.position);
+            nestsBuilders = true;
+            return;
+        }
 
         System.arraycopy(table.buffer, 0, buffer, at, table.length);
         if (table.layout.sized()) {
@@ -860,16 +891,15 @@ public final class TableBuilder {
             var values = table.valuesOf(i);
             addSegment(at + atOf(place), typeOf(place), values, byteLengthOf(typeOf(place), values));
         }
+        nestsBuilders |= table.nestsBuilders;
     }
 
     /** {@return the number of a nested builder's bytes that go in this builder's bytes} */
     private static int bufferLengthOf(TableBuilder table) {
         var tableBytes = table.written;
-        if (tableBytes != null) {
-            return tableBytes.length >= SEGMENT_LENGTH ? 0 : tableBytes.length;
-        }
+        var length = tableBytes != null ? tableBytes.length : table.length;
 
-        return table.length;
+        return length >= SEGMENT_LENGTH ? 0 : length;
     }
 
     /**
@@ -960,11 +990,16 @@ public final class TableBuilder {
             case UINT32 -> ((long[]) values).length * Integer.BYTES;
             case INT64 -> ((long[]) values).length * Long.BYTES;
             case FLOAT32 -> ((float[]) values).length * Float.BYTES;
-            default -> ((double[]) values).length * Double.BYTES;
+            case FLOAT64 -> ((double[]) values).length * Double.BYTES;
+            default -> (int) ((TableBuilder) values).position;
         };
     }
 
-    /** Writes the table, with its segments and a sized table's length, into {@code bytes} at {@code at} */
+    /**
+     * Writes the table, with its segments and a sized table's length, into {@code bytes} at
+     * {@code at}, apart from the builders nested in it as segments, which {@link #writeNested}
+     * writes
+     */
     private void copyInto(byte[] bytes, int at) {
         var from = 0;
         var to = at;
@@ -984,6 +1019,80 @@ public final class TableBuilder {
         }
     }
 
+    /**
+     * Writes the builders nested in the table as segments into its {@code bytes}, which
+     * {@link #copyInto} wrote, and those nested in them. They're written in a loop, after the
+     * tables that nest them rather than from within them, so that a chain of them takes no stack
+     * frame for each table in it. Keeping them out of {@link #copyInto} also keeps it small enough
+     * to inline, which took the benchmarks' document of 100 rows 111 ns rather than 120.
+     */
+    private void writeNested(byte[] bytes) {
+        var nested = writeNestedAt(bytes, 0, null);
+        while (nested != null && !nested.isEmpty()) {
+            var table = nested.pop();
+            nested = table.builder().writeNestedAt(bytes, table.at(), nested);
+        }
+    }
+
+    /**
+     * Writes the builders nested in the table as segments, at their places in {@code bytes}, where
+     * {@link #copyInto} wrote the table at {@code at}, {@return and adds those of them that nest
+     * builders to {@code nested}}
+     */
+    private @Nullable ArrayDeque<NestedBuilder> writeNestedAt(
+        byte[] bytes,
+        int at,
+        @Nullable ArrayDeque<NestedBuilder> nested
+    ) {
+        var from = 0;
+        var to = at;
+        for (int i = 0; i < segmentCount; i++) {
+            var place = placeOf(i);
+            to += atOf(place) - from;
+            from = atOf(place);
+
+            var type = typeOf(place);
+            var values = valuesOf(i);
+            if (type == TABLE) {
+                nested = writeBuilder((TableBuilder) values, bytes, to, nested);
+            }
+            to += byteLengthOf(type, values);
+        }
+
+        return nested;
+    }
+
+    /**
+     * Writes a builder nested as a segment at {@code at}: its bytes if it was written after its
+     * parent nested it, which released all but its bytes, or else the builder, {@return with
+     * {@code nested}, to which it adds the builder if it nests builders itself}
+     */
+    private static @Nullable ArrayDeque<NestedBuilder> writeBuilder(
+        TableBuilder table,
+        byte[] bytes,
+        int at,
+        @Nullable ArrayDeque<NestedBuilder> nested
+    ) {
+        var written = table.written;
+        if (written != null) {
+            System.arraycopy(written, 0, bytes, at, written.length);
+            return nested;
+        }
+
+        table.copyInto(bytes, at);
+        if (!table.nestsBuilders) {
+            return nested;
+        }
+
+        var queue = nested != null ? nested : new ArrayDeque<NestedBuilder>();
+        queue.push(new NestedBuilder(table, at));
+
+        return queue;
+    }
+
+    /** A builder that nests builders, and where in the bytes it goes */
+    private record NestedBuilder(TableBuilder builder, int at) {}
+
     /** Writes a segment's values at {@code at}, {@return where they end} */
     private static int writeSegment(int type, Object values, byte[] bytes, int at) {
         switch (type) {
@@ -996,7 +1105,9 @@ public final class TableBuilder {
             case INT64 -> Elements.setInt64(bytes, at, (long[]) values);
             case FLOAT32 -> Elements.setFloat32(bytes, at, (float[]) values);
             case FLOAT64 -> Elements.setFloat64(bytes, at, (double[]) values);
-            default -> throw new AssertionError("A segment of type " + type);
+            default -> {
+                // A nested builder, which writeNested() writes
+            }
         }
 
         return at + byteLengthOf(type, values);

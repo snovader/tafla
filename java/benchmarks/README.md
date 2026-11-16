@@ -58,6 +58,17 @@ of its own, and `ItemAccesses` holds them:
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows
   JMH's noise.
 
+`BuilderBenchmark` times only tafla's `TableBuilder`, to compare one version
+of it with another, on tables of shapes that the workloads don't have, which
+`BuilderShapes` holds: tables of arrays shorter and longer than the builder
+copies when they're set, and of more arrays than it keeps in its fields, a
+table of mixed fields, the documents and the vector of nested tables with
+their nested tables written from builders and from those builders' bytes
+rather than in place, a chain of 100 nested builders, and a chain of 1,000
+tables in place, each padded. Before timing, the check that
+the builder writes each shape as `TableWriter` writes it, or as it writes the
+same tables in place, fails the benchmark if it doesn't.
+
 ### What differs from TypeScript
 
 - There are no `number[]` inputs. Java's arrays are typed, and its closest
@@ -205,9 +216,10 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 33 minutes. `--jmhArgs` passes JMH's own options,
-which override those in `build.gradle.kts`: a regular expression selects
-benchmarks, and `-p` sets a parameter.
+The full run takes about 40 minutes, `BuilderBenchmark` 7 of them.
+`--jmhArgs` passes JMH's own options, which override those in
+`build.gradle.kts`: a regular expression selects benchmarks, and `-p` sets a
+parameter.
 
 ```sh
 ./gradlew :benchmarks:jmh --jmhArgs="Document -p codec=tafla"
