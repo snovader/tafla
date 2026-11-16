@@ -405,8 +405,50 @@ func TestAVectorOfUnevenItemsAllocatesInProportionToItsTable(t *testing.T) {
 	}
 }
 
-// allocatedBy returns the bytes that call allocates on the heap
+// Builders nested at any depth are written once, rather than once for each
+// level that they're nested in, and allocate in proportion to their table:
+// here a chain of 2,000 builders, each of a string of 100 bytes and the
+// builder before it
+func TestBuildersNestedDeeplyAllocateInProportionToTheirTable(t *testing.T) {
+	const depth = 2_000
+	value := strings.Repeat("a", 100)
+
+	var table []byte
+	allocated := allocatedBy(func() {
+		inner := must(tafla.NewTableBuilder(1, tafla.TableLayout{}))
+		check(t, inner.SetString(value))
+		for range depth {
+			outer := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
+			check(t, outer.SetString(value))
+			check(t, outer.SetTable(inner))
+			inner = outer
+		}
+		table = must(inner.Bytes())
+	})
+	if allocated > 16*uint64(len(table)) {
+		t.Errorf("allocated %d bytes for a table of %d", allocated, len(table))
+	}
+
+	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	position := 0
+	for level := range depth + 1 {
+		read := must(buffer.GetString(must(buffer.FieldOffset(position, 0))))
+		if read != value {
+			t.Fatalf("read %q at level %d", read, level)
+		}
+		if level < depth {
+			position = must(buffer.FieldOffset(position, 1))
+		}
+	}
+}
+
+// allocatedBy returns the bytes that call allocates on the heap. It reads the
+// process's count, which other goroutines add to, so it runs call on one
+// processor, as testing.AllocsPerRun does, and the tests that call it mustn't
+// call t.Parallel, which would run them alongside other tests.
 func allocatedBy(call func()) uint64 {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	call()

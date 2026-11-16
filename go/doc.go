@@ -47,7 +47,9 @@
 // an array, a string or the bytes of structs or of a nested table may keep
 // the slice or string until the table is written, rather than copy it, so
 // their elements must not change in between. A nested builder is copied into
-// its parent when it's set, and its parent keeps what it kept.
+// its parent when it's set, and its parent keeps what it kept, unless that's
+// long: then its parent keeps a copy of the builder, and writes its table
+// along with its own.
 // [TableBuilder.SetTableFunc] and [TableBuilder.SetVectorFunc] write a
 // nested table, or each item of a vector, straight into the builder's own
 // bytes, without a builder of its own, nor copying it.

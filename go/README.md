@@ -99,7 +99,7 @@ with the code that tafla-gen generates.
   setter writes the field's offset and bytes into a buffer of 128 bytes
   within the builder, and then into one on the heap, which doubles as it
   grows, and `Bytes()` copies the table into new bytes of its exact length.
-  Arrays, strings, arrays of structs and `TableBytes` of 256 bytes or more
+  Arrays, strings, arrays of structs and `TableBytes` of 64 bytes or more
   are kept until `Bytes()` copies them in, rather than copied when they're
   set, so their elements must not change until the table is written. A
   table's length is counted when each field is set, so a value that changed
@@ -107,7 +107,10 @@ with the code that tafla-gen generates.
 - **Nest builders rather than bytes.** `SetTable()` and `SetVector()` take a
   `*TableBuilder` or `TableBytes`, and copy a builder's bytes into its parent
   when they're set, without the allocation of its own `Bytes()`. Its parent
-  keeps the long values that it kept.
+  keeps the long values that it kept. A builder whose bytes and long values
+  would take 128 bytes or more to copy is kept rather than copied, as a copy
+  of the builder, and its table is written when its parent's is, so that
+  nesting builders copies little however deep they're nested.
 - **Nested tables can be written in place.** `SetTableFunc()` and
   `SetVectorFunc()` write a nested table, or each item of a vector,
   straight into the builder's bytes, through the `Item` that their
@@ -295,11 +298,12 @@ The property tests run 256 cases each, as proptest does in Rust's, which
 package's `testdata/rapid`, which `.gitignore` leaves out.
 
 `TableBuilder` copies arrays, strings and nested tables' bytes shorter than
-256 bytes when they're set, and keeps longer ones until `Bytes()`. The build
-tag `tafla_builder_stress` makes it keep every one, and grow its buffer from
-a byte rather than start with 128 bytes of its own, so that
-`go test -tags tafla_builder_stress ./...` takes those paths with the tests'
-small tables.
+64 bytes when they're set, and keeps longer ones until `Bytes()`, as it keeps
+nested builders that would take 128 bytes or more to copy. The build tag
+`tafla_builder_stress` makes it keep every value and most nested builders,
+and grow its buffer from a byte rather than start with 128 bytes of its own,
+so that `go test -tags tafla_builder_stress ./...` takes those paths with the
+tests' small tables.
 
 ### Byte orders and word sizes
 

@@ -20,12 +20,15 @@ import (
 // Setting a field writes its offset and its bytes at once, into a buffer of
 // 128 bytes within the builder, and then into one on the heap, which doubles
 // as it grows. [TableBuilder.Bytes] copies them into bytes of the table's
-// exact length. Runs of 256 bytes or more, the elements of an array, a
+// exact length. Runs of 64 bytes or more, the elements of an array, a
 // string, an array of structs or a table nested as bytes, are kept rather
 // than copied, and Bytes copies them in between the buffer's bytes. So
 // arrays, strings and the bytes of structs and tables must not change until
 // the table is written. A table nested from its builder is copied in when
-// it's set, along with the runs that it keeps.
+// it's set, with the runs that it keeps, unless that would copy 128 bytes or
+// more, counting 16 for each run: then the builder keeps a copy of the nested
+// builder, and Bytes writes its table, so that nesting builders copies fewer
+// than 128 bytes per builder, however deep they're nested.
 //
 // A setter returns a *[BuildError], and leaves the builder as it was, when
 // the table already holds all its fields or the field would make it too long
@@ -94,19 +97,33 @@ type checkpoint struct {
 }
 
 // run is a run of bytes that the builder keeps rather than copying, which
-// comes before the buffer's byte at. data points into the caller's slice or
-// string, so that the garbage collector keeps it while the builder does. It's
-// a pointer and a length rather than a slice, whose capacity would make the
+// comes before the buffer's byte at: the elements of an array, a string or
+// bytes, or a nested table. data points into the caller's slice or string, or
+// to a copy of the nested table's builder, so that the garbage collector keeps
+// it while the builder does. It's a pointer and two uint32s, which a table's
+// positions fit in, rather than a slice, whose capacity would make the
 // builder 32 bytes longer: with slices, the benchmarks' vector of 100 nested
 // builders took 12% longer.
 type run struct {
-	at     int
-	data   unsafe.Pointer
-	length int
+	data unsafe.Pointer
+	at   uint32
+	// The run's length, or 0 for a nested table, whose builder holds its
+	// length. Bytes are kept only when there are some.
+	length uint32
 }
 
-func (r *run) bytes() []byte {
-	return unsafe.Slice((*byte)(r.data), r.length)
+// copyTo copies the run into the start of bytes, and returns its length
+func (r *run) copyTo(bytes []byte) int {
+	if r.length > 0 {
+		return copy(bytes, unsafe.Slice((*byte)(r.data), r.length))
+	}
+
+	nested := (*TableBuilder)(r.data)
+	table := bytes[:nested.length]
+	nested.copyTo(table)
+	nested.putLength(table)
+
+	return len(table)
 }
 
 // NewTableBuilder starts a table of fields fields in layout, which its
@@ -190,8 +207,8 @@ func (b *TableBuilder) copyTo(table []byte) {
 	for index := range b.count {
 		run := b.run(index)
 		to += copy(table[to:], buffer[from:run.at])
-		to += copy(table[to:], run.bytes())
-		from = run.at
+		to += run.copyTo(table[to:])
+		from = int(run.at)
 	}
 	copy(table[to:], buffer[from:])
 }
@@ -421,7 +438,7 @@ func (b *TableBuilder) setRun(bytes []byte, count int, alignment Alignment) erro
 	if len(bytes) >= runMin {
 		buffer, at := b.reserve(int(padding) + int(width))
 		b.startArray(buffer, at, padding, count)
-		b.keep(b.written, bytes)
+		b.keepBytes(bytes)
 	} else {
 		buffer, at := b.reserve(int(padding) + int(width) + len(bytes))
 		at = b.startArray(buffer, at, padding, count)
@@ -456,9 +473,10 @@ func (b *TableBuilder) setField(length uint64, alignment Alignment) {
 // NestedTable is a table to nest with [TableBuilder.SetTable] or in
 // [TableBuilder.SetVector]: a *[TableBuilder], or [TableBytes].
 //
-// Both are copied into their parent when they're set: a builder's bytes, and
-// the runs that it keeps, which its parent keeps in turn, and bytes, which
-// are kept as a run when they're long enough.
+// A builder is copied into its parent when it's set, with the runs that it
+// keeps, which its parent keeps in turn, or, when they're long, kept as a
+// copy of the builder, whose table is written with its parent's. Bytes are
+// copied, or kept as a run when they're long enough.
 type NestedTable interface {
 	nestedTable()
 }
@@ -477,9 +495,10 @@ func (TableBytes) nestedTable() {}
 // table should have no header and the parent's offset type: that's the
 // default layout in a parent of uint32 offsets.
 //
-// A builder must have all its fields set. It's copied in as its own Bytes
-// would write it, in its own layout, but without new bytes of its own. The
-// runs that it keeps, and long bytes, are kept until the table is written.
+// A builder must have all its fields set. It's written as its own Bytes
+// would write it, in its own layout, but without new bytes of its own:
+// copied in, or kept until the table is written when it's long, as the runs
+// that it keeps and long bytes are.
 //
 // The nested table's arrays are aligned from its own start, so it's padded
 // to start at a multiple of an alignment, which they need to be read in
@@ -532,8 +551,8 @@ func (b *TableBuilder) setTable(table NestedTable, alignment Alignment) error {
 
 // SetVector writes a vector of tables, from their builders or their bytes,
 // after the end of each, which lets readers find any item without reading
-// the others. Builders must have all their fields set, and are copied in as
-// [TableBuilder.SetTable] copies them. Items aren't padded, so their arrays
+// the others. Builders must have all their fields set, and are written as
+// [TableBuilder.SetTable] writes them. Items aren't padded, so their arrays
 // are read in place only when they happen to be aligned. The builder doesn't
 // keep the slice of items.
 //
@@ -740,19 +759,24 @@ func nestedLength(table NestedTable) uint64 {
 }
 
 // appendNested writes a nested table after the buffer's bytes: a builder's
-// bytes and runs, with its length in its header when it's sized, or bytes,
-// which are kept as a run when they're long enough
+// bytes and runs, with its length in its header when it's sized, unless
+// copying them would copy tableRunMin bytes or more, when it keeps the
+// builder, or bytes, which are kept as a run when they're long enough
 func (b *TableBuilder) appendNested(table NestedTable) {
 	nested, ok := table.(*TableBuilder)
 	if !ok {
 		bytes := table.(TableBytes)
 		if len(bytes) >= runMin {
-			b.keep(b.written, bytes)
+			b.keepBytes(bytes)
 			return
 		}
 
 		buffer, at := b.reserve(len(bytes))
 		copy(buffer[at:], bytes)
+		return
+	}
+	if nested.written+nested.count*int(unsafe.Sizeof(run{})) >= tableRunMin {
+		b.keepTable(nested)
 		return
 	}
 
@@ -763,9 +787,21 @@ func (b *TableBuilder) appendNested(table NestedTable) {
 	}
 
 	for index := range nested.count {
-		run := nested.run(index)
-		b.keep(at+run.at, run.bytes())
+		kept := *nested.run(index)
+		kept.at += uint32(at)
+		b.keep(kept)
 	}
+}
+
+// keepTable keeps a nested builder's table as a run after the buffer's
+// bytes, which Bytes copies in, rather than copying it now, so that a table
+// nested in a tree of builders is copied once rather than at each level. The
+// run holds a copy of the builder, whose fields are all set, so that the
+// builder itself can stay on its caller's stack.
+func (b *TableBuilder) keepTable(nested *TableBuilder) {
+	kept := new(TableBuilder)
+	*kept = *nested
+	b.keep(run{data: unsafe.Pointer(kept), at: uint32(b.written)})
 }
 
 // nestedHeader returns the length of the offsets of a table of fields fields
@@ -798,7 +834,7 @@ func (b *TableBuilder) moveForward(saved checkpoint, padding int) {
 	clear(buffer[start : start+padding])
 
 	for index := saved.count; index < b.count; index++ {
-		b.run(index).at += padding
+		b.run(index).at += uint32(padding)
 	}
 }
 
@@ -888,7 +924,10 @@ func (b *TableBuilder) reserve(count int) ([]byte, int) {
 // grow moves the buffer's bytes to a buffer on the heap of end bytes or
 // more, at least twice as long, and returns it. It copies them rather than
 // appending them, so that the builder never points into itself, even where
-// the compiler can't tell; append's growth took as long.
+// the compiler can't tell; append's growth took as long. Growing by half
+// rather than doubling took most tables as long or longer, and a vector of
+// 100,000 items of three fields 11% longer, allocating 41% more, though trees
+// of nested builders took 3-5% less time.
 func (b *TableBuilder) grow(end int) []byte {
 	heap := make([]byte, max(end, firstHeapBytes, 2*len(b.buffer())))
 	copy(heap, b.buffer()[:b.written])
@@ -897,13 +936,20 @@ func (b *TableBuilder) grow(end int) []byte {
 	return heap
 }
 
-// keep keeps bytes as a run, before the buffer's byte at
-func (b *TableBuilder) keep(at int, bytes []byte) {
-	run := run{at: at, data: unsafe.Pointer(unsafe.SliceData(bytes)), length: len(bytes)}
+// keepBytes keeps bytes as a run after the buffer's bytes
+func (b *TableBuilder) keepBytes(bytes []byte) {
+	b.keep(run{data: unsafe.Pointer(unsafe.SliceData(bytes)), at: uint32(b.written), length: uint32(len(bytes))})
+}
+
+// keep adds a run after those kept
+func (b *TableBuilder) keep(kept run) {
 	if b.count < inlineRuns {
-		b.runs[b.count] = run
+		b.runs[b.count] = kept
 	} else {
-		b.more = append(b.more, run)
+		if b.more == nil {
+			b.more = make([]run, 0, moreRuns)
+		}
+		b.more = append(b.more, kept)
 	}
 	b.count++
 }

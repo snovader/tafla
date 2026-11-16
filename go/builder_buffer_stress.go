@@ -10,4 +10,6 @@ const (
 	firstHeapBytes = 1
 	runMin         = 1
 	itemRoom       = 64 << 10
+	tableRunMin    = 16
+	moreRuns       = 1
 )
