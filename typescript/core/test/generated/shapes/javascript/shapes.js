@@ -39,7 +39,6 @@ export class Point {
     static serialize(fields) {
         const string3 = fields.name;
         const table = TableWriter.tableBytes(
-            4,
             Point.#LAYOUT,
             44 + utf8Length(string3)
         );
@@ -77,7 +76,6 @@ export class Point {
     static serializeInto(fields, bytes) {
         const string3 = fields.name;
         const table = TableWriter.tableBytes(
-            4,
             Point.#LAYOUT,
             44 + utf8Length(string3),
             bytes

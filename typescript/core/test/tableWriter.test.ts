@@ -306,9 +306,6 @@ describe('versions', () => {
     ])('should reject %s, as TableBuilder does', (_, fields, layout, version, error) => {
         expect(() => new TableBuilder(fields, layout as never, version as never)).toThrow(error);
         expect(() => new TableSizer(fields, layout as never, version as never)).toThrow(error);
-        expect(() =>
-            TableWriter.versionedTableBytes(fields, layout as never, version as never, 1)
-        ).toThrow(error);
     });
 });
 
@@ -920,28 +917,17 @@ describe('fields that generated code writes into the room reserved for them', ()
 
     /** `tableBytes()` or `versionedTableBytes()` of the table's layout */
     const tableBytesOf = (
-        { layout, version, fields }: TableDescription,
+        { layout, version }: TableDescription,
         length: number,
         bytes?: Uint8Array
     ): Uint8Array => {
         const { sized, offsetType } = layout;
         if (layout.versioned) {
             const versioned = TableLayout.create({ sized, versioned: true, offsetType });
-            return TableWriter.versionedTableBytes(
-                fields.length,
-                versioned,
-                version as number,
-                length,
-                bytes
-            );
+            return TableWriter.versionedTableBytes(versioned, version as number, length, bytes);
         }
 
-        return TableWriter.tableBytes(
-            fields.length,
-            TableLayout.create({ sized, offsetType }),
-            length,
-            bytes
-        );
+        return TableWriter.tableBytes(TableLayout.create({ sized, offsetType }), length, bytes);
     };
 
     it.prop([inPlaceTables()])(
@@ -1010,12 +996,12 @@ describe('fields that generated code writes into the room reserved for them', ()
             sizer.addTableBytes(1, max + 1 - 2 * OFFSET_SIZES[offsetType]);
 
             if (offsetType !== 'uint32') {
-                expect(TableWriter.tableBytes(1, layout, max)).toHaveLength(max);
+                expect(TableWriter.tableBytes(layout, max)).toHaveLength(max);
             }
             expect(() => sizer.byteLength()).toThrow(
                 `The table's fields make it ${max + 1} bytes, too long for ${offsetType} offsets`
             );
-            expect(() => TableWriter.tableBytes(1, layout, max + 1)).toThrow(
+            expect(() => TableWriter.tableBytes(layout, max + 1)).toThrow(
                 new RangeError(
                     `The table's fields make it ${max + 1} bytes, too long for ${offsetType} offsets`
                 )
@@ -1023,18 +1009,14 @@ describe('fields that generated code writes into the room reserved for them', ()
         }
     );
 
-    it('should check the header and version as the sizer does, and bytes as its writer does, before writing any', () => {
+    it('should check the bytes as the sizer’s writer does, before writing any', () => {
         const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });
         const bytes = new Uint8Array(4).fill(7);
 
-        expect(() => TableWriter.versionedTableBytes(1, versioned, 256, 3)).toThrow(
-            new RangeError("Version 256 doesn't fit in a uint8 slot")
+        expect(() => TableWriter.versionedTableBytes(versioned, 9, 5, bytes)).toThrow(
+            new RangeError('The table is 5 bytes, longer than the 4 bytes given')
         );
-        expect(() => TableWriter.tableBytes(0, versioned as never, 1)).toThrow(
-            new TypeError('A versioned layout needs a version')
-        );
-        expect(() => TableWriter.tableBytes(-1, TableLayout.DEFAULT, 1)).toThrow(RangeError);
-        expect(() => TableWriter.versionedTableBytes(1, versioned, 9, 5, bytes)).toThrow(
+        expect(() => TableWriter.tableBytes(TableLayout.DEFAULT, 5, bytes)).toThrow(
             new RangeError('The table is 5 bytes, longer than the 4 bytes given')
         );
         expect(bytes).toStrictEqual(new Uint8Array(4).fill(7));

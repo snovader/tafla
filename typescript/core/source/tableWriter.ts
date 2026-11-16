@@ -398,49 +398,51 @@ export class TableWriter {
     }
 
     /**
-     * Returns bytes for a table of `fields` fields in `layout`, which has no
-     * version slot, `length` bytes long, with its header written: new bytes,
-     * which are zero, or the start of `bytes`, which needn't be. The caller
-     * writes every other byte, but for the zero bytes of new ones: each
-     * field's offset, and the field.
+     * Returns bytes for a table in `layout`, which has no version slot,
+     * `length` bytes long, with its header written: new bytes, which are
+     * zero, or the start of `bytes`, which needn't be. The caller writes every
+     * other byte, but for the zero bytes of new ones: each field's offset, and
+     * the field.
      *
      * It's for the code that tafla-gen generates, which writes a message of
      * fields whose sizes the schema fixes, and a string after them, at
      * positions that it works out, without a sizer and a writer. It may
      * change with the generator.
      *
-     * @throws {TypeError} If the layout has a version slot.
-     * @throws {RangeError} As `TableSizer`'s constructor and its `writer()`
-     * throw: if `fields` isn't a non-negative integer, the header alone is
-     * longer than the layout addresses, `length` is longer than it addresses,
-     * or longer than `bytes`, before writing any of them.
+     * It checks only what the message's values decide: `length`, which the
+     * string's length is part of. The generated code passes its message's
+     * layout and a `length` that holds its header and offsets, which
+     * tafla-gen checked fit the layout's offset type, so a table that's
+     * written with its fields' offsets past `length`, or with a layout of
+     * another message, isn't checked.
+     *
+     * @throws {RangeError} As `TableSizer.writer()` throws: if `length` is
+     * longer than the layout addresses, or longer than `bytes`, before writing
+     * any of them.
      */
     static tableBytes(
-        fields: number,
         layout: TableLayout<false>,
         length: number,
         bytes?: Uint8Array
     ): Uint8Array {
-        return newTableBytes(fields, layout, undefined, length, bytes);
+        return newTableBytes(layout, undefined, length, bytes);
     }
 
     /**
-     * Returns bytes for a table of `fields` fields in `layout`, `length` bytes
-     * long, with its header written, `version` included, as `tableBytes()`
-     * does for a layout without a version slot.
+     * Returns bytes for a table in `layout`, `length` bytes long, with its
+     * header written, `version` included, as `tableBytes()` does for a layout
+     * without a version slot. The generated code passes its message's
+     * version, which tafla-gen checked fits the layout's offset type.
      *
-     * @throws {TypeError} If the layout has no version slot.
-     * @throws {RangeError} As `tableBytes()` throws, and if `version` isn't an
-     * integer that fits in the layout's offset type.
+     * @throws {RangeError} As `tableBytes()` throws.
      */
     static versionedTableBytes(
-        fields: number,
         layout: TableLayout<true>,
         version: number,
         length: number,
         bytes?: Uint8Array
     ): Uint8Array {
-        return newTableBytes(fields, layout, version, length, bytes);
+        return newTableBytes(layout, version, length, bytes);
     }
 
     /**
@@ -998,20 +1000,18 @@ function writeHeader(
 
 /**
  * `TableWriter.tableBytes()` and `versionedTableBytes()`, which check the
- * header and the length as a sizer and its `writer()` check them.
+ * length as a sizer's `writer()` checks it.
  *
  * A layout without header slots, as the code that tafla-gen generates for
  * most messages has, never calls `writeHeader()`, so V8 leaves it out of
  * the bytecode that it inlines into the generated serializers.
  */
 function newTableBytes(
-    fields: number,
     layout: TableLayout,
     version: number | undefined,
     length: number,
     bytes: Uint8Array | undefined
 ): Uint8Array {
-    headerLength(fields, layout, version);
     assertAddressable(length, layout);
 
     const table =

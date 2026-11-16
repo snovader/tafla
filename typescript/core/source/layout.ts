@@ -115,10 +115,9 @@ export class TableLayout<Versioned extends boolean = boolean> {
  * whose writer puts `version` in the header
  *
  * It checks everything in one condition, and finds which check failed out
- * of line, to keep the bytecode that V8 inlines into `TableWriter.tableBytes()`
- * small: TurboFan inlines up to 920 bytes of it into a function, and the
- * serializers that tafla-gen generates spend that on the table's checks,
- * its fields' writes and its string.
+ * of line, to keep the bytecode that V8 inlines into the constructors of
+ * `TableSizer`, `TableBuilder` and `TableWriter` small: TurboFan inlines up
+ * to 920 bytes of it into a function.
  *
  * @throws {TypeError} If `version` is given for a layout without a version
  * slot, or missing for one with it.

@@ -41,7 +41,7 @@ export class Scalars {
 
     /** Writes a `Scalars` with every field */
     static serialize(fields: ScalarsFields): Uint8Array {
-        const table = TableWriter.tableBytes(11, Scalars.#LAYOUT, 87);
+        const table = TableWriter.tableBytes(Scalars.#LAYOUT, 87);
 
         table[0] = 44;
         table[4] = 45;
@@ -81,7 +81,7 @@ export class Scalars {
      * any of them is written.
      */
     static serializeInto(fields: ScalarsFields, bytes: Uint8Array): Uint8Array {
-        const table = TableWriter.tableBytes(11, Scalars.#LAYOUT, 87, bytes);
+        const table = TableWriter.tableBytes(Scalars.#LAYOUT, 87, bytes);
 
         table[0] = 44;
         table[1] = 0;

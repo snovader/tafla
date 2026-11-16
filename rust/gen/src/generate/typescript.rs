@@ -834,10 +834,10 @@ impl Generator<'_> {
         if let Some(string) = &string {
             length = format!("{length} + utf8Length({string})");
         }
-        let mut arguments = vec![
-            text(definition.fields.len().to_string()),
-            text(format!("{name}.#LAYOUT")),
-        ];
+        // The runtime checks only the length, which the string's is part of:
+        // the field count, the header and the version are the schema's, which
+        // the checker and `whole_message()` checked fit the offset type
+        let mut arguments = vec![text(format!("{name}.#LAYOUT"))];
         let make = if layout.version.is_some() {
             arguments.push(text(format!("{name}.FORMAT_VERSION")));
             "TableWriter.versionedTableBytes"

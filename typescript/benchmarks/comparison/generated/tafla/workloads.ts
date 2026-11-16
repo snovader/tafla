@@ -32,7 +32,6 @@ export class Record {
     static serialize(fields: RecordFields): Uint8Array {
         const string3 = fields.name;
         const table = TableWriter.tableBytes(
-            4,
             Record.#LAYOUT,
             44 + utf8Length(string3)
         );
@@ -67,7 +66,6 @@ export class Record {
     static serializeInto(fields: RecordFields, bytes: Uint8Array): Uint8Array {
         const string3 = fields.name;
         const table = TableWriter.tableBytes(
-            4,
             Record.#LAYOUT,
             44 + utf8Length(string3),
             bytes
