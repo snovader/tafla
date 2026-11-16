@@ -10,7 +10,7 @@ const directory = SUITE_DIRECTORY;
 
 // The checked-in suite, which the other implementations of tafla load too
 const json = await readFile(new URL('cases.json', directory), 'utf8');
-const suite: Suite = JSON.parse(json);
+const suite = JSON.parse(json) as Suite;
 const tables = await readTables();
 
 async function readTables(): Promise<Map<string, Uint8Array>> {

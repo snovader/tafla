@@ -1,6 +1,6 @@
-import { describe, expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
+import { describe, expect, vi } from 'vitest';
+import { ByteBuffer, TableBuilder, type TableItem, TableLayout } from 'tafla';
 import { MAX_VALUES, tables } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
@@ -364,7 +364,7 @@ describe('tables recorded in place', () => {
 
     it("should reject a vector whose count, item ends and items' offsets make the table too long before recording any item", () => {
         const layout = TableLayout.create({ offsetType: 'uint8' });
-        const fill = vi.fn();
+        const fill = vi.fn<(item: TableItem, index: number) => void>();
         const builder = new TableBuilder(1, layout);
 
         // The table's offset and the vector's count and 254 ends

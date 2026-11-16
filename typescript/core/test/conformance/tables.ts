@@ -456,12 +456,10 @@ export function nestedInPlace(table: TableDescription): TableDescription {
             case 'vector':
                 return {
                     ...description,
-                    items: description.items.map(
-                        (item): NestedTable => ({
-                            from: 'builder',
-                            table: inPlace(item.table)
-                        })
-                    )
+                    items: description.items.map((item): NestedTable => ({
+                        from: 'builder',
+                        table: inPlace(item.table)
+                    }))
                 };
 
             default:

@@ -13,7 +13,6 @@ import {
     table,
     vector
 } from './descriptions.ts';
-import { readItems } from './views.ts';
 import * as javascript from './shapes/javascript/shapes.js';
 import * as typescript from './shapes/typescript/shapes.ts';
 import type {
@@ -25,6 +24,7 @@ import type {
     PointFields,
     SampleFields
 } from './shapes/typescript/shapes.ts';
+import { readItems } from './views.ts';
 
 // The code generated from schemas/shapes.tafla, how tests read its messages
 // back and describe them to build their tables by hand, and arbitrary values

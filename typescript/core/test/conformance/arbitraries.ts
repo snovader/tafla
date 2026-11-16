@@ -156,9 +156,10 @@ export const ARRAY_FIELDS: fc.Arbitrary<ArrayField> = fc.oneof(
     )
 );
 
-const stringFields = STRINGS.map(
-    (value): FieldDescription => ({ type: 'string', value })
-);
+const stringFields = STRINGS.map((value): FieldDescription => ({
+    type: 'string',
+    value
+}));
 
 const ITEMS_PER_STRUCT_ARRAY = 4;
 
@@ -174,12 +175,10 @@ function structValues(types: ScalarType[]): fc.Arbitrary<JsonNumber[]> {
 }
 
 const structFields = STRUCT_TYPES.chain(types =>
-    structValues(types).map(
-        (values): FieldDescription => ({
-            type: 'struct',
-            fields: types.map((type, index) => ({ type, value: values[index] }))
-        })
-    )
+    structValues(types).map((values): FieldDescription => ({
+        type: 'struct',
+        fields: types.map((type, index) => ({ type, value: values[index] }))
+    }))
 );
 
 /** Arrays of structs of any scalars, empty too */
@@ -187,13 +186,11 @@ export const STRUCT_ARRAY_FIELDS: fc.Arbitrary<FieldDescription> =
     STRUCT_TYPES.chain(types =>
         fc
             .array(structValues(types), { maxLength: ITEMS_PER_STRUCT_ARRAY })
-            .map(
-                (items): FieldDescription => ({
-                    type: 'struct[]',
-                    fields: types,
-                    items
-                })
-            )
+            .map((items): FieldDescription => ({
+                type: 'struct[]',
+                fields: types,
+                items
+            }))
     );
 
 /** A table's layout, and its version when it's versioned */
@@ -226,11 +223,9 @@ function headerOf(layout: LayoutDescription, version: number): Header {
  * position, as the conformance suite reads them.
  */
 function headerless(offsetTypes: readonly OffsetType[]): fc.Arbitrary<Header> {
-    return fc.constantFrom(...offsetTypes).map(
-        (offsetType): Header => ({
-            layout: { sized: false, versioned: false, offsetType }
-        })
-    );
+    return fc.constantFrom(...offsetTypes).map((offsetType): Header => ({
+        layout: { sized: false, versioned: false, offsetType }
+    }));
 }
 
 /** Layouts of every header and offset type */
@@ -316,9 +311,12 @@ function tablesOf(
         fc.array(fields, { minLength: minFields, maxLength: FIELDS_PER_TABLE })
     );
 
-    return tables
-        .map(([header, fields]) => ({ ...header, fields }))
-        .filter(fitsItsLayout);
+    return (
+        tables
+            // oxlint-disable-next-line oxc/no-map-spread -- fast-check reuses generated values as it shrinks
+            .map(([header, fields]) => ({ ...header, fields }))
+            .filter(fitsItsLayout)
+    );
 }
 
 /**

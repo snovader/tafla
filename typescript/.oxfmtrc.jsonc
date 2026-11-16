@@ -1,0 +1,47 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "ignorePatterns": [
+        ".cache",
+        ".yarn",
+        "**/dist",
+        // Yarn writes these in a format of its own
+        "**/package.json",
+        // Prose wrapped by hand, as in the other languages' READMEs
+        "**/*.md"
+    ],
+    "endOfLine": "lf",
+    "tabWidth": 4,
+    "printWidth": 80,
+    "singleQuote": true,
+    "quoteProps": "as-needed",
+    "trailingComma": "none",
+    "semi": true,
+    "arrowParens": "avoid",
+    "bracketSpacing": true,
+    "bracketSameLine": false,
+    "objectWrap": "preserve",
+    // Node's modules, other packages, this project's package and its `#`
+    // imports, then relative paths, nearest last
+    "sortImports": {
+        "groups": [
+            "builtin",
+            "external",
+            ["internal", "subpath"],
+            "parent",
+            ["sibling", "index"],
+            "unknown"
+        ],
+        "internalPattern": ["tafla"],
+        "newlinesBetween": false
+    },
+    "overrides": [
+        {
+            "files": ["**/*.test.ts"],
+            "options": { "printWidth": 100 }
+        },
+        {
+            "files": ["**/tsconfig.json", "**/tsconfig.*.json"],
+            "options": { "printWidth": 60 }
+        }
+    ]
+}

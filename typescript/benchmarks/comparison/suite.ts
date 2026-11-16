@@ -367,7 +367,9 @@ function checkItemAccess(accesses: ItemAccess[], list: ListInput): void {
         const expected = [last, every, last, every];
 
         if (!sums.every((sum, i) => Object.is(sum, expected[i]))) {
-            throw new Error(`${access.name} didn't sum the items: ${sums}`);
+            throw new Error(
+                `${access.name} didn't sum the items: ${sums.join(', ')}`
+            );
         }
     }
 }
@@ -419,7 +421,7 @@ function assertEqual(
 ): void {
     // Keys in a fixed order, and bigints as strings
     const stringify = (value: object): string =>
-        JSON.stringify(value, (_, v) =>
+        JSON.stringify(value, (_, v: unknown) =>
             typeof v === 'bigint' ? String(v) : v
         );
 

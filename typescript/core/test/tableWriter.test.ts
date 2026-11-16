@@ -1,8 +1,7 @@
-import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'vitest';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
-import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 import {
     ARRAY_FIELDS,
     FIELDS,
@@ -34,6 +33,7 @@ import {
     writeTableReserving,
     writeTableThrough
 } from './conformance/tables.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 
 /** Tables whose nested tables a TableWriter writes in place */
 function inPlaceTables(offsetTypes?: readonly OffsetType[]): fc.Arbitrary<TableDescription> {
@@ -677,12 +677,13 @@ class IndexReplacer {
     wrap(writer: TableWriter): TableWriter {
         return new Proxy(writer, {
             get: (target, name) => {
-                const member = Reflect.get(target, name);
+                const member: unknown = Reflect.get(target, name);
                 if (typeof member !== 'function') {
                     return member;
                 }
 
-                return (...args: unknown[]) => this.#forward(target, member, name, args);
+                const method = member as (...args: unknown[]) => unknown;
+                return (...args: unknown[]) => this.#forward(target, method, name, args);
             }
         });
     }

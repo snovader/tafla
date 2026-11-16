@@ -1,5 +1,5 @@
-import { formatSuiteJson } from '../conformance/files.ts';
 import { toJsonNumber } from '../conformance/description.ts';
+import { formatSuiteJson } from '../conformance/files.ts';
 import type {
     DocumentFields,
     ItemListFields,

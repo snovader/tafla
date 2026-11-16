@@ -1,5 +1,5 @@
-import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { assertStructSize } from './byteBuffer.ts';
+import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import {
     setFloat32Elements,
     setFloat64Elements,
@@ -319,6 +319,7 @@ export class TableSizer {
  *
  * @throws {RangeError} If the bytes don't fit, without writing any of them.
  */
+// oxlint-disable-next-line import/no-mutable-exports -- Assigned once, in TableWriter's static block
 export let copyTable: (writer: TableWriter, table: Uint8Array) => void;
 
 /**

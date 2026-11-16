@@ -68,6 +68,7 @@ describe('DecodeError', () => {
         const buffer = new ByteBuffer(new Uint8Array([1, 0, 0, 0, 0xff]));
 
         expect(() => buffer.getString(0)).toThrow(
+            // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
             expect.objectContaining({ cause: expect.any(TypeError) })
         );
     });

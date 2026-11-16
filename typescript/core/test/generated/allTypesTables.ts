@@ -5,19 +5,6 @@ import type {
     ScalarType,
     TableDescription
 } from '../conformance/description.ts';
-import {
-    array,
-    bool,
-    DEFAULT_LAYOUT,
-    message,
-    scalar,
-    string,
-    struct,
-    structArray,
-    table,
-    vector
-} from './descriptions.ts';
-import { readItems, readItemsFromLast } from './views.ts';
 import * as javascript from './all_types/javascript/allTypes.js';
 import * as typescript from './all_types/typescript/allTypes.ts';
 import type {
@@ -36,6 +23,19 @@ import type {
     StructsFields,
     TreeFields
 } from './all_types/typescript/allTypes.ts';
+import {
+    array,
+    bool,
+    DEFAULT_LAYOUT,
+    message,
+    scalar,
+    string,
+    struct,
+    structArray,
+    table,
+    vector
+} from './descriptions.ts';
+import { readItems, readItemsFromLast } from './views.ts';
 
 // The code generated from schemas/all_types.tafla, how tests read its
 // messages back and describe them to build their tables by hand, and

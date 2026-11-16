@@ -1,5 +1,5 @@
-import { describe, expect, inject, test } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
+import { describe, expect, inject, test } from 'vitest';
 import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
 import { MAX_VALUES, SLICES, type Slice, sliceOf } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';
@@ -191,6 +191,7 @@ describe('strings', () => {
             expected = decoder.decode(bytes);
         } catch {
             expect(read).toThrow(DecodeError);
+            // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
             expect(read).toThrow(expect.objectContaining({ cause: expect.any(TypeError) }));
             return;
         }
@@ -217,7 +218,7 @@ describe('strings', () => {
 
             for (const string of strings) {
                 const bytes = encoder.encode(string);
-                expect(bytes.length).toBe(length);
+                expect(bytes).toHaveLength(length);
                 expect(readString(bytes)()).toBe(string);
             }
         }

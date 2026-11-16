@@ -1,5 +1,5 @@
-import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'vitest';
 import { SCALAR_VALUES, STRINGS } from '../conformance/arbitraries.ts';
 import type { FieldDescription, LayoutDescription } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
@@ -281,7 +281,7 @@ describe.each(TARGETS)('%s', (_, fixed) => {
     describe('round trip', () => {
         it('should read back the fields of the messages that it writes whole', () => {
             const tiny = fixed.Tiny.serialize({ id: 513, kind: 9 });
-            expect(tiny.length).toBe(6);
+            expect(tiny).toHaveLength(6);
             expect([new fixed.Tiny(tiny).id(), new fixed.Tiny(tiny).kind()]).toStrictEqual([
                 513, 9
             ]);
@@ -338,7 +338,7 @@ describe.each(TARGETS)('%s', (_, fixed) => {
                 position: ORIGIN,
                 label: 'a'.repeat(237)
             });
-            expect(fits.length).toBe(255);
+            expect(fits).toHaveLength(255);
             expect(new fixed.Tagged(fits).label()).toBe('a'.repeat(237));
 
             expect(

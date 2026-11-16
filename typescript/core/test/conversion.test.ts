@@ -1,5 +1,5 @@
-import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'vitest';
 import { TableBuilder, TableWriter } from 'tafla';
 
 type NumberArrayType =
@@ -36,6 +36,7 @@ function numberInputs(values: number[]): Array<[string, ArrayLike<number>]> {
         ['number[] of doubles', values],
         ['number[] of SMIs', smis],
         ['holey number[]', holey],
+        // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
         ['array-like object', { ...values, length: values.length }],
         ['Float64Array', Float64Array.from(values)],
         ['Float32Array', Float32Array.from(values)],
@@ -55,7 +56,7 @@ const doubles = fc.array(
 /** Writes `values` with the builder and reads them back with the buffer */
 function roundTrip(type: NumberArrayType, values: ArrayLike<number>): ArrayLike<number> {
     const builder = new TableBuilder(1);
-    (builder[`set${type}Array`] as (values: ArrayLike<number>) => void)(values);
+    builder[`set${type}Array`](values);
 
     const buffer = builder.finalize();
     return buffer[`get${type}Array`](buffer.rootOffset(0));
@@ -66,7 +67,7 @@ function expectElements(
     expected: ArrayLike<unknown>,
     kind?: string
 ): void {
-    expect(actual.length, kind).toBe(expected.length);
+    expect(actual, kind).toHaveLength(expected.length);
 
     // toBe compares with Object.is, so -0 and NaN must match exactly
     for (let i = 0; i < expected.length; i++) {
@@ -88,7 +89,7 @@ describe.each(numberTypes)('set%sArray()', (type, TypedArray) => {
     );
 
     it('should convert holes like the typed array constructor', () => {
-        // biome-ignore lint/suspicious/noSparseArray: Holes are the input
+        // oxlint-disable-next-line eslint/no-sparse-arrays -- Holes are the input
         const values = [1.5, , -0, Number.NaN] as number[];
 
         expectElements(roundTrip(type, values), TypedArray.from(values));
@@ -104,6 +105,7 @@ describe.each([
         values => {
             const inputs: Array<ArrayLike<bigint>> = [
                 values,
+                // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
                 { ...values, length: values.length },
                 BigInt64Array.from(values, value => BigInt.asIntN(64, value)),
                 BigUint64Array.from(values, value => BigInt.asUintN(64, value))

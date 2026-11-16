@@ -2456,7 +2456,7 @@ impl Generator<'_> {
     }
 
     /// Opens a method of `parameters`, each a name and its type, broken over
-    /// lines when it's too long, as Biome breaks it
+    /// lines when it's too long, as oxfmt breaks it
     fn signature(
         &self,
         writer: &mut CodeWriter,
@@ -2658,7 +2658,7 @@ fn stored_value(scalar: Scalar, value: &str) -> Expr {
 }
 
 /// Returns the bool that `read` reads from its byte, true when it isn't 0, in
-/// parentheses when it doesn't fit on a line, as Biome breaks a comparison
+/// parentheses when it doesn't fit on a line, as oxfmt breaks a comparison
 fn return_bool(writer: &mut CodeWriter, read: &Expr) {
     let line = format!("return {} !== 0;", read.flat());
     if writer.fits(&STYLE, &line) {
@@ -2671,7 +2671,7 @@ fn return_bool(writer: &mut CodeWriter, read: &Expr) {
 }
 
 /// Returns an object of each field's value that `reads` reads, a bool's
-/// compared with 0, broken over a line for each, as Biome keeps an object
+/// compared with 0, broken over a line for each, as oxfmt keeps an object
 /// that's broken after its brace
 fn return_object(writer: &mut CodeWriter, reads: &[Read]) {
     write_object(writer, "return ", reads);
@@ -2695,7 +2695,7 @@ fn write_object(writer: &mut CodeWriter, target: &str, reads: &[Read]) {
 }
 
 /// Assigns the bool that `read` reads from its byte to `target`, broken after
-/// the `=` or `:` when it doesn't fit on a line, as Biome breaks a comparison,
+/// the `=` or `:` when it doesn't fit on a line, as oxfmt breaks a comparison,
 /// and ends it with `suffix`
 fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str) {
     let line = format!("{target}{} !== 0{suffix}", read.flat());

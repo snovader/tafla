@@ -101,7 +101,7 @@ function isFlat(value: object): boolean {
  * such as U+FEFF, and readers can't mistake its encoding
  */
 function escapeNonAscii(json: string): string {
-    return json.replace(
+    return json.replaceAll(
         /[\u007f-￿]/g,
         character =>
             `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`

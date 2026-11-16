@@ -1,5 +1,5 @@
-import { expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
+import { expect } from 'vitest';
 import {
     DecodeError,
     readFloat32,
