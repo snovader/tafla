@@ -716,7 +716,7 @@ jobs:
       # Without a cache, so that every dependency comes from the proxy, as it
       # will for a module that requires tafla's
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: false
@@ -844,7 +844,7 @@ jobs:
           push: true
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: stable
           cache: false
