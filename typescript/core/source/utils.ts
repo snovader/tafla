@@ -92,11 +92,11 @@ function assertReadable(
 // serializers that tafla-gen generates spend them on these writes, their
 // table's checks and their string. So each copy checks its offset itself,
 // rather than through within(), which V8 would inline into each write as
-// well, and the copy of 8 bytes is a loop over its two 32-bit words, 20%
+// well, and the copy of 8 bytes is a loop over its two 32-bit words, 25%
 // less bytecode than 8 copies, which V8 unrolls, as it unrolls any loop of
-// fewer than 4 iterations. In a loop of 100 writeFloat64()s, it took 362 ns
-// rather than 378 in Node 26, and 333 ns rather than 347 in Node 27, where
-// a loop over the 8 bytes took 485 and 535 ns.
+// fewer than 4 iterations. 100 writeFloat64()s took 376 ns rather than
+// 394 in Node 26, and 338 ns rather than 349 in Node 27, where a loop over
+// the 8 bytes took 28% to 30% longer than 8 copies.
 
 const scratch = new DataView(new ArrayBuffer(8));
 const scratchBytes = new Uint8Array(scratch.buffer);
@@ -221,16 +221,22 @@ function copy4(bytes: Uint8Array, offset: number): void {
 
 function copy8(bytes: Uint8Array, offset: number): void {
     if (!(isOffset(offset) && offset <= bytes.length - 8)) {
-        throw writeOutOfRange(offset, 8, bytes.length);
+        throw copy8Error(bytes, offset);
     }
 
     for (let i = 0; i < 8; i += 4) {
         const word = scratch.getInt32(i, true);
-        bytes[offset + i] = word;
-        bytes[offset + i + 1] = word >> 8;
-        bytes[offset + i + 2] = word >> 16;
-        bytes[offset + i + 3] = word >> 24;
+        const position = offset + i;
+        bytes[position] = word;
+        bytes[position + 1] = word >> 8;
+        bytes[position + 2] = word >> 16;
+        bytes[position + 3] = word >> 24;
     }
+}
+
+/** copy8()'s error, built with two arguments, which take less bytecode */
+function copy8Error(bytes: Uint8Array, offset: number): RangeError {
+    return writeOutOfRange(offset, 8, bytes.length);
 }
 
 /**
