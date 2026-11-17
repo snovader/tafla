@@ -78,7 +78,7 @@ public final class TableLayout {
 
     /**
      * {@return the layout without a header of {@code offsetType}}, which the tables that a
-     * {@link TableBuilder} records in place have
+     * {@link TableBuilder} writes in place have
      */
     static TableLayout headerless(OffsetType offsetType) {
         return switch (offsetType) {

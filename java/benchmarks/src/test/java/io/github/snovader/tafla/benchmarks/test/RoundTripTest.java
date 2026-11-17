@@ -112,6 +112,18 @@ public class RoundTripTest {
         assertEquals(every, access.everyStruct(structs));
     }
 
+    @Provide
+    Arbitrary<String> builderShapes() {
+        return Arbitraries.of(List.copyOf(BuilderShapes.all().keySet()));
+    }
+
+    @Property(generation = GenerationMode.EXHAUSTIVE)
+    void should_build_each_shape_as_it_writes_it_otherwise(@ForAll("builderShapes") String name) {
+        var shape = BuilderShapes.named(name);
+
+        assertArrayEquals(shape.expected().get(), BuilderShapes.buildChecked(name, shape));
+    }
+
     @Example
     void should_write_the_builders_tables_from_generated_code() {
         var built = TaflaCodec.create();

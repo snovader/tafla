@@ -25,7 +25,11 @@ final class Tables {
 
     /** {@return a builder of the table's layout and version, with none of its fields set yet} */
     static TableBuilder createBuilder(TableDescription table) {
-        var fields = table.fields().size();
+        return createBuilder(table, table.fields().size());
+    }
+
+    /** {@return a builder of the table's layout and version, of {@code fields} fields, none set yet} */
+    static TableBuilder createBuilder(TableDescription table, int fields) {
         var layout = table.layout().tableLayout();
         var version = table.version();
 

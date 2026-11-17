@@ -1,14 +1,15 @@
 /**
  * Binary tables of scalars, structs, strings and arrays.
- * {@link io.github.snovader.tafla.TableBuilder} writes a table at its exact size, copying arrays in
- * bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads fields back by offset, into Java
- * arrays. Every read checks that it stays within the bytes it was given. The TypeScript and Python
+ * {@link io.github.snovader.tafla.TableBuilder} writes a table's fields as they're set, copying
+ * arrays in bulk, and returns it at its exact size, and
+ * {@link io.github.snovader.tafla.ByteBuffer} reads fields back by offset, into Java arrays. Every
+ * read checks that it stays within the bytes it was given. The TypeScript and Python
  * implementations write and read the same bytes.
  *
  * <p>Code that knows a table's fields before it writes them, such as the code that tafla-gen
  * generates, can count the table with a {@link io.github.snovader.tafla.TableSizer} and write it
  * forward with its {@link io.github.snovader.tafla.TableWriter}, which writes the same bytes as
- * {@code TableBuilder} without recording the fields or a builder per nested table first. The
+ * {@code TableBuilder} into bytes of the table's length, without growing them or copying them. The
  * sizer's {@code writer(byte[])} writes the table into the start of bytes that the caller owns and
  * reuses, rather than into new bytes.</p>
  *
@@ -24,7 +25,7 @@
  * var builder = new TableBuilder(3, layout, formatVersion);
  * builder.setFloat64(59.3293);
  * builder.setString("Europe/Stockholm");
- * builder.setTable(series); // written straight into the table
+ * builder.setTable(series); // copied into the table
  * byte[] bytes = builder.bytes();
  *
  * var buffer = new ByteBuffer(bytes, layout);
@@ -89,18 +90,21 @@
  *     27,028-element {@code float32} array with {@code getFloat32()} took 6.8 µs, against 9.5 µs
  *     with {@code getFloat32Array()}, which copies it first. In TypeScript and Python, the scalar
  *     getters are the slower way.</li>
- *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} write a
- *     {@code TableBuilder} straight into its parent when the parent is written, so the outermost
- *     table allocates and writes all the bytes once. A table nested as bytes was built into an
- *     array of its own and is copied, as is a builder written already, or one whose layout has
- *     a header or another offset type than its parent's. A vector of 100 tables that each nest
- *     another took 7.1 µs to build from builders and 7.8 µs from bytes, and a table nesting
- *     100,000 rows of three columns took 54 µs and 108 µs.</li>
- *   <li><b>Record nested tables in place.</b> {@code setTable(int, Consumer)} and
- *     {@code setVector(int, int, ObjIntConsumer)} record a nested table, or each item of a vector,
+ *   <li><b>Nest builders rather than bytes.</b> {@code setTable()} and {@code setVector()} copy a
+ *     {@code TableBuilder}'s bytes into its parent, apart from its arrays and strings of 64 bytes
+ *     or more, which are copied once, when the outermost table is written. A builder whose bytes
+ *     apart from those are 64 or more is kept whole, and written into the outermost table then
+ *     too. A table nested as bytes was built into an array of its own, its long arrays copied into
+ *     it, and is copied again, as is a builder written already. As the fastest of 3 rounds of JMH's
+ *     iterations, a vector of 100 tables that each nest another took 3.7 µs to build from builders
+ *     and 4.1 µs from bytes, and a table nesting 100,000 rows of three columns took 42 µs and
+ *     90 µs.</li>
+ *   <li><b>Write nested tables in place.</b> {@code setTable(int, Consumer)} and
+ *     {@code setVector(int, int, ObjIntConsumer)} write a nested table, or each item of a vector,
  *     among its parent's fields, without a builder of its own. The vector of 100 tables that each
- *     nest another took 12% less time so than from a builder per item, as the fastest of JMH's
- *     iterations, and allocated 13.0 KB rather than 29.1 KB.</li>
+ *     nest another took 1.7 µs so, under half as long as from a builder per table, and allocated
+ *     8.0 KB rather than 63.6 KB, mostly the 128-byte buffers that each of the 200 builders starts
+ *     with.</li>
  *   <li><b>Small tables are cheap.</b> A table of two {@code float64}s, an {@code int64} and a
  *     16-byte string took 0.05 µs to write and 0.02 µs to read.</li>
  * </ul>
@@ -151,15 +155,19 @@
  *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
  *     vector, or the count it's given.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
- *     that its table holds, a table recorded in place too, for writing before every field is set
- *     or while a fill records a table in it, and for a field set after writing. It throws an
+ *     that its table holds, a table written in place too, for writing before every field is set
+ *     or while a fill writes a table in it, and for a field set after writing. It throws an
  *     {@link IllegalArgumentException} for a version missing from or given for a layout, a version
- *     that doesn't fit, a negative number of fields or count, a nested builder or a table recorded
- *     in place with fields left to set, an alignment other than 1, 2, 4 or 8, and a struct size
- *     below 1 or bytes that aren't a whole number of structs. A field that would make the table
- *     too long for its offset type throws an {@code IllegalArgumentException} from its setter and
- *     isn't added. A table recorded in place passes on what its fill throws, and leaves the
- *     builder as it was whatever is thrown.</li>
+ *     that doesn't fit, a negative number of fields or count, a nested builder or a table written
+ *     in place with fields left to set, a nested builder while a fill writes a table in it, an
+ *     alignment other than 1, 2, 4 or 8, and a struct size below 1 or bytes that aren't a whole
+ *     number of structs. A field that would make the table too long for its offset type throws
+ *     an {@code IllegalArgumentException} from its setter and isn't added. A table written in
+ *     place passes on what its fill throws, and leaves the builder as it was whatever is
+ *     thrown. The builder holds the bytes that it writes, apart from arrays, strings and nested
+ *     builders of 64 bytes or more, so a vector in place whose shorter fields make a table of
+ *     {@code uint32} offsets too long may need the 2 GiB that an array holds before it's rejected,
+ *     and throw an {@link OutOfMemoryError} first.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and
