@@ -124,10 +124,11 @@ jobs:
         uses: ./.github/actions/prepare-node-dependencies
 
       # Shared runners are too noisy for the numbers to mean much; these runs
-      # check that the benchmarks work, and that every codec in the comparison
+      # check that the benchmarks work, that every getter and setter reads or
+      # writes the values it should, and that every codec in the comparison
       # reads back what it wrote
       - name: Run benchmarks
-        run: yarn bench
+        run: yarn bench --rounds 3 --sample-ms 0.2
 
       - name: Run comparison
         run: yarn bench:compare --rounds 3 --sample-ms 0.2

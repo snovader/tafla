@@ -7,9 +7,5 @@
     "msgpackr": "2.1.4",
     "protobufjs": "8.8.1",
     "tafla": "workspace:^"
-  },
-  "devDependencies": {
-    "vite": "^8.3.8",
-    "vitest": "^5.1.0"
   }
 }

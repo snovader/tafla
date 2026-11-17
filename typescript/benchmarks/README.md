@@ -4,6 +4,48 @@
 on their own, and `yarn bench:compare` compares the package with other
 JavaScript libraries. Run both from `typescript/`.
 
+## Getters and setters
+
+`yarn bench` times `ByteBuffer`'s getters and `TableBuilder`'s setters of
+each element type, from int8 to float64, in five groups:
+
+- **primitive getters** read every field of a table of 1000 fields of one
+  type.
+- **typed array getters** read every array of a table of 100 arrays of 1000
+  elements, as views of its bytes.
+- **primitive setters** write a table of 1000 fields of one type.
+- **typed array setters** write a table of 100 arrays of 1000 elements from
+  typed arrays of that type.
+- **array setters** write the same table from `number[]`s or `bigint[]`s,
+  which the builder converts element by element. They run last, since they
+  change the type feedback of the code that the typed array setters share.
+
+The primitive getters end with getInt32 again, an A/A pair that shows the
+harness's noise. `fields/` times them with the comparison's harness, which
+[Method](#method) describes, and prints the same columns.
+
+Each variant's call is compiled from a source of its own, which calls its
+getter or setter by name, as a caller of that one method would. V8 shares
+type feedback between the closures of one function literal, and between
+identical sources through its compilation cache, so a loop that every type
+shares calls their getters from one megamorphic call site. The Vitest
+benchmark that `fields/` replaced had such a loop, and discarded the values:
+getInt8 took 2.7 µs per 1000 reads, getUint8 to getUint16 about 7 µs, and the
+other getters 14 to 19 µs, where each now takes 3.2 to 3.5 µs and keeps them.
+
+The getters write each value into a typed array of their type, and each
+array into an array, which keeps every result without allocating, so that V8
+can't discard the reads: getInt64's values stay in a `BigInt64Array`, rather
+than as BigInts on the heap. Before timing, each variant's first call must
+read or write the values it should, compared with `Object.is`.
+
+```sh
+uptime
+yarn bench
+```
+
+It takes the comparison's options, which [Running](#running) lists.
+
 ## Comparison
 
 The comparison times tafla and other JavaScript libraries that encode small
@@ -97,24 +139,32 @@ same size.
 ### Method
 
 Each group runs its variants interleaved, in alternating order, over 31 rounds
-by default, after 10 warm-up rounds, and reports the fastest call. Load from
-other processes then slows every variant alike, and only for some rounds.
+by default, after 10 warm-up rounds, and reports the fastest round's time per
+call. Load from other processes then slows every variant alike, and only for
+some rounds. It prints the median round's too, which load moves away from the
+fastest, as Go's, C++'s and Rust's suites do; the results below predate it,
+and give the fastest.
 Every variant has its own timer loop, compiled from a unique source, so that
 call sites and type feedback aren't shared. Groups with `number[]` inputs run
 last, since they change the type feedback of code the typed-array groups
 share. Before timing, every codec must read back exactly what it wrote.
 
-Beside each time, the suite prints the bytes that a call allocates on V8's
+Each row gives a variant's fastest and median call, the fastest's ratio to
+the group's first variant's, and the bytes that a call allocates on V8's
 heap. After a group's timed rounds, each variant's timer loop runs 5 more
 samples of its calls, apart from the timings, with a `GCProfiler` from
 `node:v8` started around each. A sample's bytes are how much the heap's used
 size grew, plus what the garbage collections during it freed, which the
-profiler reports, less what a sample of nothing takes. The fewest over the
-samples counts, since compiling and deoptimizing allocate too, and it's what
-the optimized code allocates, after escape analysis has removed the objects
-that don't escape. V8's own count of allocated bytes,
-`total_allocated_bytes`, grows in steps of whole allocation buffers, of
-100 KiB or more, which is too coarse for a call.
+profiler reports, less what a sample of nothing takes: the median of 20
+such samples at startup, since one of them can come out negative. In one
+process, one came out at -22,896 bytes against 880 for the rest, and the
+fewest of them would have added 77 bytes to each call of a getter that
+allocates nothing. The fewest of a variant's own samples counts, since
+compiling and deoptimizing allocate too, and it's what the optimized code
+allocates, after escape analysis has removed the objects that don't escape.
+V8's own count of allocated bytes, `total_allocated_bytes`, grows in steps
+of whole allocation buffers, of 100 KiB or more, which is too coarse for a
+call.
 
 ### Running
 
@@ -123,9 +173,10 @@ uptime
 yarn bench:compare --rounds 41
 ```
 
-`--filter <regex>` runs only the matching groups, and `--sample-ms` sets how
-long one round of one variant takes (1 ms by default). Check `uptime` first:
-a high load from other processes makes even the minimum unreliable.
+`--rounds` sets the rounds (31 by default), `--filter <regex>` runs only the
+matching groups, and `--sample-ms` sets how long one round of one variant
+takes (1 ms by default). Check `uptime` first: a high load from other
+processes makes even the minimum unreliable.
 
 ### Limitations
 

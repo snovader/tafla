@@ -47,9 +47,9 @@ Vitest config's global setup bundles it once per run, into
 `core/.bundle`, which the `tafla-bundle` condition resolves, and
 removes the bundle after the run. The big-endian tests run in a project of
 their own, of the source, since they emulate a big-endian host by mocking
-`source/constants.ts`, which the bundle has no module of. `yarn bench:compare`
-runs the comparison
-through `bundle.ts`, which does the same around a command.
+`source/constants.ts`, which the bundle has no module of. `yarn bench` and
+`yarn bench:compare` run the benchmarks through `bundle.ts`, which does the
+same around a command.
 
 `yarn workspace tafla build` bundles the package into `dist/index.js` with
 rolldown, and compiles its declarations to `dist` with tsc. In one module,
