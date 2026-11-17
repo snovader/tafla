@@ -21,7 +21,7 @@ series.set_float32_array(std::move(values));  // a std::vector, which it owns
 tafla::TableBuilder builder(3, layout, format_version);
 builder.set_float64(59.3293);
 builder.set_string("Europe/Stockholm");
-builder.set_table(std::move(series));  // written straight into the table
+builder.set_table(std::move(series));  // copied in, with what it owns
 const tafla::Bytes bytes = builder.to_bytes();
 
 const tafla::ByteBuffer buffer(bytes, layout);
@@ -72,24 +72,50 @@ type, offset size, vector, builder and decode error.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
   which must outlive them. A setter that takes a `std::span` or a
-  `std::string_view` views it until `to_bytes()`, and one that takes a
-  `std::vector`, a `std::string`, `Bytes` or a builder by rvalue owns it. A
-  temporary that a setter can't own, such as a `std::array` returned by
-  value, doesn't compile, rather than leaving the builder a view of it. A
-  builder nested by `const` reference is recorded when it's set: the parent
-  shares what it owns, or writes it at once, so that it may then change or be
-  destroyed, and only what it borrows must outlive the parent's
-  `to_bytes()`.
-- **Nested tables can be recorded in place.** `set_table(fields, fill)` and
-  `set_vector(count, fields, fill)` record a nested table, or each item of a
-  vector, straight among the builder's fields, through the
-  `TableBuilder::Item` that `fill` sets the fields on, rather than from a
-  builder of its own. They write the bytes that nested builders write, and
-  leave the builder as it was if `fill` throws or leaves fields unset. The
-  benchmarks' vector of 100 nested tables took about 4.0 µs so, against
-  7.5 µs from a builder per item and 3.0 µs through FlatBuffers. A table nested
-  from a builder or bytes, with `set_table(table)` and `set_vector(items)`,
-  is still what a table built elsewhere, or reused, needs.
+  `std::string_view` views it until `to_bytes()`, which it must outlive
+  unchanged: a value shorter than 64 bytes is copied when it's set, and a
+  longer one when the table is written. One that takes a `std::vector`, a
+  `std::string`, `Bytes` or a builder by rvalue takes it: a value of 64
+  bytes or more is moved into the builder, and a shorter one is copied and
+  left as it was. A temporary that a setter can't own, such as a
+  `std::array` returned by value, doesn't compile, rather than leaving the
+  builder a view of it. A builder nested by `const` reference is copied into
+  its parent when it's set, and the parent shares what it owns, so that it
+  may then change or be destroyed, and only what it borrows must outlive the
+  parent's `to_bytes()`.
+- **`TableBuilder` writes each field when it's set**, as FlatBuffers',
+  protobuf's and MessagePack's builders do: its offset into the header, and
+  its bytes after the last field's, into bytes that the builder holds, the
+  first 128 within itself and the others on the heap, growing at least
+  twofold. `to_bytes()` copies them into bytes of the table's exact length,
+  which is still the one allocation of a small table. Runs of 64 bytes or
+  more, such as a long array, aren't copied when they're set: the builder
+  keeps them where they are, and `to_bytes()` copies them into the table
+  between its own bytes, so that a long array is copied once, as before. It
+  replaced a builder that recorded each field and wrote them all in
+  `to_bytes()`, which took more than twice as long to write the benchmarks'
+  vector of 100 nested tables, and 1.6 times as long for the document of
+  100 rows. [snovader/tafla#212](https://github.com/snovader/tafla/pull/212)
+  compares them, also in shapes that favour the old one. The new one takes
+  longer for many values of 63 to 255 bytes: 20,000 strings of 100 bytes
+  took 1.11 times as long, since a value shorter than 64 bytes is copied
+  twice, into the builder's bytes and then into the table, and keeping a
+  longer one costs more than recording it. Rejecting a vector written in
+  place that's too long for its table took 1.8 times as long: its items are
+  written and removed one by one, so that the builder holds no more than the
+  table could.
+- **Nested tables can be written in place.** `set_table(fields, fill)` and
+  `set_vector(count, fields, fill)` write a nested table, or each item of a
+  vector, straight into the builder's bytes, through the `TableBuilder::Item`
+  that `fill` sets the fields on, rather than from a builder of its own,
+  which is copied into its parent. They write the bytes that nested builders
+  write, and leave the builder as it was if `fill` throws or leaves fields
+  unset. A table nested in place starts where its parent's next field goes,
+  unpadded, and once its fields are set, and its alignment known, it's moved
+  forward by its padding; its offsets count from its own start, so none
+  changes. A table nested from a builder or bytes, with `set_table(table)` and
+  `set_vector(items)`, is still what a table built elsewhere, or reused,
+  needs.
 - **`Bytes` aren't zeroed.** A writer allocates a table's bytes at its exact
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
@@ -132,11 +158,7 @@ type, offset size, vector, builder and decode error.
 - **`TableWriter` checks its calls**, as Rust's does: it never writes past the
   table's length, whatever it's given, and `finish()` throws the `BuildError`
   of fields other than those its `TableSizer` counted, of an index past a
-  table's fields, or of an item past its vector's count. It's
-  `BasicTableWriter<true>`. `TableBuilder`, whose setters check each field
-  as they record it, writes through a `BasicTableWriter<false>`, which skips
-  those checks of room, indexes and items, and whose `finish()` still checks
-  the length that it wrote.
+  table's fields, or of an item past its vector's count.
 - **Reads and writes inline.** `ByteBuffer`'s, `Vector`'s, `TableSizer`'s and
   `TableWriter`'s functions are `TAFLA_ALWAYS_INLINE`, and their failures
   are values or static functions, so that no call takes a reader's or
@@ -160,18 +182,11 @@ type, offset size, vector, builder and decode error.
   linearly with the schema rather than doubling with each level of tables
   nested in pairs, and never those of tables that hold themselves through
   vectors, whose writers call themselves.
-  `TableBuilder`'s setters inline their check of the field and its record,
-  with their errors thrown from cold functions, which made the builder
-  write the record 12% faster and the vector of 100 nested tables 7% faster
-  than calls did. Its `to_bytes()` walks the tables nested in place with a
-  stack of its own, rather than a function that calls itself, so that its
-  writer stays in registers too, and a writer zeroes up to 16 bytes, such as
-  a nested table's offsets, with stores rather than a call to `memset()`.
-  Together they made `to_bytes()` of the vector of 100 nested tables 28%
-  faster, 1.45 µs against 2.02 µs, and building and writing it 13% faster.
-  Writing through a `BasicTableWriter<false>` then made `to_bytes()` of that
-  vector a further 13% faster, 1.27 µs against 1.45 µs, with half the
-  machine code.
+  `TableBuilder`'s scalars' setters, and `set_table(fields, fill)`, inline
+  their check of the field and its writing, with their errors thrown from
+  cold functions, and a builder, like a writer, zeroes up to 16 bytes, such
+  as a nested table's offsets, with stores rather than a call to
+  `memset()`.
 - **Strings are checked for ASCII in words OR-ed together, and then from
   their first byte that isn't.** A read checks that a string is UTF-8, and
   most strings are ASCII, so `valid_utf8()` ORs a string's 8-byte words

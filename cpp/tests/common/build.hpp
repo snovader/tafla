@@ -32,24 +32,24 @@ void set_field(const Field& field, TableBuilder& builder);
 /// Builds the table to nest, as its builder or its bytes
 NestedTable build_nested(const Nested& nested);
 
-/// Writes the table with `TableBuilder`, recording each table nested from a
-/// builder that it writes in place with `set_table(fields, fill)`, and each
+/// Writes the table with `TableBuilder`, writing each table nested from a
+/// builder that it can in place with `set_table(fields, fill)`, and each
 /// vector of them, when its items hold as many fields, with
 /// `set_vector(count, fields, fill)`, rather than from their builders. Its
 /// bytes and errors are `to_bytes()`'s.
 Bytes to_bytes_in_place(const Table& table);
 
-/// Whether the table nested from `nested` is recorded in place in a table of
+/// Whether the table nested from `nested` is written in place in a table of
 /// `in_place` offsets: from a builder without a header and of those offsets
-bool records_in_place(const Nested& nested, std::optional<OffsetType> in_place);
+bool writes_in_place(const Nested& nested, std::optional<OffsetType> in_place);
 
-/// Whether a vector of `items` is recorded in place: each of them is, and
+/// Whether a vector of `items` is written in place: each of them is, and
 /// they hold as many fields
-bool records_in_place(const std::vector<Nested>& items, std::optional<OffsetType> in_place);
+bool writes_in_place(const std::vector<Nested>& items, std::optional<OffsetType> in_place);
 
-/// Sets the field on `target`, a builder or an item that one records in
+/// Sets the field on `target`, a builder or an item that one writes in
 /// place, as `set_field()` sets it, and with `in_place`, the offset type of
-/// the builder's table, records the tables nested in it in place as
+/// the builder's table, writes the tables nested in it in place as
 /// `to_bytes_in_place()` does
 template <class Target>
 void set_field_on(const Field& field, Target& target, std::optional<OffsetType> in_place) {
@@ -110,7 +110,7 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 }
                 target.set_struct_array(std::move(bytes), struct_size(value.types), struct_alignment(value.types));
             } else if constexpr (std::is_same_v<T, TableField>) {
-                if (!value.alignment && records_in_place(value.nested, in_place)) {
+                if (!value.alignment && writes_in_place(value.nested, in_place)) {
                     const auto& fields = value.nested.table.fields;
                     target.set_table(fields.size(), [&](TableBuilder::Item& item) {
                         for (const auto& nested : fields) {
@@ -128,7 +128,7 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                 }
             } else {
                 static_assert(std::is_same_v<T, VectorField>);
-                if (records_in_place(value.items, in_place)) {
+                if (writes_in_place(value.items, in_place)) {
                     const auto fields = value.items.empty() ? 0 : value.items.front().table.fields.size();
                     target.set_vector(value.items.size(), fields, [&](std::size_t index, TableBuilder::Item& item) {
                         for (const auto& nested : value.items[index].table.fields) {
