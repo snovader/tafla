@@ -41,6 +41,15 @@ node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 wrote. The benchmarks themselves run with
 `cargo bench -p tafla-benchmarks`, and take several minutes.
 
+`TableBuilder` keeps values of 256 bytes or more, which few of the tests'
+tables hold, rather than copying them when they're set. Built with
+`--cfg tafla_segment_stress`, it keeps every value of a byte or more so, and
+CI runs the runtime's tests that way too:
+
+```sh
+RUSTFLAGS="--cfg tafla_segment_stress" cargo test -p tafla
+```
+
 Miri runs the runtime's tests to check its `unsafe` code for undefined
 behavior, on the host and on a big-endian target, which reads every array
 through its byte-swapping path. Each takes several minutes:

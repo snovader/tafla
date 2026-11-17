@@ -168,6 +168,15 @@ jobs:
       - name: Run tests
         run: cargo +${{ matrix.toolchain }} test
 
+      # The builder keeps values of 256 bytes or more rather than copying them
+      # when they're set, which few of the tests' tables hold, and built so,
+      # every value of a byte or more
+      - name: Run the runtime's tests with every value kept
+        if: matrix.toolchain == 'stable'
+        env:
+          RUSTFLAGS: -D warnings --cfg tafla_segment_stress
+        run: cargo test -p tafla
+
   miri:
     name: Test (${{ matrix.name }}, Miri)
     needs: changes

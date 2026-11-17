@@ -7,9 +7,14 @@ mod common;
 
 use std::borrow::Cow;
 
-use common::{at_byte_offset, read::read_table, strategy};
+use common::{
+    at_byte_offset,
+    description::{Field, Layout, Nested, ScalarType, Source, Table},
+    read::read_table,
+    strategy,
+};
 use proptest::prelude::*;
-use tafla::{Alignment, ByteBuffer, TableBuilder, TableLayout};
+use tafla::{Alignment, ByteBuffer, OffsetType, TableBuilder, TableLayout};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -180,6 +185,67 @@ fn test_builder_nested_several_times() {
     let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
     let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
     assert_eq!(vector.iter().collect::<Vec<_>>(), [Ok(&own[..]), Ok(&own)]);
+}
+
+/// Values of 256 bytes or more, which the builder keeps rather than copying
+/// them when they're set, and copies into the table when it's written, read
+/// back, in tables nested from builders, in place and as bytes, and on a
+/// big-endian host, little-endian
+#[test]
+fn test_long_values_read_back() {
+    let layout = Layout::headerless(OffsetType::Uint32);
+    let nested = |from: Source, fields: Vec<Field>| Nested {
+        from,
+        table: Table {
+            layout,
+            version: None,
+            fields,
+        },
+    };
+    let floats = (0..40).map(|index| f64::from(index) - 0.5);
+    let doubled = floats.clone().map(|value| value * 2.0);
+
+    let table = Table {
+        layout: Layout {
+            sized: true,
+            ..layout
+        },
+        version: None,
+        fields: vec![
+            Field::U8(1),
+            Field::I8Array((i8::MIN..=i8::MAX).chain(0..44).collect()),
+            Field::U8Array((0..=u8::MAX).chain(0..44).collect()),
+            Field::I16Array((0..150).map(|index| index * -200).collect()),
+            Field::U16Array((0..150).map(|index| index * 300).collect()),
+            Field::I32Array((0..80).map(|index| index * -70_000).collect()),
+            Field::U32Array((0..80).map(|index| index * 70_000).collect()),
+            Field::I64Array((0..40).map(|index| index * -(1 << 40)).collect()),
+            Field::U64Array((0..40).map(|index| index << 40).collect()),
+            Field::F32Array([-0.0, f32::NAN].into_iter().cycle().take(80).collect()),
+            Field::F64Array(floats.clone().collect()),
+            Field::String("tafla 𝄞 ".repeat(30)),
+            Field::Struct(floats.clone().map(Field::F64).collect()),
+            Field::StructArray {
+                types: vec![ScalarType::U8, ScalarType::F64],
+                items: (0..30)
+                    .map(|index| vec![Field::U8(index), Field::F64(f64::from(index))])
+                    .collect(),
+            },
+            Field::Table {
+                nested: nested(Source::Builder, vec![Field::F64Array(doubled.collect())]),
+                alignment: None,
+            },
+            Field::Vector(vec![
+                nested(Source::Bytes, vec![Field::U8Array(vec![7; 300])]),
+                nested(Source::Builder, vec![Field::F64Array(floats.collect())]),
+            ]),
+        ],
+    };
+
+    let from_builders = table.to_bytes().unwrap();
+    let in_place = table.to_bytes_in_place().unwrap();
+    assert_eq!(in_place, from_builders);
+    assert_eq!(read_table(&from_builders, &table), Ok(table));
 }
 
 fn bits_of(values: impl IntoIterator<Item = f64>) -> Vec<u64> {
