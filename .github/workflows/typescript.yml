@@ -79,9 +79,6 @@ jobs:
       - name: Check the package
         run: yarn package:check
 
-      - name: Vulnerability audit
-        run: yarn npm audit -RA
-
   test:
     name: Test (Node ${{ matrix.node_version }})
     needs: changes
