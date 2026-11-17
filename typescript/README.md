@@ -60,5 +60,5 @@ binding from its module at every use, even in optimized code.
 it first. The package holds only `dist`, so its `publishConfig`
 replaces `exports` and `imports` with copies without the condition, which
 Yarn writes into the packed manifest. Pack and publish it with Yarn, since npm
-doesn't apply them. `yarn package:check` packs it, checks the archive with Are
-the Types Wrong and publint, and imports the build to read back a table.
+doesn't apply them. `yarn package:check` builds it and imports the build to
+read back a table.
