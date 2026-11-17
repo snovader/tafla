@@ -1,6 +1,8 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, it } from 'node:test';
+import * as fc from 'fast-check';
 import { TableBuilder, TableWriter } from 'tafla';
+import { expect } from './conformance/expect.ts';
+import { prop } from './conformance/property.ts';
 
 type NumberArrayType =
     | 'Float32'
@@ -75,66 +77,70 @@ function expectElements(
     }
 }
 
-describe.each(numberTypes)('set%sArray()', (type, TypedArray) => {
-    it.prop([doubles])(
-        'should convert every input kind like the typed array constructor',
-        values => {
-            // The element type's own typed array is copied as bytes
-            const inputs = [...numberInputs(values), [type, TypedArray.from(values)] as const];
+for (const [type, TypedArray] of numberTypes) {
+    describe(`set${type}Array()`, () => {
+        prop([doubles])(
+            'should convert every input kind like the typed array constructor',
+            values => {
+                // The element type's own typed array is copied as bytes
+                const inputs = [...numberInputs(values), [type, TypedArray.from(values)] as const];
 
-            for (const [, input] of inputs) {
-                expectElements(roundTrip(type, input), TypedArray.from(input));
+                for (const [, input] of inputs) {
+                    expectElements(roundTrip(type, input), TypedArray.from(input));
+                }
             }
-        }
-    );
+        );
 
-    it('should convert holes like the typed array constructor', () => {
-        // oxlint-disable-next-line eslint/no-sparse-arrays -- Holes are the input
-        const values = [1.5, , -0, Number.NaN] as number[];
+        it('should convert holes like the typed array constructor', () => {
+            // oxlint-disable-next-line eslint/no-sparse-arrays -- Holes are the input
+            const values = [1.5, , -0, Number.NaN] as number[];
 
-        expectElements(roundTrip(type, values), TypedArray.from(values));
+            expectElements(roundTrip(type, values), TypedArray.from(values));
+        });
     });
-});
+}
 
-describe.each([
+for (const [type, TypedArray] of [
     ['Int64', BigInt64Array],
     ['Uint64', BigUint64Array]
-] as const)('set%sArray()', (type, TypedArray) => {
-    it.prop([fc.array(fc.bigInt({ min: -(2n ** 64n), max: 2n ** 64n }))])(
-        'should convert every input kind like the typed array constructor',
-        values => {
-            const inputs: Array<ArrayLike<bigint>> = [
-                values,
-                // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
-                { ...values, length: values.length },
-                BigInt64Array.from(values, value => BigInt.asIntN(64, value)),
-                BigUint64Array.from(values, value => BigInt.asUintN(64, value))
-            ];
+] as const) {
+    describe(`set${type}Array()`, () => {
+        prop([fc.array(fc.bigInt({ min: -(2n ** 64n), max: 2n ** 64n }))])(
+            'should convert every input kind like the typed array constructor',
+            values => {
+                const inputs: Array<ArrayLike<bigint>> = [
+                    values,
+                    // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
+                    { ...values, length: values.length },
+                    BigInt64Array.from(values, value => BigInt.asIntN(64, value)),
+                    BigUint64Array.from(values, value => BigInt.asUintN(64, value))
+                ];
 
-            for (const input of inputs) {
-                const builder = new TableBuilder(1);
-                builder[`set${type}Array`](input);
+                for (const input of inputs) {
+                    const builder = new TableBuilder(1);
+                    builder[`set${type}Array`](input);
 
-                const buffer = builder.finalize();
-                expectElements(
-                    buffer[`get${type}Array`](buffer.rootOffset(0)),
-                    TypedArray.from(input)
-                );
+                    const buffer = builder.finalize();
+                    expectElements(
+                        buffer[`get${type}Array`](buffer.rootOffset(0)),
+                        TypedArray.from(input)
+                    );
+                }
             }
-        }
-    );
+        );
 
-    it('should reject numbers', () => {
-        const builder = new TableBuilder(1);
+        it('should reject numbers', () => {
+            const builder = new TableBuilder(1);
 
-        expect(() => {
-            builder[`set${type}Array`]([1] as unknown as bigint[]);
-            builder.finalize();
-        }).toThrow(TypeError);
+            expect(() => {
+                builder[`set${type}Array`]([1] as unknown as bigint[]);
+                builder.finalize();
+            }).toThrow(TypeError);
+        });
     });
-});
+}
 
-it.prop([doubles, fc.integer({ min: 1, max: 7 })])(
+prop([doubles, fc.integer({ min: 1, max: 7 })])(
     'should convert into a slice that is unaligned for the element type',
     (values, byteOffset) => {
         // The array's offset, its count at 4, and its elements from 8

@@ -1,8 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'node:test';
 import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
+import { expect } from './expect.ts';
 import { writeSuite, SUITE_DIRECTORY } from './files.ts';
 import { buildTable, readTable, TableReader } from './tables.ts';
 
@@ -62,27 +63,32 @@ describe('the checked-in suite (run `yarn conformance:generate` to update it)', 
 });
 
 describe('valid cases', () => {
-    it.each(suite.valid)('should read $name', ({ file, table }) => {
-        expect(readTable(bytesOf(file), table)).toStrictEqual(table);
-    });
+    for (const { name, file, table } of suite.valid) {
+        it(`should read ${name}`, () => {
+            expect(readTable(bytesOf(file), table)).toStrictEqual(table);
+        });
+    }
 
-    it.each(suite.valid)('should rebuild $name byte for byte', ({ file, table }) => {
-        expect(buildTable(table).bytes()).toStrictEqual(bytesOf(file));
-    });
+    for (const { name, file, table } of suite.valid) {
+        it(`should rebuild ${name} byte for byte`, () => {
+            expect(buildTable(table).bytes()).toStrictEqual(bytesOf(file));
+        });
+    }
 });
 
 describe('equivalent cases', () => {
-    it.each(suite.equivalent)('should read $name as $case', ({ file, case: name }) => {
-        const { table } = validCaseNamed(name);
-        expect(readTable(bytesOf(file), table)).toStrictEqual(table);
-    });
+    for (const { name, file, case: validCase } of suite.equivalent) {
+        it(`should read ${name} as ${validCase}`, () => {
+            const { table } = validCaseNamed(validCase);
+            expect(readTable(bytesOf(file), table)).toStrictEqual(table);
+        });
+    }
 });
 
 describe('invalid cases', () => {
-    it.each(suite.invalid)(
-        'should read $name up to field $field and then throw DecodeError',
-        ({ file, case: name, field }) => {
-            const { table } = validCaseNamed(name);
+    for (const { name, file, case: validCase, field } of suite.invalid) {
+        it(`should read ${name} up to field ${field} and then throw DecodeError`, () => {
+            const { table } = validCaseNamed(validCase);
             const reader = new TableReader(bytesOf(file), table.layout);
 
             for (let index = 0; index < field; index++) {
@@ -91,6 +97,6 @@ describe('invalid cases', () => {
             }
 
             expect(() => reader.readRootField(field, table.fields[field])).toThrow(DecodeError);
-        }
-    );
+        });
+    }
 });

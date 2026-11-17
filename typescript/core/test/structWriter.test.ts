@@ -1,5 +1,5 @@
-import { expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { it } from 'node:test';
+import * as fc from 'fast-check';
 import {
     readFloat32,
     readFloat64,
@@ -28,6 +28,8 @@ import {
     StructWriter
 } from 'tafla';
 import { sliceOf, SLICES, STRINGS } from './conformance/arbitraries.ts';
+import { expect } from './conformance/expect.ts';
+import { prop } from './conformance/property.ts';
 import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;
@@ -108,7 +110,7 @@ const FIELD_PAIRS = fc.oneof(
     )
 );
 
-it.prop([fc.array(FIELD_PAIRS, { maxLength: 8 })])(
+prop([fc.array(FIELD_PAIRS, { maxLength: 8 })])(
     'should write scalars one after another, little-endian, and copy each struct',
     pairs => {
         const firsts = pairs.map(([first]) => first);
@@ -127,7 +129,7 @@ it.prop([fc.array(FIELD_PAIRS, { maxLength: 8 })])(
     }
 );
 
-it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 })])(
+prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 })])(
     'should write the next struct from the start after reset() discards an unfinished one',
     pairs => {
         const firsts = pairs.map(([first]) => first);
@@ -142,7 +144,7 @@ it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 })])(
     }
 );
 
-it.prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 }), SLICES])(
+prop([fc.array(FIELD_PAIRS, { minLength: 1, maxLength: 8 }), SLICES])(
     'should write within a slice of a larger buffer, and throw RangeError for a scalar past it without writing any of it',
     (pairs, slice) => {
         const fields = pairs.map(([first]) => first);
@@ -204,7 +206,7 @@ const READS: ReadonlyArray<
     [readFloat64, 8, (view, offset) => view.getFloat64(offset, true)]
 ];
 
-it.prop([fc.uint8Array({ maxLength: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(
+prop([fc.uint8Array({ maxLength: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(
     'should read little-endian values within the bytes, and throw DecodeError past them',
     (bytes, offset, slice) => {
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -245,7 +247,7 @@ const WRITES_OF_VALUES = fc.oneof(
     ...WRITES.map(([write, scalar]) => scalar.values.map(value => ({ write, scalar, value })))
 );
 
-it.prop([WRITES_OF_VALUES, fc.nat({ max: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(
+prop([WRITES_OF_VALUES, fc.nat({ max: 12 }), fc.integer({ min: -2, max: 14 }), SLICES])(
     'should write little-endian values within the bytes, and throw RangeError past them, writing nothing',
     ({ write, scalar, value }, length, offset, slice) => {
         const bytes = sliceOf(new Uint8Array(length), slice);
@@ -269,17 +271,16 @@ it.prop([WRITES_OF_VALUES, fc.nat({ max: 12 }), fc.integer({ min: -2, max: 14 })
     }
 );
 
-it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
-    'should throw RangeError for an offset of %s, writing nothing',
-    offset => {
+for (const offset of [0.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53]) {
+    it(`should throw RangeError for an offset of ${offset}, writing nothing`, () => {
         const bytes = new Uint8Array(8);
 
         expect(() => writeUint8(bytes, offset, 1)).toThrow(RangeError);
         expect(() => writeFloat32(bytes, offset, 1)).toThrow(RangeError);
         expect(() => writeUint64(bytes, offset, 1n)).toThrow(RangeError);
         expect(bytes).toStrictEqual(new Uint8Array(8));
-    }
-);
+    });
+}
 
 it('should convert a value once, as DataView does, and throw its TypeError for a number as an int64', () => {
     const bytes = new Uint8Array(8);
@@ -301,7 +302,7 @@ it('should convert a value once, as DataView does, and throw its TypeError for a
 
 const ENCODER = new TextEncoder();
 
-it.prop([
+prop([
     fc.oneof(STRINGS, fc.string({ unit: 'binary' })),
     fc.nat({ max: 8 }),
     fc.nat({ max: 40 }),
@@ -337,26 +338,24 @@ function expectWrittenExactly(string: string, offset: number): void {
     expect(() => writeUtf8(bytes.subarray(0, -1), offset, string)).toThrow(RangeError);
 }
 
-it.prop([LONG_STRINGS, fc.nat({ max: 8 })])(
+prop([LONG_STRINGS, fc.nat({ max: 8 })])(
     'should write a long string into bytes of exactly its length, and throw RangeError in a byte fewer',
     expectWrittenExactly
 );
 
-it.each(Object.entries(SHORTFALL_STRINGS))(
-    'should write a %s string that encodeInto() stops short of into bytes of exactly its length',
-    (_, string) => {
+for (const [description, string] of Object.entries(SHORTFALL_STRINGS)) {
+    it(`should write a ${description} string that encodeInto() stops short of into bytes of exactly its length`, () => {
         expectWrittenExactly(string, 0);
-    }
-);
+    });
+}
 
-it.each([-1, 0.5, Number.NaN, 9])(
-    'should throw RangeError for a string at an offset of %s',
-    offset => {
+for (const offset of [-1, 0.5, Number.NaN, 9]) {
+    it(`should throw RangeError for a string at an offset of ${offset}`, () => {
         expect(() => writeUtf8(new Uint8Array(8), offset, '')).toThrow(RangeError);
-    }
-);
+    });
+}
 
-it.prop([
+prop([
     fc.nat({ max: 16 }),
     fc.integer({ min: -2, max: 18 }),
     fc.integer({ min: -1, max: 18 }),

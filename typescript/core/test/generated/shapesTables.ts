@@ -1,4 +1,4 @@
-import { fc } from '@fast-check/vitest';
+import * as fc from 'fast-check';
 import { SCALAR_VALUES, STRINGS } from '../conformance/arbitraries.ts';
 import type {
     FieldDescription,

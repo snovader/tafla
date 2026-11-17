@@ -1,8 +1,9 @@
-import { describe, expect } from 'vitest';
-import { it } from '@fast-check/vitest';
-import { TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
+import { describe, it } from 'node:test';
+import { TableLayout, type OffsetType } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
+import { expect } from './conformance/expect.ts';
 import { headerSizeOf, OFFSET_SIZES } from './conformance/format.ts';
+import { prop } from './conformance/property.ts';
 
 describe('TableLayout', () => {
     it('should default to no header slots and uint32 offsets', () => {
@@ -15,7 +16,7 @@ describe('TableLayout', () => {
         }
     });
 
-    it.prop([LAYOUTS])(
+    prop([LAYOUTS])(
         'should have a header slot of the offset size for the length and for the version',
         ({ sized, versioned, offsetType }) => {
             const layout = TableLayout.create({ sized, versioned, offsetType });
@@ -28,49 +29,54 @@ describe('TableLayout', () => {
         }
     );
 
-    it.each(['int16', 'uint64', 'UINT8', '', 'toString'])(
-        "should reject '%s' as an offset type",
-        offsetType => {
+    for (const offsetType of ['int16', 'uint64', 'UINT8', '', 'toString']) {
+        it(`should reject '${offsetType}' as an offset type`, () => {
             const create = (): TableLayout =>
                 TableLayout.create({ offsetType: offsetType as OffsetType });
 
             expect(create).toThrow(RangeError);
             expect(create).toThrow(new RangeError(`${offsetType} isn't an offset type`));
-        }
-    );
+        });
+    }
 
     // Each converts to an offset type's name, as a property key or a string
-    it.each([
+    for (const [description, offsetType, type] of [
         ['an offset size', 2, 'number'],
         ['an array of a name', ['uint8'], 'object'],
         // oxlint-disable-next-line eslint/no-new-wrappers, unicorn/new-for-builtins -- The object is the input
         ['a String object', new String('uint16'), 'object'],
         ['an object that converts to a name', { toString: () => 'uint32' }, 'object'],
         ['null', null, 'object']
-    ])('should reject %s as an offset type', (_, offsetType, type) => {
-        const create = (): TableLayout =>
-            TableLayout.create({ offsetType: offsetType as OffsetType });
+    ] as const) {
+        it(`should reject ${description} as an offset type`, () => {
+            const create = (): TableLayout =>
+                TableLayout.create({ offsetType: offsetType as OffsetType });
 
-        expect(create).toThrow(RangeError);
-        expect(create).toThrow(
-            new RangeError(
-                `An offset type must be a string such as 'uint16', not a value of type ${type}`
-            )
-        );
-    });
+            expect(create).toThrow(RangeError);
+            expect(create).toThrow(
+                new RangeError(
+                    `An offset type must be a string such as 'uint16', not a value of type ${type}`
+                )
+            );
+        });
+    }
 
     // An option that isn't read would leave its default in its place
-    it.each([
+    for (const [description, options, name] of [
         ['the offset size', { offsetSize: 2 }, 'offsetSize'],
         ['the offset size beside the type', { offsetType: 'uint16', offsetSize: 2 }, 'offsetSize'],
         ['a misspelled option', { versioned: true, Sized: true }, 'Sized'],
         ['an option set to undefined', { size: undefined }, 'size']
-    ])('should reject %s as an option', (_, options, name) => {
-        const create = (): TableLayout => TableLayout.create(options as TableLayoutOptions);
+    ] as Array<[description: string, options: object, name: string]>) {
+        it(`should reject ${description} as an option`, () => {
+            const create = (): TableLayout => TableLayout.create(options);
 
-        expect(create).toThrow(TypeError);
-        expect(create).toThrow(
-            new TypeError(`TableLayout.create() takes sized, versioned and offsetType, not ${name}`)
-        );
-    });
+            expect(create).toThrow(TypeError);
+            expect(create).toThrow(
+                new TypeError(
+                    `TableLayout.create() takes sized, versioned and offsetType, not ${name}`
+                )
+            );
+        });
+    }
 });

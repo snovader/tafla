@@ -1,5 +1,5 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe } from 'node:test';
+import * as fc from 'fast-check';
 import { ByteBuffer, DecodeError } from 'tafla';
 import {
     corruptionOf,
@@ -25,6 +25,7 @@ import {
     type ScalarType,
     type TableDescription
 } from './conformance/description.ts';
+import { expect } from './conformance/expect.ts';
 import {
     headerSizeOf,
     readScalar,
@@ -32,6 +33,7 @@ import {
     tablesIn,
     OFFSET_SIZES
 } from './conformance/format.ts';
+import { prop } from './conformance/property.ts';
 import {
     alignmentOf,
     buildTable,
@@ -51,7 +53,7 @@ import {
 // reads the bytes that the format rules check with DataView, independently
 // of ByteBuffer.
 
-it.prop([tables(), SLICES])(
+prop([tables(), SLICES])(
     'should read back the values of a table built from any description, wherever its bytes lie',
     (table, slice) => {
         const bytes = sliceOf(buildTable(table).bytes(), slice);
@@ -63,7 +65,7 @@ it.prop([tables(), SLICES])(
 );
 
 describe('format rules', () => {
-    it.prop([tables()])("should hold a sized table's byte length in its size slot", table => {
+    prop([tables()])("should hold a sized table's byte length in its size slot", table => {
         for (const {
             table: { layout },
             bytes
@@ -77,7 +79,7 @@ describe('format rules', () => {
         }
     });
 
-    it.prop([tables()])("should hold a versioned table's version in its version slot", table => {
+    prop([tables()])("should hold a versioned table's version in its version slot", table => {
         for (const { table: inner, bytes } of tablesIn(buildTable(table).bytes(), table)) {
             const { sized, versioned } = inner.layout;
             const offsetSize = OFFSET_SIZES[inner.layout.offsetType];
@@ -89,7 +91,7 @@ describe('format rules', () => {
         }
     });
 
-    it.prop([tables()])(
+    prop([tables()])(
         'should write offsets within the table, after its header and in the order of the fields',
         table => {
             for (const { table: inner, bytes, offsets } of tablesIn(
@@ -109,7 +111,7 @@ describe('format rules', () => {
         }
     );
 
-    it.prop([tables()])(
+    prop([tables()])(
         "should start every array at a multiple of its alignment from the start of its table: its element size, or its structs' largest scalar size",
         table => {
             for (const { table: inner, offsets } of tablesIn(buildTable(table).bytes(), table)) {
@@ -128,7 +130,7 @@ describe('format rules', () => {
         }
     );
 
-    it.prop([tables()])(
+    prop([tables()])(
         "should start a table nested with setTable() at a multiple of its alignment from its parent's start",
         table => {
             for (const { table: parent, offsets } of tablesIn(buildTable(table).bytes(), table)) {
@@ -141,24 +143,18 @@ describe('format rules', () => {
         }
     );
 
-    it.prop([tables()])(
-        'should write multi-byte values, lengths and counts little-endian',
-        table => {
-            for (const { table: inner, bytes, offsets } of tablesIn(
-                buildTable(table).bytes(),
-                table
-            )) {
-                for (const [index, field] of inner.fields.entries()) {
-                    expectLittleEndian(
-                        bytes,
-                        offsets[index],
-                        OFFSET_SIZES[inner.layout.offsetType],
-                        field
-                    );
-                }
+    prop([tables()])('should write multi-byte values, lengths and counts little-endian', table => {
+        for (const { table: inner, bytes, offsets } of tablesIn(buildTable(table).bytes(), table)) {
+            for (const [index, field] of inner.fields.entries()) {
+                expectLittleEndian(
+                    bytes,
+                    offsets[index],
+                    OFFSET_SIZES[inner.layout.offsetType],
+                    field
+                );
             }
         }
-    );
+    });
 });
 
 const ENCODER = new TextEncoder();
@@ -293,7 +289,7 @@ const PATHS = fc.array(fc.nat({ max: 20 }), { minLength: 1, maxLength: 3 });
 describe('untrusted bytes', () => {
     // Each run reads a table cut at each of its lengths, often a hundred or
     // more, so fewer runs suffice
-    it.prop([tables(), BYTE_OFFSETS], { numRuns: 20 })(
+    prop([tables(), BYTE_OFFSETS], { numRuns: 20 })(
         'should read the fields of a table cut at any length as values or throw DecodeError, within its bytes',
         (table, byteOffset) => {
             const bytes = buildTable(table).bytes();
@@ -304,7 +300,7 @@ describe('untrusted bytes', () => {
         }
     );
 
-    it.prop([tables(), fc.array(CORRUPTIONS, { minLength: 1, maxLength: 3 }), BYTE_OFFSETS])(
+    prop([tables(), fc.array(CORRUPTIONS, { minLength: 1, maxLength: 3 }), BYTE_OFFSETS])(
         'should read the fields of a table with overwritten or cut bytes as values or throw DecodeError, within its bytes',
         (table, corruptions, byteOffset) => {
             let bytes = buildTable(table).bytes();
@@ -316,7 +312,7 @@ describe('untrusted bytes', () => {
         }
     );
 
-    it.prop([
+    prop([
         fc.uint8Array({ maxLength: 64 }),
         LAYOUTS,
         fc.constantFrom(...(Object.keys(GETTERS) as Getter[])),
@@ -431,7 +427,7 @@ describe('builder limits', () => {
         )
     );
 
-    it.prop([tablesWithOversizedFields])(
+    prop([tablesWithOversizedFields])(
         'should reject a field too long for the offset type from its setter, and leave the builder as it was',
         ({ table, index, field }) => {
             const { offsetType } = table.layout;
@@ -471,7 +467,7 @@ describe('builder limits', () => {
         )
     );
 
-    it.prop([tablesWithLastFields])(
+    prop([tablesWithLastFields])(
         'should build a table as long as its offset type addresses, and reject a field one byte longer',
         ({ table, last }) => {
             const { offsetType } = table.layout;

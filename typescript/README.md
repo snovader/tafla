@@ -19,7 +19,8 @@ yarn test
 
 `yarn format:write` and `yarn lint:write` fix what they can.
 `TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
-buffers of more than 4 GiB, which are skipped by default.
+buffers of more than 4 GiB, which are skipped by default. `yarn test:watch`
+runs the tests again as their files and the package's source change.
 `yarn conformance:generate` regenerates the conformance suite at the root of the
 repository from `core/test/conformance/cases.ts`, and the tables of the
 generated code in its `generated` directory from
@@ -31,8 +32,15 @@ schema, and the tests that run them, of the JavaScript through its JSDoc
 types. They're the generator's golden files, which `rust/gen/README.md`
 describes: rewrite them with the generator rather than by hand.
 
-Tests run in Node's own module loader, which strips the types of `.ts` files.
-CI runs them in Node 24 and 26.
+Tests run in Node's test runner, `node:test`, whose module loader strips the
+types of `.ts` files. They assert with Vitest's matchers, from
+`@vitest/expect`, which `core/test/conformance/expect.ts` sets up on chai and
+exports, and declare property tests with `prop()`, from
+`core/test/conformance/property.ts`, which runs them with fast-check. oxlint's
+rules for Vitest see only what is imported from `vitest`, so
+`lint/testRules.ts` has rules of its own for these tests, such as that each
+test asserts. CI runs them in Node 24 and 26. The big-endian tests mock a module with the `exports`
+option of `mock.module()`, which Node 24 has from 24.15.
 
 ## Source and build
 
@@ -42,14 +50,16 @@ its `#` imports to its TypeScript source: the TypeScript configs set it in
 Node. Without it, as for the package's users, they resolve to the build in
 `dist`.
 
-Tests and benchmarks import the package bundled, as it's published. The root
-Vitest config's global setup bundles it once per run, into
-`core/.bundle`, which the `tafla-bundle` condition resolves, and
-removes the bundle after the run. The big-endian tests run in a project of
-their own, of the source, since they emulate a big-endian host by mocking
-`source/constants.ts`, which the bundle has no module of. `yarn bench` and
-`yarn bench:compare` run the benchmarks through `bundle.ts`, which does the
-same around a command.
+Tests and benchmarks import the package bundled, as it's published.
+`bundle.ts` bundles it into `core/.bundle`, which the `tafla-bundle`
+condition resolves, runs a command, and removes the bundle. `yarn test` runs
+the tests through it, all in one process, and `yarn bench` and
+`yarn bench:compare` run the benchmarks through it. The big-endian tests run
+after the others, in a process of their own, of the source, since they
+emulate a big-endian host by mocking `source/constants.ts`, which the bundle
+has no module of. `yarn test:watch` runs every test of the source, each file
+in a process of its own, as nothing bundles the package again when it
+changes.
 
 `yarn workspace tafla build` bundles the package into `dist/index.js` with
 rolldown, and compiles its declarations to `dist` with tsc. In one module,

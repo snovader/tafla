@@ -1,5 +1,5 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, it } from 'node:test';
+import * as fc from 'fast-check';
 import { DecodeError } from 'tafla';
 import {
     corruptionOf,
@@ -15,6 +15,8 @@ import {
     type LayoutDescription,
     type TableDescription
 } from '../conformance/description.ts';
+import { expect } from '../conformance/expect.ts';
+import { prop } from '../conformance/property.ts';
 import { buildTable } from '../conformance/tables.ts';
 import { array, message, scalar, string } from './descriptions.ts';
 import { expectValuesOrDecodeError } from './expectations.ts';
@@ -128,76 +130,82 @@ function outcomeOf(write: () => Uint8Array): Uint8Array | string {
     }
 }
 
-describe.each(LAYOUTS)('%s', (_, layouts) => {
-    describe.each(MESSAGES)('$name', layoutMessage => {
-        const { name } = layoutMessage;
+for (const [language, layouts] of LAYOUTS) {
+    describe(language, () => {
+        for (const layoutMessage of MESSAGES) {
+            describe(layoutMessage.name, () => {
+                const { name } = layoutMessage;
 
-        it.prop([FIELDS, SLICES])(
-            'should read back its fields, wherever its bytes lie',
-            (fields, slice) => {
-                const bytes = sliceOf(layouts[name].serialize(fields), slice);
+                prop([FIELDS, SLICES])(
+                    'should read back its fields, wherever its bytes lie',
+                    (fields, slice) => {
+                        const bytes = sliceOf(layouts[name].serialize(fields), slice);
 
-                expect(read(layouts, layoutMessage, bytes)).toEqual(fields);
-            }
-        );
-
-        it.prop([LONGER_FIELDS])(
-            'should write the bytes that TableBuilder writes in its layout, or throw as it does for a table too long for its offsets',
-            fields => {
-                const written = outcomeOf(() => layouts[name].serialize(fields));
-                const byHand = outcomeOf(() =>
-                    buildTable(describeTable(layoutMessage, fields)).bytes()
+                        expect(read(layouts, layoutMessage, bytes)).toEqual(fields);
+                    }
                 );
 
-                expect(written).toStrictEqual(byHand);
-            }
-        );
+                prop([LONGER_FIELDS])(
+                    'should write the bytes that TableBuilder writes in its layout, or throw as it does for a table too long for its offsets',
+                    fields => {
+                        const written = outcomeOf(() => layouts[name].serialize(fields));
+                        const byHand = outcomeOf(() =>
+                            buildTable(describeTable(layoutMessage, fields)).bytes()
+                        );
 
-        it.prop([FIELDS, CORRUPTIONS])(
-            'should read corrupted bytes as values or throw DecodeError',
-            (fields, corruption) => {
-                const bytes = layouts[name].serialize(fields);
-                const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
+                        expect(written).toStrictEqual(byHand);
+                    }
+                );
 
-                expectValuesOrDecodeError(() => read(layouts, layoutMessage, corrupted));
-            }
-        );
+                prop([FIELDS, CORRUPTIONS])(
+                    'should read corrupted bytes as values or throw DecodeError',
+                    (fields, corruption) => {
+                        const bytes = layouts[name].serialize(fields);
+                        const corrupted = corrupt(bytes, corruptionOf(corruption, bytes.length));
 
-        it.prop([fc.uint8Array({ maxLength: 64 })])(
-            'should read arbitrary bytes as values or throw DecodeError',
-            bytes => {
-                expectValuesOrDecodeError(() => read(layouts, layoutMessage, bytes));
-            }
-        );
+                        expectValuesOrDecodeError(() => read(layouts, layoutMessage, corrupted));
+                    }
+                );
+
+                prop([fc.uint8Array({ maxLength: 64 })])(
+                    'should read arbitrary bytes as values or throw DecodeError',
+                    bytes => {
+                        expectValuesOrDecodeError(() => read(layouts, layoutMessage, bytes));
+                    }
+                );
+            });
+        }
+
+        for (const layoutMessage of VERSIONED) {
+            describe(layoutMessage.name, () => {
+                const { layout, version } = layoutMessage;
+                const otherVersions = fc
+                    .integer({ min: 0, max: MAX_VALUES[layout.offsetType] })
+                    .filter(other => other !== version);
+
+                prop([FIELDS, otherVersions])(
+                    'should reject a table of another version with DecodeError',
+                    (fields, other) => {
+                        const bytes = buildTable(
+                            describeTable({ ...layoutMessage, version: other }, fields)
+                        ).bytes();
+
+                        expect(() => read(layouts, layoutMessage, bytes)).toThrow(DecodeError);
+                    }
+                );
+            });
+        }
+
+        it('should write the longest table that uint16 offsets address, and throw RangeError for a longer one', () => {
+            // 3 offsets, the id, an empty string's length and the array's count
+            // take 14 bytes, which leave 65,521 for 32,760 elements
+            const longest = { id: 0, name: '', values: new Array<number>(32_760).fill(0xffff) };
+            const tooLong = { ...longest, values: [...longest.values, 0] };
+
+            const bytes = layouts.Uint16Offsets.serialize(longest);
+            expect(bytes).toHaveLength(65_534);
+            expect(read(layouts, UINT16_OFFSETS, bytes)).toEqual(longest);
+            expect(() => layouts.Uint16Offsets.serialize(tooLong)).toThrow(RangeError);
+        });
     });
-
-    describe.each(VERSIONED)('$name', layoutMessage => {
-        const { layout, version } = layoutMessage;
-        const otherVersions = fc
-            .integer({ min: 0, max: MAX_VALUES[layout.offsetType] })
-            .filter(other => other !== version);
-
-        it.prop([FIELDS, otherVersions])(
-            'should reject a table of another version with DecodeError',
-            (fields, other) => {
-                const bytes = buildTable(
-                    describeTable({ ...layoutMessage, version: other }, fields)
-                ).bytes();
-
-                expect(() => read(layouts, layoutMessage, bytes)).toThrow(DecodeError);
-            }
-        );
-    });
-
-    it('should write the longest table that uint16 offsets address, and throw RangeError for a longer one', () => {
-        // 3 offsets, the id, an empty string's length and the array's count
-        // take 14 bytes, which leave 65,521 for 32,760 elements
-        const longest = { id: 0, name: '', values: new Array<number>(32_760).fill(0xffff) };
-        const tooLong = { ...longest, values: [...longest.values, 0] };
-
-        const bytes = layouts.Uint16Offsets.serialize(longest);
-        expect(bytes).toHaveLength(65_534);
-        expect(read(layouts, UINT16_OFFSETS, bytes)).toEqual(longest);
-        expect(() => layouts.Uint16Offsets.serialize(tooLong)).toThrow(RangeError);
-    });
-});
+}

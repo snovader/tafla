@@ -1,9 +1,11 @@
-import { describe, expect, vi } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, it, mock } from 'node:test';
+import * as fc from 'fast-check';
 import { ByteBuffer, TableBuilder, TableLayout, type TableItem } from 'tafla';
 import { tables, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
+import { expect } from './conformance/expect.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
+import { prop } from './conformance/property.ts';
 import { alignmentOf, buildTable, buildTableInPlace, nestedInPlace } from './conformance/tables.ts';
 
 it('should reject a field beyond the number the table holds', () => {
@@ -13,7 +15,7 @@ it('should reject a field beyond the number the table holds', () => {
     expect(() => builder.setUint8(2)).toThrow(new RangeError("Can't add field 2 to a table of 1"));
 });
 
-it.prop([fc.nat({ max: 4 })])('should reject finalizing before every field is set', set => {
+prop([fc.nat({ max: 4 })])('should reject finalizing before every field is set', set => {
     const builder = new TableBuilder(set + 1);
     for (let i = 0; i < set; i++) {
         builder.setFloat64(i);
@@ -61,12 +63,11 @@ describe('arrays whose length changes before finalizing', () => {
 
     const EXPECTED = builderOf([1, 2, 3]).bytes();
 
-    it.each([
+    for (const [change, changed, message] of [
         ['grew', [1, 2, 3, 4], "The fields need 48 bytes, more than the table's 41"],
         ['shrank', [1, 2], "The fields wrote 33 of the table's 41 bytes"]
-    ])(
-        'should throw RangeError for an array that %s, and finalize once it is restored',
-        (_, changed, message) => {
+    ] as const) {
+        it(`should throw RangeError for an array that ${change}, and finalize once it is restored`, () => {
             const values = [1, 2, 3];
             const builder = builderOf(values);
 
@@ -76,8 +77,8 @@ describe('arrays whose length changes before finalizing', () => {
 
             values.splice(0, values.length, 1, 2, 3);
             expect(builder.bytes()).toStrictEqual(EXPECTED);
-        }
-    );
+        });
+    }
 
     it('should throw the TypeError of copying a typed array whose buffer was transferred', () => {
         const values = new Float64Array([1, 2, 3]);
@@ -92,13 +93,12 @@ describe('arrays whose length changes before finalizing', () => {
 });
 
 describe('arrays of structs', () => {
-    it.each([
+    for (const [bytes, size, message] of [
         [new Uint8Array(5), 2, "5 bytes aren't a whole number of 2-byte structs"],
         [new Uint8Array(4), 0, "A struct's size must be a positive integer, not 0"],
         [new Uint8Array(4), 1.5, "A struct's size must be a positive integer, not 1.5"]
-    ])(
-        'should reject %s bytes of %s-byte structs, and leave the builder as it was',
-        (bytes, size, message) => {
+    ] as const) {
+        it(`should reject ${bytes.length} bytes of ${size}-byte structs, and leave the builder as it was`, () => {
             const builder = new TableBuilder(1);
 
             expect(() => builder.setStructArray(bytes, size, 1)).toThrow(new RangeError(message));
@@ -106,8 +106,8 @@ describe('arrays of structs', () => {
             expect(builder.bytes()).toStrictEqual(
                 new Uint8Array([4, 0, 0, 0, 2, 0, 0, 0, 1, 2, 3, 4])
             );
-        }
-    );
+        });
+    }
 
     it('should count structs, and pad so that they start at a multiple of their alignment', () => {
         const builder = new TableBuilder(2);
@@ -124,9 +124,8 @@ describe('arrays of structs', () => {
 });
 
 describe('tables longer than the offsets address', () => {
-    it.each(['uint8', 'uint16'] as const)(
-        'should reject a header longer than %s offsets address',
-        offsetType => {
+    for (const offsetType of ['uint8', 'uint16'] as const) {
+        it(`should reject a header longer than ${offsetType} offsets address`, () => {
             const max = MAX_VALUES[offsetType];
             const offsetSize = OFFSET_SIZES[offsetType];
 
@@ -139,8 +138,8 @@ describe('tables longer than the offsets address', () => {
                     `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`
                 );
             }
-        }
-    );
+        });
+    }
 
     it('should reject a table of uint32 offsets past 4 GiB before allocating it', () => {
         // An array-like stands in for a 4 GiB array, whose elements aren't read.
@@ -159,7 +158,7 @@ describe('tables longer than the offsets address', () => {
 describe('tables nested from their builders', () => {
     // The nested table follows a uint8[] of any length up to 7, which
     // starts it at any offset from an alignment of 8
-    it.prop([tables({ headerless: true }), fc.nat({ max: 7 })])(
+    prop([tables({ headerless: true }), fc.nat({ max: 7 })])(
         'should write the same bytes as nesting the bytes that the builder writes, at the same alignment',
         (table, length) => {
             const parent: TableDescription = {
@@ -178,7 +177,7 @@ describe('tables nested from their builders', () => {
 
     // A builder that was finalized, or whose layout has a header or another
     // offset type than its parent's, is copied as a table nested as bytes is
-    it.prop([tables(), fc.nat({ max: 7 })])(
+    prop([tables(), fc.nat({ max: 7 })])(
         'should write a builder that was finalized, or of any layout, as the bytes that it writes',
         (table, length) => {
             const bytes = buildTable(table).bytes();
@@ -253,7 +252,7 @@ describe('tables recorded in place', () => {
     // Every nested table is made one that a builder writes in place, so
     // that it's recorded in place too, except those with an alignment of
     // their own and vectors of items of different numbers of fields
-    it.prop([tables()])(
+    prop([tables()])(
         'should write the bytes of the builders that they replace, and fail as they fail',
         table => {
             const nested = nestedInPlace(table);
@@ -364,7 +363,7 @@ describe('tables recorded in place', () => {
 
     it("should reject a vector whose count, item ends and items' offsets make the table too long before recording any item", () => {
         const layout = TableLayout.create({ offsetType: 'uint8' });
-        const fill = vi.fn<(item: TableItem, index: number) => void>();
+        const fill = mock.fn<(item: TableItem, index: number) => void>();
         const builder = new TableBuilder(1, layout);
 
         // The table's offset and the vector's count and 254 ends
@@ -375,10 +374,10 @@ describe('tables recorded in place', () => {
         expect(() => builder.setVectorInPlace(100, 2, fill)).toThrow(
             new RangeError('Field 1 makes the table 302 bytes, too long for uint8 offsets')
         );
-        expect(fill).not.toHaveBeenCalled();
+        expect(fill.mock.callCount()).toBe(0);
 
         builder.setVectorInPlace(253, 0, fill);
-        expect(fill).toHaveBeenCalledTimes(253);
+        expect(fill.mock.callCount()).toBe(253);
         expect(builder.bytes()).toHaveLength(MAX_VALUES.uint8);
     });
 

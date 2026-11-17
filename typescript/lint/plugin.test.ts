@@ -1,13 +1,5 @@
-import { describe, it } from 'vitest';
-import { RuleTester } from 'oxlint/plugins-dev';
 import plugin from './plugin.ts';
-
-RuleTester.describe = describe;
-RuleTester.it = it;
-
-const tester = new RuleTester({
-    languageOptions: { parserOptions: { lang: 'ts' } }
-});
+import { tester } from './ruleTester.ts';
 
 const MESSAGE =
     /^Expected "[^"]+" before "[^"]+": names in lower case, then upper case, then types, each in natural order$/u;

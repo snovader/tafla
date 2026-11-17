@@ -1,7 +1,6 @@
 // Bundles the package as it's published, for tests and benchmarks to import
-// with the `tafla-bundle` condition. `vitest.globalSetup.ts` bundles it once
-// per run. As a script, it bundles the package, runs the command in its
-// arguments, and removes the bundle:
+// with the `tafla-bundle` condition: it bundles the package, runs the command
+// in its arguments, and removes the bundle.
 //
 //     node bundle.ts node --conditions=tafla-bundle benchmarks/comparison/main.ts
 import { spawn } from 'node:child_process';
@@ -14,11 +13,11 @@ import { bundleOptions } from './core/rolldown.config.ts';
 const BUNDLE_DIRECTORY = join(import.meta.dirname, 'core/.bundle');
 
 /** Writes the bundle, over the one that's there */
-export async function bundle(): Promise<void> {
+async function bundle(): Promise<void> {
     await build(bundleOptions(join(BUNDLE_DIRECTORY, 'index.js')));
 }
 
-export async function removeBundle(): Promise<void> {
+async function removeBundle(): Promise<void> {
     await rm(BUNDLE_DIRECTORY, { recursive: true, force: true });
 }
 

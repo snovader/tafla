@@ -1,21 +1,20 @@
 // tafla's rules for oxlint, which loads them as a JS plugin
 
-import type { RuleTester } from 'oxlint/plugins-dev';
+import {
+    expectExpect,
+    noStandaloneExpect,
+    preferToBe,
+    preferToHaveLength,
+    validExpect
+} from './testRules.ts';
+import type { Context, Fix, NodeOf, Rule } from './types.ts';
 
-// oxlint names the types of its plugins' API only in RuleTester's
-export type Rule = Parameters<RuleTester['run']>[1];
-type Context = Parameters<NonNullable<Rule['create']>>[0];
-type Visitor = ReturnType<NonNullable<Rule['create']>>;
-type ImportDeclaration = Parameters<
-    NonNullable<Visitor['ImportDeclaration']>
->[0];
+type ImportDeclaration = NodeOf<'ImportDeclaration'>;
 type ImportDeclarationSpecifier = ImportDeclaration['specifiers'][number];
 type ImportSpecifier = Extract<
     ImportDeclarationSpecifier,
     { type: 'ImportSpecifier' }
 >;
-type Report = Parameters<Context['report']>[0];
-type Fix = NonNullable<Report['fix']>;
 
 // Natural order, ignoring case: `SIZEOF_8` before `SIZEOF_16`
 const COLLATOR = new Intl.Collator('en', {
@@ -139,7 +138,14 @@ interface Plugin {
 
 const plugin: Plugin = {
     meta: { name: 'tafla' },
-    rules: { 'sort-named-imports': sortNamedImports }
+    rules: {
+        'sort-named-imports': sortNamedImports,
+        'expect-expect': expectExpect,
+        'no-standalone-expect': noStandaloneExpect,
+        'valid-expect': validExpect,
+        'prefer-to-be': preferToBe,
+        'prefer-to-have-length': preferToHaveLength
+    }
 };
 
 export default plugin;
