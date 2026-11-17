@@ -178,6 +178,12 @@ first commits, for code built from its source before the release.
 - Generated TypeScript and JavaScript import the runtime's functions, then
   its classes, then its types, each in natural order, as the TypeScript
   project's oxlint configuration checks.
+- A message that generated TypeScript and JavaScript write whole leaves out
+  the zero bytes of its offsets in `serialize()`, whose new bytes are zero
+  already, and writes them in `serializeInto()`, whose bytes needn't be.
+  They were 12 of a record's 20 stores, and 96 of the 317 bytes of bytecode
+  of its `serialize()`, which V8 counts against the bytecode that it inlines
+  into the function that calls it.
 - Generated C++ readers of tables nested in a message hold the bytes from the
   table's start, 16 bytes rather than 24, and read its offsets at constant
   positions, so their decode errors report positions from the table's start,

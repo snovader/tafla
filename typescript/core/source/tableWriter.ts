@@ -401,8 +401,9 @@ export class TableWriter {
     /**
      * Returns bytes for a table of `fields` fields in `layout`, which has no
      * version slot, `length` bytes long, with its header written: new bytes,
-     * or the start of `bytes`. The caller writes every other byte, since
-     * `bytes` needn't be zero: each field's offset, and the field.
+     * which are zero, or the start of `bytes`, which needn't be. The caller
+     * writes every other byte, but for the zero bytes of new ones: each
+     * field's offset, and the field.
      *
      * It's for the code that tafla-gen generates, which writes a message of
      * fields whose sizes the schema fixes, and a string after them, at
@@ -998,7 +999,11 @@ function writeHeader(
 
 /**
  * `TableWriter.tableBytes()` and `versionedTableBytes()`, which check the
- * header and the length as a sizer and its `writer()` check them
+ * header and the length as a sizer and its `writer()` check them.
+ *
+ * A layout without header slots, as the code that tafla-gen generates for
+ * most messages has, never calls `writeHeader()`, so V8 leaves it out of
+ * the bytecode that it inlines into the generated serializers.
  */
 function newTableBytes(
     fields: number,
@@ -1014,7 +1019,9 @@ function newTableBytes(
         bytes === undefined
             ? new Uint8Array(length)
             : tableBytes(bytes, length);
-    writeHeader(table, layout, version);
+    if (layout.headerSize() !== 0) {
+        writeHeader(table, layout, version);
+    }
 
     return table;
 }
@@ -1027,10 +1034,14 @@ function newTableBytes(
  */
 function assertAddressable(length: number, layout: TableLayout): void {
     if (!(length <= maxLength(layout.offsetSize()))) {
-        throw new RangeError(
-            `The table's fields make it ${length} bytes, too long for ${layout.offsetType()} offsets`
-        );
+        throw tableLengthError(length, layout);
     }
+}
+
+function tableLengthError(length: number, layout: TableLayout): RangeError {
+    return new RangeError(
+        `The table's fields make it ${length} bytes, too long for ${layout.offsetType()} offsets`
+    );
 }
 
 /**
