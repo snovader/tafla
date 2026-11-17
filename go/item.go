@@ -1,10 +1,10 @@
 package tafla
 
-// Item is a table that a [TableBuilder] records in place, as one of its
+// Item is a table that a [TableBuilder] writes in place, as one of its
 // fields with [TableBuilder.SetTableFunc] or as each item of a vector with
 // [TableBuilder.SetVectorFunc], which give it to the function that sets its
 // fields. Its setters are the builder's, taking the same values and failing
-// as they fail, and record each field straight among the builder's own, so
+// as they fail, and write each field straight into the builder's bytes, so
 // the table needs no builder of its own. The fields are set in order, and
 // counted against the table's own number of fields and its own length, as
 // a builder of it would count them.
@@ -112,13 +112,13 @@ func (i Item) SetTableAligned(table NestedTable, alignment Alignment) error {
 // [TableBuilder.SetVector] does.
 func (i Item) SetVector(items ...NestedTable) error { return i.builder.SetVector(items...) }
 
-// SetTableFunc records a table nested in this one in place, as
+// SetTableFunc writes a table nested in this one in place, as
 // [TableBuilder.SetTableFunc] does.
 func (i Item) SetTableFunc(fields int, fill func(table Item) error) error {
 	return i.builder.SetTableFunc(fields, fill)
 }
 
-// SetVectorFunc records a vector of tables in place, as
+// SetVectorFunc writes a vector of tables in place, as
 // [TableBuilder.SetVectorFunc] does.
 func (i Item) SetVectorFunc(count, fields int, fill func(index int, item Item) error) error {
 	return i.builder.SetVectorFunc(count, fields, fill)

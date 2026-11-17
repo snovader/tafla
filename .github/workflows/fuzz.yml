@@ -93,8 +93,9 @@ jobs:
           path: rust/fuzz/artifacts/${{ matrix.target }}
           if-no-files-found: ignore
 
-  # Go's native fuzz targets, which mirror the runtime's Rust targets, seeded
-  # with the conformance suite's tables
+  # Go's native fuzz targets: the readers', which mirror the runtime's Rust
+  # targets, seeded with the conformance suite's tables, and the builder's,
+  # which generates tables from the fuzzer's bytes
   fuzz-go:
     name: Fuzz Go (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -105,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzByteBuffer, FuzzConformance]
+        target: [FuzzByteBuffer, FuzzConformance, FuzzTableBuilder]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
