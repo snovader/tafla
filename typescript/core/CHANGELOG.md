@@ -85,6 +85,13 @@ repository's first commits, for code built from its source before the release.
   optimized code. `StructWriter`'s setters write 100 scalars in 0.45–0.55×
   the time, and `TableBuilder` writes the comparison suite's vector of 100
   nested tables in 0.91–0.93×.
+- `dist/index.js` leaves out the comments, which the declarations still
+  carry, and has no character outside Latin-1. V8 keeps a module's source on
+  its heap, at two bytes per character if one is outside Latin-1, as three en
+  dashes in comments made it. Importing the package grows the heap by 184 KB
+  rather than 331 KB in Node 26, and by 183 KB rather than 330 KB in Node 27.
+  The module is 56,203 bytes rather than 101,602, and 9,817 gzipped rather
+  than 22,384.
 - `TableWriter.tableBytes()`, `versionedTableBytes()`, the write functions,
   `writeUtf8()` and `utf8Length()` take less bytecode on their common paths,
   so that V8 inlines a serializer that tafla-gen generates whole: TurboFan

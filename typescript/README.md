@@ -55,7 +55,10 @@ through `bundle.ts`, which does the same around a command.
 rolldown, and compiles its declarations to `dist` with tsc. In one module,
 the package's functions and classes are local, and rolldown writes the value
 of each constant, such as `SIZEOF_64`, where it's used: V8 loads an imported
-binding from its module at every use, even in optimized code.
+binding from its module at every use, even in optimized code. The bundle
+leaves out the comments, which the declarations keep, and `yarn package:check`
+checks that it has no character outside Latin-1: V8 keeps a module's source
+on its heap, at two bytes per character if one is outside Latin-1.
 `core/rolldown.config.ts` configures the bundle. Packing the package builds
 it first. The package holds only `dist`, so its `publishConfig`
 replaces `exports` and `imports` with copies without the condition, which
