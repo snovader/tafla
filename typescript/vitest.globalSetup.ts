@@ -1,6 +1,6 @@
-// Bundles the package once per run of `vitest run` or `vitest bench`, before
-// any project's workers import it, and removes the bundle after the run. The
-// root config's global setup runs once, rather than once per project.
+// Bundles the package once per run of `vitest run`, before any project's
+// workers import it, and removes the bundle after the run. The root config's
+// global setup runs once, rather than once per project.
 import type { TestProject } from 'vitest/node';
 import { bundle, removeBundle } from './bundle.ts';
 

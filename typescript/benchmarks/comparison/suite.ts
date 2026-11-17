@@ -1,10 +1,5 @@
 import type { Codec, Workload } from './codecs/codec.ts';
-import {
-    measure,
-    type Measurement,
-    type MeasureOptions,
-    type Variant
-} from './harness.ts';
+import { measureGroups, type Group, type RunOptions } from './harness.ts';
 import { sumItem, writeItems, type ItemAccess } from './itemAccess.ts';
 import {
     documentInput,
@@ -19,15 +14,8 @@ import {
     type ListInput
 } from './workloads.ts';
 
-export interface SuiteOptions extends MeasureOptions {
-    /** Runs only the groups whose name matches */
-    filter: RegExp;
+export interface SuiteOptions extends RunOptions {
     print: (line: string) => void;
-}
-
-interface Group {
-    name: string;
-    variants: Variant[];
 }
 
 /**
@@ -94,14 +82,7 @@ export function runSuite(
         )
     ];
 
-    for (const { name, variants } of groups) {
-        if (!options.filter.test(name)) {
-            continue;
-        }
-
-        printMeasurements(name, measure(variants, options), options.print);
-    }
-
+    measureGroups(groups, options, options.print);
     printSizes(codecs, documents, list, options.print);
     printTruncation(codecs, documents[documents.length - 1], options.print);
 }
@@ -197,31 +178,6 @@ function group<T extends { name: string }>(
             run: createRun(reader)
         }))
     };
-}
-
-function printMeasurements(
-    name: string,
-    measurements: Measurement[],
-    print: (line: string) => void
-): void {
-    const [reference] = measurements;
-
-    print(`\n${name}`);
-    for (const { name: variant, microseconds, heapBytes } of measurements) {
-        const ratio = microseconds / reference.microseconds;
-        print(
-            `  ${variant.padEnd(18)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}× ${formatBytes(heapBytes).padStart(12)}`
-        );
-    }
-}
-
-function formatMicroseconds(microseconds: number): string {
-    return microseconds.toFixed(microseconds < 10 ? 3 : 1);
-}
-
-/** Bytes allocated on V8's heap per call, rounded to whole bytes */
-function formatBytes(bytes: number): string {
-    return `${Math.max(0, Math.round(bytes)).toLocaleString('en-US')} B`;
 }
 
 function printSizes(

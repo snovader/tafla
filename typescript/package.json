@@ -7,7 +7,7 @@
     "core"
   ],
   "scripts": {
-    "bench": "vitest bench --run --reporter=verbose",
+    "bench": "node bundle.ts node --conditions=tafla-bundle benchmarks/fields/main.ts",
     "bench:compare": "node bundle.ts node --conditions=tafla-bundle benchmarks/comparison/main.ts",
     "conformance:generate": "node --conditions=tafla-source core/test/conformance/generate.ts && node --conditions=tafla-source core/test/generated/generate.ts",
     "format:check": "oxfmt --check",

@@ -3,15 +3,13 @@ import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
 import { tafla } from './codecs/tafla.ts';
 import { taflaGen } from './codecs/taflaGen.ts';
+import { describeRun, runOptions } from './harness.ts';
 import { byteBufferAccess, getterAccess } from './itemAccess.ts';
 import { runSuite } from './suite.ts';
 
-const args = process.argv.slice(2);
-const rounds = Number(option('--rounds') ?? 31);
+const options = runOptions(process.argv.slice(2));
 
-console.log(
-    `Node ${process.version}, V8 ${process.versions.v8}; minimum of ${rounds} interleaved rounds, and bytes allocated on V8's heap per call`
-);
+console.log(describeRun(options));
 
 // The getters twice, an A/A pair that shows the harness's noise
 const accesses = [
@@ -21,14 +19,6 @@ const accesses = [
 ];
 
 runSuite([tafla, taflaGen, flatbuffers, protobufjs, msgpackr], accesses, {
-    rounds,
-    warmupRounds: 10,
-    sampleTime: Number(option('--sample-ms') ?? 1),
-    filter: new RegExp(option('--filter') ?? ''),
+    ...options,
     print: line => console.log(line)
 });
-
-function option(name: string): string | undefined {
-    const index = args.indexOf(name);
-    return index === -1 ? undefined : args[index + 1];
-}
