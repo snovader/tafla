@@ -1,3 +1,4 @@
+import { parseArgs } from 'node:util';
 import { getHeapStatistics, GCProfiler, type GCProfilerResult } from 'node:v8';
 
 export interface Variant {
@@ -59,12 +60,22 @@ const SAMPLE_BYTES = sampleBytes();
  * milliseconds, 1 by default, and `--filter`, a regular expression that
  * selects groups by name. Every run has 10 warm-up rounds.
  *
+ * @throws {TypeError} If an argument isn't one of the options, or an option
+ * has no value.
  * @throws {Error} If the rounds aren't a positive integer, or the time of a
  * round isn't a positive number.
  */
 export function runOptions(args: readonly string[]): RunOptions {
-    const rounds = Number(option(args, '--rounds') ?? 31);
-    const sampleTime = Number(option(args, '--sample-ms') ?? 1);
+    const { values } = parseArgs({
+        args,
+        options: {
+            rounds: { type: 'string', default: '31' },
+            'sample-ms': { type: 'string', default: '1' },
+            filter: { type: 'string', default: '' }
+        }
+    });
+    const rounds = Number(values.rounds);
+    const sampleTime = Number(values['sample-ms']);
 
     if (!Number.isInteger(rounds) || rounds < 1) {
         throw new Error('Expected --rounds to be a positive integer');
@@ -77,13 +88,8 @@ export function runOptions(args: readonly string[]): RunOptions {
         rounds,
         warmupRounds: 10,
         sampleTime,
-        filter: new RegExp(option(args, '--filter') ?? '')
+        filter: new RegExp(values.filter)
     };
-}
-
-function option(args: readonly string[], name: string): string | undefined {
-    const index = args.indexOf(name);
-    return index === -1 ? undefined : args[index + 1];
 }
 
 /** A line that describes the runtime and what each row of a run reports */

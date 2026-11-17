@@ -175,7 +175,8 @@ yarn bench:compare --rounds 41
 
 `--rounds` sets the rounds (31 by default), `--filter <regex>` runs only the
 matching groups, and `--sample-ms` sets how long one round of one variant
-takes (1 ms by default). Check `uptime` first: a high load from other
+takes (1 ms by default). An unknown option, or an option without a value,
+stops the run with an error. Check `uptime` first: a high load from other
 processes makes even the minimum unreliable.
 
 ### Limitations
