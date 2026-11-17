@@ -4,5 +4,8 @@
         "outDir": "../../../.cache/typescript/core/test/conformance"
     },
     "include": ["."],
-    "references": [{ "path": "../.." }]
+    "references": [
+        { "path": "../.." },
+        { "path": "../../../test-runner" }
+    ]
 }

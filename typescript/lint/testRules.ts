@@ -1,10 +1,12 @@
-// Rules for tests that run on node:test and assert with Vitest's expect(), in
-// place of oxlint's vitest rules, which see only the tests and assertions
-// imported from vitest. A test is a call of `it` or `test` from node:test, or
-// of the function that an imported `prop()` returns, and a describe block is
-// a call of `describe` or `suite` from node:test. An assertion is a call of
-// an imported `expect`, or, to expect-expect, of any function whose name
-// starts with `expect`.
+// Rules for tests that run on test-runner, which declares them through
+// node:test with Vitest's API, in place of oxlint's vitest rules, which see
+// only the tests and assertions imported from vitest. A test is a call of
+// `it` or `test` from test-runner, its fast-check subpath or node:test, and a
+// describe block is a call of `describe` or `suite` from them, through any of
+// their variants, such as `it.only`, and of the functions that `it.each()`,
+// `it.for()`, `it.prop()`, `it.skipIf()` and `it.runIf()` return. An
+// assertion is a call of test-runner's `expect`, or, to expect-expect, of any
+// function whose name starts with `expect`.
 import type { Context, Fix, NodeOf, Rule } from './types.ts';
 
 type CallExpression = NodeOf<'CallExpression'>;
@@ -19,10 +21,22 @@ type Scope = ReturnType<Context['sourceCode']['getScope']>;
 type Variable = Scope['variables'][number];
 
 /** What an imported name is to these rules */
-type Role = 'describe' | 'expect' | 'prop' | 'test';
+type Role = 'describe' | 'expect' | 'test';
 
 /** Members of `it`, `test`, `describe` and `suite` that are called as they are */
 const VARIANTS: ReadonlySet<string> = new Set(['only', 'skip', 'todo']);
+
+/**
+ * Members of `it`, `test`, `describe` and `suite` that return the function
+ * that declares, as `it.each(rows)` does
+ */
+const FACTORIES: ReadonlySet<string> = new Set([
+    'each',
+    'for',
+    'prop',
+    'runIf',
+    'skipIf'
+]);
 
 /** Members between `expect()` and its matcher */
 const MODIFIERS: ReadonlySet<string> = new Set(['not', 'rejects', 'resolves']);
@@ -57,21 +71,30 @@ interface Comparison extends ExpectChain {
     readonly matcherCall: CallExpression;
 }
 
+/** The modules that declare tests, which test-runner declares them through */
+const TEST_MODULES: ReadonlySet<string> = new Set([
+    'node:test',
+    'test-runner',
+    'test-runner/fast-check'
+]);
+
 function roleOfImport(source: string, name: string): Role | undefined {
-    if (source === 'node:test') {
-        switch (name) {
-            case 'describe':
-            case 'suite':
-                return 'describe';
-            case 'it':
-            case 'test':
-                return 'test';
-            default:
-                return undefined;
-        }
+    if (!TEST_MODULES.has(source)) {
+        return undefined;
     }
 
-    return name === 'expect' || name === 'prop' ? name : undefined;
+    switch (name) {
+        case 'describe':
+        case 'suite':
+            return 'describe';
+        case 'it':
+        case 'test':
+            return 'test';
+        case 'expect':
+            return source === 'test-runner' ? 'expect' : undefined;
+        default:
+            return undefined;
+    }
 }
 
 /** The variable that an identifier refers to, from the scopes around it */
@@ -169,25 +192,34 @@ function blockOf(
     context: Context,
     call: CallExpression
 ): 'describe' | 'test' | undefined {
-    const { callee } = call;
-
-    // prop(arbitraries)(name, predicate)
-    if (callee.type === 'CallExpression') {
-        const isProp =
-            callee.callee.type === 'Identifier' &&
-            roleOf(context, callee.callee) === 'prop';
-
-        return isProp ? 'test' : undefined;
-    }
-
-    // it(), or a variant such as it.only()
-    const target = isNamedMember(callee, VARIANTS) ? callee.object : callee;
+    const target = declarerOf(call.callee);
     if (target.type !== 'Identifier') {
         return undefined;
     }
 
     const role = roleOf(context, target);
     return role === 'describe' || role === 'test' ? role : undefined;
+}
+
+/**
+ * What a call's callee declares through: `it` for `it()`, `it.skip()`,
+ * `it.each(rows)()` and `it.skipIf(condition).only()`
+ */
+function declarerOf(callee: CallExpression['callee']): Node {
+    let target: Node = callee;
+
+    for (;;) {
+        if (
+            target.type === 'CallExpression' &&
+            isNamedMember(target.callee, FACTORIES)
+        ) {
+            target = target.callee.object;
+        } else if (isNamedMember(target, VARIANTS)) {
+            target = target.object;
+        } else {
+            return target;
+        }
+    }
 }
 
 /** Whether a call passes a function written in place as its last argument */

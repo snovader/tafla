@@ -133,20 +133,6 @@
         // `toBe` compares with Object.is, which tells -0 from 0
         "tafla/prefer-to-be": "error",
         "tafla/prefer-to-have-length": "error",
-        // node:test's describe, it, suite and test return promises that its
-        // runner awaits
-        "typescript/no-floating-promises": [
-            "error",
-            {
-                "allowForKnownSafeCalls": [
-                    {
-                        "from": "package",
-                        "package": "node:test",
-                        "name": ["describe", "it", "suite", "test"]
-                    }
-                ]
-            }
-        ],
 
         // Turned off
 

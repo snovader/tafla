@@ -20,6 +20,11 @@ updates:
           - "oxfmt"
           - "oxlint"
           - "oxlint-tsgolint"
+      # @vitest/expect requires its own version of @vitest/spy and
+      # @vitest/utils, which the test runner imports too
+      "vitest":
+        patterns:
+          - "@vitest/*"
 
   - package-ecosystem: "uv"
     directory: "/python"

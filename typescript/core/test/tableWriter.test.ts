@@ -1,5 +1,5 @@
-import { describe, it } from 'node:test';
-import * as fc from 'fast-check';
+import { describe, expect } from 'test-runner';
+import { fc, it } from 'test-runner/fast-check';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
 import { growing } from './arrayLikes.ts';
 import {
@@ -21,9 +21,7 @@ import {
     type OffsetType,
     type TableDescription
 } from './conformance/description.ts';
-import { expect } from './conformance/expect.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
-import { prop } from './conformance/property.ts';
 import {
     buildTable,
     nestedInPlace,
@@ -56,7 +54,7 @@ function outcomeOf(write: () => Uint8Array): Uint8Array | string {
 // that a sizer's writer takes with those that the builder makes. The bytes
 // themselves are the conformance suite's.
 
-prop([inPlaceTables()])(
+it.prop([inPlaceTables()])(
     'should count each table as long as TableBuilder does, and write the same bytes',
     table => {
         expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());
@@ -143,7 +141,7 @@ describe('strings', () => {
         expect(buildTable(table).bytes()).toStrictEqual(expected);
     }
 
-    prop([strings, fc.constantFrom(...OFFSET_TYPES)])(
+    it.prop([strings, fc.constantFrom(...OFFSET_TYPES)])(
         'should write any string as TextEncoder encodes it, with lone surrogates as U+FFFD',
         (value, offsetType) => {
             fc.pre(fitsItsLayout(stringTable(value, offsetType)));
@@ -153,11 +151,12 @@ describe('strings', () => {
 
     // The sizer counts the string's UTF-8, so the writer has no bytes past
     // it when it's the table's last field
-    for (const [description, value] of Object.entries(SHORTFALL_STRINGS)) {
-        it(`should write a ${description} string that encodeInto() stops short of as the last field`, () => {
+    it.each(Object.entries(SHORTFALL_STRINGS))(
+        'should write a %s string that encodeInto() stops short of as the last field',
+        (_, value) => {
             expectEncoded(value, 'uint16');
-        });
-    }
+        }
+    );
 });
 
 describe('tables longer than the offsets address', () => {
@@ -178,7 +177,7 @@ describe('tables longer than the offsets address', () => {
     );
 
     // Each run writes and builds tables of up to 64 KiB
-    prop([tablesWithLastFields], { numRuns: 30 })(
+    it.prop([tablesWithLastFields], { numRuns: 30 })(
         'should write a table as long as its offset type addresses, and throw RangeError for one a byte longer',
         ({ table, last }) => {
             const max = MAX_VALUES[table.layout.offsetType];
@@ -204,7 +203,7 @@ describe('tables longer than the offsets address', () => {
         }
     );
 
-    prop([inPlaceTables(NARROW_OFFSET_TYPES), fc.nat({ max: 300 })])(
+    it.prop([inPlaceTables(NARROW_OFFSET_TYPES), fc.nat({ max: 300 })])(
         'should throw RangeError for any table that TableBuilder rejects as too long',
         (table, length) => {
             const longer = { ...table, fields: [...table.fields, bytesField(length)] };
@@ -227,8 +226,9 @@ describe('tables longer than the offsets address', () => {
         );
     });
 
-    for (const offsetType of ['uint8', 'uint16'] as const) {
-        it(`should reject a header longer than ${offsetType} offsets address, as TableBuilder does`, () => {
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject a header longer than %s offsets address, as TableBuilder does',
+        offsetType => {
             const max = MAX_VALUES[offsetType];
 
             for (const sized of [false, true]) {
@@ -244,11 +244,12 @@ describe('tables longer than the offsets address', () => {
                     error
                 );
             }
-        });
-    }
+        }
+    );
 
-    for (const offsetType of ['uint8', 'uint16'] as const) {
-        it(`should reject bytes longer than ${offsetType} offsets address before writing the header`, () => {
+    it.each(['uint8', 'uint16'] as const)(
+        'should reject bytes longer than %s offsets address before writing the header',
+        offsetType => {
             const max = MAX_VALUES[offsetType];
             const layout = TableLayout.create({ sized: true, offsetType });
             const bytes = new Uint8Array(max + 1).fill(99);
@@ -259,32 +260,28 @@ describe('tables longer than the offsets address', () => {
                 new RangeError(`A table of ${max + 1} bytes is too long for ${offsetType} offsets`)
             );
             expect(lengthSlot).toStrictEqual(new Uint8Array(lengthSlot.length).fill(99));
-        });
-    }
+        }
+    );
 });
 
 describe('versions', () => {
     const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });
     const unversioned = TableLayout.create({ offsetType: 'uint8' });
 
-    for (const [description, layout, version, error] of [
+    it.each([
         ['a version that the layout has no slot for', TableLayout.DEFAULT, 1, TypeError],
         ['no version for a versioned layout', versioned, undefined, TypeError],
         ['a version too large for its slot', versioned, 256, RangeError],
         ['a version that is not an integer', versioned, 1.5, RangeError]
-    ] as const) {
-        it(`should reject ${description}, as TableBuilder does`, () => {
-            const bytes = new Uint8Array(1);
+    ])('should reject %s, as TableBuilder does', (_, layout, version, error) => {
+        const bytes = new Uint8Array(1);
 
-            expect(() => new TableBuilder(0, layout as never, version as never)).toThrow(error);
-            expect(() => new TableSizer(0, layout as never, version as never)).toThrow(error);
-            expect(() => new TableWriter(bytes, 0, layout as never, version as never)).toThrow(
-                error
-            );
-        });
-    }
+        expect(() => new TableBuilder(0, layout as never, version as never)).toThrow(error);
+        expect(() => new TableSizer(0, layout as never, version as never)).toThrow(error);
+        expect(() => new TableWriter(bytes, 0, layout as never, version as never)).toThrow(error);
+    });
 
-    for (const [description, fields, layout, version, error] of [
+    it.each([
         [
             'the count before the version slot',
             -1,
@@ -306,17 +303,13 @@ describe('versions', () => {
             256,
             new RangeError("Version 256 doesn't fit in a uint8 slot")
         ]
-    ] as const) {
-        it(`should reject ${description}, as TableBuilder does`, () => {
-            expect(() => new TableBuilder(fields, layout as never, version as never)).toThrow(
-                error
-            );
-            expect(() => new TableSizer(fields, layout as never, version as never)).toThrow(error);
-            expect(() =>
-                TableWriter.versionedTableBytes(fields, layout as never, version as never, 1)
-            ).toThrow(error);
-        });
-    }
+    ])('should reject %s, as TableBuilder does', (_, fields, layout, version, error) => {
+        expect(() => new TableBuilder(fields, layout as never, version as never)).toThrow(error);
+        expect(() => new TableSizer(fields, layout as never, version as never)).toThrow(error);
+        expect(() =>
+            TableWriter.versionedTableBytes(fields, layout as never, version as never, 1)
+        ).toThrow(error);
+    });
 });
 
 describe('counts and sizes', () => {
@@ -324,7 +317,7 @@ describe('counts and sizes', () => {
     // that a double holds exactly
     const invalidCounts = fc.double().filter(count => !(Number.isSafeInteger(count) && count >= 0));
 
-    prop([invalidCounts])(
+    it.prop([invalidCounts])(
         'should reject a number of fields that is not a non-negative integer, as TableBuilder does',
         fields => {
             const error = new RangeError(`A count must be a non-negative integer, not ${fields}`);
@@ -335,7 +328,7 @@ describe('counts and sizes', () => {
         }
     );
 
-    prop([invalidCounts])(
+    it.prop([invalidCounts])(
         'should reject a count that is not a non-negative integer, and leave the sizer and writer as they were',
         count => {
             const sizer = new TableSizer(2);
@@ -359,24 +352,26 @@ describe('counts and sizes', () => {
         }
     );
 
-    for (const size of [0, -2, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-        it(`should reject an array of structs of ${size} bytes, as the writer does`, () => {
+    it.each([0, -2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'should reject an array of structs of %s bytes, as the writer does',
+        size => {
             const error = new RangeError(`A struct's size must be a positive integer, not ${size}`);
 
             expect(() => new TableSizer(1).addStructArray(1, size, 1)).toThrow(error);
             expect(() =>
                 new TableSizer(1).writer().setStructArray(0, new Uint8Array(0), size, 1)
             ).toThrow(error);
-        });
-    }
+        }
+    );
 
-    for (const size of [-2, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-        it(`should reject a struct of ${size} bytes`, () => {
+    it.each([-2, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+        'should reject a struct of %s bytes',
+        size => {
             expect(() => new TableSizer(1).addStruct(size)).toThrow(
                 new RangeError(`A struct's size must be a non-negative integer, not ${size}`)
             );
-        });
-    }
+        }
+    );
 
     it('should write a struct of 0 bytes as TableBuilder does', () => {
         const sizer = new TableSizer(2);
@@ -453,8 +448,9 @@ function writeAround(kind: FieldKind, before: (writer: TableWriter) => void): Ui
 describe('alignments', () => {
     const ALIGNMENTS = [0, 3, -4, 16, 1.5, Number.NaN];
 
-    for (const alignment of ALIGNMENTS) {
-        it(`should reject an alignment of ${alignment} from the sizer and builder`, () => {
+    it.each(ALIGNMENTS)(
+        'should reject an alignment of %s from the sizer and builder',
+        alignment => {
             const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
             const invalid = alignment as 1;
 
@@ -462,13 +458,12 @@ describe('alignments', () => {
             expect(() => new TableSizer(1).addStructArray(1, 4, invalid)).toThrow(error);
             expect(() => new TableBuilder(1).setTable(new Uint8Array(0), invalid)).toThrow(error);
             expect(() => new TableBuilder(1).setStructArray(STRUCT, 4, invalid)).toThrow(error);
-        });
-    }
+        }
+    );
 
-    for (const [alignment, kind] of ALIGNMENTS.flatMap(alignment =>
-        ALIGNED_KINDS.map(kind => [alignment, kind] as const)
-    )) {
-        it(`should reject an alignment of ${alignment} from the writer, and leave it where it was`, () => {
+    it.each(ALIGNMENTS.flatMap(alignment => ALIGNED_KINDS.map(kind => [alignment, kind] as const)))(
+        'should reject an alignment of %s from the writer, and leave it where it was',
+        (alignment, kind) => {
             const error = new RangeError(`An alignment of ${alignment} isn't 1, 2, 4 or 8 bytes`);
             const invalid = alignment as 1;
 
@@ -481,12 +476,12 @@ describe('alignments', () => {
                     );
                 }
             });
-        });
-    }
+        }
+    );
 });
 
 describe('bytes that are part of a larger buffer', () => {
-    prop([inPlaceTables(), fc.integer({ min: 1, max: 255 })])(
+    it.prop([inPlaceTables(), fc.integer({ min: 1, max: 255 })])(
         'should write zero padding into bytes that are not zero',
         (table, fill) => {
             const expected = buildTable(table).bytes();
@@ -522,7 +517,7 @@ describe('bytes that are part of a larger buffer', () => {
         );
     });
 
-    prop([inPlaceTables(), SLICES])(
+    it.prop([inPlaceTables(), SLICES])(
         'should write a table into a slice of a larger buffer, and nothing around it',
         (table, slice) => {
             const expected = writeTable(table);
@@ -533,7 +528,7 @@ describe('bytes that are part of a larger buffer', () => {
         }
     );
 
-    prop([inPlaceTables(), SLICES, fc.nat()])(
+    it.prop([inPlaceTables(), SLICES, fc.nat()])(
         'should throw RangeError for a slice shorter than the table, and write nothing past it',
         (table, slice, cut) => {
             const length = writeTable(table).length;
@@ -545,7 +540,7 @@ describe('bytes that are part of a larger buffer', () => {
         }
     );
 
-    prop([inPlaceTables(), fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
+    it.prop([inPlaceTables(), fc.nat({ max: 64 }), fc.nat({ max: 0xff })])(
         "should write a table into the start of the sizer's writer's bytes, as into new bytes, and leave the rest of them as they were",
         (table, extra, fill) => {
             const expected = writeTable(table);
@@ -559,7 +554,7 @@ describe('bytes that are part of a larger buffer', () => {
         }
     );
 
-    prop([inPlaceTables(), fc.nat(), fc.nat({ max: 0xff })])(
+    it.prop([inPlaceTables(), fc.nat(), fc.nat({ max: 0xff })])(
         "should throw RangeError, naming the table's length, for the sizer's writer of bytes shorter than the table, and write none of them",
         (table, cut, fill) => {
             const length = writeTable(table).length;
@@ -588,7 +583,7 @@ describe('bytes that are part of a larger buffer', () => {
 
 describe('arrays that grow after they are counted', () => {
     // Bytes whose offset in their buffer covers aligned and unaligned arrays
-    prop([ARRAY_FIELDS, fc.nat(), fc.constantFrom(...OFFSET_TYPES), SLICES])(
+    it.prop([ARRAY_FIELDS, fc.nat(), fc.constantFrom(...OFFSET_TYPES), SLICES])(
         'should throw RangeError and write nothing in or past the bytes, leaving the writer where it was',
         (field, cut, offsetType, slice) => {
             fc.pre(field.value.length > 0);
@@ -669,7 +664,7 @@ describe('indices and item ends outside their table', () => {
         fc.integer({ min: -(2 ** 33), max: 2 ** 33 })
     );
 
-    prop([inPlaceTables(), SLICES, fc.nat(), positions])(
+    it.prop([inPlaceTables(), SLICES, fc.nat(), positions])(
         'should write nothing outside the bytes, whatever the index of a field or the item of an end',
         (table, slice, call, position) => {
             const length = writeTable(table).length;
@@ -810,7 +805,7 @@ describe("conversions, as the README's table states them", () => {
         for (const [value, byte] of [
             [300, 44],
             [-1, 255]
-        ] as const) {
+        ]) {
             expect(
                 written(
                     sizer => sizer.addUint8(),
@@ -846,7 +841,7 @@ describe("conversions, as the README's table states them", () => {
         for (const [value, byte] of [
             [1.5, 1],
             [Number.NaN, 0]
-        ] as const) {
+        ]) {
             expect(
                 written(
                     sizer => sizer.addUint8(),
@@ -950,7 +945,7 @@ describe('fields that generated code writes into the room reserved for them', ()
         );
     };
 
-    prop([inPlaceTables()])(
+    it.prop([inPlaceTables()])(
         'should write the bytes of TableBuilder with nested tables, vectors of tables of one length and arrays of structs written whole where the writer reserves them',
         table => {
             expect(outcomeOf(() => writeTableReserving(table))).toStrictEqual(
@@ -985,7 +980,7 @@ describe('fields that generated code writes into the room reserved for them', ()
         expect([...bytes.subarray(4, 8)]).toStrictEqual([3, 9, 14, 19]);
     });
 
-    prop([inPlaceTables(), fc.nat({ max: 16 }), fc.nat({ max: 0xff })])(
+    it.prop([inPlaceTables(), fc.nat({ max: 16 }), fc.nat({ max: 0xff })])(
         'should return bytes of a table with the header that TableBuilder writes, new or at the start of the given bytes',
         (table, extra, fill) => {
             const built = buildTable(table).bytes();
@@ -1007,8 +1002,9 @@ describe('fields that generated code writes into the room reserved for them', ()
         }
     );
 
-    for (const offsetType of OFFSET_TYPES) {
-        it(`should return bytes as long as ${offsetType} offsets address, and throw the sizer’s RangeError for a byte more`, () => {
+    it.each(OFFSET_TYPES)(
+        'should return bytes as long as %s offsets address, and throw the sizer’s RangeError for a byte more',
+        offsetType => {
             const max = MAX_VALUES[offsetType];
             const layout = TableLayout.create({ sized: true, offsetType });
             const sizer = new TableSizer(1, layout);
@@ -1025,8 +1021,8 @@ describe('fields that generated code writes into the room reserved for them', ()
                     `The table's fields make it ${max + 1} bytes, too long for ${offsetType} offsets`
                 )
             );
-        });
-    }
+        }
+    );
 
     it('should check the header and version as the sizer does, and bytes as its writer does, before writing any', () => {
         const versioned = TableLayout.create({ versioned: true, offsetType: 'uint8' });

@@ -10,6 +10,7 @@
     "include": ["."],
     "references": [
         { "path": "../.." },
-        { "path": "../conformance" }
+        { "path": "../conformance" },
+        { "path": "../../../test-runner" }
     ]
 }

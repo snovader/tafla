@@ -1,6 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, it } from 'node:test';
-import { expect } from '../conformance/expect.ts';
+import { describe, expect, it } from 'test-runner';
 import {
     read,
     serialize,
@@ -57,18 +56,12 @@ describe('the checked-in cases (run `yarn conformance:generate` to update them)'
     });
 });
 
-for (const [language, shapes] of SHAPES) {
-    describe(language, () => {
-        for (const shapesCase of SHAPES_CASES) {
-            it(`should write ${shapesCase.name} byte for byte`, () => {
-                expect(serialize(shapes, shapesCase)).toStrictEqual(bytesOf(shapesCase.name));
-            });
-        }
-
-        for (const { name, type, fields } of SHAPES_CASES) {
-            it(`should read back the fields of ${name}`, () => {
-                expect(read(shapes, type, bytesOf(name))).toEqual(fields);
-            });
-        }
+describe.each(SHAPES)('%s', (_, shapes) => {
+    it.each(SHAPES_CASES)('should write $name byte for byte', shapesCase => {
+        expect(serialize(shapes, shapesCase)).toStrictEqual(bytesOf(shapesCase.name));
     });
-}
+
+    it.each(SHAPES_CASES)('should read back the fields of $name', ({ name, type, fields }) => {
+        expect(read(shapes, type, bytesOf(name))).toEqual(fields);
+    });
+});

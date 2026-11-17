@@ -1,4 +1,4 @@
-import * as fc from 'fast-check';
+import { fc } from 'test-runner/fast-check';
 
 // Node 26.13 and 27's `TextEncoder.encodeInto()` sometimes stops a UTF-16 code
 // unit short of bytes of exactly a string's UTF-8 length, for strings of more

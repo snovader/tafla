@@ -4,7 +4,8 @@
   "type": "module",
   "workspaces": [
     "benchmarks",
-    "core"
+    "core",
+    "test-runner"
   ],
   "scripts": {
     "bench": "node bundle.ts node --conditions=tafla-bundle benchmarks/fields/main.ts",
@@ -15,8 +16,8 @@
     "lint:check": "oxlint",
     "lint:write": "oxlint --fix",
     "package:check": "yarn workspace tafla build && node core/test/dist.ts",
-    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(bigEndian).test.ts' 'lint/*.test.ts' && node --conditions=tafla-source --experimental-test-module-mocks --test core/test/bigEndian.test.ts",
-    "test:watch": "node --conditions=tafla-source --experimental-test-module-mocks --test --watch 'core/test/**/*.test.ts' 'lint/*.test.ts'",
+    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(bigEndian).test.ts' 'lint/*.test.ts' 'test-runner/test/*.test.ts' && node --conditions=tafla-source --experimental-test-module-mocks --test core/test/bigEndian.test.ts",
+    "test:watch": "node --conditions=tafla-source --experimental-test-module-mocks --test --watch 'core/test/**/*.test.ts' 'lint/*.test.ts' 'test-runner/test/*.test.ts'",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
@@ -25,6 +26,7 @@
     "oxlint": "^1.93.0",
     "oxlint-tsgolint": "^7.0.2007",
     "rolldown": "^1.3.2",
+    "test-runner": "workspace:^",
     "typescript": "^7.0.2"
   }
 }

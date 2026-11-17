@@ -1,8 +1,7 @@
 import { mock } from 'node:test';
-import * as fc from 'fast-check';
+import { expect } from 'test-runner';
+import { fc, it } from 'test-runner/fast-check';
 import type { TableDescription } from './conformance/description.ts';
-import { expect } from './conformance/expect.ts';
-import { prop } from './conformance/property.ts';
 
 // Runs tafla as if on a big-endian host. This host is little-endian, so the
 // arrays it writes must come out in reverse byte order per element, which is
@@ -32,7 +31,7 @@ const { buildTable, nestedInPlace, readTable, writeTable, ELEMENT_SIZES } =
 // elements from 8
 const ELEMENTS = 8;
 
-prop([fc.array(fc.double()), fc.boolean()])(
+it.prop([fc.array(fc.double()), fc.boolean()])(
     'should byte-swap each element, copied or converted, on a big-endian host',
     (values, typed) => {
         const writer = new TableWriter(new Uint8Array(ELEMENTS + values.length * 4), 1);
@@ -47,7 +46,7 @@ prop([fc.array(fc.double()), fc.boolean()])(
     }
 );
 
-prop([fc.array(fc.double(), { minLength: 1, maxLength: 8 }), fc.nat(), SLICES])(
+it.prop([fc.array(fc.double(), { minLength: 1, maxLength: 8 }), fc.nat(), SLICES])(
     'should throw a RangeError for an array that grows after it is counted on a big-endian host, writing nothing',
     (values, cut, slice) => {
         const counted = cut % values.length;
@@ -61,7 +60,7 @@ prop([fc.array(fc.double(), { minLength: 1, maxLength: 8 }), fc.nat(), SLICES])(
     }
 );
 
-prop([ARRAY_FIELDS])(
+it.prop([ARRAY_FIELDS])(
     'should byte-swap the elements of every array type on a big-endian host',
     field => {
         const table: TableDescription = {
@@ -81,7 +80,7 @@ prop([ARRAY_FIELDS])(
     }
 );
 
-prop([tables(), SLICES])(
+it.prop([tables(), SLICES])(
     'should read back the values of a table built from any description on a big-endian host',
     (table, slice) => {
         const bytes = sliceOf(buildTable(table).bytes(), slice);
@@ -93,7 +92,7 @@ prop([tables(), SLICES])(
 // TableBuilder writes through a TableWriter too, so this compares the sizer's
 // count of each table with the builder's, and their calls of the writer. The
 // tests above check the bytes that the builder writes through it.
-prop([tables().map(nestedInPlace).filter(fitsItsLayout)])(
+it.prop([tables().map(nestedInPlace).filter(fitsItsLayout)])(
     'should count each table as long as TableBuilder does on a big-endian host, and write the same bytes',
     table => {
         expect(writeTable(table)).toStrictEqual(buildTable(table).bytes());

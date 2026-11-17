@@ -1,4 +1,4 @@
-import * as fc from 'fast-check';
+import { fc } from 'test-runner/fast-check';
 import {
     toJsonNumber,
     type Alignment,

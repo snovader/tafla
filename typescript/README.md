@@ -33,13 +33,15 @@ types. They're the generator's golden files, which `rust/gen/README.md`
 describes: rewrite them with the generator rather than by hand.
 
 Tests run in Node's test runner, `node:test`, whose module loader strips the
-types of `.ts` files. They assert with Vitest's matchers, from
-`@vitest/expect`, which `core/test/conformance/expect.ts` sets up on chai and
-exports, and declare property tests with `prop()`, from
-`core/test/conformance/property.ts`, which runs them with fast-check. oxlint's
-rules for Vitest see only what is imported from `vitest`, so
-`lint/testRules.ts` has rules of its own for these tests, such as that each
-test asserts. CI runs them in Node 24 and 26. The big-endian tests mock a module with the `exports`
+types of `.ts` files, through `test-runner`, a package of this project's that
+declares them with Vitest's API and asserts with Vitest's matchers, from
+`@vitest/expect`. Tests import `describe`, `it` and `expect` from
+`test-runner`, as they would from `vitest`, and `fc` and `it`, with
+`it.prop()`, from `test-runner/fast-check`, as they would from
+`@fast-check/vitest`. `test-runner/README.md` describes it. oxlint's rules for
+Vitest see only what is imported from `vitest`, so `lint/testRules.ts` has
+rules of its own for these tests, such as that each test asserts. CI runs them
+in Node 24 and 26. The big-endian tests mock a module with the `exports`
 option of `mock.module()`, which Node 24 has from 24.15.
 
 ## Source and build

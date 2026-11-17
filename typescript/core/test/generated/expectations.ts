@@ -1,5 +1,5 @@
+import { expect } from 'test-runner';
 import { DecodeError } from 'tafla';
-import { expect } from '../conformance/expect.ts';
 
 /**
  * Expects reading bytes to return values or throw `DecodeError`, rather than

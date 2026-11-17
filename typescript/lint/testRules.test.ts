@@ -1,12 +1,11 @@
 import plugin from './plugin.ts';
 import { tester } from './ruleTester.ts';
 
-// What the rules recognize: tests and describe blocks from node:test, and
-// the tests' own expect() and prop(), from wherever they're imported
+// What the rules recognize: tests, describe blocks and expect() from
+// test-runner, and tests with `prop` from its fast-check subpath
 const IMPORTS = [
-    "import { describe, it, suite, test } from 'node:test';",
-    "import { expect } from './conformance/expect.ts';",
-    "import { prop } from './conformance/property.ts';"
+    "import { describe, expect, suite } from 'test-runner';",
+    "import { it, test } from 'test-runner/fast-check';"
 ].join('\n');
 
 /** Code that imports what the rules recognize */
@@ -25,11 +24,14 @@ tester.run('expect-expect', plugin.rules['expect-expect'], {
         imported(
             "it('asserts in a callback', () => { [1].forEach(value => { expect(value).toBe(1); }); });"
         ),
-        imported("prop([arbitrary])('asserts', value => { expect(value).toBe(value); });"),
+        imported("it.prop([arbitrary])('asserts', value => { expect(value).toBe(value); });"),
+        imported("it.each([1])('asserts %i', value => { expect(value).toBe(1); });"),
+        imported("it.for([1])('asserts %i', (value, context) => { expect(value).toBe(1); });"),
+        imported("it.skipIf(skipped).only('asserts', () => { expect(1).toBe(1); });"),
         imported("it.todo('is to be written');"),
         imported("it('runs a function declared elsewhere', check);"),
         imported("describe('has no assertions of its own', () => {});"),
-        // An `it` that isn't node:test's
+        // An `it` that isn't test-runner's
         "function it(name: string, run: () => void): void { run(); }\nit('runs', () => {});"
     ],
     invalid: [
@@ -52,12 +54,27 @@ tester.run('expect-expect', plugin.rules['expect-expect'], {
         },
         {
             name: 'a property that returns a boolean',
-            code: imported("prop([arbitrary])('holds', value => value >= 0);"),
+            code: imported("it.prop([arbitrary])('holds', value => value >= 0);"),
+            errors: [{ message: NO_ASSERTION }]
+        },
+        {
+            name: 'a test of each row',
+            code: imported("it.skip.each([1, 2])('asserts nothing about %i', value => {});"),
+            errors: [{ message: NO_ASSERTION }]
+        },
+        {
+            name: 'a test that runs on a condition',
+            code: imported("test.runIf(enabled)('asserts nothing', () => {});"),
             errors: [{ message: NO_ASSERTION }]
         },
         {
             name: 'a test imported under another name',
-            code: "import { it as check } from 'node:test';\ncheck('asserts nothing', () => {});",
+            code: "import { it as check } from 'test-runner';\ncheck('asserts nothing', () => {});",
+            errors: [{ message: NO_ASSERTION }]
+        },
+        {
+            name: "a test of node:test's",
+            code: "import { it } from 'node:test';\nit('asserts nothing', () => {});",
             errors: [{ message: NO_ASSERTION }]
         },
         {
@@ -74,7 +91,8 @@ const STANDALONE =
 tester.run('no-standalone-expect', plugin.rules['no-standalone-expect'], {
     valid: [
         imported("it('asserts', () => { expect(1).toBe(1); });"),
-        imported("prop([arbitrary])('asserts', value => { expect(value).toBe(value); });"),
+        imported("it.prop([arbitrary])('asserts', value => { expect(value).toBe(value); });"),
+        imported("it.each([1])('asserts %i', value => { expect(value).toBe(1); });"),
         imported(
             "test('asserts in a callback', () => { [1].forEach(value => { expect(value).toBe(1); }); });"
         ),
@@ -112,6 +130,13 @@ tester.run('no-standalone-expect', plugin.rules['no-standalone-expect'], {
             name: 'an assertion in a callback in a describe block',
             code: imported(
                 "describe.skip('a block', () => { [1].forEach(value => { expect(value).toBe(1); }); });"
+            ),
+            errors: [{ message: STANDALONE }]
+        },
+        {
+            name: 'an assertion in a describe block of each row',
+            code: imported(
+                "describe.each([1])('a block for %i', value => { expect(value).toBe(1); });"
             ),
             errors: [{ message: STANDALONE }]
         }

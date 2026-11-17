@@ -1,0 +1,24 @@
+{
+  "name": "test-runner",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Vitest's API and matchers for tests, on Node's test runner",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./source/index.ts",
+    "./fast-check": "./source/fastCheck.ts"
+  },
+  "dependencies": {
+    "@vitest/expect": "^5.1.0",
+    "@vitest/spy": "^5.1.0",
+    "@vitest/utils": "^5.1.0",
+    "fast-check": "^4.10.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
