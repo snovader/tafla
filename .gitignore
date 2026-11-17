@@ -2,6 +2,8 @@
 
 # TypeScript
 node_modules
+# The declarations and build info of tsc -b, which the tsconfigs' outDir sets
+/typescript/.cache
 /typescript/core/.bundle
 /typescript/**/dist
 /typescript/.yarn/*
