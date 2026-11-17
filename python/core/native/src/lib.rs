@@ -1,15 +1,20 @@
-//! The native implementation of the classes of tafla's Python runtime that
-//! the code that tafla-gen generates uses: `TableLayout`, `FixedFields`,
-//! `TableWriter` and `ByteBuffer`, with the pure-Python classes' API,
-//! conversions and errors. `tafla` imports them from this module, `_native`,
-//! unless it's missing or `TAFLA_PUREPYTHON` is set, and the pure-Python
-//! classes otherwise.
+//! The native implementation of the classes of tafla's Python runtime:
+//! `TableLayout`, `FixedFields`, `TableWriter`, `TableBuilder` and
+//! `ByteBuffer`, with the pure-Python classes' API, conversions and errors.
+//! `tafla` imports them from this module, `_native`, unless it's missing or
+//! `TAFLA_PUREPYTHON` is set, and the pure-Python classes otherwise.
 //!
 //! Reads go through the Rust runtime's `ByteBuffer`, for its bounds checks.
 //! Writes append to bytes that grow, as the pure-Python `TableWriter`'s
 //! `bytearray` does, which the Rust runtime's writer doesn't, since it writes
-//! into the length that a sizer counted.
+//! into the length that a sizer counted. So does `TableBuilder`, writing
+//! each field when it's set, which the Rust runtime's builder can't do for
+//! Python: its in-place tables are closures that hold it borrowed, and it
+//! borrows what it writes for a lifetime, where Python's fills call back into
+//! the same object, and its values are owned objects.
 
+mod builder;
+mod bytes;
 mod elements;
 mod fixed_fields;
 mod layout;
@@ -57,14 +62,16 @@ mod test_hooks {
     }
 }
 
-/// The native implementation of the classes of tafla's runtime that the code
-/// that tafla-gen generates uses, which ``tafla`` imports from here
+/// The native implementation of the classes of tafla's runtime, which
+/// ``tafla`` imports from here
 #[pymodule(gil_used = false)]
 fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<layout::TableLayout>()?;
     module.add_class::<fixed_fields::FixedFields>()?;
     module.add_class::<writer::TableWriter>()?;
     module.add_class::<reader::ByteBuffer>()?;
+    module.add_class::<builder::TableBuilder>()?;
+    module.add_class::<builder::Table>()?;
     #[cfg(feature = "test-hooks")]
     module.add_function(wrap_pyfunction!(
         test_hooks::_set_little_endian_host,
