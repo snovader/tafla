@@ -7,6 +7,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <!-- The tests document themselves by their names -->
         <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <!-- RoundTripTests reads tables in native memory, through spans of pointers -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>

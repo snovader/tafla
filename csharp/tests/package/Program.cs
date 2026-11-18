@@ -28,7 +28,7 @@ if (name != "installed" || values is not [21.75f, 18.5f])
 // Bytes cut short fail with the package's decode error
 try
 {
-    var truncated = new TableReader(bytes.AsMemory(0, bytes.Length - 1), layout);
+    var truncated = new TableReader(bytes.AsSpan(0, bytes.Length - 1), layout);
     truncated.GetFloat32Array(truncated.FieldOffset(truncated.RootOffset(0), 1));
     Console.Error.WriteLine("Read an array past the end of the bytes");
     return 1;
