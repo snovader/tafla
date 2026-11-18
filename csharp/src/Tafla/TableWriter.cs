@@ -90,8 +90,8 @@ public struct TableWriter
     /// <remarks>
     /// It's for the code that tafla-gen generates, as Rust's <c>table_bytes()</c> and Go's
     /// <c>AppendTable()</c> are, which writes a message this way when its fields' sizes are all fixed
-    /// but for a string after them, so that only the string can make it too long, in a little more
-    /// than half the time that a sizer and a writer take.
+    /// but for a string after them, so that only the string can make it too long, in two thirds of the
+    /// time that a sizer and a writer take.
     /// </remarks>
     /// <exception cref="BuildException">
     /// The header alone is too long for the layout's offset type, as <see cref="TableSizer"/> rejects it,

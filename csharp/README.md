@@ -158,9 +158,9 @@ such fields, and a string after them, is written whole without a sizer and a
 writer, into the bytes that `TableWriter.CreateTableBytes()` returns with
 its header, after `TableSizer.Utf8Length()` counts the string. On an Apple M2
 Pro with .NET 10, tafla-gen's code wrote a vector of 100 tables of a
-`float32` and a nested table of two `float32`s in 0.32 of the time that
+`float32` and a nested table of two `float32`s in 0.31 of the time that
 writing each field took, and a table of three 8-byte scalars and a 16-byte
-string in 0.56 of the time.
+string in 0.67 of the time.
 
 The writer's calls follow from a schema, so it doesn't check them again: a
 field index outside its table, or an item outside its vector, leaves the
@@ -368,4 +368,4 @@ Not yet part of the runtime: recording nested tables in place among a
 reservation of a table's leading fields of fixed sizes among its others, as
 Go's `ReserveFields()` does, which wrote the record above, with a sizer and a
 writer, in 0.89 of the time of each field's call in a prototype, where
-writing it whole took 0.56.
+writing it whole took 0.56 there.
