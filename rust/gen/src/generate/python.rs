@@ -169,19 +169,19 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         typing.push("Unpack");
     }
 
-    let mut buffer = Vec::new();
+    let mut runtime_names = Vec::new();
     if versioned || has_struct {
-        buffer.push("DecodeError");
+        runtime_names.push("DecodeError");
     }
     if (0..schema.definitions.len()).any(|index| fixed_fields(schema, index) > 0) {
-        buffer.push("FixedFields");
+        runtime_names.push("FixedFields");
     }
     if has_message {
-        buffer.push("TableLayout");
+        runtime_names.push("TableLayout");
     }
     if has_table {
-        buffer.push("TableReader");
-        buffer.push("TableWriter");
+        runtime_names.push("TableReader");
+        runtime_names.push("TableWriter");
     }
 
     let standard: Vec<(&str, Vec<&str>)> = vec![
@@ -217,9 +217,9 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         }
     }
     // A schema without definitions imports nothing
-    if !buffer.is_empty() {
+    if !runtime_names.is_empty() {
         writer.blank();
-        from_import(writer, runtime, &buffer);
+        from_import(writer, runtime, &runtime_names);
     }
 }
 
