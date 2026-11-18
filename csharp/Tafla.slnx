@@ -2,6 +2,9 @@
   <Folder Name="/src/">
     <Project Path="src/Tafla/Tafla.csproj" />
   </Folder>
+  <Folder Name="/fuzz/">
+    <Project Path="fuzz/Tafla.Fuzz/Tafla.Fuzz.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Tafla.Generated/Tafla.Generated.csproj" />
     <Project Path="tests/Tafla.Tests/Tafla.Tests.csproj" />

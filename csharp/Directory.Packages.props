@@ -1,7 +1,9 @@
 <Project>
-    <!-- The versions of the tests' and the benchmarks' packages. The runtime depends on none. -->
+    <!-- The versions of the tests', the fuzz targets' and the benchmarks' packages. The runtime depends
+         on none. -->
     <ItemGroup>
         <PackageVersion Include="CsCheck" Version="5.0.1" />
+        <PackageVersion Include="SharpFuzz" Version="2.3.0" />
         <PackageVersion Include="xunit.v3" Version="4.0.3" />
     </ItemGroup>
 

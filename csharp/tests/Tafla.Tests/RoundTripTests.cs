@@ -85,34 +85,47 @@ public class RoundTripTests
         uint[] float32s = [0x8000_0000, 0x7fc0_0000, 0xffc0_0000, 0x7f80_0001, 0xff80_1234];
         ulong[] float64s = [0x8000_0000_0000_0000, 0x7ff8_0000_0000_0000, 0xfff8_0000_0000_0000, 0x7ff0_0000_0000_0001];
 
+        // From their bits in memory, since 32-bit x86 may quiet a signalling NaN that a method returns
+        var singles = MemoryMarshal.Cast<uint, float>(float32s);
+        var doubles = MemoryMarshal.Cast<ulong, double>(float64s);
+
         var builder = new TableBuilder(float32s.Length + float64s.Length + 2);
-        foreach (var bits in float32s)
+        foreach (var value in singles)
         {
-            builder.SetFloat32(BitConverter.UInt32BitsToSingle(bits));
+            builder.SetFloat32(value);
         }
 
-        foreach (var bits in float64s)
+        foreach (var value in doubles)
         {
-            builder.SetFloat64(BitConverter.UInt64BitsToDouble(bits));
+            builder.SetFloat64(value);
         }
 
-        builder.SetFloat32Array([.. float32s.Select(BitConverter.UInt32BitsToSingle)]);
-        builder.SetFloat64Array([.. float64s.Select(BitConverter.UInt64BitsToDouble)]);
+        builder.SetFloat32Array(singles);
+        builder.SetFloat64Array(doubles);
 
+        // The bytes keep every bit, and so do the getters, but for a signalling NaN on 32-bit x86
         var reader = new TableReader(builder.ToArray());
         var index = 0;
         foreach (var bits in float32s)
         {
-            Assert.Equal(bits, BitConverter.SingleToUInt32Bits(reader.GetFloat32(reader.RootOffset(index++))));
+            var position = reader.RootOffset(index++);
+            Assert.Equal(bits, reader.GetUInt32(position));
+
+            var read = BitConverter.SingleToUInt32Bits(reader.GetFloat32(position));
+            Assert.True(Scalars.ReadsAs(ScalarType.Float32, bits, read), $"Read {read:x8} for {bits:x8}");
         }
 
         foreach (var bits in float64s)
         {
-            Assert.Equal(bits, BitConverter.DoubleToUInt64Bits(reader.GetFloat64(reader.RootOffset(index++))));
+            var position = reader.RootOffset(index++);
+            Assert.Equal(bits, reader.GetUInt64(position));
+
+            var read = BitConverter.DoubleToUInt64Bits(reader.GetFloat64(position));
+            Assert.True(Scalars.ReadsAs(ScalarType.Float64, bits, read), $"Read {read:x16} for {bits:x16}");
         }
 
-        Assert.Equal(float32s, reader.GetFloat32Array(reader.RootOffset(index++)).ToArray().Select(BitConverter.SingleToUInt32Bits));
-        Assert.Equal(float64s, reader.GetFloat64Array(reader.RootOffset(index)).ToArray().Select(BitConverter.DoubleToUInt64Bits));
+        Assert.Equal(float32s, MemoryMarshal.Cast<float, uint>(reader.GetFloat32Array(reader.RootOffset(index++))).ToArray());
+        Assert.Equal(float64s, MemoryMarshal.Cast<double, ulong>(reader.GetFloat64Array(reader.RootOffset(index))).ToArray());
 
         // Comparing bits tells -0 from 0, which comparing values doesn't
         Assert.NotEqual(BitConverter.DoubleToUInt64Bits(0.0), BitConverter.DoubleToUInt64Bits(-0.0));

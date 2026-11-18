@@ -2,7 +2,7 @@ name: Fuzz
 
 # Weekly, rather than on every change, since a run takes minutes of each
 # target's time to find anything. The Rust workflow lints the fuzz targets on
-# every change, so that they keep building, and the Go, C++ and Swift
+# every change, so that they keep building, and the Go, C++, Swift and C#
 # workflows run their targets briefly.
 on:
   schedule:
@@ -252,4 +252,66 @@ jobs:
         with:
           name: fuzz-swift-artifacts-${{ matrix.target }}
           path: swift/Fuzz/.build/artifacts
+          if-no-files-found: ignore
+
+  # C#'s fuzz targets, which mirror the runtime's Rust targets, run under
+  # libFuzzer through SharpFuzz, which instruments the runtime's IL. Each runs
+  # on the runtime as it reads arrays here, in place, and built to copy every
+  # array, as a big-endian host and 32-bit Arm do.
+  fuzz-csharp:
+    name: Fuzz C# (${{ matrix.target }}, ${{ matrix.arrays }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: csharp
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      # Restores the targets' packages as their packages.lock.json locks them
+      ContinuousIntegrationBuild: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [table_reader, conformance]
+        arrays: [in-place, copied]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Clang's runtime of libFuzzer, to build libfuzzer-dotnet with, whose
+      # package is named after the default Clang's major version
+      - name: Install libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore the corpus
+        uses: actions/cache@v6
+        with:
+          path: csharp/artifacts/fuzz/corpus/${{ matrix.target }}
+          key: fuzz-csharp-corpus-${{ matrix.target }}-${{ matrix.arrays }}-${{ github.run_id }}
+          restore-keys: fuzz-csharp-corpus-${{ matrix.target }}-${{ matrix.arrays }}-
+
+      # fuzz.sh builds libfuzzer-dotnet and the targets, and runs the target
+      # from the corpus and the conformance suite's tables. libFuzzer writes
+      # an input that fails to artifacts/fuzz/<target>/.
+      - name: Run the fuzz target
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 300 }}
+          TAFLA_PORTABLE: ${{ matrix.arrays == 'copied' }}
+        run: fuzz/fuzz.sh ${{ matrix.target }} -max_total_time="$SECONDS_PER_TARGET" -timeout=10
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-csharp-artifacts-${{ matrix.target }}-${{ matrix.arrays }}
+          path: csharp/artifacts/fuzz/${{ matrix.target }}
           if-no-files-found: ignore
