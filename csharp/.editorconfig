@@ -71,3 +71,16 @@ dotnet_diagnostic.IDE1006.severity = warning
 # Test methods are named by what they check, and the tests' model names scalar types and fields
 # after the format's types, such as Int8 and String
 dotnet_diagnostic.CA1720.severity = none
+
+[tests/{Tafla.Generated,names}/**.cs]
+# tafla-gen's code of the example schemas and the tests' own, whose header marks it as generated, which analyzers and
+# `dotnet format` skip in users' projects. Here the build's analyzers check it as the rest, and
+# `dotnet format whitespace --folder` with `--include-generated` its formatting, which plain
+# `dotnet format` skips whatever this says.
+generated_code = false
+
+[tests/names/**.cs]
+# The schema of names that would clash: the fields that the generated code renames take a `_` after
+# their names, as in every target, and its namespace's names are keywords, which it escapes
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1716.severity = none

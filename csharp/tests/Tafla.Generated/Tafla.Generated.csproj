@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- The code that tafla-gen generates from the example schemas at the root of the repository, in a
+         directory of each schema's name, compiled as in a user's library: without implicit usings, and
+         with the analyzers of trimming and ahead-of-time compilation, as the runtime is.
+         rust/gen/tests/golden.rs checks that it's what the generator writes, and Tafla.Tests runs it. -->
+    <PropertyGroup>
+        <IsAotCompatible>true</IsAotCompatible>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- The code of the tests' own schema, of names that would clash in C# -->
+        <Compile Include="../names/*.cs" Link="names/%(Filename)%(Extension)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Tafla/Tafla.csproj" />
+    </ItemGroup>
+</Project>

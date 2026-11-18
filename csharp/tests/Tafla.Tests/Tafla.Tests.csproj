@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/Tafla/Tafla.csproj" />
+        <ProjectReference Include="../Tafla.Generated/Tafla.Generated.csproj" />
     </ItemGroup>
 
     <ItemGroup>

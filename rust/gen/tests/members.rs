@@ -341,3 +341,53 @@ fn cpp_renames_the_members_of_structs_and_fields_structs_and_keywords() {
         ],
     );
 }
+
+#[test]
+fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names() {
+    assert_declares(
+        "csharp",
+        &[
+            "    public byte ToString_ => _reader.GetUInt8(_reader.RootOffset(1));",
+            "    public byte Serialize_ => _reader.GetUInt8(_reader.RootOffset(2));",
+            "    public byte Equals_ => _reader.GetUInt8(_reader.RootOffset(8));",
+            "    public byte Write_ => _reader.GetUInt8(_reader.RootOffset(10));",
+            "    public byte VersionOf_ => _reader.GetUInt8(_reader.RootOffset(12));",
+            "    public required byte Serialize_ { get; init; }",
+            "    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>",
+            "    public byte[] Serialize()",
+            // PascalCase names are never C#'s keywords, nor Python's or
+            // TypeScript's members
+            "    public byte Constructor => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public byte New => _reader.GetUInt8(_reader.RootOffset(3));",
+            "    public byte Int => _reader.GetUInt8(_reader.RootOffset(6));",
+            "    public bool Bool => _reader.GetUInt8(_reader.RootOffset(7)) != 0;",
+            "    public byte Read => _reader.GetUInt8(_reader.RootOffset(9));",
+            "    public byte Then => _reader.GetUInt8(_reader.RootOffset(11));",
+            "    public required byte Writer { get; init; }",
+            "    public required byte Bytes { get; init; }",
+            "    public required byte Read { get; init; }",
+        ],
+    );
+
+    // A field named after its own definition, or its definition's fields,
+    // which C# reserves for their constructors, and after the members of a
+    // struct and of a table's fields
+    assert_generates(
+        "csharp",
+        "message Point { point: uint8; point_fields: uint8; inner: Inner; }\n\
+         table Inner { add_to: uint8; write_to: uint8; }\n\
+         struct Frame { size: uint8; alignment: uint8; serialize_array: uint8; frame: uint8; }",
+        &[
+            "    public byte Point_ => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public required byte PointFields_ { get; init; }",
+            "    public required byte AddTo_ { get; init; }",
+            "    internal void AddTo(ref global::Tafla.TableSizer sizer)",
+            "    public required byte WriteTo_ { get; init; }",
+            "    public const int Size = 4;",
+            "    public required byte Size_ { get; init; }",
+            "    public required byte Alignment_ { get; init; }",
+            "    public required byte SerializeArray_ { get; init; }",
+            "    public required byte Frame_ { get; init; }",
+        ],
+    );
+}

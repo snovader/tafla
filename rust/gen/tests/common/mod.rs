@@ -34,7 +34,7 @@ pub struct GoldenRoot {
 /// target's language, whose tests run them against its runtime and whose
 /// checks type-check, lint and format-check them; `tests/wasm/check.mjs`
 /// keeps the same table.
-pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
+pub const GOLDEN_ROOTS: [GoldenRoot; 8] = [
     GoldenRoot {
         target: "typescript",
         root: "typescript/core/test/generated",
@@ -71,6 +71,12 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
     GoldenRoot {
         target: "cpp",
         root: "cpp/tests/generated",
+        subdirectory: None,
+    },
+    // A library of their own, which csharp/tests/Tafla.Tests runs
+    GoldenRoot {
+        target: "csharp",
+        root: "csharp/tests/Tafla.Generated",
         subdirectory: None,
     },
 ];
