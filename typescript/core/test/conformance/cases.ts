@@ -412,7 +412,7 @@ function equivalentCases(): EquivalentCase[] {
             'bool-nonzero',
             'The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1',
             bools,
-            overwrite(bools.buffer.rootOffset(2), [0x02, 0x80])
+            overwrite(bools.reader.rootOffset(2), [0x02, 0x80])
         )
     ];
 }
@@ -431,7 +431,7 @@ function invalidCases(): InvalidCase[] {
     const structArrays = inspect('struct-arrays');
 
     // The vector of vector-item-layouts holds four items
-    const itemsVector = itemLayouts.buffer.rootOffset(0);
+    const itemsVector = itemLayouts.reader.rootOffset(0);
     const lastEnd = itemsVector + 4 * 4;
 
     return [
@@ -474,7 +474,7 @@ function invalidCases(): InvalidCase[] {
             'array-length-past-end',
             'The length of the last array counts one element more than the table holds',
             floatArrays,
-            lengthenByOne(floatArrays, floatArrays.buffer.rootOffset(1)),
+            lengthenByOne(floatArrays, floatArrays.reader.rootOffset(1)),
             1
         ),
         invalidCase(
@@ -482,7 +482,7 @@ function invalidCases(): InvalidCase[] {
             'The length of the first array is 2^32 - 1, which a reader must not allocate',
             integerArrays,
             overwrite(
-                integerArrays.buffer.rootOffset(0),
+                integerArrays.reader.rootOffset(0),
                 littleEndian(0xffff_ffff, 4)
             ),
             0
@@ -492,7 +492,7 @@ function invalidCases(): InvalidCase[] {
             'The uint16 length of the float64[] of offset-type-uint16 is 2^16 - 1',
             uint16Offsets,
             overwrite(
-                uint16Offsets.buffer.rootOffset(3),
+                uint16Offsets.reader.rootOffset(3),
                 littleEndian(0xffff, 2)
             ),
             3
@@ -501,28 +501,28 @@ function invalidCases(): InvalidCase[] {
             'string-length-past-end',
             'The length of the last string counts one byte more than the table holds',
             strings,
-            lengthenByOne(strings, strings.buffer.rootOffset(8)),
+            lengthenByOne(strings, strings.reader.rootOffset(8)),
             8
         ),
         invalidCase(
             'invalid-utf8-continuation',
             'A string starts with a continuation byte, 0x80',
             strings,
-            overwrite(strings.buffer.rootOffset(2) + 4, [0x80]),
+            overwrite(strings.reader.rootOffset(2) + 4, [0x80]),
             2
         ),
         invalidCase(
             'invalid-utf8-overlong',
             'A string has an overlong encoding of "/", 0xc0 0xaf',
             strings,
-            overwrite(strings.buffer.rootOffset(8) + 5, [0xc0, 0xaf]),
+            overwrite(strings.reader.rootOffset(8) + 5, [0xc0, 0xaf]),
             8
         ),
         invalidCase(
             'invalid-utf8-surrogate',
             'A string has the encoded surrogate U+D800, 0xed 0xa0 0x80',
             strings,
-            overwrite(strings.buffer.rootOffset(3) + 4, [0xed, 0xa0, 0x80]),
+            overwrite(strings.reader.rootOffset(3) + 4, [0xed, 0xa0, 0x80]),
             3
         ),
         invalidCase(
@@ -530,7 +530,7 @@ function invalidCases(): InvalidCase[] {
             'The item count of a vector is 2^32 - 1',
             vectors,
             overwrite(
-                vectors.buffer.rootOffset(1),
+                vectors.reader.rootOffset(1),
                 littleEndian(0xffff_ffff, 4)
             ),
             1
@@ -560,7 +560,7 @@ function invalidCases(): InvalidCase[] {
             'struct-array-count-past-end',
             'The count of the last array of structs counts one struct more than the table holds',
             structArrays,
-            lengthenByOne(structArrays, structArrays.buffer.rootOffset(9)),
+            lengthenByOne(structArrays, structArrays.reader.rootOffset(9)),
             9
         ),
         invalidCase(
@@ -568,7 +568,7 @@ function invalidCases(): InvalidCase[] {
             'The count of the array of structs of three float32s is 2^32 - 1, which a reader must not allocate for',
             structArrays,
             overwrite(
-                structArrays.buffer.rootOffset(6),
+                structArrays.reader.rootOffset(6),
                 littleEndian(0xffff_ffff, 4)
             ),
             6
@@ -578,7 +578,7 @@ function invalidCases(): InvalidCase[] {
             "The offset of the string of the first nested table is 2^32 - 1, past the end even before it's added to the nested table's position",
             nestedTables,
             overwrite(
-                nestedTables.buffer.rootOffset(1) + 2 * 4,
+                nestedTables.reader.rootOffset(1) + 2 * 4,
                 littleEndian(0xffff_ffff, 4)
             ),
             1
@@ -590,7 +590,7 @@ function invalidCases(): InvalidCase[] {
 interface Inspected {
     name: string;
     bytes: Uint8Array;
-    buffer: TableReader;
+    reader: TableReader;
 }
 
 function inspect(name: string): Inspected {
@@ -600,7 +600,7 @@ function inspect(name: string): Inspected {
     return {
         name,
         bytes,
-        buffer: new TableReader(bytes, layoutOf(table.layout))
+        reader: new TableReader(bytes, layoutOf(table.layout))
     };
 }
 
@@ -637,8 +637,8 @@ function invalidCase(
 }
 
 /** Counts one more element or byte in the uint32 length at `position` */
-function lengthenByOne({ buffer }: Inspected, position: number): Corruption {
-    return overwrite(position, littleEndian(buffer.getUint32(position) + 1, 4));
+function lengthenByOne({ reader }: Inspected, position: number): Corruption {
+    return overwrite(position, littleEndian(reader.getUint32(position) + 1, 4));
 }
 
 function truncate(length: number): Corruption {

@@ -38,18 +38,18 @@ fn test_round_trip_owned_values() {
     builder.set_vector(vec![vec![1_u8, 2], vec![3]]).unwrap();
 
     let bytes = builder.to_bytes().unwrap();
-    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
 
-    let floats = buffer
-        .get_f64_array(buffer.root_offset(0).unwrap())
+    let floats = reader
+        .get_f64_array(reader.root_offset(0).unwrap())
         .unwrap();
     assert_eq!(floats.to_vec(), [1.5, -2.5]);
     assert_eq!(
-        buffer.get_str(buffer.root_offset(1).unwrap()).unwrap(),
+        reader.get_str(reader.root_offset(1).unwrap()).unwrap(),
         "owned"
     );
 
-    let vector = buffer.get_vector(buffer.root_offset(2).unwrap()).unwrap();
+    let vector = reader.get_vector(reader.root_offset(2).unwrap()).unwrap();
     assert_eq!(
         vector.iter().collect::<Vec<_>>(),
         [Ok(&[1, 2][..]), Ok(&[3])]
@@ -62,8 +62,8 @@ fn test_vector_items_found_from_their_ends() {
     builder.set_vector([&[1][..], &[], &[2, 3]]).unwrap();
 
     let bytes = builder.to_bytes().unwrap();
-    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
-    let position = buffer.root_offset(0).unwrap();
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let position = reader.root_offset(0).unwrap();
 
     // The count and the three ends, at 4, then the items, from 20
     assert_eq!(
@@ -72,7 +72,7 @@ fn test_vector_items_found_from_their_ends() {
     );
     assert_eq!(bytes[20..], [1, 2, 3]);
 
-    let vector = buffer.get_vector(position).unwrap();
+    let vector = reader.get_vector(position).unwrap();
     assert_eq!(vector.len(), 3);
     assert_eq!(vector.get(2), Some(Ok(&[2, 3][..])));
     assert_eq!(vector.get(1), Some(Ok(&[][..])));
@@ -93,27 +93,27 @@ fn test_round_trip_structs() {
         .unwrap();
 
     let bytes = builder.to_bytes().unwrap();
-    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
 
     // The struct follows the u8 at 12 unpadded, at 13
-    let position = buffer.root_offset(1).unwrap();
+    let position = reader.root_offset(1).unwrap();
     assert_eq!(position, 13);
-    assert_eq!(buffer.get_struct(position, 6).unwrap(), point(3, 2.5));
+    assert_eq!(reader.get_struct(position, 6).unwrap(), point(3, 2.5));
 
     // The array's count is padded from 19 to 20, so that its structs start
     // at 24
-    let position = buffer.root_offset(2).unwrap();
+    let position = reader.root_offset(2).unwrap();
     assert_eq!(position, 20);
-    assert_eq!(buffer.get_u32(position), Ok(2));
+    assert_eq!(reader.get_u32(position), Ok(2));
 
-    let structs = buffer.get_struct_array(position, 6).unwrap();
+    let structs = reader.get_struct_array(position, 6).unwrap();
     let read_y = |point: &[u8; 6]| TableReader::new(point, TableLayout::DEFAULT).get_f32(2);
     let ys: Result<Vec<_>, _> = structs.as_chunks().0.iter().map(read_y).collect();
     assert_eq!(structs, points);
     assert_eq!(ys, Ok(vec![1.5, -0.25]));
 
     // Structs of 0 bytes take none, whatever the count
-    assert_eq!(buffer.get_struct_array(position, 0), Ok(&[][..]));
+    assert_eq!(reader.get_struct_array(position, 0), Ok(&[][..]));
 }
 
 #[test]
@@ -126,13 +126,13 @@ fn test_arrays_in_place_when_aligned() {
 
     for byte_offset in 0..8 {
         let copy = at_byte_offset(&bytes, byte_offset);
-        let buffer = TableReader::new(copy.bytes(), TableLayout::DEFAULT);
+        let reader = TableReader::new(copy.bytes(), TableLayout::DEFAULT);
 
-        let uint8s = buffer.get_u8_array(buffer.root_offset(0).unwrap()).unwrap();
+        let uint8s = reader.get_u8_array(reader.root_offset(0).unwrap()).unwrap();
         assert!(copy.bytes().as_ptr_range().contains(&uint8s.as_ptr()));
 
-        let float64s = buffer
-            .get_f64_array(buffer.root_offset(1).unwrap())
+        let float64s = reader
+            .get_f64_array(reader.root_offset(1).unwrap())
             .unwrap();
         // The array lies a multiple of 8 bytes from the table's start, and
         // is in place where the host aligns f64 to the table's offset: only
@@ -177,8 +177,8 @@ fn test_builder_nested_several_times() {
     // The builder is unchanged by nesting
     assert_eq!(nested.to_bytes().unwrap(), own);
 
-    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
-    let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let vector = reader.get_vector(reader.root_offset(1).unwrap()).unwrap();
     assert_eq!(vector.iter().collect::<Vec<_>>(), [Ok(&own[..]), Ok(&own)]);
 }
 

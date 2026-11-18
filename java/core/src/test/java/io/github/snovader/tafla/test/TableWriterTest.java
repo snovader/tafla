@@ -538,10 +538,10 @@ public class TableWriterTest {
                 type.put(expected, value);
             }
 
-            var buffer = new TableReader(bytes, layout);
-            var elements = buffer.rootOffset(0) + offsetType.size();
+            var reader = new TableReader(bytes, layout);
+            var elements = reader.rootOffset(0) + offsetType.size();
             assertArrayEquals(expected.array(), Arrays.copyOfRange(bytes, elements, elements + expected.capacity()));
-            assertEquals(0x12345678, buffer.getInt32(buffer.rootOffset(1)));
+            assertEquals(0x12345678, reader.getInt32(reader.rootOffset(1)));
         }
     }
 

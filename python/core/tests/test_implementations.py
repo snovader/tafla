@@ -363,9 +363,9 @@ class TestImplementations(unittest.TestCase):
             writer.set_string(1, "a")
             data = bytes(writer.bytes())
 
-            buffer = self.native.TableReader(data, table_layout)
-            self.assertEqual(buffer.get_version(), 3)
-            self.assertEqual(buffer.get_fields(0, fields), (-2,))
+            reader = self.native.TableReader(data, table_layout)
+            self.assertEqual(reader.get_version(), 3)
+            self.assertEqual(reader.get_fields(0, fields), (-2,))
             tables.append(data)
 
         self.assertEqual(tables[1], tables[0])
@@ -387,7 +387,7 @@ class TestImplementations(unittest.TestCase):
         arguments = draw.draw(layout_arguments())
         content = draw.draw(binary(max_size=48))
         description = draw.draw(descriptions())
-        buffers = [
+        readers = [
             (
                 implementation,
                 implementation.TableReader(
@@ -402,9 +402,9 @@ class TestImplementations(unittest.TestCase):
             args = draw.draw(READ_ARGUMENTS[method])
             outcomes = [
                 outcome(
-                    partial(read, buffer, implementation, method, args, description)
+                    partial(read, reader, implementation, method, args, description)
                 )
-                for implementation, buffer in buffers
+                for implementation, reader in readers
             ]
             self.assertEqual(outcomes[1], outcomes[0], describe_call(method, args))
 
@@ -842,9 +842,9 @@ class FixedTable:
 
     def read(self, implementation: Implementation, data: bytes) -> object:
         table_layout = implementation.TableLayout(**self.arguments)
-        buffer = implementation.TableReader(data, table_layout)
-        position = buffer.root_offset(self.description[0]) if self.nested else 0
-        return buffer.get_fields(position, self.fields(implementation))
+        reader = implementation.TableReader(data, table_layout)
+        position = reader.root_offset(self.description[0]) if self.nested else 0
+        return reader.get_fields(position, self.fields(implementation))
 
 
 @dataclass(frozen=True)
@@ -920,7 +920,7 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
 
 
 def read(
-    buffer: Any,
+    reader: Any,
     implementation: Implementation,
     method: str,
     args: tuple[Any, ...],
@@ -929,13 +929,13 @@ def read(
     if method in {"get_fields", "get_vector_fields"}:
         # A nested table's fields, for any offset type
         fields = fixed_fields_of(implementation, description)
-        return getattr(buffer, method)(*args, fields)
+        return getattr(reader, method)(*args, fields)
     if method == "iter_vector_fields":
         fields = fixed_fields_of(implementation, description)
         return _items_until_error(
-            buffer.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
+            reader.iter_vector_fields(*args, fields, lambda offset: ("read", offset))
         )
-    return getattr(buffer, method)(*args)
+    return getattr(reader, method)(*args)
 
 
 def _items_until_error(items: Iterator[object]) -> list[object]:

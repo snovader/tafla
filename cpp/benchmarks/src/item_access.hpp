@@ -29,14 +29,14 @@ struct TaflaItems {
     static constexpr std::string_view name = "tafla";
 
     [[nodiscard]] double last_table(std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto vector = buffer.get_vector(buffer.root_offset(0));
+        const TableReader reader(bytes, TableLayout());
+        const auto vector = reader.get_vector(reader.root_offset(0));
         return sum_table(vector.get_in_place(vector.size() - 1));
     }
 
     [[nodiscard]] double every_table(std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto vector = buffer.get_vector(buffer.root_offset(0));
+        const TableReader reader(bytes, TableLayout());
+        const auto vector = reader.get_vector(reader.root_offset(0));
 
         double sum = 0;
         for (const auto item : vector.items_in_place()) {
@@ -46,14 +46,14 @@ struct TaflaItems {
     }
 
     [[nodiscard]] double last_struct(std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto structs = buffer.get_struct_array(buffer.root_offset(0), Tafla::kItemSize);
+        const TableReader reader(bytes, TableLayout());
+        const auto structs = reader.get_struct_array(reader.root_offset(0), Tafla::kItemSize);
         return sum_struct(structs.data() + structs.size() - Tafla::kItemSize);
     }
 
     [[nodiscard]] double every_struct(std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto structs = buffer.get_struct_array(buffer.root_offset(0), Tafla::kItemSize);
+        const TableReader reader(bytes, TableLayout());
+        const auto structs = reader.get_struct_array(reader.root_offset(0), Tafla::kItemSize);
 
         double sum = 0;
         for (std::size_t start = 0; start < structs.size(); start += Tafla::kItemSize) {

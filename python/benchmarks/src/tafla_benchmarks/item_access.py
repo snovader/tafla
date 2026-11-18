@@ -57,36 +57,36 @@ ITEM_STRUCT = Struct("<fff")
 
 
 def _last_table_by_hand(data: Buffer) -> float:
-    buffer = TableReader(data)
-    vector = buffer.root_offset(0)
-    item = buffer.get_vector_offset(vector, buffer.get_vector_length(vector) - 1)
+    reader = TableReader(data)
+    vector = reader.root_offset(0)
+    item = reader.get_vector_offset(vector, reader.get_vector_length(vector) - 1)
 
-    return _sum_table(buffer, item)
+    return _sum_table(reader, item)
 
 
 def _every_table_by_hand(data: Buffer) -> float:
-    buffer = TableReader(data)
+    reader = TableReader(data)
 
     total = 0.0
-    for item in buffer.get_vector_offsets(buffer.root_offset(0)):
-        total += _sum_table(buffer, item)
+    for item in reader.get_vector_offsets(reader.root_offset(0)):
+        total += _sum_table(reader, item)
 
     return total
 
 
-def _sum_table(buffer: TableReader, item: int) -> float:
-    pair = buffer.field_offset(item, 1)
+def _sum_table(reader: TableReader, item: int) -> float:
+    pair = reader.field_offset(item, 1)
 
     return (
-        buffer.get_float32(buffer.field_offset(item, 0))
-        + buffer.get_float32(buffer.field_offset(pair, 0))
-        + buffer.get_float32(buffer.field_offset(pair, 1))
+        reader.get_float32(reader.field_offset(item, 0))
+        + reader.get_float32(reader.field_offset(pair, 0))
+        + reader.get_float32(reader.field_offset(pair, 1))
     )
 
 
 def _last_struct_by_hand(data: Buffer) -> float:
-    buffer = TableReader(data)
-    structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
+    reader = TableReader(data)
+    structs = reader.get_struct_array(reader.root_offset(0), ITEM_STRUCT.size)
     value, first, second = ITEM_STRUCT.unpack_from(
         structs, len(structs) - ITEM_STRUCT.size
     )
@@ -95,8 +95,8 @@ def _last_struct_by_hand(data: Buffer) -> float:
 
 
 def _every_struct_by_hand(data: Buffer) -> float:
-    buffer = TableReader(data)
-    structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
+    reader = TableReader(data)
+    structs = reader.get_struct_array(reader.root_offset(0), ITEM_STRUCT.size)
 
     total = 0.0
     for value, first, second in ITEM_STRUCT.iter_unpack(structs):

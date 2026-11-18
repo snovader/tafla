@@ -224,8 +224,8 @@ TEST(GeneratedShapes, AnItemIsReadInPlacePastItsEndWithinTheBytesOfItsItemList) 
 
     // The first item's offset of its value, at the start of the item, points
     // at the second item's value
-    const TableReader buffer(bytes, TableLayout());
-    const auto vector = buffer.get_vector(buffer.root_offset(0));
+    const TableReader reader(bytes, TableLayout());
+    const auto vector = reader.get_vector(reader.root_offset(0));
     const auto first = static_cast<std::size_t>(vector.get(0).data() - bytes.data());
     const auto second = static_cast<std::size_t>(vector.get(1).data() - bytes.data());
     const auto value = second - first + 8;
@@ -249,8 +249,8 @@ TEST(GeneratedShapes, ACorruptItemFailsWhenItIsReadRatherThanWhenTheGetterIsCall
 
     // The last item's end, after the vector's count and the two ends before
     // it, lies past the bytes
-    const TableReader buffer(bytes, TableLayout());
-    store_le(bytes.data() + buffer.root_offset(0) + 3 * 4, std::uint32_t{0xffff'ffff});
+    const TableReader reader(bytes, TableLayout());
+    store_le(bytes.data() + reader.root_offset(0) + 3 * 4, std::uint32_t{0xffff'ffff});
 
     const auto items = shapes::ItemList(bytes).items();
     ASSERT_EQ(items.size(), 3U);

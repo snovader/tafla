@@ -67,12 +67,12 @@ func FuzzTableReader(f *testing.F) {
 			checkVersion(t, tafla.NewTableReader(bytes, layout.Versioned()))
 			checkVersion(t, tafla.NewTableReader(bytes, layout.Sized().Versioned()))
 
-			buffer := tafla.NewTableReader(bytes, layout)
+			reader := tafla.NewTableReader(bytes, layout)
 			for position := range len(bytes) + 9 {
-				checkPosition(t, buffer, position)
+				checkPosition(t, reader, position)
 			}
 			for _, position := range farPositions {
-				checkPosition(t, buffer, position)
+				checkPosition(t, reader, position)
 			}
 		}
 	})
@@ -120,12 +120,12 @@ func FuzzConformance(f *testing.F) {
 }
 
 // checkHeader reads the table's size and its root fields' offsets
-func checkHeader(t *testing.T, buffer tafla.TableReader) {
-	bytes := buffer.Bytes()
-	layout := buffer.Layout()
+func checkHeader(t *testing.T, reader tafla.TableReader) {
+	bytes := reader.Bytes()
+	layout := reader.Layout()
 	width := layout.OffsetSize()
 
-	size, err := buffer.Size()
+	size, err := reader.Size()
 	if layout.IsSized() {
 		expected, ok := slotAt(bytes, 0, layout.OffsetType())
 		checkResult(t, bytes, size, err, int(expected), ok && fitsInt(uint64(expected)))
@@ -145,37 +145,37 @@ func checkHeader(t *testing.T, buffer tafla.TableReader) {
 			expected, ok = slotAt(bytes, layout.HeaderSize()+index*width, layout.OffsetType())
 		}
 
-		offset, err := buffer.RootOffset(index)
+		offset, err := reader.RootOffset(index)
 		checkResult(t, bytes, offset, err, int(expected), ok && fitsInt(uint64(expected)))
 	}
 }
 
-func checkVersion(t *testing.T, buffer tafla.TableReader) {
-	bytes := buffer.Bytes()
-	layout := buffer.Layout()
+func checkVersion(t *testing.T, reader tafla.TableReader) {
+	bytes := reader.Bytes()
+	layout := reader.Layout()
 	position := 0
 	if layout.IsSized() {
 		position = layout.OffsetSize()
 	}
 
 	expected, ok := slotAt(bytes, position, layout.OffsetType())
-	version, err := buffer.Version()
+	version, err := reader.Version()
 	checkResult(t, bytes, version, err, expected, ok)
-	checkHeader(t, buffer)
+	checkHeader(t, reader)
 }
 
 // checkPosition reads every type at position
-func checkPosition(t *testing.T, buffer tafla.TableReader, position int) {
-	bytes := buffer.Bytes()
-	offsetType := buffer.Layout().OffsetType()
+func checkPosition(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
+	offsetType := reader.Layout().OffsetType()
 
-	checkScalars(t, buffer, position)
-	checkArrays(t, buffer, position)
+	checkScalars(t, reader, position)
+	checkArrays(t, reader, position)
 
 	stringBytes, ok := arrayAt(bytes, offsetType, position, 1)
-	read, err := buffer.GetUint8Array(position)
+	read, err := reader.GetUint8Array(position)
 	checkIn(t, bytes, read, err, stringBytes, ok)
-	text, err := buffer.GetString(position)
+	text, err := reader.GetString(position)
 	if valid := ok && utf8.Valid(stringBytes); valid {
 		checkResult(t, bytes, text, err, string(stringBytes), true)
 	} else {
@@ -185,11 +185,11 @@ func checkPosition(t *testing.T, buffer tafla.TableReader, position int) {
 	remaining := max(len(bytes)-max(position, 0), 0)
 	for _, size := range []int{0, 1, 2, 3, 8, 13, remaining, remaining + 1, math.MaxInt} {
 		expected, ok := rangeOf(bytes, position, uint64(size))
-		read, err := buffer.GetStruct(position, size)
+		read, err := reader.GetStruct(position, size)
 		checkIn(t, bytes, read, err, expected, ok)
 
 		expected, ok = arrayAt(bytes, offsetType, position, uint64(size))
-		read, err = buffer.GetStructArray(position, size)
+		read, err = reader.GetStructArray(position, size)
 		checkIn(t, bytes, read, err, expected, ok)
 	}
 
@@ -200,16 +200,16 @@ func checkPosition(t *testing.T, buffer tafla.TableReader, position int) {
 			expected, ok = slotAt(bytes, position+index*offsetType.Size(), offsetType)
 		}
 
-		offset, err := buffer.FieldOffset(position, index)
+		offset, err := reader.FieldOffset(position, index)
 		ok = ok && fitsInt(uint64(position)+uint64(expected))
 		checkResult(t, bytes, offset, err, position+int(expected), ok)
 	}
 
-	checkVector(t, buffer, position)
+	checkVector(t, reader, position)
 }
 
-func checkScalars(t *testing.T, buffer tafla.TableReader, position int) {
-	bytes := buffer.Bytes()
+func checkScalars(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
 	scalar := func(size int) uint64 {
 		var value uint64
 		for index := size - 1; index >= 0; index-- {
@@ -227,38 +227,38 @@ func checkScalars(t *testing.T, buffer tafla.TableReader, position int) {
 	}
 
 	// Compared by their bits, which are the bits of floats too
-	int8Value, err := buffer.GetInt8(position)
+	int8Value, err := reader.GetInt8(position)
 	check(1, uint64(uint8(int8Value)), err)
-	uint8Value, err := buffer.GetUint8(position)
+	uint8Value, err := reader.GetUint8(position)
 	check(1, uint64(uint8Value), err)
-	int16Value, err := buffer.GetInt16(position)
+	int16Value, err := reader.GetInt16(position)
 	check(2, uint64(uint16(int16Value)), err)
-	uint16Value, err := buffer.GetUint16(position)
+	uint16Value, err := reader.GetUint16(position)
 	check(2, uint64(uint16Value), err)
-	int32Value, err := buffer.GetInt32(position)
+	int32Value, err := reader.GetInt32(position)
 	check(4, uint64(uint32(int32Value)), err)
-	uint32Value, err := buffer.GetUint32(position)
+	uint32Value, err := reader.GetUint32(position)
 	check(4, uint64(uint32Value), err)
-	int64Value, err := buffer.GetInt64(position)
+	int64Value, err := reader.GetInt64(position)
 	check(8, uint64(int64Value), err)
-	uint64Value, err := buffer.GetUint64(position)
+	uint64Value, err := reader.GetUint64(position)
 	check(8, uint64Value, err)
-	float32Value, err := buffer.GetFloat32(position)
+	float32Value, err := reader.GetFloat32(position)
 	check(4, uint64(math.Float32bits(float32Value)), err)
-	float64Value, err := buffer.GetFloat64(position)
+	float64Value, err := reader.GetFloat64(position)
 	check(8, math.Float64bits(float64Value), err)
 }
 
-func checkArrays(t *testing.T, buffer tafla.TableReader, position int) {
-	checkArray(t, buffer, position, tafla.TableReader.GetInt8Array, func(v int8) uint64 { return uint64(uint8(v)) })
-	checkArray(t, buffer, position, tafla.TableReader.GetInt16Array, func(v int16) uint64 { return uint64(uint16(v)) })
-	checkArray(t, buffer, position, tafla.TableReader.GetUint16Array, func(v uint16) uint64 { return uint64(v) })
-	checkArray(t, buffer, position, tafla.TableReader.GetInt32Array, func(v int32) uint64 { return uint64(uint32(v)) })
-	checkArray(t, buffer, position, tafla.TableReader.GetUint32Array, func(v uint32) uint64 { return uint64(v) })
-	checkArray(t, buffer, position, tafla.TableReader.GetInt64Array, func(v int64) uint64 { return uint64(v) })
-	checkArray(t, buffer, position, tafla.TableReader.GetUint64Array, func(v uint64) uint64 { return v })
-	checkArray(t, buffer, position, tafla.TableReader.GetFloat32Array, func(v float32) uint64 { return uint64(math.Float32bits(v)) })
-	checkArray(t, buffer, position, tafla.TableReader.GetFloat64Array, math.Float64bits)
+func checkArrays(t *testing.T, reader tafla.TableReader, position int) {
+	checkArray(t, reader, position, tafla.TableReader.GetInt8Array, func(v int8) uint64 { return uint64(uint8(v)) })
+	checkArray(t, reader, position, tafla.TableReader.GetInt16Array, func(v int16) uint64 { return uint64(uint16(v)) })
+	checkArray(t, reader, position, tafla.TableReader.GetUint16Array, func(v uint16) uint64 { return uint64(v) })
+	checkArray(t, reader, position, tafla.TableReader.GetInt32Array, func(v int32) uint64 { return uint64(uint32(v)) })
+	checkArray(t, reader, position, tafla.TableReader.GetUint32Array, func(v uint32) uint64 { return uint64(v) })
+	checkArray(t, reader, position, tafla.TableReader.GetInt64Array, func(v int64) uint64 { return uint64(v) })
+	checkArray(t, reader, position, tafla.TableReader.GetUint64Array, func(v uint64) uint64 { return v })
+	checkArray(t, reader, position, tafla.TableReader.GetFloat32Array, func(v float32) uint64 { return uint64(math.Float32bits(v)) })
+	checkArray(t, reader, position, tafla.TableReader.GetFloat64Array, math.Float64bits)
 }
 
 // checkArray checks that every way of reading an array's elements reads the
@@ -268,17 +268,17 @@ func checkArrays(t *testing.T, buffer tafla.TableReader, position int) {
 // quadratic in their length.
 func checkArray[T tafla.Element](
 	t *testing.T,
-	buffer tafla.TableReader,
+	reader tafla.TableReader,
 	position int,
 	get func(tafla.TableReader, int) (tafla.ArrayView[T], error),
 	bitsOf func(T) uint64,
 ) {
-	bytes := buffer.Bytes()
+	bytes := reader.Bytes()
 	var zero T
 	size := len(binaryBytes(zero))
-	expected, ok := arrayAt(bytes, buffer.Layout().OffsetType(), position, uint64(size))
+	expected, ok := arrayAt(bytes, reader.Layout().OffsetType(), position, uint64(size))
 
-	view, err := get(buffer, position)
+	view, err := get(reader, position)
 	checkIn(t, bytes, view.Bytes(), err, expected, ok)
 	if err != nil {
 		return
@@ -343,16 +343,16 @@ func binaryBytes(value any) []byte {
 
 // checkVector reads the vector at position and each of its items, by
 // iterating, by index and in place
-func checkVector(t *testing.T, buffer tafla.TableReader, position int) {
-	bytes := buffer.Bytes()
-	offsetType := buffer.Layout().OffsetType()
+func checkVector(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
+	offsetType := reader.Layout().OffsetType()
 	width := offsetType.Size()
 
 	// A count, and an end for each item after it, within the bytes
 	count, ok := slotAt(bytes, position, offsetType)
 	ok = ok && uint64(position)+uint64(width)*(uint64(count)+1) <= uint64(len(bytes))
 
-	vector, err := buffer.GetVector(position)
+	vector, err := reader.GetVector(position)
 	if err != nil {
 		if ok {
 			t.Fatalf("a vector at %d: %v", position, err)

@@ -86,7 +86,7 @@ export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize'>;
  */
 export class TableBuilder {
     /**
-     * The table once written: its bytes, and then the buffer of them that
+     * The table once written: its bytes, and then the reader of them that
      * `finalize()` returns
      */
     #written: Uint8Array | TableReader | undefined;
@@ -172,7 +172,7 @@ export class TableBuilder {
 
     /**
      * Writes the table, once, and returns a `TableReader` that reads it; later
-     * calls return the same buffer.
+     * calls return the same reader.
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * the fields no longer fit the table or fill it.
@@ -191,7 +191,7 @@ export class TableBuilder {
 
     /**
      * Writes the table, once, as `finalize()` does, and returns its bytes,
-     * which `finalize()` then returns a buffer of
+     * which `finalize()` then returns a reader of
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * the fields no longer fit the table or fill it.

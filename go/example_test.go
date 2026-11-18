@@ -140,7 +140,7 @@ func readY(bytes []byte, index int) (float32, error) {
 		return 0, err
 	}
 
-	// In place, at its start, in a reader of its parent's offset type
+	// In place, at its start, with a reader of its parent's offset type
 	point := tafla.NewTableReader(item, tafla.TableLayout{})
 	position, err = point.FieldOffset(0, 1)
 	if err != nil {

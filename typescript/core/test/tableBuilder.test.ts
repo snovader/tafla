@@ -31,7 +31,7 @@ it('should reject setting a field after finalizing', () => {
     expect(() => builder.setInt8(1)).toThrow(TypeError);
 });
 
-it('should finalize once and return the same buffer', () => {
+it('should finalize once and return the same reader', () => {
     const builder = new TableBuilder(1);
     builder.setString('once');
 
@@ -45,8 +45,8 @@ it('should write values as they are when finalizing', () => {
     builder.setFloat32Array(values);
     values[0] = 3;
 
-    const buffer = builder.finalize();
-    expect(buffer.getFloat32Array(buffer.rootOffset(0))).toStrictEqual(new Float32Array([3, 2]));
+    const reader = builder.finalize();
+    expect(reader.getFloat32Array(reader.rootOffset(0))).toStrictEqual(new Float32Array([3, 2]));
 });
 
 describe('arrays whose length changes before finalizing', () => {
@@ -116,10 +116,10 @@ describe('arrays of structs', () => {
 
         // The count goes at 12, after the uint8 at 8 and 3 bytes of padding,
         // so that the structs start at 16
-        const buffer = builder.finalize();
-        expect(buffer.rootOffset(1)).toBe(12);
-        expect(buffer.getStructArray(12, 8)).toHaveLength(16);
-        expect(buffer.getUint32(12)).toBe(2);
+        const reader = builder.finalize();
+        expect(reader.rootOffset(1)).toBe(12);
+        expect(reader.getStructArray(12, 8)).toHaveLength(16);
+        expect(reader.getUint32(12)).toBe(2);
     });
 });
 
@@ -151,8 +151,8 @@ describe('tables longer than the offsets address', () => {
         );
 
         builder.setInt8Array([1]);
-        const buffer = builder.finalize();
-        expect(buffer.getInt8Array(buffer.rootOffset(0))).toStrictEqual(new Int8Array([1]));
+        const reader = builder.finalize();
+        expect(reader.getInt8Array(reader.rootOffset(0))).toStrictEqual(new Int8Array([1]));
     });
 });
 
@@ -189,8 +189,8 @@ describe('tables nested from their builders', () => {
             expect(parentOf(() => buildTable(table), length)).toStrictEqual(expected);
             expect(parentOf(() => finalized, length)).toStrictEqual(expected);
 
-            const buffer = new TableReader(expected);
-            expect(buffer.getVector(buffer.rootOffset(2))).toStrictEqual([bytes, bytes]);
+            const reader = new TableReader(expected);
+            expect(reader.getVector(reader.rootOffset(2))).toStrictEqual([bytes, bytes]);
         }
     );
 
@@ -206,10 +206,10 @@ describe('tables nested from their builders', () => {
         parent.setTable(nested);
         parent.setVector([nested]);
 
-        const buffer = parent.finalize();
-        const table = buffer.rootOffset(0);
-        expect(buffer.getUint8(buffer.fieldOffset(table, 1))).toBe(2);
-        expect(buffer.getVector(buffer.rootOffset(1))).toStrictEqual([nested.bytes()]);
+        const reader = parent.finalize();
+        const table = reader.rootOffset(0);
+        expect(reader.getUint8(reader.fieldOffset(table, 1))).toBe(2);
+        expect(reader.getVector(reader.rootOffset(1))).toStrictEqual([nested.bytes()]);
     });
 
     it('should write a builder nested several times, or finalized itself, the same each time', () => {
@@ -230,8 +230,8 @@ describe('tables nested from their builders', () => {
 
         expect(second.bytes()).toStrictEqual(written);
 
-        const buffer = second.finalize();
-        expect(buffer.getVector(buffer.rootOffset(1))).toStrictEqual([own, own]);
+        const reader = second.finalize();
+        expect(reader.getVector(reader.rootOffset(1))).toStrictEqual([own, own]);
     });
 
     it("should write a nested builder's values as they are when its parent is finalized", () => {
@@ -243,8 +243,8 @@ describe('tables nested from their builders', () => {
         parent.setTable(nested);
         values[0] = 3;
 
-        const buffer = parent.finalize();
-        const read = buffer.getFloat32Array(buffer.fieldOffset(buffer.rootOffset(0), 0));
+        const reader = parent.finalize();
+        const read = reader.getFloat32Array(reader.fieldOffset(reader.rootOffset(0), 0));
         expect(read).toStrictEqual(new Float32Array([3, 2]));
     });
 });

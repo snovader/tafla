@@ -70,7 +70,7 @@ class TableBuilder:
 
     __size: OffsetSize
     __alignment: ElementSize
-    # The table once written: its bytes, and then the buffer of them that
+    # The table once written: its bytes, and then the reader of them that
     # finalize() returns
     __written: memoryview[int] | TableReader | None
     # Per field: the TableWriter setter that writes it, the alignment that
@@ -125,7 +125,7 @@ class TableBuilder:
 
     def finalize(self) -> TableReader:
         """Writes the table, once, and returns a ``TableReader`` that reads
-        it; later calls return the same buffer.
+        it; later calls return the same reader.
 
         Raises ``ValueError`` if fewer fields were set than the table holds, or
         if an array, struct or table given as a buffer changed its length since
@@ -145,7 +145,7 @@ class TableBuilder:
 
     def bytes(self) -> memoryview[int]:
         """Writes the table, once, as ``finalize()`` does, and returns its
-        bytes, without the buffer that ``finalize()`` creates. Raises as
+        bytes, without the reader that ``finalize()`` creates. Raises as
         ``finalize()`` does."""
         written = self.__written
         if written is None:

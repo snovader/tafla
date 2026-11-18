@@ -53,13 +53,13 @@ const doubles = fc.array(
     )
 );
 
-/** Writes `values` with the builder and reads them back with the buffer */
+/** Writes `values` with the builder and reads them back with the reader */
 function roundTrip(type: NumberArrayType, values: ArrayLike<number>): ArrayLike<number> {
     const builder = new TableBuilder(1);
     builder[`set${type}Array`](values);
 
-    const buffer = builder.finalize();
-    return buffer[`get${type}Array`](buffer.rootOffset(0));
+    const reader = builder.finalize();
+    return reader[`get${type}Array`](reader.rootOffset(0));
 }
 
 function expectElements(
@@ -115,9 +115,9 @@ describe.each([
                 const builder = new TableBuilder(1);
                 builder[`set${type}Array`](input);
 
-                const buffer = builder.finalize();
+                const reader = builder.finalize();
                 expectElements(
-                    buffer[`get${type}Array`](buffer.rootOffset(0)),
+                    reader[`get${type}Array`](reader.rootOffset(0)),
                     TypedArray.from(input)
                 );
             }

@@ -996,11 +996,11 @@ export class DescriptionMismatch extends Error {
  * end of its parent.
  */
 export class DescriptionReader {
-    readonly #buffer: TableReader;
+    readonly #reader: TableReader;
     readonly #layout: LayoutDescription;
 
     constructor(bytes: Uint8Array, layout: LayoutDescription) {
-        this.#buffer = new TableReader(bytes, layoutOf(layout));
+        this.#reader = new TableReader(bytes, layoutOf(layout));
         this.#layout = layout;
     }
 
@@ -1012,16 +1012,16 @@ export class DescriptionReader {
      * length.
      */
     readTable(table: TableDescription): TableDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
         const { layout } = table;
 
-        if (layout.sized && buffer.getSize() !== buffer.bytes().length) {
+        if (layout.sized && reader.getSize() !== reader.bytes().length) {
             throw new DescriptionMismatch(
-                `The size slot holds ${buffer.getSize()}, but the table has ${buffer.bytes().length} bytes`
+                `The size slot holds ${reader.getSize()}, but the table has ${reader.bytes().length} bytes`
             );
         }
 
-        const version = layout.versioned ? buffer.getVersion() : undefined;
+        const version = layout.versioned ? reader.getVersion() : undefined;
         const fields = table.fields.map((field, index) =>
             this.readRootField(index, field)
         );
@@ -1032,105 +1032,105 @@ export class DescriptionReader {
     }
 
     readRootField(index: number, field: FieldDescription): FieldDescription {
-        return this.#readField(this.#buffer.rootOffset(index), field);
+        return this.#readField(this.#reader.rootOffset(index), field);
     }
 
     #readField(position: number, field: FieldDescription): FieldDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
 
         switch (field.type) {
             case 'int8':
-                return { ...field, value: buffer.getInt8(position) };
+                return { ...field, value: reader.getInt8(position) };
 
             case 'uint8':
-                return { ...field, value: buffer.getUint8(position) };
+                return { ...field, value: reader.getUint8(position) };
 
             case 'int16':
-                return { ...field, value: buffer.getInt16(position) };
+                return { ...field, value: reader.getInt16(position) };
 
             case 'uint16':
-                return { ...field, value: buffer.getUint16(position) };
+                return { ...field, value: reader.getUint16(position) };
 
             case 'int32':
-                return { ...field, value: buffer.getInt32(position) };
+                return { ...field, value: reader.getInt32(position) };
 
             case 'uint32':
-                return { ...field, value: buffer.getUint32(position) };
+                return { ...field, value: reader.getUint32(position) };
 
             case 'int64':
-                return { ...field, value: String(buffer.getInt64(position)) };
+                return { ...field, value: String(reader.getInt64(position)) };
 
             case 'uint64':
-                return { ...field, value: String(buffer.getUint64(position)) };
+                return { ...field, value: String(reader.getUint64(position)) };
 
             case 'float32':
                 return {
                     ...field,
-                    value: toJsonNumber(buffer.getFloat32(position))
+                    value: toJsonNumber(reader.getFloat32(position))
                 };
 
             case 'float64':
                 return {
                     ...field,
-                    value: toJsonNumber(buffer.getFloat64(position))
+                    value: toJsonNumber(reader.getFloat64(position))
                 };
 
             case 'bool':
-                return { ...field, value: buffer.getUint8(position) !== 0 };
+                return { ...field, value: reader.getUint8(position) !== 0 };
 
             case 'int8[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt8Array(position))
+                    value: Array.from(reader.getInt8Array(position))
                 };
 
             case 'uint8[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint8Array(position))
+                    value: Array.from(reader.getUint8Array(position))
                 };
 
             case 'int16[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt16Array(position))
+                    value: Array.from(reader.getInt16Array(position))
                 };
 
             case 'uint16[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint16Array(position))
+                    value: Array.from(reader.getUint16Array(position))
                 };
 
             case 'int32[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt32Array(position))
+                    value: Array.from(reader.getInt32Array(position))
                 };
 
             case 'uint32[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint32Array(position))
+                    value: Array.from(reader.getUint32Array(position))
                 };
 
             case 'int64[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getInt64Array(position), String)
+                    value: Array.from(reader.getInt64Array(position), String)
                 };
 
             case 'uint64[]':
                 return {
                     ...field,
-                    value: Array.from(buffer.getUint64Array(position), String)
+                    value: Array.from(reader.getUint64Array(position), String)
                 };
 
             case 'float32[]':
                 return {
                     ...field,
                     value: Array.from(
-                        buffer.getFloat32Array(position),
+                        reader.getFloat32Array(position),
                         toJsonNumber
                     )
                 };
@@ -1139,18 +1139,18 @@ export class DescriptionReader {
                 return {
                     ...field,
                     value: Array.from(
-                        buffer.getFloat64Array(position),
+                        reader.getFloat64Array(position),
                         toJsonNumber
                     )
                 };
 
             case 'string':
-                return { ...field, value: buffer.getString(position) };
+                return { ...field, value: reader.getString(position) };
 
             case 'struct': {
                 const types = field.fields.map(({ type }) => type);
                 const values = readStruct(
-                    buffer.getStruct(position, structSize(types)),
+                    reader.getStruct(position, structSize(types)),
                     types,
                     0
                 );
@@ -1189,7 +1189,7 @@ export class DescriptionReader {
      * items.
      */
     #readVector(position: number, items: NestedTable[]): NestedTable[] {
-        const offsets = this.#buffer.getVectorOffsets(position);
+        const offsets = this.#reader.getVectorOffsets(position);
         if (offsets.length !== items.length) {
             throw new DescriptionMismatch(
                 `The vector holds ${offsets.length} items rather than ${items.length}`
@@ -1198,7 +1198,7 @@ export class DescriptionReader {
 
         // Finding each item from its ends alone finds the same item
         for (const [index, offset] of offsets.entries()) {
-            const found = this.#buffer.getVectorOffset(position, index);
+            const found = this.#reader.getVectorOffset(position, index);
             if (found !== offset) {
                 throw new DescriptionMismatch(
                     `Item ${index} of the vector is at ${found} from its ends, but at ${offset} among every item`
@@ -1206,7 +1206,7 @@ export class DescriptionReader {
             }
         }
 
-        const vector = this.#buffer.getVector(position);
+        const vector = this.#reader.getVector(position);
 
         return items.map((item, index) => ({
             ...item,
@@ -1221,7 +1221,7 @@ export class DescriptionReader {
         { fields }: StructArrayField
     ): JsonNumber[][] {
         const size = structSize(fields);
-        const bytes = this.#buffer.getStructArray(position, size);
+        const bytes = this.#reader.getStructArray(position, size);
 
         return Array.from({ length: bytes.length / size }, (_, index) =>
             readStruct(bytes, fields, index * size)
@@ -1235,7 +1235,7 @@ export class DescriptionReader {
         }
 
         // Its length isn't written, so it's read up to the end of its parent
-        return readTable(this.#buffer.bytes().subarray(position), table);
+        return readTable(this.#reader.bytes().subarray(position), table);
     }
 
     #readsInPlace({ layout }: TableDescription): boolean {
@@ -1247,12 +1247,12 @@ export class DescriptionReader {
     }
 
     #readInPlace(position: number, table: TableDescription): TableDescription {
-        const buffer = this.#buffer;
+        const reader = this.#reader;
 
         return {
             layout: table.layout,
             fields: table.fields.map((field, index) =>
-                this.#readField(buffer.fieldOffset(position, index), field)
+                this.#readField(reader.fieldOffset(position, index), field)
             )
         };
     }

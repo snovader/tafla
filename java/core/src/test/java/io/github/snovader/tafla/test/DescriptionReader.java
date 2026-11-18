@@ -25,12 +25,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * as both the bytes and the description hold.</p>
  */
 final class DescriptionReader {
-    private final TableReader buffer;
+    private final TableReader reader;
     private final LayoutDescription layout;
     private final boolean strict;
 
     private DescriptionReader(byte[] bytes, LayoutDescription layout, boolean strict) {
-        this.buffer = new TableReader(bytes, layout.tableLayout());
+        this.reader = new TableReader(bytes, layout.tableLayout());
         this.layout = layout;
         this.strict = strict;
     }
@@ -52,9 +52,9 @@ final class DescriptionReader {
     /** Reads the header's slots, checking a strict reader's size, and returns the version */
     OptionalLong readHeader() {
         if (layout.sized()) {
-            var size = buffer.getSize();
+            var size = reader.getSize();
             if (strict) {
-                assertEquals(buffer.bytes().length, size, "The size slot doesn't hold the table's length");
+                assertEquals(reader.bytes().length, size, "The size slot doesn't hold the table's length");
             }
         }
 
@@ -62,11 +62,11 @@ final class DescriptionReader {
     }
 
     FieldDescription readRootField(int index, FieldDescription field) {
-        return readField(buffer.rootOffset(index), field);
+        return readField(reader.rootOffset(index), field);
     }
 
     private OptionalLong readVersion() {
-        return layout.versioned() ? OptionalLong.of(buffer.getVersion()) : OptionalLong.empty();
+        return layout.versioned() ? OptionalLong.of(reader.getVersion()) : OptionalLong.empty();
     }
 
     private List<FieldDescription> readRootFields(List<FieldDescription> fields) {
@@ -80,12 +80,12 @@ final class DescriptionReader {
 
     private FieldDescription readField(int position, FieldDescription field) {
         return switch (field) {
-            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
-            case BoolField ignored -> new BoolField(buffer.getUint8(position) != 0);
-            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
-            case StringField ignored -> new StringField(buffer.getString(position));
-            case StructField struct -> StructBytes.read(buffer, position, struct.types());
-            case StructArrayField array -> StructBytes.readArray(buffer, position, array.fields());
+            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
+            case BoolField ignored -> new BoolField(reader.getUint8(position) != 0);
+            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(reader, position));
+            case StringField ignored -> new StringField(reader.getString(position));
+            case StructField struct -> StructBytes.read(reader, position, struct.types());
+            case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());
             case TableField table -> new TableField(table.from(), readNested(position, table.table()), table.alignment());
             case VectorField vector -> new VectorField(readVector(position, vector.items()));
         };
@@ -100,28 +100,31 @@ final class DescriptionReader {
         // Its length isn't written, so it's read up to the end of its parent, and its size slot, if
         // any, isn't that length. A position past the end leaves no bytes, which the first read
         // throws for.
-        var bytes = buffer.bytes();
+        var bytes = reader.bytes();
         var rest = Arrays.copyOfRange(bytes, Math.min(position, bytes.length), bytes.length);
-        var reader = new DescriptionReader(rest, table.layout(), strict);
+        var nestedReader = new DescriptionReader(rest, table.layout(), strict);
 
-        return new TableDescription(table.layout(), reader.readVersion(), reader.readRootFields(table.fields()));
+        var version = nestedReader.readVersion();
+        var fields = nestedReader.readRootFields(table.fields());
+
+        return new TableDescription(table.layout(), version, fields);
     }
 
     private List<NestedTable> readVector(int position, List<NestedTable> items) {
-        var offsets = buffer.getVectorOffsets(position);
-        var vector = buffer.getVector(position);
+        var offsets = reader.getVectorOffsets(position);
+        var vector = reader.getVector(position);
         if (strict) {
             assertEquals(items.size(), offsets.length, "The vector doesn't hold its items");
         }
 
         // Finding each item from its ends alone finds the same item as reading every item, whether
         // the count is read again or given
-        assertEquals(offsets.length, buffer.getVectorLength(position), "The vector's length");
+        assertEquals(offsets.length, reader.getVectorLength(position), "The vector's length");
         for (int index = 0; index < offsets.length; index++) {
-            assertEquals(offsets[index], buffer.getVectorOffset(position, index), "Item " + index + " from its ends");
+            assertEquals(offsets[index], reader.getVectorOffset(position, index), "Item " + index + " from its ends");
             assertEquals(
                 offsets[index],
-                buffer.getVectorItemOffset(position, offsets.length, index),
+                reader.getVectorItemOffset(position, offsets.length, index),
                 "Item " + index + " from its ends and the count"
             );
         }
@@ -148,7 +151,7 @@ final class DescriptionReader {
 
         var read = new ArrayList<FieldDescription>(fields.size());
         for (int index = 0; index < fields.size(); index++) {
-            read.add(readField(buffer.fieldOffset(position, index), fields.get(index)));
+            read.add(readField(reader.fieldOffset(position, index), fields.get(index)));
         }
 
         return new TableDescription(table.layout(), OptionalLong.empty(), read);

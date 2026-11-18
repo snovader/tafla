@@ -51,21 +51,21 @@ public final class ItemAccesses {
     private static final class TableReaderAccess implements ItemAccess {
         @Override
         public double lastTable(byte[] bytes) {
-            var buffer = new TableReader(bytes);
-            var vector = buffer.rootOffset(0);
-            var item = buffer.getVectorOffset(vector, buffer.getVectorLength(vector) - 1);
+            var reader = new TableReader(bytes);
+            var vector = reader.rootOffset(0);
+            var item = reader.getVectorOffset(vector, reader.getVectorLength(vector) - 1);
 
-            return sumTable(buffer, item);
+            return sumTable(reader, item);
         }
 
         @Override
         public double everyTable(byte[] bytes) {
-            var buffer = new TableReader(bytes);
-            var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
+            var reader = new TableReader(bytes);
+            var offsets = reader.getVectorOffsets(reader.rootOffset(0));
 
             double sum = 0;
             for (var item : offsets) {
-                sum += sumTable(buffer, item);
+                sum += sumTable(reader, item);
             }
 
             return sum;
@@ -73,16 +73,16 @@ public final class ItemAccesses {
 
         @Override
         public double lastStruct(byte[] bytes) {
-            var buffer = new TableReader(bytes);
-            var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+            var reader = new TableReader(bytes);
+            var view = reader.getStructArray(reader.rootOffset(0), ITEM_SIZE);
 
             return sumStruct(view, view.remaining() - ITEM_SIZE);
         }
 
         @Override
         public double everyStruct(byte[] bytes) {
-            var buffer = new TableReader(bytes);
-            var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+            var reader = new TableReader(bytes);
+            var view = reader.getStructArray(reader.rootOffset(0), ITEM_SIZE);
 
             double sum = 0;
             for (int offset = 0; offset < view.remaining(); offset += ITEM_SIZE) {
@@ -92,12 +92,12 @@ public final class ItemAccesses {
             return sum;
         }
 
-        private static double sumTable(TableReader buffer, int item) {
-            var pair = buffer.fieldOffset(item, 1);
+        private static double sumTable(TableReader reader, int item) {
+            var pair = reader.fieldOffset(item, 1);
 
-            return (double) buffer.getFloat32(buffer.fieldOffset(item, 0))
-                + buffer.getFloat32(buffer.fieldOffset(pair, 0))
-                + buffer.getFloat32(buffer.fieldOffset(pair, 1));
+            return (double) reader.getFloat32(reader.fieldOffset(item, 0))
+                + reader.getFloat32(reader.fieldOffset(pair, 0))
+                + reader.getFloat32(reader.fieldOffset(pair, 1));
         }
 
         private static double sumStruct(java.nio.ByteBuffer view, int offset) {

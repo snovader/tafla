@@ -65,38 +65,38 @@ fn test_every_kind_of_field() {
 
     assert_eq!(builder.to_bytes().unwrap(), KINDS);
 
-    let buffer = TableReader::new(&KINDS, TableLayout::DEFAULT);
-    let at = |index| buffer.root_offset(index).unwrap();
+    let reader = TableReader::new(&KINDS, TableLayout::DEFAULT);
+    let at = |index| reader.root_offset(index).unwrap();
 
-    assert_eq!(buffer.get_i8(at(0)), Ok(i8::MIN));
-    assert_eq!(buffer.get_u8(at(1)), Ok(u8::MAX));
-    assert_eq!(buffer.get_i16(at(2)), Ok(i16::MIN));
-    assert_eq!(buffer.get_u16(at(3)), Ok(u16::MAX));
-    assert_eq!(buffer.get_i32(at(4)), Ok(i32::MIN));
-    assert_eq!(buffer.get_u32(at(5)), Ok(u32::MAX));
-    assert_eq!(buffer.get_i64(at(6)), Ok(i64::MIN));
-    assert_eq!(buffer.get_u64(at(7)), Ok(u64::MAX));
-    assert_eq!(buffer.get_f32(at(8)), Ok(1.5));
-    assert_eq!(buffer.get_f64(at(9)), Ok(-2.25));
-    assert_eq!(buffer.get_i8_array(at(10)).unwrap().to_vec(), [-1, 2]);
-    assert_eq!(buffer.get_u8_array(at(11)), Ok(&[3][..]));
-    assert_eq!(buffer.get_i16_array(at(12)).unwrap().to_vec(), [-4, 5]);
-    assert_eq!(buffer.get_u16_array(at(13)).unwrap().to_vec(), [6]);
-    assert_eq!(buffer.get_i32_array(at(14)).unwrap().to_vec(), [-7]);
-    assert_eq!(buffer.get_u32_array(at(15)).unwrap().to_vec(), [8, 9]);
-    assert_eq!(buffer.get_i64_array(at(16)).unwrap().to_vec(), [-10]);
-    assert_eq!(buffer.get_u64_array(at(17)).unwrap().to_vec(), [11]);
+    assert_eq!(reader.get_i8(at(0)), Ok(i8::MIN));
+    assert_eq!(reader.get_u8(at(1)), Ok(u8::MAX));
+    assert_eq!(reader.get_i16(at(2)), Ok(i16::MIN));
+    assert_eq!(reader.get_u16(at(3)), Ok(u16::MAX));
+    assert_eq!(reader.get_i32(at(4)), Ok(i32::MIN));
+    assert_eq!(reader.get_u32(at(5)), Ok(u32::MAX));
+    assert_eq!(reader.get_i64(at(6)), Ok(i64::MIN));
+    assert_eq!(reader.get_u64(at(7)), Ok(u64::MAX));
+    assert_eq!(reader.get_f32(at(8)), Ok(1.5));
+    assert_eq!(reader.get_f64(at(9)), Ok(-2.25));
+    assert_eq!(reader.get_i8_array(at(10)).unwrap().to_vec(), [-1, 2]);
+    assert_eq!(reader.get_u8_array(at(11)), Ok(&[3][..]));
+    assert_eq!(reader.get_i16_array(at(12)).unwrap().to_vec(), [-4, 5]);
+    assert_eq!(reader.get_u16_array(at(13)).unwrap().to_vec(), [6]);
+    assert_eq!(reader.get_i32_array(at(14)).unwrap().to_vec(), [-7]);
+    assert_eq!(reader.get_u32_array(at(15)).unwrap().to_vec(), [8, 9]);
+    assert_eq!(reader.get_i64_array(at(16)).unwrap().to_vec(), [-10]);
+    assert_eq!(reader.get_u64_array(at(17)).unwrap().to_vec(), [11]);
 
-    let float32s = buffer.get_f32_array(at(18)).unwrap();
+    let float32s = reader.get_f32_array(at(18)).unwrap();
     let bits: Vec<_> = float32s.iter().map(f32::to_bits).collect();
     assert_eq!(bits, [12.5_f32, -0.0, f32::INFINITY].map(f32::to_bits));
 
-    assert_eq!(buffer.get_f64_array(at(19)).unwrap().to_vec(), [-13.5]);
-    assert!(buffer.get_f64_array(at(20)).unwrap().is_empty());
-    assert_eq!(buffer.get_str(at(21)), Ok("é€😀\u{feff}"));
-    assert_eq!(buffer.get_str(at(22)), Ok(""));
+    assert_eq!(reader.get_f64_array(at(19)).unwrap().to_vec(), [-13.5]);
+    assert!(reader.get_f64_array(at(20)).unwrap().is_empty());
+    assert_eq!(reader.get_str(at(21)), Ok("é€😀\u{feff}"));
+    assert_eq!(reader.get_str(at(22)), Ok(""));
 
-    let vector = buffer.get_vector(at(23)).unwrap();
+    let vector = reader.get_vector(at(23)).unwrap();
     assert_eq!(
         vector.iter().collect::<Vec<_>>(),
         [Ok(&[1, 2][..]), Ok(&[])]
@@ -127,29 +127,29 @@ fn test_versioned_document_with_nested_tables() {
 
     assert_eq!(document.to_bytes().unwrap(), DOCUMENT);
 
-    let buffer = TableReader::new(&DOCUMENT, LAYOUT);
-    assert_eq!(buffer.size(), Ok(DOCUMENT.len()));
-    assert_eq!(buffer.version(), Ok(3));
-    assert_eq!(buffer.get_f64(buffer.root_offset(0).unwrap()), Ok(59.3293));
+    let reader = TableReader::new(&DOCUMENT, LAYOUT);
+    assert_eq!(reader.size(), Ok(DOCUMENT.len()));
+    assert_eq!(reader.version(), Ok(3));
+    assert_eq!(reader.get_f64(reader.root_offset(0).unwrap()), Ok(59.3293));
     assert_eq!(
-        buffer.get_str(buffer.root_offset(1).unwrap()),
+        reader.get_str(reader.root_offset(1).unwrap()),
         Ok("Europe/Stockholm")
     );
 
-    let columns = buffer.root_offset(2).unwrap();
-    let field = |index| buffer.field_offset(columns, index).unwrap();
-    assert_eq!(buffer.get_i64(field(0)), Ok(-631_152_000));
+    let columns = reader.root_offset(2).unwrap();
+    let field = |index| reader.field_offset(columns, index).unwrap();
+    assert_eq!(reader.get_i64(field(0)), Ok(-631_152_000));
     assert_eq!(
-        buffer.get_u32_array(field(1)).unwrap().to_vec(),
+        reader.get_u32_array(field(1)).unwrap().to_vec(),
         [0, 86_400, 172_800]
     );
     assert_eq!(
-        buffer.get_f32_array(field(2)).unwrap().to_vec(),
+        reader.get_f32_array(field(2)).unwrap().to_vec(),
         [21.75, 18.5, -3.25]
     );
-    assert_eq!(buffer.get_i8(buffer.root_offset(3).unwrap()), Ok(-5));
+    assert_eq!(reader.get_i8(reader.root_offset(3).unwrap()), Ok(-5));
 
-    let vector = buffer.get_vector(buffer.root_offset(4).unwrap()).unwrap();
+    let vector = reader.get_vector(reader.root_offset(4).unwrap()).unwrap();
     let [item, bytes] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };
@@ -177,13 +177,13 @@ fn test_uint8_offsets_with_table_nested_as_bytes() {
 
     assert_eq!(small.to_bytes().unwrap(), SMALL);
 
-    let buffer = TableReader::new(&SMALL, layout);
-    let position = buffer.root_offset(2).unwrap();
+    let reader = TableReader::new(&SMALL, layout);
+    let position = reader.root_offset(2).unwrap();
     assert_eq!(position % Alignment::Four.bytes(), 0);
-    assert_eq!(buffer.get_str(buffer.root_offset(0).unwrap()), Ok("hi"));
+    assert_eq!(reader.get_str(reader.root_offset(0).unwrap()), Ok("hi"));
     assert_eq!(
-        buffer
-            .get_u16_array(buffer.root_offset(1).unwrap())
+        reader
+            .get_u16_array(reader.root_offset(1).unwrap())
             .unwrap()
             .to_vec(),
         [1, 2]
@@ -210,17 +210,17 @@ fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
 
     assert_eq!(medium.to_bytes().unwrap(), MEDIUM);
 
-    let buffer = TableReader::new(&MEDIUM, layout);
-    assert_eq!(buffer.version(), Ok(513));
+    let reader = TableReader::new(&MEDIUM, layout);
+    assert_eq!(reader.version(), Ok(513));
     assert_eq!(
-        buffer
-            .get_f32_array(buffer.root_offset(0).unwrap())
+        reader
+            .get_f32_array(reader.root_offset(0).unwrap())
             .unwrap()
             .to_vec(),
         [1.0, 2.0]
     );
 
-    let vector = buffer.get_vector(buffer.root_offset(1).unwrap()).unwrap();
+    let vector = reader.get_vector(reader.root_offset(1).unwrap()).unwrap();
     let [narrow, wide] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };

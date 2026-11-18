@@ -9,21 +9,21 @@ describe('DecodeError', () => {
         expect(error.name).toBe('DecodeError');
     });
 
-    it.each<[string, (buffer: TableReader) => unknown, string]>([
-        ['getFloat64()', buffer => buffer.getFloat64(4), '8 bytes at 4 of 8'],
-        ['getInt64()', buffer => buffer.getInt64(-1), '8 bytes at -1 of 8'],
-        ['getUint32()', buffer => buffer.getUint32(5), '4 bytes at 5 of 8'],
-        ['getInt8()', buffer => buffer.getInt8(8), '1 bytes at 8 of 8'],
+    it.each<[string, (reader: TableReader) => unknown, string]>([
+        ['getFloat64()', reader => reader.getFloat64(4), '8 bytes at 4 of 8'],
+        ['getInt64()', reader => reader.getInt64(-1), '8 bytes at -1 of 8'],
+        ['getUint32()', reader => reader.getUint32(5), '4 bytes at 5 of 8'],
+        ['getInt8()', reader => reader.getInt8(8), '1 bytes at 8 of 8'],
         // The slice holds a vector's count of 1 and its item's end at 13,
         // which is also read as the length of an array or string
-        ['getUint8Array()', buffer => buffer.getUint8Array(4), '13 bytes at 8 of 8'],
-        ['getString()', buffer => buffer.getString(4), '13 bytes at 8 of 8'],
-        ['getStructArray()', buffer => buffer.getStructArray(4, 2), '26 bytes at 8 of 8'],
-        ['getVector()', buffer => buffer.getVector(0), '5 bytes at 8 of 8'],
-        ['getVectorOffset()', buffer => buffer.getVectorOffset(0, 0), '5 bytes at 8 of 8'],
+        ['getUint8Array()', reader => reader.getUint8Array(4), '13 bytes at 8 of 8'],
+        ['getString()', reader => reader.getString(4), '13 bytes at 8 of 8'],
+        ['getStructArray()', reader => reader.getStructArray(4, 2), '26 bytes at 8 of 8'],
+        ['getVector()', reader => reader.getVector(0), '5 bytes at 8 of 8'],
+        ['getVectorOffset()', reader => reader.getVectorOffset(0, 0), '5 bytes at 8 of 8'],
         [
             'getVectorItemOffset()',
-            buffer => buffer.getVectorItemOffset(0, 1, 0),
+            reader => reader.getVectorItemOffset(0, 1, 0),
             '5 bytes at 8 of 8'
         ]
     ])(
@@ -33,10 +33,10 @@ describe('DecodeError', () => {
             const backing = new Uint8Array(32).fill(0x41);
             const bytes = backing.subarray(0, 8);
             bytes.set([1, 0, 0, 0, 13, 0, 0, 0]);
-            const buffer = new TableReader(bytes);
+            const reader = new TableReader(bytes);
 
-            expect(() => read(buffer)).toThrow(DecodeError);
-            expect(() => read(buffer)).toThrow(`Read exceeds the supplied buffer: ${range}`);
+            expect(() => read(reader)).toThrow(DecodeError);
+            expect(() => read(reader)).toThrow(`Read exceeds the supplied buffer: ${range}`);
         }
     );
 
@@ -65,9 +65,9 @@ describe('DecodeError', () => {
     });
 
     it('should keep the original error as the cause of an invalid string', () => {
-        const buffer = new TableReader(new Uint8Array([1, 0, 0, 0, 0xff]));
+        const reader = new TableReader(new Uint8Array([1, 0, 0, 0, 0xff]));
 
-        expect(() => buffer.getString(0)).toThrow(
+        expect(() => reader.getString(0)).toThrow(
             // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
             expect.objectContaining({ cause: expect.any(TypeError) })
         );

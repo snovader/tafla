@@ -397,7 +397,7 @@ impl TableReader {
         if version.is_some() && !shape.versioned {
             return Err(PyTypeError::new_err("The table has no version"));
         }
-        let buffer = Self {
+        let reader = Self {
             held,
             shape,
             view: PyOnceLock::new(),
@@ -405,14 +405,14 @@ impl TableReader {
 
         if let Some(version) = version {
             let layout = shape.core().versioned();
-            let Ok(found) = tafla::TableReader::new(buffer.bytes_slice(), layout).version() else {
+            let Ok(found) = tafla::TableReader::new(reader.bytes_slice(), layout).version() else {
                 return Ok(None);
             };
             if !version.eq(found)? {
                 return Ok(None);
             }
         }
-        buffer.fields_at(py, fixed.plan(shape.size())?, 0)
+        reader.fields_at(py, fixed.plan(shape.size())?, 0)
     }
 
     fn bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {

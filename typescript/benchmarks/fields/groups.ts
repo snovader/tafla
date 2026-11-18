@@ -83,13 +83,13 @@ function getterVariant(
     TypedArray: TypedArrayConstructor
 ): Variant {
     const values = randomValues(TypedArray);
-    const buffer = tableOfFields(values, type);
+    const reader = tableOfFields(values, type);
     const results = new TypedArray(LENGTH);
 
     const run = compile(
-        { buffer, results },
+        { reader, results },
         `for (let i = 0; i < results.length; i++) {
-            results[i] = buffer.get${type}(buffer.rootOffset(i));
+            results[i] = reader.get${type}(reader.rootOffset(i));
         }
         return results;`
     );
@@ -107,13 +107,13 @@ function getterVariant(
 function arrayGetterVariant([type, TypedArray]: ElementType): Variant {
     const name = `get${type}Array`;
     const arrays = randomArrays(TypedArray);
-    const buffer = tableOfArrays(arrays, type);
+    const reader = tableOfArrays(arrays, type);
     const results = Array.from<TypedArray | undefined>({ length: ARRAYS });
 
     const run = compile(
-        { buffer, results },
+        { reader, results },
         `for (let i = 0; i < results.length; i++) {
-            results[i] = buffer.get${type}Array(buffer.rootOffset(i));
+            results[i] = reader.get${type}Array(reader.rootOffset(i));
         }
         return results;`
     );
@@ -179,10 +179,10 @@ function arraySetterVariant(
         return builder.finalize();`
     );
 
-    const buffer = run() as TableReader;
+    const reader = run() as TableReader;
     arrays.forEach((array, i) => {
         assertSameValues(
-            buffer[`get${type}Array`](buffer.rootOffset(i)),
+            reader[`get${type}Array`](reader.rootOffset(i)),
             array,
             name
         );
@@ -245,10 +245,10 @@ function tableOfArrays(arrays: TypedArray[], type: TypeName): TableReader {
 }
 
 /** Reads every field of a table of one type */
-function fieldsOf(buffer: TableReader, type: TypeName): Array<bigint | number> {
+function fieldsOf(reader: TableReader, type: TypeName): Array<bigint | number> {
     const fields: Array<bigint | number> = [];
     for (let i = 0; i < LENGTH; i++) {
-        fields.push(buffer[`get${type}`](buffer.rootOffset(i)));
+        fields.push(reader[`get${type}`](reader.rootOffset(i)));
     }
 
     return fields;

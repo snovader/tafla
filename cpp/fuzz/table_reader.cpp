@@ -144,30 +144,30 @@ void check_view(Bytes bytes, Read read, const std::optional<Bytes>& expected) {
 
 /// Reads the table's size and the offsets of its root fields 0, 1 and
 /// `index`
-template <class Buffer>
-void check_header(const Buffer& buffer, std::size_t index) {
-    const auto bytes = buffer.bytes();
-    const auto layout = buffer.layout();
+template <class Reader>
+void check_header(const Reader& reader, std::size_t index) {
+    const auto bytes = reader.bytes();
+    const auto layout = reader.layout();
     const auto width = layout.offset_size();
 
     if (layout.is_sized()) {
-        check_result(bytes, [&] { return buffer.size(); }, slot(bytes, 0, layout.offset_type()));
+        check_result(bytes, [&] { return reader.size(); }, slot(bytes, 0, layout.offset_type()));
     } else {
-        CHECK(buffer.size() == bytes.size());
+        CHECK(reader.size() == bytes.size());
     }
 
     for (const auto at : {std::size_t{0}, std::size_t{1}, index}) {
         const auto position = plus(times(at, width), layout.header_size());
-        check_result(bytes, [&] { return buffer.root_offset(at); }, slot(bytes, position, layout.offset_type()));
+        check_result(bytes, [&] { return reader.root_offset(at); }, slot(bytes, position, layout.offset_type()));
     }
 }
 
-void check_version(const TableReader<true>& buffer, std::size_t index) {
-    const auto layout = buffer.layout();
+void check_version(const TableReader<true>& reader, std::size_t index) {
+    const auto layout = reader.layout();
     const std::size_t position = layout.is_sized() ? layout.offset_size() : 0;
     check_result(
-        buffer.bytes(), [&] { return buffer.version(); }, slot(buffer.bytes(), position, layout.offset_type()));
-    check_header(buffer, index);
+        reader.bytes(), [&] { return reader.version(); }, slot(reader.bytes(), position, layout.offset_type()));
+    check_header(reader, index);
 }
 
 template <class T, class Get>
@@ -247,9 +247,9 @@ void check_array(Bytes bytes, OffsetType offset_type, std::size_t position, Get 
 
 /// Reads the first `kChecked` items of the vector at `position`, by iterating,
 /// by index and in place, and the last by index
-void check_vector(const TableReader<false>& buffer, std::size_t position) {
-    const auto bytes = buffer.bytes();
-    const auto offset_type = buffer.layout().offset_type();
+void check_vector(const TableReader<false>& reader, std::size_t position) {
+    const auto bytes = reader.bytes();
+    const auto offset_type = reader.layout().offset_type();
     const std::uint64_t width = tafla::offset_size(offset_type);
 
     // A count, and an end for each item after it, within the bytes
@@ -261,7 +261,7 @@ void check_vector(const TableReader<false>& buffer, std::size_t position) {
 
     std::optional<tafla::Vector> read;
     try {
-        read = buffer.get_vector(position);
+        read = reader.get_vector(position);
     } catch (const DecodeError& error) {
         check_error(bytes, error, !ends.has_value());
         return;
@@ -326,23 +326,23 @@ void check_vector(const TableReader<false>& buffer, std::size_t position) {
 
 /// Reads every type at `position`, a field of a table there at `index`, and
 /// structs of `struct_size` bytes and others
-void check_position(const TableReader<false>& buffer, std::size_t position, std::size_t index,
+void check_position(const TableReader<false>& reader, std::size_t position, std::size_t index,
                     std::size_t struct_size) {
-    const auto bytes = buffer.bytes();
-    const auto offset_type = buffer.layout().offset_type();
+    const auto bytes = reader.bytes();
+    const auto offset_type = reader.layout().offset_type();
 
-    check_scalar<std::int8_t>(bytes, position, [&](std::size_t at) { return buffer.get_int8(at); });
-    check_scalar<std::uint8_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint8(at); });
-    check_scalar<std::int16_t>(bytes, position, [&](std::size_t at) { return buffer.get_int16(at); });
-    check_scalar<std::uint16_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint16(at); });
-    check_scalar<std::int32_t>(bytes, position, [&](std::size_t at) { return buffer.get_int32(at); });
-    check_scalar<std::uint32_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint32(at); });
-    check_scalar<std::int64_t>(bytes, position, [&](std::size_t at) { return buffer.get_int64(at); });
-    check_scalar<std::uint64_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint64(at); });
-    check_scalar<float>(bytes, position, [&](std::size_t at) { return buffer.get_float32(at); });
-    check_scalar<double>(bytes, position, [&](std::size_t at) { return buffer.get_float64(at); });
+    check_scalar<std::int8_t>(bytes, position, [&](std::size_t at) { return reader.get_int8(at); });
+    check_scalar<std::uint8_t>(bytes, position, [&](std::size_t at) { return reader.get_uint8(at); });
+    check_scalar<std::int16_t>(bytes, position, [&](std::size_t at) { return reader.get_int16(at); });
+    check_scalar<std::uint16_t>(bytes, position, [&](std::size_t at) { return reader.get_uint16(at); });
+    check_scalar<std::int32_t>(bytes, position, [&](std::size_t at) { return reader.get_int32(at); });
+    check_scalar<std::uint32_t>(bytes, position, [&](std::size_t at) { return reader.get_uint32(at); });
+    check_scalar<std::int64_t>(bytes, position, [&](std::size_t at) { return reader.get_int64(at); });
+    check_scalar<std::uint64_t>(bytes, position, [&](std::size_t at) { return reader.get_uint64(at); });
+    check_scalar<float>(bytes, position, [&](std::size_t at) { return reader.get_float32(at); });
+    check_scalar<double>(bytes, position, [&](std::size_t at) { return reader.get_float64(at); });
 
-    const auto at = [&](auto get) { return [&buffer, get](std::size_t where) { return (buffer.*get)(where); }; };
+    const auto at = [&](auto get) { return [&reader, get](std::size_t where) { return (reader.*get)(where); }; };
     check_array<std::int8_t>(bytes, offset_type, position, at(&TableReader<false>::get_int8_array));
     check_array<std::int16_t>(bytes, offset_type, position, at(&TableReader<false>::get_int16_array));
     check_array<std::uint16_t>(bytes, offset_type, position, at(&TableReader<false>::get_uint16_array));
@@ -354,9 +354,9 @@ void check_position(const TableReader<false>& buffer, std::size_t position, std:
     check_array<double>(bytes, offset_type, position, at(&TableReader<false>::get_float64_array));
 
     const auto string_bytes = array(bytes, offset_type, position, 1);
-    check_view(bytes, [&] { return buffer.get_uint8_array(position); }, string_bytes);
+    check_view(bytes, [&] { return reader.get_uint8_array(position); }, string_bytes);
     try {
-        const auto string = buffer.get_string(position);
+        const auto string = reader.get_string(position);
         CHECK(string_bytes.has_value());
         CHECK(static_cast<const void*>(string.data()) == static_cast<const void*>(string_bytes->data()));
         CHECK(tafla::detail::valid_utf8(string_bytes->data(), string_bytes->size()));
@@ -366,11 +366,11 @@ void check_position(const TableReader<false>& buffer, std::size_t position, std:
     }
 
     const std::size_t remaining = bytes.size() > position ? bytes.size() - position : 0;
-    check_view(bytes, [&] { return buffer.get_table(position); }, range(bytes, position, remaining));
+    check_view(bytes, [&] { return reader.get_table(position); }, range(bytes, position, remaining));
     for (const std::size_t size : {std::size_t{0}, std::size_t{1}, struct_size, remaining, remaining + 1, SIZE_MAX}) {
-        check_view(bytes, [&] { return buffer.get_struct(position, size); }, range(bytes, position, size));
+        check_view(bytes, [&] { return reader.get_struct(position, size); }, range(bytes, position, size));
         check_view(
-            bytes, [&] { return buffer.get_struct_array(position, size); }, array(bytes, offset_type, position, size));
+            bytes, [&] { return reader.get_struct_array(position, size); }, array(bytes, offset_type, position, size));
     }
 
     for (const std::size_t field : {std::size_t{0}, index, SIZE_MAX}) {
@@ -379,10 +379,10 @@ void check_position(const TableReader<false>& buffer, std::size_t position, std:
         if (expected) {
             expected = plus(position, *expected);
         }
-        check_result(bytes, [&] { return buffer.field_offset(position, field); }, expected);
+        check_result(bytes, [&] { return reader.field_offset(position, field); }, expected);
     }
 
-    check_vector(buffer, position);
+    check_vector(reader, position);
 }
 
 }  // namespace

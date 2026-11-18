@@ -321,15 +321,15 @@ func readsOf(bytes []byte, table tables.Table, position, index, size int) reads 
 
 	unversioned := layout
 	unversioned.Versioned = false
-	buffer := tafla.NewTableReader(bytes, unversioned.TableLayout())
+	reader := tafla.NewTableReader(bytes, unversioned.TableLayout())
 	versioned := tafla.NewTableReader(bytes, unversioned.TableLayout().Versioned())
 
 	read.table, read.tableErr = tables.ReadTable(bytes, table)
-	read.size, read.sizeErr = buffer.Size()
+	read.size, read.sizeErr = reader.Size()
 	read.version, read.versionErr = versioned.Version()
-	read.fieldOffset, read.offsetErr = buffer.FieldOffset(position, index)
-	read.structBytes, read.structErr = buffer.GetStruct(position, size)
-	read.structArray, read.arrayErr = buffer.GetStructArray(position, size)
+	read.fieldOffset, read.offsetErr = reader.FieldOffset(position, index)
+	read.structBytes, read.structErr = reader.GetStruct(position, size)
+	read.structArray, read.arrayErr = reader.GetStructArray(position, size)
 
 	return read
 }
@@ -369,23 +369,23 @@ func second[T any](_ T, err error) error {
 
 func TestReturnsAnErrorOutsideTheBytes(t *testing.T) {
 	backing := make([]byte, 32)
-	buffer := tafla.NewTableReader(backing[:8], tafla.TableLayout{})
+	reader := tafla.NewTableReader(backing[:8], tafla.TableLayout{})
 
-	_, err := buffer.GetFloat64(4)
+	_, err := reader.GetFloat64(4)
 	expectError(t, err, &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 4, ByteLength: 8, Available: 8})
 
-	_, err = buffer.GetInt64(math.MaxInt)
+	_, err = reader.GetInt64(math.MaxInt)
 	expectMessage(t, err, "tafla: read exceeds the supplied bytes: 8 bytes at "+strconv.Itoa(math.MaxInt)+" of 8")
-	_, err = buffer.GetInt64(-1)
+	_, err = reader.GetInt64(-1)
 	expectError(t, err, &tafla.DecodeError{Kind: tafla.OutOfRange, Position: -1, ByteLength: 8, Available: 8})
 
 	for _, read := range []func() error{
-		func() error { return second(buffer.GetUint32(5)) },
-		func() error { return second(buffer.GetInt8(8)) },
-		func() error { return second(buffer.RootOffset(math.MaxInt)) },
-		func() error { return second(buffer.FieldOffset(math.MaxInt, math.MaxInt)) },
-		func() error { return second(buffer.FieldOffset(-4, 1)) },
-		func() error { return second(buffer.FieldOffset(4, 1)) },
+		func() error { return second(reader.GetUint32(5)) },
+		func() error { return second(reader.GetInt8(8)) },
+		func() error { return second(reader.RootOffset(math.MaxInt)) },
+		func() error { return second(reader.FieldOffset(math.MaxInt, math.MaxInt)) },
+		func() error { return second(reader.FieldOffset(-4, 1)) },
+		func() error { return second(reader.FieldOffset(4, 1)) },
 	} {
 		var decodeError *tafla.DecodeError
 		if err := read(); !errors.As(err, &decodeError) {
@@ -393,13 +393,13 @@ func TestReturnsAnErrorOutsideTheBytes(t *testing.T) {
 		}
 	}
 
-	if value, err := buffer.GetUint32(4); value != 0 || err != nil {
+	if value, err := reader.GetUint32(4); value != 0 || err != nil {
 		t.Errorf("read %d, %v", value, err)
 	}
 
-	_, err = buffer.GetStruct(4, 5)
+	_, err = reader.GetStruct(4, 5)
 	expectError(t, err, outside(4, 5))
-	if read := must(buffer.GetStruct(4, 4)); !bytes.Equal(read, []byte{0, 0, 0, 0}) {
+	if read := must(reader.GetStruct(4, 4)); !bytes.Equal(read, []byte{0, 0, 0, 0}) {
 		t.Errorf("read % x", read)
 	}
 }
@@ -424,26 +424,26 @@ func outside(position int, byteLength uint64) error {
 // The bytes hold a vector's count of 1 and its item's end at 13, which is
 // also read as the count of an array, string or array of structs
 func TestPanicsForANegativeFieldIndexOrStructSize(t *testing.T) {
-	buffer := tafla.NewTableReader(sliceOf(8, 0), tafla.TableLayout{})
+	reader := tafla.NewTableReader(sliceOf(8, 0), tafla.TableLayout{})
 
-	expectPanic(t, "a negative root index", func() { _, _ = buffer.RootOffset(-1) })
-	expectPanic(t, "a negative nested index", func() { _, _ = buffer.FieldOffset(0, -1) })
-	expectPanic(t, "a negative struct size", func() { _, _ = buffer.GetStruct(0, -1) })
-	expectPanic(t, "a negative struct array size", func() { _, _ = buffer.GetStructArray(4, -1) })
-	expectPanic(t, "the smallest struct size", func() { _, _ = buffer.GetStructArray(4, math.MinInt) })
+	expectPanic(t, "a negative root index", func() { _, _ = reader.RootOffset(-1) })
+	expectPanic(t, "a negative nested index", func() { _, _ = reader.FieldOffset(0, -1) })
+	expectPanic(t, "a negative struct size", func() { _, _ = reader.GetStruct(0, -1) })
+	expectPanic(t, "a negative struct array size", func() { _, _ = reader.GetStructArray(4, -1) })
+	expectPanic(t, "the smallest struct size", func() { _, _ = reader.GetStructArray(4, math.MinInt) })
 }
 
 func TestRejectsAnArrayStringStructAndVectorItemOutsideTheBytes(t *testing.T) {
 	backing := sliceOf(1, 13)
-	buffer := tafla.NewTableReader(backing[4:12], tafla.TableLayout{})
+	reader := tafla.NewTableReader(backing[4:12], tafla.TableLayout{})
 
-	expectError(t, second(buffer.GetUint8Array(4)), outside(8, 13))
-	expectError(t, second(buffer.GetString(4)), outside(8, 13))
-	expectError(t, second(buffer.GetFloat32Array(4)), outside(8, 52))
-	expectError(t, second(buffer.GetStructArray(4, 2)), outside(8, 26))
+	expectError(t, second(reader.GetUint8Array(4)), outside(8, 13))
+	expectError(t, second(reader.GetString(4)), outside(8, 13))
+	expectError(t, second(reader.GetFloat32Array(4)), outside(8, 52))
+	expectError(t, second(reader.GetStructArray(4, 2)), outside(8, 26))
 
 	// The vector's end lies within the bytes, and its item doesn't
-	vector := must(buffer.GetVector(0))
+	vector := must(reader.GetVector(0))
 	expectError(t, second(vector.GetInPlace(0)), outside(8, 5))
 	expectError(t, second(vector.Get(0)), outside(8, 5))
 	for _, err := range vector.ItemsInPlace() {
@@ -456,11 +456,11 @@ func TestRejectsAnArrayStringStructAndVectorItemOutsideTheBytes(t *testing.T) {
 
 func TestRejectsAVectorWhoseEndsLieOutsideTheBytes(t *testing.T) {
 	backing := sliceOf(3)
-	buffer := tafla.NewTableReader(backing[4:12], tafla.TableLayout{})
+	reader := tafla.NewTableReader(backing[4:12], tafla.TableLayout{})
 
 	// The count of 3, at 0, has three ends, of 12 bytes from 4, which is
 	// checked before any item is found
-	expectError(t, second(buffer.GetVector(0)), outside(4, 12))
+	expectError(t, second(reader.GetVector(0)), outside(4, 12))
 }
 
 func TestRejectsAVectorItemThatEndsBeforeItStarts(t *testing.T) {
@@ -486,10 +486,10 @@ func TestRejectsAVectorItemThatEndsBeforeItStarts(t *testing.T) {
 
 func TestRejectsAnArrayWhoseByteLengthOverflows(t *testing.T) {
 	table := []byte{255, 255, 255, 255, 0, 0, 0, 0}
-	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
+	reader := tafla.NewTableReader(table, tafla.TableLayout{})
 
 	expected := &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 4, ByteLength: 8 * 0xffff_ffff, Available: 8}
-	expectError(t, second(buffer.GetFloat64Array(0)), expected)
+	expectError(t, second(reader.GetFloat64Array(0)), expected)
 
 	// Structs as large as an int make byte lengths past a uint64 on 64-bit
 	// hosts, which saturate
@@ -498,7 +498,7 @@ func TestRejectsAnArrayWhoseByteLengthOverflows(t *testing.T) {
 		byteLength = low
 	}
 	expected = &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 4, ByteLength: byteLength, Available: 8}
-	expectError(t, second(buffer.GetStructArray(0, math.MaxInt)), expected)
+	expectError(t, second(reader.GetStructArray(0, math.MaxInt)), expected)
 }
 
 func TestRejectsInvalidUTF8(t *testing.T) {
@@ -535,8 +535,8 @@ func TestDescribesAnUnsupportedVersion(t *testing.T) {
 }
 
 func TestPanicsForTheVersionOfALayoutWithoutOne(t *testing.T) {
-	buffer := tafla.NewTableReader([]byte{1, 0, 0, 0}, tafla.TableLayout{}.Sized())
-	expectPanic(t, "Version", func() { _, _ = buffer.Version() })
+	reader := tafla.NewTableReader([]byte{1, 0, 0, 0}, tafla.TableLayout{}.Sized())
+	expectPanic(t, "Version", func() { _, _ = reader.Version() })
 }
 
 func expectError(t *testing.T, err, expected error) {

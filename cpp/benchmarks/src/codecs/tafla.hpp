@@ -46,12 +46,12 @@ struct Tafla {
     }
 
     [[nodiscard]] Record deserialize(RecordShape, std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
+        const TableReader reader(bytes, TableLayout());
         return {
-            buffer.get_float64(buffer.root_offset(0)),
-            buffer.get_float64(buffer.root_offset(1)),
-            buffer.get_int64(buffer.root_offset(2)),
-            Text::borrowed(buffer.get_string(buffer.root_offset(3))),
+            reader.get_float64(reader.root_offset(0)),
+            reader.get_float64(reader.root_offset(1)),
+            reader.get_int64(reader.root_offset(2)),
+            Text::borrowed(reader.get_string(reader.root_offset(3))),
         };
     }
 
@@ -70,23 +70,23 @@ struct Tafla {
     }
 
     [[nodiscard]] Document deserialize(DocumentShape, std::span<const std::uint8_t> bytes) const {
-        const auto buffer = open_document(bytes);
-        const auto columns = buffer.root_offset(3);
+        const auto reader = open_document(bytes);
+        const auto columns = reader.root_offset(3);
 
         return {
-            buffer.get_float64(buffer.root_offset(0)),
-            buffer.get_float64(buffer.root_offset(1)),
-            Text::borrowed(buffer.get_string(buffer.root_offset(2))),
-            buffer.get_int64(buffer.field_offset(columns, 0)),
-            column_of(buffer.get_uint32_array(buffer.field_offset(columns, 1))),
-            column_of(buffer.get_float32_array(buffer.field_offset(columns, 2))),
-            column_of(buffer.get_float32_array(buffer.field_offset(columns, 3))),
+            reader.get_float64(reader.root_offset(0)),
+            reader.get_float64(reader.root_offset(1)),
+            Text::borrowed(reader.get_string(reader.root_offset(2))),
+            reader.get_int64(reader.field_offset(columns, 0)),
+            column_of(reader.get_uint32_array(reader.field_offset(columns, 1))),
+            column_of(reader.get_float32_array(reader.field_offset(columns, 2))),
+            column_of(reader.get_float32_array(reader.field_offset(columns, 3))),
         };
     }
 
     [[nodiscard]] double sum_a(std::span<const std::uint8_t> bytes) const {
-        const auto buffer = open_document(bytes);
-        return sum_column(buffer.get_float32_array(buffer.field_offset(buffer.root_offset(3), 2)));
+        const auto reader = open_document(bytes);
+        return sum_column(reader.get_float32_array(reader.field_offset(reader.root_offset(3), 2)));
     }
 
     [[nodiscard]] Bytes serialize(ListShape, const List& input) const {
@@ -99,8 +99,8 @@ struct Tafla {
     }
 
     [[nodiscard]] List deserialize(ListShape, std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto vector = buffer.get_vector(buffer.root_offset(0));
+        const TableReader reader(bytes, TableLayout());
+        const auto vector = reader.get_vector(reader.root_offset(0));
 
         List list{std::vector<Item>(vector.size())};
         auto into = list.items.begin();
@@ -125,8 +125,8 @@ struct Tafla {
     }
 
     [[nodiscard]] List deserialize(StructsShape, std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        const auto structs = buffer.get_struct_array(buffer.root_offset(0), kItemSize);
+        const TableReader reader(bytes, TableLayout());
+        const auto structs = reader.get_struct_array(reader.root_offset(0), kItemSize);
 
         List list{std::vector<Item>(structs.size() / kItemSize)};
         for (std::size_t index = 0; index < list.items.size(); ++index) {
@@ -144,18 +144,18 @@ struct Tafla {
     }
 
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
-        const TableReader buffer(bytes, TableLayout());
-        return {buffer.get_uint32(0), buffer.get_float32(4), buffer.get_float32(8)};
+        const TableReader reader(bytes, TableLayout());
+        return {reader.get_uint32(0), reader.get_float32(4), reader.get_float32(8)};
     }
 
     /// Reads a document's header, which must carry the version it's written in
     static TableReader<true> open_document(std::span<const std::uint8_t> bytes) {
-        const TableReader buffer(bytes, kDocumentLayout);
-        const auto version = buffer.version();
+        const TableReader reader(bytes, kDocumentLayout);
+        const auto version = reader.version();
         if (version != kDocumentVersion) {
             throw DecodeError::unsupported_version(version, kDocumentVersion);
         }
-        return buffer;
+        return reader;
     }
 
     /// A column in place when it's aligned on a little-endian host, and

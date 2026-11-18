@@ -93,7 +93,7 @@ void collect(Errors& errors, Read read) {
 std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Table& table, std::size_t position,
                                   std::size_t index, std::size_t size, Errors* errors) {
     const auto& layout = table.layout;
-    const TableReader buffer(bytes, layout.unversioned());
+    const TableReader reader(bytes, layout.unversioned());
     const TableReader versioned(bytes, layout.unversioned().versioned());
 
     std::vector<std::string> reads;
@@ -112,11 +112,11 @@ std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Tab
         read([&] { return read_field(bytes, layout, position, field); });
     }
 
-    read([&] { return buffer.size(); });
+    read([&] { return reader.size(); });
     read([&] { return versioned.version(); });
-    read([&] { return buffer.field_offset(position, index); });
-    read([&] { return buffer.get_struct(position, size); });
-    read([&] { return buffer.get_struct_array(position, size); });
+    read([&] { return reader.field_offset(position, index); });
+    read([&] { return reader.get_struct(position, size); });
+    read([&] { return reader.get_struct_array(position, size); });
     return reads;
 }
 
@@ -239,21 +239,21 @@ void expect_outside(const tafla::DecodeError& error, std::size_t position, std::
 
 TEST(DecodeError, ThrownOutsideTheBytes) {
     const std::vector<std::uint8_t> backing(32, 0);
-    const TableReader buffer{std::span(backing).first(8), TableLayout()};
+    const TableReader reader{std::span(backing).first(8), TableLayout()};
 
-    expect_outside(error_of([&] { return buffer.get_float64(4); }), 4, 8);
-    EXPECT_EQ(std::string(error_of([&] { return buffer.get_int64(SIZE_MAX); }).what()),
+    expect_outside(error_of([&] { return reader.get_float64(4); }), 4, 8);
+    EXPECT_EQ(std::string(error_of([&] { return reader.get_int64(SIZE_MAX); }).what()),
               "Read exceeds the supplied buffer: 8 bytes at " + std::to_string(SIZE_MAX) + " of 8");
-    EXPECT_THROW(static_cast<void>(buffer.get_uint32(5)), tafla::DecodeError);
-    EXPECT_THROW(static_cast<void>(buffer.get_int8(8)), tafla::DecodeError);
-    EXPECT_EQ(buffer.get_uint32(4), 0U);
+    EXPECT_THROW(static_cast<void>(reader.get_uint32(5)), tafla::DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.get_int8(8)), tafla::DecodeError);
+    EXPECT_EQ(reader.get_uint32(4), 0U);
 
-    EXPECT_THROW(static_cast<void>(buffer.root_offset(SIZE_MAX)), tafla::DecodeError);
-    EXPECT_THROW(static_cast<void>(buffer.field_offset(SIZE_MAX, SIZE_MAX)), tafla::DecodeError);
-    EXPECT_THROW(static_cast<void>(buffer.field_offset(4, 1)), tafla::DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.root_offset(SIZE_MAX)), tafla::DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.field_offset(SIZE_MAX, SIZE_MAX)), tafla::DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.field_offset(4, 1)), tafla::DecodeError);
 
-    expect_outside(error_of([&] { return buffer.get_struct(4, 5); }), 4, 5);
-    EXPECT_EQ(buffer.get_struct(4, 4).size(), 4U);
+    expect_outside(error_of([&] { return reader.get_struct(4, 5); }), 4, 5);
+    EXPECT_EQ(reader.get_struct(4, 4).size(), 4U);
 }
 
 /// 8 bytes holding `uint32s` after 4 bytes, followed by bytes that a read
@@ -272,15 +272,15 @@ std::vector<std::uint8_t> slice_of(std::initializer_list<std::uint32_t> uint32s)
 // also read as the count of an array, string or array of structs
 TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
     const auto backing = slice_of({1, 13});
-    const TableReader buffer{std::span(backing).subspan(4, 8), TableLayout()};
+    const TableReader reader{std::span(backing).subspan(4, 8), TableLayout()};
 
-    expect_outside(error_of([&] { return buffer.get_uint8_array(4); }), 8, 13);
-    expect_outside(error_of([&] { return buffer.get_string(4); }), 8, 13);
-    expect_outside(error_of([&] { return buffer.get_float32_array(4); }), 8, 52);
-    expect_outside(error_of([&] { return buffer.get_struct_array(4, 2); }), 8, 26);
+    expect_outside(error_of([&] { return reader.get_uint8_array(4); }), 8, 13);
+    expect_outside(error_of([&] { return reader.get_string(4); }), 8, 13);
+    expect_outside(error_of([&] { return reader.get_float32_array(4); }), 8, 52);
+    expect_outside(error_of([&] { return reader.get_struct_array(4, 2); }), 8, 26);
 
     // The vector's end lies within the slice, and its item doesn't
-    const auto vector = buffer.get_vector(0);
+    const auto vector = reader.get_vector(0);
     expect_outside(error_of([&] { return vector.get_in_place(0); }), 8, 5);
     expect_outside(error_of([&] { return *vector.items_in_place().begin(); }), 8, 5);
     expect_outside(error_of([&] { return vector.get(0); }), 8, 5);
@@ -289,13 +289,13 @@ TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
 
 TEST(DecodeError, ThrownForAVectorWhoseEndsLieOutsideTheBytes) {
     const auto backing = slice_of({3});
-    const TableReader buffer{std::span(backing).subspan(4, 8), TableLayout()};
+    const TableReader reader{std::span(backing).subspan(4, 8), TableLayout()};
 
     // The count of 3, at 0, has three ends, of 12 bytes from 4. The count is
     // checked before any item is found, so an index past it fails with the
     // decode error too, as in every runtime.
-    expect_outside(error_of([&] { return buffer.get_vector(0); }), 4, 12);
-    expect_outside(error_of([&] { return buffer.get_vector(0).get(3); }), 4, 12);
+    expect_outside(error_of([&] { return reader.get_vector(0); }), 4, 12);
+    expect_outside(error_of([&] { return reader.get_vector(0).get(3); }), 4, 12);
 }
 
 TEST(DecodeError, ThrownForAVectorItemThatEndsBeforeItStarts) {
@@ -322,13 +322,13 @@ TEST(DecodeError, ThrownForAVectorItemThatEndsBeforeItStarts) {
 
 TEST(DecodeError, ThrownForAnArrayWhoseByteLengthOverflows) {
     const std::vector<std::uint8_t> bytes{255, 255, 255, 255, 0, 0, 0, 0};
-    const TableReader buffer(bytes, TableLayout());
+    const TableReader reader(bytes, TableLayout());
 
-    expect_outside(error_of([&] { return buffer.get_float64_array(0); }), 4, 8ULL * 0xffff'ffff);
+    expect_outside(error_of([&] { return reader.get_float64_array(0); }), 4, 8ULL * 0xffff'ffff);
 
     // Structs as large as a size_t make byte lengths past 2^64 on 64-bit
     // hosts, which saturate
-    expect_outside(error_of([&] { return buffer.get_struct_array(0, SIZE_MAX); }), 4,
+    expect_outside(error_of([&] { return reader.get_struct_array(0, SIZE_MAX); }), 4,
                    sizeof(std::size_t) == 8 ? UINT64_MAX : 0xffff'ffffULL * SIZE_MAX);
 }
 

@@ -197,17 +197,17 @@ impl Reads {
             fields.push(read_field(bytes, layout, position, field));
         }
 
-        let buffer = TableReader::new(bytes, layout.unversioned());
+        let reader = TableReader::new(bytes, layout.unversioned());
         let versioned = TableReader::new(bytes, layout.unversioned().versioned());
 
         Self {
             table: read_table(bytes, table),
             fields,
-            size: buffer.size(),
+            size: reader.size(),
             version: versioned.version(),
-            field_offset: buffer.field_offset(position, index),
-            struct_bytes: buffer.get_struct(position, size).map(<[u8]>::to_vec),
-            struct_array: buffer.get_struct_array(position, size).map(<[u8]>::to_vec),
+            field_offset: reader.field_offset(position, index),
+            struct_bytes: reader.get_struct(position, size).map(<[u8]>::to_vec),
+            struct_array: reader.get_struct_array(position, size).map(<[u8]>::to_vec),
         }
     }
 
@@ -239,10 +239,10 @@ impl Reads {
 #[test]
 fn test_return_error_outside_slice() {
     let backing = [0_u8; 32];
-    let buffer = TableReader::new(&backing[..8], TableLayout::DEFAULT);
+    let reader = TableReader::new(&backing[..8], TableLayout::DEFAULT);
 
     assert_eq!(
-        buffer.get_f64(4),
+        reader.get_f64(4),
         Err(DecodeError::OutOfRange {
             position: 4,
             byte_length: 8,
@@ -250,22 +250,22 @@ fn test_return_error_outside_slice() {
         })
     );
     assert_eq!(
-        buffer.get_i64(usize::MAX).unwrap_err().to_string(),
+        reader.get_i64(usize::MAX).unwrap_err().to_string(),
         format!(
             "Read exceeds the supplied buffer: 8 bytes at {} of 8",
             usize::MAX
         )
     );
-    assert!(buffer.get_u32(5).is_err());
-    assert!(buffer.get_i8(8).is_err());
-    assert_eq!(buffer.get_u32(4), Ok(0));
+    assert!(reader.get_u32(5).is_err());
+    assert!(reader.get_i8(8).is_err());
+    assert_eq!(reader.get_u32(4), Ok(0));
 
-    assert!(buffer.root_offset(usize::MAX).is_err());
-    assert!(buffer.field_offset(usize::MAX, usize::MAX).is_err());
-    assert!(buffer.field_offset(4, 1).is_err());
+    assert!(reader.root_offset(usize::MAX).is_err());
+    assert!(reader.field_offset(usize::MAX, usize::MAX).is_err());
+    assert!(reader.field_offset(4, 1).is_err());
 
-    assert_eq!(buffer.get_struct(4, 5), Err(outside(4, 5)));
-    assert_eq!(buffer.get_struct(4, 4), Ok(&[0; 4][..]));
+    assert_eq!(reader.get_struct(4, 5), Err(outside(4, 5)));
+    assert_eq!(reader.get_struct(4, 4), Ok(&[0; 4][..]));
 }
 
 /// A slice of 8 bytes holding `uint32s`, followed by bytes that a read past
@@ -294,15 +294,15 @@ const fn outside(position: usize, byte_length: u64) -> DecodeError {
 #[test]
 fn test_reject_array_string_struct_and_vector_item_outside_slice() {
     let backing = slice_of(&[1, 13]);
-    let buffer = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
+    let reader = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
 
-    assert_eq!(buffer.get_u8_array(4), Err(outside(8, 13)));
-    assert_eq!(buffer.get_str(4), Err(outside(8, 13)));
-    assert_eq!(buffer.get_f32_array(4).unwrap_err(), outside(8, 52));
-    assert_eq!(buffer.get_struct_array(4, 2), Err(outside(8, 26)));
+    assert_eq!(reader.get_u8_array(4), Err(outside(8, 13)));
+    assert_eq!(reader.get_str(4), Err(outside(8, 13)));
+    assert_eq!(reader.get_f32_array(4).unwrap_err(), outside(8, 52));
+    assert_eq!(reader.get_struct_array(4, 2), Err(outside(8, 26)));
 
     // The vector's end lies within the slice, and its item doesn't
-    let vector = buffer.get_vector(0).unwrap();
+    let vector = reader.get_vector(0).unwrap();
     assert_eq!(vector.get_in_place(0), Some(Err(outside(8, 5))));
     assert_eq!(vector.iter_in_place().next(), Some(Err(outside(8, 5))));
     assert_eq!(vector.get(0), Some(Err(outside(8, 5))));
@@ -312,15 +312,15 @@ fn test_reject_array_string_struct_and_vector_item_outside_slice() {
 #[test]
 fn test_reject_vector_whose_ends_lie_outside_slice() {
     let backing = slice_of(&[3]);
-    let buffer = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
+    let reader = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
 
     // The count of 3, at 0, has three ends, of 12 bytes from 4
-    assert_eq!(buffer.get_vector(0).unwrap_err(), outside(4, 12));
+    assert_eq!(reader.get_vector(0).unwrap_err(), outside(4, 12));
 
     // The count is checked before any item is found, so an index past it
     // fails with the decode error too, as in every runtime
     for index in [0, 3] {
-        let item = buffer.get_vector(0).map(|vector| vector.get(index));
+        let item = reader.get_vector(0).map(|vector| vector.get(index));
         assert_eq!(item, Err(outside(4, 12)), "Item {index}");
     }
 }
@@ -351,10 +351,10 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
 #[test]
 fn test_reject_array_whose_byte_length_overflows() {
     let bytes = [255, 255, 255, 255, 0, 0, 0, 0];
-    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
 
     assert_eq!(
-        buffer.get_f64_array(0).unwrap_err(),
+        reader.get_f64_array(0).unwrap_err(),
         DecodeError::OutOfRange {
             position: 4,
             byte_length: 8 * 0xffff_ffff,
@@ -365,7 +365,7 @@ fn test_reject_array_whose_byte_length_overflows() {
     // Structs as large as a usize make byte lengths past u64 on 64-bit
     // hosts, which saturate
     assert_eq!(
-        buffer.get_struct_array(0, usize::MAX),
+        reader.get_struct_array(0, usize::MAX),
         Err(DecodeError::OutOfRange {
             position: 4,
             byte_length: 0xffff_ffff_u64.saturating_mul(usize::MAX as u64),

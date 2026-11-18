@@ -5,9 +5,9 @@ import { TableBuilder, TableReader } from 'tafla';
 
 const builder = new TableBuilder(1);
 builder.setString('tafla');
-const buffer = new TableReader(builder.bytes());
+const reader = new TableReader(builder.bytes());
 
-if (buffer.getString(buffer.rootOffset(0)) !== 'tafla') {
+if (reader.getString(reader.rootOffset(0)) !== 'tafla') {
     throw new Error('The build read back another string');
 }
 
