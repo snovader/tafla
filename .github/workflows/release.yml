@@ -33,6 +33,7 @@ on:
           - tafla-gen
           - go
           - swift
+          - csharp
       version:
         description: "Its version, which must be its manifest's. The Go module and the Swift package record none, so this is their version."
         type: string
@@ -140,7 +141,7 @@ jobs:
           cp scripts/version.sh "$base/scripts/version.sh"
 
           packages=()
-          for package in typescript python java rust tafla-gen; do
+          for package in typescript python java rust tafla-gen csharp; do
             version=$(scripts/version.sh "$package")
             base_version=$("$base/scripts/version.sh" "$package" 2> /dev/null || true)
             if [[ "$version" != "$base_version" ]]; then
@@ -160,7 +161,7 @@ jobs:
           }
 
           if touches .github/workflows/release.yml .github/actions/release-tag/action.yml scripts/version.sh; then
-            packages=(typescript python java rust tafla-gen go swift)
+            packages=(typescript python java rust tafla-gen go swift csharp)
           fi
           if touches python/scripts/test-wheels.sh; then
             packages+=(python)
@@ -1070,13 +1071,125 @@ jobs:
           EOF
           swift package resolve
 
+  # NuGet
+
+  # Checks the C# runtime, packs it, with its symbols in a .snupkg, and tests
+  # the package as a project that uses it would, as the C# workflow does
+  nuget-build:
+    name: NuGet (check and pack)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'csharp')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
+      # Restores the tests' packages as their lock file locks them, and maps
+      # the paths that the assembly and its symbols record, so that the commit
+      # builds the same assembly wherever the same SDK builds it
+      ContinuousIntegrationBuild: "true"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run formatting check
+        run: dotnet format --verify-no-changes
+
+      - name: Build
+        run: dotnet build
+
+      - name: Run tests
+        run: dotnet test --no-build
+
+      - name: Run tests of the portable path
+        run: dotnet test -p:TaflaPortable=true
+
+      - name: Pack the package
+        run: dotnet pack src/Tafla
+
+      - name: Test the package
+        run: scripts/test-package.sh
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget
+          path: csharp/artifacts/package/release/
+          if-no-files-found: error
+
+  # Publishes the package, and its symbols, that nuget-build built and tested
+  nuget-publish:
+    name: NuGet (publish)
+    needs: [plan, nuget-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'csharp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Tafla/${{ inputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget
+          path: nuget
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Exchanges the workflow's OIDC token for an API key that lasts an hour,
+      # as the trusted publishing policy on nuget.org allows, which can publish
+      # a package's first version too. The key is the policy's owner's, whose
+      # nuget.org user name is the NUGET_USER secret, so the job needs no
+      # API key.
+      - name: Authenticate with trusted publishing
+        id: auth
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # Pushes the .snupkg beside the package too. A version that nuget.org
+      # has fails, as on the other registries, but an attempt that runs the
+      # job again skips what an earlier attempt pushed, such as the package
+      # once its symbols failed.
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.auth.outputs.NUGET_API_KEY }}
+          VERSION: ${{ inputs.version }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          options=()
+          if ((RUN_ATTEMPT > 1)); then
+            options+=(--skip-duplicate)
+          fi
+          dotnet nuget push "nuget/Tafla.$VERSION.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json "${options[@]}"
+
   # Tags the commit that a package was published from <package>/v<version>,
   # once its publish job has succeeded, in a job of its own, so that the jobs
   # that run the registries' tools can't push. Go's and Swift's publish jobs
   # push their tags themselves, since a tag publishes each.
   tag:
     name: Tag the release
-    needs: [plan, npm-publish, pypi-publish, crates-publish, maven-publish]
+    needs: [plan, npm-publish, pypi-publish, crates-publish, maven-publish, nuget-publish]
     # The other packages' publish jobs are skipped, so the job checks the
     # result of the released package's
     if: >-
@@ -1084,7 +1197,8 @@ jobs:
         (inputs.package == 'typescript' && needs.npm-publish.result == 'success') ||
         (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
         (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
-        ((inputs.package == 'rust' || inputs.package == 'tafla-gen') && needs.crates-publish.result == 'success')
+        ((inputs.package == 'rust' || inputs.package == 'tafla-gen') && needs.crates-publish.result == 'success') ||
+        (inputs.package == 'csharp' && needs.nuget-publish.result == 'success')
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
