@@ -240,7 +240,7 @@ public class TableWriterTests
     }
 
     [Fact]
-    public void FieldsShorterThanThoseSizedThrowInvalidOperationExceptionFromBytesAndByteLength()
+    public void FieldsShorterThanThoseSizedThrowNotAsSizedFromBytesAndByteLength()
     {
         var sizer = new TableSizer(1);
         sizer.AddString("ab");
@@ -248,8 +248,8 @@ public class TableWriterTests
         var writer = sizer.CreateWriter();
         writer.SetString(0, "a");
 
-        Assert.Throws<InvalidOperationException>(() => writer.Bytes);
-        Assert.Throws<InvalidOperationException>(() => writer.ByteLength);
+        AssertNotAsSized(() => _ = writer.Bytes, 9, 10);
+        AssertNotAsSized(() => _ = writer.ByteLength, 9, 10);
     }
 
     [Fact]
@@ -264,8 +264,43 @@ public class TableWriterTests
         Assert.Equal("cd", new ByteBuffer(writer.Bytes).GetString(sizeof(uint)));
     }
 
+    /// <summary>
+    /// A writer given another field than the sizer added, into new bytes or longer ones, throws
+    /// NotAsSized with the table's length, or writes the fields as TableBuilder does if they fill
+    /// the table, since the bytes come from the fields written
+    /// </summary>
     [Fact]
-    public void FieldsThatEndPastTheBytesThrowArgumentOutOfRangeException()
+    public void AWriterOfOtherFieldsThanThoseSizedThrowsNotAsSizedOrWritesThemAsTableBuilderDoes() =>
+        Gen.Select(InPlaceTables, Strategy.Tables, Gen.Int[0, 63], Gen.Int[0, 63], Gen.Int[0, 8]).Check(sample =>
+        {
+            var (table, replacements, at, with, extra) = sample;
+            if (table.Fields.Count == 0 || replacements.Fields.Count == 0 || Built(table) is not { } sized)
+            {
+                return;
+            }
+
+            var fields = table.Fields.ToArray();
+            fields[at % fields.Length] = replacements.Fields[with % replacements.Fields.Count];
+            var written = (table with { Fields = fields }).NestedInPlace();
+
+            byte[] bytes;
+            try
+            {
+                var writer = table.Sized().CreateWriter(new byte[sized.Length + extra]);
+                Write.SetFields(ref writer, written, index => index);
+                bytes = writer.Bytes[..writer.ByteLength];
+            }
+            catch (BuildException error)
+            {
+                Assert.Equal((BuildErrorKind.NotAsSized, (long)sized.Length), (error.Kind, error.Length));
+                return;
+            }
+
+            Assert.Equal(written.Bytes(), bytes);
+        });
+
+    [Fact]
+    public void FieldsThatEndPastTheBytesThrowNotAsSized()
     {
         var sizer = new TableSizer(1);
         sizer.AddString("a");
@@ -283,14 +318,22 @@ public class TableWriterTests
 
         foreach (var write in past)
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => write(sizer.CreateWriter()));
+            AssertNotAsSized(() => write(sizer.CreateWriter()), 4, 9);
         }
+
+        // A string whose count alone would end past the bytes
+        var bytes = new TableSizer(2);
+        bytes.AddUInt8();
+        bytes.AddUInt8();
+        var counted = bytes.CreateWriter();
+        counted.SetUInt8(0, 1);
+        AssertNotAsSized(() => counted.SetString(1, ""), 9, 10);
 
         // In longer bytes, a field may write past the table, but not past the bytes
         var longer = new byte[16];
         var writer = sizer.CreateWriter(longer);
         writer.SetString(0, "abcd");
-        Assert.Throws<InvalidOperationException>(() => writer.Bytes);
+        AssertNotAsSized(() => _ = writer.Bytes, 12, 9);
         Assert.Equal([4, 0, 0, 0, 4, 0, 0, 0, .. "abcd"u8, 0, 0, 0, 0], longer);
     }
 
@@ -407,6 +450,13 @@ public class TableWriterTests
         {
             return null;
         }
+    }
+
+    /// <summary>Checks that the writer throws NotAsSized, with the bytes that its fields wrote and the table's length</summary>
+    private static void AssertNotAsSized(Action write, int written, int length)
+    {
+        var error = Assert.Throws<BuildException>(write);
+        Assert.Equal((BuildErrorKind.NotAsSized, written, (long)length), (error.Kind, error.Written, error.Length));
     }
 
     /// <summary>Checks that the sizer rejects the table as too long, naming its last field and its length</summary>

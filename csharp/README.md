@@ -202,10 +202,12 @@ the values, and leaves the builder as it was:
 `TooLong` for a table too long for its offset type, before anything is
 allocated, with the table's length and its last field's index.
 `TableWriter.SetStructArray()` throws `NotWholeStructs` as the builder does.
-A writer's field that would end past its bytes throws an
-`ArgumentOutOfRangeException`, and `Bytes` and `ByteLength` throw an
-`InvalidOperationException` when the fields didn't fill the table, as when
-they differ from those that the sizer counted.
+A writer whose fields differ from those that its sizer counted throws
+`NotAsSized`, with the bytes that the fields wrote, `Written`, and the
+table's `Length`: a field that would end past the writer's bytes throws it
+without writing past them, after which the writer mustn't be used, and
+`Bytes` and `ByteLength` throw it when the fields didn't write the table's
+length.
 
 Mistakes of the code that calls the runtime, which no bytes or values cause,
 throw the argument exceptions of .NET's own APIs:
@@ -222,6 +224,7 @@ throw the argument exceptions of .NET's own APIs:
 | `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
 | `new TableSizer()`                              | As `new TableBuilder()`                                                                   |
 | `TableSizer`'s and `TableWriter`'s methods      | `ArgumentOutOfRangeException` for a negative count, number of fields or struct size, a size of 0 of an array of structs, or an alignment other than 1, 2, 4 or 8, and `ArgumentNullException` for a null string |
+| `TableWriter`'s field indices, `SetItemEnd()`   | `ArgumentOutOfRangeException` for an offset or item end that lies outside the writer's bytes. Within them, it writes over another slot or field |
 | `TableSizer.CreateWriter(byte[])`               | `ArgumentException` for bytes shorter than the table, before any of them is written      |
 
 ## Conversions

@@ -28,7 +28,9 @@ The first release.
   those that `TableBuilder` writes.
 - Bounds-checked reads, which fail on malformed input with a
   `DecodeException`, and builders that reject what they can't write with a
-  `BuildException`.
+  `BuildException`. A `TableWriter` whose fields differ from those that its
+  `TableSizer` counted throws one of kind `NotAsSized`, as Go's, Rust's and
+  C++'s writers report it.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
 

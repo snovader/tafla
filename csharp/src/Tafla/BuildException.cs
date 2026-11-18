@@ -39,11 +39,20 @@ public enum BuildErrorKind
     /// structs of <see cref="BuildException.StructSize"/> bytes.
     /// </summary>
     NotWholeStructs,
+
+    /// <summary>
+    /// A <see cref="TableWriter"/> whose fields differ from those that its <see cref="TableSizer"/>
+    /// counted: they wrote <see cref="BuildException.Written"/> of the table's
+    /// <see cref="BuildException.Length"/> bytes, in all or before the first field that would end past
+    /// the writer's bytes.
+    /// </summary>
+    NotAsSized,
 }
 
 /// <summary>
-/// Thrown when a <see cref="TableBuilder"/> can't write a table, whatever the values, rather than
-/// writing a table that readers would misread. A setter that throws it leaves the builder as it was.
+/// Thrown when a <see cref="TableBuilder"/>, or a <see cref="TableSizer"/> and its
+/// <see cref="TableWriter"/>, can't write a table, whatever the values, rather than writing a table
+/// that readers would misread. A builder's setter that throws it leaves the builder as it was.
 /// </summary>
 /// <remarks>
 /// <see cref="Kind"/> says what failed, and the properties that its documentation names describe it.
@@ -88,13 +97,17 @@ public sealed class BuildException : Exception
     public int Index { get; private init; }
 
     /// <summary>
-    /// The table's length with the field, for <see cref="BuildErrorKind.TooLong"/>, and the length of
-    /// the structs' bytes, for <see cref="BuildErrorKind.NotWholeStructs"/>.
+    /// The table's length with the field, for <see cref="BuildErrorKind.TooLong"/>, the length of the
+    /// structs' bytes, for <see cref="BuildErrorKind.NotWholeStructs"/>, and the table's length, for
+    /// <see cref="BuildErrorKind.NotAsSized"/>.
     /// </summary>
     public long Length { get; private init; }
 
     /// <summary>The size of a struct, for <see cref="BuildErrorKind.NotWholeStructs"/>.</summary>
     public int StructSize { get; private init; }
+
+    /// <summary>The number of bytes that the fields wrote, for <see cref="BuildErrorKind.NotAsSized"/>.</summary>
+    public int Written { get; private init; }
 
     internal static BuildException VersionTooLarge(uint version, OffsetType offsetType) =>
         new(BuildErrorKind.VersionTooLarge, $"Version {version} doesn't fit in a {offsetType.Name} slot")
@@ -145,5 +158,12 @@ public sealed class BuildException : Exception
         {
             Length = length,
             StructSize = structSize,
+        };
+
+    internal static BuildException NotAsSized(int written, int length) =>
+        new(BuildErrorKind.NotAsSized, $"The fields wrote {written} of the table's {length} bytes")
+        {
+            Written = written,
+            Length = length,
         };
 }
