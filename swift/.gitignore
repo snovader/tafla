@@ -1,0 +1,3 @@
+# SwiftPM's build directory and Xcode's package workspace
+/.build/
+/.swiftpm/

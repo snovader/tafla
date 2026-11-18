@@ -1,0 +1,145 @@
+name: Swift
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # Every push and pull request runs this workflow, so that its required check
+  # always reports, and the jobs below run only when the change touches these
+  # paths
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      swift: ${{ steps.filter.outputs.swift }}
+    steps:
+      # A pull request lists its files through the API, and a push compares
+      # its commits, which needs the repository
+      - name: Checkout GitHub repo
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: Filter the changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            swift:
+              - ".github/workflows/swift.yml"
+              - "conformance/**"
+              - "swift/**"
+
+  formatting:
+    name: Formatting
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The toolchain's swift-format, whose versions format alike only mostly
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: swift
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Run formatting check
+        run: swift format lint --strict --recursive Package.swift Sources Tests
+
+  linux:
+    name: Test (Linux, Swift ${{ matrix.swift }})
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:${{ matrix.swift }}-noble
+    defaults:
+      run:
+        working-directory: swift
+    strategy:
+      fail-fast: false
+      matrix:
+        # The package's swift-tools-version, and the latest release
+        swift: ["6.2", "6.4"]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Print the Swift version
+        run: swift --version
+
+      # The conformance suite, the property tests and the examples
+      - name: Run tests
+        run: swift test
+
+      # Optimized, where only preconditions and overflow checks remain of the
+      # standard library's checks, as in an application's release build
+      - name: Run tests optimized
+        run: swift test -c release -Xswiftc -enable-testing
+
+      # Reads and writes every array element by element, as on a big-endian
+      # host, rather than in place
+      - name: Run tests of the portable path
+        run: swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
+
+  sanitizers:
+    name: Test (AddressSanitizer)
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: swift
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Every read stays within the bytes it was given, which the runtime
+      # loads from without the standard library's checks once it's checked
+      # them itself
+      - name: Run tests with AddressSanitizer
+        run: swift test --sanitize=address
+
+  macos:
+    name: Test (macOS)
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: macos-26
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: swift
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # The runner image's default Xcode, which changes with the image
+      - name: Print the Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Run tests optimized
+        run: swift test -c release -Xswiftc -enable-testing
