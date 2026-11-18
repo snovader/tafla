@@ -183,11 +183,46 @@ jobs:
       - name: Test the package
         run: scripts/test-package.sh
 
+  benchmark:
+    name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # The benchmarks and their tests, in Release, as the benchmarks are
+      # timed
+      - name: Build
+        run: dotnet build -c Release benchmarks/Tafla.Benchmarks.Tests
+
+      # The workloads' values, and that every codec reads back what it wrote
+      - name: Run round-trip tests
+        run: dotnet test -c Release --no-build --project benchmarks/Tafla.Benchmarks.Tests
+
+      # Shared runners are too noisy for the numbers to mean much; this run
+      # checks that the benchmarks work
+      - name: Run benchmarks briefly
+        run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- --quick
+
+      - name: Print the encoded sizes
+        run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- encoding
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian, package]
+    needs: [changes, formatting, test, big-endian, package, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

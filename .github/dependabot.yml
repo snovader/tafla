@@ -69,8 +69,9 @@ updates:
     schedule:
       interval: "daily"
 
-  # The tests' packages, which Directory.Packages.props pins and their
-  # packages.lock.json locks. The runtime depends on none. global.json's SDK
+  # The tests' packages and the benchmarks' libraries, which
+  # Directory.Packages.props pins and each project's packages.lock.json
+  # locks. The runtime depends on none. global.json's SDK
   # is a minimum, 10.0.100 or a later feature band, and CI installs the
   # latest, so dotnet-sdk would only raise the minimum.
   - package-ecosystem: "nuget"
