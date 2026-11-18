@@ -26,6 +26,7 @@
         <Compile Include="../../tests/Tafla.Tests/Tables/Description.cs" Link="Tables/Description.cs" />
         <Compile Include="../../tests/Tafla.Tests/Tables/Read.cs" Link="Tables/Read.cs" />
         <Compile Include="../../tests/Tafla.Tests/Tables/Scalars.cs" Link="Tables/Scalars.cs" />
+        <Compile Include="../../tests/Tafla.Tests/Tables/Target.cs" Link="Tables/Target.cs" />
     </ItemGroup>
 
     <!-- A run out of memory throws an OutOfMemoryException, which SharpFuzz reports as a crash with
