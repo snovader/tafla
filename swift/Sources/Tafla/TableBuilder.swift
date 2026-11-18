@@ -92,7 +92,7 @@ public struct TableBuilder: Sendable {
         let length = Int(self.length)
 
         return [UInt8](unsafeUninitializedCapacity: length) { buffer, initialized in
-            var writer = TableWriter(bytes: UnsafeMutableRawBufferPointer(buffer))
+            var writer = ByteWriter(bytes: UnsafeMutableRawBufferPointer(buffer))
             write(to: &writer)
 
             // The writer wrote every byte, since the lengths agree

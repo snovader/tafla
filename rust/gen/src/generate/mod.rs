@@ -28,7 +28,8 @@ mod java_package;
     feature = "java",
     feature = "rust",
     feature = "go",
-    feature = "cpp"
+    feature = "cpp",
+    feature = "swift"
 ))]
 mod prose;
 #[cfg(feature = "python")]
@@ -37,6 +38,8 @@ mod python;
 pub mod reserved;
 #[cfg(feature = "rust")]
 mod rust;
+#[cfg(feature = "swift")]
+mod swift;
 #[cfg(feature = "typescript")]
 mod typescript;
 #[cfg(any(
@@ -45,10 +48,11 @@ mod typescript;
     feature = "java",
     feature = "rust",
     feature = "go",
-    feature = "cpp"
+    feature = "cpp",
+    feature = "swift"
 ))]
 // Go's and C++'s generators write their lines without the others'
-// expressions
+// expressions, and Swift's without some of their checks of width
 #[cfg_attr(
     not(any(
         feature = "typescript",
@@ -83,6 +87,8 @@ pub enum Target {
     /// A header of C++20
     #[cfg(feature = "cpp")]
     Cpp,
+    #[cfg(feature = "swift")]
+    Swift,
 }
 
 impl Target {
@@ -102,6 +108,8 @@ impl Target {
         (&["go"], Self::Go),
         #[cfg(feature = "cpp")]
         (&["cpp"], Self::Cpp),
+        #[cfg(feature = "swift")]
+        (&["swift"], Self::Swift),
     ];
 
     /// The target of a name or its abbreviation, if this build generates it
@@ -129,7 +137,7 @@ impl Target {
 pub struct Options {
     /// The runtime's module, package or crate, which is tafla's runtime for
     /// the target by default: `tafla` for TypeScript, JavaScript, Python and
-    /// Rust, and `io.github.snovader.tafla` for Java
+    /// Rust, `io.github.snovader.tafla` for Java, and `Tafla` for Swift
     pub runtime: Option<String>,
     /// The package of generated Java classes, which is `generated` by
     /// default. Other targets ignore it.
@@ -153,7 +161,8 @@ pub struct GeneratedFile {
         feature = "python",
         feature = "java",
         feature = "rust",
-        feature = "cpp"
+        feature = "cpp",
+        feature = "swift"
     )),
     allow(unused_variables)
 )]
@@ -185,6 +194,8 @@ pub fn generate(
         Target::Go => go::generate(schema, stem(file_name), &comment_text(file_name), options),
         #[cfg(feature = "cpp")]
         Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
+        #[cfg(feature = "swift")]
+        Target::Swift => swift::generate(schema, stem(file_name), &header, options),
     }
 }
 
@@ -213,7 +224,8 @@ fn comment_text(file_name: &str) -> String {
     feature = "python",
     feature = "rust",
     feature = "go",
-    feature = "cpp"
+    feature = "cpp",
+    feature = "swift"
 ))]
 fn stem(file_name: &str) -> &str {
     let name = file_name

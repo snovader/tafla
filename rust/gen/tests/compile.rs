@@ -33,6 +33,7 @@ fn imports_the_runtime_that_the_options_name() {
         ),
         ("rust", "crate::tafla", "use crate::tafla::{"),
         ("cpp", "vendor/tafla.hpp", "\n#include <vendor/tafla.hpp>\n"),
+        ("swift", "VendoredTafla", "\nimport VendoredTafla\n"),
     ] {
         let options = Options {
             runtime: Some(runtime.to_owned()),
@@ -61,6 +62,7 @@ fn imports_taflas_runtimes_by_default() {
         ("java", "import io.github.snovader.tafla.TableReader;\n"),
         ("rust", "use tafla::{"),
         ("cpp", "\n#include <tafla/tafla.hpp>\n"),
+        ("swift", "\nimport Tafla\n"),
     ] {
         for file in generate("point.tafla", SCHEMA, target, &Options::default()) {
             assert!(
@@ -267,6 +269,7 @@ fn files_are_named_after_the_schema_and_name_it() {
         ("python", "point_cloud.py"),
         ("rust", "point_cloud.rs"),
         ("cpp", "point_cloud.hpp"),
+        ("swift", "point_cloud.swift"),
     ] {
         let files = generate(file_name, SCHEMA, target, &Options::default());
 
@@ -324,6 +327,7 @@ fn files_are_named_after_the_schema_without_its_windows_directory() {
             ("python", "point_cloud.py"),
             ("rust", "point_cloud.rs"),
             ("cpp", "point_cloud.hpp"),
+            ("swift", "point_cloud.swift"),
         ] {
             let files = generate(file_name, SCHEMA, target, &Options::default());
             assert_eq!(paths(&files), [path], "{file_name}");
@@ -346,6 +350,7 @@ fn a_header_names_any_path_in_one_comment() {
         ("java", "//", shown.replace("\\u", "\\u005cu")),
         ("rust", "//", shown.to_owned()),
         ("cpp", "//", shown.to_owned()),
+        ("swift", "//", shown.to_owned()),
     ] {
         for file in generate(file_name, SCHEMA, target, &Options::default()) {
             let header = file.contents.lines().next().unwrap();
@@ -369,6 +374,7 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         ("python", format!("# {header}\n")),
         ("rust", format!("// {header}\n")),
         ("cpp", format!("// {header}\n")),
+        ("swift", format!("// {header}\n")),
     ] {
         let files = generate("empty.tafla", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
@@ -439,7 +445,8 @@ fn targets_are_found_by_name_or_abbreviation() {
             "java",
             "rust",
             "go",
-            "cpp"
+            "cpp",
+            "swift"
         ]
     );
 

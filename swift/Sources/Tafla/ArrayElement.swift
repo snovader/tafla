@@ -16,6 +16,17 @@ public protocol ArrayElement: BitwiseCopyable, Sendable {
 }
 
 extension ArrayElement {
+    /// Reads the element from its little-endian bytes at `offset` in
+    /// `bytes`, at any alignment, as a struct's scalars lie at fixed offsets
+    /// from its start, which is how the code that tafla-gen generates reads
+    /// them. `bytes` must hold them there: a read past them is a programming
+    /// error, which stops the program, as `RawSpan`'s loads do.
+    @inlinable
+    public init(littleEndianBytes bytes: RawSpan, at offset: Int) {
+        let bits = bytes.unsafeLoadUnaligned(fromByteOffset: offset, as: _TaflaBits.self)
+        self.init(_taflaBits: _TaflaBits(littleEndian: bits))
+    }
+
     /// The element's size, which arrays of it are aligned to
     @inlinable
     static var alignment: Alignment {
