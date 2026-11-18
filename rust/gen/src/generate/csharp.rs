@@ -515,6 +515,10 @@ impl Generator<'_> {
     /// caller's
     fn serialize(&self, writer: &mut CodeWriter, definition: &Definition, layout: Layout) {
         let name = &definition.name;
+        let whole = self.whole_message(definition, layout);
+        // A message of only fields of fixed sizes, which it writes whole, has
+        // a constant length within its offset type
+        let constant = whole.as_ref().is_some_and(|whole| whole.string.is_none());
         let build_exception = format!(
             "/// <exception cref=\"{}\">The message is longer than its offset type, {}, addresses.</exception>",
             self.runtime_type("BuildException"),
@@ -529,12 +533,14 @@ impl Generator<'_> {
                 cref(name)
             )],
         );
-        writer.line(&build_exception);
+        if !constant {
+            writer.line(&build_exception);
+        }
         writer.line("public byte[] Serialize()");
         writer.line("{");
         writer.indent();
-        match self.whole_message(definition, layout) {
-            Some(whole) => self.serialize_whole(writer, definition, layout, &whole),
+        match &whole {
+            Some(whole) => self.serialize_whole(writer, definition, layout, whole),
             None => self.serialize_body(writer, definition, layout, false),
         }
         writer.close("}");
@@ -561,7 +567,9 @@ impl Generator<'_> {
         writer.line(
             "/// <exception cref=\"global::System.ArgumentException\">The bytes are shorter than the message, before any of them is written.</exception>",
         );
-        writer.line(&build_exception);
+        if !constant {
+            writer.line(&build_exception);
+        }
         writer.line("public int SerializeInto(byte[] bytes)");
         writer.line("{");
         writer.indent();

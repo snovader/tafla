@@ -389,7 +389,6 @@ public readonly record struct TinyFields
     public required byte Kind { get; init; }
 
     /// <summary>Writes a <see cref="Tiny"/> with every field into new bytes of its length.</summary>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public byte[] Serialize()
     {
         var table = global::Tafla.TableWriter.CreateTableBytes(2, Tiny.TableLayout, 6);
@@ -411,7 +410,6 @@ public readonly record struct TinyFields
     /// </summary>
     /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
         var sizer = new global::Tafla.TableSizer(2, Tiny.TableLayout);
@@ -643,7 +641,6 @@ public readonly record struct PixelFields
     public required uint Color { get; init; }
 
     /// <summary>Writes a <see cref="Pixel"/> with every field into new bytes of its length.</summary>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public byte[] Serialize()
     {
         var table = global::Tafla.TableWriter.CreateTableBytes(2, Pixel.TableLayout, Pixel.FormatVersion, 20);
@@ -665,7 +662,6 @@ public readonly record struct PixelFields
     /// </summary>
     /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
         var sizer = new global::Tafla.TableSizer(2, Pixel.TableLayout, Pixel.FormatVersion);
@@ -799,7 +795,6 @@ public readonly record struct BoxFields
     public required RangeFields Range { get; init; }
 
     /// <summary>Writes a <see cref="Box"/> with every field into new bytes of its length.</summary>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
         var table = global::Tafla.TableWriter.CreateTableBytes(3, Box.TableLayout, Box.FormatVersion, 48);
@@ -823,7 +818,6 @@ public readonly record struct BoxFields
     /// </summary>
     /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
         var sizer = new global::Tafla.TableSizer(3, Box.TableLayout, Box.FormatVersion);

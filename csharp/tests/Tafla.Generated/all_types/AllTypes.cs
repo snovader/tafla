@@ -69,7 +69,6 @@ public readonly record struct ScalarsFields
     public required bool Bool { get; init; }
 
     /// <summary>Writes a <see cref="Scalars"/> with every field into new bytes of its length.</summary>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
         var table = global::Tafla.TableWriter.CreateTableBytes(11, Scalars.TableLayout, 87);
@@ -109,7 +108,6 @@ public readonly record struct ScalarsFields
     /// </summary>
     /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
-    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
         var sizer = new global::Tafla.TableSizer(11, Scalars.TableLayout);
