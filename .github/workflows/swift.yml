@@ -147,3 +147,26 @@ jobs:
 
       - name: Run tests optimized
         run: swift test -c release -Xswiftc -enable-testing
+
+      # Compiles the paths for hosts whose Int is 32 bits, such as watchOS's
+      # arm64_32, which type-checks them without running them: no runner has
+      # such a host. For watchOS 9, the earliest that the package supports.
+      - name: Build for a 32-bit target
+        run: |
+          swift build --scratch-path .build/watchos --target Tafla \
+              --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
+
+  # The check that the main branch's ruleset requires. It passes when every job
+  # passed, or was skipped because the change doesn't touch Swift.
+  checks:
+    name: Swift checks
+    needs: [changes, formatting, linux, sanitizers, macos]
+    # Runs after a failure too, since GitHub counts a skipped required check as
+    # passed
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

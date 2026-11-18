@@ -219,6 +219,7 @@ swift test
 swift test -c release -Xswiftc -enable-testing
 swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
 ASAN_OPTIONS=detect_leaks=0 swift test --scratch-path .build/asan --sanitize=address
+swift build --scratch-path .build/watchos --target Tafla --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
 swift format lint --strict --recursive Package.swift Sources Tests
 ```
 
@@ -226,7 +227,9 @@ swift format lint --strict --recursive Package.swift Sources Tests
 code as `.swift-format` configures it. LeakSanitizer, which AddressSanitizer
 runs on Linux, reports the conformance suite that the tests keep in a static,
 whose arrays Swift refers to from enum payloads, so `detect_leaks=0` turns it
-off, as it's off on macOS. The tests are:
+off, as it's off on macOS. On macOS, `swift build` for watchOS's `arm64_32`
+compiles the paths for hosts whose `Int` is 32 bits, without running them.
+The tests are:
 
 - `ConformanceTests.swift`: reads and rebuilds the conformance suite, at every
   byte offset from an aligned address.
