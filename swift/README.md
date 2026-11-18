@@ -17,7 +17,7 @@ repository:
 
 ```swift
 dependencies: [
-    .package(path: "../tafla/swift")
+    .package(name: "tafla", path: "../tafla/swift")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Tafla", package: "tafla")])
