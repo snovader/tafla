@@ -270,7 +270,7 @@ whose `Kind` says why and whose properties describe the read:
 
 No bytes make a read throw any other exception: not an
 `IndexOutOfRangeException`, an `ArgumentException`, an `OverflowException`
-nor an `OutOfMemoryException`.
+nor an `OutOfMemoryException`, as the fuzz targets check.
 
 `TableBuilder` throws a `BuildException` when it can't write a table, whatever
 the values, and leaves the builder as it was:
@@ -386,12 +386,13 @@ analyzers, the code style and the trimming and AOT analyzers, and requires
 documentation of every public API. `dotnet test` runs the tests with
 Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs,
 and the benchmarks' check that every codec reads back what it wrote. The
-tests' packages, xUnit v3 and CsCheck, and the libraries that the
-benchmarks compare tafla with, are pinned in `Directory.Packages.props` and
-locked in each project's `packages.lock.json`, which CI restores in locked
-mode. The runtime and the library of generated code depend on no package,
-and have no lock file: the SDK adds its trimming analyzers' package to them,
-at the SDK's own version, which a lock file would tie to one SDK. The build writes
+tests' packages, xUnit v3 and CsCheck, the fuzz targets', SharpFuzz, and the
+libraries that the benchmarks compare tafla with, are pinned in
+`Directory.Packages.props` and locked in each project's `packages.lock.json`,
+which CI restores in locked mode. The runtime and the library of generated
+code depend on no package, and have no lock file: the SDK adds its trimming
+analyzers' package to them, at the SDK's own version, which a lock file would
+tie to one SDK. The build writes
 everything under `artifacts/`.
 
 ```sh
@@ -463,6 +464,66 @@ The tests in `tests/Tafla.Tests` are:
 
 The property tests run 256 cases each, on every core, and print the seed of
 a failing case, which `CsCheck_Seed=<seed> dotnet test` runs again.
+
+### Fuzzing
+
+`fuzz/Tafla.Fuzz` holds the fuzz targets, which mirror `rust/fuzz`'s, and
+which libFuzzer runs through [SharpFuzz](https://github.com/Metalnem/sharpfuzz):
+SharpFuzz instruments the IL of `Tafla.dll` to record the branches that its
+reads take, and [libfuzzer-dotnet](https://github.com/Metalnem/libfuzzer-dotnet)
+runs the targets' process for libFuzzer and passes it each input. An exception
+that escapes a target is a finding, as are a hang and a run out of memory:
+
+- `table_reader` reads the rest of its input with every getter of
+  `TableReader` at a position, in an offset type and header, which the
+  input's first four bytes choose, and reads every array, struct array and
+  vector there. Each read must return the bytes that lie where the format
+  puts them, exactly when they lie within the input, and throw a
+  `DecodeException` that describes the input otherwise. Any other exception,
+  such as an `ArgumentOutOfRangeException` or an `IndexOutOfRangeException`,
+  is a finding, since the target makes none of the mistakes of a caller that
+  those are for, and so are reads that allocate more than 16 bytes per byte
+  of the input and 1 MiB for their exceptions. Rust's target reads at every
+  position of every input instead, which C++'s doesn't either: a .NET
+  exception takes about 3 µs to throw and catch, and most reads of arbitrary
+  bytes throw.
+- `conformance` reads its input as every valid case of the conformance suite
+  describes it, with the conformance test's descriptions and reader in
+  `tests/Tafla.Tests/Tables/`.
+
+The targets' process runs out of memory at 2 GiB of heap, as libFuzzer's
+default `-rss_limit_mb` bounds the other languages' targets, since libFuzzer
+can't bound the memory of the process that libfuzzer-dotnet runs.
+
+libfuzzer-dotnet runs on Linux. `fuzz/fuzz.sh` builds it from its source at a
+pinned commit with Clang's libFuzzer, builds the targets, instruments the
+runtime, and runs a target, with libFuzzer's options, from the corpus that
+its earlier runs grew in `artifacts/fuzz/corpus/` and the conformance
+suite's tables. It needs the .NET 10 SDK, Clang and Clang's runtime of
+libFuzzer, `libclang-rt-<version>-dev` on Debian and Ubuntu:
+
+```sh
+fuzz/fuzz.sh table_reader -max_total_time=300 -timeout=10
+fuzz/fuzz.sh conformance -max_total_time=300 -timeout=10
+```
+
+Elsewhere, Microsoft's container of the .NET 10 SDK, which is Ubuntu, runs
+it:
+
+```sh
+docker run --rm -v "$PWD/..:/repo" -w /repo/csharp mcr.microsoft.com/dotnet/sdk:10.0 sh -c '
+    apt-get update && apt-get install --yes --no-install-recommends clang &&
+    apt-get install --yes --no-install-recommends "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev" &&
+    fuzz/fuzz.sh table_reader -max_total_time=300 -timeout=10'
+```
+
+libFuzzer writes an input that fails to `artifacts/fuzz/<target>/`. The
+targets read files too, on any host, without libFuzzer, as
+`dotnet artifacts/bin/Tafla.Fuzz/debug/Tafla.Fuzz.dll table_reader <file>`
+does after `dotnet build`, and a finding becomes a regression test in
+`tests/`. The C# workflow runs each target for a minute, and the fuzz
+workflow for five minutes every week, from the corpus that its earlier runs
+grew, uploading what fails.
 
 ## Generated code
 

@@ -289,11 +289,59 @@ jobs:
           mcr.microsoft.com/dotnet/runtime:10.0
           dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
 
+  # The reader's fuzz targets, run briefly under libFuzzer through SharpFuzz,
+  # so that a change that breaks them, or that they find quickly, fails here;
+  # the fuzz workflow runs them for longer every week
+  fuzz:
+    name: Fuzz
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Clang's runtime of libFuzzer, to build libfuzzer-dotnet with, whose
+      # package is named after the default Clang's major version
+      - name: Install libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # fuzz.sh builds libfuzzer-dotnet and the targets, and libFuzzer writes
+      # an input that fails to artifacts/fuzz/<target>/, which the next step
+      # uploads
+      - name: Run each fuzz target for a minute
+        run: |
+          for target in table_reader conformance; do
+              fuzz/fuzz.sh "$target" -max_total_time=60 -timeout=10
+          done
+
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-csharp
+          path: |
+            csharp/artifacts/fuzz/table_reader
+            csharp/artifacts/fuzz/conformance
+          if-no-files-found: ignore
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm]
+    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm, fuzz]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
