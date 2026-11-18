@@ -65,18 +65,18 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = TableReader(bytes)
-            let value = try buffer.struct(at: buffer.rootOffset(0), size: 11)
+            let reader = TableReader(bytes)
+            let value = try reader.struct(at: reader.rootOffset(0), size: 11)
             #expect(value.byteCount == 11)
             #expect(try readScalars(value, [.uint8, .float64, .int16]) == scalars)
 
-            let array = try buffer.structArray(at: buffer.rootOffset(1), size: 11)
+            let array = try reader.structArray(at: reader.rootOffset(1), size: 11)
             #expect(array.byteCount == 22)
             #expect(try readScalars(array.extracting(0..<11), [.uint8, .float64, .int16]) == structs[0])
             #expect(try readScalars(array.extracting(11..<22), [.uint8, .float64, .int16]) == structs[1])
 
             // Structs of no bytes take none, whatever the count
-            #expect(try buffer.structArray(at: buffer.rootOffset(1), size: 0).byteCount == 0)
+            #expect(try reader.structArray(at: reader.rootOffset(1), size: 0).byteCount == 0)
         }
     }
 
@@ -94,8 +94,8 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes, atByteOffset: byteOffset) { bytes in
-            let buffer = TableReader(bytes)
-            let floats = try buffer.float64Array(at: buffer.rootOffset(1))
+            let reader = TableReader(bytes)
+            let floats = try reader.float64Array(at: reader.rootOffset(1))
 
             #expect(floats.count == 3)
             #expect(floats[1].bitPattern == (-0.0).bitPattern)
@@ -105,10 +105,10 @@ struct RoundTripTests {
                 #expect(span[2] == .infinity)
             }
 
-            let bytes = try buffer.uint8Array(at: buffer.rootOffset(2))
+            let bytes = try reader.uint8Array(at: reader.rootOffset(2))
             #expect(bytes.span?.count == 3)
 
-            let empty = try buffer.int32Array(at: buffer.rootOffset(3))
+            let empty = try reader.int32Array(at: reader.rootOffset(3))
             #expect(empty.count == 0)
             #expect(empty.span?.isEmpty == true)
             #expect(Array(empty) == [])
@@ -130,8 +130,8 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = TableReader(bytes)
-            let vector = try buffer.vector(at: buffer.rootOffset(2))
+            let reader = TableReader(bytes)
+            let vector = try reader.vector(at: reader.rootOffset(2))
             #expect(vector.count == 3)
 
             for index in vector.indices {
@@ -140,7 +140,7 @@ struct RoundTripTests {
             }
 
             for index in 0..<2 {
-                let position = try buffer.rootOffset(index)
+                let position = try reader.rootOffset(index)
                 let item = TableReader(bytes.extracting(position..<position + nestedBytes.count))
                 #expect(item.bytes.withUnsafeBytes(Array.init) == nestedBytes)
             }
@@ -159,8 +159,8 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = TableReader(bytes, layout: builder.layout)
-            let vector = try buffer.vector(at: buffer.rootOffset(0))
+            let reader = TableReader(bytes, layout: builder.layout)
+            let vector = try reader.vector(at: reader.rootOffset(0))
 
             let inPlace = TableReader(try vector.itemInPlace(at: 1), layout: TableLayout(offsetType: .uint16))
             #expect(try inPlace.string(at: inPlace.rootOffset(0)) == "item")

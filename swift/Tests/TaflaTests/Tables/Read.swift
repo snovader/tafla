@@ -40,10 +40,10 @@ struct Mismatch: Error, CustomStringConvertible {
 /// header, whose size must be the table's byte length when it's sized, and
 /// then its fields
 func readTable(_ bytes: RawSpan, _ table: Table) throws -> Table {
-    let buffer = TableReader(bytes, layout: table.layout)
+    let reader = TableReader(bytes, layout: table.layout)
 
     if table.layout.isSized {
-        let size = try buffer.size
+        let size = try reader.size
         guard size == bytes.byteCount else {
             throw Mismatch(.size, "The header holds the size \(size) of \(bytes.byteCount) bytes")
         }
@@ -51,57 +51,57 @@ func readTable(_ bytes: RawSpan, _ table: Table) throws -> Table {
 
     var read = Table(layout: table.layout, version: nil, fields: [])
     if table.layout.isVersioned {
-        read.version = try buffer.version
+        read.version = try reader.version
     }
 
     for (index, field) in table.fields.enumerated() {
-        read.fields.append(try readRootField(buffer, index, field))
+        read.fields.append(try readRootField(reader, index, field))
     }
 
     return read
 }
 
 /// Reads root field `index` of a table as `field`, without reading the header
-func readRootField(_ buffer: TableReader, _ index: Int, _ field: Field) throws -> Field {
-    try readField(buffer, at: buffer.rootOffset(index), field)
+func readRootField(_ reader: TableReader, _ index: Int, _ field: Field) throws -> Field {
+    try readField(reader, at: reader.rootOffset(index), field)
 }
 
-/// Reads the field at `position` of the table that `buffer` reads
-func readField(_ buffer: TableReader, at position: Int, _ field: Field) throws -> Field {
+/// Reads the field at `position` of the table that `reader` reads
+func readField(_ reader: TableReader, at position: Int, _ field: Field) throws -> Field {
     switch field {
-    case .int8: .int8(try buffer.int8(at: position))
-    case .uint8: .uint8(try buffer.uint8(at: position))
-    case .int16: .int16(try buffer.int16(at: position))
-    case .uint16: .uint16(try buffer.uint16(at: position))
-    case .int32: .int32(try buffer.int32(at: position))
-    case .uint32: .uint32(try buffer.uint32(at: position))
-    case .int64: .int64(try buffer.int64(at: position))
-    case .uint64: .uint64(try buffer.uint64(at: position))
-    case .float32: .float32(try buffer.float32(at: position))
-    case .float64: .float64(try buffer.float64(at: position))
-    case .bool: .bool(try buffer.uint8(at: position) != 0)
-    case .int8Array: .int8Array(try elements(of: buffer.int8Array(at: position)))
-    case .uint8Array: .uint8Array(try elements(of: buffer.uint8Array(at: position)))
-    case .int16Array: .int16Array(try elements(of: buffer.int16Array(at: position)))
-    case .uint16Array: .uint16Array(try elements(of: buffer.uint16Array(at: position)))
-    case .int32Array: .int32Array(try elements(of: buffer.int32Array(at: position)))
-    case .uint32Array: .uint32Array(try elements(of: buffer.uint32Array(at: position)))
-    case .int64Array: .int64Array(try elements(of: buffer.int64Array(at: position)))
-    case .uint64Array: .uint64Array(try elements(of: buffer.uint64Array(at: position)))
+    case .int8: .int8(try reader.int8(at: position))
+    case .uint8: .uint8(try reader.uint8(at: position))
+    case .int16: .int16(try reader.int16(at: position))
+    case .uint16: .uint16(try reader.uint16(at: position))
+    case .int32: .int32(try reader.int32(at: position))
+    case .uint32: .uint32(try reader.uint32(at: position))
+    case .int64: .int64(try reader.int64(at: position))
+    case .uint64: .uint64(try reader.uint64(at: position))
+    case .float32: .float32(try reader.float32(at: position))
+    case .float64: .float64(try reader.float64(at: position))
+    case .bool: .bool(try reader.uint8(at: position) != 0)
+    case .int8Array: .int8Array(try elements(of: reader.int8Array(at: position)))
+    case .uint8Array: .uint8Array(try elements(of: reader.uint8Array(at: position)))
+    case .int16Array: .int16Array(try elements(of: reader.int16Array(at: position)))
+    case .uint16Array: .uint16Array(try elements(of: reader.uint16Array(at: position)))
+    case .int32Array: .int32Array(try elements(of: reader.int32Array(at: position)))
+    case .uint32Array: .uint32Array(try elements(of: reader.uint32Array(at: position)))
+    case .int64Array: .int64Array(try elements(of: reader.int64Array(at: position)))
+    case .uint64Array: .uint64Array(try elements(of: reader.uint64Array(at: position)))
     case .float32Array:
-        .float32Array(bits: try elements(of: buffer.float32Array(at: position)).map(\.bitPattern))
+        .float32Array(bits: try elements(of: reader.float32Array(at: position)).map(\.bitPattern))
     case .float64Array:
-        .float64Array(bits: try elements(of: buffer.float64Array(at: position)).map(\.bitPattern))
-    case .string: .string(try buffer.string(at: position))
+        .float64Array(bits: try elements(of: reader.float64Array(at: position)).map(\.bitPattern))
+    case .string: .string(try reader.string(at: position))
     case .struct(let scalars):
-        try readStruct(buffer, at: position, scalars.map { $0.scalarType! })
+        try readStruct(reader, at: position, scalars.map { $0.scalarType! })
     case .structArray(let types, _):
-        try readStructArray(buffer, at: position, types)
+        try readStructArray(reader, at: position, types)
     case .table(let nested, let alignment):
         .table(
-            Nested(from: nested.from, table: try readNested(buffer, at: position, nested.table)), alignment: alignment)
+            Nested(from: nested.from, table: try readNested(reader, at: position, nested.table)), alignment: alignment)
     case .vector(let items):
-        try readVector(buffer, at: position, items)
+        try readVector(reader, at: position, items)
     }
 }
 
@@ -130,25 +130,25 @@ func elements<T: ArrayElement>(of view: ArrayView<T>) throws -> [T] {
 }
 
 /// Reads a table nested with setTable
-func readNested(_ buffer: TableReader, at position: Int, _ table: Table) throws -> Table {
-    if readsInPlace(table, within: buffer) {
-        return try readInPlace(buffer, at: position, table)
+func readNested(_ reader: TableReader, at position: Int, _ table: Table) throws -> Table {
+    if readsInPlace(table, within: reader) {
+        return try readInPlace(reader, at: position, table)
     }
 
     // A position past the end leaves no bytes, which the first read fails for
-    let bytes = buffer.bytes
+    let bytes = reader.bytes
     let start = min(max(position, 0), bytes.byteCount)
     return try readTable(bytes.extracting(start..<bytes.byteCount), table)
 }
 
 /// Reads a vector's items, after checking that finding each from its ends
 /// in place finds what finding it as a table of its own finds
-func readVector(_ buffer: TableReader, at position: Int, _ items: [Nested]) throws -> Field {
-    let vector = try buffer.vector(at: position)
+func readVector(_ reader: TableReader, at position: Int, _ items: [Nested]) throws -> Field {
+    let vector = try reader.vector(at: position)
 
     var firstError: DecodeError?
     for index in vector.indices {
-        let error = try checkItem(vector, index, within: buffer.bytes)
+        let error = try checkItem(vector, index, within: reader.bytes)
         firstError = firstError ?? error
     }
     if let firstError {
@@ -162,8 +162,8 @@ func readVector(_ buffer: TableReader, at position: Int, _ items: [Nested]) thro
     var read: [Nested] = []
     for (index, nested) in items.enumerated() {
         let table: Table
-        if readsInPlace(nested.table, within: buffer) {
-            // At its start, in a buffer of its offset type, which is its
+        if readsInPlace(nested.table, within: reader) {
+            // At its start, in a reader of its offset type, which is its
             // parent's
             let item = TableReader(try vector.itemInPlace(at: index), layout: nested.table.layout)
             table = try readInPlace(item, at: 0, nested.table)
@@ -179,7 +179,7 @@ func readVector(_ buffer: TableReader, at position: Int, _ items: [Nested]) thro
 
 /// Checks that item `index` of a vector fails to read in place as it fails
 /// to read as a table of its own, or that its bytes in place start where its
-/// own do and run on to the end of the buffer's, and returns its error
+/// own do and run on to the end of the reader's, and returns its error
 func checkItem(_ vector: Vector, _ index: Int, within bytes: RawSpan) throws -> DecodeError? {
     let item: Range<Int>
     do {
@@ -206,31 +206,31 @@ func checkItem(_ vector: Vector, _ index: Int, within bytes: RawSpan) throws -> 
 
 /// Whether a nested table is read in place: it has no header, and its
 /// parent's offset type
-func readsInPlace(_ table: Table, within buffer: TableReader) -> Bool {
+func readsInPlace(_ table: Table, within reader: TableReader) -> Bool {
     let layout = table.layout
-    return !layout.isSized && !layout.isVersioned && layout.offsetType == buffer.layout.offsetType
+    return !layout.isSized && !layout.isVersioned && layout.offsetType == reader.layout.offsetType
 }
 
 /// Reads the fields of a table nested at `position`, from offsets counted
 /// from its start, within its parent's bytes
-func readInPlace(_ buffer: TableReader, at position: Int, _ table: Table) throws -> Table {
+func readInPlace(_ reader: TableReader, at position: Int, _ table: Table) throws -> Table {
     var read = Table(layout: table.layout, version: nil, fields: [])
     for (index, field) in table.fields.enumerated() {
-        let offset = try buffer.fieldOffset(index, inTableAt: position)
-        read.fields.append(try readField(buffer, at: offset, field))
+        let offset = try reader.fieldOffset(index, inTableAt: position)
+        read.fields.append(try readField(reader, at: offset, field))
     }
 
     return read
 }
 
-func readStruct(_ buffer: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
-    let bytes = try buffer.struct(at: position, size: structSize(types))
+func readStruct(_ reader: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
+    let bytes = try reader.struct(at: position, size: structSize(types))
     return .struct(try readScalars(bytes, types))
 }
 
-func readStructArray(_ buffer: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
+func readStructArray(_ reader: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
     let size = structSize(types)
-    let bytes = try buffer.structArray(at: position, size: size)
+    let bytes = try reader.structArray(at: position, size: size)
 
     var items: [[Field]] = []
     for start in stride(from: 0, to: bytes.byteCount, by: size) {
@@ -243,30 +243,30 @@ func readStructArray(_ buffer: TableReader, at position: Int, _ types: [ScalarTy
 /// Reads the scalars of a struct of `types` at their offsets in its bytes,
 /// which a TableReader reads in any layout
 func readScalars(_ bytes: RawSpan, _ types: [ScalarType]) throws -> [Field] {
-    let buffer = TableReader(bytes)
+    let reader = TableReader(bytes)
 
     var scalars: [Field] = []
     var offset = 0
     for type in types {
-        scalars.append(try readScalar(buffer, at: offset, type))
+        scalars.append(try readScalar(reader, at: offset, type))
         offset += type.size
     }
 
     return scalars
 }
 
-func readScalar(_ buffer: TableReader, at position: Int, _ type: ScalarType) throws -> Field {
+func readScalar(_ reader: TableReader, at position: Int, _ type: ScalarType) throws -> Field {
     switch type {
-    case .int8: .int8(try buffer.int8(at: position))
-    case .uint8: .uint8(try buffer.uint8(at: position))
-    case .int16: .int16(try buffer.int16(at: position))
-    case .uint16: .uint16(try buffer.uint16(at: position))
-    case .int32: .int32(try buffer.int32(at: position))
-    case .uint32: .uint32(try buffer.uint32(at: position))
-    case .int64: .int64(try buffer.int64(at: position))
-    case .uint64: .uint64(try buffer.uint64(at: position))
-    case .float32: .float32(try buffer.float32(at: position))
-    case .float64: .float64(try buffer.float64(at: position))
+    case .int8: .int8(try reader.int8(at: position))
+    case .uint8: .uint8(try reader.uint8(at: position))
+    case .int16: .int16(try reader.int16(at: position))
+    case .uint16: .uint16(try reader.uint16(at: position))
+    case .int32: .int32(try reader.int32(at: position))
+    case .uint32: .uint32(try reader.uint32(at: position))
+    case .int64: .int64(try reader.int64(at: position))
+    case .uint64: .uint64(try reader.uint64(at: position))
+    case .float32: .float32(try reader.float32(at: position))
+    case .float64: .float64(try reader.float64(at: position))
     }
 }
 

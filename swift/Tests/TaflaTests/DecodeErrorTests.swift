@@ -24,11 +24,11 @@ struct DecodeErrorTests {
             for cut in drawn.cuts.map({ $0 % built.count }) {
                 // A copy, so that no read can reach the bytes after the cut
                 try withSpan(of: Array(built[..<cut])) { bytes throws in
-                    let buffer = TableReader(bytes, layout: drawn.table.layout)
+                    let reader = TableReader(bytes, layout: drawn.table.layout)
 
                     for (index, field) in drawn.table.fields.enumerated() {
                         do {
-                            #expect(try readRootField(buffer, index, field) == field, "field \(index) cut at \(cut)")
+                            #expect(try readRootField(reader, index, field) == field, "field \(index) cut at \(cut)")
                         } catch let error as DecodeError {
                             guard case .outOfRange = error else {
                                 Issue.record("Field \(index) cut at \(cut): \(error)")
@@ -65,9 +65,9 @@ struct DecodeErrorTests {
             try withSpan(of: built) { bytes throws in
                 checkReadError { _ = try readTable(bytes, drawn.table) }
 
-                let buffer = TableReader(bytes, layout: drawn.table.layout)
+                let reader = TableReader(bytes, layout: drawn.table.layout)
                 for (index, field) in drawn.table.fields.enumerated() {
-                    checkReadError { _ = try readRootField(buffer, index, field) }
+                    checkReadError { _ = try readRootField(reader, index, field) }
                 }
             }
         }
@@ -166,20 +166,20 @@ struct DecodeErrorTests {
         let bytes: [UInt8] = [4, 0, 0, 0, 0xff, 1, 0]
 
         try withSpan(of: bytes) { bytes throws in
-            let buffer = TableReader(bytes)
+            let reader = TableReader(bytes)
 
             // An offset past the end, and a value
             #expect(throws: DecodeError.outOfRange(position: 4, byteLength: 4, available: 7)) {
-                _ = try buffer.rootOffset(1)
+                _ = try reader.rootOffset(1)
             }
             #expect(throws: DecodeError.outOfRange(position: 4, byteLength: 8, available: 7)) {
-                _ = try buffer.float64(at: buffer.rootOffset(0))
+                _ = try reader.float64(at: reader.rootOffset(0))
             }
             #expect(throws: DecodeError.outOfRange(position: 8, byteLength: 1, available: 7)) {
-                _ = try buffer.uint8(at: 8)
+                _ = try reader.uint8(at: 8)
             }
             #expect(throws: DecodeError.outOfRange(position: -1, byteLength: 1, available: 7)) {
-                _ = try buffer.int8(at: -1)
+                _ = try reader.int8(at: -1)
             }
 
             // The size in a sized header, and the version after it
@@ -216,13 +216,13 @@ struct DecodeErrorTests {
     // them saturates rather than overflows
     @Test func rejectsAnArrayWhoseByteLengthOverflows() throws {
         try withSpan(of: [2, 0, 0, 0, 3, 0, 0, 0]) { bytes throws in
-            let buffer = TableReader(bytes)
+            let reader = TableReader(bytes)
 
             #expect(throws: DecodeError.outOfRange(position: 4, byteLength: 2 * UInt64(Int.max), available: 8)) {
-                _ = try buffer.structArray(at: 0, size: .max)
+                _ = try reader.structArray(at: 0, size: .max)
             }
             #expect(throws: DecodeError.outOfRange(position: 8, byteLength: .max, available: 8)) {
-                _ = try buffer.structArray(at: 4, size: .max)
+                _ = try reader.structArray(at: 4, size: .max)
             }
         }
     }
@@ -268,9 +268,9 @@ struct DecodeErrorTests {
         try builder.setUInt8Array(utf8)
 
         try withSpan(of: builder.bytes()) { bytes throws in
-            let buffer = TableReader(bytes)
+            let reader = TableReader(bytes)
             #expect(throws: DecodeError.invalidUTF8(position: 4)) {
-                _ = try buffer.string(at: buffer.rootOffset(0))
+                _ = try reader.string(at: reader.rootOffset(0))
             }
         }
     }
@@ -372,24 +372,24 @@ struct ArbitraryReads: Sendable {
 
         for offsetType in OffsetType.allCases {
             for layout in layouts(of: offsetType) {
-                let buffer = TableReader(bytes, layout: layout)
-                reads.append(read { .position(try buffer.rootOffset(index)) })
-                reads.append(read { .count(try buffer.size) })
+                let reader = TableReader(bytes, layout: layout)
+                reads.append(read { .position(try reader.rootOffset(index)) })
+                reads.append(read { .count(try reader.size) })
                 if layout.isVersioned {
-                    reads.append(read { .count(Int(try buffer.version)) })
+                    reads.append(read { .count(Int(try reader.version)) })
                 }
             }
 
-            let buffer = TableReader(bytes, layout: TableLayout(offsetType: offsetType))
-            reads.append(read { .position(try buffer.fieldOffset(index, inTableAt: position)) })
-            reads += self.reads(of: buffer, within: bytes)
+            let reader = TableReader(bytes, layout: TableLayout(offsetType: offsetType))
+            reads.append(read { .position(try reader.fieldOffset(index, inTableAt: position)) })
+            reads += self.reads(of: reader, within: bytes)
         }
 
         return reads
     }
 
     /// Reads every type at the position
-    func reads(of buffer: TableReader, within bytes: RawSpan) -> [Read] {
+    func reads(of reader: TableReader, within bytes: RawSpan) -> [Read] {
         let values: [Field] = [
             .int8(0), .uint8(0), .int16(0), .uint16(0), .int32(0), .uint32(0), .int64(0), .uint64(0),
             .float32(bits: 0), .float64(bits: 0), .int8Array([]), .uint8Array([]), .int16Array([]),
@@ -397,12 +397,12 @@ struct ArbitraryReads: Sendable {
             .float32Array(bits: []), .float64Array(bits: []), .string(utf8: []),
         ]
 
-        var reads = values.map { field in read { .value(try readField(buffer, at: position, field)) } }
-        reads.append(read { .bytes(bytes.byteOffsets(of: try buffer.struct(at: position, size: size))!) })
-        reads.append(read { .bytes(bytes.byteOffsets(of: try buffer.structArray(at: position, size: size))!) })
+        var reads = values.map { field in read { .value(try readField(reader, at: position, field)) } }
+        reads.append(read { .bytes(bytes.byteOffsets(of: try reader.struct(at: position, size: size))!) })
+        reads.append(read { .bytes(bytes.byteOffsets(of: try reader.structArray(at: position, size: size))!) })
 
         do {
-            let vector = try buffer.vector(at: position)
+            let vector = try reader.vector(at: position)
             reads.append(.count(vector.count))
             for index in vector.indices {
                 reads.append(read { .bytes(bytes.byteOffsets(of: try vector.item(at: index))!) })

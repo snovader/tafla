@@ -59,14 +59,14 @@ struct ConformanceTests {
             let table = suite.table(of: invalid.validCase)
 
             try withSpan(of: invalid.bytes) { bytes throws in
-                let buffer = TableReader(bytes, layout: table.layout)
+                let reader = TableReader(bytes, layout: table.layout)
 
                 for (index, expected) in table.fields[..<invalid.field].enumerated() {
-                    #expect(try readRootField(buffer, index, expected) == expected, "\(invalid.name)/\(index)")
+                    #expect(try readRootField(reader, index, expected) == expected, "\(invalid.name)/\(index)")
                 }
 
                 #expect(throws: DecodeError.self, "\(invalid.name)/\(invalid.field)") {
-                    try readRootField(buffer, invalid.field, table.fields[invalid.field])
+                    try readRootField(reader, invalid.field, table.fields[invalid.field])
                 }
             }
         }
