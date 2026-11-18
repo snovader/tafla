@@ -13,9 +13,18 @@ public sealed partial class TableBuilder
     /// builder of its own. They count the table's own fields and length, as a builder of it would.
     /// </summary>
     /// <remarks>
-    /// An item is valid only while the fill that it's given to runs. It's a <see langword="ref struct"/>,
-    /// so that it can't be kept after that, nor captured by a lambda, such as the fill of a table
-    /// recorded in place in it, which is given an item of its own.
+    /// <para>
+    /// An item comes only from a fill, and is valid only while that fill runs. It's a
+    /// <see langword="ref struct"/>, so that it can't be kept after that, nor captured by a lambda,
+    /// such as the fill of a table recorded in place in it, which is given an item of its own.
+    /// </para>
+    /// <para>
+    /// An item holds only its builder, whose setters set the fields of the table that it's recording
+    /// at the time, the innermost. So an item passed on as the state of the fill of a table recorded
+    /// in place in its own, which a <c>TState</c> that allows a ref struct can be, sets that inner
+    /// table's fields, as the inner table's own item does. The default item has no builder, and its
+    /// setters throw <see cref="NullReferenceException"/>.
+    /// </para>
     /// </remarks>
     public readonly ref struct Item
     {
