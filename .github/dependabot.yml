@@ -61,3 +61,10 @@ updates:
       - "/go/benchmarks"
     schedule:
       interval: "daily"
+
+  # The property tests' library, which only the tests depend on, and which
+  # Package.resolved pins. The runtime depends on nothing.
+  - package-ecosystem: "swift"
+    directory: "/swift"
+    schedule:
+      interval: "daily"
