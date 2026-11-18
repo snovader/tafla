@@ -187,7 +187,9 @@ to another multiple of 4 when the garbage collector compacts the heap.
 
 Building with `-p:TaflaPortable=true` copies every array that the runtime
 reads on any host, so that `dotnet test -p:TaflaPortable=true` tests that
-path, without the byte swap, which only a big-endian host runs.
+path, without the byte swap, which only a big-endian host runs. CI runs the
+tests on s390x as well, emulated by QEMU, so that the byte swap is tested
+too, as the Development section describes.
 
 32-bit x86 returns floats on the x87 stack, whose loads may quiet a
 signalling NaN, so `GetFloat32()` and `GetFloat64()` may return one quieted
@@ -217,6 +219,19 @@ which CI restores in locked mode. The runtime depends on no package, and has
 no lock file: the SDK adds its trimming analyzers' package to it, at the
 SDK's own version, which a lock file would tie to one SDK. The build writes
 everything under `artifacts/`.
+
+The byte swap of a big-endian host runs only there. Microsoft builds no .NET
+for s390x, but Red Hat does, so CI runs the tests that `dotnet build` built,
+which are IL, in Red Hat's container of the .NET 10 runtime for s390x,
+emulated by QEMU. Docker Desktop emulates it already, and Docker on Linux
+once `docker run --privileged --rm tonistiigi/binfmt --install s390x` has
+registered QEMU:
+
+```sh
+docker run --rm --platform linux/s390x -v "$PWD/..:/repo:ro" -w /repo/csharp \
+    registry.access.redhat.com/ubi9/dotnet-100-runtime \
+    dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+```
 
 The tests in `tests/Tafla.Tests` are:
 

@@ -116,11 +116,50 @@ jobs:
       - name: Run tests of the portable path
         run: dotnet test -p:TaflaPortable=true
 
+  # A big-endian host, s390x, emulated by QEMU, which reads and writes every
+  # array through its byte-swapping path. Microsoft builds no .NET for s390x,
+  # so the tests, which build to IL, run in Red Hat's container of the .NET 10
+  # runtime for it.
+  big-endian:
+    name: Test (big-endian)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build
+
+      # Registers QEMU to run s390x's binaries, in containers too
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: s390x
+
+      # The tests find the conformance suite above the directory that they
+      # run in, so the container mounts the repository at its own path
+      - name: Run tests on s390x
+        run: >
+          docker run --rm --platform linux/s390x -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" -w "$PWD"
+          registry.access.redhat.com/ubi9/dotnet-100-runtime
+          dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test]
+    needs: [changes, formatting, test, big-endian]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
