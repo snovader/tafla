@@ -2,15 +2,15 @@ use std::borrow::Cow;
 
 use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, TableWriter};
 
-/// Builds a table, which a `ByteBuffer` reads back.
+/// Builds a table, which a `TableReader` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
 /// the order they're set. Arrays, strings and vectors start with their
 /// count, and a vector then holds the end of each item. Arrays of scalars
 /// and of structs are padded so their elements are aligned from the start of
-/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
-/// or `ByteBuffer::field_offset()` for a table nested in another.
+/// the table. Fields are read back by index with `TableReader::root_offset()`,
+/// or `TableReader::field_offset()` for a table nested in another.
 ///
 /// Setting a field records it, borrowing or owning its value, and
 /// [`TableBuilder::to_bytes()`] then writes every field through a
@@ -111,7 +111,7 @@ impl<'a> TableBuilder<'a> {
     }
 
     /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `ByteBuffer::version()` before
+    /// header. Readers can check it with `TableReader::version()` before
     /// reading any field.
     ///
     /// # Errors
@@ -248,7 +248,7 @@ impl<'a> TableBuilder<'a> {
     }
 
     /// Embeds a table, from its builder or its bytes, without a length prefix.
-    /// Readers find its fields with `ByteBuffer::field_offset()` from the
+    /// Readers find its fields with `TableReader::field_offset()` from the
     /// field's position, which reads offsets of the parent's offset type, so
     /// the table should have no header and the parent's offset type: that's
     /// [`TableLayout::DEFAULT`] in a parent of `uint32` offsets.

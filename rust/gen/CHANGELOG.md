@@ -85,7 +85,7 @@ first commits, for code built from its source before the release.
 - Generated Python declares `fields()` on each message and table whose
   fields are all scalars, structs and tables of them, and a string last,
   which reads every field at once into the `TypedDict` that it's written
-  from, through `ByteBuffer.get_fields()`. It reads them through the getters
+  from, through `TableReader.get_fields()`. It reads them through the getters
   when the table's offsets aren't those that its writer writes, so its values
   and errors are theirs. The getters stay lazy.
 - A generated `Read<Struct>()` beside each Go struct, which reads it from
@@ -104,7 +104,7 @@ first commits, for code built from its source before the release.
 - Generated Python declares `field_values()` on every message and table,
   which reads every field's value into a tuple in one call, typed by the
   alias `<Name>FieldValues` that's declared beside `<Name>Fields`: the leading
-  fields of fixed size through `ByteBuffer.get_fields()`, and the others
+  fields of fixed size through `TableReader.get_fields()`, and the others
   after them, those of nested tables without such fields included, in the
   order that the getters read them, so that its values and errors are
   theirs. A nested table's values are in place of it when they're all of
@@ -116,7 +116,7 @@ first commits, for code built from its source before the release.
   read the items' values without creating their readers.
 - Generated Python views of vectors have `iter_field_values()`, which
   iterates over the items' values: for a table of fixed size without
-  structs, through the runtime's `ByteBuffer.iter_vector_fields()`, which
+  structs, through the runtime's `TableReader.iter_vector_fields()`, which
   reads each item's end when it reaches the item, without creating the
   items' readers, nor a list of their values.
 - Generated Python messages of only fields of fixed size, and a string
@@ -128,7 +128,7 @@ first commits, for code built from its source before the release.
   reads every field's value as `field_values()` reads them, without creating
   a reader, and raises the reader's `DecodeError` for another format
   version: a message of only fields of fixed size in one call, through
-  `ByteBuffer.read_fields()`, and any other from a `ByteBuffer` of its own.
+  `TableReader.read_fields()`, and any other from a `TableReader` of its own.
 - Generated Python messages of scalars, strings, arrays and vectors of
   tables of fixed size without structs have `serialize_values()`, which
   writes the message from its fields' values as positional arguments, each
@@ -144,6 +144,10 @@ first commits, for code built from its source before the release.
 ### Changed
 
 - The project is named tafla rather than buffy.
+- Generated code reads tables with the runtimes' `TableReader` rather than
+  `ByteBuffer`, and names it `reader`. A declaration can't be named
+  `TableReader`, nor `ByteBuffer` still, which the generated Java imports from
+  `java.nio`.
 - Schemas set a layout's offset type with `offset_type: uint16` rather than
   `offset_size: 16`.
 - Generated tables are written with a sizer and a writer rather than with
@@ -201,7 +205,7 @@ first commits, for code built from its source before the release.
   without a bounds check for each struct.
 - Generated Go getters read uint32 offsets with the Go runtime's
   `Uint32FieldOffset()`, which the compiler inlines, at the slot of each
-  field, rather than through `ByteBuffer.FieldOffset()` or `RootOffset()`, so
+  field, rather than through `TableReader.FieldOffset()` or `RootOffset()`, so
   that a getter is one call rather than two.
 - The generated C++ getter of a vector or an array of structs returns its
   view, a `<Table>Vector` or a `<Struct>Array`, which reads each item when
@@ -211,7 +215,7 @@ first commits, for code built from its source before the release.
   when the getter is called.
 - Generated C++ getters are `TAFLA_ALWAYS_INLINE`, as the runtime's getters
   are, and the getter of a nested table reads it through the runtime's
-  `ByteBuffer::get_table()`, so it throws a `tafla::DecodeError` when the
+  `TableReader::get_table()`, so it throws a `tafla::DecodeError` when the
   table's offset leads past the bytes, rather than returning a reader whose
   reads all fail.
 - Generated fields that clash with the generated code's members, or that are
@@ -236,7 +240,7 @@ first commits, for code built from its source before the release.
   A list of the items is `list(view)`. An item whose bytes are corrupt raises
   `DecodeError` when it's read, rather than when the getter is called.
 - Generated Java views of vectors iterate their items with
-  `ByteBuffer.getVectorItemEnd()`, carrying each item's end to the next, so
+  `TableReader.getVectorItemEnd()`, carrying each item's end to the next, so
   that a loop over a view reads one end for each item rather than two.
   Java's comparison suite summed every item of its vector of 100 tables so
   in 0.427 µs rather than 0.490 µs.

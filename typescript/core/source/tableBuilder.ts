@@ -1,4 +1,3 @@
-import { ByteBuffer } from './byteBuffer.ts';
 import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
 import { utf8Length } from './encoding.ts';
 import {
@@ -10,6 +9,7 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
+import { TableReader } from './tableReader.ts';
 import {
     copyTable,
     newTableWriter,
@@ -65,8 +65,8 @@ export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize'>;
  * length and version when its layout has them, followed by the fields in the
  * order they're set. Arrays, strings and vectors start with their count, and a
  * vector then holds the end of each item. Arrays of scalars and of structs are
- * padded so their elements are aligned from the start of the table. Fields are read back by index with `ByteBuffer.rootOffset()`, or
- * `ByteBuffer.fieldOffset()` for a table nested in another.
+ * padded so their elements are aligned from the start of the table. Fields are read back by index with `TableReader.rootOffset()`, or
+ * `TableReader.fieldOffset()` for a table nested in another.
  *
  * Setting a field records it and counts the table's length. `finalize()` then
  * writes every field, in order, through a {@link TableWriter} into bytes of
@@ -86,10 +86,10 @@ export type TableItem = Omit<TableBuilder, 'bytes' | 'finalize'>;
  */
 export class TableBuilder {
     /**
-     * The table once written: its bytes, and then the buffer of them that
+     * The table once written: its bytes, and then the reader of them that
      * `finalize()` returns
      */
-    #written: Uint8Array | ByteBuffer | undefined;
+    #written: Uint8Array | TableReader | undefined;
 
     readonly #layout: TableLayout;
     readonly #version: number | undefined;
@@ -142,7 +142,7 @@ export class TableBuilder {
      * @param layout - The table's header and offset type, which its readers
      * must use too.
      * @param version - The version to write to the header, required when the
-     * layout is versioned. Readers can check it with `ByteBuffer.getVersion()`
+     * layout is versioned. Readers can check it with `TableReader.getVersion()`
      * before reading any field.
      * @throws {TypeError} If `version` is given for a layout without a version
      * slot, or missing for one with it.
@@ -171,34 +171,34 @@ export class TableBuilder {
     }
 
     /**
-     * Writes the table, once, and returns a `ByteBuffer` that reads it; later
-     * calls return the same buffer.
+     * Writes the table, once, and returns a `TableReader` that reads it; later
+     * calls return the same reader.
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * the fields no longer fit the table or fill it.
      */
-    finalize(): ByteBuffer {
+    finalize(): TableReader {
         const written = this.#written ?? this.#write();
-        if (written instanceof ByteBuffer) {
+        if (written instanceof TableReader) {
             return written;
         }
 
-        const buffer = new ByteBuffer(written, this.#layout);
-        this.#written = buffer;
+        const reader = new TableReader(written, this.#layout);
+        this.#written = reader;
 
-        return buffer;
+        return reader;
     }
 
     /**
      * Writes the table, once, as `finalize()` does, and returns its bytes,
-     * which `finalize()` then returns a buffer of
+     * which `finalize()` then returns a reader of
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * the fields no longer fit the table or fill it.
      */
     bytes(): Uint8Array {
         const written = this.#written ?? this.#write();
-        return written instanceof ByteBuffer ? written.bytes() : written;
+        return written instanceof TableReader ? written.bytes() : written;
     }
 
     setInt8(value: number): void {
@@ -419,7 +419,7 @@ export class TableBuilder {
 
     /**
      * Embeds a table, from its builder or its bytes, without a length prefix.
-     * Readers find its fields with `ByteBuffer.fieldOffset()` from the field's
+     * Readers find its fields with `TableReader.fieldOffset()` from the field's
      * offset, so its layout must be {@link TableLayout.DEFAULT}.
      *
      * A builder must have all its fields set. `finalize()` writes it straight

@@ -24,12 +24,12 @@ fn imports_the_runtime_that_the_options_name() {
         (
             "python",
             "tables.tafla",
-            "from tables.tafla import ByteBuffer",
+            "from tables.tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
         ),
         (
             "java",
             "org.example.tafla",
-            "import org.example.tafla.ByteBuffer;\n",
+            "import org.example.tafla.TableReader;\n",
         ),
         ("rust", "crate::tafla", "use crate::tafla::{"),
         ("cpp", "vendor/tafla.hpp", "\n#include <vendor/tafla.hpp>\n"),
@@ -54,8 +54,11 @@ fn imports_taflas_runtimes_by_default() {
     for (target, import) in [
         ("typescript", "} from 'tafla';\n"),
         ("javascript", "} from 'tafla';\n"),
-        ("python", "from tafla import ByteBuffer"),
-        ("java", "import io.github.snovader.tafla.ByteBuffer;\n"),
+        (
+            "python",
+            "from tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
+        ),
+        ("java", "import io.github.snovader.tafla.TableReader;\n"),
         ("rust", "use tafla::{"),
         ("cpp", "\n#include <tafla/tafla.hpp>\n"),
     ] {
@@ -98,8 +101,9 @@ fn rust_imports_break_where_rustfmt_breaks_them() {
 
 #[test]
 fn rust_imports_fill_lines_as_rustfmt_fills_them() {
-    // Every name that the module imports, whose first line rustfmt fills to
-    // 99 columns, a column less than its `max_width`
+    // Every name that the module imports. rustfmt fills a line to 99 columns,
+    // a column less than its `max_width`, so `TableSizer`, which would end the
+    // first line at column 100, starts the second
     let source = "\
 struct Pair { a: uint8; }
 table Nested { a: uint8; }
@@ -109,8 +113,8 @@ message Vectors { nested: Nested; items: [Nested]; }
     let files = generate("every.tafla", source, "rust", &Options::default());
 
     let expected = "use tafla::{
-    Alignment, ArrayView, BuildError, ByteBuffer, DecodeError, OffsetType, TableLayout, TableSizer,
-    TableWriter, Vector,
+    Alignment, ArrayView, BuildError, DecodeError, OffsetType, TableLayout, TableReader,
+    TableSizer, TableWriter, Vector,
 };
 ";
     assert!(

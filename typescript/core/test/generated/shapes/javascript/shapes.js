@@ -10,10 +10,10 @@ import {
     writeInt64,
     writeUint32,
     writeUtf8,
-    ByteBuffer,
     DecodeError,
     StructWriter,
     TableLayout,
+    TableReader,
     TableSizer,
     TableWriter
 } from 'tafla';
@@ -22,12 +22,12 @@ import {
 export class Point {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Point.#LAYOUT);
+        this.#reader = new TableReader(bytes, Point.#LAYOUT);
     }
 
     /**
@@ -114,22 +114,22 @@ export class Point {
 
     /** @returns {number} */
     x() {
-        return this.#buffer.getFloat64(this.#buffer.rootOffset(0));
+        return this.#reader.getFloat64(this.#reader.rootOffset(0));
     }
 
     /** @returns {number} */
     y() {
-        return this.#buffer.getFloat64(this.#buffer.rootOffset(1));
+        return this.#reader.getFloat64(this.#reader.rootOffset(1));
     }
 
     /** @returns {bigint} */
     id() {
-        return this.#buffer.getInt64(this.#buffer.rootOffset(2));
+        return this.#reader.getInt64(this.#reader.rootOffset(2));
     }
 
     /** @returns {string} */
     name() {
-        return this.#buffer.getString(this.#buffer.rootOffset(3));
+        return this.#reader.getString(this.#reader.rootOffset(3));
     }
 
     /**
@@ -140,10 +140,10 @@ export class Point {
      */
     fields() {
         return {
-            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
-            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
-            id: this.#buffer.getInt64(this.#buffer.rootOffset(2)),
-            name: this.#buffer.getString(this.#buffer.rootOffset(3))
+            x: this.#reader.getFloat64(this.#reader.rootOffset(0)),
+            y: this.#reader.getFloat64(this.#reader.rootOffset(1)),
+            id: this.#reader.getInt64(this.#reader.rootOffset(2)),
+            name: this.#reader.getString(this.#reader.rootOffset(3))
         };
     }
 }
@@ -168,36 +168,36 @@ export class Columns {
      */
     static ALIGNMENT = 4;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
     }
 
     /**
      * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * without creating a `Columns`
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @returns {ColumnsFields}
      */
-    static read(buffer, position) {
+    static read(reader, position) {
         return {
-            base: buffer.getInt64(buffer.fieldOffset(position, 0)),
-            keys: buffer.getUint32Array(buffer.fieldOffset(position, 1)),
-            a: buffer.getFloat32Array(buffer.fieldOffset(position, 2)),
-            b: buffer.getFloat32Array(buffer.fieldOffset(position, 3))
+            base: reader.getInt64(reader.fieldOffset(position, 0)),
+            keys: reader.getUint32Array(reader.fieldOffset(position, 1)),
+            a: reader.getFloat32Array(reader.fieldOffset(position, 2)),
+            b: reader.getFloat32Array(reader.fieldOffset(position, 3))
         };
     }
 
@@ -237,29 +237,29 @@ export class Columns {
 
     /** @returns {bigint} The value that `keys` count from */
     base() {
-        return this.#buffer.getInt64(
-            this.#buffer.fieldOffset(this.#position, 0)
+        return this.#reader.getInt64(
+            this.#reader.fieldOffset(this.#position, 0)
         );
     }
 
     /** @returns {Uint32Array} */
     keys() {
-        return this.#buffer.getUint32Array(
-            this.#buffer.fieldOffset(this.#position, 1)
+        return this.#reader.getUint32Array(
+            this.#reader.fieldOffset(this.#position, 1)
         );
     }
 
     /** @returns {Float32Array} */
     a() {
-        return this.#buffer.getFloat32Array(
-            this.#buffer.fieldOffset(this.#position, 2)
+        return this.#reader.getFloat32Array(
+            this.#reader.fieldOffset(this.#position, 2)
         );
     }
 
     /** @returns {Float32Array} */
     b() {
-        return this.#buffer.getFloat32Array(
-            this.#buffer.fieldOffset(this.#position, 3)
+        return this.#reader.getFloat32Array(
+            this.#reader.fieldOffset(this.#position, 3)
         );
     }
 
@@ -270,7 +270,7 @@ export class Columns {
      * @returns {ColumnsFields}
      */
     fields() {
-        return Columns.read(this.#buffer, this.#position);
+        return Columns.read(this.#reader, this.#position);
     }
 }
 
@@ -297,17 +297,17 @@ export class Document {
 
     static #LAYOUT = TableLayout.create({ sized: true, versioned: true });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Document.#LAYOUT);
+        this.#reader = new TableReader(bytes, Document.#LAYOUT);
 
-        const version = this.#buffer.getVersion();
+        const version = this.#reader.getVersion();
         if (version !== Document.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Document.FORMAT_VERSION} of Document, got ${version}`
@@ -324,7 +324,7 @@ export class Document {
      * @throws {DecodeError} If the header doesn't fit in `bytes`.
      */
     static versionOf(bytes) {
-        return new ByteBuffer(bytes, Document.#LAYOUT).getVersion();
+        return new TableReader(bytes, Document.#LAYOUT).getVersion();
     }
 
     /**
@@ -392,22 +392,22 @@ export class Document {
 
     /** @returns {number} */
     x() {
-        return this.#buffer.getFloat64(this.#buffer.rootOffset(0));
+        return this.#reader.getFloat64(this.#reader.rootOffset(0));
     }
 
     /** @returns {number} */
     y() {
-        return this.#buffer.getFloat64(this.#buffer.rootOffset(1));
+        return this.#reader.getFloat64(this.#reader.rootOffset(1));
     }
 
     /** @returns {string} */
     name() {
-        return this.#buffer.getString(this.#buffer.rootOffset(2));
+        return this.#reader.getString(this.#reader.rootOffset(2));
     }
 
     /** @returns {Columns} */
     columns() {
-        return new Columns(this.#buffer, this.#buffer.rootOffset(3));
+        return new Columns(this.#reader, this.#reader.rootOffset(3));
     }
 
     /**
@@ -418,10 +418,10 @@ export class Document {
      */
     fields() {
         return {
-            x: this.#buffer.getFloat64(this.#buffer.rootOffset(0)),
-            y: this.#buffer.getFloat64(this.#buffer.rootOffset(1)),
-            name: this.#buffer.getString(this.#buffer.rootOffset(2)),
-            columns: Columns.read(this.#buffer, this.#buffer.rootOffset(3))
+            x: this.#reader.getFloat64(this.#reader.rootOffset(0)),
+            y: this.#reader.getFloat64(this.#reader.rootOffset(1)),
+            name: this.#reader.getString(this.#reader.rootOffset(2)),
+            columns: Columns.read(this.#reader, this.#reader.rootOffset(3))
         };
     }
 }
@@ -452,34 +452,34 @@ export class Pair {
      */
     static SIZE = 16;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
     }
 
     /**
      * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * without creating a `Pair`
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @returns {PairFields}
      */
-    static read(buffer, position) {
+    static read(reader, position) {
         return {
-            first: buffer.getFloat32(buffer.fieldOffset(position, 0)),
-            second: buffer.getFloat32(buffer.fieldOffset(position, 1))
+            first: reader.getFloat32(reader.fieldOffset(position, 0)),
+            second: reader.getFloat32(reader.fieldOffset(position, 1))
         };
     }
 
@@ -554,15 +554,15 @@ export class Pair {
 
     /** @returns {number} */
     first() {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 0)
+        return this.#reader.getFloat32(
+            this.#reader.fieldOffset(this.#position, 0)
         );
     }
 
     /** @returns {number} */
     second() {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 1)
+        return this.#reader.getFloat32(
+            this.#reader.fieldOffset(this.#position, 1)
         );
     }
 
@@ -573,7 +573,7 @@ export class Pair {
      * @returns {PairFields}
      */
     fields() {
-        return Pair.read(this.#buffer, this.#position);
+        return Pair.read(this.#reader, this.#position);
     }
 }
 
@@ -600,34 +600,34 @@ export class Item {
      */
     static SIZE = 28;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
     }
 
     /**
      * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * without creating an `Item`
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @returns {ItemFields}
      */
-    static read(buffer, position) {
+    static read(reader, position) {
         return {
-            value: buffer.getFloat32(buffer.fieldOffset(position, 0)),
-            pair: Pair.read(buffer, buffer.fieldOffset(position, 1))
+            value: reader.getFloat32(reader.fieldOffset(position, 0)),
+            pair: Pair.read(reader, reader.fieldOffset(position, 1))
         };
     }
 
@@ -731,16 +731,16 @@ export class Item {
 
     /** @returns {number} */
     value() {
-        return this.#buffer.getFloat32(
-            this.#buffer.fieldOffset(this.#position, 0)
+        return this.#reader.getFloat32(
+            this.#reader.fieldOffset(this.#position, 0)
         );
     }
 
     /** @returns {Pair} */
     pair() {
         return new Pair(
-            this.#buffer,
-            this.#buffer.fieldOffset(this.#position, 1)
+            this.#reader,
+            this.#reader.fieldOffset(this.#position, 1)
         );
     }
 
@@ -751,7 +751,7 @@ export class Item {
      * @returns {ItemFields}
      */
     fields() {
-        return Item.read(this.#buffer, this.#position);
+        return Item.read(this.#reader, this.#position);
     }
 }
 
@@ -765,8 +765,8 @@ export class Item {
 
 /** A vector of `Item`s, which reads each item when it's asked for */
 export class ItemVector {
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
     /** @type {number} */
@@ -775,15 +775,15 @@ export class ItemVector {
     /**
      * Views the vector at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @throws {DecodeError} If the vector's count or the ends of its items lie
      * outside the bytes.
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
-        this.#length = buffer.getVectorLength(position);
+        this.#length = reader.getVectorLength(position);
     }
 
     /** @returns {number} The number of items */
@@ -801,8 +801,8 @@ export class ItemVector {
      */
     get(index) {
         return new Item(
-            this.#buffer,
-            this.#buffer.getVectorItemOffset(
+            this.#reader,
+            this.#reader.getVectorItemOffset(
                 this.#position,
                 this.#length,
                 index
@@ -817,11 +817,11 @@ export class ItemVector {
      * @throws {DecodeError} If an item lies outside the bytes.
      */
     fields() {
-        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const offsets = this.#reader.getVectorOffsets(this.#position);
         const items = /** @type {ItemFields[]} */ (new Array(offsets.length));
 
         for (let i = 0; i < offsets.length; i++) {
-            items[i] = Item.read(this.#buffer, offsets[i]);
+            items[i] = Item.read(this.#reader, offsets[i]);
         }
 
         return items;
@@ -832,12 +832,12 @@ export class ItemVector {
 export class ItemList {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, ItemList.#LAYOUT);
+        this.#reader = new TableReader(bytes, ItemList.#LAYOUT);
     }
 
     /**
@@ -893,7 +893,7 @@ export class ItemList {
 
     /** @returns {ItemVector} */
     items() {
-        return new ItemVector(this.#buffer, this.#buffer.rootOffset(0));
+        return new ItemVector(this.#reader, this.#reader.rootOffset(0));
     }
 
     /**
@@ -905,8 +905,8 @@ export class ItemList {
     fields() {
         return {
             items: new ItemVector(
-                this.#buffer,
-                this.#buffer.rootOffset(0)
+                this.#reader,
+                this.#reader.rootOffset(0)
             ).fields()
         };
     }

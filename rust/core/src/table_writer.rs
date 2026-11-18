@@ -23,7 +23,7 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// 0-byte structs, as `TableBuilder`'s setter of the field would have.
 ///
 /// ```
-/// use tafla::{ByteBuffer, TableLayout, TableSizer};
+/// use tafla::{TableReader, TableLayout, TableSizer};
 ///
 /// let mut sizer = TableSizer::new(2, TableLayout::DEFAULT)?;
 /// sizer.add_f64();
@@ -34,8 +34,8 @@ use crate::{Alignment, BuildError, Element, OffsetType, TableLayout, element::ex
 /// writer.set_str(1, "Europe/Stockholm");
 /// let bytes = writer.into_bytes()?;
 ///
-/// let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
-/// assert_eq!(buffer.get_str(buffer.root_offset(1)?)?, "Europe/Stockholm");
+/// let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+/// assert_eq!(reader.get_str(reader.root_offset(1)?)?, "Europe/Stockholm");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, Debug)]

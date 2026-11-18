@@ -7,15 +7,15 @@ import (
 	"unsafe"
 )
 
-// TableBuilder builds a table, which a [ByteBuffer] reads back.
+// TableBuilder builds a table, which a [TableReader] reads back.
 //
 // A table is a header with one offset per field, after the table's total
 // length and version when its layout has them, followed by the fields in the
 // order they're set. Arrays, strings and vectors start with their count, and
 // a vector then holds the end of each item. Arrays of scalars and of structs
 // are padded so their elements are aligned from the start of the table.
-// Fields are read back by index with [ByteBuffer.RootOffset], or
-// [ByteBuffer.FieldOffset] for a table nested in another.
+// Fields are read back by index with [TableReader.RootOffset], or
+// [TableReader.FieldOffset] for a table nested in another.
 //
 // Setting a field records it, keeping its value, and [TableBuilder.Bytes]
 // then writes every field through a [TableWriter], into bytes of the table's
@@ -71,7 +71,7 @@ func NewTableBuilder(fields int, layout TableLayout) (*TableBuilder, error) {
 }
 
 // NewVersionedTableBuilder starts a table of fields fields in layout, with
-// version in its header. Readers can check it with [ByteBuffer.Version]
+// version in its header. Readers can check it with [TableReader.Version]
 // before reading any field. It fails with VersionTooLarge if the version
 // doesn't fit in the layout's offset type, or with HeaderTooLong if the
 // header alone is too long for it, and panics if the layout isn't versioned
@@ -290,7 +290,7 @@ type TableBytes []byte
 func (TableBytes) nestedTable() {}
 
 // SetTable embeds a table, from its builder or its bytes, without a length
-// prefix. Readers find its fields with [ByteBuffer.FieldOffset] from the
+// prefix. Readers find its fields with [TableReader.FieldOffset] from the
 // field's position, which reads offsets of the parent's offset type, so the
 // table should have no header and the parent's offset type: that's the
 // default layout in a parent of uint32 offsets.

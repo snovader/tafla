@@ -10,7 +10,7 @@ import {
 } from './description.ts';
 
 // Reads the bytes of tables with DataView, as the README sets out the format,
-// rather than with ByteBuffer, so that tests can check the bytes that tafla
+// rather than with TableReader, so that tests can check the bytes that tafla
 // writes without relying on its reader.
 
 /** The offset size of each offset type */

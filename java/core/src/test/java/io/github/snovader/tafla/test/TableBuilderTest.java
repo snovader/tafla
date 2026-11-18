@@ -46,7 +46,7 @@ public class TableBuilderTest {
         var longestTable = table.withField(fits);
         var bytes = builder.bytes();
         assertArrayEquals(Tables.build(longestTable).bytes(), bytes);
-        assertEquals(longestTable, TableReader.strict(bytes, table.layout()).readTable(longestTable));
+        assertEquals(longestTable, DescriptionReader.strict(bytes, table.layout()).readTable(longestTable));
     }
 
     @Provide
@@ -341,11 +341,11 @@ public class TableBuilderTest {
         assertArrayEquals(fromBytes, fresh);
         assertArrayEquals(fromBytes, fromWritten);
 
-        var buffer = new ByteBuffer(fromBytes, layout);
-        var nested = buffer.rootOffset(1);
+        var reader = new TableReader(fromBytes, layout);
+        var nested = reader.rootOffset(1);
         assertEquals(0, nested % 8);
         assertArrayEquals(bytes, Arrays.copyOfRange(fromBytes, nested, nested + bytes.length));
-        assertArrayEquals(new byte[][] {bytes, bytes}, buffer.getVector(buffer.rootOffset(2)));
+        assertArrayEquals(new byte[][] {bytes, bytes}, reader.getVector(reader.rootOffset(2)));
     }
 
     @Provide
@@ -398,8 +398,8 @@ public class TableBuilderTest {
         var layout = versioned(offsetType);
         var max = offsetType.maxValue();
 
-        var buffer = new ByteBuffer(new TableBuilder(0, layout, max).bytes(), layout);
-        assertEquals(max, buffer.getVersion());
+        var reader = new TableReader(new TableBuilder(0, layout, max).bytes(), layout);
+        assertEquals(max, reader.getVersion());
 
         var exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
         assertEquals(String.format("Version %d doesn't fit in a %s slot", max + 1, offsetType), exception.getMessage());
@@ -438,10 +438,10 @@ public class TableBuilderTest {
 
         // The count goes at 12, after the uint8 at 8 and 3 bytes of padding, so that the structs
         // start at 16
-        var buffer = new ByteBuffer(builder.bytes());
-        assertEquals(12, buffer.rootOffset(1));
-        assertEquals(2, buffer.getUint32(12));
-        assertEquals(16, buffer.getStructArray(12, 8).remaining());
+        var reader = new TableReader(builder.bytes());
+        assertEquals(12, reader.rootOffset(1));
+        assertEquals(2, reader.getUint32(12));
+        assertEquals(16, reader.getStructArray(12, 8).remaining());
     }
 
     @Example
@@ -465,7 +465,7 @@ public class TableBuilderTest {
         parent.setTable(nested);
 
         // After the uint8 at 8, padded to 16
-        assertEquals(16, new ByteBuffer(parent.bytes()).rootOffset(1));
+        assertEquals(16, new TableReader(parent.bytes()).rootOffset(1));
     }
 
     @Example
@@ -514,8 +514,8 @@ public class TableBuilderTest {
         builder.setFloat32Array(values);
         values[0] = 3;
 
-        var buffer = new ByteBuffer(builder.bytes());
-        assertArrayEquals(new float[] {3, 2}, buffer.getFloat32Array(buffer.rootOffset(0)));
+        var reader = new TableReader(builder.bytes());
+        assertArrayEquals(new float[] {3, 2}, reader.getFloat32Array(reader.rootOffset(0)));
     }
 
     @Example
@@ -535,8 +535,8 @@ public class TableBuilderTest {
         var builder = new TableBuilder(1);
         builder.setString("a\uD800b\uDC00\uD83D\uDE00");
 
-        var buffer = new ByteBuffer(builder.bytes());
-        assertEquals("a\uFFFDb\uFFFD\uD83D\uDE00", buffer.getString(buffer.rootOffset(0)));
+        var reader = new TableReader(builder.bytes());
+        assertEquals("a\uFFFDb\uFFFD\uD83D\uDE00", reader.getString(reader.rootOffset(0)));
     }
 
     @Property
@@ -571,8 +571,8 @@ public class TableBuilderTest {
         assertThrows(IllegalArgumentException.class, () -> builder.setVector(vector));
 
         builder.setVector(new byte[][] {{1}});
-        var buffer = new ByteBuffer(builder.bytes());
-        assertArrayEquals(new byte[][] {{1}}, buffer.getVector(buffer.rootOffset(0)));
+        var reader = new TableReader(builder.bytes());
+        assertArrayEquals(new byte[][] {{1}}, reader.getVector(reader.rootOffset(0)));
     }
 
     @Example
@@ -584,7 +584,7 @@ public class TableBuilderTest {
         parent.setUint8((short) 1);
         parent.setTable(nested);
 
-        assertEquals(2 * Integer.BYTES + 1, new ByteBuffer(parent.bytes()).rootOffset(1));
+        assertEquals(2 * Integer.BYTES + 1, new TableReader(parent.bytes()).rootOffset(1));
     }
 
     @Example
@@ -601,10 +601,10 @@ public class TableBuilderTest {
         parent.setTable(nested);
         parent.setVector(List.of(nested));
 
-        var buffer = new ByteBuffer(parent.bytes());
-        var table = buffer.rootOffset(0);
-        assertEquals(2, buffer.getUint8(buffer.fieldOffset(table, 1)));
-        assertArrayEquals(new byte[][] {nested.bytes()}, buffer.getVector(buffer.rootOffset(1)));
+        var reader = new TableReader(parent.bytes());
+        var table = reader.rootOffset(0);
+        assertEquals(2, reader.getUint8(reader.fieldOffset(table, 1)));
+        assertArrayEquals(new byte[][] {nested.bytes()}, reader.getVector(reader.rootOffset(1)));
     }
 
     @Example
@@ -617,8 +617,8 @@ public class TableBuilderTest {
         parent.setTable(nested);
         values[0] = 3;
 
-        var buffer = new ByteBuffer(parent.bytes());
-        var read = buffer.getFloat32Array(buffer.fieldOffset(buffer.rootOffset(0), 0));
+        var reader = new TableReader(parent.bytes());
+        var read = reader.getFloat32Array(reader.fieldOffset(reader.rootOffset(0), 0));
         assertArrayEquals(new float[] {3, 2}, read);
     }
 
@@ -631,8 +631,8 @@ public class TableBuilderTest {
         parent.setVector(items);
         items.add(new TableBuilder(0));
 
-        var buffer = new ByteBuffer(parent.bytes());
-        assertEquals(1, buffer.getVectorOffsets(buffer.rootOffset(0)).length);
+        var reader = new TableReader(parent.bytes());
+        assertEquals(1, reader.getVectorOffsets(reader.rootOffset(0)).length);
     }
 
     private static TableLayout versioned(OffsetType offsetType) {

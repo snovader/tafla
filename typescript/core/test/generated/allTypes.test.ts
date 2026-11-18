@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError } from 'tafla';
+import { DecodeError, TableReader } from 'tafla';
 import { corruptionOf, sliceOf, CORRUPTIONS, SLICES } from '../conformance/arbitraries.ts';
 import { corrupt } from '../conformance/description.ts';
 import { buildTable } from '../conformance/tables.ts';
@@ -87,7 +87,7 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             'should read any byte of a bool but 0 as true',
             (fields, byte) => {
                 const bytes = allTypes.Scalars.serialize({ ...fields, bool: false });
-                bytes[new ByteBuffer(bytes).rootOffset(10)] = byte;
+                bytes[new TableReader(bytes).rootOffset(10)] = byte;
 
                 expect(readScalars(new allTypes.Scalars(bytes))).toEqual({ ...fields, bool: true });
             }
@@ -459,7 +459,7 @@ describe.each(ALL_TYPES)('%s', (_, allTypes) => {
             // second starts at the trees' count, and reads the count and this
             // end as its offsets, so its children are the trees, and it's the
             // second of them.
-            const trees = new ByteBuffer(bytes).rootOffset(2);
+            const trees = new TableReader(bytes).rootOffset(2);
             bytes.set([0, 0, 0, 0], trees + 4);
             const nested = new allTypes.Nested(bytes);
 

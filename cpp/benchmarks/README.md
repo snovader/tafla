@@ -46,14 +46,14 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as doubles, rather than
 collecting items of its own, and `src/item_access.hpp` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
+- **tafla** reads with `TableReader`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `items_in_place()`, and
   `get_struct_array()`'s bytes with `load_le()`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
   views: a vector's `get(i)` reads one item, an array's `operator[]` reads
   one struct without checking its index, as the read by hand does, and their
   iterators read every item. The generated readers are passed by value, as
-  `ByteBuffer`'s spans are by hand.
+  `TableReader`'s spans are by hand.
 - **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
   harness's noise.
 
@@ -72,7 +72,7 @@ truncated document, as the TypeScript comparison does, and
   reads pay for keeping what they view. MessagePack copies its columns into
   vectors. Summing a column shows each library's per-element access.
 - tafla's C++ runtime has no `StructWriter`. The tafla codec writes the
-  fixed-size record with `store_le()` and reads it with `ByteBuffer`'s
+  fixed-size record with `store_le()` and reads it with `TableReader`'s
   getters. tafla-gen's struct writes and reads it with the generated
   `to_bytes()` and `read()`, and `bit_cast` copies the record as it is, a
   struct of its three fields, with `std::bit_cast`, which C++ code would
@@ -116,7 +116,7 @@ comparison uses its counterpart:
   record, whose fields' sizes are fixed but for a string after them, it writes
   whole instead, each field at a constant position in bytes of its length,
   without a sizer and a writer. Its readers view strings and columns, as
-  tafla's do, and read with a `ByteBuffer` in the table's layout, a constant.
+  tafla's do, and read with a `TableReader` in the table's layout, a constant.
   It takes the workloads' types, as the other codecs do, and writes the
   vector's items and the array's structs from `std::views::transform()` of
   the workload's items, with the generated generic fields structs, which
@@ -397,7 +397,7 @@ protobuf's parser return only `false`, which their codecs throw as an error.
 ### Reading items through views
 
 The four groups that read tafla's items, from the same two runs. Fastest
-round in µs, and its ratio to `ByteBuffer`'s by hand:
+round in µs, and its ratio to `TableReader`'s by hand:
 
 | Benchmark                                       |   tafla |      tafla-gen |  tafla-gen view | tafla-gen view A/A |
 | ----------------------------------------------- | ------: | -------------: | --------------: | -----------------: |
@@ -416,7 +416,7 @@ within 0.7% of each other.
 - The view sums the array of structs as fast as `load_le()` by hand, in
   59 ns. Reading the last struct takes it 1.6 ns against 1.1 ns, since
   `at()` checks its index, which the hand-written read leaves out.
-- The view sums the vector's items 1.29 times as slowly as `ByteBuffer`'s
+- The view sums the vector's items 1.29 times as slowly as `TableReader`'s
   getters by hand, and reads the last item 1.30 times as slowly. In both,
   Apple Clang calls the function that sums an item out of line rather than
   inlining it. The hand-written one takes the item's bytes, a `std::span` in

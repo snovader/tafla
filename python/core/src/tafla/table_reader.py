@@ -36,7 +36,7 @@ _SIZE_CODES: dict[OffsetSize, IntTypeCode] = {
 _ZERO_OFFSET = array("Q", [0])
 
 
-class ByteBuffer:
+class TableReader:
     """Reads a table within the supplied bytes, in the table layout it was
     written in, whose multi-byte values are little-endian. Array reads return
     views of the bytes on a little-endian host, whatever their alignment, and
@@ -47,7 +47,7 @@ class ByteBuffer:
     and bytes that aren't raise ``TypeError``.
 
     Tables are written with ``TableBuilder``, whose ``finalize()`` returns a
-    ``ByteBuffer`` that reads the table, or with ``TableWriter``.
+    ``TableReader`` that reads the table, or with ``TableWriter``.
     """
 
     __slots__ = [
@@ -101,7 +101,7 @@ class ByteBuffer:
         """Returns the version that the table's header carries after its
         length. It's as wide as the header's other slots.
 
-        Raises ``TypeError`` if the buffer's layout isn't versioned.
+        Raises ``TypeError`` if the reader's layout isn't versioned.
         """
         layout = self.__layout
         if not layout.versioned():
@@ -365,9 +365,9 @@ class ByteBuffer:
     ) -> tuple[Any, ...] | None:
         """Returns the values of the fields that ``fields`` describes whole, a
         message's, of the message in ``data``, in the layout that ``fields``
-        was created with, as ``ByteBuffer(data, layout).get_fields(0,
+        was created with, as ``TableReader(data, layout).get_fields(0,
         fields)`` returns them, or ``None`` as it does, without creating a
-        ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+        ``TableReader``. It returns ``None`` too if ``version`` isn't the one
         that the header holds, for the reader's constructor to raise for.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
@@ -376,7 +376,7 @@ class ByteBuffer:
 
         Generated code calls it to read every field of a message of only such
         fields at once, without a reader."""
-        # The constructor's view, without the ByteBuffer
+        # The constructor's view, without the TableReader
         view = memoryview(data)
         if not view.c_contiguous:
             raise not_contiguous()

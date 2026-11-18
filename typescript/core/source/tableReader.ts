@@ -29,7 +29,7 @@ import type { OffsetSize } from './types.ts';
  * Tables are written with `TableBuilder`, whose `finalize()` returns a reader
  * of its table, or with `TableSizer` and `TableWriter`.
  */
-export class ByteBuffer {
+export class TableReader {
     readonly #bytes: Uint8Array;
     readonly #view: DataView;
 
@@ -66,7 +66,7 @@ export class ByteBuffer {
      * Returns the version that the table's header carries after its length.
      * It's as wide as the header's other slots.
      *
-     * @throws {TypeError} If the buffer's layout isn't versioned.
+     * @throws {TypeError} If the reader's layout isn't versioned.
      */
     getVersion(): number {
         if (!this.#versioned) {
@@ -736,7 +736,7 @@ export class ByteBuffer {
      * fieldOffset(), getVectorLength() and getVectorItemOffset() read their
      * offsets as this does, for V8's inlining budget. A switch that called
      * getUint8(), getUint16() or getUint32() took 133 bytes of bytecode at
-     * every read. A reader function of each offset size, which a buffer held,
+     * every read. A function of each offset size, which a reader held,
      * took 69, but V8 inlines none of three functions called from one place:
      * a process that had read all three offset types summed the vector of
      * 100 nested tables in 2.90 µs, rather than 1.79 with the switch and 0.72

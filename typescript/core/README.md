@@ -1,12 +1,12 @@
 # tafla
 
 Binary tables of scalars, strings and typed arrays. `TableBuilder` writes a
-table at its exact size, copying typed arrays in bulk, and `ByteBuffer` reads
+table at its exact size, copying typed arrays in bulk, and `TableReader` reads
 fields back by offset, with arrays as views of the bytes where it can. Every
 read checks that it stays within the bytes it was given.
 
 ```ts
-import { ByteBuffer, TableBuilder, TableLayout } from 'tafla';
+import { TableReader, TableBuilder, TableLayout } from 'tafla';
 
 // A format's header, shared by its writer and its readers
 const LAYOUT = TableLayout.create({ sized: true, versioned: true });
@@ -22,15 +22,15 @@ builder.setString('Europe/Stockholm');
 builder.setTable(series); // written straight into the table
 const bytes = builder.bytes();
 
-const buffer = new ByteBuffer(bytes, LAYOUT);
-if (buffer.getVersion() !== FORMAT_VERSION) {
+const reader = new TableReader(bytes, LAYOUT);
+if (reader.getVersion() !== FORMAT_VERSION) {
     throw new Error('Unsupported format version');
 }
 
-const latitude = buffer.getFloat64(buffer.rootOffset(0));
-const timeZone = buffer.getString(buffer.rootOffset(1));
-const table = buffer.rootOffset(2);
-const read = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+const latitude = reader.getFloat64(reader.rootOffset(0));
+const timeZone = reader.getString(reader.rootOffset(1));
+const table = reader.rootOffset(2);
+const read = reader.getFloat32Array(reader.fieldOffset(table, 1));
 ```
 
 `StructWriter`, and the read and write functions, one of each per scalar
@@ -201,7 +201,7 @@ byte; its README describes them. This package writes them, and
   heap, no less.
 - **Small tables cost about the allocation of their bytes.** A table of two
   float64s, a string and an int64 took 0.18–0.20 µs from `bytes()` in
-  Node 27, and 0.34 µs from `finalize()`, whose `ByteBuffer` asks for the
+  Node 27, and 0.34 µs from `finalize()`, whose `TableReader` asks for the
   bytes' `ArrayBuffer` for its `DataView`. Call `bytes()` for a table that you send
   or store rather than read. A nested builder allocates neither, so the
   vector of 100 nested tables took 12 µs against 7–13 µs in
@@ -225,7 +225,7 @@ setters and typed arrays convert it:
 
 Validation is always on:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given,
+- Every read checks its range against the bytes the `TableReader` was given,
   even when the backing `ArrayBuffer` is larger, and throws a `DecodeError`
   if it would leave them. Strings must be valid UTF-8. A truncated or
   corrupted buffer therefore throws rather than returning values from outside

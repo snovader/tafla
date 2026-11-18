@@ -9,7 +9,7 @@ intent, not a requirement to preserve every detail.
 - Give each function, class, and module a clear scope of responsibility. Keep
   layout, writing, reading, and code generation with their respective owners.
   For example, `TableLayout` describes a table's header and offset type,
-  `TableBuilder` writes tables, and `ByteBuffer` reads them. In the generator,
+  `TableBuilder` writes tables, and `TableReader` reads them. In the generator,
   the parser owns syntax, the checker owns a schema's rules, and each target
   owns its language's code.
 - Search for existing implementations and related abstractions before adding
@@ -98,8 +98,8 @@ intent, not a requirement to preserve every detail.
   than edit it, as `rust/gen/README.md` describes; a check or test that it
   fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
-  offset type, offset size, vector, builder, and decode error. Make the syntax
-  idiomatic for each language.
+  offset type, offset size, vector, builder, reader, and decode error. Make
+  the syntax idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
   JSpecify's annotations in Java, and PyO3, which binds the Python runtime's
   native classes, written in Rust. PyO3 and the Rust runtime are built into

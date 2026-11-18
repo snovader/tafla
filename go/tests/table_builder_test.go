@@ -135,13 +135,13 @@ func TestATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes(t *testing.
 			t.Fatalf("wrote % x\nfrom the builder and % x\nfrom bytes", fromBuilder, fromBytes)
 		}
 
-		buffer := tafla.NewByteBuffer(fromBytes, layout)
-		position := must(buffer.RootOffset(1))
+		reader := tafla.NewTableReader(fromBytes, layout)
+		position := must(reader.RootOffset(1))
 		if position%8 != 0 || !bytes.Equal(fromBytes[position:position+len(built)], built) {
 			t.Fatalf("the table at %d holds % x", position, fromBytes[position:])
 		}
 
-		vector := must(buffer.GetVector(must(buffer.RootOffset(2))))
+		vector := must(reader.GetVector(must(reader.RootOffset(2))))
 		for item, err := range vector.Items() {
 			if err != nil || !bytes.Equal(item, built) {
 				t.Fatalf("read % x, %v", item, err)
@@ -500,8 +500,8 @@ func TestRejectsAFieldThatMakesTheTableTooLong(t *testing.T) {
 		check(t, fits.SetUint8(7))
 
 		table := must(fits.Bytes())
-		buffer := tafla.NewByteBuffer(table, layout)
-		if len(table) != maxLength || must(buffer.GetUint8(must(buffer.RootOffset(1)))) != 7 {
+		reader := tafla.NewTableReader(table, layout)
+		if len(table) != maxLength || must(reader.GetUint8(must(reader.RootOffset(1)))) != 7 {
 			t.Errorf("wrote %d bytes", len(table))
 		}
 
@@ -634,13 +634,13 @@ func TestRejectsAnIncompleteNestedBuilder(t *testing.T) {
 	check(t, parent.SetVector(nested))
 
 	table := must(parent.Bytes())
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
-	position := must(buffer.RootOffset(0))
-	if position != 8 || must(buffer.GetUint8(must(buffer.FieldOffset(position, 1)))) != 2 {
+	reader := tafla.NewTableReader(table, tafla.TableLayout{})
+	position := must(reader.RootOffset(0))
+	if position != 8 || must(reader.GetUint8(must(reader.FieldOffset(position, 1)))) != 2 {
 		t.Errorf("read the nested table at %d", position)
 	}
 
-	vector := must(buffer.GetVector(must(buffer.RootOffset(1))))
+	vector := must(reader.GetVector(must(reader.RootOffset(1))))
 	if item := must(vector.Get(0)); vector.Len() != 1 || !bytes.Equal(item, must(nested.Bytes())) {
 		t.Errorf("read % x", item)
 	}

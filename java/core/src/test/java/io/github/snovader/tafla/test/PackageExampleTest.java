@@ -23,15 +23,15 @@ public class PackageExampleTest {
         builder.setTable(series); // written straight into the table
         byte[] bytes = builder.bytes();
 
-        var buffer = new ByteBuffer(bytes, layout);
-        if (buffer.getVersion() != formatVersion) {
+        var reader = new TableReader(bytes, layout);
+        if (reader.getVersion() != formatVersion) {
             throw new IllegalStateException("Unsupported format version");
         }
 
-        double latitude = buffer.getFloat64(buffer.rootOffset(0));
-        String timeZone = buffer.getString(buffer.rootOffset(1));
-        int table = buffer.rootOffset(2);
-        float[] values = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+        double latitude = reader.getFloat64(reader.rootOffset(0));
+        String timeZone = reader.getString(reader.rootOffset(1));
+        int table = reader.rootOffset(2);
+        float[] values = reader.getFloat32Array(reader.fieldOffset(table, 1));
 
         assertEquals(59.3293, latitude);
         assertEquals("Europe/Stockholm", timeZone);

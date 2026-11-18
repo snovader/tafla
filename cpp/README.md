@@ -2,7 +2,7 @@
 
 A header-only runtime of C++20 in `include/tafla/`, which depends only on the
 standard library, and its tests, fuzz targets and benchmarks. `TableBuilder`
-writes a table at its exact size, copying arrays in bulk, and `ByteBuffer`
+writes a table at its exact size, copying arrays in bulk, and `TableReader`
 reads fields back by offset, with strings and aligned arrays as views of the
 bytes. Every read checks that it stays within the bytes it was given, and
 throws a `tafla::DecodeError` otherwise.
@@ -24,15 +24,15 @@ builder.set_string("Europe/Stockholm");
 builder.set_table(std::move(series));  // written straight into the table
 const tafla::Bytes bytes = builder.to_bytes();
 
-const tafla::ByteBuffer buffer(bytes, layout);
-if (buffer.version() != format_version) {
-    throw tafla::DecodeError::unsupported_version(buffer.version(), format_version);
+const tafla::TableReader reader(bytes, layout);
+if (reader.version() != format_version) {
+    throw tafla::DecodeError::unsupported_version(reader.version(), format_version);
 }
 
-const double latitude = buffer.get_float64(buffer.root_offset(0));
-const std::string_view time_zone = buffer.get_string(buffer.root_offset(1));
-const auto table = buffer.root_offset(2);
-const tafla::ArrayView<float> read = buffer.get_float32_array(buffer.field_offset(table, 1));
+const double latitude = reader.get_float64(reader.root_offset(0));
+const std::string_view time_zone = reader.get_string(reader.root_offset(1));
+const auto table = reader.root_offset(2);
+const tafla::ArrayView<float> read = reader.get_float32_array(reader.field_offset(table, 1));
 ```
 
 The names are the other runtimes' in C++'s case: table, field, layout, offset
@@ -43,7 +43,7 @@ type, offset size, vector, builder and decode error.
 | `tafla/tafla.hpp`      | Everything below                                                              |
 | `layout.hpp`           | `OffsetType`, `Alignment` and `TableLayout<Versioned>`                        |
 | `errors.hpp`           | `Error`, and `DecodeError` and `BuildError`, which derive from it             |
-| `byte_buffer.hpp`      | `ByteBuffer<Versioned>`, which reads a table                                  |
+| `table_reader.hpp`      | `TableReader<Versioned>`, which reads a table                                  |
 | `array_view.hpp`       | `ArrayView<T>`, a random-access range of an array's elements                  |
 | `vector.hpp`           | `Vector`, a vector of tables, and its ranges of items                         |
 | `table_builder.hpp`    | `TableBuilder` and `NestedTable`, which write a table field by field          |
@@ -66,8 +66,8 @@ type, offset size, vector, builder and decode error.
   failed, as the other runtimes' errors do.
 - **`TableLayout<true>` is a versioned layout**, as Rust's `TableLayout<true>`
   is, so that a versioned table's builder requires a version and
-  `ByteBuffer::version()` compiles only where the header has one. A layout is
-  a `constexpr` value, and a `ByteBuffer` made with a constant layout reads
+  `TableReader::version()` compiles only where the header has one. A layout is
+  a `constexpr` value, and a `TableReader` made with a constant layout reads
   its offsets without branching on their type.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
@@ -137,7 +137,7 @@ type, offset size, vector, builder and decode error.
   as they record it, writes through a `BasicTableWriter<false>`, which skips
   those checks of room, indexes and items, and whose `finish()` still checks
   the length that it wrote.
-- **Reads and writes inline.** `ByteBuffer`'s, `Vector`'s, `TableSizer`'s and
+- **Reads and writes inline.** `TableReader`'s, `Vector`'s, `TableSizer`'s and
   `TableWriter`'s functions are `TAFLA_ALWAYS_INLINE`, and their failures
   are values or static functions, so that no call takes a reader's or
   writer's address: a function that did kept the writer of a generated
@@ -151,7 +151,7 @@ type, offset size, vector, builder and decode error.
   Apple Clang called the record's and the document's `name()` out of line
   otherwise, which kept their reader in memory, and reading the record took
   6.65 ns rather than 6.25 ns. A generated getter of a nested table reads it
-  through `ByteBuffer::get_table()`, which throws if the table's offset leads
+  through `TableReader::get_table()`, which throws if the table's offset leads
   past the bytes. Returning a reader of no bytes instead put a choice on the
   load of each of the nested table's fields, and summing the comparison's
   100 nested tables took 0.258 µs rather than 0.229 µs. The generated code
@@ -264,7 +264,7 @@ and a failure prints the `RC_PARAMS` that reproduces it.
   the format's rules, read as values or decode errors cut short, overwritten
   or arbitrary, and fail with a `BuildError` where they can't be written, with
   examples of every error.
-- `byte_buffer_test`, `array_view_test`, `utf8_test`, `layout_test` and
+- `table_reader_test`, `array_view_test`, `utf8_test`, `layout_test` and
   `compatibility_test`: every getter at every position of arbitrary bytes,
   views at every alignment, UTF-8 at its limits, layouts, and tables that the
   TypeScript runtime wrote.
@@ -293,8 +293,8 @@ Clang with libFuzzer, such as Homebrew's `llvm` or a Linux distribution's,
 since Apple's Clang has none. A crash, a sanitizer's report or a failed check
 is a finding:
 
-- `fuzz_byte_buffer` reads the rest of its input with every getter of
-  `ByteBuffer` at a position, in an offset type and header, which the input's
+- `fuzz_table_reader` reads the rest of its input with every getter of
+  `TableReader` at a position, in an offset type and header, which the input's
   first four bytes choose, and reads every array, struct array and vector
   there. Each read must return the bytes that lie where the format puts them,
   exactly when they lie within the input, and the decode error otherwise.
@@ -307,9 +307,9 @@ is a finding:
 cmake -S . -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
     -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
-cmake --build build-fuzz --target fuzz_byte_buffer fuzz_conformance
-mkdir -p build-fuzz/corpus/byte_buffer
-build-fuzz/fuzz/fuzz_byte_buffer build-fuzz/corpus/byte_buffer \
+cmake --build build-fuzz --target fuzz_table_reader fuzz_conformance
+mkdir -p build-fuzz/corpus/table_reader
+build-fuzz/fuzz/fuzz_table_reader build-fuzz/corpus/table_reader \
     ../conformance/valid ../conformance/equivalent ../conformance/invalid -max_total_time=300
 ```
 

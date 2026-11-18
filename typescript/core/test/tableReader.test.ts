@@ -1,6 +1,6 @@
 import { describe, expect, inject, test } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError, TableBuilder, TableLayout } from 'tafla';
+import { DecodeError, TableBuilder, TableLayout, TableReader } from 'tafla';
 import { sliceOf, MAX_VALUES, SLICES, type Slice } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';
 
@@ -12,59 +12,59 @@ it('should share the storage of aligned arrays, except swapped copies on a big-e
     builder.setFloat64Array(new Float64Array([1.5]));
 
     const bytes = builder.bytes();
-    const buffer = new ByteBuffer(bytes);
-    const uint8s = buffer.getUint8Array(buffer.rootOffset(0));
-    const float64s = buffer.getFloat64Array(buffer.rootOffset(1));
+    const reader = new TableReader(bytes);
+    const uint8s = reader.getUint8Array(reader.rootOffset(0));
+    const float64s = reader.getFloat64Array(reader.rootOffset(1));
 
     expect(uint8s.buffer).toBe(bytes.buffer);
     expect(float64s.buffer === bytes.buffer).toBe(IS_LITTLE_ENDIAN);
 });
 
 it('should reject impossible vector counts before anything allocates for them', () => {
-    const buffer = new ByteBuffer(new Uint8Array([255, 255, 255, 255]));
+    const reader = new TableReader(new Uint8Array([255, 255, 255, 255]));
 
     // Allocating the offsets first would fail with a different error
-    expect(() => buffer.getVectorLength(0)).toThrow('Read exceeds the supplied buffer');
-    expect(() => buffer.getVectorOffsets(0)).toThrow('Read exceeds the supplied buffer');
-    expect(() => buffer.getVector(0)).toThrow('Read exceeds the supplied buffer');
+    expect(() => reader.getVectorLength(0)).toThrow('Read exceeds the supplied buffer');
+    expect(() => reader.getVectorOffsets(0)).toThrow('Read exceeds the supplied buffer');
+    expect(() => reader.getVector(0)).toThrow('Read exceeds the supplied buffer');
 });
 
 it.each([-1, 2, 0.5])('should reject item %s of a vector of 2 with a RangeError', index => {
     const builder = new TableBuilder(1);
     builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
-    const buffer = builder.finalize();
+    const reader = builder.finalize();
     const error = new RangeError(`Item ${index} is outside the vector of 2 at 4`);
 
-    expect(() => buffer.getVectorOffset(buffer.rootOffset(0), index)).toThrow(error);
-    expect(() => buffer.getVectorItemOffset(buffer.rootOffset(0), 2, index)).toThrow(error);
+    expect(() => reader.getVectorOffset(reader.rootOffset(0), index)).toThrow(error);
+    expect(() => reader.getVectorItemOffset(reader.rootOffset(0), 2, index)).toThrow(error);
 });
 
 it.each([0, 3])(
     "should throw DecodeError for item %s of a vector whose count the bytes can't hold",
     index => {
         // A count of 3, whose ends need 12 bytes after it, where 4 are left
-        const buffer = new ByteBuffer(new Uint8Array([3, 0, 0, 0, 8, 0, 0, 0]));
+        const reader = new TableReader(new Uint8Array([3, 0, 0, 0, 8, 0, 0, 0]));
 
-        expect(() => buffer.getVectorOffset(0, index)).toThrow(DecodeError);
+        expect(() => reader.getVectorOffset(0, index)).toThrow(DecodeError);
     }
 );
 
 it('should find each vector item from its ends, as reading every item finds it', () => {
     const builder = new TableBuilder(1);
     builder.setVector([new Uint8Array([1]), new Uint8Array(0), new Uint8Array([2, 3])]);
-    const buffer = builder.finalize();
-    const vector = buffer.rootOffset(0);
+    const reader = builder.finalize();
+    const vector = reader.rootOffset(0);
 
     // The count and the three ends, at 4, then the items from 20
-    expect(buffer.getVectorOffsets(vector)).toStrictEqual([20, 21, 21]);
-    expect([0, 1, 2].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual([
+    expect(reader.getVectorOffsets(vector)).toStrictEqual([20, 21, 21]);
+    expect([0, 1, 2].map(index => reader.getVectorOffset(vector, index))).toStrictEqual([
         20, 21, 21
     ]);
-    expect([0, 1, 2].map(index => buffer.getVectorItemOffset(vector, 3, index))).toStrictEqual([
+    expect([0, 1, 2].map(index => reader.getVectorItemOffset(vector, 3, index))).toStrictEqual([
         20, 21, 21
     ]);
-    expect(buffer.getVectorLength(vector)).toBe(3);
-    expect(buffer.getVector(vector)).toStrictEqual([
+    expect(reader.getVectorLength(vector)).toBe(3);
+    expect(reader.getVector(vector)).toStrictEqual([
         new Uint8Array([1]),
         new Uint8Array(0),
         new Uint8Array([2, 3])
@@ -86,17 +86,17 @@ test.runIf(inject('largeBufferTests'))(
         const bytes = new Uint8Array(position + table.bytes().length);
         bytes.set(table.bytes(), position);
 
-        const buffer = new ByteBuffer(bytes);
+        const reader = new TableReader(bytes);
         const vector = position + table.rootOffset(0);
         // The count and the two ends, after the vector at 4
         const expected = [position + 16, position + 17];
 
-        expect(buffer.getVectorOffsets(vector)).toStrictEqual(expected);
-        expect([0, 1].map(index => buffer.getVectorOffset(vector, index))).toStrictEqual(expected);
-        expect([0, 1].map(index => buffer.getVectorItemOffset(vector, 2, index))).toStrictEqual(
+        expect(reader.getVectorOffsets(vector)).toStrictEqual(expected);
+        expect([0, 1].map(index => reader.getVectorOffset(vector, index))).toStrictEqual(expected);
+        expect([0, 1].map(index => reader.getVectorItemOffset(vector, 2, index))).toStrictEqual(
             expected
         );
-        expect(buffer.getVector(vector)).toStrictEqual([
+        expect(reader.getVector(vector)).toStrictEqual([
             new Uint8Array([1]),
             new Uint8Array([2, 3])
         ]);
@@ -123,9 +123,9 @@ describe('versioned tables', () => {
 
     it('should reject reading the version of an unversioned table', () => {
         const layout = TableLayout.create({ sized: true });
-        const buffer = new ByteBuffer(new TableBuilder(0, layout).bytes(), layout);
+        const reader = new TableReader(new TableBuilder(0, layout).bytes(), layout);
 
-        expect(() => buffer.getVersion()).toThrow(new TypeError('The table has no version'));
+        expect(() => reader.getVersion()).toThrow(new TypeError('The table has no version'));
     });
 
     it('should require a version exactly when the layout has a slot for it', () => {
@@ -178,10 +178,10 @@ describe('strings', () => {
         const builder = new TableBuilder(1, layout);
         // A string is stored as an array of its bytes is
         builder.setUint8Array(bytes);
-        const buffer = new ByteBuffer(sliceOf(builder.bytes(), slice), layout);
-        const position = buffer.rootOffset(0);
+        const reader = new TableReader(sliceOf(builder.bytes(), slice), layout);
+        const position = reader.rootOffset(0);
 
-        return () => buffer.getString(position);
+        return () => reader.getString(position);
     }
 
     /** Expects the read to return what the decoder returns, or to throw where it throws */

@@ -3,20 +3,20 @@
 from collections.abc import Buffer, Iterable
 from typing import Final, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
+from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
 
 
 class Uint8Offsets:
     """``uint8`` offsets, for tables of up to 255 bytes"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint8OffsetsFields]) -> memoryview:
@@ -41,13 +41,13 @@ class Uint8Offsets:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint8OffsetsFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -56,15 +56,15 @@ class Uint8Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint8OffsetsFieldValues:
@@ -75,27 +75,27 @@ class Uint8Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint8OffsetsFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint8Offsets``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint8OffsetsFields(TypedDict):
@@ -112,14 +112,14 @@ type Uint8OffsetsFieldValues = tuple[int, str, memoryview[int]]
 class Uint8OffsetsSized:
     """``uint8`` offsets, after the table's length"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(sized=True, offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint8OffsetsSizedFields]) -> memoryview:
@@ -144,13 +144,13 @@ class Uint8OffsetsSized:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint8OffsetsSizedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -159,15 +159,15 @@ class Uint8OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint8OffsetsSizedFieldValues:
@@ -178,27 +178,27 @@ class Uint8OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint8OffsetsSizedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint8OffsetsSized``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint8OffsetsSizedFields(TypedDict):
@@ -215,7 +215,7 @@ type Uint8OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 class Uint8OffsetsVersioned:
     """``uint8`` offsets, after the largest version they hold"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 255
     """The version of the format, which the header carries and the constructor
@@ -229,9 +229,9 @@ class Uint8OffsetsVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint8OffsetsVersioned, got {version}"
@@ -244,7 +244,7 @@ class Uint8OffsetsVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint8OffsetsVersionedFields]) -> memoryview:
@@ -269,13 +269,13 @@ class Uint8OffsetsVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint8OffsetsVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -284,15 +284,15 @@ class Uint8OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint8OffsetsVersionedFieldValues:
@@ -303,32 +303,32 @@ class Uint8OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint8OffsetsVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint8OffsetsVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint8OffsetsVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint8OffsetsVersionedFields(TypedDict):
@@ -345,7 +345,7 @@ type Uint8OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 class Uint8OffsetsSizedVersioned:
     """``uint8`` offsets, after the table's length and version zero"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 0
     """The version of the format, which the header carries and the constructor
@@ -359,9 +359,9 @@ class Uint8OffsetsSizedVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got {version}"
@@ -374,7 +374,7 @@ class Uint8OffsetsSizedVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
@@ -401,13 +401,13 @@ class Uint8OffsetsSizedVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint8OffsetsSizedVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -416,15 +416,15 @@ class Uint8OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint8OffsetsSizedVersionedFieldValues:
@@ -435,32 +435,32 @@ class Uint8OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint8OffsetsSizedVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint8OffsetsSizedVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint8OffsetsSizedVersionedFields(TypedDict):
@@ -477,14 +477,14 @@ type Uint8OffsetsSizedVersionedFieldValues = tuple[int, str, memoryview[int]]
 class Uint16Offsets:
     """``uint16`` offsets, for tables of up to 65,535 bytes"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint16")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint16OffsetsFields]) -> memoryview:
@@ -509,13 +509,13 @@ class Uint16Offsets:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint16OffsetsFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -524,15 +524,15 @@ class Uint16Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint16OffsetsFieldValues:
@@ -543,27 +543,27 @@ class Uint16Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint16OffsetsFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint16Offsets``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint16OffsetsFields(TypedDict):
@@ -580,14 +580,14 @@ type Uint16OffsetsFieldValues = tuple[int, str, memoryview[int]]
 class Uint16OffsetsSized:
     """``uint16`` offsets, after the table's length"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(sized=True, offset_type="uint16")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint16OffsetsSizedFields]) -> memoryview:
@@ -612,13 +612,13 @@ class Uint16OffsetsSized:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint16OffsetsSizedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -627,15 +627,15 @@ class Uint16OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint16OffsetsSizedFieldValues:
@@ -646,27 +646,27 @@ class Uint16OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint16OffsetsSizedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint16OffsetsSized``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint16OffsetsSizedFields(TypedDict):
@@ -683,7 +683,7 @@ type Uint16OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 class Uint16OffsetsVersioned:
     """``uint16`` offsets, after the largest version they hold"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 65535
     """The version of the format, which the header carries and the constructor
@@ -697,9 +697,9 @@ class Uint16OffsetsVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint16OffsetsVersioned, got {version}"
@@ -712,7 +712,7 @@ class Uint16OffsetsVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint16OffsetsVersionedFields]) -> memoryview:
@@ -737,13 +737,13 @@ class Uint16OffsetsVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint16OffsetsVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -752,15 +752,15 @@ class Uint16OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint16OffsetsVersionedFieldValues:
@@ -771,32 +771,32 @@ class Uint16OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint16OffsetsVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint16OffsetsVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint16OffsetsVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint16OffsetsVersionedFields(TypedDict):
@@ -813,7 +813,7 @@ type Uint16OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 class Uint16OffsetsSizedVersioned:
     """``uint16`` offsets, after the table's length and a version"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 1
     """The version of the format, which the header carries and the constructor
@@ -827,9 +827,9 @@ class Uint16OffsetsSizedVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got {version}"
@@ -842,7 +842,7 @@ class Uint16OffsetsSizedVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
@@ -869,13 +869,13 @@ class Uint16OffsetsSizedVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint16OffsetsSizedVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -884,15 +884,15 @@ class Uint16OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint16OffsetsSizedVersionedFieldValues:
@@ -903,32 +903,32 @@ class Uint16OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint16OffsetsSizedVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint16OffsetsSizedVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint16OffsetsSizedVersionedFields(TypedDict):
@@ -945,14 +945,14 @@ type Uint16OffsetsSizedVersionedFieldValues = tuple[int, str, memoryview[int]]
 class Uint32Offsets:
     """``uint32`` offsets, the default, for tables of up to 4 GiB"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint32OffsetsFields]) -> memoryview:
@@ -977,13 +977,13 @@ class Uint32Offsets:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint32OffsetsFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -992,15 +992,15 @@ class Uint32Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint32OffsetsFieldValues:
@@ -1011,27 +1011,27 @@ class Uint32Offsets:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint32OffsetsFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint32Offsets``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint32OffsetsFields(TypedDict):
@@ -1048,14 +1048,14 @@ type Uint32OffsetsFieldValues = tuple[int, str, memoryview[int]]
 class Uint32OffsetsSized:
     """``uint32`` offsets, after the table's length"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(sized=True)
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint32OffsetsSizedFields]) -> memoryview:
@@ -1080,13 +1080,13 @@ class Uint32OffsetsSized:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint32OffsetsSizedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1095,15 +1095,15 @@ class Uint32OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint32OffsetsSizedFieldValues:
@@ -1114,27 +1114,27 @@ class Uint32OffsetsSized:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint32OffsetsSizedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint32OffsetsSized``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint32OffsetsSizedFields(TypedDict):
@@ -1151,7 +1151,7 @@ type Uint32OffsetsSizedFieldValues = tuple[int, str, memoryview[int]]
 class Uint32OffsetsVersioned:
     """``uint32`` offsets, after the largest version they hold"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 4294967295
     """The version of the format, which the header carries and the constructor
@@ -1165,9 +1165,9 @@ class Uint32OffsetsVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint32OffsetsVersioned, got {version}"
@@ -1180,7 +1180,7 @@ class Uint32OffsetsVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[Uint32OffsetsVersionedFields]) -> memoryview:
@@ -1205,13 +1205,13 @@ class Uint32OffsetsVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint32OffsetsVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1220,15 +1220,15 @@ class Uint32OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint32OffsetsVersionedFieldValues:
@@ -1239,32 +1239,32 @@ class Uint32OffsetsVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint32OffsetsVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint32OffsetsVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint32OffsetsVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint32OffsetsVersionedFields(TypedDict):
@@ -1281,7 +1281,7 @@ type Uint32OffsetsVersionedFieldValues = tuple[int, str, memoryview[int]]
 class Uint32OffsetsSizedVersioned:
     """``uint32`` offsets, after the table's length and a version"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 2
     """The version of the format, which the header carries and the constructor
@@ -1295,9 +1295,9 @@ class Uint32OffsetsSizedVersioned:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got {version}"
@@ -1310,7 +1310,7 @@ class Uint32OffsetsSizedVersioned:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(
@@ -1337,13 +1337,13 @@ class Uint32OffsetsSizedVersioned:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(1))
+        return self._reader.get_string(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> Uint32OffsetsSizedVersionedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1352,15 +1352,15 @@ class Uint32OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "name": self.name(), "values": self.values()}
 
         return {
             "id": values[0],
             "name": values[1],
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> Uint32OffsetsSizedVersionedFieldValues:
@@ -1371,32 +1371,32 @@ class Uint32OffsetsSizedVersioned:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.name(), self.values())
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> Uint32OffsetsSizedVersionedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Uint32OffsetsSizedVersioned``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        version = buffer.get_version()
+        reader = TableReader(data, cls._LAYOUT)
+        version = reader.get_version()
         if version != cls.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {cls.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got {version}"
             )
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint16_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint16_array(reader.root_offset(2)))
 
 
 class Uint32OffsetsSizedVersionedFields(TypedDict):

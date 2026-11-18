@@ -22,11 +22,11 @@ error: `String` clashes with a name of the generated code
 15 | table String { x: uint8; }
    |       ^^^^^^ the code generated for Java uses `String`
 
-error: `ByteBuffer` clashes with a name of the generated code
+error: `TableReader` clashes with a name of the generated code
   --> reserved_names.tafla:18:7
    |
-18 | table ByteBuffer { x: uint8; }
-   |       ^^^^^^^^^^ the code generated for TypeScript, JavaScript, Python, Java and Rust uses `ByteBuffer`
+18 | table TableReader { x: uint8; }
+   |       ^^^^^^^^^^^ the code generated for TypeScript, JavaScript, Python, Java and Rust uses `TableReader`
 
 error: `Number` clashes with a name of the generated code
   --> reserved_names.tafla:20:8

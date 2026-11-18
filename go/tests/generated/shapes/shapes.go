@@ -27,42 +27,42 @@ func (Point) layout() tafla.TableLayout {
 
 // X fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Point) X() (float64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat64(position)
+	return reader.GetFloat64(position)
 }
 
 // Y fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Point) Y() (float64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat64(position)
+	return reader.GetFloat64(position)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Point) Id() (int64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetInt64(position)
+	return reader.GetInt64(position)
 }
 
 // Name fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Point) Name() (string, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
 	if err != nil {
 		return "", err
 	}
-	return buffer.GetString(position)
+	return reader.GetString(position)
 }
 
 // Fields reads every field of a [Point] at once, into the [PointFields] that
@@ -71,35 +71,35 @@ func (t Point) Name() (string, error) {
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
 // It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Point) Fields() (PointFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	var fields PointFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return PointFields{}, err
 	}
-	if fields.X, err = buffer.GetFloat64(position); err != nil {
+	if fields.X, err = reader.GetFloat64(position); err != nil {
 		return PointFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 4); err != nil {
 		return PointFields{}, err
 	}
-	if fields.Y, err = buffer.GetFloat64(position); err != nil {
+	if fields.Y, err = reader.GetFloat64(position); err != nil {
 		return PointFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 8); err != nil {
 		return PointFields{}, err
 	}
-	if fields.Id, err = buffer.GetInt64(position); err != nil {
+	if fields.Id, err = reader.GetInt64(position); err != nil {
 		return PointFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 12); err != nil {
 		return PointFields{}, err
 	}
-	if fields.Name, err = buffer.GetString(position); err != nil {
+	if fields.Name, err = reader.GetString(position); err != nil {
 		return PointFields{}, err
 	}
 
@@ -172,7 +172,7 @@ func NewDocument(bytes []byte) (Document, error) {
 // checking it, so that an application can choose the reader of that version. It
 // fails with a [*tafla.DecodeError] if the header doesn't fit in bytes.
 func DocumentVersionOf(bytes []byte) (uint32, error) {
-	return tafla.NewByteBuffer(bytes, Document{}.layout()).Version()
+	return tafla.NewTableReader(bytes, Document{}.layout()).Version()
 }
 
 // layout returns the layout of a [Document], which its getters read it in
@@ -182,32 +182,32 @@ func (Document) layout() tafla.TableLayout {
 
 // X fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Document) X() (float64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat64(position)
+	return reader.GetFloat64(position)
 }
 
 // Y fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Document) Y() (float64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat64(position)
+	return reader.GetFloat64(position)
 }
 
 // Name fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Document) Name() (string, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 16)
 	if err != nil {
 		return "", err
 	}
-	return buffer.GetString(position)
+	return reader.GetString(position)
 }
 
 // Columns fails with a [*tafla.DecodeError] if the field lies outside the
@@ -226,28 +226,28 @@ func (t Document) Columns() (Columns, error) {
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
 // It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Document) Fields() (DocumentFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	var fields DocumentFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
 	if err != nil {
 		return DocumentFields{}, err
 	}
-	if fields.X, err = buffer.GetFloat64(position); err != nil {
+	if fields.X, err = reader.GetFloat64(position); err != nil {
 		return DocumentFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 12); err != nil {
 		return DocumentFields{}, err
 	}
-	if fields.Y, err = buffer.GetFloat64(position); err != nil {
+	if fields.Y, err = reader.GetFloat64(position); err != nil {
 		return DocumentFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 16); err != nil {
 		return DocumentFields{}, err
 	}
-	if fields.Name, err = buffer.GetString(position); err != nil {
+	if fields.Name, err = reader.GetString(position); err != nil {
 		return DocumentFields{}, err
 	}
 
@@ -315,42 +315,42 @@ type Columns struct {
 //
 // It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Columns) Base() (int64, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetInt64(position)
+	return reader.GetInt64(position)
 }
 
 // Keys fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Columns) Keys() (tafla.ArrayView[uint32], error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4)
 	if err != nil {
 		return tafla.ArrayView[uint32]{}, err
 	}
-	return buffer.GetUint32Array(position)
+	return reader.GetUint32Array(position)
 }
 
 // A fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Columns) A() (tafla.ArrayView[float32], error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+8)
 	if err != nil {
 		return tafla.ArrayView[float32]{}, err
 	}
-	return buffer.GetFloat32Array(position)
+	return reader.GetFloat32Array(position)
 }
 
 // B fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Columns) B() (tafla.ArrayView[float32], error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+12)
 	if err != nil {
 		return tafla.ArrayView[float32]{}, err
 	}
-	return buffer.GetFloat32Array(position)
+	return reader.GetFloat32Array(position)
 }
 
 // Fields reads every field of a [Columns] at once, into the [ColumnsFields]
@@ -359,21 +359,21 @@ func (t Columns) B() (tafla.ArrayView[float32], error) {
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
 // It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Columns) Fields() (ColumnsFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	var fields ColumnsFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return ColumnsFields{}, err
 	}
-	if fields.Base, err = buffer.GetInt64(position); err != nil {
+	if fields.Base, err = reader.GetInt64(position); err != nil {
 		return ColumnsFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4); err != nil {
 		return ColumnsFields{}, err
 	}
-	array1, err := buffer.GetUint32Array(position)
+	array1, err := reader.GetUint32Array(position)
 	if err != nil {
 		return ColumnsFields{}, err
 	}
@@ -382,7 +382,7 @@ func (t Columns) Fields() (ColumnsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+8); err != nil {
 		return ColumnsFields{}, err
 	}
-	array2, err := buffer.GetFloat32Array(position)
+	array2, err := reader.GetFloat32Array(position)
 	if err != nil {
 		return ColumnsFields{}, err
 	}
@@ -391,7 +391,7 @@ func (t Columns) Fields() (ColumnsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+12); err != nil {
 		return ColumnsFields{}, err
 	}
-	array3, err := buffer.GetFloat32Array(position)
+	array3, err := reader.GetFloat32Array(position)
 	if err != nil {
 		return ColumnsFields{}, err
 	}
@@ -452,12 +452,12 @@ func (ItemList) layout() tafla.TableLayout {
 // ends of its items, lie outside the bytes. An item fails with one when it's
 // read if its own bytes are corrupt.
 func (t ItemList) Items() (ItemVector, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return ItemVector{}, err
 	}
-	vector, err := buffer.GetVector(position)
+	vector, err := reader.GetVector(position)
 	return ItemVector{vector: vector}, err
 }
 
@@ -467,14 +467,14 @@ func (t ItemList) Items() (ItemVector, error) {
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
 // It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t ItemList) Fields() (ItemListFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, t.layout())
+	reader := tafla.NewTableReader(t.bytes, t.layout())
 	var fields ItemListFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return ItemListFields{}, err
 	}
-	vector0, err := buffer.GetVector(position)
+	vector0, err := reader.GetVector(position)
 	if err != nil {
 		return ItemListFields{}, err
 	}
@@ -535,12 +535,12 @@ type Item struct {
 
 // Value fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Item) Value() (float32, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat32(position)
+	return reader.GetFloat32(position)
 }
 
 // Pair fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -558,14 +558,14 @@ func (t Item) Pair() (Pair, error) {
 // arrays and arrays of structs as their Slice() returns them, share the bytes.
 // It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Item) Fields() (ItemFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	var fields ItemFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return ItemFields{}, err
 	}
-	if fields.Value, err = buffer.GetFloat32(position); err != nil {
+	if fields.Value, err = reader.GetFloat32(position); err != nil {
 		return ItemFields{}, err
 	}
 
@@ -634,22 +634,22 @@ type Pair struct {
 
 // First fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Pair) First() (float32, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat32(position)
+	return reader.GetFloat32(position)
 }
 
 // Second fails with a [*tafla.DecodeError] if the field lies outside the bytes.
 func (t Pair) Second() (float32, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4)
 	if err != nil {
 		return 0, err
 	}
-	return buffer.GetFloat32(position)
+	return reader.GetFloat32(position)
 }
 
 // Fields reads every field of a [Pair] at once, into the [PairFields] that it's
@@ -658,21 +658,21 @@ func (t Pair) Second() (float32, error) {
 // arrays of structs as their Slice() returns them, share the bytes. It fails
 // with a [*tafla.DecodeError] if a field lies outside the bytes.
 func (t Pair) Fields() (PairFields, error) {
-	buffer := tafla.NewByteBuffer(t.bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	var fields PairFields
 
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return PairFields{}, err
 	}
-	if fields.First, err = buffer.GetFloat32(position); err != nil {
+	if fields.First, err = reader.GetFloat32(position); err != nil {
 		return PairFields{}, err
 	}
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4); err != nil {
 		return PairFields{}, err
 	}
-	if fields.Second, err = buffer.GetFloat32(position); err != nil {
+	if fields.Second, err = reader.GetFloat32(position); err != nil {
 		return PairFields{}, err
 	}
 

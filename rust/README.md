@@ -78,7 +78,7 @@ them with `--target i686-unknown-linux-gnu`.
 [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) builds with libFuzzer
 on nightly Rust. A panic, a hang or a run out of memory is a finding:
 
-- `byte_buffer` reads arbitrary bytes with every getter of `ByteBuffer`, at
+- `table_reader` reads arbitrary bytes with every getter of `TableReader`, at
   every position and past the end, in every offset type and header, and
   reads every array, struct array and vector there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
@@ -94,7 +94,7 @@ seeds after the corpus that libFuzzer grows, and stop it with Ctrl-C or
 
 ```sh
 cargo install cargo-fuzz
-cargo +nightly fuzz run byte_buffer fuzz/corpus/byte_buffer \
+cargo +nightly fuzz run table_reader fuzz/corpus/table_reader \
     ../conformance/valid ../conformance/equivalent ../conformance/invalid \
     -- -max_total_time=300
 cargo +nightly fuzz run conformance fuzz/corpus/conformance \
