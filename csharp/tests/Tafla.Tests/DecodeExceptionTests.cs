@@ -320,6 +320,16 @@ public class DecodeExceptionTests
         Assert.Equal("Unsupported format version 2; the reader reads version 1", error.Message);
     }
 
+    /// <summary>The error that code reading bytes without a reader throws, as tafla-gen's structs do</summary>
+    [Fact]
+    public void DescribesAReadOutOfRange()
+    {
+        var error = DecodeException.OutOfRange(4, 12, 10);
+
+        Assert.Equal((DecodeErrorKind.OutOfRange, 4L, 12L, 10), (error.Kind, error.Position, error.ByteLength, error.Available));
+        Assert.Equal("Read exceeds the supplied bytes: 12 bytes at 4 of 10", error.Message);
+    }
+
     /// <summary>Mistakes of the code that calls the reader, which no bytes cause, throw other exceptions</summary>
     [Fact]
     public void ThrowsArgumentExceptionsForMistakesOfTheCaller()

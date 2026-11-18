@@ -32,6 +32,9 @@ The first release.
   `TableSizer` counted throws one of kind `NotAsSized`, as Go's, Rust's and
   C++'s writers report it, and never writes past the table, even into
   reused bytes longer than it.
+- A public `DecodeException.OutOfRange()`, beside `UnsupportedVersion()`,
+  with which code that reads bytes without a `TableReader`, such as the
+  structs that tafla-gen generates, fails as the runtime's reads do.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
 
