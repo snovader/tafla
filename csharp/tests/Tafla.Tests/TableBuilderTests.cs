@@ -114,6 +114,515 @@ public class TableBuilderTests
         }
     }
 
+    /// <summary>
+    /// Tables of any description, with every table nested in them that a builder would write in
+    /// place recorded in place instead, and every vector of them, hold the bytes of the tables nested
+    /// as builders, or fail as they fail: as generated, with every nested table made one that's
+    /// recorded in place, and those narrowed to uint8 offsets, which many are too long for.
+    /// </summary>
+    /// <remarks>
+    /// A vector recorded in place checks its count, its items' ends and their offsets before its
+    /// items, which builders of them have already set, so for a table too long the field and length
+    /// may differ from the builders', and only the error's kind and offset type are compared. The
+    /// builder's tests check them where they're the same.
+    /// </remarks>
+    [Fact]
+    public void TablesRecordedInPlaceHoldTheBytesOfTheBuildersThatTheyReplace() =>
+        Gen.Select(Strategy.Tables, Gen.Int[0, 2], (table, change) => change switch
+            {
+                0 => table.NestedInPlace(),
+                1 => EveryTableInPlace(table).NestedInPlace(),
+                _ => Narrowed(EveryTableInPlace(table)).NestedInPlace(),
+            })
+            .Check(table =>
+                Assert.Equal(Outcome(() => table.Built().ToArray()), Outcome(() => table.BuiltInPlace().ToArray()))
+            );
+
+    /// <summary>
+    /// Returns the table with every table nested in it padded to its own alignment, and the items of
+    /// each vector cut to the fewest fields among them, so that each is recorded in place
+    /// </summary>
+    private static Table EveryTableInPlace(Table table)
+    {
+        static Nested Fields(Nested nested, int count) =>
+            nested with { Table = EveryTableInPlace(nested.Table with { Fields = new Seq<Field>(nested.Table.Fields.Take(count)) }) };
+
+        Field InPlace(Field field) =>
+            field switch
+            {
+                TableField nested => new TableField(Fields(nested.Nested, nested.Nested.Table.Fields.Count), null),
+                VectorField vector => new VectorField(
+                    new Seq<Nested>(vector.Items.Select(item => Fields(item, vector.Items.Min(item => item.Table.Fields.Count))))
+                ),
+                _ => field,
+            };
+
+        return table with { Fields = new Seq<Field>(table.Fields.Select(InPlace)) };
+    }
+
+    /// <summary>Returns the table with uint8 offsets, and its version cut to fit them</summary>
+    private static Table Narrowed(Table table) =>
+        table with
+        {
+            Layout = table.Layout with { OffsetType = OffsetType.UInt8 },
+            Version = Math.Min(table.Version, OffsetType.UInt8.MaxValue),
+        };
+
+    /// <summary>
+    /// Returns the bytes that a build writes, in hexadecimal, or the message of the build error that
+    /// it throws, of which only the offset type for a table too long
+    /// </summary>
+    private static string Outcome(Func<byte[]> build)
+    {
+        try
+        {
+            return Convert.ToHexString(build());
+        }
+        catch (BuildException error) when (error.Kind == BuildErrorKind.TooLong)
+        {
+            return $"{error.Kind}: {error.OffsetType}";
+        }
+        catch (BuildException error)
+        {
+            return $"{error.Kind}: {error.Message}";
+        }
+    }
+
+    /// <summary>
+    /// A table or vector recorded in place that fails, after any of a table's fields, leaves the
+    /// builder as it was, however its fill fails: by throwing, or by leaving fields unset or setting
+    /// too many, after setting the fields of a table that records its own nested tables in place,
+    /// which roll back with it. A table too full for another field throws TooManyFields before its
+    /// fill runs, and a field that its offset type can't address throws TooLong.
+    /// </summary>
+    [Fact]
+    public void ATableOrVectorRecordedInPlaceThatFailsLeavesTheBuilderAsItWas() =>
+        Strategy.Tables.Select(table => table.NestedInPlace())
+            .Where(table => Fits(table) is not null)
+            .SelectMany(table =>
+                Gen.Select(
+                    Gen.Int[0, table.Fields.Count],
+                    Strategy.TablesOf(Gen.Const(Layout.Headerless(table.Layout.OffsetType))),
+                    Gen.OneOf(Enum.GetValues<InPlaceFailure>()),
+                    (at, content, failure) => (table, at, content: content.NestedInPlace(), failure)
+                )
+            )
+            .Check(sample =>
+            {
+                var (table, at, content, failure) = sample;
+                var builder = table.Builder();
+
+                for (var index = 0; index < table.Fields.Count; index++)
+                {
+                    if (index == at)
+                    {
+                        FailInPlace(builder, content, failure, full: false);
+                    }
+
+                    Build.SetInPlace(builder, table.Fields[index]);
+                }
+
+                if (at == table.Fields.Count)
+                {
+                    FailInPlace(builder, content, failure, full: true);
+                }
+
+                Assert.Equal(table.Bytes(), builder.ToArray());
+            });
+
+    /// <summary>How a table or vector recorded in place fails, once its fill set the fields of a table</summary>
+    public enum InPlaceFailure
+    {
+        /// <summary>The table's fill throws.</summary>
+        Thrown,
+
+        /// <summary>The table holds a field more than its fill sets.</summary>
+        FieldLeft,
+
+        /// <summary>The table holds a field fewer than its fill sets, or none.</summary>
+        FieldBeyond,
+
+        /// <summary>The second item of a vector throws.</summary>
+        ItemThrown,
+
+        /// <summary>The second item of a vector holds a field more than its fill sets.</summary>
+        ItemFieldLeft,
+    }
+
+    /// <summary>Thrown by a fill, which the builder passes on</summary>
+    private sealed class FillException : Exception;
+
+    /// <summary>
+    /// Records a table or vector in place that fails as <paramref name="failure"/> says, after
+    /// setting <paramref name="content"/>'s fields in it, and checks what it throws: TooManyFields
+    /// when the builder is <paramref name="full"/>, the failure, or TooLong for content too long for
+    /// the offset type
+    /// </summary>
+    private static void FailInPlace(TableBuilder builder, Table content, InPlaceFailure failure, bool full)
+    {
+        var fields = content.Fields;
+        var offsetType = builder.Layout.OffsetType;
+        var state = (fields, offsetType);
+
+        Action fail = failure switch
+        {
+            InPlaceFailure.Thrown => () => builder.SetTable(fields.Count, state, static (table, state) =>
+            {
+                SetFields(table, state);
+                throw new FillException();
+            }),
+            InPlaceFailure.FieldLeft => () => builder.SetTable(fields.Count + 1, state, SetFields),
+            InPlaceFailure.FieldBeyond => () => builder.SetTable(Math.Max(fields.Count - 1, 0), state, static (table, state) =>
+            {
+                SetFields(table, state);
+                table.SetUInt8(1);
+            }),
+            InPlaceFailure.ItemThrown => () => builder.SetVector(2, fields.Count, state, static (item, index, state) =>
+            {
+                SetFields(item, state);
+                if (index == 1)
+                {
+                    throw new FillException();
+                }
+            }),
+            _ => () => builder.SetVector(2, fields.Count + 1, state, static (item, index, state) =>
+            {
+                SetFields(item, state);
+                if (index == 0)
+                {
+                    item.SetUInt8(1);
+                }
+            }),
+        };
+
+        var thrown = Record.Exception(fail);
+        if (full)
+        {
+            Assert.Equal(BuildErrorKind.TooManyFields, Assert.IsType<BuildException>(thrown).Kind);
+        }
+        else if (thrown is BuildException { Kind: var kind })
+        {
+            var expected = failure switch
+            {
+                InPlaceFailure.FieldLeft or InPlaceFailure.ItemFieldLeft => BuildErrorKind.Incomplete,
+                InPlaceFailure.FieldBeyond => BuildErrorKind.TooManyFields,
+                _ => BuildErrorKind.TooLong,
+            };
+
+            Assert.Contains(kind, new[] { expected, BuildErrorKind.TooLong });
+        }
+        else
+        {
+            Assert.IsType<FillException>(thrown);
+            Assert.True(failure is InPlaceFailure.Thrown or InPlaceFailure.ItemThrown);
+        }
+    }
+
+    /// <summary>Sets a table's fields in a table recorded in place, recording its own nested tables in place</summary>
+    private static void SetFields(TableBuilder.Item table, (Seq<Field> Fields, OffsetType OffsetType) state)
+    {
+        foreach (var field in state.Fields)
+        {
+            Build.SetInPlace(table, field, state.OffsetType);
+        }
+    }
+
+    /// <summary>
+    /// Tables recorded in place five deep, each padded for an array after a uint8, hold the bytes of
+    /// builders nested so, and a fill that throws at the deepest leaves the builder as it was
+    /// </summary>
+    [Fact]
+    public void RecordsTablesInPlaceSeveralLevelsDeep()
+    {
+        var builder = new TableBuilder(2);
+        builder.SetUInt8(7);
+        Assert.Throws<FillException>(() => builder.SetTable(3, 5, Deep(throwAtDeepest: true)));
+
+        builder.SetTable(3, 5, Deep(throwAtDeepest: false));
+        var expected = new TableBuilder(2);
+        expected.SetUInt8(7);
+        expected.SetTable(DeepBuilders(5));
+
+        Assert.Equal(expected.ToArray(), builder.ToArray());
+    }
+
+    /// <summary>A table of a uint8, an array of int16s, int32s or float64s by its depth, and the table nested in it</summary>
+    private static Action<TableBuilder.Item, int> Deep(bool throwAtDeepest) =>
+        (table, depth) =>
+        {
+            table.SetUInt8((byte)depth);
+            SetDeepArray(table, depth);
+            if (depth > 1)
+            {
+                table.SetTable(3, depth - 1, Deep(throwAtDeepest));
+            }
+            else if (throwAtDeepest)
+            {
+                throw new FillException();
+            }
+            else
+            {
+                table.SetTable(ReadOnlySpan<byte>.Empty, 1);
+            }
+        };
+
+    private static TableBuilder DeepBuilders(int depth)
+    {
+        var table = new TableBuilder(3);
+        table.SetUInt8((byte)depth);
+        switch (depth % 3)
+        {
+            case 0:
+                table.SetInt16Array([(short)depth, -1]);
+                break;
+            case 1:
+                table.SetInt32Array([depth, -1]);
+                break;
+            default:
+                table.SetFloat64Array([depth, -1]);
+                break;
+        }
+
+        if (depth > 1)
+        {
+            table.SetTable(DeepBuilders(depth - 1));
+        }
+        else
+        {
+            table.SetTable(ReadOnlySpan<byte>.Empty, 1);
+        }
+
+        return table;
+    }
+
+    private static void SetDeepArray(TableBuilder.Item table, int depth)
+    {
+        switch (depth % 3)
+        {
+            case 0:
+                table.SetInt16Array([(short)depth, -1]);
+                break;
+            case 1:
+                table.SetInt32Array([depth, -1]);
+                break;
+            default:
+                table.SetFloat64Array([depth, -1]);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A table recorded in place is padded to its alignment once its fields are set, and that
+    /// padding counts against its parent's length, as a nested builder's does: here a uint8 array of
+    /// <paramref name="before"/> bytes leaves a table of 61 int32s, 248 bytes aligned to 4, padded by
+    /// 1, 0 or 3 bytes, the last of which make its parent of uint8 offsets 256 bytes long
+    /// </summary>
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(1, null)]
+    [InlineData(2, 256L)]
+    public void APaddedTableRecordedInPlaceCountsItsPaddingAsANestedBuilderDoes(int before, long? tooLong)
+    {
+        var layout = new TableLayout { OffsetType = OffsetType.UInt8 };
+        var elements = new int[61];
+
+        var nested = new TableBuilder(1, layout);
+        nested.SetInt32Array(elements);
+        var parent = new TableBuilder(2, layout);
+        parent.SetUInt8Array(new byte[before]);
+        var builder = new TableBuilder(2, layout);
+        builder.SetUInt8Array(new byte[before]);
+
+        var expected = Record.Exception(() => parent.SetTable(nested));
+        var actual = Record.Exception(() =>
+            builder.SetTable(1, elements, static (table, elements) => table.SetInt32Array(elements))
+        );
+
+        if (tooLong is { } length)
+        {
+            var error = Assert.IsType<BuildException>(actual);
+            Assert.Equal((BuildErrorKind.TooLong, 1, length), (error.Kind, error.Index, error.Length));
+            Assert.Equal(Assert.IsType<BuildException>(expected).Message, error.Message);
+
+            // The builder is as it was, and takes a shorter table
+            parent.SetTable(new TableBuilder(0, layout));
+            builder.SetTable(0, static _ => { });
+        }
+        else
+        {
+            Assert.Null(expected);
+            Assert.Null(actual);
+        }
+
+        Assert.Equal(parent.ToArray(), builder.ToArray());
+    }
+
+    /// <summary>
+    /// A table recorded in place counts its own length as a builder of it would, so its own field
+    /// too long for the offset type throws TooLong with that field's index and the table's length,
+    /// and a table or vector whose items fit but make the parent too long throws it with the
+    /// parent's
+    /// </summary>
+    [Fact]
+    public void ATableRecordedInPlaceIsTooLongWhereABuilderOfItWouldBe()
+    {
+        // Two offsets, and a uint8 array's count and 1,000 bytes: 1,006 bytes before the table
+        var layout = new TableLayout { OffsetType = OffsetType.UInt16 };
+        var builder = new TableBuilder(2, layout);
+        builder.SetUInt8Array(new byte[1000]);
+
+        // Two offsets, a uint8, and the array's count and bytes
+        var own = Assert.Throws<BuildException>(() =>
+            builder.SetTable(2, static table =>
+            {
+                table.SetUInt8(1);
+                table.SetUInt8Array(new byte[65_535]);
+            })
+        );
+        Assert.Equal((BuildErrorKind.TooLong, 1, 4 + 1 + 2 + 65_535L), (own.Kind, own.Index, own.Length));
+
+        var parent = Assert.Throws<BuildException>(() =>
+            builder.SetTable(1, static table => table.SetUInt8Array(new byte[65_000]))
+        );
+        Assert.Equal((BuildErrorKind.TooLong, 1, 1006 + 2 + 2 + 65_000L), (parent.Kind, parent.Index, parent.Length));
+
+        // The vector's count and two ends, and in each item an offset, a count and the bytes
+        var item = Assert.Throws<BuildException>(() =>
+            builder.SetVector(2, 1, static (item, index) => item.SetUInt8Array(new byte[65_534]))
+        );
+        Assert.Equal((BuildErrorKind.TooLong, 0, 2 + 2 + 65_534L), (item.Kind, item.Index, item.Length));
+
+        var vector = Assert.Throws<BuildException>(() =>
+            builder.SetVector(2, 1, static (item, index) => item.SetUInt8Array(new byte[40_000]))
+        );
+        Assert.Equal((BuildErrorKind.TooLong, 1, 1006 + 6 + 2 * 40_004L), (vector.Kind, vector.Index, vector.Length));
+
+        builder.SetVector(2, 1, static (item, index) => item.SetUInt8Array(new byte[index]));
+        var built = new TableBuilder(2, layout);
+        built.SetUInt8Array(new byte[1000]);
+        built.SetVector(Items(layout, [], [0]));
+        Assert.Equal(built.ToArray(), builder.ToArray());
+    }
+
+    /// <summary>Returns builders of tables of one uint8 array each, of the values given</summary>
+    private static NestedTable[] Items(TableLayout layout, params byte[][] arrays) =>
+        [
+            .. arrays.Select(array =>
+            {
+                var item = new TableBuilder(1, layout);
+                item.SetUInt8Array(array);
+                return (NestedTable)item;
+            }),
+        ];
+
+    /// <summary>
+    /// A vector recorded in place checks its count, its items' ends and the offsets that every item
+    /// holds before calling its fill, and throws TooLong with the length that they make, even past
+    /// the longest array for uint32 offsets, without allocating it
+    /// </summary>
+    [Theory]
+    [InlineData(OffsetType.UInt8, 254, 0, 256L)]
+    [InlineData(OffsetType.UInt8, 100, 2, 1 + 101 + 200L)]
+    [InlineData(OffsetType.UInt16, 32_767, 0, 2 + 32_768 * 2L)]
+    [InlineData(OffsetType.UInt32, 1 << 29, 0, 4 + ((1L << 29) + 1) * 4)]
+    [InlineData(OffsetType.UInt32, 1 << 28, 1, 4 + ((1L << 28) + 1) * 4 + (1L << 28) * 4)]
+    public void AVectorRecordedInPlaceTooLongForItsItemsOffsetsThrowsBeforeItsFill(OffsetType offsetType, int count, int fields, long length)
+    {
+        var builder = new TableBuilder(1, new TableLayout { OffsetType = offsetType });
+        var calls = 0;
+
+        var error = Assert.Throws<BuildException>(() => builder.SetVector(count, fields, (_, _) => calls++));
+        Assert.Equal((BuildErrorKind.TooLong, 0, length, offsetType), (error.Kind, error.Index, error.Length, error.OffsetType));
+        Assert.Equal(0, calls);
+
+        builder.SetVector(1, fields, (item, _) =>
+        {
+            calls++;
+            for (var field = 0; field < fields; field++)
+            {
+                item.SetUInt8((byte)field);
+            }
+        });
+        Assert.Equal(1, calls);
+    }
+
+    /// <summary>
+    /// A table recorded in place has its parent's offset type and no header, so offsets that alone
+    /// are too long for the offset type throw HeaderTooLong, as a builder of them does
+    /// </summary>
+    [Fact]
+    public void RejectsATableRecordedInPlaceWhoseOffsetsAreTooLong()
+    {
+        var layout = new TableLayout { OffsetType = OffsetType.UInt8 };
+        var builder = new TableBuilder(1, layout);
+
+        var table = Assert.Throws<BuildException>(() => builder.SetTable(256, static _ => { }));
+        Assert.Equal((BuildErrorKind.HeaderTooLong, 256, OffsetType.UInt8), (table.Kind, table.Fields, table.OffsetType));
+        var item = Assert.Throws<BuildException>(() => builder.SetVector(1, 256, static (_, _) => { }));
+        Assert.Equal((BuildErrorKind.HeaderTooLong, 256), (item.Kind, item.Fields));
+
+        builder.SetTable(254, static table =>
+        {
+            for (var field = 0; field < 254; field++)
+            {
+                table.SetTable(ReadOnlySpan<byte>.Empty, 1);
+            }
+        });
+        Assert.Equal(255, builder.ToArray().Length);
+    }
+
+    /// <summary>
+    /// A fill's state can be a span, such as the values of a vector's items, and an item a table
+    /// recorded in place in turn, which writes the bytes of builders of them
+    /// </summary>
+    [Fact]
+    public void PassesASpanToAFillAsItsState()
+    {
+        ReadOnlySpan<int> values = [1, -2, int.MaxValue];
+        var builder = new TableBuilder(1);
+        builder.SetVector(values.Length, 2, values, static (item, index, values) =>
+        {
+            item.SetInt32(values[index]);
+            item.SetTable(1, values[..index], static (table, before) => table.SetInt32Array(before));
+        });
+
+        var items = new NestedTable[values.Length];
+        for (var index = 0; index < values.Length; index++)
+        {
+            var table = new TableBuilder(1);
+            table.SetInt32Array(values[..index]);
+            var item = new TableBuilder(2);
+            item.SetInt32(values[index]);
+            item.SetTable(table);
+            items[index] = item;
+        }
+
+        var expected = new TableBuilder(1);
+        expected.SetVector(items);
+        Assert.Equal(expected.ToArray(), builder.ToArray());
+    }
+
+    /// <summary>
+    /// While a table is recorded in place, the builder's bytes hold it unfinished, so copying them,
+    /// by ToArray() or by nesting the builder, throws InvalidOperationException, which the fill
+    /// passes on, leaving the builder as it was
+    /// </summary>
+    [Fact]
+    public void RejectsCopyingABuilderWhileATableIsRecordedInPlaceInIt()
+    {
+        var builder = new TableBuilder(1);
+        var other = new TableBuilder(1);
+
+        Assert.Throws<InvalidOperationException>(() => builder.SetTable(0, _ => builder.ToArray()));
+        Assert.Throws<InvalidOperationException>(() => builder.SetTable(1, table => table.SetTable(builder)));
+        Assert.Throws<InvalidOperationException>(() => builder.SetVector(1, 0, (_, _) => other.SetTable(builder)));
+        Assert.Throws<InvalidOperationException>(() => builder.SetVector(1, 1, (item, _) => item.SetVector(builder)));
+
+        builder.SetTable(0, static _ => { });
+        Assert.Equal(new byte[] { 4, 0, 0, 0 }, builder.ToArray());
+        other.SetTable(builder);
+    }
+
     [Fact]
     public void RejectsAFieldBeyondTheCount()
     {
@@ -245,6 +754,13 @@ public class TableBuilderTests
         Assert.Throws<ArgumentNullException>(() => builder.SetTable((TableBuilder)null!));
         Assert.Throws<ArgumentNullException>(() => builder.SetVector((TableBuilder)null!));
         Assert.Throws<ArgumentNullException>(() => builder.SetVector((byte[])null!));
+        Assert.Throws<ArgumentNullException>(() => builder.SetTable(1, (Action<TableBuilder.Item>)null!));
+        Assert.Throws<ArgumentNullException>(() => builder.SetTable(1, 0, (Action<TableBuilder.Item, int>)null!));
+        Assert.Throws<ArgumentNullException>(() => builder.SetVector(1, 1, (Action<TableBuilder.Item, int>)null!));
+        Assert.Throws<ArgumentNullException>(() => builder.SetVector(1, 1, 0, (Action<TableBuilder.Item, int, int>)null!));
+        Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetTable(-1, static _ => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetVector(-1, 1, static (_, _) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetVector(1, -1, static (_, _) => { }));
 
         // None of them set a field
         builder.SetUInt8(1);

@@ -31,6 +31,12 @@ The first release.
   the caller reuses, with nested tables, vector items and structs written in
   place, as the other runtimes' generated code writes tables. The bytes are
   those that `TableBuilder` writes.
+- `TableBuilder.SetTable(fields, fill)` and `SetVector(count, fields, fill)`,
+  which record a nested table, or each item of a vector, in place among the
+  builder's own bytes through a `TableBuilder.Item`, without a builder of its
+  own for each, as the other runtimes' builders do, and write the bytes that
+  nested builders write. Their overloads that take a `state` pass it to a
+  `static` lambda, so that recording them allocates nothing.
 - Bounds-checked reads, which fail on malformed input with a
   `DecodeException`, and builders that reject what they can't write with a
   `BuildException`. A `TableWriter` whose fields differ from those that its
