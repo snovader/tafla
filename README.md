@@ -27,7 +27,7 @@ packages.
 | Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io                              |
 | Go         | `github.com/snovader/tafla/go`                    | `tafla-gen`'s `go` target                             |
 | C++        | The headers of `cpp/include`, not yet published   | `tafla-gen`, any of the above                         |
-| Swift      | The package of `swift/`, not yet published        | Not yet                                               |
+| Swift      | `github.com/snovader/tafla` for SwiftPM           | Not yet                                               |
 | C#         | The library of `csharp/`, not yet published       | Not yet                                               |
 
 A runtime writes and reads tables. The code generator compiles a schema of
@@ -40,7 +40,11 @@ and is released on its own. Every implementation reads and writes the format
 that [SPEC.md](SPEC.md) describes, whatever its version, and passes the same
 conformance suite. A Go module is published by a git tag, so each release of
 the Go runtime is tagged `go/v<version>`, and
-`go get github.com/snovader/tafla/go@v0.1.0` adds its release 0.1.0.
+`go get github.com/snovader/tafla/go@v0.1.0` adds its release 0.1.0. SwiftPM
+resolves a package from the manifest at the root of its repository and its
+versions from tags of the form `<version>`, so the root's `Package.swift`
+declares the Swift runtime, and each of its releases is tagged `<version>`,
+such as `0.1.0`.
 
 ## Repository
 

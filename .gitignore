@@ -33,3 +33,8 @@ __pycache__
 
 # Rust
 /rust/**/target
+
+# Swift: SwiftPM's build directory and Xcode's package workspace, for the
+# manifest at the root
+/.build
+/.swiftpm

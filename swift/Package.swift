@@ -2,6 +2,10 @@
 
 import PackageDescription
 
+// The package's own manifest, with its tests. Other packages resolve it from
+// the manifest at the repository's root, ../Package.swift, which declares the
+// same library alone, and which the release workflow checks against this one.
+
 // The views of a table's bytes, `TableReader`, `ArrayView` and `Vector`, are
 // nonescapable, and their lifetimes depend on the bytes', which needs the
 // experimental feature Lifetimes in Swift 6.2 to 6.4: README.md explains why.
