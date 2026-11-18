@@ -56,10 +56,15 @@ jobs:
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
               - "cpp/tests/generated/*/**"
+              - "csharp/tests/Tafla.Generated/*/**"
               - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
               - "typescript/core/test/generated/*/**"
+              # The C# tests' own schema and its generated code, which
+              # tests/csharp_schemas.rs checks
+              - "csharp/tests/names.tafla"
+              - "csharp/tests/names/**"
               # The other comparison suites' schemas and generated code
               - "cpp/benchmarks/workloads.tafla"
               - "cpp/benchmarks/generated/tafla/**"
