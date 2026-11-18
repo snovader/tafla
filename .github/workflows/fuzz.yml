@@ -2,8 +2,8 @@ name: Fuzz
 
 # Weekly, rather than on every change, since a run takes minutes of each
 # target's time to find anything. The Rust workflow lints the fuzz targets on
-# every change, so that they keep building, and the Go and C++ workflows run
-# their targets briefly.
+# every change, so that they keep building, and the Go, C++ and Swift
+# workflows run their targets briefly.
 on:
   schedule:
     # Mondays at 04:17 UTC, off the hour that most scheduled workflows start
@@ -199,4 +199,57 @@ jobs:
         with:
           name: fuzz-cpp-artifacts-${{ matrix.target }}
           path: cpp/build/artifacts
+          if-no-files-found: ignore
+
+  # Swift's libFuzzer targets, which mirror the runtime's Rust targets, with
+  # AddressSanitizer
+  fuzz-swift:
+    name: Fuzz Swift (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Linux's toolchain, which has libFuzzer's runtime, unlike Xcode's
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: swift/Fuzz
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzTableReader, FuzzConformance]
+    # Without LeakSanitizer, as in the tests, and without Swift's backtracer,
+    # which held a crash for minutes rather than let libFuzzer report it
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+      SWIFT_BACKTRACE: enable=no
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Restore the corpus
+        uses: actions/cache@v6
+        with:
+          path: swift/Fuzz/.build/corpus/${{ matrix.target }}
+          key: fuzz-swift-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-swift-corpus-${{ matrix.target }}-
+
+      - name: Build the fuzz target
+        run: swift build -c release --sanitize=fuzzer --sanitize=address --product ${{ matrix.target }}
+
+      # libFuzzer writes an input that fails to .build/artifacts
+      - name: Run the fuzz target
+        env:
+          SECONDS_PER_TARGET: ${{ inputs.seconds || 300 }}
+        run: |
+          mkdir -p .build/corpus/${{ matrix.target }} .build/artifacts
+          "$(swift build -c release --sanitize=fuzzer --sanitize=address --show-bin-path)/${{ matrix.target }}" \
+              .build/corpus/${{ matrix.target }} ../../conformance/valid ../../conformance/equivalent \
+              ../../conformance/invalid -max_total_time="$SECONDS_PER_TARGET" -timeout=10 \
+              -artifact_prefix=.build/artifacts/
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-swift-artifacts-${{ matrix.target }}
+          path: swift/Fuzz/.build/artifacts
           if-no-files-found: ignore

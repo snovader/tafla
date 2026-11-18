@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run formatting check
-        run: swift format lint --strict --recursive Package.swift Sources Tests
+        run: swift format lint --strict --recursive Package.swift Sources Tests Fuzz/Package.swift Fuzz/Sources
 
   linux:
     name: Test (Linux, Swift ${{ matrix.swift }})
@@ -125,6 +125,51 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0
         run: swift test --sanitize=address
 
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Linux's toolchain, which has libFuzzer's runtime, unlike Xcode's
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: swift/Fuzz
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzTableReader, FuzzConformance]
+    # Without LeakSanitizer, as in the tests, and without Swift's backtracer,
+    # which held a crash for minutes rather than let libFuzzer report it
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+      SWIFT_BACKTRACE: enable=no
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Build the fuzz target
+        run: swift build -c release --sanitize=fuzzer --sanitize=address --product ${{ matrix.target }}
+
+      # Briefly, from the conformance suite's tables, so that a change that
+      # breaks a target, or that it finds quickly, fails here. libFuzzer
+      # writes a failing input to .build/artifacts, which the step uploads.
+      - name: Run the fuzz target
+        run: |
+          mkdir -p .build/corpus .build/artifacts
+          "$(swift build -c release --sanitize=fuzzer --sanitize=address --show-bin-path)/${{ matrix.target }}" \
+              .build/corpus ../../conformance/valid ../../conformance/equivalent ../../conformance/invalid \
+              -max_total_time=60 -timeout=10 -artifact_prefix=.build/artifacts/
+
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: swift/Fuzz/.build/artifacts
+          if-no-files-found: ignore
+
   macos:
     name: Test (macOS)
     needs: changes
@@ -160,7 +205,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch Swift.
   checks:
     name: Swift checks
-    needs: [changes, formatting, linux, sanitizers, macos]
+    needs: [changes, formatting, linux, sanitizers, fuzz, macos]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

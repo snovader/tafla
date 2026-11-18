@@ -1,3 +1,6 @@
-# SwiftPM's build directory and Xcode's package workspace
+# SwiftPM's build directory and Xcode's package workspace, of the runtime's
+# package and of the fuzz targets'
 /.build/
 /.swiftpm/
+/Fuzz/.build/
+/Fuzz/.swiftpm/
