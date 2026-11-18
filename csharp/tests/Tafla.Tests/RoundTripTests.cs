@@ -19,8 +19,65 @@ public class RoundTripTests
             var (table, byteOffset) = sample;
             var bytes = Bytes.AtByteOffset(table.Bytes(), byteOffset);
 
-            Assert.Equal(table, Read.Table(bytes, table));
+            Assert.Equal(table, Read.Table(bytes.Span, table));
         });
+
+    /// <summary>A reader reads a span of any memory, such as memory allocated outside the managed heap.</summary>
+    [Fact]
+    public void TablesReadBackFromNativeMemory() =>
+        Strategy.Tables.Check(table =>
+        {
+            var built = table.Bytes();
+            unsafe
+            {
+                var native = NativeMemory.Alloc((nuint)built.Length);
+                try
+                {
+                    var bytes = new Span<byte>(native, built.Length);
+                    built.CopyTo(bytes);
+
+                    Assert.Equal(table, Read.Table(bytes, table));
+                }
+                finally
+                {
+                    NativeMemory.Free(native);
+                }
+            }
+        });
+
+    /// <summary>
+    /// A reader reads a table on the stack, and a slice of an array at an odd address, which an
+    /// <see cref="ArraySegment{T}"/> converts to, and only the slice: the bytes after it lie outside.
+    /// </summary>
+    [Fact]
+    public void ReadsATableOnTheStackOrInASliceOfAnArray()
+    {
+        var builder = new TableBuilder(3);
+        builder.SetInt32(-7);
+        builder.SetString("tafla");
+        builder.SetFloat32Array([1.5f, -2.5f]);
+        var bytes = builder.ToArray();
+
+        Span<byte> stack = stackalloc byte[bytes.Length];
+        bytes.CopyTo(stack);
+        AssertFields(new TableReader(stack));
+
+        var backing = new byte[3 + bytes.Length + 4];
+        backing.AsSpan().Fill(0xff);
+        bytes.CopyTo(backing.AsSpan(3));
+        var slice = new ArraySegment<byte>(backing, 3, bytes.Length);
+        AssertFields(new TableReader(slice));
+
+        var error = Assert.Throws<DecodeException>(() => new TableReader(slice).GetUInt8(bytes.Length));
+        Assert.Equal((bytes.Length, bytes.Length), (error.Position, error.Available));
+
+        static void AssertFields(TableReader reader)
+        {
+            Assert.Equal(-7, reader.GetInt32(reader.RootOffset(0)));
+            Assert.Equal("tafla", reader.GetString(reader.RootOffset(1)));
+            Assert.Equal([1.5f, -2.5f], reader.GetFloat32Array(reader.RootOffset(2)).ToArray());
+        }
+    }
 
     [Fact]
     public void ReadsBackSignedZeroAndNaNsByTheirBits()
@@ -113,7 +170,7 @@ public class RoundTripTests
         for (var byteOffset = 0; byteOffset < 8; byteOffset++)
         {
             var bytes = Bytes.AtByteOffset(table.Bytes(), byteOffset);
-            Assert.Equal(table, Read.Table(bytes, table));
+            Assert.Equal(table, Read.Table(bytes.Span, table));
         }
     }
 
@@ -236,15 +293,15 @@ public class RoundTripTests
         var index2 = 0;
         foreach (var item in vector.Items())
         {
-            Assert.True(item.Span.SequenceEqual(vector.Get(index2).Span));
+            Assert.True(item.SequenceEqual(vector.Get(index2)));
             Assert.Equal(new string('x', index2), new TableReader(item).GetString(new TableReader(item).RootOffset(0)));
             index2++;
         }
 
         Assert.Equal(3, index2);
         Assert.Equal(bytes.Length - (4 + 16), vector.GetInPlace(0).Length);
-        Assert.Throws<ArgumentOutOfRangeException>(() => vector.Get(3));
-        Assert.Throws<ArgumentOutOfRangeException>(() => vector.GetInPlace(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TableReader(bytes).GetVector(4).Get(3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TableReader(bytes).GetVector(4).GetInPlace(-1));
         Assert.Equal(0, default(Vector).Count);
     }
 
@@ -268,7 +325,7 @@ public class RoundTripTests
         for (var byteOffset = 0; byteOffset < 8; byteOffset++)
         {
             var memory = Bytes.AtByteOffset(builder.ToArray(), byteOffset);
-            var reader = new TableReader(memory);
+            var reader = new TableReader(memory.Span);
             var values = reader.GetFloat64Array(reader.RootOffset(1));
 
             MemoryMarshal.AsMemory(memory).Span[^8..].Clear();

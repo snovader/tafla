@@ -4,10 +4,10 @@ tafla's runtime for .NET: binary tables of scalars, strings, arrays, structs
 and nested tables, in tafla's format, which its runtimes for TypeScript,
 Python, Java, Rust, Go, C++ and Swift write and read too. `TableBuilder`
 writes a table, copying arrays in bulk, and `TableReader` reads fields back by
-offset, with arrays, structs and vector items as spans of the bytes. Every
-read checks that it stays within the bytes it was given, and fails with a
-`DecodeException` if it would leave them, so tables can come from untrusted
-sources.
+offset from a span of any memory, with arrays, structs and vector items as
+spans of the bytes. Every read checks that it stays within the bytes it was
+given, and fails with a `DecodeException` if it would leave them, so tables
+can come from untrusted sources.
 
 ```csharp
 using Tafla;

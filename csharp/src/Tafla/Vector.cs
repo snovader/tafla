@@ -21,12 +21,17 @@ namespace Tafla;
 /// end, as those of any table read in place may. Any other item is read as a table of its own, from
 /// the bytes that <see cref="Get"/> returns, with a <see cref="TableReader"/> of its own layout.
 /// </para>
-/// <para>The default value is an empty vector.</para>
+/// <para>
+/// The vector and its enumerator are <c>ref struct</c>s over the span of bytes that the
+/// <see cref="TableReader"/> read it from, as the reader is, and its items are spans of those bytes,
+/// so none of them can be stored where they could outlive the span. The default value is an empty
+/// vector.
+/// </para>
 /// </remarks>
-public readonly struct Vector
+public readonly ref struct Vector
 {
     /// <summary>The bytes of the buffer that the vector lies in</summary>
-    private readonly ReadOnlyMemory<byte> _bytes;
+    private readonly ReadOnlySpan<byte> _bytes;
 
     /// <summary>The vector's position in the bytes, which its ends count from</summary>
     private readonly int _position;
@@ -38,7 +43,7 @@ public readonly struct Vector
     /// A vector of <paramref name="count"/> items at <paramref name="position"/> in
     /// <paramref name="bytes"/>, whose count and ends lie within them
     /// </summary>
-    internal Vector(ReadOnlyMemory<byte> bytes, int position, int count, OffsetType offsetType)
+    internal Vector(ReadOnlySpan<byte> bytes, int position, int count, OffsetType offsetType)
     {
         _bytes = bytes;
         _position = position;
@@ -57,7 +62,7 @@ public readonly struct Vector
     /// The item ends before the item before it, or past the bytes.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> isn't an item's.</exception>
-    public ReadOnlyMemory<byte> Get(int index)
+    public ReadOnlySpan<byte> Get(int index)
     {
         var (start, end) = Bounds(index);
         return Item(start, end, inPlace: false);
@@ -71,7 +76,7 @@ public readonly struct Vector
     /// The item ends before the item before it, or past the bytes.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> isn't an item's.</exception>
-    public ReadOnlyMemory<byte> GetInPlace(int index)
+    public ReadOnlySpan<byte> GetInPlace(int index)
     {
         var (start, end) = Bounds(index);
         return Item(start, end, inPlace: true);
@@ -116,7 +121,7 @@ public readonly struct Vector
     internal long End(int index)
     {
         int width = _offsetType.Size;
-        var slot = _bytes.Span.Slice(_position + (index + 1) * width, width);
+        var slot = _bytes.Slice(_position + (index + 1) * width, width);
 
         return TableReader.ReadUnsigned(slot, _offsetType);
     }
@@ -125,7 +130,7 @@ public readonly struct Vector
     /// Returns the bytes of the item from <paramref name="start"/> to <paramref name="end"/>, from the
     /// vector's position, or from its start to the end of the bytes when it's read in place
     /// </summary>
-    internal ReadOnlyMemory<byte> Item(long start, long end, bool inPlace)
+    internal ReadOnlySpan<byte> Item(long start, long end, bool inPlace)
     {
         if (start > end)
         {
@@ -146,7 +151,7 @@ public readonly struct Vector
 /// The items of a <see cref="Vector"/>, in order, which <c>foreach</c> reads with a
 /// <see cref="VectorItemEnumerator"/>.
 /// </summary>
-public readonly struct VectorItems
+public readonly ref struct VectorItems
 {
     private readonly Vector _vector;
     private readonly bool _inPlace;
@@ -162,7 +167,7 @@ public readonly struct VectorItems
 }
 
 /// <summary>Reads the items of a <see cref="Vector"/> in order, each from its end and the one before it.</summary>
-public struct VectorItemEnumerator
+public ref struct VectorItemEnumerator
 {
     private readonly Vector _vector;
     private readonly bool _inPlace;
@@ -181,7 +186,7 @@ public struct VectorItemEnumerator
     }
 
     /// <summary>The bytes of the item that <see cref="MoveNext"/> moved to.</summary>
-    public ReadOnlyMemory<byte> Current { get; private set; }
+    public ReadOnlySpan<byte> Current { get; private set; }
 
     /// <summary>
     /// Moves to the next item, and returns false after the last. The next item starts where this one

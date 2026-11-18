@@ -24,11 +24,16 @@ namespace Tafla;
 /// string is decoded into a new <see cref="string"/>.
 /// </para>
 /// <para>
-/// A <see cref="TableReader"/> is a small value, which is cheap to copy and to create for each read.
-/// Its default value reads no bytes in the default layout.
+/// A <see cref="TableReader"/> is a <c>ref struct</c> over a span of the bytes, which can be those of
+/// an array, a slice of one, a <see cref="ReadOnlyMemory{T}"/>'s <see cref="ReadOnlyMemory{T}.Span"/>,
+/// or stack or native memory. It's a small value, which is cheap to copy and to create for each read,
+/// and it lives on the stack, as a span does: it can't be stored in a class, or in a struct other than
+/// a <c>ref struct</c>, captured by a lambda, or kept across an <c>await</c> or a <c>yield</c>. Code
+/// that keeps a table keeps its bytes, and creates a reader where it reads them. Its default value
+/// reads no bytes in the default layout.
 /// </para>
 /// </remarks>
-public readonly struct TableReader
+public readonly ref struct TableReader
 {
     /// <summary>A UTF-8 decoder that throws for invalid UTF-8, rather than replacing it with U+FFFD</summary>
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -36,18 +41,21 @@ public readonly struct TableReader
     /// <summary>The most characters that a <see cref="string"/> holds, which .NET doesn't expose</summary>
     private const int MaxStringLength = 0x3fff_ffdf;
 
-    private readonly ReadOnlyMemory<byte> _bytes;
+    private readonly ReadOnlySpan<byte> _bytes;
     private readonly TableLayout _layout;
 
-    /// <summary>Creates a reader of the table in <paramref name="bytes"/>, in <paramref name="layout"/>.</summary>
-    public TableReader(ReadOnlyMemory<byte> bytes, TableLayout layout = default)
+    /// <summary>
+    /// Creates a reader of the table in <paramref name="bytes"/>, in <paramref name="layout"/>. An array,
+    /// an <see cref="ArraySegment{T}"/> or a <see cref="Span{T}"/> converts to the span implicitly.
+    /// </summary>
+    public TableReader(ReadOnlySpan<byte> bytes, TableLayout layout = default)
     {
         _bytes = bytes;
         _layout = layout;
     }
 
     /// <summary>The bytes that the reader reads.</summary>
-    public ReadOnlyMemory<byte> Bytes => _bytes;
+    public ReadOnlySpan<byte> Bytes => _bytes;
 
     /// <summary>The layout that the reader reads the table in.</summary>
     public TableLayout Layout => _layout;
@@ -57,7 +65,7 @@ public readonly struct TableReader
     /// length of the bytes.
     /// </summary>
     /// <exception cref="DecodeException">The header doesn't lie within the bytes.</exception>
-    public uint GetSize() => _layout.Sized ? ReadSlot(_bytes.Span, 0) : (uint)_bytes.Length;
+    public uint GetSize() => _layout.Sized ? ReadSlot(_bytes, 0) : (uint)_bytes.Length;
 
     /// <summary>
     /// Returns the version that the table's header carries, after its length when it's sized. It's as
@@ -73,7 +81,7 @@ public readonly struct TableReader
             throw new InvalidOperationException("The layout has no version");
         }
 
-        return ReadSlot(_bytes.Span, _layout.Sized ? _layout.OffsetSize : 0);
+        return ReadSlot(_bytes, _layout.Sized ? _layout.OffsetSize : 0);
     }
 
     /// <summary>Returns the position of field <paramref name="index"/> of the root table.</summary>
@@ -86,7 +94,7 @@ public readonly struct TableReader
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         long offset = ReadSlot(bytes, _layout.HeaderSize + (long)index * _layout.OffsetSize);
 
         return ToPosition(offset, bytes.Length);
@@ -106,7 +114,7 @@ public readonly struct TableReader
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         int width = _layout.OffsetSize;
         if (tablePosition < 0)
         {
@@ -128,7 +136,7 @@ public readonly struct TableReader
     /// <exception cref="DecodeException">The value doesn't lie within the bytes.</exception>
     public byte GetUInt8(int position)
     {
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         if ((uint)position >= (uint)bytes.Length)
         {
             DecodeException.ThrowOutOfRange(position, sizeof(byte), bytes.Length);
@@ -271,7 +279,7 @@ public readonly struct TableReader
     public ReadOnlySpan<byte> GetStruct(int position, int size)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(size);
-        return Range(_bytes.Span, position, size);
+        return Range(_bytes, position, size);
     }
 
     /// <summary>
@@ -295,7 +303,7 @@ public readonly struct TableReader
     /// <exception cref="DecodeException">The count or the ends don't lie within the bytes.</exception>
     public Vector GetVector(int position)
     {
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         uint count = ReadSlot(bytes, position);
 
         // Every item has an end, so this rejects an impossible count before any item is read
@@ -308,7 +316,7 @@ public readonly struct TableReader
     /// <summary>Returns the <paramref name="size"/> bytes of a scalar at <paramref name="position"/>.</summary>
     private ReadOnlySpan<byte> Scalar(int position, int size)
     {
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         if (position < 0 || position > bytes.Length - size)
         {
             DecodeException.ThrowOutOfRange(position, size, bytes.Length);
@@ -324,7 +332,7 @@ public readonly struct TableReader
     /// </summary>
     private ReadOnlySpan<byte> ArrayBytes(int position, int elementSize)
     {
-        var bytes = _bytes.Span;
+        var bytes = _bytes;
         uint count = ReadSlot(bytes, position);
 
         // At most 2^32 - 1 elements of up to 2^31 - 1 bytes, which a long holds
