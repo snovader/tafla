@@ -29,7 +29,7 @@ public static class Read
     /// Reads a table from its own bytes, as the root or a vector item is read: its header, whose size
     /// must be the table's byte length when it's sized, and then its fields.
     /// </summary>
-    public static Table Table(ReadOnlyMemory<byte> bytes, Table table)
+    public static Table Table(ReadOnlySpan<byte> bytes, Table table)
     {
         var reader = new TableReader(bytes, table.Layout.ToTableLayout());
 
@@ -50,7 +50,7 @@ public static class Read
     }
 
     /// <summary>Reads root field <paramref name="index"/> of a table of a layout as the field, without reading the header.</summary>
-    public static Field RootField(ReadOnlyMemory<byte> bytes, Layout layout, int index, Field field)
+    public static Field RootField(ReadOnlySpan<byte> bytes, Layout layout, int index, Field field)
     {
         var reader = new TableReader(bytes, layout.ToTableLayout());
         return Field(reader, reader.RootOffset(index), field);
@@ -104,15 +104,32 @@ public static class Read
         return Table(bytes[Math.Clamp(position, 0, bytes.Length)..], table);
     }
 
-    /// <summary>The bytes of a vector's item, or the error of reading it</summary>
-    private readonly record struct Item(ReadOnlyMemory<byte> Bytes, DecodeException? Error);
+    /// <summary>
+    /// Where a vector's item lies in its reader's bytes, its start and length, or the error of reading
+    /// it, since a list can't hold the item's span
+    /// </summary>
+    private readonly record struct Item(int Start, int Length, DecodeException? Error)
+    {
+        /// <summary>Where <paramref name="item"/>, a span of <paramref name="bytes"/>, lies in them</summary>
+        public static Item Of(ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> item)
+        {
+            var start = Unsafe.ByteOffset(ref MemoryMarshal.GetReference(bytes), ref MemoryMarshal.GetReference(item));
+            return new Item((int)start, item.Length, null);
+        }
+
+        public static Item Failed(DecodeException error) => new(0, 0, error);
+
+        /// <summary>The item's bytes, within <paramref name="bytes"/></summary>
+        public ReadOnlySpan<byte> In(ReadOnlySpan<byte> bytes) => bytes.Slice(Start, Length);
+    }
 
     /// <summary>Reads a vector's items, after checking that finding each from its ends alone finds what reading them in order finds</summary>
     private static VectorField Vector(TableReader reader, int position, VectorField items)
     {
+        var bytes = reader.Bytes;
         var vector = reader.GetVector(position);
-        var inOrder = Items(vector.Items());
-        var inPlace = Items(vector.ItemsInPlace());
+        var inOrder = Items(bytes, vector.Items());
+        var inPlace = Items(bytes, vector.ItemsInPlace());
 
         if (inOrder.Count != vector.Count || inPlace.Count != vector.Count)
         {
@@ -121,8 +138,8 @@ public static class Read
 
         for (var index = 0; index < vector.Count; index++)
         {
-            var item = Find(() => vector.Get(index));
-            var itemInPlace = Find(() => vector.GetInPlace(index));
+            var item = Find(bytes, vector, index, inPlace: false);
+            var itemInPlace = Find(bytes, vector, index, inPlace: true);
             if (!SameItem(item, inOrder[index]) || !SameItem(itemInPlace, inPlace[index]))
             {
                 throw new MismatchException($"Get finds item {index} otherwise than reading in order does");
@@ -148,8 +165,8 @@ public static class Read
             var nested = items.Items[index];
             var table = ReadsInPlace(reader, nested.Table)
                 // At its start, in a reader of its offset type, which is its parent's
-                ? InPlace(new TableReader(inPlace[index].Bytes, nested.Table.Layout.ToTableLayout()), 0, nested.Table)
-                : Table(inOrder[index].Bytes, nested.Table);
+                ? InPlace(new TableReader(inPlace[index].In(bytes), nested.Table.Layout.ToTableLayout()), 0, nested.Table)
+                : Table(inOrder[index].In(bytes), nested.Table);
 
             read.Add(new Nested(nested.From, table));
         }
@@ -158,7 +175,7 @@ public static class Read
     }
 
     /// <summary>Reads the items in order, each item's bytes or error, as an enumerator of them moves on past an item that fails</summary>
-    private static List<Item> Items(VectorItems items)
+    private static List<Item> Items(ReadOnlySpan<byte> bytes, VectorItems items)
     {
         var all = new List<Item>();
         var enumerator = items.GetEnumerator();
@@ -171,24 +188,25 @@ public static class Read
                     return all;
                 }
 
-                all.Add(new Item(enumerator.Current, null));
+                all.Add(Item.Of(bytes, enumerator.Current));
             }
             catch (DecodeException error)
             {
-                all.Add(new Item(default, error));
+                all.Add(Item.Failed(error));
             }
         }
     }
 
-    private static Item Find(Func<ReadOnlyMemory<byte>> find)
+    /// <summary>Finds item <paramref name="index"/> from its ends, as a table of its own or in place</summary>
+    private static Item Find(ReadOnlySpan<byte> bytes, Vector vector, int index, bool inPlace)
     {
         try
         {
-            return new Item(find(), null);
+            return Item.Of(bytes, inPlace ? vector.GetInPlace(index) : vector.Get(index));
         }
         catch (DecodeException error)
         {
-            return new Item(default, error);
+            return Item.Failed(error);
         }
     }
 
@@ -202,8 +220,7 @@ public static class Read
                 && (x.Kind, x.Position, x.ByteLength, x.Available, x.End) == (y.Kind, y.Position, y.ByteLength, y.Available, y.End);
         }
 
-        return a.Bytes.Length == b.Bytes.Length
-            && (a.Bytes.IsEmpty || Unsafe.AreSame(ref MemoryMarshal.GetReference(a.Bytes.Span), ref MemoryMarshal.GetReference(b.Bytes.Span)));
+        return a.Length == b.Length && (a.Length == 0 || a.Start == b.Start);
     }
 
     /// <summary>Whether a nested table is read in place: it has no header, and its parent's offset type</summary>
