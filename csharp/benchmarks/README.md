@@ -161,6 +161,17 @@ then again from its fastest of 3 warm-up rounds, and the report takes the
 fastest of 30 rounds, per call. It prints the median round too, which load
 moves away from the fastest.
 
+Alternating keeps each benchmark's first and last variants at the ends of
+every round, and the others in the middle, where the TypeScript comparison
+found that a variant's position can move its time. Here it didn't: in two
+runs of each order, interleaved, a rotating order, which puts each variant
+in every position, moved the variants at the ends by a median of +0.5% and
+those in the middle by −0.2%, where two runs of the same order differed by
+up to 2% for 70% of the variants. The largest moves, of 21% to 34%, were
+the reads that copy the document of 100,000 rows into new arrays, at the
+ends and in the middle alike, which vary from run to run, as the results
+describe.
+
 - Before the rounds, 4 tiering passes call each variant 40 times, with a
   pause of 250 ms after each, so that tiered compilation promotes the loops
   and what they call through dynamic PGO's instrumented tier to tier 1
@@ -176,9 +187,10 @@ moves away from the fastest.
   loop, the same code took up to 2.3 times as long, likely because the JIT's
   budget for inlining grows with the size of the method that it compiles, so
   that less of what the code calls was inlined: TableWriter wrote the array
-  of structs in 284 ns, and tafla read the vector in 1.40 µs, where the
-  harness of PR 254's investigation, whose loops call a static method, timed
-  122 ns and 1.04 µs. Every variant pays for the one call.
+  of structs in 284 ns, and tafla read the vector in 1.40 µs, with the
+  reader before PR 263, where the harness of PR 254's investigation, whose
+  loops call a static method, timed 122 ns and 1.04 µs. Every variant pays
+  for the one call.
 - tafla's first variant runs twice in every benchmark, the second time as
   **A/A**, a copy whose loop is instantiated with a type of its own. Both
   loops call the same compiled codec method, so the pair shows the noise of
@@ -219,7 +231,8 @@ The full run takes about 2 minutes. `--run` takes a regular expression of the
 benchmarks to run, `--rounds`, `--warmup`, `--sample` (in milliseconds) and
 `--tiering` change the method, `--quick` runs every benchmark briefly, to
 check that it works, as CI does, `--tsv` writes every measurement to a file,
-to compare runs, and `--markdown` writes the tables below.
+to compare runs, and `--markdown` writes one run's tables, in the form of
+those below.
 
 ```sh
 dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- --run 'document of 100,000 rows'
@@ -262,7 +275,8 @@ the runtime's. The code that protoc and flatc generate is marked
   them.
 - Each run's JIT compiles every variant's loop once, and its tiering and
   inlining decisions can differ from one process to the next. The tables
-  come from one run, and the two runs after it show how much they moved.
+  give each variant's median of three runs, and the results say how far
+  the runs differed.
 - FlatBuffers' builder starts at 1 KiB and doubles by copying. A builder
   with the message's capacity, or reused with `Clear()`, would make writing
   cheaper, but the other comparisons don't reuse their builders either.
@@ -274,40 +288,42 @@ the runtime's. The code that protoc and flatc generate is marked
 
 ## Results
 
-One full run on 2026-11-18, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
-with .NET 10.0.15 (SDK 10.0.404), in Release. It took 1 minute 46 seconds.
-Other processes kept the 1-minute load average at 3.23 when it started and
-4.52 when it ended, on the 10 cores. The
-median round was within 5% of the fastest for 81 of the 107 benchmarks'
-variants, and within 10% for 93, with a median of 3.0% and a largest of
-18.5%, MemoryPack's write of the array of structs. The A/A pairs, which
-show the harness's noise but not that of compiling the code again, agreed
-within 2% in 20 of the 22 benchmarks, and within 3.6% in all: tafla's write
-of the document of 100,000 rows, which allocates 5.2 MB, differed most. Two
-more runs right after it, at loads of up to 11, were within 5% of it for 97
-and 105 of the 107 variants, and every call allocated the same bytes.
+Three full runs on 2026-11-18, one after the other, on an Apple M2 Pro
+with 32 GB in macOS 27.0.1, with .NET 10.0.15 (SDK 10.0.404), in Release,
+on the span `TableReader` of PR 263. Each took 1 minute 42 to 44 seconds.
+Other processes kept the 1-minute load average between 1.87 and 2.83, on
+the 10 cores. The tables give each variant's median of the three runs'
+fastest rounds, rather than one run's: the run that was meant to give them,
+whose load was lowest, had noisier rounds than the others, its median round
+within 5% of the fastest for only 38 of the 107 variants, and taking the
+median of the three picks none of them. The three runs' fastest rounds were
+within 10% of each other for 88 of the 107 variants; the reads that copy
+the document of 100,000 rows into new arrays varied most, as below. The
+medians of the A/A pairs, which show the harness's noise but not that of
+compiling the code again, agreed within 2% in 20 of the 22 benchmarks, and
+within 4.9% in all. Every call allocated the same bytes in every run.
 
-Fastest round in µs per call, and its ratio to the row's first variant's:
-tafla's, but for the write into reused bytes, which only `TableWriter`
-times, `TableWriter`'s:
+Median of the fastest rounds in µs per call, and its ratio to the row's
+first variant's: tafla's, but for the write into reused bytes, which only
+`TableWriter` times, `TableWriter`'s:
 
 | Benchmark                                             | tafla   | A/A              | tafla TableWriter | FlatBuffers     | protobuf        | MessagePack     | MemoryPack       | BinaryPrimitives |
 | ----------------------------------------------------- | ------: | ---------------: | ----------------: | --------------: | --------------: | --------------: | ---------------: | ---------------: |
-| record: serialize                                     |  0.0379 |  0.0382 (1.008×) |   0.0298 (0.787×) |  0.135 (3.563×) | 0.0495 (1.307×) | 0.0512 (1.352×) |  0.0284 (0.751×) |                  |
-| record: deserialize                                   |  0.0331 |  0.0328 (0.990×) |                   | 0.0980 (2.961×) | 0.0574 (1.735×) |  0.101 (3.066×) |  0.0271 (0.819×) |                  |
-| document of 100 rows: serialize                       |   0.360 |   0.362 (1.005×) |    0.130 (0.361×) |  0.487 (1.354×) |  2.031 (5.642×) |  0.316 (0.878×) |   0.111 (0.309×) |                  |
-| document of 100 rows: deserialize                     |   0.137 |   0.138 (1.006×) |                   |  0.318 (2.318×) |  1.141 (8.328×) |  1.138 (8.302×) |   0.107 (0.784×) |                  |
-| document of 100 rows: sum a column per element        |  0.0620 |  0.0624 (1.006×) |                   |  0.560 (9.029×) |  1.141 (18.40×) |  1.228 (19.81×) |   0.190 (3.059×) |                  |
-| document of 100,000 rows: serialize                   |   322.6 |   311.1 (0.964×) |    88.65 (0.275×) |  346.3 (1.074×) | 1827.8 (5.666×) |  324.8 (1.007×) |   99.89 (0.310×) |                  |
-| document of 100,000 rows: deserialize                 |   40.75 |   40.72 (0.999×) |                   |  43.48 (1.067×) |  971.0 (23.83×) |  928.1 (22.77×) |   31.35 (0.769×) |                  |
-| document of 100,000 rows: sum a column per element    |   89.43 |   88.59 (0.991×) |                   |  422.0 (4.718×) |  990.1 (11.07×) | 1009.4 (11.29×) |   129.7 (1.450×) |                  |
-| document of 100,000 rows: serialize into reused bytes |         |   19.46 (0.979×) |             19.88 |                 |                 |                 |                  |                  |
-| vector of 100 nested tables: serialize                |   4.184 |   4.148 (0.991×) |    0.901 (0.215×) |  6.166 (1.474×) |  3.499 (0.836×) |  1.753 (0.419×) | 0.0919 (0.0220×) |                  |
-| vector of 100 nested tables: deserialize              |   1.072 |   1.075 (1.002×) |                   |  7.331 (6.835×) |  4.073 (3.798×) |  4.973 (4.637×) | 0.0763 (0.0711×) |                  |
-| array of 100 structs: serialize                       |   0.285 |   0.286 (1.004×) |    0.126 (0.443×) |  0.734 (2.573×) |  2.775 (9.730×) |  1.188 (4.167×) |  0.0929 (0.326×) |                  |
-| array of 100 structs: deserialize                     |   0.134 |   0.133 (0.994×) |                   |  1.150 (8.573×) |  3.012 (22.45×) |  1.974 (14.72×) |  0.0765 (0.570×) |                  |
-| fixed-size record: serialize                          | 0.00527 | 0.00525 (0.997×) |                   |  0.106 (20.14×) | 0.0292 (5.537×) | 0.0327 (6.205×) | 0.00527 (0.999×) | 0.00523 (0.993×) |
-| fixed-size record: deserialize                        | 0.00364 | 0.00361 (0.993×) |                   | 0.0512 (14.07×) | 0.0372 (10.22×) | 0.0717 (19.71×) | 0.00142 (0.391×) | 0.00195 (0.537×) |
+| record: serialize                                     |  0.0379 |  0.0380 (1.004×) |   0.0296 (0.781×) |  0.134 (3.531×) | 0.0492 (1.299×) | 0.0509 (1.345×) |  0.0281 (0.743×) |                  |
+| record: deserialize                                   |  0.0244 |  0.0244 (0.999×) |                   | 0.0956 (3.915×) | 0.0565 (2.312×) | 0.0980 (4.011×) |  0.0267 (1.095×) |                  |
+| document of 100 rows: serialize                       |   0.354 |   0.355 (1.003×) |    0.126 (0.357×) |  0.474 (1.340×) |  1.992 (5.628×) |  0.310 (0.876×) |   0.106 (0.301×) |                  |
+| document of 100 rows: deserialize                     |   0.111 |   0.111 (0.993×) |                   |  0.311 (2.796×) |  1.121 (10.07×) |  1.129 (10.14×) |   0.106 (0.949×) |                  |
+| document of 100 rows: sum a column per element        |  0.0580 |  0.0572 (0.987×) |                   |  0.560 (9.656×) |  1.122 (19.35×) |  1.218 (21.00×) |   0.186 (3.199×) |                  |
+| document of 100,000 rows: serialize                   |   305.2 |   298.8 (0.979×) |    85.70 (0.281×) |  349.5 (1.145×) | 1867.6 (6.119×) |  328.5 (1.076×) |   107.6 (0.353×) |                  |
+| document of 100,000 rows: deserialize                 |   84.62 |   88.75 (1.049×) |                   |  93.04 (1.100×) | 1044.6 (12.35×) |  960.4 (11.35×) |   87.79 (1.037×) |                  |
+| document of 100,000 rows: sum a column per element    |   86.56 |   86.85 (1.003×) |                   |  410.1 (4.738×) | 1044.8 (12.07×) | 1046.2 (12.09×) |   178.8 (2.065×) |                  |
+| document of 100,000 rows: serialize into reused bytes |         |   16.42 (0.994×) |             16.51 |                 |                 |                 |                  |                  |
+| vector of 100 nested tables: serialize                |   4.083 |   4.088 (1.001×) |    0.878 (0.215×) |  6.097 (1.493×) |  3.444 (0.843×) |  1.723 (0.422×) | 0.0895 (0.0219×) |                  |
+| vector of 100 nested tables: deserialize              |   0.502 |   0.502 (0.999×) |                   |  7.110 (14.15×) |  3.928 (7.819×) |  4.251 (8.463×) |  0.0723 (0.144×) |                  |
+| array of 100 structs: serialize                       |   0.271 |   0.271 (0.999×) |    0.122 (0.448×) |  0.692 (2.551×) |  2.664 (9.825×) |  1.134 (4.183×) |  0.0897 (0.331×) |                  |
+| array of 100 structs: deserialize                     |   0.122 |   0.122 (0.997×) |                   |  1.114 (9.134×) |  2.923 (23.96×) |  1.909 (15.65×) |  0.0724 (0.593×) |                  |
+| fixed-size record: serialize                          | 0.00501 | 0.00501 (1.000×) |                   |  0.101 (20.07×) | 0.0281 (5.617×) | 0.0321 (6.403×) | 0.00498 (0.994×) | 0.00501 (1.000×) |
+| fixed-size record: deserialize                        | 0.00184 | 0.00184 (1.000×) |                   | 0.0503 (27.32×) | 0.0374 (20.30×) | 0.0716 (38.89×) | 0.00140 (0.761×) | 0.00191 (1.038×) |
 
 Bytes allocated per call:
 
@@ -331,44 +347,51 @@ Bytes allocated per call:
 
 The A/A column is the copy of each row's first variant.
 
-- tafla reads a document in 137 ns at 100 rows and in 40.8 µs at 100,000,
+- tafla reads a document in 111 ns at 100 rows and in 84.6 µs at 100,000,
   most of it the copy of its columns into new arrays, as MemoryPack's
-  reads, in 107 ns and 31.4 µs, and FlatBuffers', in 318 ns and 43.5 µs,
-  copy them. protobuf and MessagePack decode each element, in 0.97 and
-  0.93 ms. Summing the column in place, without a copy, takes tafla 62 ns
-  and 89.4 µs, 0.89 ns an element, the time of the additions that depend on
-  each other, as in Go. FlatBuffers' accessor of each element takes 422 µs,
+  reads, in 106 ns and 87.8 µs, and FlatBuffers', in 311 ns and 93.0 µs,
+  copy them. protobuf and MessagePack decode each element, in 1.04 and
+  0.96 ms. Summing the column in place, without a copy, takes tafla 58 ns
+  and 86.6 µs, 0.87 ns an element, the time of the additions that depend on
+  each other, as in Go. FlatBuffers' accessor of each element takes 410 µs,
   and the others read the whole document first.
-- tafla reads the record in 33.1 ns, against MemoryPack's 27.1 ns,
-  protobuf's 57.4 ns, FlatBuffers' 98.0 ns, which verifies the message
-  first, and MessagePack's 101 ns. `TableBuilder` writes it in 37.9 ns, with
-  240 bytes: a builder and the table. `TableWriter` writes it in 29.8 ns with
-  the table's 88 bytes, beside MemoryPack's 28.4 ns.
-- `TableBuilder` writes the document of 100,000 rows in 323 µs, allocating
-  5.2 MB for its 1.2 MB table. `TableWriter` writes it in 88.7 µs, and in
-  19.9 µs into reused bytes, which allocates nothing, so the allocation of
+- The large document's copying reads varied from run to run more than any
+  other row, for tafla, MemoryPack and FlatBuffers alike: tafla's from 60 to
+  89 µs in these three runs, and in all of the day's 16 runs, on either
+  reader, tafla's from 41 to 91 µs, MemoryPack's from 31 to 92 µs and
+  FlatBuffers' from 42 to 99 µs, which no change to their code explains. How the garbage collector reuses, or maps
+  from the system, the 1.2 MB that each call allocates is the likely cause,
+  which wasn't measured.
+- tafla reads the record in 24.4 ns, against MemoryPack's 26.7 ns,
+  protobuf's 56.5 ns, FlatBuffers' 95.6 ns, which verifies the message
+  first, and MessagePack's 98.0 ns. `TableBuilder` writes it in 37.9 ns, with
+  240 bytes: a builder and the table. `TableWriter` writes it in 29.6 ns with
+  the table's 88 bytes, beside MemoryPack's 28.1 ns.
+- `TableBuilder` writes the document of 100,000 rows in 305 µs, allocating
+  5.2 MB for its 1.2 MB table. `TableWriter` writes it in 85.7 µs, and in
+  16.5 µs into reused bytes, which allocates nothing, so the allocation of
   the 1.2 MB takes most of its write into new bytes. MemoryPack writes it in
-  99.9 µs, MessagePack in 325 µs, FlatBuffers in 346 µs and protobuf in
-  1.83 ms.
+  108 µs, MessagePack in 329 µs, FlatBuffers in 350 µs and protobuf in
+  1.87 ms.
 - The vector of 100 nested tables is the shape that `TableBuilder` handles
-  worst, as in the other languages: 4.18 µs and 37.8 KB, with a builder and
+  worst, as in the other languages: 4.08 µs and 37.8 KB, with a builder and
   its bytes for each of its 200 tables, which their parents copy.
-  `TableWriter` writes it in 0.90 µs with the table's 3,232 bytes, against
-  MessagePack's 1.75 µs, protobuf's 3.50 µs and FlatBuffers' 6.17 µs.
-  MemoryPack writes it in 92 ns, and reads it in 76 ns: one copy of 1,200
+  `TableWriter` writes it in 0.88 µs with the table's 3,232 bytes, against
+  MessagePack's 1.72 µs, protobuf's 3.44 µs and FlatBuffers' 6.10 µs.
+  MemoryPack writes it in 90 ns, and reads it in 72 ns: one copy of 1,200
   bytes, since it writes the items as an array of their three floats. tafla
-  reads it in 1.07 µs, protobuf in 4.07 µs, MessagePack in 4.97 µs and
-  FlatBuffers in 7.33 µs.
-- tafla writes the 100 structs in 285 ns with `TableBuilder`, and in 126 ns
+  reads it in 0.50 µs, protobuf in 3.93 µs, MessagePack in 4.25 µs and
+  FlatBuffers in 7.11 µs.
+- tafla writes the 100 structs in 271 ns with `TableBuilder`, and in 122 ns
   with `TableWriter`, which writes them straight into the table rather than
-  into an array that the builder copies, and reads them in 134 ns. MemoryPack
-  writes and reads them in 93 and 77 ns, and FlatBuffers, MessagePack and
-  protobuf take 0.73 to 3.0 µs.
+  into an array that the builder copies, and reads them in 122 ns.
+  MemoryPack writes and reads them in 90 and 72 ns, and FlatBuffers,
+  MessagePack and protobuf take 0.69 to 2.9 µs.
 - tafla, MemoryPack and `BinaryPrimitives` write the fixed-size record in
-  5.2 to 5.3 ns alike, each allocating its 12 bytes, 40 with the array's
-  header. MemoryPack reads it in 1.42 ns, a struct read whole from the
-  bytes, `BinaryPrimitives` in 1.95 ns, and tafla's getters, which check each
-  read's range, in 3.64 ns.
+  5.0 ns alike, each allocating its 12 bytes, 40 with the array's header.
+  MemoryPack reads it in 1.40 ns, a struct read whole from the bytes, and
+  tafla's getters, which check each read's range, in 1.84 ns, beside
+  `BinaryPrimitives`' 1.91 ns.
 
 `dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- encoding`
 printed:
@@ -406,36 +429,34 @@ its verifier fails, before it reads.
 
 ### tafla's reads
 
-The seven benchmarks of tafla's reads of some fields, from the same run.
+The seven benchmarks of tafla's reads of some fields, from the same runs.
 None of them allocates.
 
-Fastest round in µs per call, and its ratio to tafla's:
+Median of the fastest rounds in µs per call, and its ratio to tafla's:
 
 | Benchmark                                         | tafla   | A/A              |
 | ------------------------------------------------- | ------: | ---------------: |
-| record: read the scalars                          | 0.00632 | 0.00633 (1.001×) |
-| document of 100 rows: sum a column per getter     |   0.154 |   0.154 (0.998×) |
-| document of 100,000 rows: sum a column per getter |   136.6 |   136.0 (0.995×) |
-| vector of 100 nested tables: read the last item   |  0.0256 |  0.0256 (1.002×) |
-| vector of 100 nested tables: sum every item       |   1.428 |   1.427 (1.000×) |
-| array of 100 structs: read the last item          | 0.00418 | 0.00419 (1.002×) |
-| array of 100 structs: sum every item              |  0.0782 |  0.0789 (1.009×) |
+| record: read the scalars                          | 0.00326 | 0.00327 (1.003×) |
+| document of 100 rows: sum a column per getter     |  0.0742 |  0.0738 (0.994×) |
+| document of 100,000 rows: sum a column per getter |   89.03 |   88.74 (0.997×) |
+| vector of 100 nested tables: read the last item   |  0.0140 |  0.0142 (1.007×) |
+| vector of 100 nested tables: sum every item       |   0.440 |   0.440 (1.000×) |
+| array of 100 structs: read the last item          | 0.00294 | 0.00294 (1.000×) |
+| array of 100 structs: sum every item              |  0.0778 |  0.0778 (1.001×) |
 
-- The record's three scalars take 6.3 ns, and a getter of each element of a
-  column 1.5 ns an element at 100 rows and 1.37 ns at 100,000, against 0.62
-  and 0.89 ns an element summed from the column's span.
-- The vector's last item takes 25.6 ns, and every item 1.43 µs, 14 ns an
-  item. Reading every item into new items takes `DeserializeList()`
-  1.07 µs, though it reads the same fields and allocates too; why the
-  smaller loop that sums them is slower wasn't investigated. The array's
-  last struct takes 4.2 ns, and every struct 78 ns, 0.78 ns a struct.
-- `TableReader`'s getters are fast only where the JIT inlines them. In this
-  suite's first version, whose loops inlined each read, the same reads took
-  13.8 ns for the record's scalars and 266 µs for the column of 100,000 rows,
-  and the vector's read 1.40 µs rather than 1.07 µs.
-- The reads that copy the large document's columns into new arrays took 76
-  to 81 µs in the first run of that version, and 31 to 44 µs in this one,
-  for tafla, MemoryPack and FlatBuffers alike, which no change to their code
-  explains. How the garbage collector reuses, or maps from the system, the
-  1.2 MB that each call allocates is the likely cause, which wasn't
-  measured.
+- The record's three scalars take 3.3 ns. A getter of each element of a
+  column takes 0.74 ns an element at 100 rows and 0.89 ns at 100,000,
+  against 0.58 and 0.87 ns an element summed from the column's span.
+- The vector's last item takes 14.0 ns, and every item 0.44 µs, 4.4 ns an
+  item, which `DeserializeList()` reads in 0.50 µs into new items. The
+  array's last struct takes 2.9 ns, and every struct 78 ns, 0.78 ns a
+  struct.
+- PR 263's span `TableReader` took 0.31 to 0.74 times the time of the
+  `ReadOnlyMemory<byte>` reader before it, on these rows, in this suite's
+  run of that
+  reader earlier on 2026-11-18, where the rows that don't read with it moved
+  by a median of 1.9% between the two: the vector's read 0.50 µs rather than
+  1.07 µs, the record's 24.4 ns rather than 33.1 ns, its scalars 3.3 ns
+  rather than 6.3 ns, the fixed-size record 1.84 ns rather than 3.64 ns,
+  every item of the vector 0.44 µs rather than 1.43 µs, and a column per
+  getter 89.0 µs rather than 137 µs at 100,000 rows.

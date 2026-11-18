@@ -9,8 +9,8 @@ namespace Tafla.Benchmarks.Codecs;
 // Each operation of a codec is marked NoInlining, so that the JIT compiles it as a method of its own,
 // as an application's call of it is, rather than into the small loop that times it. Inlined into the
 // loop, or into a small method that the loop calls, the same code took longer: TableWriter wrote the
-// array of structs in 284 or 488 ns rather than 122 ns, and TableReader read the vector in 1.40 µs
-// rather than 1.04 µs, likely because the JIT's budget for inlining grows with the size of the method
+// array of structs in 284 or 488 ns rather than 122 ns, and the TableReader before PR 263 read the
+// vector in 1.40 µs rather than 1.04 µs, likely because the JIT's budget for inlining grows with the size of the method
 // that it compiles, so that less of what the code calls was inlined.
 
 /// <summary>A library that encodes some of the workloads.</summary>
