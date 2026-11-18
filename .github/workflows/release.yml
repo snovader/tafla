@@ -547,14 +547,18 @@ jobs:
           cache-workspaces: rust -> target
           cache-key: release
 
+      # The crates that it packages, rather than the workspace, whose
+      # benchmarks bring the libraries that they compare tafla with, and
+      # those libraries' build scripts and macros, which have no part in
+      # building the crates: the Rust workflow checks those.
       - name: Run formatting check
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p tafla -p tafla-gen -- --check
 
       - name: Run lint check
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy -p tafla -p tafla-gen --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test
+        run: cargo test -p tafla -p tafla-gen
 
       # Packages tafla-gen against the tafla that it packages first, rather
       # than one on crates.io, and builds both from their packages
@@ -644,8 +648,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      # The library's project, rather than the build, whose benchmarks bring
+      # the libraries that they compare tafla with, and generate and compile
+      # their code, which has no part in building the library: the Java
+      # workflow checks those. Gradle still configures the benchmarks'
+      # project, and so loads its plugins, but runs none of its tasks.
       - name: Run Gradle build
-        run: ./gradlew build javadoc
+        run: ./gradlew :core:build :core:javadoc
 
       # Publishing requires a signature, so the dry run signs with a key of its
       # own, which nothing trusts, and checks the signatures
