@@ -115,3 +115,18 @@ jobs:
       # place
       - name: Run tests of the portable path
         run: dotnet test -p:TaflaPortable=true
+
+  # The check for the main branch's ruleset to require. It passes when every
+  # job passed, or was skipped because the change doesn't touch C#.
+  checks:
+    name: C# checks
+    needs: [changes, formatting, test]
+    # Runs after a failure too, since GitHub counts a skipped required check as
+    # passed
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
