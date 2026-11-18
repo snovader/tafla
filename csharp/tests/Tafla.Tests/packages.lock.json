@@ -141,7 +141,7 @@
       "tafla.generated": {
         "type": "Project",
         "dependencies": {
-          "Tafla": "[1.0.0, )"
+          "Tafla": "[0.0.0, )"
         }
       }
     }
