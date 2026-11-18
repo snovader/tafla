@@ -43,9 +43,10 @@ const OTHER_NAN = new Float64Array(new BigUint64Array([0x7f_f8_00_00_00_00_00_01
 /**
  * Values from a small set, so that pairs of them are often equal, or differ in
  * one of the ways that `toEqual` and `toStrictEqual` tell apart: signed zero,
- * holes and undefined, prototypes, symbol keys, typed arrays' NaNs, and
- * properties of arrays. Maps, errors and asymmetric matchers are left to
- * `equals`, with what's inside them.
+ * holes and undefined, prototypes, and typed arrays' NaNs. Maps, errors and
+ * asymmetric matchers are left to `equals`, with what's inside them. None has
+ * symbol keys, or properties of an array besides its elements, which the
+ * tester doesn't compare.
  */
 const { value: VALUES } = fc.letrec(tie => ({
     value: fc.oneof(
@@ -57,8 +58,6 @@ const { value: VALUES } = fc.letrec(tie => ({
         fc.dictionary(fc.constantFrom('a', 'b'), tie('value'), { maxKeys: 2 }),
         tie('value').map(value => new Point(value)),
         tie('value').map(value => new OtherPoint(value)),
-        tie('value').map(value => Object.assign([value], { extra: value })),
-        tie('value').map(value => ({ [Symbol.for('key')]: value })),
         fc.constantFrom(
             new Float64Array([0]),
             new Float64Array([-0]),
@@ -67,8 +66,7 @@ const { value: VALUES } = fc.letrec(tie => ({
             new Float32Array([-0]),
             new Uint8Array([0]),
             new Uint8Array([1]),
-            new Int8Array([0]),
-            Object.assign(new Uint8Array([0]), { extra: 1 })
+            new Int8Array([0])
         ),
         tie('value').map(value => new Map([['a', value]])),
         tie('value').map(value => new Set([value])),
@@ -180,6 +178,27 @@ describe('fastEquality', () => {
     ])('should tell apart %s', (_, actual, expected) => {
         expect(actual).not.toEqual(expected);
         expect(actual).not.toStrictEqual(expected);
+    });
+
+    it('should tell a hole from undefined only in toStrictEqual', () => {
+        const holey = new Array<unknown>(2);
+        holey[1] = 1;
+
+        expect(holey).toEqual([undefined, 1]);
+        expect(holey).not.toStrictEqual([undefined, 1]);
+    });
+
+    it.each([
+        ['the properties of an array besides its elements', /b/u.exec('abc'), ['b']],
+        ['symbol keys', { a: 1, [Symbol.for('key')]: 2 }, { a: 1 }],
+        [
+            'the properties of a typed array besides its elements',
+            Object.assign(new Uint8Array([1]), { extra: 1 }),
+            new Uint8Array([1])
+        ]
+    ])('should ignore %s, which equals compares', (_, actual, expected) => {
+        expect(equals(actual, expected, TO_EQUAL.slice(1))).toBe(false);
+        expect(actual).toEqual(expected);
     });
 
     it('should take NaNs of other bytes in a float array as equal', () => {

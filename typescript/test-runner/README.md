@@ -109,12 +109,23 @@ with `for...in`, and compares typed arrays element by element, after listing
 their keys. `test-runner` adds a tester that runs first and answers for the
 plain objects, arrays, typed arrays and primitives that it reaches, with the
 result that `@vitest/expect` would give, through faster paths: it compares
-the elements of arrays without holes or other keys by index, and typed
-arrays by their bytes. A property test checks that `toEqual` and
-`toStrictEqual` give the same results with it as without it, for values that
-differ in the ways that they tell apart: signed zero, holes and undefined,
-prototypes, symbol keys, the NaNs of float arrays, and the properties of
-arrays.
+arrays element by element, and typed arrays by their bytes.
+
+Unlike `@vitest/expect`, it doesn't list the keys of arrays and typed arrays,
+which takes most of the time that comparing large ones takes, so it compares
+them by their elements alone, and objects by their string keys:
+
+- An array or a typed array equals another whose elements equal its own,
+  whatever other properties either has, as the result of `/b/.exec('abc')`
+  equals `['b']`.
+- An object's symbol keys aren't compared.
+
+It tells holes from undefined, in `toStrictEqual`, by checking where an
+element is undefined. A property test checks that `toEqual` and
+`toStrictEqual` give the same results with it as without it, for values
+without such properties or symbol keys, that differ in the ways that the
+matchers tell apart: signed zero, holes and undefined, prototypes, and the
+NaNs of float arrays.
 
 It leaves to `@vitest/expect` anything else, such as a Map, an error or an
 asymmetric matcher, and what's inside it, other matchers, such as

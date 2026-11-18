@@ -4,9 +4,12 @@
 // `for...in`, and compares typed arrays element by element after listing
 // their keys. This tester runs first, as a custom tester, and answers for the
 // plain objects, arrays, typed arrays and primitives that it reaches, with
-// the result that `equals` would give. Anything else, such as a Map or an
-// asymmetric matcher, it leaves to `equals`, which calls it again for what's
-// inside.
+// the result that `equals` would give, but for what tests rarely hold, whose
+// keys only listing them finds, which takes most of the time on large arrays:
+// it compares arrays and typed arrays by their elements alone, not by other
+// properties set on them, and objects by their string keys, not their symbol
+// keys. Anything else, such as a Map or an asymmetric matcher, it leaves to
+// `equals`, which calls it again for what's inside.
 import { Buffer } from 'node:buffer';
 import {
     arrayBufferEquality,
@@ -131,8 +134,8 @@ function isPlainObject(value: object): value is Record<string, unknown> {
 
 /**
  * Objects of the same constructor, if strict, with the same own enumerable
- * keys, and equal values at them: `toEqual` leaves out keys whose values are
- * undefined. Symbol keys are left to `equals`.
+ * string keys, and equal values at them: `toEqual` leaves out keys whose
+ * values are undefined
  */
 function compareObjects(
     a: Record<string, unknown>,
@@ -146,10 +149,6 @@ function compareObjects(
 
     if (strict && a.constructor !== b.constructor) {
         return false;
-    }
-
-    if (hasSymbols(a) || hasSymbols(b)) {
-        return undefined;
     }
 
     const aKeys = Object.keys(a);
@@ -203,11 +202,9 @@ function compareValues(
 }
 
 /**
- * Arrays of the same constructor, if strict, and length, with the same own
- * enumerable keys, and equal values at them. Without holes or other
- * properties, their keys are their indices, and they compare by index.
- * `sparseArrayEquality` also compares the order of the keys of an array that
- * isn't in another array, which the tester leaves to it.
+ * Arrays of the same constructor, if strict, and length, with equal elements.
+ * A hole is missing, which `toEqual` takes undefined as too, and
+ * `toStrictEqual` tells from undefined.
  */
 function compareArrays(
     a: unknown[],
@@ -223,55 +220,14 @@ function compareArrays(
         return false;
     }
 
-    if (hasSymbols(a) || hasSymbols(b)) {
-        return undefined;
-    }
-
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    if (isDense(a, aKeys) && isDense(b, bKeys)) {
-        return compareElements(a, b, strict, depth);
-    }
-
-    if (strict) {
-        return haveSameOrder(aKeys, bKeys)
-            ? compareValues(a, b, aKeys, true, depth)
-            : undefined;
-    }
-
-    if (countDefined(a, aKeys) !== countDefined(b, bKeys)) {
-        return false;
-    }
-
-    return compareValues(a, b, aKeys, false, depth);
-}
-
-/**
- * Whether an array's keys are its indices, and nothing else: none is a hole,
- * and it has no other property. Index keys come first, in order.
- */
-function isDense(array: readonly unknown[], keys: readonly string[]): boolean {
-    return (
-        keys.length === array.length &&
-        (keys.length === 0 || keys.at(-1) === String(array.length - 1))
-    );
-}
-
-/**
- * The elements of dense arrays of the same length: `toEqual` takes undefined
- * as missing, which it is in both
- */
-function compareElements(
-    a: readonly unknown[],
-    b: readonly unknown[],
-    strict: boolean,
-    depth: number
-): boolean | undefined {
     for (let index = 0; index < a.length; index++) {
         const value = a[index];
         const other = b[index];
         // Equal primitives, but -0 and 0, which `===` takes as equal
         if (value === other && typeof value !== 'object' && value !== 0) {
+            if (value === undefined && strict && index in a !== index in b) {
+                return false;
+            }
             continue;
         }
 
@@ -288,29 +244,14 @@ function compareElements(
     return true;
 }
 
-/** Whether two arrays of keys hold the same keys, in the same order */
-function haveSameOrder(a: readonly string[], b: readonly string[]): boolean {
-    return a.length === b.length && a.every((key, index) => key === b[index]);
-}
-
 /**
  * Typed arrays of the same constructor and length, with equal elements, as
- * `Object.is` compares them, and the same other properties. Equal bytes make
- * equal elements; a float array's elements can be equal with other bytes, as
- * NaNs.
+ * `Object.is` compares them. Equal bytes make equal elements; a float array's
+ * elements can be equal with other bytes, as NaNs.
  */
-function compareTypedArrays(a: TypedArray, b: TypedArray): boolean | undefined {
+function compareTypedArrays(a: TypedArray, b: TypedArray): boolean {
     if (a.length !== b.length) {
         return false;
-    }
-
-    // `equals` compares the properties after the indices, which only listing
-    // keys finds
-    if (
-        Object.keys(a).length !== a.length ||
-        Object.keys(b).length !== b.length
-    ) {
-        return undefined;
     }
 
     if (a === b || Buffer.compare(bytesOf(a), bytesOf(b)) === 0) {
@@ -348,9 +289,4 @@ function countDefined(object: object, keys: readonly string[]): number {
     }
 
     return count;
-}
-
-/** Whether an object has symbol keys, which the tester leaves to `equals` */
-function hasSymbols(object: object): boolean {
-    return Object.getOwnPropertySymbols(object).length > 0;
 }
