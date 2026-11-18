@@ -17,6 +17,7 @@ format, several implementations" a checked claim.
 | Go             | `go/conformance_test.go`                                                     |
 | C++            | `cpp/tests/conformance_test.cpp`                                             |
 | Swift          | `swift/Tests/TaflaTests/ConformanceTests.swift`                              |
+| C#             | `csharp/tests/Tafla.Tests/ConformanceTests.cs`                               |
 
 Each language's CI runs its test when this directory changes.
 
@@ -179,7 +180,7 @@ rebuilt, since a writer writes the valid case's bytes.
 root field before `field` must read the values that the description gives, and
 reading `field`, its offset included, must fail with the implementation's
 decode error: `DecodeError` in TypeScript, Python, Rust, C++ and Swift,
-`DecodeException` in Java, and a `*DecodeError` in Go. Its header isn't
+`DecodeException` in Java and C#, and a `*DecodeError` in Go. Its header isn't
 checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
 with `"kind": "overwrite"`. Readers read the file rather than apply it.
@@ -192,8 +193,8 @@ An implementation's test loads `cases.json` and:
    the description. Comparing the description with its values replaced by the
    ones read, as the TypeScript and Python tests do, covers every value. The
    TypeScript test compares floats by value, with NaN and negative zero by
-   their names; the Python, Java, Rust, Go, C++ and Swift tests compare their
-   bits.
+   their names; the Python, Java, Rust, Go, C++, Swift and C# tests compare
+   their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
 3. Reads every equivalent table as its valid case describes it, and compares

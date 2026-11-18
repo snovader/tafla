@@ -23,6 +23,8 @@ The Swift package isn't published yet, and has no version either, but
 resolves a package's versions from tags of the form `<version>`, with its
 `Package.swift` at the root of the repository, so how it's published is still
 to be decided.
+The C# runtime isn't published to NuGet yet, and has no version either, but
+`csharp/CHANGELOG.md` records its changes until its first release.
 
 [The release workflow](.github/workflows/release.yml) releases one package at
 a time. A run on `main`, for a package and its version, checks the package,

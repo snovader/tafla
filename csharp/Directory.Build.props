@@ -1,0 +1,39 @@
+<Project>
+    <!-- What every project in csharp/ shares: the target framework, the language's checks, and the
+         analyzers and code style that the build enforces as errors -->
+    <PropertyGroup>
+        <!-- .NET 10, the current long-term support release -->
+        <TargetFramework>net10.0</TargetFramework>
+        <LangVersion>14.0</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <Deterministic>true</Deterministic>
+
+        <AnalysisLevel>10.0-recommended</AnalysisLevel>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <!-- IDE0005, an unnecessary using, is reported only with the documentation file -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+        <!-- Every project's bin and obj under artifacts/, which .gitignore leaves out -->
+        <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+
+    <!-- Every project but the runtime, which is the tests, locks its packages in packages.lock.json,
+         which CI restores as it is, failing if it's out of date. The runtime depends on no package,
+         and has no lock file: IsAotCompatible adds Microsoft.NET.ILLink.Tasks to it implicitly, at
+         the SDK's patch version and with a hash that a source-built SDK, such as Homebrew's,
+         changes, so a lock file would tie its restore to one build of one SDK. -->
+    <PropertyGroup Condition="'$(MSBuildProjectName)' != 'Tafla'">
+        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+        <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+    </PropertyGroup>
+
+    <!-- -p:TaflaPortable=true copies every array that the runtime reads, as on a big-endian host,
+         rather than reading it in place, so that the tests cover that path on any host -->
+    <PropertyGroup Condition="'$(TaflaPortable)' == 'true'">
+        <DefineConstants>$(DefineConstants);TAFLA_PORTABLE</DefineConstants>
+    </PropertyGroup>
+</Project>

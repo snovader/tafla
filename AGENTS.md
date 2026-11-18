@@ -112,9 +112,9 @@ intent, not a requirement to preserve every detail.
 
 - Readers decode bytes from untrusted sources. Every read stays within the bytes
   it was given, and malformed input fails with the implementation's decode error
-  (`DecodeError`, or `DecodeException` in Java). It never fails with another
-  error, a crash, a panic, an out-of-bounds read, or an allocation out of
-  proportion to the input.
+  (`DecodeError`, or `DecodeException` in Java and C#). It never fails with
+  another error, a crash, a panic, an out-of-bounds read, or an allocation out
+  of proportion to the input.
 - Builders reject what they can't write, such as a table too long for its
   offset type, with a documented error, rather than writing a table that
   readers misread. Values converted to a field's type, such as numbers written

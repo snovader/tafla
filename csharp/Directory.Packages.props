@@ -1,0 +1,7 @@
+<Project>
+    <!-- The versions of the tests' packages. The runtime depends on none. -->
+    <ItemGroup>
+        <PackageVersion Include="CsCheck" Version="5.0.1" />
+        <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    </ItemGroup>
+</Project>
