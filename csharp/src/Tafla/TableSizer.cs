@@ -309,7 +309,7 @@ public struct TableSizer
     /// <summary>
     /// Adds a vector of <paramref name="count"/> tables: its count and the end of each item. The items'
     /// fields then follow, each item's between <see cref="StartTable"/> and <see cref="EndTable"/>.
-    /// Items aren't padded, as <see cref="TableBuilder.SetVector"/> doesn't pad them.
+    /// Items aren't padded, as <see cref="TableBuilder.SetVector(ReadOnlySpan{NestedTable})"/> doesn't pad them.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
     public void AddVector(int count)

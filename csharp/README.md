@@ -50,6 +50,12 @@ The runtime is released to NuGet as the package `Tafla`, whose page shows
 `src/Tafla/README.md`, as [RELEASING.md](../RELEASING.md) describes. It
 hasn't been released yet.
 
+`benchmarks/` compares tafla with FlatBuffers, protobuf, MessagePack and
+MemoryPack, on the same workloads as the other languages' comparisons. Its
+projects are their own, so that the runtime depends on none of their
+packages, and its [README](benchmarks/README.md) describes the method and
+has results.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field
@@ -91,10 +97,12 @@ which covers the whole format, byte for byte.
   slice of one or a collection expression. `ToArray()` copies the finished
   table, at its exact length, out of the builder's bytes, which grow as
   fields are set.
-- **Nested tables are copied.** `SetTable()` and `SetVector()` copy the bytes
-  of a complete builder or of a table's bytes. `SetVector()` takes
-  `NestedTable`s, which convert implicitly from a `TableBuilder`, a `byte[]`
-  or a `ReadOnlyMemory<byte>`, so a vector can mix them.
+- **Nested tables are copied, or recorded in place.** `SetTable()` and
+  `SetVector()` copy the bytes of a complete builder or of a table's bytes.
+  `SetVector()` takes `NestedTable`s, which convert implicitly from a
+  `TableBuilder`, a `byte[]` or a `ReadOnlyMemory<byte>`, so a vector can mix
+  them. Their overloads that take a `fill` record a nested table, or each item
+  of a vector, in place instead, as the next section describes.
 - **A reader is a view of the bytes.** `TableReader` is a `ref struct` over a
   `ReadOnlySpan<byte>`, which can be an array's, which converts to it, a
   slice's, a `ReadOnlyMemory<byte>`'s `Span`, or stack or native memory. It
@@ -117,6 +125,58 @@ which covers the whole format, byte for byte.
   memory rather than a span.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
   UTF-8 and decodes them into a new `string`, in one pass.
+
+## Recording nested tables in place
+
+`SetTable(fields, fill)` records a nested table straight among its parent's
+bytes, rather than from a `TableBuilder` of its own that's then copied, and
+`SetVector(count, fields, fill)` records each item of a vector so. `fill`
+sets the table's fields, in order, on the `TableBuilder.Item` that it's
+given, whose setters are the builder's, and can record the tables nested in
+it in place too. The bytes are those that nesting builders of the same fields
+writes, so the example's table can be written so:
+
+```csharp
+var builder = new TableBuilder(3, Layout, FormatVersion);
+builder.SetFloat64(59.3293);
+builder.SetString("Europe/Stockholm");
+builder.SetTable(2, static series =>
+{
+    series.SetUInt32Array([0, 86_400]);
+    series.SetFloat32Array([21.75f, 18.5f]);
+});
+byte[] bytes = builder.ToArray();
+```
+
+A lambda that captures variables allocates whenever it's created, so the
+overloads that take a `state` pass it to a `static` lambda instead, which
+allocates nothing. The vector's `fill` is given each item's index:
+
+```csharp
+(uint Time, float Value)[] readings = [(0, 21.75f), (86_400, 18.5f)];
+
+var list = new TableBuilder(1);
+list.SetVector(readings.Length, 2, readings, static (item, index, readings) =>
+{
+    item.SetUInt32(readings[index].Time);
+    item.SetFloat32(readings[index].Value);
+});
+```
+
+The item counts the table's own fields and length, as a builder of it would,
+so its setters throw as that builder's would. A table recorded in place has
+no header and its parent's offset type, and is padded as `SetTable()` pads a
+builder, to the largest alignment of its arrays and nested tables. That's
+known once its fields are set, so a table that needs padding is moved by those
+few bytes once `fill` returns. A vector's items aren't padded, so they're
+never moved.
+
+`TableBuilder.Item` is a `ref struct`, valid only while `fill` runs, which
+keeps a lambda from capturing it. The builder is used only through it
+meanwhile: `ToArray()` and nesting the builder throw
+`InvalidOperationException` until `fill` returns. Whatever `fill` throws is
+passed on, and the builder is left as it was, as it is when the errors below
+are thrown.
 
 ## Writing tables of known fields
 
@@ -191,8 +251,8 @@ whose `Kind` says why and whose properties describe the read:
 - `OutOfRange`: a read of `ByteLength` bytes at `Position` that would leave
   the `Available` bytes. An array's count is checked against the bytes
   before anything is allocated for it. An offset past the largest `int`
-  leads past any bytes, which a .NET array can't hold, and fails when it's
-  read, since a position can't hold it. Code that reads bytes without a
+  leads past any bytes, since no span is that long, and fails when it's
+  read, as a position can't hold it. Code that reads bytes without a
   `TableReader`, as tafla-gen's structs read theirs, throws
   `DecodeException.OutOfRange()`.
 - `InvalidUtf8`: a string that isn't valid UTF-8, such as one with an
@@ -225,6 +285,16 @@ the values, and leaves the builder as it was:
   whole number of structs.
 - `ToArray()`, and nesting a builder, throw `Incomplete` while fields are left
   to set.
+- `SetTable(fields, fill)` and `SetVector(count, fields, fill)` throw
+  `TooManyFields` as the other setters do, and `HeaderTooLong` when the
+  nested table's offsets alone are too long for the offset type, before
+  `fill` runs. They throw `Incomplete` when `fill` leaves fields of the
+  nested table unset, and `TooLong` when the table, with its padding, makes
+  its parent too long. A vector checks its count, its items' ends and the
+  offsets that every item holds before calling `fill`, so a vector that they
+  alone make too long throws `TooLong` first, with the length that they make.
+  The item's setters throw as the builder's do, for the nested table's own
+  fields and length, and so do their tables recorded in place.
 
 `TableSizer`'s constructors check the version and the header as
 `TableBuilder`'s do, and `GetByteLength()` and `CreateWriter()` throw
@@ -251,6 +321,7 @@ throw the argument exceptions of .NET's own APIs:
 | `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields, and `ArgumentException` for a versioned layout without a version, or a version without one |
 | `SetTable()`, `SetStructArray()`                | `ArgumentOutOfRangeException` for an alignment other than 1, 2, 4 or 8, or a struct size below 1 |
 | `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
+| `SetTable()` and `SetVector()` with a `fill`    | `ArgumentOutOfRangeException` for a negative number of fields or count, `ArgumentNullException` for a null `fill`, and while `fill` runs, `ToArray()` and nesting the builder throw `InvalidOperationException` |
 | `new TableSizer()`                              | As `new TableBuilder()`                                                                   |
 | `TableSizer`'s and `TableWriter`'s methods      | `ArgumentOutOfRangeException` for a negative count, number of fields or struct size, a size of 0 of an array of structs, or an alignment other than 1, 2, 4 or 8, and `ArgumentNullException` for a null string |
 | `TableWriter`'s field indices, `SetItemEnd()`   | `ArgumentOutOfRangeException` for an offset or item end that lies outside the writer's bytes. Within them, it writes over another slot or field |
@@ -308,12 +379,14 @@ dotnet test -p:TaflaPortable=true
 the build treats every warning as an error, with .NET's recommended
 analyzers, the code style and the trimming and AOT analyzers, and requires
 documentation of every public API. `dotnet test` runs the tests with
-Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs.
-The tests' packages, xUnit v3 and CsCheck, are pinned in
-`Directory.Packages.props` and locked in the tests' `packages.lock.json`,
-which CI restores in locked mode. The runtime depends on no package, and has
-no lock file: the SDK adds its trimming analyzers' package to it, at the
-SDK's own version, which a lock file would tie to one SDK. The build writes
+Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs,
+and the benchmarks' check that every codec reads back what it wrote. The
+tests' packages, xUnit v3 and CsCheck, and the libraries that the
+benchmarks compare tafla with, are pinned in `Directory.Packages.props` and
+locked in each project's `packages.lock.json`, which CI restores in locked
+mode. The runtime and the library of generated code depend on no package,
+and have no lock file: the SDK adds its trimming analyzers' package to them,
+at the SDK's own version, which a lock file would tie to one SDK. The build writes
 everything under `artifacts/`.
 
 ```sh
@@ -390,9 +463,7 @@ off it; here `.editorconfig` turns the build's analyzers back on for it, and
 formatting, which plain `dotnet format` skips. `tests/names` holds the code
 of `tests/names.tafla`, which `rust/gen/tests/csharp_schemas.rs` keeps.
 
-Not yet part of the runtime: recording nested tables in place among a
-`TableBuilder`'s fields, as Go's `SetTableFunc()` does, and the writer's
-reservation of a table's leading fields of fixed sizes among its others, as
-Go's `ReserveFields()` does, which wrote the record above, with a sizer and a
-writer, in 0.89 of the time of each field's call in a prototype, where
-writing it whole took 0.56 there.
+Not yet part of the runtime: the writer's reservation of a table's leading
+fields of fixed sizes among its others, as Go's `ReserveFields()` does, which
+wrote the record above, with a sizer and a writer, in 0.89 of the time of
+each field's call in a prototype, where writing it whole took 0.56 there.

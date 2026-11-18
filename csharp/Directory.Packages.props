@@ -1,7 +1,15 @@
 <Project>
-    <!-- The versions of the tests' packages. The runtime depends on none. -->
+    <!-- The versions of the tests' and the benchmarks' packages. The runtime depends on none. -->
     <ItemGroup>
         <PackageVersion Include="CsCheck" Version="5.0.1" />
         <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    </ItemGroup>
+
+    <!-- The libraries that benchmarks/ compares the runtime with -->
+    <ItemGroup>
+        <PackageVersion Include="Google.FlatBuffers" Version="25.2.10" />
+        <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
+        <PackageVersion Include="MemoryPack" Version="1.22.0" />
+        <PackageVersion Include="MessagePack" Version="3.1.12" />
     </ItemGroup>
 </Project>
