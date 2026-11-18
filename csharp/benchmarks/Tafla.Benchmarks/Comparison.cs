@@ -12,7 +12,8 @@ internal sealed record Benchmark(string Group, string Name, IReadOnlyList<Varian
 
 /// <summary>
 /// The benchmarks: every codec's operations on every workload, and tafla's reads of only some fields.
-/// tafla's variant comes first in each, and again as an A/A pair, which shows the harness's noise.
+/// tafla's variant comes first in each, and again as an A/A pair, which shows the harness's noise:
+/// the copy's loop is its own, but it calls the same compiled codec method.
 /// </summary>
 internal static class Comparison
 {

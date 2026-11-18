@@ -180,11 +180,17 @@ moves away from the fastest.
   harness of PR 254's investigation, whose loops call a static method, timed
   122 ns and 1.04 µs. Every variant pays for the one call.
 - tafla's first variant runs twice in every benchmark, the second time as
-  **A/A**, a copy whose loop is instantiated with a type of its own, which
-  shows the harness's noise.
-- Each round starts after a full garbage collection, so that one variant's
-  garbage isn't collected in another's round, and the collections that a
-  variant's allocations cause within its round count as its own. The
+  **A/A**, a copy whose loop is instantiated with a type of its own. Both
+  loops call the same compiled codec method, so the pair shows the noise of
+  the timer, of the variants' positions in the rounds and of the garbage
+  collector, but not the variance of compiling and placing the code a second
+  time, by which two versions of the code would differ too. A comparison of
+  two versions needs a copy of the code compiled apart, as a generic method
+  instantiated with a struct of its own is.
+- Each variant's sample, in every round, starts after a full garbage
+  collection, so that one variant's garbage isn't collected in another's
+  sample, and the collections that a variant's allocations cause within its
+  sample count as its own. The
   project runs the workstation garbage collector without its background
   thread, so that a collection doesn't run beside the next round.
 - Every call stores its result in a static field, so that the JIT can't
@@ -274,13 +280,16 @@ Other processes kept the 1-minute load average at 3.23 when it started and
 4.52 when it ended, on the 10 cores. The
 median round was within 5% of the fastest for 81 of the 107 benchmarks'
 variants, and within 10% for 93, with a median of 3.0% and a largest of
-18.5%, MemoryPack's write of the array of structs. The A/A pairs agreed
+18.5%, MemoryPack's write of the array of structs. The A/A pairs, which
+show the harness's noise but not that of compiling the code again, agreed
 within 2% in 20 of the 22 benchmarks, and within 3.6% in all: tafla's write
 of the document of 100,000 rows, which allocates 5.2 MB, differed most. Two
 more runs right after it, at loads of up to 11, were within 5% of it for 97
 and 105 of the 107 variants, and every call allocated the same bytes.
 
-Fastest round in µs per call, and its ratio to tafla's:
+Fastest round in µs per call, and its ratio to the row's first variant's:
+tafla's, but for the write into reused bytes, which only `TableWriter`
+times, `TableWriter`'s:
 
 | Benchmark                                             | tafla   | A/A              | tafla TableWriter | FlatBuffers     | protobuf        | MessagePack     | MemoryPack       | BinaryPrimitives |
 | ----------------------------------------------------- | ------: | ---------------: | ----------------: | --------------: | --------------: | --------------: | ---------------: | ---------------: |
@@ -320,8 +329,7 @@ Bytes allocated per call:
 | fixed-size record: serialize                          |        40 |        40 |                   |       1,432 |       144 |          48 |         40 |               40 |
 | fixed-size record: deserialize                        |         0 |         0 |                   |         144 |       208 |           0 |          0 |                0 |
 
-The A/A column is the copy of each row's first variant: tafla's, but for the
-write into reused bytes, which only `TableWriter` times.
+The A/A column is the copy of each row's first variant.
 
 - tafla reads a document in 137 ns at 100 rows and in 40.8 µs at 100,000,
   most of it the copy of its columns into new arrays, as MemoryPack's

@@ -80,7 +80,7 @@ internal static class Report
             var rows = group.ToList();
             var variants = rows.SelectMany(result => result.Measurements.Select(Column)).Distinct().ToList();
 
-            text.Append(CultureInfo.InvariantCulture, $"Fastest round in µs per call, and its ratio to {variants[0]}'s ({group.Key}):\n\n");
+            text.Append(CultureInfo.InvariantCulture, $"Fastest round in µs per call, and its ratio to the row's first variant's ({group.Key}):\n\n");
             AppendTable(text, rows, variants, Time);
             text.Append(CultureInfo.InvariantCulture, $"\nBytes allocated per call ({group.Key}):\n\n");
             AppendTable(text, rows, variants, (measurement, _) => Bytes(measurement.Bytes).Replace(" B", "", StringComparison.Ordinal));

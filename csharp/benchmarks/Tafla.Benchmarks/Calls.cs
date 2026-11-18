@@ -25,7 +25,9 @@ internal interface ICall
 
 /// <summary>
 /// Which copy of a call a loop runs: <see cref="Original"/>, or <see cref="Again"/>, its A/A copy, a
-/// type of its own, so that its loop is compiled and profiled apart from the original's.
+/// type of its own, so that its loop is compiled and profiled apart from the original's. Both loops
+/// call the same compiled codec method, so the pair shows the harness's noise, but not the variance
+/// of compiling the code a second time.
 /// </summary>
 internal interface ICopy
 {

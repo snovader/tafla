@@ -27,9 +27,10 @@ internal sealed record HarnessOptions(int Rounds, int WarmupRounds, TimeSpan Sam
 /// <summary>
 /// Times variants of a benchmark interleaved, as the other languages' comparisons do: every round
 /// runs each variant once, in alternating order, and the fastest round counts. Load from other
-/// processes then slows every variant alike, and only for some rounds. Each round starts after a
-/// full garbage collection, so that one variant's garbage doesn't slow another, and the collections
-/// that a variant's allocations cause within its round count as its own.
+/// processes then slows every variant alike, and only for some rounds. Each variant's sample, in
+/// every round, starts after a full garbage collection, so that one variant's garbage doesn't slow
+/// another, and the collections that a variant's allocations cause within its sample count as its
+/// own.
 /// </summary>
 internal static class Harness
 {
