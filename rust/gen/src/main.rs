@@ -168,8 +168,8 @@ Options:
   --runtime <module>   The module, package or crate that the code imports tafla's
                        runtime from: `tafla` by default,
                        `io.github.snovader.tafla` in Java,
-                       `github.com/snovader/tafla/go` in Go and the header
-                       `tafla/tafla.hpp` in C++
+                       `github.com/snovader/tafla/go` in Go, the header
+                       `tafla/tafla.hpp` in C++ and `Tafla` in Swift
   --package <package>  The package of the Java classes, by default `generated`,
                        and the namespace of the C++, `a::b` for `a.b`, by
                        default the schema's name. Go's package is named after

@@ -2,25 +2,25 @@ error: `a1` and `a_1` are both `a1` in camelCase
  --> camel_case_fields.tafla:3:5
   |
 3 |     a1: uint8;
-  |     ^^ TypeScript, JavaScript and Java name fields in camelCase
+  |     ^^ TypeScript, JavaScript, Java and Swift name fields in camelCase
 
 error: `vector_2d` and `vector2d` are both `vector2d` in camelCase
  --> camel_case_fields.tafla:5:5
   |
 5 |     vector_2d: float32;
-  |     ^^^^^^^^^ TypeScript, JavaScript and Java name fields in camelCase
+  |     ^^^^^^^^^ TypeScript, JavaScript, Java and Swift name fields in camelCase
 
 error: `x12` and `x_1_2` are both `x12` in camelCase
  --> camel_case_fields.tafla:7:5
   |
 7 |     x12: uint8;
-  |     ^^^ TypeScript, JavaScript and Java name fields in camelCase
+  |     ^^^ TypeScript, JavaScript, Java and Swift name fields in camelCase
 
 error: `x1_2` and `x_1_2` are both `x12` in camelCase
  --> camel_case_fields.tafla:8:5
   |
 8 |     x1_2: uint8;
-  |     ^^^^ TypeScript, JavaScript and Java name fields in camelCase
+  |     ^^^^ TypeScript, JavaScript, Java and Swift name fields in camelCase
 
 error: `A1` should be snake_case
   --> camel_case_fields.tafla:22:5

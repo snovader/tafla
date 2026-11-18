@@ -27,7 +27,7 @@ packages.
 | Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io                              |
 | Go         | `github.com/snovader/tafla/go`                    | `tafla-gen`'s `go` target                             |
 | C++        | The headers of `cpp/include`, not yet published   | `tafla-gen`, any of the above                         |
-| Swift      | `github.com/snovader/tafla` for SwiftPM           | Not yet                                               |
+| Swift      | `github.com/snovader/tafla` for SwiftPM           | `tafla-gen`'s `swift` target                          |
 | C#         | `Tafla` on NuGet                                  | Not yet                                               |
 
 A runtime writes and reads tables. The code generator compiles a schema of

@@ -59,6 +59,7 @@ jobs:
               - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
+              - "swift/Tests/Generated/*/**"
               - "typescript/core/test/generated/*/**"
               # The other comparison suites' schemas and generated code
               - "cpp/benchmarks/workloads.tafla"

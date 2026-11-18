@@ -32,5 +32,15 @@ The first release.
 - SwiftPM resolves the package from the repository's URL,
   `https://github.com/snovader/tafla.git`, and its releases from tags such as
   `0.1.0`.
+- `TableSizer` and `TableWriter`, which write a table whose fields are known
+  before it's written without recording them, as the code that tafla-gen's
+  `swift` target generates writes its tables: the sizer counts the table's
+  length, and `TableSizer.bytes(_:)` gives its writer to a closure that sets
+  the same fields, in the same order, into new bytes of that length.
+  `BuildError.notAsSized` reports fields that don't fill the table, and a
+  write past it stops the program.
+- `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
+  fixed offset in bytes, as a struct's scalars lie, and which the generated
+  structs read themselves with.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift

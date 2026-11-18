@@ -341,3 +341,70 @@ fn cpp_renames_the_members_of_structs_and_fields_structs_and_keywords() {
         ],
     );
 }
+
+/// Swift's fields structs and structs have `serialize()`, which a property
+/// of its name clashes with, and a field named `self` would hide the instance
+/// in an initializer, so both take a `_`, where other keywords are escaped in
+/// backticks. A message or table holds its reader and position in
+/// properties whose names start with a `_`, which no field's does.
+#[test]
+fn swift_renames_serialize_and_self() {
+    let schema = "\
+message Members (version: 1) {
+    reader: uint8;
+    serialize: uint8;
+    version: uint8;
+    format_version: uint8;
+    layout: uint8;
+    class: uint8;
+    write: uint8;
+    nested: Nested;
+}
+
+table Nested {
+    position: uint8;
+    self: uint8;
+    alignment: uint8;
+    add: uint8;
+}
+
+struct Frame {
+    serialize: uint8;
+    size: uint8;
+    bytes: uint8;
+    append: uint8;
+}
+";
+
+    assert_generates(
+        "swift",
+        schema,
+        &[
+            "    public var reader: UInt8 {",
+            "    let _reader: TableReader\n",
+            "    public var serialize_: UInt8 {",
+            "    public func serialize() throws(BuildError) -> [UInt8] {",
+            "    public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {",
+            "    public var version: UInt8 {",
+            "    public static let formatVersion: UInt32 = 1\n",
+            "    public var formatVersion: UInt8 {",
+            "    public var layout: UInt8 {",
+            "    public var `class`: UInt8 {",
+            "        self.`class` = `class`\n",
+            "    public var write: UInt8 {",
+            "    public var position: UInt8 {",
+            "    let _position: Int\n",
+            "    public var self_: UInt8 {",
+            "        self.self_ = self_\n",
+            "    public var alignment: UInt8\n",
+            "    public static let alignment: Alignment = .one\n",
+            "    public var add: UInt8\n",
+            "    public var size: UInt8\n",
+            "    public static let size = 4\n",
+            "    public var bytes: UInt8\n",
+            "        self.bytes = UInt8(littleEndianBytes: bytes, at: offset + 2)\n",
+            "    public var append: UInt8\n",
+            "    public func serialize() -> [UInt8] {",
+        ],
+    );
+}

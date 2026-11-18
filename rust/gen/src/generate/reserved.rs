@@ -127,13 +127,53 @@ const CPP: &[&str] = &[
     "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
 ];
 
+/// The names that Swift imports, the runtime's module and its types, the
+/// types of the standard library that it names, which a struct of the same
+/// name would hide, the protocols that its types conform to or suppress,
+/// and `Self`, a keyword. It names `Swift.Range` in full instead, since a
+/// schema may well declare `Range`, and so `Swift`, the standard library's
+/// module.
+const SWIFT: &[&str] = &[
+    "Alignment",
+    "Array",
+    "ArrayView",
+    "Bool",
+    "BuildError",
+    "DecodeError",
+    "Double",
+    "Escapable",
+    "Float",
+    "Hashable",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "RawSpan",
+    "Self",
+    "Sendable",
+    "String",
+    "Swift",
+    "TableLayout",
+    "TableReader",
+    "TableSizer",
+    "TableWriter",
+    "Tafla",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Vector",
+];
+
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 5] = [
+const RESERVED: [(&[&str], &[&str]); 6] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
     (&["C++"], CPP),
+    (&["Swift"], SWIFT),
 ];
 
 /// The targets whose generated code uses `name`, which a declaration can't

@@ -140,6 +140,15 @@ first commits, for code built from its source before the release.
   and `item_field_values(index)`, which reads one struct's, without creating
   their dataclasses. A view reads a struct by index with one unpack, whose
   check of the offset is the check of the index.
+- A `swift` target, which generates Swift for the Swift runtime, `Tafla`:
+  messages and tables as nonescapable views of a `RawSpan` with throwing
+  getters, views of vectors and arrays of structs, `<Name>Fields` structs
+  that write them through the runtime's `TableSizer` and `TableWriter`, and
+  structs read and written at their offsets. The target that holds the code
+  enables the experimental feature `Lifetimes` in Swift 6.2 to 6.4, as the
+  runtime's does. The checker keeps declarations from taking the names that
+  it relies on, such as `Int`, `RawSpan` and `Swift`, and fields named
+  `serialize` or `self` take a `_` in Swift.
 
 ### Changed
 

@@ -36,7 +36,8 @@ const GOLDEN_ROOTS = {
     },
     rust: { root: 'rust/gen/tests/golden', subdirectory: 'rust' },
     go: { root: 'go/tests/generated' },
-    cpp: { root: 'cpp/tests/generated' }
+    cpp: { root: 'cpp/tests/generated' },
+    swift: { root: 'swift/Tests/Generated' }
 };
 
 /** The Java test module's package of the classes of each example schema */
