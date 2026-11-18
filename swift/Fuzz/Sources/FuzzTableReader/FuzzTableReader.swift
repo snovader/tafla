@@ -238,7 +238,10 @@ func checkStructs(_ reader: TableReader, _ input: Input, at position: Int) {
     let offsetType = reader.layout.offsetType
     let remaining = max(input.count - max(position, 0), 0)
 
-    for size in [0, 1, 2, 3, 8, 13, remaining, remaining + 1, Int.max] {
+    // 4 structs of 1 << 62 bytes are 1 << 64 bytes, which a UInt64 wraps to
+    // none, so that size finds a byte length that wraps into the input, where
+    // Int.max's stays past any bytes however it's multiplied
+    for size in [0, 1, 2, 3, 8, 13, remaining, remaining + 1, 1 << 62, Int.max] {
         let expected = input.range(at: position, byteLength: UInt64(size))
         do {
             try input.checkIn(reader.struct(at: position, size: size), within: reader.bytes, expected)

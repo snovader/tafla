@@ -13,7 +13,9 @@ let lifetimes: SwiftSetting = .enableExperimentalFeature("Lifetimes")
 
 let package = Package(
     name: "tafla-fuzz",
-    // The runtime's, and String(validating:as:), which checks strings
+    // Later than the runtime's, for String(validating:as:), which checks
+    // strings. They matter only to a Mac, which compiles the targets without
+    // linking them.
     platforms: [.macOS(.v15), .iOS(.v18), .tvOS(.v18), .watchOS(.v11), .visionOS(.v2)],
     dependencies: [
         .package(name: "tafla", path: "..")
