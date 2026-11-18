@@ -1,7 +1,7 @@
 # tafla
 
 Binary tables of scalars, strings and typed arrays, in one format with
-implementations in TypeScript, Python, Java, Rust, Go and C++. A builder
+implementations in TypeScript, Python, Java, Rust, Go, C++ and C#. A builder
 writes a table at its exact size, copying typed arrays in bulk, and a reader
 reads fields back by offset, with arrays as views of the bytes where it can.
 Every read checks that it stays within the bytes it was given, so tables can
