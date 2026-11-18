@@ -80,25 +80,27 @@ public class RoundTripTests
     }
 
     [Fact]
-    public void TableWriterWritesTheBuildersBytes()
+    public void TaflaGenWritesTheBuildersBytes()
     {
         var record = Workloads.TheRecord;
         var list = Workloads.NewList(Workloads.ListItems);
+        var sample = Workloads.TheSample;
         TaflaCodec builder = default;
-        TaflaWriterCodec writer = default;
+        TaflaGenCodec generated = default;
 
-        Assert.Equal(builder.SerializeRecord(record), writer.SerializeRecord(record));
-        Assert.Equal(builder.SerializeList(list), writer.SerializeList(list));
-        Assert.Equal(builder.SerializeStructs(list), writer.SerializeStructs(list));
+        Assert.Equal(builder.SerializeRecord(record), generated.SerializeRecord(record));
+        Assert.Equal(builder.SerializeList(list), generated.SerializeList(list));
+        Assert.Equal(builder.SerializeStructs(list), generated.SerializeStructs(list));
+        Assert.Equal(builder.SerializeSample(sample), generated.SerializeSample(sample));
         foreach (var rows in Workloads.DocumentRows)
         {
             var document = Workloads.NewDocument(rows);
-            Assert.Equal(builder.SerializeDocument(document), writer.SerializeDocument(document));
+            Assert.Equal(builder.SerializeDocument(document), generated.SerializeDocument(document));
         }
     }
 
     [Fact]
-    public void TableWriterWritesIntoReusedBytes()
+    public void TaflaGenWritesIntoReusedBytes()
     {
         var document = Workloads.NewDocument(100);
         var expected = default(TaflaCodec).SerializeDocument(document);
@@ -106,10 +108,11 @@ public class RoundTripTests
         // Longer than the document, and not zeroed, so that the write must cover every byte it owns
         var reused = new byte[expected.Length + 8];
         reused.AsSpan().Fill(0xff);
-        var length = default(TaflaWriterCodec).SerializeDocumentInto(document, reused);
+        var length = default(TaflaGenCodec).SerializeDocumentInto(document, reused);
 
         Assert.Equal(expected.Length, length);
         Assert.Equal(expected, reused.AsSpan(0, length).ToArray());
+        Assert.All(reused.AsSpan(length).ToArray(), value => Assert.Equal(0xff, value));
     }
 
     [Fact]

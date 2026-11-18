@@ -50,8 +50,9 @@ The runtime is released to NuGet as the package `Tafla`, whose page shows
 `src/Tafla/README.md`, as [RELEASING.md](../RELEASING.md) describes. It
 hasn't been released yet.
 
-`benchmarks/` compares tafla with FlatBuffers, protobuf, MessagePack and
-MemoryPack, on the same workloads as the other languages' comparisons. Its
+`benchmarks/` compares tafla, and the code that tafla-gen generates, with
+FlatBuffers, protobuf, MessagePack and MemoryPack, on the same workloads as
+the other languages' comparisons. Its
 projects are their own, so that the runtime depends on none of their
 packages, and its [README](benchmarks/README.md) describes the method and
 has results.
@@ -380,7 +381,7 @@ band. Run the commands below from this directory:
 
 ```sh
 dotnet format --verify-no-changes
-dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/
+dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
 dotnet build
 dotnet test
 dotnet test -p:TaflaPortable=true

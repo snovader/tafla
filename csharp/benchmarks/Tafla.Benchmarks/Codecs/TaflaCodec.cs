@@ -6,9 +6,12 @@ namespace Tafla.Benchmarks.Codecs;
 
 /// <summary>
 /// tafla's tables, written with <see cref="TableBuilder"/>s and read with <see cref="TableReader"/>'s
-/// getters, as the runtime's README shows. Nested tables and vector items are builders of their own,
-/// which their parent copies. Columns are read in place and copied into the document's arrays, and
-/// vector items are read in place, each with a reader of its bytes. The structs and the fixed-size
+/// getters, as the runtime's README shows. Nested tables and vector items are recorded in place among
+/// their parent's fields, with <see cref="TableBuilder.SetTable(int, System.Action{TableBuilder.Item})"/>
+/// and <see cref="TableBuilder.SetVector(int, int, System.Action{TableBuilder.Item, int})"/>, whose
+/// lambdas capture what they set, as Go's and Java's codecs record them. Columns are read in place and
+/// copied into the document's arrays, and vector items are read in place, each with a reader of its
+/// bytes. The structs and the fixed-size
 /// record are written with <see cref="BinaryPrimitives"/>, and read from
 /// <see cref="TableReader.GetStructArray"/>'s bytes and with the getters.
 /// </summary>
@@ -57,17 +60,20 @@ internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public byte[] SerializeDocument(Document document)
     {
-        var columns = new TableBuilder(4);
-        columns.SetInt64(document.Base);
-        columns.SetUInt32Array(document.Keys);
-        columns.SetFloat32Array(document.A);
-        columns.SetFloat32Array(document.B);
-
         var builder = new TableBuilder(4, DocumentLayout, DocumentVersion);
         builder.SetFloat64(document.X);
         builder.SetFloat64(document.Y);
         builder.SetString(document.Name);
-        builder.SetTable(columns);
+        builder.SetTable(
+            4,
+            columns =>
+            {
+                columns.SetInt64(document.Base);
+                columns.SetUInt32Array(document.Keys);
+                columns.SetFloat32Array(document.A);
+                columns.SetFloat32Array(document.B);
+            }
+        );
 
         return builder.ToArray();
     }
@@ -102,23 +108,10 @@ internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public byte[] SerializeList(ItemList list)
     {
-        var items = new NestedTable[list.Items.Length];
-        for (var index = 0; index < items.Length; index++)
-        {
-            var input = list.Items[index];
-
-            var pair = new TableBuilder(2);
-            pair.SetFloat32(input.First);
-            pair.SetFloat32(input.Second);
-
-            var item = new TableBuilder(2);
-            item.SetFloat32(input.Value);
-            item.SetTable(pair);
-            items[index] = item;
-        }
+        var items = list.Items;
 
         var builder = new TableBuilder(1);
-        builder.SetVector(items);
+        builder.SetVector(items.Length, 2, (item, index) => SetItem(item, items[index]));
 
         return builder.ToArray();
     }
@@ -137,6 +130,20 @@ internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, 
         }
 
         return new ItemList(items);
+    }
+
+    /// <summary>Records an item of the vector, and its pair, in place.</summary>
+    private static void SetItem(TableBuilder.Item item, Item input)
+    {
+        item.SetFloat32(input.Value);
+        item.SetTable(
+            2,
+            pair =>
+            {
+                pair.SetFloat32(input.First);
+                pair.SetFloat32(input.Second);
+            }
+        );
     }
 
     /// <summary>Writes the items' structs with <see cref="BinaryPrimitives"/>, into bytes that the builder copies.</summary>

@@ -79,6 +79,11 @@ dotnet_diagnostic.CA1720.severity = none
 # `dotnet format` skips whatever this says.
 generated_code = false
 
+[benchmarks/Tafla.Benchmarks/Generated/TaflaGen/**.cs]
+# The benchmarks' copy of tafla-gen's code, of their workloads.tafla, which the build's analyzers and
+# CI's whitespace check check as they check the tests' copies
+generated_code = false
+
 [tests/names/**.cs]
 # The schema of names that would clash: the fields that the generated code renames take a `_` after
 # their names, as in every target, and its namespace's names are keywords, which it escapes

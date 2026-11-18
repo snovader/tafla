@@ -995,6 +995,7 @@ where:
 | Rust       | `rust/benchmarks/workloads.tafla`, `rust/benchmarks/src/codecs/tafla_gen/`                                               |
 | Go         | `go/benchmarks/workloads.tafla`, `go/benchmarks/generated/tafla/`                                                        |
 | C++        | `cpp/benchmarks/workloads.tafla`, `cpp/benchmarks/generated/tafla/`                                                      |
+| C#         | `csharp/benchmarks/workloads.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen/`                            |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

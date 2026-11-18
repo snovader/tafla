@@ -86,7 +86,7 @@ jobs:
       - name: Run formatting check of the generated code
         run: >-
           dotnet format whitespace --folder --include-generated --verify-no-changes
-          --include tests/Tafla.Generated/ tests/names/
+          --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
 
   test:
     name: Test (${{ matrix.os }})

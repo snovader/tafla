@@ -14,7 +14,7 @@ internal static class EncodingReport
     public static readonly ICodec[] Codecs =
     [
         default(TaflaCodec),
-        default(TaflaWriterCodec),
+        default(TaflaGenCodec),
         default(FlatBuffersCodec),
         default(ProtobufCodec),
         default(MessagePackCodec),
@@ -71,8 +71,7 @@ internal static class EncodingReport
         Console.WriteLine("Truncated document of 100000 rows: deserialize");
         foreach (var codec in Codecs)
         {
-            // The writer's bytes are the builder's, which the same reader reads
-            if (codec is not IDocumentCodec documents || codec is TaflaWriterCodec)
+            if (codec is not IDocumentCodec documents)
             {
                 continue;
             }
