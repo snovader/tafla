@@ -8,9 +8,9 @@ from hypothesis import given
 from hypothesis.strategies import integers, one_of
 
 from tafla import (
-    ByteBuffer,
     TableBuilder,
     TableLayout,
+    TableReader,
 )
 from tests.descriptions import tables
 from tests.tables import (
@@ -58,9 +58,9 @@ def _field_as_bytes(field: Description) -> Description:
     return field
 
 
-def root_vector(buffer: ByteBuffer, index: int) -> list[bytes]:
+def root_vector(reader: TableReader, index: int) -> list[bytes]:
     """Reads the items of the vector of a root field"""
-    return [bytes(item) for item in buffer.get_vector(buffer.root_offset(index))]
+    return [bytes(item) for item in reader.get_vector(reader.root_offset(index))]
 
 
 def parent_of(nested: Callable[[], TableBuilder | Buffer], length: int) -> bytes:
@@ -128,10 +128,10 @@ class TestTableBuilder(unittest.TestCase):
         builder.set_float32_array(values)
         values[0] = 3
 
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
         self.assertEqual(
-            buffer.get_float32_array(buffer.root_offset(0)).tolist(), [3, 2]
+            reader.get_float32_array(reader.root_offset(0)).tolist(), [3, 2]
         )
 
     def test_keeps_a_converted_list_as_it_was_when_set(self) -> None:
@@ -140,10 +140,10 @@ class TestTableBuilder(unittest.TestCase):
         builder.set_float32_array(values)
         values.append(3.0)
 
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
         self.assertEqual(
-            buffer.get_float32_array(buffer.root_offset(0)).tolist(), [1, 2]
+            reader.get_float32_array(reader.root_offset(0)).tolist(), [1, 2]
         )
 
     def test_keeps_a_vector_as_it_was_when_set(self) -> None:
@@ -152,9 +152,9 @@ class TestTableBuilder(unittest.TestCase):
         builder.set_vector(vector)
         vector.pop()
 
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
-        self.assertEqual(root_vector(buffer, 0), [b"ab", b"c"])
+        self.assertEqual(root_vector(reader, 0), [b"ab", b"c"])
 
 
 class TestStructs(unittest.TestCase):
@@ -164,10 +164,10 @@ class TestStructs(unittest.TestCase):
         builder.set_uint8(1)
         builder.set_struct(struct)
 
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
-        self.assertEqual(buffer.root_offset(1), 9)
-        self.assertEqual(bytes(buffer.get_struct(9, len(struct))), struct)
+        self.assertEqual(reader.root_offset(1), 9)
+        self.assertEqual(bytes(reader.get_struct(9, len(struct))), struct)
 
     def test_rejects_struct_sizes_and_bytes_it_cant_write_and_stays_as_it_was(
         self,
@@ -236,11 +236,11 @@ class TestStructs(unittest.TestCase):
 
         # The count goes at 12, after the uint8 at 8 and 3 bytes of padding, so
         # that the structs start at 16
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
-        self.assertEqual(buffer.root_offset(1), 12)
-        self.assertEqual(buffer.get_uint32(12), 2)
-        self.assertEqual(len(buffer.get_struct_array(12, 8)), 16)
+        self.assertEqual(reader.root_offset(1), 12)
+        self.assertEqual(reader.get_uint32(12), 2)
+        self.assertEqual(len(reader.get_struct_array(12, 8)), 16)
 
     def test_aligns_a_nested_builder_to_its_arrays_of_structs(self) -> None:
         nested = TableBuilder(1)
@@ -356,13 +356,13 @@ class TestChangedLengths(unittest.TestCase):
         builder.set_float64_array([1.5])
 
         values.append(ord("c"))
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
-        self.assertEqual(bytes(buffer.get_uint8_array(buffer.root_offset(0))), b"abc")
+        self.assertEqual(bytes(reader.get_uint8_array(reader.root_offset(0))), b"abc")
         self.assertEqual(
-            buffer.get_float64_array(buffer.root_offset(1)).tolist(), [1.5]
+            reader.get_float64_array(reader.root_offset(1)).tolist(), [1.5]
         )
-        self.assertEqual(buffer.root_offset(1), 20)
+        self.assertEqual(reader.root_offset(1), 20)
 
 
 class TestVersions(unittest.TestCase):
@@ -392,10 +392,10 @@ class TestVersions(unittest.TestCase):
 
     def test_rejects_reading_the_version_of_an_unversioned_table(self) -> None:
         layout = TableLayout(sized=True)
-        buffer = ByteBuffer(TableBuilder(0, layout).bytes(), layout)
+        reader = TableReader(TableBuilder(0, layout).bytes(), layout)
 
         with self.assertRaises(TypeError):
-            buffer.get_version()
+            reader.get_version()
 
 
 class TestTableLength(unittest.TestCase):
@@ -460,8 +460,8 @@ class TestNestedBuilders(unittest.TestCase):
         self.assertEqual(parent_of(lambda: build_table(table), length), expected)
         self.assertEqual(parent_of(lambda: finalized, length), expected)
 
-        buffer = ByteBuffer(expected)
-        self.assertEqual(root_vector(buffer, 2), [own, own])
+        reader = TableReader(expected)
+        self.assertEqual(root_vector(reader, 2), [own, own])
 
     def test_rejects_a_builder_with_fields_left_to_set(self) -> None:
         nested = TableBuilder(2)
@@ -478,11 +478,11 @@ class TestNestedBuilders(unittest.TestCase):
         parent.set_table(nested)
         parent.set_vector([nested])
 
-        buffer = parent.finalize()
-        table = buffer.root_offset(0)
+        reader = parent.finalize()
+        table = reader.root_offset(0)
 
-        self.assertEqual(buffer.get_uint8(buffer.field_offset(table, 1)), 2)
-        self.assertEqual(root_vector(buffer, 1), [nested.bytes()])
+        self.assertEqual(reader.get_uint8(reader.field_offset(table, 1)), 2)
+        self.assertEqual(root_vector(reader, 1), [nested.bytes()])
 
     def test_writes_a_builder_nested_several_times_the_same_each_time(self) -> None:
         nested = TableBuilder(2)
@@ -512,10 +512,10 @@ class TestNestedBuilders(unittest.TestCase):
         parent.set_table(nested)
         values[0] = 3
 
-        buffer = parent.finalize()
-        position = buffer.field_offset(buffer.root_offset(0), 0)
+        reader = parent.finalize()
+        position = reader.field_offset(reader.root_offset(0), 0)
 
-        self.assertEqual(buffer.get_float32_array(position).tolist(), [3, 2])
+        self.assertEqual(reader.get_float32_array(position).tolist(), [3, 2])
 
 
 def with_offset_type(table: Description, offset_type: OffsetType) -> Description:

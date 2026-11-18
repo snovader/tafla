@@ -223,7 +223,7 @@ public class ShapesTest {
         var second = new Item.Fields(4.5f, new Pair.Fields(5.5f, 6.5f));
         var bytes = ItemList.serialize(new ItemList.Fields(List.of(first, second)));
         // The second item's end, after the vector's count and the first item's end, past the bytes
-        var vector = new ByteBuffer(bytes).rootOffset(0);
+        var vector = new TableReader(bytes).rootOffset(0);
         Arrays.fill(bytes, vector + 2 * Integer.BYTES, vector + 3 * Integer.BYTES, (byte) 0x7f);
 
         var items = new ItemList(bytes).items();

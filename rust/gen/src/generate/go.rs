@@ -418,7 +418,7 @@ impl<'a> Generator<'a> {
                 "func {name}VersionOf(bytes []byte) (uint32, error) {{"
             ));
             writer.line(format!(
-                "return tafla.NewByteBuffer(bytes, {name}{{}}.layout()).Version()"
+                "return tafla.NewTableReader(bytes, {name}{{}}.layout()).Version()"
             ));
             writer.close("}");
         } else {
@@ -475,30 +475,30 @@ impl<'a> Generator<'a> {
                 "func ({READER} {name}) {getter}() ({value_type}, error) {{"
             ));
             let offset = field_offset(layout, index);
-            if reads_with_buffer(&offset, field.field_type) {
-                writer.line(buffer_line(layout));
+            if reads_with_reader(&offset, field.field_type) {
+                writer.line(reader_line(layout));
             }
             find_field(writer, &offset, &zero_value(&value_type));
 
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => {
-                    writer.line("value, err := buffer.GetUint8(position)");
+                    writer.line("value, err := reader.GetUint8(position)");
                     writer.line("return value != 0, err");
                 }
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("return buffer.Get{}(position)", method(scalar)));
+                    writer.line(format!("return reader.Get{}(position)", method(scalar)));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "return buffer.Get{}Array(position)",
+                        "return reader.Get{}Array(position)",
                         method(scalar)
                     ));
                 }
-                FieldType::String => writer.line("return buffer.GetString(position)"),
+                FieldType::String => writer.line("return reader.GetString(position)"),
                 FieldType::Struct(index) => {
                     let structure = self.schema.definition(index);
                     let size = structure.struct_layout().size;
-                    writer.line(format!("bytes, err := buffer.GetStruct(position, {size})"));
+                    writer.line(format!("bytes, err := reader.GetStruct(position, {size})"));
                     return_on_error(writer, &format!("{}{{}}", structure.name));
                     writer.line(format!("return read{}(bytes), nil", structure.name));
                 }
@@ -507,7 +507,7 @@ impl<'a> Generator<'a> {
                 FieldType::StructArray(index) => {
                     let size = self.schema.definition(index).struct_layout().size;
                     writer.line(format!(
-                        "bytes, err := buffer.GetStructArray(position, {size})"
+                        "bytes, err := reader.GetStructArray(position, {size})"
                     ));
                     writer.line(format!("return {value_type}{{bytes: bytes}}, err"));
                 }
@@ -518,7 +518,7 @@ impl<'a> Generator<'a> {
                     ));
                 }
                 FieldType::Vector(_) => {
-                    writer.line("vector, err := buffer.GetVector(position)");
+                    writer.line("vector, err := reader.GetVector(position)");
                     writer.line(format!("return {value_type}{{vector: vector}}, err"));
                 }
             }
@@ -739,9 +739,9 @@ impl<'a> Generator<'a> {
             .fields
             .iter()
             .zip(&offsets)
-            .any(|(field, offset)| reads_with_buffer(offset, field.field_type))
+            .any(|(field, offset)| reads_with_reader(offset, field.field_type))
         {
-            writer.line(buffer_line(layout));
+            writer.line(reader_line(layout));
         }
         writer.line(format!("var fields {fields_type}"));
 
@@ -781,29 +781,29 @@ impl<'a> Generator<'a> {
                     writer.line("var boolean uint8");
                     *declared_boolean = true;
                 }
-                assign_read(writer, "boolean", "buffer.GetUint8(position)", zero);
+                assign_read(writer, "boolean", "reader.GetUint8(position)", zero);
                 writer.line(format!("{member} = boolean != 0"));
             }
             FieldType::Scalar(scalar) => {
-                let read = format!("buffer.Get{}(position)", method(scalar));
+                let read = format!("reader.Get{}(position)", method(scalar));
                 assign_read(writer, &member, &read, zero);
             }
             FieldType::Array(Scalar::Uint8) => {
-                assign_read(writer, &member, "buffer.GetUint8Array(position)", zero);
+                assign_read(writer, &member, "reader.GetUint8Array(position)", zero);
             }
             FieldType::Array(scalar) => {
                 let local = format!("array{index}");
-                let read = format!("buffer.Get{}Array(position)", method(scalar));
+                let read = format!("reader.Get{}Array(position)", method(scalar));
                 declare_read(writer, &local, &read, zero);
                 writer.line(format!("{member} = {local}.Slice()"));
             }
             FieldType::String => {
-                assign_read(writer, &member, "buffer.GetString(position)", zero);
+                assign_read(writer, &member, "reader.GetString(position)", zero);
             }
             FieldType::Struct(struct_index) => {
                 let size = self.schema.definition(struct_index).struct_layout().size;
                 let local = format!("struct{index}");
-                let read = format!("buffer.GetStruct(position, {size})");
+                let read = format!("reader.GetStruct(position, {size})");
                 declare_read(writer, &local, &read, zero);
                 let structure = &self.schema.definition(struct_index).name;
                 writer.line(format!("{member} = read{structure}({local})"));
@@ -812,7 +812,7 @@ impl<'a> Generator<'a> {
                 let structure = self.schema.definition(struct_index);
                 let size = structure.struct_layout().size;
                 let local = format!("structs{index}");
-                let read = format!("buffer.GetStructArray(position, {size})");
+                let read = format!("reader.GetStructArray(position, {size})");
                 declare_read(writer, &local, &read, zero);
                 writer.line(format!(
                     "{member} = {}Array{{bytes: {local}}}.Slice()",
@@ -832,7 +832,7 @@ impl<'a> Generator<'a> {
             FieldType::Vector(table_index) => {
                 let table = &self.schema.definition(table_index).name;
                 let local = format!("vector{index}");
-                declare_read(writer, &local, "buffer.GetVector(position)", zero);
+                declare_read(writer, &local, "reader.GetVector(position)", zero);
                 writer.line(format!(
                     "{member} = make([]{table}Fields, 0, {local}.Len())"
                 ));
@@ -1309,7 +1309,7 @@ impl<'a> Generator<'a> {
 /// an error. Uint32 offsets, which nested tables have, are read with the
 /// runtime's `Uint32FieldOffset()`, which inlines, from the slot that follows
 /// the table's position or the message's header, and other messages' with
-/// the buffer's `RootOffset()`.
+/// the reader's `RootOffset()`.
 fn field_offset(layout: Option<Layout>, index: usize) -> String {
     match layout {
         None => {
@@ -1325,25 +1325,25 @@ fn field_offset(layout: Option<Layout>, index: usize) -> String {
             let slot = (slots + index) * NESTED_OFFSET_SIZE;
             format!("tafla.Uint32FieldOffset({READER}.bytes, 0, {slot})")
         }
-        Some(_) => format!("buffer.RootOffset({index})"),
+        Some(_) => format!("reader.RootOffset({index})"),
     }
 }
 
-/// Whether reading a field, whose offset `offset` reads, takes a buffer: to
+/// Whether reading a field, whose offset `offset` reads, takes a reader: to
 /// read the offset, or the field's value, which every field has but a nested
 /// table
-fn reads_with_buffer(offset: &str, field_type: FieldType) -> bool {
-    offset.starts_with("buffer.") || !matches!(field_type, FieldType::Table(_))
+fn reads_with_reader(offset: &str, field_type: FieldType) -> bool {
+    offset.starts_with("reader.") || !matches!(field_type, FieldType::Table(_))
 }
 
-/// The line that creates the buffer that a message's or nested table's
+/// The line that creates the reader that a message's or nested table's
 /// fields are read with, in its layout, a constant, rather than one that the
 /// reader holds, so that its reads compile for that layout's offset type
 /// where they're inlined
-fn buffer_line(layout: Option<Layout>) -> String {
+fn reader_line(layout: Option<Layout>) -> String {
     match layout {
-        Some(_) => format!("buffer := tafla.NewByteBuffer({READER}.bytes, {READER}.layout())"),
-        None => format!("buffer := tafla.NewByteBuffer({READER}.bytes, tafla.TableLayout{{}})"),
+        Some(_) => format!("reader := tafla.NewTableReader({READER}.bytes, {READER}.layout())"),
+        None => format!("reader := tafla.NewTableReader({READER}.bytes, tafla.TableLayout{{}})"),
     }
 }
 

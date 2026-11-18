@@ -1,4 +1,4 @@
-// `ByteBuffer` reads every value where the format puts it, exactly when it
+// `TableReader` reads every value where the format puts it, exactly when it
 // lies within the bytes, and fails with `DecodeError` otherwise, at any
 // position, in every offset type and header
 
@@ -85,45 +85,45 @@ void check_array(const std::vector<std::uint8_t>& bytes, std::size_t position, s
 }
 
 template <bool Versioned>
-void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> buffer, std::size_t position) {
-    const std::uint64_t width = buffer.layout().offset_size();
+void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> reader, std::size_t position) {
+    const std::uint64_t width = reader.layout().offset_size();
 
-    check_scalar<std::int8_t>(bytes, position, [&](std::size_t at) { return buffer.get_int8(at); });
-    check_scalar<std::uint8_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint8(at); });
-    check_scalar<std::int16_t>(bytes, position, [&](std::size_t at) { return buffer.get_int16(at); });
-    check_scalar<std::uint16_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint16(at); });
-    check_scalar<std::int32_t>(bytes, position, [&](std::size_t at) { return buffer.get_int32(at); });
-    check_scalar<std::uint32_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint32(at); });
-    check_scalar<std::int64_t>(bytes, position, [&](std::size_t at) { return buffer.get_int64(at); });
-    check_scalar<std::uint64_t>(bytes, position, [&](std::size_t at) { return buffer.get_uint64(at); });
-    check_scalar<float>(bytes, position, [&](std::size_t at) { return buffer.get_float32(at); });
-    check_scalar<double>(bytes, position, [&](std::size_t at) { return buffer.get_float64(at); });
+    check_scalar<std::int8_t>(bytes, position, [&](std::size_t at) { return reader.get_int8(at); });
+    check_scalar<std::uint8_t>(bytes, position, [&](std::size_t at) { return reader.get_uint8(at); });
+    check_scalar<std::int16_t>(bytes, position, [&](std::size_t at) { return reader.get_int16(at); });
+    check_scalar<std::uint16_t>(bytes, position, [&](std::size_t at) { return reader.get_uint16(at); });
+    check_scalar<std::int32_t>(bytes, position, [&](std::size_t at) { return reader.get_int32(at); });
+    check_scalar<std::uint32_t>(bytes, position, [&](std::size_t at) { return reader.get_uint32(at); });
+    check_scalar<std::int64_t>(bytes, position, [&](std::size_t at) { return reader.get_int64(at); });
+    check_scalar<std::uint64_t>(bytes, position, [&](std::size_t at) { return reader.get_uint64(at); });
+    check_scalar<float>(bytes, position, [&](std::size_t at) { return reader.get_float32(at); });
+    check_scalar<double>(bytes, position, [&](std::size_t at) { return reader.get_float64(at); });
 
-    check_array<std::int8_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_int8_array(at); });
-    check_array<std::uint8_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_uint8_array(at); });
-    check_array<std::int16_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_int16_array(at); });
-    check_array<std::uint16_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_uint16_array(at); });
-    check_array<std::int32_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_int32_array(at); });
-    check_array<std::uint32_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_uint32_array(at); });
-    check_array<std::int64_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_int64_array(at); });
-    check_array<std::uint64_t>(bytes, position, width, [&](std::size_t at) { return buffer.get_uint64_array(at); });
-    check_array<float>(bytes, position, width, [&](std::size_t at) { return buffer.get_float32_array(at); });
-    check_array<double>(bytes, position, width, [&](std::size_t at) { return buffer.get_float64_array(at); });
+    check_array<std::int8_t>(bytes, position, width, [&](std::size_t at) { return reader.get_int8_array(at); });
+    check_array<std::uint8_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint8_array(at); });
+    check_array<std::int16_t>(bytes, position, width, [&](std::size_t at) { return reader.get_int16_array(at); });
+    check_array<std::uint16_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint16_array(at); });
+    check_array<std::int32_t>(bytes, position, width, [&](std::size_t at) { return reader.get_int32_array(at); });
+    check_array<std::uint32_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint32_array(at); });
+    check_array<std::int64_t>(bytes, position, width, [&](std::size_t at) { return reader.get_int64_array(at); });
+    check_array<std::uint64_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint64_array(at); });
+    check_array<float>(bytes, position, width, [&](std::size_t at) { return reader.get_float32_array(at); });
+    check_array<double>(bytes, position, width, [&](std::size_t at) { return reader.get_float64_array(at); });
 
     // Offsets lie where the header and the earlier offsets end
-    const std::uint64_t header = buffer.layout().header_size();
+    const std::uint64_t header = reader.layout().header_size();
     const auto offset =
         little_endian(bytes, position > UINT64_MAX / width ? UINT64_MAX : plus(header, position * width), width);
-    const auto root = try_read([&] { return buffer.root_offset(position); });
+    const auto root = try_read([&] { return reader.root_offset(position); });
     RC_ASSERT(root == (offset ? std::optional<std::size_t>(*offset) : std::nullopt));
 
     const auto slot = little_endian(bytes, plus(position, width), width);
-    const auto field = try_read([&] { return buffer.field_offset(position, 1); });
+    const auto field = try_read([&] { return reader.field_offset(position, 1); });
     RC_ASSERT(field == (slot ? std::optional<std::size_t>(position + *slot) : std::nullopt));
 
     // A table nested in a field is read in place, from its position to the
     // end of the bytes
-    const auto table = try_read([&] { return buffer.get_table(position); });
+    const auto table = try_read([&] { return reader.get_table(position); });
     RC_ASSERT(table.has_value() == (position <= bytes.size()));
     if (table) {
         RC_ASSERT(table->data() == bytes.data() + position);
@@ -132,7 +132,7 @@ void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> b
 
     // A vector holds a count and then that many ends
     const auto count = little_endian(bytes, position, width);
-    const auto vector = try_read([&] { return buffer.get_vector(position); });
+    const auto vector = try_read([&] { return reader.get_vector(position); });
     const bool ends_fit = count && little_endian(bytes, plus(position, width), *count * width).has_value();
     RC_ASSERT(vector.has_value() == ends_fit);
 }
@@ -140,7 +140,7 @@ void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> b
 /// Every getter reads arbitrary bytes at every position, past the end too,
 /// in every offset type and header, as the bytes that lie where the format
 /// puts them, exactly when they lie within the bytes
-RC_GTEST_PROP(ByteBuffer, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
+RC_GTEST_PROP(TableReader, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
     const auto bytes =
         *rc::gen::resize(rc::kNominalSize, rc::gen::mapcat(rc::gen::inRange(0, 48), [](int count) {
                              return rc::gen::container<std::vector<std::uint8_t>>(
@@ -157,39 +157,39 @@ RC_GTEST_PROP(ByteBuffer, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
     }
 
     for (std::size_t position = 0; position <= bytes.size() + 8; ++position) {
-        check_reads(bytes, ByteBuffer(bytes, layout), position);
-        check_reads(bytes, ByteBuffer(bytes, layout.versioned()), position);
+        check_reads(bytes, TableReader(bytes, layout), position);
+        check_reads(bytes, TableReader(bytes, layout.versioned()), position);
     }
-    check_reads(bytes, ByteBuffer(bytes, layout), SIZE_MAX);
-    check_reads(bytes, ByteBuffer(bytes, layout), SIZE_MAX - 3);
+    check_reads(bytes, TableReader(bytes, layout), SIZE_MAX);
+    check_reads(bytes, TableReader(bytes, layout), SIZE_MAX - 3);
 
     // The header's slots
     const auto width = offset_size(offset_type);
-    const auto size = try_read([&] { return ByteBuffer(bytes, layout).size(); });
+    const auto size = try_read([&] { return TableReader(bytes, layout).size(); });
     RC_ASSERT(size ==
               (sized ? (little_endian(bytes, 0, width) ? std::optional<std::size_t>(*little_endian(bytes, 0, width))
                                                        : std::nullopt)
                      : std::optional<std::size_t>(bytes.size())));
 
-    const auto version = try_read([&] { return ByteBuffer(bytes, layout.versioned()).version(); });
+    const auto version = try_read([&] { return TableReader(bytes, layout.versioned()).version(); });
     const auto expected = little_endian(bytes, sized ? width : 0, width);
     RC_ASSERT(version ==
               (expected ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*expected)) : std::nullopt));
 }
 
-TEST(ByteBuffer, ReadsAnEmptyBufferAsOutOfRange) {
-    const ByteBuffer buffer{std::span<const std::uint8_t>(), TableLayout()};
-    EXPECT_EQ(buffer.size(), 0U);
-    EXPECT_THROW(static_cast<void>(buffer.root_offset(0)), DecodeError);
-    EXPECT_THROW(static_cast<void>(buffer.get_uint8(0)), DecodeError);
-    EXPECT_THROW(static_cast<void>(buffer.get_string(0)), DecodeError);
+TEST(TableReader, ReadsAnEmptyBufferAsOutOfRange) {
+    const TableReader reader{std::span<const std::uint8_t>(), TableLayout()};
+    EXPECT_EQ(reader.size(), 0U);
+    EXPECT_THROW(static_cast<void>(reader.root_offset(0)), DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.get_uint8(0)), DecodeError);
+    EXPECT_THROW(static_cast<void>(reader.get_string(0)), DecodeError);
 }
 
-TEST(ByteBuffer, IsALiteralOfAConstantLayout) {
+TEST(TableReader, IsALiteralOfAConstantLayout) {
     static constexpr std::uint8_t bytes[] = {4, 0, 0, 0, 42};
-    constexpr ByteBuffer buffer{bytes, TableLayout()};
-    static_assert(!buffer.layout().is_sized());
-    EXPECT_EQ(buffer.get_uint8(buffer.root_offset(0)), 42);
+    constexpr TableReader reader{bytes, TableLayout()};
+    static_assert(!reader.layout().is_sized());
+    EXPECT_EQ(reader.get_uint8(reader.root_offset(0)), 42);
 }
 
 }  // namespace

@@ -109,7 +109,7 @@ impl Plan {
 /// The leading fields of a table whose offsets don't depend on any value,
 /// which ``TableWriter.set_fields()`` and ``write_table()`` write with the
 /// table's offsets in one call, rather than with a setter for each field, and
-/// ``ByteBuffer.get_fields()`` reads. The code that tafla-gen generates
+/// ``TableReader.get_fields()`` reads. The code that tafla-gen generates
 /// creates one for each table that starts with such fields.
 ///
 /// Those fields are scalars, structs and nested tables whose own fields are
@@ -140,7 +140,7 @@ pub struct FixedFields {
     /// alone, and a nested table's for each
     plans: [Option<Plan>; 3],
     /// A message's layout, which `TableWriter.write_fields()` and
-    /// `ByteBuffer.read_fields()` write and read its header in
+    /// `TableReader.read_fields()` write and read its header in
     shape: Option<Shape>,
 }
 

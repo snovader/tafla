@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import ByteBuffer, OffsetType, TableBuilder, TableLayout, TableWriter
+from tafla import OffsetType, TableBuilder, TableLayout, TableReader, TableWriter
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -471,7 +471,7 @@ _COMPARABLE: dict[str, Callable[[Any], int | str]] = {
 
 
 class MismatchError(AssertionError):
-    """Raised by ``TableReader`` when the bytes hold a table of another shape
+    """Raised by ``DescriptionReader`` when the bytes hold a table of another shape
     than its description: a size slot that doesn't hold the table's length, or
     a vector of another number of items. It's the description's mismatch,
     rather than tafla's, which raises ``DecodeError``."""
@@ -493,7 +493,7 @@ class Placement:
 type Visit = Callable[[Placement], None]
 
 
-class TableReader:
+class DescriptionReader:
     """Reads the bytes of a table as descriptions of its fields set them out,
     and returns those descriptions with the values that were read in place of
     theirs, so that they compare equal with ``comparable_table()`` when the
@@ -508,14 +508,14 @@ class TableReader:
     nested ones included.
     """
 
-    __slots__ = ["__buffer", "__offset_type", "__visit"]
+    __slots__ = ["__offset_type", "__reader", "__visit"]
 
     __offset_type: OffsetType
 
     def __init__(
         self, data: Buffer, layout: Description, visit: Visit | None = None
     ) -> None:
-        self.__buffer = ByteBuffer(data, layout_of(layout))
+        self.__reader = TableReader(data, layout_of(layout))
         self.__offset_type = layout["offsetType"]
         self.__visit = visit
 
@@ -523,24 +523,24 @@ class TableReader:
         """Reads the header and every field of a table from its own bytes,
         which hold that table alone. Raises ``MismatchError`` if its size slot
         doesn't hold its length."""
-        buffer = self.__buffer
-        if table["layout"]["sized"] and buffer.get_size() != len(buffer.bytes()):
+        reader = self.__reader
+        if table["layout"]["sized"] and reader.get_size() != len(reader.bytes()):
             raise MismatchError(
-                f"The size slot holds {buffer.get_size()}, "
-                f"but the table has {len(buffer.bytes())} bytes"
+                f"The size slot holds {reader.get_size()}, "
+                f"but the table has {len(reader.bytes())} bytes"
             )
 
         return self.__read_header_and_fields(table)
 
     def read_root_field(self, index: int, field: Description) -> Description:
-        return self.__read_field(0, self.__buffer.root_offset(index), field)
+        return self.__read_field(0, self.__reader.root_offset(index), field)
 
     def __read_header_and_fields(self, table: Description) -> Description:
         layout = table["layout"]
 
         read: Description = {"layout": layout}
         if layout["versioned"]:
-            read["version"] = self.__buffer.get_version()
+            read["version"] = self.__reader.get_version()
 
         read["fields"] = [
             self.read_root_field(index, field)
@@ -555,7 +555,7 @@ class TableReader:
         if self.__visit is not None:
             placement = Placement(
                 field,
-                self.__buffer.bytes(),
+                self.__reader.bytes(),
                 table,
                 position,
                 offset_size_of(self.__offset_type),
@@ -581,13 +581,13 @@ class TableReader:
 
         if kind.endswith("[]"):
             element = kind.removesuffix("[]")
-            values = getattr(self.__buffer, f"get_{element}_array")(position)
+            values = getattr(self.__reader, f"get_{element}_array")(position)
             return {**field, "value": values.tolist()}
 
         if kind == "bool":
-            return {**field, "value": self.__buffer.get_uint8(position) != 0}
+            return {**field, "value": self.__reader.get_uint8(position) != 0}
 
-        return {**field, "value": getattr(self.__buffer, f"get_{kind}")(position)}
+        return {**field, "value": getattr(self.__reader, f"get_{kind}")(position)}
 
     def __read_vector(
         self, position: int, items: list[Description]
@@ -595,13 +595,13 @@ class TableReader:
         """Reads the items that the vector and its description both hold, and
         then raises ``MismatchError`` if they hold different numbers of
         items"""
-        buffer = self.__buffer
-        offsets = buffer.get_vector_offsets(position)
-        vector = buffer.get_vector(position)
+        reader = self.__reader
+        offsets = reader.get_vector_offsets(position)
+        vector = reader.get_vector(position)
 
         # Finding each item from its ends alone finds the same item
         for index, offset in enumerate(offsets):
-            found = buffer.get_vector_offset(position, index)
+            found = reader.get_vector_offset(position, index)
             if found != offset:
                 raise MismatchError(
                     f"Item {index} of the vector is at {found} from its ends, "
@@ -625,7 +625,7 @@ class TableReader:
     ) -> list[Description]:
         """Reads the scalars of a struct at their offsets in its bytes"""
         packing = struct_of(scalar["type"] for scalar in scalars)
-        values = packing.unpack(self.__buffer.get_struct(position, packing.size))
+        values = packing.unpack(self.__reader.get_struct(position, packing.size))
 
         return [
             {**scalar, "value": value}
@@ -636,7 +636,7 @@ class TableReader:
         """Reads the scalars of every struct of an array at their offsets in
         the structs' bytes"""
         packing = struct_of(types)
-        data = self.__buffer.get_struct_array(position, packing.size)
+        data = self.__reader.get_struct_array(position, packing.size)
 
         return [list(values) for values in packing.iter_unpack(data)]
 
@@ -646,17 +646,19 @@ class TableReader:
         if self.__reads_in_place(table):
             return self.__read_in_place(position, table)
 
-        return TableReader(item_bytes, table["layout"], self.__visit).read_table(table)
+        return DescriptionReader(item_bytes, table["layout"], self.__visit).read_table(
+            table
+        )
 
     def __read_nested(self, position: int, table: Description) -> Description:
         """Reads a table nested with ``set_table()``"""
         if self.__reads_in_place(table):
             return self.__read_in_place(position, table)
 
-        rest = self.__buffer.bytes()[position:]
-        reader = TableReader(rest, table["layout"], self.__visit)
+        rest = self.__reader.bytes()[position:]
+        description_reader = DescriptionReader(rest, table["layout"], self.__visit)
 
-        return reader.__read_header_and_fields(table)
+        return description_reader.__read_header_and_fields(table)
 
     def __reads_in_place(self, table: Description) -> bool:
         layout = table["layout"]
@@ -667,11 +669,11 @@ class TableReader:
         )
 
     def __read_in_place(self, position: int, table: Description) -> Description:
-        buffer = self.__buffer
+        reader = self.__reader
         return {
             "layout": table["layout"],
             "fields": [
-                self.__read_field(position, buffer.field_offset(position, index), field)
+                self.__read_field(position, reader.field_offset(position, index), field)
                 for index, field in enumerate(table["fields"])
             ],
         }
@@ -680,5 +682,5 @@ class TableReader:
 def read_table(
     data: Buffer, table: Description, visit: Visit | None = None
 ) -> Description:
-    """Reads a table from its own bytes, as ``TableReader.read_table()`` does"""
-    return TableReader(data, table["layout"], visit).read_table(table)
+    """Reads a table from its own bytes, as ``DescriptionReader.read_table()`` does"""
+    return DescriptionReader(data, table["layout"], visit).read_table(table)

@@ -11,10 +11,10 @@ import {
     writeUint16,
     writeUint32,
     writeUtf8,
-    ByteBuffer,
     DecodeError,
     StructWriter,
     TableLayout,
+    TableReader,
     TableSizer,
     TableWriter
 } from 'tafla';
@@ -491,34 +491,34 @@ export class Range {
      */
     static SIZE = 16;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
     }
 
     /**
      * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * without creating a `Range`
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @returns {RangeFields}
      */
-    static read(buffer, position) {
+    static read(reader, position) {
         return {
-            start: buffer.getUint32(buffer.fieldOffset(position, 0)),
-            end: buffer.getUint32(buffer.fieldOffset(position, 1))
+            start: reader.getUint32(reader.fieldOffset(position, 0)),
+            end: reader.getUint32(reader.fieldOffset(position, 1))
         };
     }
 
@@ -622,15 +622,15 @@ export class Range {
 
     /** @returns {number} */
     start() {
-        return this.#buffer.getUint32(
-            this.#buffer.fieldOffset(this.#position, 0)
+        return this.#reader.getUint32(
+            this.#reader.fieldOffset(this.#position, 0)
         );
     }
 
     /** @returns {number} */
     end() {
-        return this.#buffer.getUint32(
-            this.#buffer.fieldOffset(this.#position, 1)
+        return this.#reader.getUint32(
+            this.#reader.fieldOffset(this.#position, 1)
         );
     }
 
@@ -641,7 +641,7 @@ export class Range {
      * @returns {RangeFields}
      */
     fields() {
-        return Range.read(this.#buffer, this.#position);
+        return Range.read(this.#reader, this.#position);
     }
 }
 
@@ -655,8 +655,8 @@ export class Range {
 
 /** A vector of `Range`s, which reads each item when it's asked for */
 export class RangeVector {
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
     /** @type {number} */
@@ -665,15 +665,15 @@ export class RangeVector {
     /**
      * Views the vector at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @throws {DecodeError} If the vector's count or the ends of its items lie
      * outside the bytes.
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
-        this.#length = buffer.getVectorLength(position);
+        this.#length = reader.getVectorLength(position);
     }
 
     /** @returns {number} The number of items */
@@ -691,8 +691,8 @@ export class RangeVector {
      */
     get(index) {
         return new Range(
-            this.#buffer,
-            this.#buffer.getVectorItemOffset(
+            this.#reader,
+            this.#reader.getVectorItemOffset(
                 this.#position,
                 this.#length,
                 index
@@ -707,11 +707,11 @@ export class RangeVector {
      * @throws {DecodeError} If an item lies outside the bytes.
      */
     fields() {
-        const offsets = this.#buffer.getVectorOffsets(this.#position);
+        const offsets = this.#reader.getVectorOffsets(this.#position);
         const items = /** @type {RangeFields[]} */ (new Array(offsets.length));
 
         for (let i = 0; i < offsets.length; i++) {
-            items[i] = Range.read(this.#buffer, offsets[i]);
+            items[i] = Range.read(this.#reader, offsets[i]);
         }
 
         return items;
@@ -737,35 +737,35 @@ export class Frame {
      */
     static SIZE = 38;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
     /** @type {number} */
     #position;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      */
-    constructor(buffer, position) {
-        this.#buffer = buffer;
+    constructor(reader, position) {
+        this.#reader = reader;
         this.#position = position;
     }
 
     /**
      * Reads every field of the table at `position`, as `fields()` does,
-     * without creating its reader
+     * without creating a `Frame`
      *
-     * @param {ByteBuffer} buffer
+     * @param {TableReader} reader
      * @param {number} position
      * @returns {FrameFields}
      */
-    static read(buffer, position) {
+    static read(reader, position) {
         return {
-            origin: Vec2.read(buffer.bytes(), buffer.fieldOffset(position, 0)),
-            range: Range.read(buffer, buffer.fieldOffset(position, 1)),
-            flags: buffer.getUint16(buffer.fieldOffset(position, 2))
+            origin: Vec2.read(reader.bytes(), reader.fieldOffset(position, 0)),
+            range: Range.read(reader, reader.fieldOffset(position, 1)),
+            flags: reader.getUint16(reader.fieldOffset(position, 2))
         };
     }
 
@@ -829,23 +829,23 @@ export class Frame {
     /** @returns {Vec2} */
     origin() {
         return new Vec2(
-            this.#buffer.bytes(),
-            this.#buffer.fieldOffset(this.#position, 0)
+            this.#reader.bytes(),
+            this.#reader.fieldOffset(this.#position, 0)
         );
     }
 
     /** @returns {Range} */
     range() {
         return new Range(
-            this.#buffer,
-            this.#buffer.fieldOffset(this.#position, 1)
+            this.#reader,
+            this.#reader.fieldOffset(this.#position, 1)
         );
     }
 
     /** @returns {number} */
     flags() {
-        return this.#buffer.getUint16(
-            this.#buffer.fieldOffset(this.#position, 2)
+        return this.#reader.getUint16(
+            this.#reader.fieldOffset(this.#position, 2)
         );
     }
 
@@ -856,7 +856,7 @@ export class Frame {
      * @returns {FrameFields}
      */
     fields() {
-        return Frame.read(this.#buffer, this.#position);
+        return Frame.read(this.#reader, this.#position);
     }
 }
 
@@ -876,12 +876,12 @@ export class Frame {
 export class Tiny {
     static #LAYOUT = TableLayout.create({ sized: true, offsetType: 'uint8' });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Tiny.#LAYOUT);
+        this.#reader = new TableReader(bytes, Tiny.#LAYOUT);
     }
 
     /**
@@ -929,12 +929,12 @@ export class Tiny {
 
     /** @returns {number} */
     id() {
-        return this.#buffer.getUint16(this.#buffer.rootOffset(0));
+        return this.#reader.getUint16(this.#reader.rootOffset(0));
     }
 
     /** @returns {number} */
     kind() {
-        return this.#buffer.getUint8(this.#buffer.rootOffset(1));
+        return this.#reader.getUint8(this.#reader.rootOffset(1));
     }
 
     /**
@@ -945,8 +945,8 @@ export class Tiny {
      */
     fields() {
         return {
-            id: this.#buffer.getUint16(this.#buffer.rootOffset(0)),
-            kind: this.#buffer.getUint8(this.#buffer.rootOffset(1))
+            id: this.#reader.getUint16(this.#reader.rootOffset(0)),
+            kind: this.#reader.getUint8(this.#reader.rootOffset(1))
         };
     }
 }
@@ -976,17 +976,17 @@ export class Tagged {
         offsetType: 'uint8'
     });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Tagged.#LAYOUT);
+        this.#reader = new TableReader(bytes, Tagged.#LAYOUT);
 
-        const version = this.#buffer.getVersion();
+        const version = this.#reader.getVersion();
         if (version !== Tagged.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Tagged.FORMAT_VERSION} of Tagged, got ${version}`
@@ -1003,7 +1003,7 @@ export class Tagged {
      * @throws {DecodeError} If the header doesn't fit in `bytes`.
      */
     static versionOf(bytes) {
-        return new ByteBuffer(bytes, Tagged.#LAYOUT).getVersion();
+        return new TableReader(bytes, Tagged.#LAYOUT).getVersion();
     }
 
     /**
@@ -1070,17 +1070,17 @@ export class Tagged {
 
     /** @returns {number} */
     id() {
-        return this.#buffer.getUint32(this.#buffer.rootOffset(0));
+        return this.#reader.getUint32(this.#reader.rootOffset(0));
     }
 
     /** @returns {Vec2} */
     position() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(1));
     }
 
     /** @returns {string} */
     label() {
-        return this.#buffer.getString(this.#buffer.rootOffset(2));
+        return this.#reader.getString(this.#reader.rootOffset(2));
     }
 
     /**
@@ -1091,12 +1091,12 @@ export class Tagged {
      */
     fields() {
         return {
-            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
+            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
             position: Vec2.read(
-                this.#buffer.bytes(),
-                this.#buffer.rootOffset(1)
+                this.#reader.bytes(),
+                this.#reader.rootOffset(1)
             ),
-            label: this.#buffer.getString(this.#buffer.rootOffset(2))
+            label: this.#reader.getString(this.#reader.rootOffset(2))
         };
     }
 }
@@ -1114,12 +1114,12 @@ export class Tagged {
 export class Header {
     static #LAYOUT = TableLayout.create({ offsetType: 'uint8' });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Header.#LAYOUT);
+        this.#reader = new TableReader(bytes, Header.#LAYOUT);
     }
 
     /**
@@ -1171,17 +1171,17 @@ export class Header {
 
     /** @returns {number} */
     kind() {
-        return this.#buffer.getUint8(this.#buffer.rootOffset(0));
+        return this.#reader.getUint8(this.#reader.rootOffset(0));
     }
 
     /** @returns {number} */
     length() {
-        return this.#buffer.getUint16(this.#buffer.rootOffset(1));
+        return this.#reader.getUint16(this.#reader.rootOffset(1));
     }
 
     /** @returns {Uint8Array} */
     values() {
-        return this.#buffer.getUint8Array(this.#buffer.rootOffset(2));
+        return this.#reader.getUint8Array(this.#reader.rootOffset(2));
     }
 
     /**
@@ -1192,9 +1192,9 @@ export class Header {
      */
     fields() {
         return {
-            kind: this.#buffer.getUint8(this.#buffer.rootOffset(0)),
-            length: this.#buffer.getUint16(this.#buffer.rootOffset(1)),
-            values: this.#buffer.getUint8Array(this.#buffer.rootOffset(2))
+            kind: this.#reader.getUint8(this.#reader.rootOffset(0)),
+            length: this.#reader.getUint16(this.#reader.rootOffset(1)),
+            values: this.#reader.getUint8Array(this.#reader.rootOffset(2))
         };
     }
 }
@@ -1225,17 +1225,17 @@ export class Pixel {
         offsetType: 'uint16'
     });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Pixel.#LAYOUT);
+        this.#reader = new TableReader(bytes, Pixel.#LAYOUT);
 
-        const version = this.#buffer.getVersion();
+        const version = this.#reader.getVersion();
         if (version !== Pixel.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Pixel.FORMAT_VERSION} of Pixel, got ${version}`
@@ -1252,7 +1252,7 @@ export class Pixel {
      * @throws {DecodeError} If the header doesn't fit in `bytes`.
      */
     static versionOf(bytes) {
-        return new ByteBuffer(bytes, Pixel.#LAYOUT).getVersion();
+        return new TableReader(bytes, Pixel.#LAYOUT).getVersion();
     }
 
     /**
@@ -1313,12 +1313,12 @@ export class Pixel {
 
     /** @returns {Vec2} */
     position() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(0));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(0));
     }
 
     /** @returns {number} */
     color() {
-        return this.#buffer.getUint32(this.#buffer.rootOffset(1));
+        return this.#reader.getUint32(this.#reader.rootOffset(1));
     }
 
     /**
@@ -1330,10 +1330,10 @@ export class Pixel {
     fields() {
         return {
             position: Vec2.read(
-                this.#buffer.bytes(),
-                this.#buffer.rootOffset(0)
+                this.#reader.bytes(),
+                this.#reader.rootOffset(0)
             ),
-            color: this.#buffer.getUint32(this.#buffer.rootOffset(1))
+            color: this.#reader.getUint32(this.#reader.rootOffset(1))
         };
     }
 }
@@ -1350,12 +1350,12 @@ export class Pixel {
 export class Strip {
     static #LAYOUT = TableLayout.create({ offsetType: 'uint16' });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Strip.#LAYOUT);
+        this.#reader = new TableReader(bytes, Strip.#LAYOUT);
     }
 
     /**
@@ -1407,17 +1407,17 @@ export class Strip {
 
     /** @returns {number} */
     id() {
-        return this.#buffer.getUint32(this.#buffer.rootOffset(0));
+        return this.#reader.getUint32(this.#reader.rootOffset(0));
     }
 
     /** @returns {Vec2} */
     origin() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#buffer.getUint16Array(this.#buffer.rootOffset(2));
+        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
     }
 
     /**
@@ -1428,9 +1428,9 @@ export class Strip {
      */
     fields() {
         return {
-            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
-            origin: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
-            values: this.#buffer.getUint16Array(this.#buffer.rootOffset(2))
+            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
+            origin: Vec2.read(this.#reader.bytes(), this.#reader.rootOffset(1)),
+            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
         };
     }
 }
@@ -1454,17 +1454,17 @@ export class Box {
 
     static #LAYOUT = TableLayout.create({ versioned: true });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Box.#LAYOUT);
+        this.#reader = new TableReader(bytes, Box.#LAYOUT);
 
-        const version = this.#buffer.getVersion();
+        const version = this.#reader.getVersion();
         if (version !== Box.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Box.FORMAT_VERSION} of Box, got ${version}`
@@ -1481,7 +1481,7 @@ export class Box {
      * @throws {DecodeError} If the header doesn't fit in `bytes`.
      */
     static versionOf(bytes) {
-        return new ByteBuffer(bytes, Box.#LAYOUT).getVersion();
+        return new TableReader(bytes, Box.#LAYOUT).getVersion();
     }
 
     /**
@@ -1553,17 +1553,17 @@ export class Box {
 
     /** @returns {Vec2} */
     min() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(0));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(0));
     }
 
     /** @returns {Vec2} */
     max() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(1));
     }
 
     /** @returns {Range} */
     range() {
-        return new Range(this.#buffer, this.#buffer.rootOffset(2));
+        return new Range(this.#reader, this.#reader.rootOffset(2));
     }
 
     /**
@@ -1574,9 +1574,9 @@ export class Box {
      */
     fields() {
         return {
-            min: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(0)),
-            max: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
-            range: Range.read(this.#buffer, this.#buffer.rootOffset(2))
+            min: Vec2.read(this.#reader.bytes(), this.#reader.rootOffset(0)),
+            max: Vec2.read(this.#reader.bytes(), this.#reader.rootOffset(1)),
+            range: Range.read(this.#reader, this.#reader.rootOffset(2))
         };
     }
 }
@@ -1597,12 +1597,12 @@ export class Box {
 export class Track {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Track.#LAYOUT);
+        this.#reader = new TableReader(bytes, Track.#LAYOUT);
     }
 
     /**
@@ -1666,27 +1666,27 @@ export class Track {
 
     /** @returns {number} */
     id() {
-        return this.#buffer.getUint32(this.#buffer.rootOffset(0));
+        return this.#reader.getUint32(this.#reader.rootOffset(0));
     }
 
     /** @returns {Vec2} */
     origin() {
-        return new Vec2(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+        return new Vec2(this.#reader.bytes(), this.#reader.rootOffset(1));
     }
 
     /** @returns {Frame} */
     frame() {
-        return new Frame(this.#buffer, this.#buffer.rootOffset(2));
+        return new Frame(this.#reader, this.#reader.rootOffset(2));
     }
 
     /** @returns {Float32Array} */
     points() {
-        return this.#buffer.getFloat32Array(this.#buffer.rootOffset(3));
+        return this.#reader.getFloat32Array(this.#reader.rootOffset(3));
     }
 
     /** @returns {string} */
     name() {
-        return this.#buffer.getString(this.#buffer.rootOffset(4));
+        return this.#reader.getString(this.#reader.rootOffset(4));
     }
 
     /**
@@ -1697,11 +1697,11 @@ export class Track {
      */
     fields() {
         return {
-            id: this.#buffer.getUint32(this.#buffer.rootOffset(0)),
-            origin: Vec2.read(this.#buffer.bytes(), this.#buffer.rootOffset(1)),
-            frame: Frame.read(this.#buffer, this.#buffer.rootOffset(2)),
-            points: this.#buffer.getFloat32Array(this.#buffer.rootOffset(3)),
-            name: this.#buffer.getString(this.#buffer.rootOffset(4))
+            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
+            origin: Vec2.read(this.#reader.bytes(), this.#reader.rootOffset(1)),
+            frame: Frame.read(this.#reader, this.#reader.rootOffset(2)),
+            points: this.#reader.getFloat32Array(this.#reader.rootOffset(3)),
+            name: this.#reader.getString(this.#reader.rootOffset(4))
         };
     }
 }
@@ -1721,12 +1721,12 @@ export class Track {
 export class Label {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Label.#LAYOUT);
+        this.#reader = new TableReader(bytes, Label.#LAYOUT);
     }
 
     /**
@@ -1792,7 +1792,7 @@ export class Label {
 
     /** @returns {string} */
     text() {
-        return this.#buffer.getString(this.#buffer.rootOffset(0));
+        return this.#reader.getString(this.#reader.rootOffset(0));
     }
 
     /**
@@ -1803,7 +1803,7 @@ export class Label {
      */
     fields() {
         return {
-            text: this.#buffer.getString(this.#buffer.rootOffset(0))
+            text: this.#reader.getString(this.#reader.rootOffset(0))
         };
     }
 }
@@ -1819,12 +1819,12 @@ export class Label {
 export class Span {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Span.#LAYOUT);
+        this.#reader = new TableReader(bytes, Span.#LAYOUT);
     }
 
     /**
@@ -1900,22 +1900,22 @@ export class Span {
 
     /** @returns {string} */
     name() {
-        return this.#buffer.getString(this.#buffer.rootOffset(0));
+        return this.#reader.getString(this.#reader.rootOffset(0));
     }
 
     /** @returns {Range} */
     range() {
-        return new Range(this.#buffer, this.#buffer.rootOffset(1));
+        return new Range(this.#reader, this.#reader.rootOffset(1));
     }
 
     /** @returns {Frame} */
     frame() {
-        return new Frame(this.#buffer, this.#buffer.rootOffset(2));
+        return new Frame(this.#reader, this.#reader.rootOffset(2));
     }
 
     /** @returns {RangeVector} */
     ranges() {
-        return new RangeVector(this.#buffer, this.#buffer.rootOffset(3));
+        return new RangeVector(this.#reader, this.#reader.rootOffset(3));
     }
 
     /**
@@ -1926,12 +1926,12 @@ export class Span {
      */
     fields() {
         return {
-            name: this.#buffer.getString(this.#buffer.rootOffset(0)),
-            range: Range.read(this.#buffer, this.#buffer.rootOffset(1)),
-            frame: Frame.read(this.#buffer, this.#buffer.rootOffset(2)),
+            name: this.#reader.getString(this.#reader.rootOffset(0)),
+            range: Range.read(this.#reader, this.#reader.rootOffset(1)),
+            frame: Frame.read(this.#reader, this.#reader.rootOffset(2)),
             ranges: new RangeVector(
-                this.#buffer,
-                this.#buffer.rootOffset(3)
+                this.#reader,
+                this.#reader.rootOffset(3)
             ).fields()
         };
     }
@@ -1954,12 +1954,12 @@ export class Span {
 export class Overflow {
     static #LAYOUT = TableLayout.create({ offsetType: 'uint8' });
 
-    /** @type {ByteBuffer} */
-    #buffer;
+    /** @type {TableReader} */
+    #reader;
 
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#buffer = new ByteBuffer(bytes, Overflow.#LAYOUT);
+        this.#reader = new TableReader(bytes, Overflow.#LAYOUT);
     }
 
     /**
@@ -2007,12 +2007,12 @@ export class Overflow {
 
     /** @returns {number} */
     id() {
-        return this.#buffer.getUint8(this.#buffer.rootOffset(0));
+        return this.#reader.getUint8(this.#reader.rootOffset(0));
     }
 
     /** @returns {Block} */
     block() {
-        return new Block(this.#buffer.bytes(), this.#buffer.rootOffset(1));
+        return new Block(this.#reader.bytes(), this.#reader.rootOffset(1));
     }
 
     /**
@@ -2023,8 +2023,8 @@ export class Overflow {
      */
     fields() {
         return {
-            id: this.#buffer.getUint8(this.#buffer.rootOffset(0)),
-            block: Block.read(this.#buffer.bytes(), this.#buffer.rootOffset(1))
+            id: this.#reader.getUint8(this.#reader.rootOffset(0)),
+            block: Block.read(this.#reader.bytes(), this.#reader.rootOffset(1))
         };
     }
 }

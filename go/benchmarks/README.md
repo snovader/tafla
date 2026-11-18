@@ -45,7 +45,7 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as float64s, rather than
 collecting items of its own, and `itemaccess/` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
+- **tafla** reads with `TableReader`'s getters by hand: each item in place,
   from `Vector.GetInPlace()` of the last item or `Vector.ItemsInPlace()`, and
   `GetStructArray()`'s bytes.
 - **tafla-gen** reads with the generated getters, `Items()`, which return
@@ -72,7 +72,7 @@ what each benchmark's call allocates too.
   columns into slices that move into the output.
 - tafla's Go runtime has no `StructWriter` or `readUint32()`. The tafla codec
   writes the fixed-size record with `encoding/binary`, as tafla's README
-  recommends for such records, and reads it with `ByteBuffer`'s getters,
+  recommends for such records, and reads it with `TableReader`'s getters,
   which check each read's range. tafla-gen's struct writes and reads it with
   `encoding/binary`'s functions at fixed offsets, as the `encoding/binary`
   codec does.
@@ -310,7 +310,7 @@ Fastest round in µs per call, and its ratio to tafla's:
   each struct, in 2.0 to 5.6 µs.
 - tafla and `encoding/binary` write the fixed-size record in 8.8 ns alike,
   with the same code, most of it the allocation of its 12 bytes. Reading it
-  takes `encoding/binary` 1.9 ns, tafla-gen 2.9 ns and tafla's `ByteBuffer`
+  takes `encoding/binary` 1.9 ns, tafla-gen 2.9 ns and tafla's `TableReader`
   getters 3.2 ns, which return an error for each read.
 
 Bytes allocated per call, and the allocations that ask for them:
@@ -378,7 +378,7 @@ untrusted input could cause.
 
 The four groups that read tafla's items, from the same run.
 
-Fastest round in µs, and its ratio to `ByteBuffer`'s by hand:
+Fastest round in µs, and its ratio to `TableReader`'s by hand:
 
 | Benchmark                                       | tafla   | tafla-gen      | tafla-gen view  | tafla-gen view A/A |
 | ----------------------------------------------- | ------: | -------------: | --------------: | -----------------: |

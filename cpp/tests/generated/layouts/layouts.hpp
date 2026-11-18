@@ -615,21 +615,21 @@ struct Uint32OffsetsSizedVersionedFields {
 };
 
 inline std::uint32_t Uint8Offsets::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint8Offsets::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint8Offsets::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint8OffsetsFields::serialize() const {
@@ -661,21 +661,21 @@ inline std::size_t Uint8OffsetsFields::serialize_into(std::span<std::uint8_t> by
 }
 
 inline std::uint32_t Uint8OffsetsSized::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint8OffsetsSized::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint8OffsetsSized::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint8OffsetsSizedFields::serialize() const {
@@ -714,25 +714,25 @@ inline Uint8OffsetsVersioned::Uint8OffsetsVersioned(std::span<const std::uint8_t
 }
 
 inline std::uint32_t Uint8OffsetsVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint8OffsetsVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint8OffsetsVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint8OffsetsVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint8OffsetsVersionedFields::serialize() const {
@@ -771,25 +771,25 @@ inline Uint8OffsetsSizedVersioned::Uint8OffsetsSizedVersioned(std::span<const st
 }
 
 inline std::uint32_t Uint8OffsetsSizedVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint8OffsetsSizedVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint8OffsetsSizedVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint8OffsetsSizedVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint8OffsetsSizedVersionedFields::serialize() const {
@@ -821,21 +821,21 @@ inline std::size_t Uint8OffsetsSizedVersionedFields::serialize_into(std::span<st
 }
 
 inline std::uint32_t Uint16Offsets::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint16Offsets::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint16Offsets::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint16OffsetsFields::serialize() const {
@@ -867,21 +867,21 @@ inline std::size_t Uint16OffsetsFields::serialize_into(std::span<std::uint8_t> b
 }
 
 inline std::uint32_t Uint16OffsetsSized::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint16OffsetsSized::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint16OffsetsSized::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint16OffsetsSizedFields::serialize() const {
@@ -920,25 +920,25 @@ inline Uint16OffsetsVersioned::Uint16OffsetsVersioned(std::span<const std::uint8
 }
 
 inline std::uint32_t Uint16OffsetsVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint16OffsetsVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint16OffsetsVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint16OffsetsVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint16OffsetsVersionedFields::serialize() const {
@@ -977,25 +977,25 @@ inline Uint16OffsetsSizedVersioned::Uint16OffsetsSizedVersioned(std::span<const 
 }
 
 inline std::uint32_t Uint16OffsetsSizedVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint16OffsetsSizedVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint16OffsetsSizedVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint16OffsetsSizedVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint16OffsetsSizedVersionedFields::serialize() const {
@@ -1027,21 +1027,21 @@ inline std::size_t Uint16OffsetsSizedVersionedFields::serialize_into(std::span<s
 }
 
 inline std::uint32_t Uint32Offsets::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint32Offsets::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint32Offsets::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint32OffsetsFields::serialize() const {
@@ -1073,21 +1073,21 @@ inline std::size_t Uint32OffsetsFields::serialize_into(std::span<std::uint8_t> b
 }
 
 inline std::uint32_t Uint32OffsetsSized::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint32OffsetsSized::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint32OffsetsSized::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint32OffsetsSizedFields::serialize() const {
@@ -1126,25 +1126,25 @@ inline Uint32OffsetsVersioned::Uint32OffsetsVersioned(std::span<const std::uint8
 }
 
 inline std::uint32_t Uint32OffsetsVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint32OffsetsVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint32OffsetsVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint32OffsetsVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint32OffsetsVersionedFields::serialize() const {
@@ -1183,25 +1183,25 @@ inline Uint32OffsetsSizedVersioned::Uint32OffsetsSizedVersioned(std::span<const 
 }
 
 inline std::uint32_t Uint32OffsetsSizedVersioned::version_of(std::span<const std::uint8_t> bytes) {
-    return ::tafla::ByteBuffer(bytes, LAYOUT).version();
+    return ::tafla::TableReader(bytes, LAYOUT).version();
 }
 
 inline std::uint32_t Uint32OffsetsSizedVersioned::id() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint32(position);
 }
 
 inline std::string_view Uint32OffsetsSizedVersioned::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Uint32OffsetsSizedVersioned::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::Bytes Uint32OffsetsSizedVersionedFields::serialize() const {

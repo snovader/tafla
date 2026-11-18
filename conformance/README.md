@@ -16,6 +16,7 @@ format, several implementations" a checked claim.
 | Rust           | `rust/core/tests/conformance.rs`                                             |
 | Go             | `go/conformance_test.go`                                                     |
 | C++            | `cpp/tests/conformance_test.cpp`                                             |
+| Swift          | `swift/Tests/TaflaTests/ConformanceTests.swift`                              |
 | C#             | `csharp/tests/Tafla.Tests/ConformanceTests.cs`                               |
 
 Each language's CI runs its test when this directory changes.
@@ -135,7 +136,7 @@ the root and `fieldOffset(position, index)` for a field of a nested table read
 in place. A nested table that has no header and its parent's offset type is
 read in place, within its parent's bytes, as `SPEC.md` describes: a vector
 item from its position, from `getVectorOffsets()`. Any other is read as a
-table of its own, with a buffer of its own layout: a vector item from its
+table of its own, with a reader of its own layout: a vector item from its
 bytes, from `getVector()`, and a table field from its position to the end of
 its parent, since its length isn't written. The suite only nests tables
 without a header with `setTable()`.
@@ -178,7 +179,7 @@ rebuilt, since a writer writes the valid case's bytes.
 `case` names the valid case whose table description reads the bytes. Each
 root field before `field` must read the values that the description gives, and
 reading `field`, its offset included, must fail with the implementation's
-decode error: `DecodeError` in TypeScript, Python, Rust and C++,
+decode error: `DecodeError` in TypeScript, Python, Rust, C++ and Swift,
 `DecodeException` in Java and C#, and a `*DecodeError` in Go. Its header isn't
 checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
@@ -192,8 +193,8 @@ An implementation's test loads `cases.json` and:
    the description. Comparing the description with its values replaced by the
    ones read, as the TypeScript and Python tests do, covers every value. The
    TypeScript test compares floats by value, with NaN and negative zero by
-   their names; the Python, Java, Rust, Go, C++ and C# tests compare their
-   bits.
+   their names; the Python, Java, Rust, Go, C++, Swift and C# tests compare
+   their bits.
 2. Builds every valid table from its description and compares its bytes with
    the file.
 3. Reads every equivalent table as its valid case describes it, and compares
@@ -246,7 +247,7 @@ The tests follow each implementation's API where it differs:
 - Rust's `Vector` returns its items' bytes rather than their positions. The
   Rust test reads an item in place from the bytes that `iter_in_place()`
   returns, which start where the item does and end where its parent's do,
-  with a buffer of its parent's offset type, and any other item from the
+  with a reader of its parent's offset type, and any other item from the
   bytes that iterating returns.
 - Each test also finds every vector item from its ends alone, with
   `getVectorOffset()` or Rust's `Vector::get()` and `Vector::get_in_place()`,
@@ -263,3 +264,9 @@ The tests follow each implementation's API where it differs:
 - C++'s `Vector` returns its items' bytes, as Rust's does, and its
   `items_in_place()` the bytes from each item to the end of its parent's, which
   the C++ test reads an item in place from, as the Rust test does.
+- Swift's `Vector` returns its items' bytes too, as Rust's does, from
+  `item(at:)`, and from `itemInPlace(at:)` the bytes from an item to the end
+  of its parent's, which the Swift test reads an item in place from. The
+  test parses `cases.json` with Foundation's `JSONDecoder`, rather than
+  `JSONSerialization`, which drops a leading U+FEFF from a string, as the
+  `strings` case holds.

@@ -11,7 +11,7 @@ from struct import calcsize, iter_unpack, pack, unpack
 from hypothesis import given
 from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
-from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder
+from tafla import SIZEOF_32, DecodeError, TableBuilder, TableReader
 from tafla.types import IntTypeCode
 from tests.byte_order import big_endian_host
 from tests.descriptions import ARRAY_FIELDS
@@ -32,15 +32,15 @@ def strided_views(draw: DrawFn) -> memoryview:
     return memoryview(data).cast(type_code)[::step]
 
 
-class TestByteBuffer(unittest.TestCase):
+class TestTableReader(unittest.TestCase):
     @given(strided_views())
     def test_takes_bytes_only_when_theyre_c_contiguous(self, view: memoryview) -> None:
         """Reads return views of the bytes, which a copy of them wouldn't be"""
         if view.c_contiguous:
-            self.assertEqual(bytes(ByteBuffer(view).bytes()), view.tobytes())
+            self.assertEqual(bytes(TableReader(view).bytes()), view.tobytes())
         else:
             with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
-                ByteBuffer(view)
+                TableReader(view)
 
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     @given(ARRAY_FIELDS, integers(1, 7))
@@ -49,10 +49,10 @@ class TestByteBuffer(unittest.TestCase):
     ) -> None:
         table = {"layout": DEFAULT_LAYOUT, "fields": [field]}
         backing = bytearray(misalignment) + build_table(table).bytes()
-        buffer = ByteBuffer(memoryview(backing)[misalignment:])
+        reader = TableReader(memoryview(backing)[misalignment:])
 
         element = field["type"].removesuffix("[]")
-        values = getattr(buffer, f"get_{element}_array")(buffer.root_offset(0))
+        values = getattr(reader, f"get_{element}_array")(reader.root_offset(0))
 
         self.assertIs(values.obj, backing)
 
@@ -66,7 +66,7 @@ class TestByteBuffer(unittest.TestCase):
             builder.set_int32_array(values)
             serialized = bytes(builder.bytes())
 
-            read = ByteBuffer(serialized).get_int32_array(SIZEOF_32)
+            read = TableReader(serialized).get_int32_array(SIZEOF_32)
 
         self.assertEqual(values.tolist(), [1, -2])
         self.assertEqual(serialized[2 * SIZEOF_32 :], b"\0\0\0\x01\xff\xff\xff\xfe")
@@ -74,7 +74,7 @@ class TestByteBuffer(unittest.TestCase):
         self.assertIsNot(read.obj, serialized)
 
     def test_rejects_struct_sizes_less_than_1(self) -> None:
-        buffer = ByteBuffer(bytes(16))
+        reader = TableReader(bytes(16))
 
         # A size of more digits than Python converts to a string is given by
         # its bit length
@@ -89,7 +89,7 @@ class TestByteBuffer(unittest.TestCase):
                     ValueError, f"must be a positive integer, not {described}"
                 ),
             ):
-                buffer.get_struct_array(0, size)
+                reader.get_struct_array(0, size)
 
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     def test_reads_structs_as_views_of_the_bytes_at_any_alignment(self) -> None:
@@ -98,9 +98,9 @@ class TestByteBuffer(unittest.TestCase):
         builder.set_struct_array(pack("<hfhf", 3, 0.5, 4, -0.5), 6, 4)
 
         backing = bytearray(1) + builder.bytes()
-        buffer = ByteBuffer(memoryview(backing)[1:])
-        struct_bytes = buffer.get_struct(buffer.root_offset(0), 6)
-        array_bytes = buffer.get_struct_array(buffer.root_offset(1), 6)
+        reader = TableReader(memoryview(backing)[1:])
+        struct_bytes = reader.get_struct(reader.root_offset(0), 6)
+        array_bytes = reader.get_struct_array(reader.root_offset(1), 6)
 
         self.assertEqual(unpack("<hf", struct_bytes), (-2, 1.5))
         self.assertEqual(list(iter_unpack("<hf", array_bytes)), [(3, 0.5), (4, -0.5)])
@@ -112,22 +112,22 @@ class TestByteBuffer(unittest.TestCase):
     ) -> None:
         builder = TableBuilder(1)
         builder.set_vector([b"\x01", b"", b"\x02\x03"])
-        buffer = builder.finalize()
-        vector = buffer.root_offset(0)
+        reader = builder.finalize()
+        vector = reader.root_offset(0)
 
         # The count and the three ends, at 4, then the items from 20
-        self.assertEqual(buffer.get_vector_offsets(vector).tolist(), [20, 21, 21])
+        self.assertEqual(reader.get_vector_offsets(vector).tolist(), [20, 21, 21])
         self.assertEqual(
-            [buffer.get_vector_offset(vector, index) for index in range(3)],
+            [reader.get_vector_offset(vector, index) for index in range(3)],
             [20, 21, 21],
         )
         self.assertEqual(
-            [buffer.get_vector_item_offset(vector, 3, index) for index in range(3)],
+            [reader.get_vector_item_offset(vector, 3, index) for index in range(3)],
             [20, 21, 21],
         )
-        self.assertEqual(buffer.get_vector_length(vector), 3)
+        self.assertEqual(reader.get_vector_length(vector), 3)
         self.assertEqual(
-            [bytes(item) for item in buffer.get_vector(vector)],
+            [bytes(item) for item in reader.get_vector(vector)],
             [b"\x01", b"", b"\x02\x03"],
         )
 
@@ -152,33 +152,33 @@ class TestByteBuffer(unittest.TestCase):
             file.flush()
 
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
-                buffer = ByteBuffer(mapped)
+                reader = TableReader(mapped)
                 try:
-                    vector = position + buffer.get_uint32(position)
+                    vector = position + reader.get_uint32(position)
                     # The table's offset, then the vector's count and two ends
                     expected = [position + 16, position + 17]
 
                     self.assertEqual(
-                        buffer.get_vector_offsets(vector).tolist(), expected
+                        reader.get_vector_offsets(vector).tolist(), expected
                     )
                     self.assertEqual(
-                        [buffer.get_vector_offset(vector, index) for index in range(2)],
+                        [reader.get_vector_offset(vector, index) for index in range(2)],
                         expected,
                     )
                     self.assertEqual(
-                        [bytes(item) for item in buffer.get_vector(vector)],
+                        [bytes(item) for item in reader.get_vector(vector)],
                         [b"\x01", b"\x02\x03"],
                     )
                 finally:
                     # Release the views of the map, so that it can close even
                     # when an assertion fails, whose error then surfaces
                     # rather than the map's BufferError
-                    del buffer
+                    del reader
 
     def test_rejects_an_index_outside_a_vector_with_index_error(self) -> None:
         builder = TableBuilder(1)
         builder.set_vector([b"\x01", b"\x02\x03"])
-        buffer = builder.finalize()
+        reader = builder.finalize()
 
         # An index of more digits than Python converts to a string is given by
         # its bit length
@@ -194,14 +194,14 @@ class TestByteBuffer(unittest.TestCase):
                     IndexError, f"Item {described} is outside the vector of 2 at 4"
                 ),
             ):
-                buffer.get_vector_offset(buffer.root_offset(0), index)
+                reader.get_vector_offset(reader.root_offset(0), index)
             with (
                 self.subTest(index=described, count="given"),
                 self.assertRaisesRegex(
                     IndexError, f"Item {described} is outside the vector of 2 at 4"
                 ),
             ):
-                buffer.get_vector_item_offset(buffer.root_offset(0), 2, index)
+                reader.get_vector_item_offset(reader.root_offset(0), 2, index)
 
     @given(binary(max_size=48), integers(-4, 52))
     def test_finds_each_item_from_the_count_given_as_get_vector_offset_finds_it(
@@ -209,19 +209,19 @@ class TestByteBuffer(unittest.TestCase):
     ) -> None:
         """With the count that get_vector_length() returns, each item's
         position or DecodeError is get_vector_offset()'s, for any bytes"""
-        buffer = ByteBuffer(data)
+        reader = TableReader(data)
         try:
-            count = buffer.get_vector_length(position)
+            count = reader.get_vector_length(position)
         except DecodeError:
             return
 
         for index in range(count):
             with self.subTest(index=index):
-                by_count = partial(buffer.get_vector_item_offset, position, count)
+                by_count = partial(reader.get_vector_item_offset, position, count)
                 self.assertEqual(
                     _position_or_error(partial(by_count, index)),
                     _position_or_error(
-                        partial(buffer.get_vector_offset, position, index)
+                        partial(reader.get_vector_offset, position, index)
                     ),
                 )
 
@@ -229,11 +229,11 @@ class TestByteBuffer(unittest.TestCase):
         self,
     ) -> None:
         # A count of 3, whose ends need 12 bytes after it, where 4 are left
-        buffer = ByteBuffer(bytes([3, 0, 0, 0, 8, 0, 0, 0]))
+        reader = TableReader(bytes([3, 0, 0, 0, 8, 0, 0, 0]))
 
         for index in [0, 3]:
             with self.subTest(index=index), self.assertRaises(DecodeError):
-                buffer.get_vector_offset(0, index)
+                reader.get_vector_offset(0, index)
 
 
 def _position_or_error(find: Callable[[], int]) -> int | str:

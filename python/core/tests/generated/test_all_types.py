@@ -10,7 +10,7 @@ from typing import Any, NamedTuple
 from hypothesis import example, given
 from hypothesis.strategies import binary, integers, lists, one_of
 
-from tafla import ByteBuffer, DecodeError, TableLayout
+from tafla import DecodeError, TableLayout, TableReader
 from tests.generated import SETTINGS
 from tests.generated.all_types.all_types import (
     Arrays,
@@ -196,7 +196,7 @@ class TestTablesBuiltByHand(unittest.TestCase):
         than 0 as true"""
         data = bytearray(Scalars.serialize(**fields))
         # The bool is Scalars' field 10, in a table of the default layout
-        position = ByteBuffer(data, TableLayout.DEFAULT).root_offset(10)
+        position = TableReader(data, TableLayout.DEFAULT).root_offset(10)
         data[position] = byte
 
         self.assertIs(Scalars(data).bool_(), True)

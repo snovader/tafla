@@ -1,7 +1,7 @@
 /**
  * Binary tables of scalars, structs, strings and arrays.
  * {@link io.github.snovader.tafla.TableBuilder} writes a table at its exact size, copying arrays in
- * bulk, and {@link io.github.snovader.tafla.ByteBuffer} reads fields back by offset, into Java
+ * bulk, and {@link io.github.snovader.tafla.TableReader} reads fields back by offset, into Java
  * arrays. Every read checks that it stays within the bytes it was given. The TypeScript and Python
  * implementations write and read the same bytes.
  *
@@ -27,15 +27,15 @@
  * builder.setTable(series); // written straight into the table
  * byte[] bytes = builder.bytes();
  *
- * var buffer = new ByteBuffer(bytes, layout);
- * if (buffer.getVersion() != formatVersion) {
+ * var reader = new TableReader(bytes, layout);
+ * if (reader.getVersion() != formatVersion) {
  *     throw new IllegalStateException("Unsupported format version");
  * }
  *
- * double latitude = buffer.getFloat64(buffer.rootOffset(0));
- * String timeZone = buffer.getString(buffer.rootOffset(1));
- * int table = buffer.rootOffset(2);
- * float[] values = buffer.getFloat32Array(buffer.fieldOffset(table, 1));
+ * double latitude = reader.getFloat64(reader.rootOffset(0));
+ * String timeZone = reader.getString(reader.rootOffset(1));
+ * int table = reader.rootOffset(2);
+ * float[] values = reader.getFloat32Array(reader.fieldOffset(table, 1));
  * }
  *
  * <p>Records at fixed offsets without a header or offsets, such as stream frames, are better
@@ -131,7 +131,7 @@
  * <p>Validation is always on:</p>
  *
  * <ul>
- *   <li>Every read checks its range against the bytes the {@code ByteBuffer} was given, and throws
+ *   <li>Every read checks its range against the bytes the {@code TableReader} was given, and throws
  *     a {@link io.github.snovader.tafla.DecodeException} if it would leave them. Strings must be valid
  *     UTF-8, and a vector item must start no later than it ends. A truncated or corrupted buffer
  *     therefore throws rather than returning values from outside it.</li>
@@ -146,7 +146,7 @@
  * <p>Using the API wrongly throws other exceptions, whatever the bytes:</p>
  *
  * <ul>
- *   <li>{@code ByteBuffer} throws an {@link IllegalArgumentException} for a struct size below 1,
+ *   <li>{@code TableReader} throws an {@link IllegalArgumentException} for a struct size below 1,
  *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} and
  *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
  *     vector, or the count it's given.</li>

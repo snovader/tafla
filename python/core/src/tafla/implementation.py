@@ -54,20 +54,20 @@ _native_module = _import_native()
 IMPLEMENTATION: Final[Literal["native", "python"]] = (
     "python" if _native_module is None else "native"
 )
-"""The implementation of ``ByteBuffer``, ``FixedFields``, ``TableLayout`` and
+"""The implementation of ``TableReader``, ``FixedFields``, ``TableLayout`` and
 ``TableWriter`` that ``tafla`` uses: ``"native"`` or ``"python"``."""
 
 # Type checkers see the pure-Python classes, whose API the native ones share,
 # with the types that they declare, such as TableLayout's type argument
 if TYPE_CHECKING or _native_module is None:
-    from .byte_buffer import ByteBuffer
     from .fixed_fields import FixedFields
     from .layout import TableLayout
+    from .table_reader import TableReader
     from .table_writer import TableWriter
 else:
-    ByteBuffer = _native_module.ByteBuffer
+    TableReader = _native_module.TableReader
     FixedFields = _native_module.FixedFields
     TableLayout = _native_module.TableLayout
     TableWriter = _native_module.TableWriter
 
-__all__ = ["IMPLEMENTATION", "ByteBuffer", "FixedFields", "TableLayout", "TableWriter"]
+__all__ = ["IMPLEMENTATION", "TableReader", "FixedFields", "TableLayout", "TableWriter"]

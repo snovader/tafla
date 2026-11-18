@@ -6,7 +6,7 @@ JavaScript libraries. Run both from `typescript/`.
 
 ## Getters and setters
 
-`yarn bench` times `ByteBuffer`'s getters and `TableBuilder`'s setters of
+`yarn bench` times `TableReader`'s getters and `TableBuilder`'s setters of
 each element type, from int8 to float64, in five groups:
 
 - **primitive getters** read every field of a table of 1000 fields of one
@@ -81,7 +81,7 @@ tafla is timed twice, and both write the same bytes:
 
 - **tafla** writes each table with a `TableBuilder` by hand, recording its
   nested tables among the builder's fields with `setTableInPlace()` and
-  `setVectorInPlace()`, and reads the tables with `ByteBuffer`'s getters.
+  `setVectorInPlace()`, and reads the tables with `TableReader`'s getters.
 - **tafla-gen** is the code that tafla-gen generates from
   `comparison/workloads.tafla`, in `comparison/generated/tafla/`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then writes
@@ -108,7 +108,7 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
 of its own, and `comparison/itemAccess.ts` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
+- **tafla** reads with `TableReader`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`
   with `readFloat32()`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
@@ -271,7 +271,7 @@ Bytes allocated on V8's heap per call, which leave out the contents of
   0.85 µs, by the same `StructWriter` sequence, into a table that the
   writer sizes rather than a builder.
 - The generated readers read the record and the documents within 6% of the
-  hand-written reads, which call the same `ByteBuffer` getters. They're
+  hand-written reads, which call the same `TableReader` getters. They're
   slower where they create objects of their own: the vector's reader creates
   an `Item` and a `Pair` for each item, and the array's reader a `Triple` for
   each struct, from which the codec creates the workload's items. Reading the
@@ -290,7 +290,7 @@ sum of the array of structs: 1.20 µs rather than 1.33 µs. V8 resizes its young
 generation as a process allocates, which moved that sum between 1.1 and 4.8
 µs from one process to another while the views were designed.
 
-Fastest call in µs, and its ratio to `ByteBuffer`'s by hand:
+Fastest call in µs, and its ratio to `TableReader`'s by hand:
 
 | Benchmark                                       | tafla |      tafla-gen | tafla-gen view | tafla-gen view A/A |
 | ----------------------------------------------- | ----: | -------------: | -------------: | -----------------: |
@@ -308,7 +308,7 @@ Bytes allocated on V8's heap per call:
 | array of 100 structs: read the last item        |   328 |    10,807 |            496 |                496 |
 | array of 100 structs: sum every item            |   328 |    10,809 |         10,001 |             10,001 |
 
-- The views read the last item without reading the others, as `ByteBuffer`
+- The views read the last item without reading the others, as `TableReader`
   does by hand: 0.092 µs against 0.091 µs for the vector, and 0.115 µs
   against 0.103 µs for the array, 12 times faster than the getters, which
   read all 100 items first.

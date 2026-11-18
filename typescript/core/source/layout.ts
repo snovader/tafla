@@ -28,7 +28,7 @@ const OFFSET_SIZES: Readonly<Record<OffsetType, OffsetSize>> = {
 /**
  * The header and offset type of a table. A format creates its layout once
  * and passes it to both the `TableBuilder` that writes the table and the
- * `ByteBuffer` that reads it, so that the two can't disagree. Nested tables
+ * `TableReader` that reads it, so that the two can't disagree. Nested tables
  * use {@link TableLayout.DEFAULT}.
  *
  * `Versioned` lets TypeScript require a version where a versioned table is

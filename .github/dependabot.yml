@@ -62,6 +62,13 @@ updates:
     schedule:
       interval: "daily"
 
+  # The property tests' library, which only the tests depend on, and which
+  # Package.resolved pins. The runtime depends on nothing.
+  - package-ecosystem: "swift"
+    directory: "/swift"
+    schedule:
+      interval: "daily"
+
   # The tests' packages, which Directory.Packages.props pins and their
   # packages.lock.json locks. The runtime depends on none. global.json's SDK
   # is a minimum, 10.0.100 or a later feature band, and CI installs the

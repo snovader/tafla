@@ -23,8 +23,8 @@ tafla = { path = "../core" }
 tafla-gen = { path = "../gen" }
 
 [[bin]]
-name = "byte_buffer"
-path = "fuzz_targets/byte_buffer.rs"
+name = "table_reader"
+path = "fuzz_targets/table_reader.rs"
 test = false
 doc = false
 bench = false

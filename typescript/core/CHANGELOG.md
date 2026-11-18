@@ -19,11 +19,11 @@ repository's first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - Bounds-checked reads, which fail on malformed input with `DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
-- `ByteBuffer.getVectorItemOffset()`, which finds a vector item from the count
+- `TableReader.getVectorItemOffset()`, which finds a vector item from the count
   that `getVectorLength()` read, so that a reader of several items reads and
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
@@ -53,25 +53,26 @@ repository's first commits, for code built from its source before the release.
 
 - The project is named tafla rather than buffy, and the package is `tafla`
   rather than `@buffy/core`.
+- The class that reads a table is `TableReader` rather than `ByteBuffer`.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
-- `ByteBuffer.getVectorOffsets()` returns a `number[]` rather than a
+- `TableReader.getVectorOffsets()` returns a `number[]` rather than a
   `Uint32Array`, so that positions past 4 GiB are exact.
-- `ByteBuffer` checks each read against its bytes' length at the time of the
+- `TableReader` checks each read against its bytes' length at the time of the
   read, so bytes made over a resizable buffer without a length follow the
   buffer as it's resized. A read past them still throws a `DecodeError`.
-- `ByteBuffer` reads offsets, field offsets and vector items in less
+- `TableReader` reads offsets, field offsets and vector items in less
   bytecode, with their failures out of line, so that V8 inlines them into
   their callers: a loop that reads a vector's nested tables through a
   generated view's `get(i)` inlines every read. It throws the same errors. In
-  the comparison suite in Node 27, `ByteBuffer`'s getters summed the vector of
+  the comparison suite in Node 27, `TableReader`'s getters summed the vector of
   100 nested tables in 0.75 µs rather than 1.19, and tafla-gen's view in
   0.91 µs rather than 1.85. `getVectorLength()` and `getVectorItemOffset()`
   check a vector's ends with one comparison, which takes the vector's position
   to be an integer, as `rootOffset()` and `fieldOffset()` find it.
-- `ByteBuffer.getString()` reads a string of up to 32 bytes of ASCII a byte
+- `TableReader.getString()` reads a string of up to 32 bytes of ASCII a byte
   at a time, without a view of its bytes or a `TextDecoder`, and any other
   string with the fatal decoder as before, so it reads the same strings and
   throws the same `DecodeError`. The comparison suite read its record, whose
@@ -112,7 +113,7 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- `ByteBuffer` only reads tables, and its setters are removed, with
+- `TableReader` only reads tables, and its setters are removed, with
   `reset()`. Tables are written with `TableBuilder`, or with `TableWriter` and
   `TableSizer`, and structs and other records at fixed offsets with
   `StructWriter`.
@@ -121,7 +122,7 @@ repository's first commits, for code built from its source before the release.
 
 - A struct writer whose write threw no longer breaks later writes.
 - `TableWriter` writes padding as zeros and never writes past its bytes.
-- `ByteBuffer` fails with `DecodeError` on a detached or shrunk buffer.
+- `TableReader` fails with `DecodeError` on a detached or shrunk buffer.
 - The runtime rejects an alignment other than 1, 2, 4 or 8, as Java's does,
   rather than padding to it or dividing by zero.
 - `TableSizer` accepts a struct of 0 bytes and rejects an array of 0-byte

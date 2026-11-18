@@ -17,10 +17,10 @@ import java.util.*;
  * {@code long}, except for {@code uint64}, which Java has no wider type for: it's read into a
  * {@code long} with the same bits, for {@link Long#toUnsignedString} and the like.</p>
  */
-public final class ByteBuffer {
+public final class TableReader {
     private final byte[] bytes;
     /** A little-endian view of the bytes, which the array, struct and element views slice */
-    private final java.nio.ByteBuffer view;
+    private final ByteBuffer view;
 
     private final boolean sized;
     private final boolean versioned;
@@ -29,13 +29,13 @@ public final class ByteBuffer {
     /** The byte length of the header slots before the root's field offsets */
     private final int headerSize;
 
-    public ByteBuffer(byte[] bytes) {
+    public TableReader(byte[] bytes) {
         this(bytes, TableLayout.DEFAULT);
     }
 
-    public ByteBuffer(byte[] bytes, TableLayout layout) {
+    public TableReader(byte[] bytes, TableLayout layout) {
         this.bytes = bytes;
-        this.view = java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+        this.view = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
 
         this.sized = layout.sized();
         this.versioned = layout.versioned();
@@ -59,7 +59,7 @@ public final class ByteBuffer {
      * Returns the version that the table's header carries after its length. It's as wide as the
      * header's other slots, and read unsigned.
      *
-     * @throws IllegalStateException if the buffer's layout isn't versioned
+     * @throws IllegalStateException if the reader's layout isn't versioned
      */
     public long getVersion() {
         if (!versioned) {
@@ -247,12 +247,12 @@ public final class ByteBuffer {
     // Viewing three columns of 100,000 elements took 0.04 µs and 448 bytes, against 47 µs and
     // 1.6 MB to copy them into arrays.
 
-    public java.nio.ByteBuffer getInt8ArrayView(int position) {
+    public ByteBuffer getInt8ArrayView(int position) {
         return arrayView(position, Byte.BYTES);
     }
 
     /** {@return a view of the {@code uint8} array at {@code position}, as bytes with the same bits} */
-    public java.nio.ByteBuffer getUint8ArrayView(int position) {
+    public ByteBuffer getUint8ArrayView(int position) {
         return arrayView(position, Byte.BYTES);
     }
 
@@ -292,7 +292,7 @@ public final class ByteBuffer {
     }
 
     /** {@return a read-only, little-endian view of the elements of the array at {@code position}} */
-    private java.nio.ByteBuffer arrayView(int position, int elementSize) {
+    private ByteBuffer arrayView(int position, int elementSize) {
         var byteLength = arrayLength(position, elementSize) * elementSize;
         return readOnlyView(position + offsetSize, byteLength);
     }
@@ -306,7 +306,7 @@ public final class ByteBuffer {
      * @throws DecodeException if the struct isn't within the bytes
      * @throws IllegalArgumentException if {@code size} is negative
      */
-    public java.nio.ByteBuffer getStruct(int position, int size) {
+    public ByteBuffer getStruct(int position, int size) {
         if (size < 0) {
             throw new IllegalArgumentException(String.format("A struct's size can't be negative: %d", size));
         }
@@ -326,7 +326,7 @@ public final class ByteBuffer {
      * @throws DecodeException if the count or the structs aren't within the bytes
      * @throws IllegalArgumentException if {@code size} is less than 1
      */
-    public java.nio.ByteBuffer getStructArray(int position, int size) {
+    public ByteBuffer getStructArray(int position, int size) {
         assertStructSize(size);
 
         var byteLength = arrayLength(position, size) * size;
@@ -337,7 +337,7 @@ public final class ByteBuffer {
      * {@return a read-only, little-endian view of the {@code byteLength} bytes from
      * {@code position}}, which a caller has checked lie within the bytes
      */
-    private java.nio.ByteBuffer readOnlyView(int position, int byteLength) {
+    private ByteBuffer readOnlyView(int position, int byteLength) {
         // A slice and a read-only buffer are big-endian, whatever their source's order
         return view.slice(position, byteLength).asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
     }
@@ -362,7 +362,7 @@ public final class ByteBuffer {
      * {@return a little-endian view of the {@code byteLength} bytes after the length at
      * {@code position}}
      */
-    private java.nio.ByteBuffer elementsAt(int position, int byteLength) {
+    private ByteBuffer elementsAt(int position, int byteLength) {
         return view.slice(position + offsetSize, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 

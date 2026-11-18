@@ -1,7 +1,7 @@
 // Reads a table's fields from bytes, checking every read.
 
-#ifndef TAFLA_BYTE_BUFFER_HPP
-#define TAFLA_BYTE_BUFFER_HPP
+#ifndef TAFLA_TABLE_READER_HPP
+#define TAFLA_TABLE_READER_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -29,14 +29,14 @@ namespace tafla {
 ///
 /// Arrays, strings, structs and vector items are read in place, as views of
 /// the bytes rather than copies, so they're valid for as long as the bytes
-/// are. A `ByteBuffer` is two pointers and its layout, which is cheap to
+/// are. A `TableReader` is two pointers and its layout, which is cheap to
 /// make for each read: with a layout that's a constant, as tafla-gen's code
 /// makes it, the compiler reads offsets of that type without branching on
 /// it.
 template <bool Versioned = false>
-class ByteBuffer {
+class TableReader {
 public:
-    constexpr ByteBuffer(std::span<const std::uint8_t> bytes, TableLayout<Versioned> layout) noexcept
+    constexpr TableReader(std::span<const std::uint8_t> bytes, TableLayout<Versioned> layout) noexcept
         : data_(bytes.data()), size_(bytes.size()), layout_(layout) {}
 
     [[nodiscard]] constexpr std::span<const std::uint8_t> bytes() const noexcept {
@@ -198,7 +198,7 @@ public:
 
     /// Returns the bytes from the table at `position` to the end of the
     /// bytes, which a table nested in a field is read from in place, at
-    /// position 0, with a `ByteBuffer` of its parent's offset type, as a
+    /// position 0, with a `TableReader` of its parent's offset type, as a
     /// vector's item is from `Vector::get_in_place()`. Its fields are checked
     /// when they're read.
     ///
@@ -305,7 +305,7 @@ private:
 };
 
 template <bool Versioned>
-ByteBuffer(std::span<const std::uint8_t>, TableLayout<Versioned>) -> ByteBuffer<Versioned>;
+TableReader(std::span<const std::uint8_t>, TableLayout<Versioned>) -> TableReader<Versioned>;
 
 }  // namespace tafla
 

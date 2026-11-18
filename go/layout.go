@@ -91,7 +91,7 @@ func (a Alignment) mustBeValid() {
 // TableLayout is the header and offset type of a table.
 //
 // A format creates its layout once and passes it to both the [TableBuilder]
-// that writes the table and the [ByteBuffer] that reads it, so that the two
+// that writes the table and the [TableReader] that reads it, so that the two
 // can't disagree. The zero TableLayout is the default: no header slots, and
 // offsets of the offset type [Uint32]. Nested tables use it.
 //

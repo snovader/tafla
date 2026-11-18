@@ -18,7 +18,7 @@ export function decode(bytes: Uint8Array): string {
  * {@link SHORT_STRING} bytes below 0x80, which UTF-8 decodes to the same code
  * points. Otherwise it returns `undefined`, for `decode()` to read them.
  *
- * Through `ByteBuffer.getString()`, the loop read 8, 16 and 32 bytes of
+ * Through `TableReader.getString()`, the loop read 8, 16 and 32 bytes of
  * ASCII in 30, 45 and 78 ns in Node 26, and in 28, 43 and 72 ns in Node 27,
  * where `decode()` took 84–89 ns for any of them, and broke even at about 37
  * bytes in Node 26 and 41 in Node 27. A string with a byte of 0x80 or more

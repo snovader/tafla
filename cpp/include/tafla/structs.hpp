@@ -53,7 +53,7 @@ public:
     constexpr StructArray() noexcept = default;
 
     /// Views the structs whose bytes `bytes` hold, one after another, as
-    /// `ByteBuffer::get_struct_array()` returns them. A remainder shorter
+    /// `TableReader::get_struct_array()` returns them. A remainder shorter
     /// than a struct is left out.
     constexpr explicit StructArray(std::span<const std::uint8_t> bytes) noexcept
         : bytes_(bytes.data()), size_(bytes.size() / T::SIZE) {}

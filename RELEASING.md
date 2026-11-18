@@ -18,6 +18,11 @@ own.
 | `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`       | `go/CHANGELOG.md`              |
 
 The C++ headers aren't published yet, and have no version.
+The Swift package isn't published yet, and has no version either, but
+`swift/CHANGELOG.md` records its changes until its first release. SwiftPM
+resolves a package's versions from tags of the form `<version>`, with its
+`Package.swift` at the root of the repository, so how it's published is still
+to be decided.
 The C# runtime isn't published to NuGet yet, and has no version either, but
 `csharp/CHANGELOG.md` records its changes until its first release.
 

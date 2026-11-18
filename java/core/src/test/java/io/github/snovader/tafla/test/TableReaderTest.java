@@ -13,10 +13,10 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests of {@link ByteBuffer}'s reads, from bytes that the JDK's own little-endian buffer writes as
+ * Tests of {@link TableReader}'s reads, from bytes that the JDK's own little-endian buffer writes as
  * {@code SPEC.md} lays them out, so that they don't depend on tafla's writers.
  */
-public class ByteBufferTest {
+public class TableReaderTest {
     /**
      * Values are written after {@code start} bytes, so that scalars, and the views of arrays and
      * structs, lie at any alignment and start within the bytes, as in tables
@@ -42,24 +42,24 @@ public class ByteBufferTest {
         var bytes = new byte[start + (int) Descriptions.maxLength(field, layout.width())];
         Arrays.fill(bytes, 0, start, (byte) 0xff);
         put(littleEndian(bytes).position(start), field, layout.width());
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var reader = new TableReader(bytes, layout.tableLayout());
 
-        assertEquals(field, readAt(buffer, start, field));
+        assertEquals(field, readAt(reader, start, field));
 
         // After a count of 1 or 2 bytes, the elements aren't aligned
         if (field instanceof ArrayField array) {
-            assertArrayEquals(array.values(), array.type().readArrayView(buffer, start));
+            assertArrayEquals(array.values(), array.type().readArrayView(reader, start));
         }
     }
 
     /** {@return the scalar, array, string, struct or array of structs of the field's type at {@code position}} */
-    private static FieldDescription readAt(ByteBuffer buffer, int position, FieldDescription field) {
+    private static FieldDescription readAt(TableReader reader, int position, FieldDescription field) {
         return switch (field) {
-            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
-            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
-            case StringField ignored -> new StringField(buffer.getString(position));
-            case StructField struct -> StructBytes.read(buffer, position, struct.types());
-            case StructArrayField array -> StructBytes.readArray(buffer, position, array.fields());
+            case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
+            case ArrayField array -> new ArrayField(array.type(), array.type().readArray(reader, position));
+            case StringField ignored -> new StringField(reader.getString(position));
+            case StructField struct -> StructBytes.read(reader, position, struct.types());
+            case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());
             default -> throw new IllegalArgumentException("Not a value: " + field);
         };
     }
@@ -75,24 +75,24 @@ public class ByteBufferTest {
 
         var bytes = new byte[byteLength];
         putVector(littleEndian(bytes), items, width);
-        var buffer = new ByteBuffer(bytes, TableLayout.builder().offsetType(offsetType).build());
+        var reader = new TableReader(bytes, TableLayout.builder().offsetType(offsetType).build());
 
         var vector = items.toArray(byte[][]::new);
-        int[] offsets = buffer.getVectorOffsets(0);
+        int[] offsets = reader.getVectorOffsets(0);
         for (int i = 0; i < vector.length; i++) {
-            assertArrayEquals(vector[i], Arrays.copyOfRange(buffer.bytes(), offsets[i], offsets[i] + vector[i].length));
-            assertEquals(offsets[i], buffer.getVectorOffset(0, i));
+            assertArrayEquals(vector[i], Arrays.copyOfRange(reader.bytes(), offsets[i], offsets[i] + vector[i].length));
+            assertEquals(offsets[i], reader.getVectorOffset(0, i));
         }
 
         // In order, each item starting at the end of the one before it
-        var start = buffer.getVectorItemsStart(0, buffer.getVectorLength(0));
+        var start = reader.getVectorItemsStart(0, reader.getVectorLength(0));
         for (int i = 0; i < vector.length; i++) {
             assertEquals(offsets[i], start, "Item " + i);
-            start = buffer.getVectorItemEnd(0, i, start);
+            start = reader.getVectorItemEnd(0, i, start);
             assertEquals(offsets[i] + vector[i].length, start, "The end of item " + i);
         }
-        assertEquals(vector.length, buffer.getVectorLength(0));
-        assertArrayEquals(vector, buffer.getVector(0));
+        assertEquals(vector.length, reader.getVectorLength(0));
+        assertArrayEquals(vector, reader.getVector(0));
     }
 
     // Values as SPEC.md lays them out, put with the JDK's buffer, with counts, offsets and ends of
@@ -177,21 +177,21 @@ public class ByteBufferTest {
     void should_find_each_vector_item_from_its_ends_as_reading_every_item_finds_it() {
         var builder = new TableBuilder(1);
         builder.setVector(new byte[][] {{1}, {}, {2, 3}});
-        var buffer = new ByteBuffer(builder.bytes());
-        var vector = buffer.rootOffset(0);
+        var reader = new TableReader(builder.bytes());
+        var vector = reader.rootOffset(0);
 
         // The count at 4 and the three ends, 17, 17 and 19 from there, then the items from 20
         var countAndEnds = new byte[] {3, 0, 0, 0, 17, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0};
-        assertArrayEquals(countAndEnds, Arrays.copyOfRange(buffer.bytes(), vector, 20));
+        assertArrayEquals(countAndEnds, Arrays.copyOfRange(reader.bytes(), vector, 20));
 
         var offsets = new int[] {20, 21, 21};
-        assertArrayEquals(offsets, buffer.getVectorOffsets(vector));
+        assertArrayEquals(offsets, reader.getVectorOffsets(vector));
         for (int i = 0; i < offsets.length; i++) {
-            assertEquals(offsets[i], buffer.getVectorOffset(vector, i), "Item " + i);
-            assertEquals(offsets[i], buffer.getVectorItemOffset(vector, 3, i), "Item " + i + " of 3");
+            assertEquals(offsets[i], reader.getVectorOffset(vector, i), "Item " + i);
+            assertEquals(offsets[i], reader.getVectorItemOffset(vector, 3, i), "Item " + i + " of 3");
         }
-        assertEquals(3, buffer.getVectorLength(vector));
-        assertArrayEquals(new byte[][] {{1}, {}, {2, 3}}, buffer.getVector(vector));
+        assertEquals(3, reader.getVectorLength(vector));
+        assertArrayEquals(new byte[][] {{1}, {}, {2, 3}}, reader.getVector(vector));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
@@ -202,11 +202,11 @@ public class ByteBufferTest {
 
         var builder = new TableBuilder(1);
         builder.setVector(new byte[][] {{1}, {2, 3}});
-        var buffer = new ByteBuffer(builder.bytes());
+        var reader = new TableReader(builder.bytes());
 
-        var exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorOffset(4, index));
+        var exception = assertThrows(IndexOutOfBoundsException.class, () -> reader.getVectorOffset(4, index));
         assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
-        exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorItemOffset(4, 2, index));
+        exception = assertThrows(IndexOutOfBoundsException.class, () -> reader.getVectorItemOffset(4, 2, index));
         assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
     }
 
@@ -215,9 +215,9 @@ public class ByteBufferTest {
         @ForAll @IntRange(min = 0, max = 3) int index
     ) {
         // A count of 3, whose ends need 12 bytes after it, where 4 are left
-        var buffer = new ByteBuffer(new byte[] {3, 0, 0, 0, 8, 0, 0, 0});
+        var reader = new TableReader(new byte[] {3, 0, 0, 0, 8, 0, 0, 0});
 
-        assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, index));
+        assertThrows(DecodeException.class, () -> reader.getVectorOffset(0, index));
     }
 
     @Example
@@ -226,9 +226,9 @@ public class ByteBufferTest {
         var builder = new TableBuilder(2);
         builder.setUint8((short) 7);
         builder.setStruct(new byte[] {0x34, 0x12, 0, 0, (byte) 0xc0, 0x3f});
-        var buffer = new ByteBuffer(builder.bytes());
+        var reader = new TableReader(builder.bytes());
 
-        var struct = buffer.getStruct(buffer.rootOffset(1), 6);
+        var struct = reader.getStruct(reader.rootOffset(1), 6);
         assertTrue(struct.isReadOnly());
         assertEquals(ByteOrder.LITTLE_ENDIAN, struct.order());
         assertEquals(6, struct.remaining());
@@ -241,9 +241,9 @@ public class ByteBufferTest {
     void struct_array_views_hold_every_struct_after_the_count() {
         // A uint16 count of 2, and then structs of a uint16 and a uint8
         var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
-        var buffer = new ByteBuffer(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, layout);
+        var reader = new TableReader(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, layout);
 
-        var structs = buffer.getStructArray(0, 3);
+        var structs = reader.getStructArray(0, 3);
         assertTrue(structs.isReadOnly());
         assertEquals(ByteOrder.LITTLE_ENDIAN, structs.order());
         assertEquals(2, structs.remaining() / 3);
@@ -255,48 +255,48 @@ public class ByteBufferTest {
 
     @Example
     void should_reject_a_struct_size_below_1_or_below_0_for_a_single_struct() {
-        var buffer = new ByteBuffer(new byte[Integer.BYTES + 4]);
+        var reader = new TableReader(new byte[Integer.BYTES + 4]);
 
-        var exception = assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, 0));
+        var exception = assertThrows(IllegalArgumentException.class, () -> reader.getStructArray(0, 0));
         assertEquals("A struct's size must be positive, not 0", exception.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, -2));
-        assertThrows(IllegalArgumentException.class, () -> buffer.getStruct(0, -1));
-        assertEquals(0, buffer.getStruct(8, 0).remaining());
+        assertThrows(IllegalArgumentException.class, () -> reader.getStructArray(0, -2));
+        assertThrows(IllegalArgumentException.class, () -> reader.getStruct(0, -1));
+        assertEquals(0, reader.getStruct(8, 0).remaining());
     }
 
     @Example
     void should_reject_a_size_beyond_the_buffer_before_allocating_for_it() {
-        var buffer = new ByteBuffer(withSize(Integer.MAX_VALUE, 4));
+        var reader = new TableReader(withSize(Integer.MAX_VALUE, 4));
 
-        assertThrows(DecodeException.class, () -> buffer.getUint8Array(0));
-        assertThrows(DecodeException.class, () -> buffer.getUint16Array(0));
-        assertThrows(DecodeException.class, () -> buffer.getUint32Array(0));
-        assertThrows(DecodeException.class, () -> buffer.getUint8ArrayView(0));
-        assertThrows(DecodeException.class, () -> buffer.getUint32ArrayView(0));
-        assertThrows(DecodeException.class, () -> buffer.getString(0));
-        assertThrows(DecodeException.class, () -> buffer.getStructArray(0, 1));
-        assertThrows(DecodeException.class, () -> buffer.getVectorLength(0));
-        assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
-        assertThrows(DecodeException.class, () -> buffer.getVectorOffsets(0));
-        assertThrows(DecodeException.class, () -> buffer.getVector(0));
+        assertThrows(DecodeException.class, () -> reader.getUint8Array(0));
+        assertThrows(DecodeException.class, () -> reader.getUint16Array(0));
+        assertThrows(DecodeException.class, () -> reader.getUint32Array(0));
+        assertThrows(DecodeException.class, () -> reader.getUint8ArrayView(0));
+        assertThrows(DecodeException.class, () -> reader.getUint32ArrayView(0));
+        assertThrows(DecodeException.class, () -> reader.getString(0));
+        assertThrows(DecodeException.class, () -> reader.getStructArray(0, 1));
+        assertThrows(DecodeException.class, () -> reader.getVectorLength(0));
+        assertThrows(DecodeException.class, () -> reader.getVectorOffset(0, 0));
+        assertThrows(DecodeException.class, () -> reader.getVectorOffsets(0));
+        assertThrows(DecodeException.class, () -> reader.getVector(0));
     }
 
     @Example
     void should_reject_a_size_whose_byte_length_overflows_an_int() {
         // 2^29 + 1 doubles take 2^32 + 8 bytes, which an int wraps around to 8
-        var buffer = new ByteBuffer(withSize((1 << 29) + 1, Double.BYTES));
+        var reader = new TableReader(withSize((1 << 29) + 1, Double.BYTES));
 
-        assertThrows(DecodeException.class, () -> buffer.getFloat64Array(0));
-        assertThrows(DecodeException.class, () -> buffer.getFloat64ArrayView(0));
-        assertThrows(DecodeException.class, () -> buffer.getStructArray(0, Double.BYTES));
+        assertThrows(DecodeException.class, () -> reader.getFloat64Array(0));
+        assertThrows(DecodeException.class, () -> reader.getFloat64ArrayView(0));
+        assertThrows(DecodeException.class, () -> reader.getStructArray(0, Double.BYTES));
     }
 
     @Example
     void array_views_are_read_only_and_show_later_writes_to_the_bytes() {
         var bytes = new byte[Integer.BYTES + 2 * Float.BYTES];
         littleEndian(bytes).putInt(2).putFloat(1).putFloat(2);
-        var buffer = new ByteBuffer(bytes);
-        var view = buffer.getFloat32ArrayView(0);
+        var reader = new TableReader(bytes);
+        var view = reader.getFloat32ArrayView(0);
 
         assertTrue(view.isReadOnly());
         assertThrows(ReadOnlyBufferException.class, () -> view.put(0, 3));
@@ -314,16 +314,16 @@ public class ByteBufferTest {
         builder.setFloat64(1.5);
         var bytes = Arrays.copyOf(builder.bytes(), 20);
 
-        assertEquals(16, new ByteBuffer(bytes, layout).getSize());
-        assertEquals(20, new ByteBuffer(bytes).getSize());
+        assertEquals(16, new TableReader(bytes, layout).getSize());
+        assertEquals(20, new TableReader(bytes).getSize());
     }
 
     @Example
     void should_reject_reading_the_version_of_an_unversioned_table() {
         var layout = TableLayout.builder().sized(true).build();
-        var buffer = new ByteBuffer(new TableBuilder(0, layout).bytes(), layout);
+        var reader = new TableReader(new TableBuilder(0, layout).bytes(), layout);
 
-        assertThrows(IllegalStateException.class, buffer::getVersion);
+        assertThrows(IllegalStateException.class, reader::getVersion);
     }
 
     // A 32-bit size followed by `length` bytes
