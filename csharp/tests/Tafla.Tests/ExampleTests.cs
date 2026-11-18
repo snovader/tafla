@@ -21,21 +21,21 @@ public class ExampleTests
         builder.SetTable(series); // copied into the table, aligned for its arrays
         byte[] bytes = builder.ToArray();
 
-        var buffer = new ByteBuffer(bytes, Layout);
-        if (buffer.GetVersion() != FormatVersion)
+        var reader = new TableReader(bytes, Layout);
+        if (reader.GetVersion() != FormatVersion)
         {
-            throw DecodeException.UnsupportedVersion(buffer.GetVersion(), FormatVersion);
+            throw DecodeException.UnsupportedVersion(reader.GetVersion(), FormatVersion);
         }
 
-        double latitude = buffer.GetFloat64(buffer.RootOffset(0));
-        string timeZone = buffer.GetString(buffer.RootOffset(1)); // a new string
-        int table = buffer.RootOffset(2);
-        ReadOnlySpan<float> values = buffer.GetFloat32Array(buffer.FieldOffset(table, 1)); // in place
+        double latitude = reader.GetFloat64(reader.RootOffset(0));
+        string timeZone = reader.GetString(reader.RootOffset(1)); // a new string
+        int table = reader.RootOffset(2);
+        ReadOnlySpan<float> values = reader.GetFloat32Array(reader.FieldOffset(table, 1)); // in place
 
         Assert.Equal(59.3293, latitude);
         Assert.Equal("Europe/Stockholm", timeZone);
         Assert.Equal([21.75f, 18.5f], values.ToArray());
-        Assert.Equal((uint)bytes.Length, buffer.GetSize());
+        Assert.Equal((uint)bytes.Length, reader.GetSize());
         Assert.Equal(bytes, Written());
     }
 

@@ -6,12 +6,12 @@ using System.Text;
 namespace Tafla;
 
 /// <summary>
-/// Builds a table, which a <see cref="ByteBuffer"/> reads back: a header with one offset per field,
+/// Builds a table, which a <see cref="TableReader"/> reads back: a header with one offset per field,
 /// after the table's byte length and version when its layout has them, followed by the fields in the
 /// order they're set. Arrays, strings and vectors start with their count, and a vector then holds the
 /// end of each item. Arrays of scalars and of structs are padded so that their elements are aligned
-/// from the start of the table. Fields are read back by index with <see cref="ByteBuffer.RootOffset"/>,
-/// or <see cref="ByteBuffer.FieldOffset"/> for a table nested in another.
+/// from the start of the table. Fields are read back by index with <see cref="TableReader.RootOffset"/>,
+/// or <see cref="TableReader.FieldOffset"/> for a table nested in another.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -79,7 +79,7 @@ public sealed class TableBuilder
     /// <summary>
     /// Starts a table of <paramref name="fields"/> fields in <paramref name="layout"/>, with
     /// <paramref name="version"/> in its header, which readers can check with
-    /// <see cref="ByteBuffer.GetVersion"/> before reading any field.
+    /// <see cref="TableReader.GetVersion"/> before reading any field.
     /// </summary>
     /// <exception cref="BuildException">
     /// The version doesn't fit in the layout's offset type, or the header alone is too long for it.
@@ -269,7 +269,7 @@ public sealed class TableBuilder
     /// builder may be nested again, or elsewhere.
     /// </summary>
     /// <remarks>
-    /// Readers find its fields with <see cref="ByteBuffer.FieldOffset"/> from the field's position,
+    /// Readers find its fields with <see cref="TableReader.FieldOffset"/> from the field's position,
     /// which reads offsets of the parent's offset type, so the table should have no header and its
     /// parent's offset type: that's the default layout in a parent of the default layout.
     /// </remarks>

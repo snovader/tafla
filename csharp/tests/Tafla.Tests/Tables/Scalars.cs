@@ -122,21 +122,21 @@ public static class Scalars
         }
     }
 
-    /// <summary>Reads a scalar of a type at a position with the buffer's getter of the type.</summary>
-    public static Scalar Read(ByteBuffer buffer, ScalarType type, int position)
+    /// <summary>Reads a scalar of a type at a position with the reader's getter of the type.</summary>
+    public static Scalar Read(TableReader reader, ScalarType type, int position)
     {
         ulong bits = type switch
         {
-            ScalarType.Int8 => (byte)buffer.GetInt8(position),
-            ScalarType.UInt8 => buffer.GetUInt8(position),
-            ScalarType.Int16 => (ushort)buffer.GetInt16(position),
-            ScalarType.UInt16 => buffer.GetUInt16(position),
-            ScalarType.Int32 => (uint)buffer.GetInt32(position),
-            ScalarType.UInt32 => buffer.GetUInt32(position),
-            ScalarType.Int64 => (ulong)buffer.GetInt64(position),
-            ScalarType.UInt64 => buffer.GetUInt64(position),
-            ScalarType.Float32 => BitConverter.SingleToUInt32Bits(buffer.GetFloat32(position)),
-            _ => BitConverter.DoubleToUInt64Bits(buffer.GetFloat64(position)),
+            ScalarType.Int8 => (byte)reader.GetInt8(position),
+            ScalarType.UInt8 => reader.GetUInt8(position),
+            ScalarType.Int16 => (ushort)reader.GetInt16(position),
+            ScalarType.UInt16 => reader.GetUInt16(position),
+            ScalarType.Int32 => (uint)reader.GetInt32(position),
+            ScalarType.UInt32 => reader.GetUInt32(position),
+            ScalarType.Int64 => (ulong)reader.GetInt64(position),
+            ScalarType.UInt64 => reader.GetUInt64(position),
+            ScalarType.Float32 => BitConverter.SingleToUInt32Bits(reader.GetFloat32(position)),
+            _ => BitConverter.DoubleToUInt64Bits(reader.GetFloat64(position)),
         };
 
         return new Scalar(type, bits);
@@ -181,21 +181,21 @@ public static class Scalars
         }
     }
 
-    /// <summary>Reads an array of a type at a position with the buffer's getter of the type.</summary>
-    public static ArrayField ReadArray(ByteBuffer buffer, ScalarType type, int position)
+    /// <summary>Reads an array of a type at a position with the reader's getter of the type.</summary>
+    public static ArrayField ReadArray(TableReader reader, ScalarType type, int position)
     {
         var bits = type switch
         {
-            ScalarType.Int8 => Bits(buffer.GetInt8Array(position), value => (byte)value),
-            ScalarType.UInt8 => Bits(buffer.GetUInt8Array(position), value => value),
-            ScalarType.Int16 => Bits(buffer.GetInt16Array(position), value => (ushort)value),
-            ScalarType.UInt16 => Bits(buffer.GetUInt16Array(position), value => value),
-            ScalarType.Int32 => Bits(buffer.GetInt32Array(position), value => (uint)value),
-            ScalarType.UInt32 => Bits(buffer.GetUInt32Array(position), value => value),
-            ScalarType.Int64 => Bits(buffer.GetInt64Array(position), value => (ulong)value),
-            ScalarType.UInt64 => Bits(buffer.GetUInt64Array(position), value => value),
-            ScalarType.Float32 => Bits(buffer.GetFloat32Array(position), value => BitConverter.SingleToUInt32Bits(value)),
-            _ => Bits(buffer.GetFloat64Array(position), BitConverter.DoubleToUInt64Bits),
+            ScalarType.Int8 => Bits(reader.GetInt8Array(position), value => (byte)value),
+            ScalarType.UInt8 => Bits(reader.GetUInt8Array(position), value => value),
+            ScalarType.Int16 => Bits(reader.GetInt16Array(position), value => (ushort)value),
+            ScalarType.UInt16 => Bits(reader.GetUInt16Array(position), value => value),
+            ScalarType.Int32 => Bits(reader.GetInt32Array(position), value => (uint)value),
+            ScalarType.UInt32 => Bits(reader.GetUInt32Array(position), value => value),
+            ScalarType.Int64 => Bits(reader.GetInt64Array(position), value => (ulong)value),
+            ScalarType.UInt64 => Bits(reader.GetUInt64Array(position), value => value),
+            ScalarType.Float32 => Bits(reader.GetFloat32Array(position), value => BitConverter.SingleToUInt32Bits(value)),
+            _ => Bits(reader.GetFloat64Array(position), BitConverter.DoubleToUInt64Bits),
         };
 
         return new ArrayField(type, bits);

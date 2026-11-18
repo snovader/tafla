@@ -219,8 +219,8 @@ public class TableBuilderTests
     public void RejectsAVersionTooLargeForItsSlot(OffsetType offsetType, uint largest)
     {
         var layout = new TableLayout { Versioned = true, OffsetType = offsetType };
-        var buffer = new ByteBuffer(new TableBuilder(0, layout, largest).ToArray(), layout);
-        Assert.Equal(largest, buffer.GetVersion());
+        var reader = new TableReader(new TableBuilder(0, layout, largest).ToArray(), layout);
+        Assert.Equal(largest, reader.GetVersion());
 
         var error = Assert.Throws<BuildException>(() => new TableBuilder(0, layout, largest + 1));
         Assert.Equal((BuildErrorKind.VersionTooLarge, largest + 1, offsetType), (error.Kind, error.Version, error.OffsetType));
@@ -269,9 +269,9 @@ public class TableBuilderTests
         builder.SetFloat32((float)large);
         builder.SetFloat32((float)0.1);
 
-        var buffer = new ByteBuffer(builder.ToArray());
-        Assert.Equal(44, buffer.GetUInt8(buffer.RootOffset(0)));
-        Assert.Equal(float.PositiveInfinity, buffer.GetFloat32(buffer.RootOffset(1)));
-        Assert.Equal(0x3dcc_cccdu, BitConverter.SingleToUInt32Bits(buffer.GetFloat32(buffer.RootOffset(2))));
+        var reader = new TableReader(builder.ToArray());
+        Assert.Equal(44, reader.GetUInt8(reader.RootOffset(0)));
+        Assert.Equal(float.PositiveInfinity, reader.GetFloat32(reader.RootOffset(1)));
+        Assert.Equal(0x3dcc_cccdu, BitConverter.SingleToUInt32Bits(reader.GetFloat32(reader.RootOffset(2))));
     }
 }

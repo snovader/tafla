@@ -18,7 +18,7 @@ The first release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` writes tables,
-  and `ByteBuffer` reads them, with arrays as `ReadOnlySpan<T>`s of the bytes
+  and `TableReader` reads them, with arrays as `ReadOnlySpan<T>`s of the bytes
   on a little-endian host, and structs and vector items as spans of the
   bytes.
 - `TableSizer` and `TableWriter`, which write a table whose fields are known

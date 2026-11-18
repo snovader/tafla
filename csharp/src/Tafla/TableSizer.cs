@@ -128,7 +128,7 @@ public struct TableSizer
     /// <remarks>
     /// The caller owns the bytes, and the writer keeps them only until the table is written. The table
     /// stays in them until they're written again, such as by the next table written into them, which
-    /// a <see cref="ByteBuffer"/> of them, and the spans that it reads in place, then read too. Copy
+    /// a <see cref="TableReader"/> of them, and the spans that it reads in place, then read too. Copy
     /// the table's bytes to keep it. Reusing bytes saves allocating and zeroing new bytes for each
     /// table, and collecting them.
     /// </remarks>

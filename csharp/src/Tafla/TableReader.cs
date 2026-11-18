@@ -24,11 +24,11 @@ namespace Tafla;
 /// string is decoded into a new <see cref="string"/>.
 /// </para>
 /// <para>
-/// A <see cref="ByteBuffer"/> is a small value, which is cheap to copy and to create for each read.
+/// A <see cref="TableReader"/> is a small value, which is cheap to copy and to create for each read.
 /// Its default value reads no bytes in the default layout.
 /// </para>
 /// </remarks>
-public readonly struct ByteBuffer
+public readonly struct TableReader
 {
     /// <summary>A UTF-8 decoder that throws for invalid UTF-8, rather than replacing it with U+FFFD</summary>
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -40,16 +40,16 @@ public readonly struct ByteBuffer
     private readonly TableLayout _layout;
 
     /// <summary>Creates a reader of the table in <paramref name="bytes"/>, in <paramref name="layout"/>.</summary>
-    public ByteBuffer(ReadOnlyMemory<byte> bytes, TableLayout layout = default)
+    public TableReader(ReadOnlyMemory<byte> bytes, TableLayout layout = default)
     {
         _bytes = bytes;
         _layout = layout;
     }
 
-    /// <summary>The bytes that the buffer reads.</summary>
+    /// <summary>The bytes that the reader reads.</summary>
     public ReadOnlyMemory<byte> Bytes => _bytes;
 
-    /// <summary>The layout that the buffer reads the table in.</summary>
+    /// <summary>The layout that the reader reads the table in.</summary>
     public TableLayout Layout => _layout;
 
     /// <summary>
@@ -61,7 +61,7 @@ public readonly struct ByteBuffer
 
     /// <summary>
     /// Returns the version that the table's header carries, after its length when it's sized. It's as
-    /// wide as the header's other slots. The buffer doesn't compare versions: a reader of another
+    /// wide as the header's other slots. The reader doesn't compare versions: a reader of another
     /// version throws <see cref="DecodeException.UnsupportedVersion"/>.
     /// </summary>
     /// <exception cref="DecodeException">The header doesn't lie within the bytes.</exception>

@@ -4,7 +4,7 @@ namespace Tafla;
 
 /// <summary>
 /// The header and offset type of a table. A format creates its layout once and passes it to both the
-/// <see cref="TableBuilder"/> that writes the table and the <see cref="ByteBuffer"/> that reads it, so
+/// <see cref="TableBuilder"/> that writes the table and the <see cref="TableReader"/> that reads it, so
 /// that the two can't disagree.
 /// </summary>
 /// <remarks>

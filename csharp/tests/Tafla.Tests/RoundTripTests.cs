@@ -42,20 +42,20 @@ public class RoundTripTests
         builder.SetFloat32Array([.. float32s.Select(BitConverter.UInt32BitsToSingle)]);
         builder.SetFloat64Array([.. float64s.Select(BitConverter.UInt64BitsToDouble)]);
 
-        var buffer = new ByteBuffer(builder.ToArray());
+        var reader = new TableReader(builder.ToArray());
         var index = 0;
         foreach (var bits in float32s)
         {
-            Assert.Equal(bits, BitConverter.SingleToUInt32Bits(buffer.GetFloat32(buffer.RootOffset(index++))));
+            Assert.Equal(bits, BitConverter.SingleToUInt32Bits(reader.GetFloat32(reader.RootOffset(index++))));
         }
 
         foreach (var bits in float64s)
         {
-            Assert.Equal(bits, BitConverter.DoubleToUInt64Bits(buffer.GetFloat64(buffer.RootOffset(index++))));
+            Assert.Equal(bits, BitConverter.DoubleToUInt64Bits(reader.GetFloat64(reader.RootOffset(index++))));
         }
 
-        Assert.Equal(float32s, buffer.GetFloat32Array(buffer.RootOffset(index++)).ToArray().Select(BitConverter.SingleToUInt32Bits));
-        Assert.Equal(float64s, buffer.GetFloat64Array(buffer.RootOffset(index)).ToArray().Select(BitConverter.DoubleToUInt64Bits));
+        Assert.Equal(float32s, reader.GetFloat32Array(reader.RootOffset(index++)).ToArray().Select(BitConverter.SingleToUInt32Bits));
+        Assert.Equal(float64s, reader.GetFloat64Array(reader.RootOffset(index)).ToArray().Select(BitConverter.DoubleToUInt64Bits));
 
         // Comparing bits tells -0 from 0, which comparing values doesn't
         Assert.NotEqual(BitConverter.DoubleToUInt64Bits(0.0), BitConverter.DoubleToUInt64Bits(-0.0));
@@ -82,23 +82,23 @@ public class RoundTripTests
         builder.SetInt32Array([int.MinValue, int.MaxValue]);
         builder.SetUInt16Array([0, ushort.MaxValue]);
 
-        var buffer = new ByteBuffer(builder.ToArray());
-        Assert.Equal(sbyte.MinValue, buffer.GetInt8(buffer.RootOffset(0)));
-        Assert.Equal(sbyte.MaxValue, buffer.GetInt8(buffer.RootOffset(1)));
-        Assert.Equal(byte.MaxValue, buffer.GetUInt8(buffer.RootOffset(2)));
-        Assert.Equal(short.MinValue, buffer.GetInt16(buffer.RootOffset(3)));
-        Assert.Equal(short.MaxValue, buffer.GetInt16(buffer.RootOffset(4)));
-        Assert.Equal(ushort.MaxValue, buffer.GetUInt16(buffer.RootOffset(5)));
-        Assert.Equal(int.MinValue, buffer.GetInt32(buffer.RootOffset(6)));
-        Assert.Equal(int.MaxValue, buffer.GetInt32(buffer.RootOffset(7)));
-        Assert.Equal(uint.MaxValue, buffer.GetUInt32(buffer.RootOffset(8)));
-        Assert.Equal(long.MinValue, buffer.GetInt64(buffer.RootOffset(9)));
-        Assert.Equal(long.MaxValue, buffer.GetInt64(buffer.RootOffset(10)));
-        Assert.Equal(ulong.MaxValue, buffer.GetUInt64(buffer.RootOffset(11)));
-        Assert.Equal([long.MinValue, -1, 0, long.MaxValue], buffer.GetInt64Array(buffer.RootOffset(12)).ToArray());
-        Assert.Equal([0, ulong.MaxValue], buffer.GetUInt64Array(buffer.RootOffset(13)).ToArray());
-        Assert.Equal([int.MinValue, int.MaxValue], buffer.GetInt32Array(buffer.RootOffset(14)).ToArray());
-        Assert.Equal([0, ushort.MaxValue], buffer.GetUInt16Array(buffer.RootOffset(15)).ToArray());
+        var reader = new TableReader(builder.ToArray());
+        Assert.Equal(sbyte.MinValue, reader.GetInt8(reader.RootOffset(0)));
+        Assert.Equal(sbyte.MaxValue, reader.GetInt8(reader.RootOffset(1)));
+        Assert.Equal(byte.MaxValue, reader.GetUInt8(reader.RootOffset(2)));
+        Assert.Equal(short.MinValue, reader.GetInt16(reader.RootOffset(3)));
+        Assert.Equal(short.MaxValue, reader.GetInt16(reader.RootOffset(4)));
+        Assert.Equal(ushort.MaxValue, reader.GetUInt16(reader.RootOffset(5)));
+        Assert.Equal(int.MinValue, reader.GetInt32(reader.RootOffset(6)));
+        Assert.Equal(int.MaxValue, reader.GetInt32(reader.RootOffset(7)));
+        Assert.Equal(uint.MaxValue, reader.GetUInt32(reader.RootOffset(8)));
+        Assert.Equal(long.MinValue, reader.GetInt64(reader.RootOffset(9)));
+        Assert.Equal(long.MaxValue, reader.GetInt64(reader.RootOffset(10)));
+        Assert.Equal(ulong.MaxValue, reader.GetUInt64(reader.RootOffset(11)));
+        Assert.Equal([long.MinValue, -1, 0, long.MaxValue], reader.GetInt64Array(reader.RootOffset(12)).ToArray());
+        Assert.Equal([0, ulong.MaxValue], reader.GetUInt64Array(reader.RootOffset(13)).ToArray());
+        Assert.Equal([int.MinValue, int.MaxValue], reader.GetInt32Array(reader.RootOffset(14)).ToArray());
+        Assert.Equal([0, ushort.MaxValue], reader.GetUInt16Array(reader.RootOffset(15)).ToArray());
     }
 
     /// <summary>Every array type, empty, read at any address, which no element of an empty array needs</summary>
@@ -128,7 +128,7 @@ public class RoundTripTests
         var bytes = builder.ToArray();
 
         Assert.Equal(Encoding.UTF8.GetBytes(Value), bytes[8..]);
-        Assert.Equal(Value, new ByteBuffer(bytes).GetString(4));
+        Assert.Equal(Value, new TableReader(bytes).GetString(4));
     }
 
     /// <summary>UTF-8 can't encode a lone surrogate, which the builder writes as U+FFFD, as Encoding.UTF8 does</summary>
@@ -138,10 +138,10 @@ public class RoundTripTests
         var builder = new TableBuilder(2);
         builder.SetString("a\ud800b");
         builder.SetString("\udc00");
-        var buffer = new ByteBuffer(builder.ToArray());
+        var reader = new TableReader(builder.ToArray());
 
-        Assert.Equal("a�b", buffer.GetString(buffer.RootOffset(0)));
-        Assert.Equal("�", buffer.GetString(buffer.RootOffset(1)));
+        Assert.Equal("a�b", reader.GetString(reader.RootOffset(0)));
+        Assert.Equal("�", reader.GetString(reader.RootOffset(1)));
     }
 
     /// <summary>
@@ -165,7 +165,7 @@ public class RoundTripTests
             var bytes = builder.ToArray();
 
             Assert.Equal(8 + Encoding.UTF8.GetByteCount(value), bytes.Length);
-            Assert.Equal(value, new ByteBuffer(bytes).GetString(4));
+            Assert.Equal(value, new TableReader(bytes).GetString(4));
         }
     }
 
@@ -230,14 +230,14 @@ public class RoundTripTests
         builder.SetVector(items);
         var bytes = builder.ToArray();
 
-        var vector = new ByteBuffer(bytes).GetVector(4);
+        var vector = new TableReader(bytes).GetVector(4);
         Assert.Equal(3, vector.Count);
 
         var index2 = 0;
         foreach (var item in vector.Items())
         {
             Assert.True(item.Span.SequenceEqual(vector.Get(index2).Span));
-            Assert.Equal(new string('x', index2), new ByteBuffer(item).GetString(new ByteBuffer(item).RootOffset(0)));
+            Assert.Equal(new string('x', index2), new TableReader(item).GetString(new TableReader(item).RootOffset(0)));
             index2++;
         }
 
@@ -268,8 +268,8 @@ public class RoundTripTests
         for (var byteOffset = 0; byteOffset < 8; byteOffset++)
         {
             var memory = Bytes.AtByteOffset(builder.ToArray(), byteOffset);
-            var buffer = new ByteBuffer(memory);
-            var values = buffer.GetFloat64Array(buffer.RootOffset(1));
+            var reader = new TableReader(memory);
+            var values = reader.GetFloat64Array(reader.RootOffset(1));
 
             MemoryMarshal.AsMemory(memory).Span[^8..].Clear();
 

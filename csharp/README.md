@@ -6,7 +6,7 @@ structs and nested tables in tafla's format, which the TypeScript, Python,
 Java, Rust, Go and C++ runtimes write and read too. `TableBuilder` writes a
 table, copying arrays in bulk, `TableSizer` and `TableWriter` write one whose
 fields are known in advance into bytes of its exact length, and
-`ByteBuffer` reads fields back by offset, with arrays, structs and vector
+`TableReader` reads fields back by offset, with arrays, structs and vector
 items as spans of the bytes. Every read
 checks that it stays within the bytes it was given. It depends only on
 .NET's base class library, and is marked compatible with trimming and
@@ -29,16 +29,16 @@ builder.SetString("Europe/Stockholm");
 builder.SetTable(series); // copied into the table, aligned for its arrays
 byte[] bytes = builder.ToArray();
 
-var buffer = new ByteBuffer(bytes, Layout);
-if (buffer.GetVersion() != FormatVersion)
+var reader = new TableReader(bytes, Layout);
+if (reader.GetVersion() != FormatVersion)
 {
-    throw DecodeException.UnsupportedVersion(buffer.GetVersion(), FormatVersion);
+    throw DecodeException.UnsupportedVersion(reader.GetVersion(), FormatVersion);
 }
 
-double latitude = buffer.GetFloat64(buffer.RootOffset(0));
-string timeZone = buffer.GetString(buffer.RootOffset(1)); // a new string
-int table = buffer.RootOffset(2);
-ReadOnlySpan<float> values = buffer.GetFloat32Array(buffer.FieldOffset(table, 1)); // in place
+double latitude = reader.GetFloat64(reader.RootOffset(0));
+string timeZone = reader.GetString(reader.RootOffset(1)); // a new string
+int table = reader.RootOffset(2);
+ReadOnlySpan<float> values = reader.GetFloat32Array(reader.FieldOffset(table, 1)); // in place
 ```
 
 `tests/Tafla.Tests/ExampleTests.cs` runs the example. The names are the
@@ -93,7 +93,7 @@ which covers the whole format, byte for byte.
   of a complete builder or of a table's bytes. `SetVector()` takes
   `NestedTable`s, which convert implicitly from a `TableBuilder`, a `byte[]`
   or a `ReadOnlyMemory<byte>`, so a vector can mix them.
-- **Arrays are read in place.** `ByteBuffer` holds a `ReadOnlyMemory<byte>`,
+- **Arrays are read in place.** `TableReader` holds a `ReadOnlyMemory<byte>`,
   and its array getters return a `ReadOnlySpan<T>` of the table's bytes, at
   any alignment, where the host reads them so: on a little-endian host other
   than 32-bit Arm, such as x64 and Arm64. A span in place shows writes made
@@ -103,7 +103,7 @@ which covers the whole format, byte for byte.
 - **Structs and vector items share the bytes too.** `GetStruct()` and
   `GetStructArray()` return a `ReadOnlySpan<byte>` of the structs, whose
   scalars `BinaryPrimitives` reads at their offsets, and a `Vector`'s items
-  are `ReadOnlyMemory<byte>`, which a `ByteBuffer` of the item's layout reads.
+  are `ReadOnlyMemory<byte>`, which a `TableReader` of the item's layout reads.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
   UTF-8 and decodes them into a new `string`, in one pass.
 
@@ -159,7 +159,7 @@ bytes: use them as locals, or pass them by `ref`.
 
 ## Errors
 
-Every read of a `ByteBuffer` or a `Vector` checks its range against the bytes
+Every read of a `TableReader` or a `Vector` checks its range against the bytes
 that it was given, and throws a `DecodeException` if it would leave them,
 whose `Kind` says why and whose properties describe the read:
 
@@ -176,7 +176,7 @@ whose `Kind` says why and whose properties describe the read:
   Only a string of more bytes than that can fail so, and its characters are
   counted before anything is allocated for it.
 - `ItemEndsBeforeStart`: a vector item that ends before the item before it.
-- `UnsupportedVersion`: `ByteBuffer` doesn't compare versions. A reader
+- `UnsupportedVersion`: `TableReader` doesn't compare versions. A reader
   throws `DecodeException.UnsupportedVersion()` when `GetVersion()` isn't its
   own, as the example does, so that every failure to decode is a
   `DecodeException`.

@@ -3,7 +3,7 @@ using System;
 namespace Tafla;
 
 /// <summary>
-/// A vector read from a table: its items, which are tables. <see cref="ByteBuffer.GetVector"/> reads
+/// A vector read from a table: its items, which are tables. <see cref="TableReader.GetVector"/> reads
 /// it, after checking that its count and the ends of its items lie within the bytes, and each item is
 /// checked when it's read, so reading one can throw a <see cref="DecodeException"/>.
 /// </summary>
@@ -17,9 +17,9 @@ namespace Tafla;
 /// <para>
 /// An item that has no header and its parent's offset type is read in place: from the bytes that
 /// <see cref="GetInPlace"/> returns, which start where it does and end where its parent's do, with a
-/// <see cref="ByteBuffer"/> of its parent's offset type, at position 0. Its reads may reach past its
+/// <see cref="TableReader"/> of its parent's offset type, at position 0. Its reads may reach past its
 /// end, as those of any table read in place may. Any other item is read as a table of its own, from
-/// the bytes that <see cref="Get"/> returns, with a <see cref="ByteBuffer"/> of its own layout.
+/// the bytes that <see cref="Get"/> returns, with a <see cref="TableReader"/> of its own layout.
 /// </para>
 /// <para>The default value is an empty vector.</para>
 /// </remarks>
@@ -118,7 +118,7 @@ public readonly struct Vector
         int width = _offsetType.Size;
         var slot = _bytes.Span.Slice(_position + (index + 1) * width, width);
 
-        return ByteBuffer.ReadUnsigned(slot, _offsetType);
+        return TableReader.ReadUnsigned(slot, _offsetType);
     }
 
     /// <summary>

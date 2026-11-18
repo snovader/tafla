@@ -11,7 +11,7 @@ namespace Tafla.Tests.Tables;
 public sealed class MismatchException(string message) : Exception(message);
 
 /// <summary>
-/// Reads tables with <see cref="ByteBuffer"/> as their descriptions set them out, and returns the
+/// Reads tables with <see cref="TableReader"/> as their descriptions set them out, and returns the
 /// descriptions with the values read in place of theirs, so that they equal the descriptions when
 /// the bytes hold the described values.
 /// </summary>
@@ -31,19 +31,19 @@ public static class Read
     /// </summary>
     public static Table Table(ReadOnlyMemory<byte> bytes, Table table)
     {
-        var buffer = new ByteBuffer(bytes, table.Layout.ToTableLayout());
+        var reader = new TableReader(bytes, table.Layout.ToTableLayout());
 
-        if (table.Layout.Sized && buffer.GetSize() != bytes.Length)
+        if (table.Layout.Sized && reader.GetSize() != bytes.Length)
         {
-            throw new MismatchException($"The header holds the size {buffer.GetSize()} of {bytes.Length} bytes");
+            throw new MismatchException($"The header holds the size {reader.GetSize()} of {bytes.Length} bytes");
         }
 
-        var version = table.Layout.Versioned ? buffer.GetVersion() : 0;
+        var version = table.Layout.Versioned ? reader.GetVersion() : 0;
 
         var fields = new List<Field>();
         for (var index = 0; index < table.Fields.Count; index++)
         {
-            fields.Add(Field(buffer, buffer.RootOffset(index), table.Fields[index]));
+            fields.Add(Field(reader, reader.RootOffset(index), table.Fields[index]));
         }
 
         return new Table(table.Layout, version, fields);
@@ -52,35 +52,35 @@ public static class Read
     /// <summary>Reads root field <paramref name="index"/> of a table of a layout as the field, without reading the header.</summary>
     public static Field RootField(ReadOnlyMemory<byte> bytes, Layout layout, int index, Field field)
     {
-        var buffer = new ByteBuffer(bytes, layout.ToTableLayout());
-        return Field(buffer, buffer.RootOffset(index), field);
+        var reader = new TableReader(bytes, layout.ToTableLayout());
+        return Field(reader, reader.RootOffset(index), field);
     }
 
     /// <summary>Reads a field at a position of a table as the field describes it.</summary>
-    public static Field Field(ByteBuffer buffer, int position, Field field) =>
+    public static Field Field(TableReader reader, int position, Field field) =>
         field switch
         {
-            Scalar scalar => Scalars.Read(buffer, scalar.Type, position),
-            Bool => new Bool(buffer.GetUInt8(position) != 0),
-            ArrayField array => Scalars.ReadArray(buffer, array.Type, position),
-            StringField => new StringField(buffer.GetString(position)),
-            StructField value => new StructField(Struct(buffer, position, value)),
-            StructArray array => StructArray(buffer, position, array),
-            TableField table => new TableField(new Nested(table.Nested.From, NestedTable(buffer, position, table.Nested.Table)), table.Alignment),
-            VectorField vector => Vector(buffer, position, vector),
+            Scalar scalar => Scalars.Read(reader, scalar.Type, position),
+            Bool => new Bool(reader.GetUInt8(position) != 0),
+            ArrayField array => Scalars.ReadArray(reader, array.Type, position),
+            StringField => new StringField(reader.GetString(position)),
+            StructField value => new StructField(Struct(reader, position, value)),
+            StructArray array => StructArray(reader, position, array),
+            TableField table => new TableField(new Nested(table.Nested.From, NestedTable(reader, position, table.Nested.Table)), table.Alignment),
+            VectorField vector => Vector(reader, position, vector),
             _ => throw new ArgumentException($"Unknown field {field}", nameof(field)),
         };
 
-    private static Seq<Scalar> Struct(ByteBuffer buffer, int position, StructField value)
+    private static Seq<Scalar> Struct(TableReader reader, int position, StructField value)
     {
         var types = value.Scalars.Select(scalar => scalar.Type).ToArray();
-        return Scalars.ReadStruct(buffer.GetStruct(position, Scalars.StructSize(types)), types);
+        return Scalars.ReadStruct(reader.GetStruct(position, Scalars.StructSize(types)), types);
     }
 
-    private static StructArray StructArray(ByteBuffer buffer, int position, StructArray array)
+    private static StructArray StructArray(TableReader reader, int position, StructArray array)
     {
         int size = Scalars.StructSize(array.Types);
-        var bytes = buffer.GetStructArray(position, size);
+        var bytes = reader.GetStructArray(position, size);
 
         var items = new List<Seq<Scalar>>();
         for (var start = 0; start < bytes.Length; start += size)
@@ -92,15 +92,15 @@ public static class Read
     }
 
     /// <summary>Reads a table nested with SetTable</summary>
-    private static Table NestedTable(ByteBuffer buffer, int position, Table table)
+    private static Table NestedTable(TableReader reader, int position, Table table)
     {
-        if (ReadsInPlace(buffer, table))
+        if (ReadsInPlace(reader, table))
         {
-            return InPlace(buffer, position, table);
+            return InPlace(reader, position, table);
         }
 
         // A position past the end leaves no bytes, which the first read fails for
-        var bytes = buffer.Bytes;
+        var bytes = reader.Bytes;
         return Table(bytes[Math.Clamp(position, 0, bytes.Length)..], table);
     }
 
@@ -108,9 +108,9 @@ public static class Read
     private readonly record struct Item(ReadOnlyMemory<byte> Bytes, DecodeException? Error);
 
     /// <summary>Reads a vector's items, after checking that finding each from its ends alone finds what reading them in order finds</summary>
-    private static VectorField Vector(ByteBuffer buffer, int position, VectorField items)
+    private static VectorField Vector(TableReader reader, int position, VectorField items)
     {
-        var vector = buffer.GetVector(position);
+        var vector = reader.GetVector(position);
         var inOrder = Items(vector.Items());
         var inPlace = Items(vector.ItemsInPlace());
 
@@ -146,9 +146,9 @@ public static class Read
         for (var index = 0; index < items.Items.Count; index++)
         {
             var nested = items.Items[index];
-            var table = ReadsInPlace(buffer, nested.Table)
-                // At its start, in a buffer of its offset type, which is its parent's
-                ? InPlace(new ByteBuffer(inPlace[index].Bytes, nested.Table.Layout.ToTableLayout()), 0, nested.Table)
+            var table = ReadsInPlace(reader, nested.Table)
+                // At its start, in a reader of its offset type, which is its parent's
+                ? InPlace(new TableReader(inPlace[index].Bytes, nested.Table.Layout.ToTableLayout()), 0, nested.Table)
                 : Table(inOrder[index].Bytes, nested.Table);
 
             read.Add(new Nested(nested.From, table));
@@ -207,16 +207,16 @@ public static class Read
     }
 
     /// <summary>Whether a nested table is read in place: it has no header, and its parent's offset type</summary>
-    private static bool ReadsInPlace(ByteBuffer buffer, Table table) =>
-        table.Layout is { Sized: false, Versioned: false } && table.Layout.OffsetType == buffer.Layout.OffsetType;
+    private static bool ReadsInPlace(TableReader reader, Table table) =>
+        table.Layout is { Sized: false, Versioned: false } && table.Layout.OffsetType == reader.Layout.OffsetType;
 
     /// <summary>Reads the fields of a table nested at a position, from offsets counted from its start, within its parent's bytes</summary>
-    private static Table InPlace(ByteBuffer buffer, int position, Table table)
+    private static Table InPlace(TableReader reader, int position, Table table)
     {
         var fields = new List<Field>();
         for (var index = 0; index < table.Fields.Count; index++)
         {
-            fields.Add(Field(buffer, buffer.FieldOffset(position, index), table.Fields[index]));
+            fields.Add(Field(reader, reader.FieldOffset(position, index), table.Fields[index]));
         }
 
         return new Table(table.Layout, 0, fields);

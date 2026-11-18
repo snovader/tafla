@@ -117,37 +117,37 @@ public class DecodeExceptionTests
         var reads = new List<object>();
         foreach (var offsetType in Strategy.OffsetTypes)
         {
-            var buffer = new ByteBuffer(bytes, new TableLayout { OffsetType = offsetType });
+            var reader = new TableReader(bytes, new TableLayout { OffsetType = offsetType });
             var getters = new Func<object>[]
             {
-                () => buffer.GetInt8(position),
-                () => buffer.GetUInt8(position),
-                () => buffer.GetInt16(position),
-                () => buffer.GetUInt16(position),
-                () => buffer.GetInt32(position),
-                () => buffer.GetUInt32(position),
-                () => buffer.GetInt64(position),
-                () => buffer.GetUInt64(position),
-                () => BitConverter.SingleToUInt32Bits(buffer.GetFloat32(position)),
-                () => BitConverter.DoubleToUInt64Bits(buffer.GetFloat64(position)),
-                () => Text(buffer.GetInt8Array(position)),
-                () => Text(buffer.GetUInt8Array(position)),
-                () => Text(buffer.GetInt16Array(position)),
-                () => Text(buffer.GetUInt16Array(position)),
-                () => Text(buffer.GetInt32Array(position)),
-                () => Text(buffer.GetUInt32Array(position)),
-                () => Text(buffer.GetInt64Array(position)),
-                () => Text(buffer.GetUInt64Array(position)),
-                () => Text(buffer.GetFloat32Array(position)),
-                () => Text(buffer.GetFloat64Array(position)),
-                () => buffer.GetString(position),
-                () => Text(buffer.GetStruct(position, size)),
-                () => Text(buffer.GetStructArray(position, size + 1)),
-                () => buffer.RootOffset(index),
-                () => buffer.FieldOffset(position, index),
-                () => VectorText(buffer.GetVector(position)),
-                () => buffer.GetSize(),
-                () => new ByteBuffer(bytes, new TableLayout { Versioned = true, OffsetType = offsetType }).GetVersion(),
+                () => reader.GetInt8(position),
+                () => reader.GetUInt8(position),
+                () => reader.GetInt16(position),
+                () => reader.GetUInt16(position),
+                () => reader.GetInt32(position),
+                () => reader.GetUInt32(position),
+                () => reader.GetInt64(position),
+                () => reader.GetUInt64(position),
+                () => BitConverter.SingleToUInt32Bits(reader.GetFloat32(position)),
+                () => BitConverter.DoubleToUInt64Bits(reader.GetFloat64(position)),
+                () => Text(reader.GetInt8Array(position)),
+                () => Text(reader.GetUInt8Array(position)),
+                () => Text(reader.GetInt16Array(position)),
+                () => Text(reader.GetUInt16Array(position)),
+                () => Text(reader.GetInt32Array(position)),
+                () => Text(reader.GetUInt32Array(position)),
+                () => Text(reader.GetInt64Array(position)),
+                () => Text(reader.GetUInt64Array(position)),
+                () => Text(reader.GetFloat32Array(position)),
+                () => Text(reader.GetFloat64Array(position)),
+                () => reader.GetString(position),
+                () => Text(reader.GetStruct(position, size)),
+                () => Text(reader.GetStructArray(position, size + 1)),
+                () => reader.RootOffset(index),
+                () => reader.FieldOffset(position, index),
+                () => VectorText(reader.GetVector(position)),
+                () => reader.GetSize(),
+                () => new TableReader(bytes, new TableLayout { Versioned = true, OffsetType = offsetType }).GetVersion(),
             };
 
             reads.AddRange(getters.Select(Attempt));
@@ -203,44 +203,44 @@ public class DecodeExceptionTests
     [Fact]
     public void DescribesAReadOutsideTheBytes()
     {
-        var buffer = new ByteBuffer(new byte[] { 1, 2, 3, 4, 5, 6 });
+        var reader = new TableReader(new byte[] { 1, 2, 3, 4, 5, 6 });
 
-        var error = Assert.Throws<DecodeException>(() => buffer.GetInt32(4));
+        var error = Assert.Throws<DecodeException>(() => reader.GetInt32(4));
         Assert.Equal(DecodeErrorKind.OutOfRange, error.Kind);
         Assert.Equal((4, 4, 6), (error.Position, error.ByteLength, error.Available));
         Assert.Equal("Read exceeds the supplied bytes: 4 bytes at 4 of 6", error.Message);
 
-        Assert.Equal(DecodeErrorKind.OutOfRange, Assert.Throws<DecodeException>(() => buffer.GetUInt8(6)).Kind);
-        Assert.Equal(-1, Assert.Throws<DecodeException>(() => buffer.GetUInt8(-1)).Position);
-        Assert.Equal(int.MinValue, Assert.Throws<DecodeException>(() => buffer.GetFloat64(int.MinValue)).Position);
-        Assert.Equal(-4, Assert.Throws<DecodeException>(() => buffer.FieldOffset(-4, 1)).Position);
-        Assert.Throws<DecodeException>(() => buffer.RootOffset(2));
-        Assert.Throws<DecodeException>(() => buffer.GetStruct(5, 2));
+        Assert.Equal(DecodeErrorKind.OutOfRange, Assert.Throws<DecodeException>(() => reader.GetUInt8(6)).Kind);
+        Assert.Equal(-1, Assert.Throws<DecodeException>(() => reader.GetUInt8(-1)).Position);
+        Assert.Equal(int.MinValue, Assert.Throws<DecodeException>(() => reader.GetFloat64(int.MinValue)).Position);
+        Assert.Equal(-4, Assert.Throws<DecodeException>(() => reader.FieldOffset(-4, 1)).Position);
+        Assert.Throws<DecodeException>(() => reader.RootOffset(2));
+        Assert.Throws<DecodeException>(() => reader.GetStruct(5, 2));
     }
 
     /// <summary>The bytes hold a count of 4,294,967,295, which no bytes hold that many elements of, and nothing is allocated for them</summary>
     [Fact]
     public void RejectsAnArrayLongerThanTheBytesBeforeAllocatingForIt()
     {
-        var buffer = new ByteBuffer(new byte[] { 0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4 });
+        var reader = new TableReader(new byte[] { 0xff, 0xff, 0xff, 0xff, 1, 2, 3, 4 });
 
-        var error = Assert.Throws<DecodeException>(() => buffer.GetFloat64Array(0));
+        var error = Assert.Throws<DecodeException>(() => reader.GetFloat64Array(0));
         Assert.Equal((4L, 0xffff_ffffL * 8, 8), (error.Position, error.ByteLength, error.Available));
-        Assert.Throws<DecodeException>(() => buffer.GetStructArray(0, int.MaxValue));
-        Assert.Throws<DecodeException>(() => buffer.GetString(0));
-        Assert.Throws<DecodeException>(() => buffer.GetVector(0));
+        Assert.Throws<DecodeException>(() => reader.GetStructArray(0, int.MaxValue));
+        Assert.Throws<DecodeException>(() => reader.GetString(0));
+        Assert.Throws<DecodeException>(() => reader.GetVector(0));
     }
 
     /// <summary>An offset past the largest int leads past any bytes, and a position can't hold it</summary>
     [Fact]
     public void RejectsAnOffsetPastTheLargestInt()
     {
-        var buffer = new ByteBuffer(new byte[] { 0xff, 0xff, 0xff, 0xff });
+        var reader = new TableReader(new byte[] { 0xff, 0xff, 0xff, 0xff });
 
-        var error = Assert.Throws<DecodeException>(() => buffer.RootOffset(0));
+        var error = Assert.Throws<DecodeException>(() => reader.RootOffset(0));
         Assert.Equal((DecodeErrorKind.OutOfRange, 0xffff_ffffL), (error.Kind, error.Position));
-        Assert.Throws<DecodeException>(() => buffer.FieldOffset(0, 0));
-        Assert.Throws<DecodeException>(() => buffer.FieldOffset(int.MaxValue, 0));
+        Assert.Throws<DecodeException>(() => reader.FieldOffset(0, 0));
+        Assert.Throws<DecodeException>(() => reader.FieldOffset(int.MaxValue, 0));
     }
 
     [Fact]
@@ -260,9 +260,9 @@ public class DecodeExceptionTests
         foreach (var value in strings)
         {
             byte[] bytes = [(byte)value.Length, 0, 0, 0, .. value];
-            var buffer = new ByteBuffer(bytes);
+            var reader = new TableReader(bytes);
 
-            var error = Assert.Throws<DecodeException>(() => buffer.GetString(0));
+            var error = Assert.Throws<DecodeException>(() => reader.GetString(0));
             Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
             Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
         }
@@ -280,22 +280,22 @@ public class DecodeExceptionTests
         const int length = 0x3fff_ffe0;
         var bytes = new byte[sizeof(uint) + length];
         BinaryPrimitives.WriteUInt32LittleEndian(bytes, length);
-        var buffer = new ByteBuffer(bytes);
+        var reader = new TableReader(bytes);
 
-        var error = Assert.Throws<DecodeException>(() => buffer.GetString(0));
+        var error = Assert.Throws<DecodeException>(() => reader.GetString(0));
         Assert.Equal((DecodeErrorKind.StringTooLong, 0L, length), (error.Kind, error.Position, error.ByteLength));
         Assert.Equal("The string of 1073741792 bytes at 0 has more characters than a .NET string holds", error.Message);
 
         // Invalid UTF-8 in so long a string fails as invalid, since its characters can't be counted
         bytes[^1] = 0xff;
-        Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => buffer.GetString(0)).Kind);
+        Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => reader.GetString(0)).Kind);
     }
 
     /// <summary>A vector of two items whose second ends before the first does, at 11 rather than 12</summary>
     [Fact]
     public void RejectsAVectorItemThatEndsBeforeItStarts()
     {
-        var vector = new ByteBuffer(new byte[] { 2, 0, 0, 0, 12, 0, 0, 0, 11, 0, 0, 0 }).GetVector(0);
+        var vector = new TableReader(new byte[] { 2, 0, 0, 0, 12, 0, 0, 0, 11, 0, 0, 0 }).GetVector(0);
 
         Assert.Equal(0, vector.Get(0).Length);
         var error = Assert.Throws<DecodeException>(() => vector.Get(1));
@@ -307,7 +307,7 @@ public class DecodeExceptionTests
     [Fact]
     public void RejectsAVectorWhoseEndsLieOutsideTheBytes()
     {
-        var error = Assert.Throws<DecodeException>(() => new ByteBuffer(new byte[] { 3, 0, 0, 0, 4, 0, 0, 0 }).GetVector(0));
+        var error = Assert.Throws<DecodeException>(() => new TableReader(new byte[] { 3, 0, 0, 0, 4, 0, 0, 0 }).GetVector(0));
         Assert.Equal((4L, 12L, 8), (error.Position, error.ByteLength, error.Available));
     }
 
@@ -324,13 +324,13 @@ public class DecodeExceptionTests
     [Fact]
     public void ThrowsArgumentExceptionsForMistakesOfTheCaller()
     {
-        var buffer = new ByteBuffer(new byte[] { 1, 0, 0, 0, 5, 0, 0, 0 });
+        var reader = new TableReader(new byte[] { 1, 0, 0, 0, 5, 0, 0, 0 });
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.RootOffset(-1));
-        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.FieldOffset(0, -1));
-        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.GetStruct(0, -1));
-        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.GetStructArray(0, 0));
-        Assert.Throws<InvalidOperationException>(() => buffer.GetVersion());
+        Assert.Throws<ArgumentOutOfRangeException>(() => reader.RootOffset(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => reader.FieldOffset(0, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => reader.GetStruct(0, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => reader.GetStructArray(0, 0));
+        Assert.Throws<InvalidOperationException>(() => reader.GetVersion());
         Assert.Throws<ArgumentOutOfRangeException>(() => new TableLayout { OffsetType = (OffsetType)3 });
     }
 }

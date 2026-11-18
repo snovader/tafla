@@ -124,11 +124,11 @@ public class TableWriterTests
         var bytes = writer.Bytes;
         Assert.Equal(builder.ToArray(), bytes);
 
-        var buffer = new ByteBuffer(bytes);
-        Assert.Equal(0, (buffer.RootOffset(1) + sizeof(uint)) % sizeof(uint));
-        Assert.Equal(0, (buffer.RootOffset(2) + sizeof(uint)) % 2);
-        Assert.Equal(0, buffer.RootOffset(3) % sizeof(double));
-        Assert.Equal([7.5], buffer.GetFloat64Array(buffer.FieldOffset(buffer.RootOffset(3), 0)).ToArray());
+        var reader = new TableReader(bytes);
+        Assert.Equal(0, (reader.RootOffset(1) + sizeof(uint)) % sizeof(uint));
+        Assert.Equal(0, (reader.RootOffset(2) + sizeof(uint)) % 2);
+        Assert.Equal(0, reader.RootOffset(3) % sizeof(double));
+        Assert.Equal([7.5], reader.GetFloat64Array(reader.FieldOffset(reader.RootOffset(3), 0)).ToArray());
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class TableWriterTests
         var writer = sizer.CreateWriter();
         writer.SetString(0, "cd");
 
-        Assert.Equal("cd", new ByteBuffer(writer.Bytes).GetString(sizeof(uint)));
+        Assert.Equal("cd", new TableReader(writer.Bytes).GetString(sizeof(uint)));
     }
 
     /// <summary>
@@ -474,8 +474,8 @@ public class TableWriterTests
         var writer = sizer.CreateWriter();
         writer.SetInt64(0, -2);
 
-        var buffer = new ByteBuffer(writer.Bytes, layout);
-        Assert.Equal((14u, 7u, -2L), (buffer.GetSize(), buffer.GetVersion(), buffer.GetInt64(buffer.RootOffset(0))));
+        var reader = new TableReader(writer.Bytes, layout);
+        Assert.Equal((14u, 7u, -2L), (reader.GetSize(), reader.GetVersion(), reader.GetInt64(reader.RootOffset(0))));
         Assert.Equal(14, BinaryPrimitives.ReadUInt16LittleEndian(writer.Bytes));
     }
 

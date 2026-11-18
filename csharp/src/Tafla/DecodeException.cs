@@ -24,9 +24,9 @@ public enum DecodeErrorKind
 
     /// <summary>
     /// A header that carries a <see cref="DecodeException.Version"/> that the reader can't read, since
-    /// it reads <see cref="DecodeException.SupportedVersion"/>. <see cref="ByteBuffer"/> doesn't compare
+    /// it reads <see cref="DecodeException.SupportedVersion"/>. <see cref="TableReader"/> doesn't compare
     /// versions: a reader throws it, from <see cref="DecodeException.UnsupportedVersion"/>, when
-    /// <see cref="ByteBuffer.GetVersion"/> isn't its own.
+    /// <see cref="TableReader.GetVersion"/> isn't its own.
     /// </summary>
     UnsupportedVersion,
 
@@ -42,7 +42,7 @@ public enum DecodeErrorKind
 
 /// <summary>
 /// Thrown when bytes can't be read as the table, array, string, struct, vector or value that a read
-/// expects. Every read of a <see cref="ByteBuffer"/> and a <see cref="Vector"/> checks its range
+/// expects. Every read of a <see cref="TableReader"/> and a <see cref="Vector"/> checks its range
 /// against the supplied bytes before it returns, so a truncated or corrupted buffer throws this rather
 /// than returning values from outside them, or throwing any other exception. Strings must also be
 /// valid UTF-8.
@@ -97,7 +97,7 @@ public sealed class DecodeException : Exception
     /// <summary>
     /// Returns the error of a header that carries <paramref name="version"/>, which a reader of
     /// <paramref name="supportedVersion"/> can't read, for a reader to throw when
-    /// <see cref="ByteBuffer.GetVersion"/> isn't its own.
+    /// <see cref="TableReader.GetVersion"/> isn't its own.
     /// </summary>
     public static DecodeException UnsupportedVersion(uint version, uint supportedVersion) =>
         new(
