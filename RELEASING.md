@@ -18,6 +18,8 @@ own.
 | `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`       | `go/CHANGELOG.md`              |
 
 The C++ headers aren't published yet, and have no version.
+The C# runtime isn't published to NuGet yet, and has no version either, but
+`csharp/CHANGELOG.md` records its changes until its first release.
 
 [The release workflow](.github/workflows/release.yml) releases one package at
 a time. A run on `main`, for a package and its version, checks the package,

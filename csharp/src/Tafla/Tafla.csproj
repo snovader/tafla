@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- tafla's runtime, which depends only on the .NET base class library -->
+    <PropertyGroup>
+        <RootNamespace>Tafla</RootNamespace>
+        <AssemblyName>Tafla</AssemblyName>
+        <Description>Binary tables of scalars, strings and typed arrays</Description>
+        <!-- Checks that the runtime trims and compiles ahead of time without warnings -->
+        <IsAotCompatible>true</IsAotCompatible>
+        <!-- Not published yet: RELEASING.md lists the packages that are -->
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+</Project>

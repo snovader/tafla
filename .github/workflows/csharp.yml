@@ -1,0 +1,116 @@
+name: C#
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
+  # Restores the tests' packages as packages.lock.json locks them, and fails
+  # if the lock files are out of date, as Directory.Build.props sets it
+  ContinuousIntegrationBuild: "true"
+
+jobs:
+  # Every push and pull request runs this workflow, so that its required check
+  # always reports, and the jobs below run only when the change touches these
+  # paths
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      csharp: ${{ steps.filter.outputs.csharp }}
+    steps:
+      # A pull request lists its files through the API, and a push compares
+      # its commits, which needs the repository
+      - name: Checkout GitHub repo
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: Filter the changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            csharp:
+              - ".github/workflows/csharp.yml"
+              - "conformance/**"
+              - "csharp/**"
+
+  formatting:
+    name: Formatting
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # The SDK that global.json asks for: the latest of .NET 10
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # The formatting and code style of .editorconfig, and the analyzers'
+      # diagnostics
+      - name: Run formatting check
+        run: dotnet format --verify-no-changes
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Every warning is an error, with the analyzers that Directory.Build.props
+      # enables
+      - name: Build
+        run: dotnet build
+
+      # The conformance suite, the property tests and the examples
+      - name: Run tests
+        run: dotnet test --no-build
+
+      # Reads every array as a copy, as on a big-endian host, rather than in
+      # place
+      - name: Run tests of the portable path
+        run: dotnet test -p:TaflaPortable=true

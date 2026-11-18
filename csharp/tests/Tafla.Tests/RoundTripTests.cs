@@ -1,0 +1,279 @@
+using System.Runtime.InteropServices;
+using System.Text;
+using CsCheck;
+using Tafla.Tests.Tables;
+
+namespace Tafla.Tests;
+
+/// <summary>Tables read back the values that they were built from, and examples of every boundary.</summary>
+public class RoundTripTests
+{
+    /// <summary>
+    /// Floats compare by their bits, so that -0 and NaN count. The table is read at any byte offset
+    /// from an aligned address, so that its arrays are read in place both aligned and unaligned.
+    /// </summary>
+    [Fact]
+    public void TablesReadBackTheValuesTheyWereBuiltFrom() =>
+        Gen.Select(Strategy.Tables, Gen.Int[0, 7]).Check(sample =>
+        {
+            var (table, byteOffset) = sample;
+            var bytes = Bytes.AtByteOffset(table.Bytes(), byteOffset);
+
+            Assert.Equal(table, Read.Table(bytes, table));
+        });
+
+    [Fact]
+    public void ReadsBackSignedZeroAndNaNsByTheirBits()
+    {
+        uint[] float32s = [0x8000_0000, 0x7fc0_0000, 0xffc0_0000, 0x7f80_0001, 0xff80_1234];
+        ulong[] float64s = [0x8000_0000_0000_0000, 0x7ff8_0000_0000_0000, 0xfff8_0000_0000_0000, 0x7ff0_0000_0000_0001];
+
+        var builder = new TableBuilder(float32s.Length + float64s.Length + 2);
+        foreach (var bits in float32s)
+        {
+            builder.SetFloat32(BitConverter.UInt32BitsToSingle(bits));
+        }
+
+        foreach (var bits in float64s)
+        {
+            builder.SetFloat64(BitConverter.UInt64BitsToDouble(bits));
+        }
+
+        builder.SetFloat32Array([.. float32s.Select(BitConverter.UInt32BitsToSingle)]);
+        builder.SetFloat64Array([.. float64s.Select(BitConverter.UInt64BitsToDouble)]);
+
+        var buffer = new ByteBuffer(builder.ToArray());
+        var index = 0;
+        foreach (var bits in float32s)
+        {
+            Assert.Equal(bits, BitConverter.SingleToUInt32Bits(buffer.GetFloat32(buffer.RootOffset(index++))));
+        }
+
+        foreach (var bits in float64s)
+        {
+            Assert.Equal(bits, BitConverter.DoubleToUInt64Bits(buffer.GetFloat64(buffer.RootOffset(index++))));
+        }
+
+        Assert.Equal(float32s, buffer.GetFloat32Array(buffer.RootOffset(index++)).ToArray().Select(BitConverter.SingleToUInt32Bits));
+        Assert.Equal(float64s, buffer.GetFloat64Array(buffer.RootOffset(index)).ToArray().Select(BitConverter.DoubleToUInt64Bits));
+
+        // Comparing bits tells -0 from 0, which comparing values doesn't
+        Assert.NotEqual(BitConverter.DoubleToUInt64Bits(0.0), BitConverter.DoubleToUInt64Bits(-0.0));
+    }
+
+    [Fact]
+    public void ReadsBackTheLimitsOfEveryIntegerType()
+    {
+        var builder = new TableBuilder(16);
+        builder.SetInt8(sbyte.MinValue);
+        builder.SetInt8(sbyte.MaxValue);
+        builder.SetUInt8(byte.MaxValue);
+        builder.SetInt16(short.MinValue);
+        builder.SetInt16(short.MaxValue);
+        builder.SetUInt16(ushort.MaxValue);
+        builder.SetInt32(int.MinValue);
+        builder.SetInt32(int.MaxValue);
+        builder.SetUInt32(uint.MaxValue);
+        builder.SetInt64(long.MinValue);
+        builder.SetInt64(long.MaxValue);
+        builder.SetUInt64(ulong.MaxValue);
+        builder.SetInt64Array([long.MinValue, -1, 0, long.MaxValue]);
+        builder.SetUInt64Array([0, ulong.MaxValue]);
+        builder.SetInt32Array([int.MinValue, int.MaxValue]);
+        builder.SetUInt16Array([0, ushort.MaxValue]);
+
+        var buffer = new ByteBuffer(builder.ToArray());
+        Assert.Equal(sbyte.MinValue, buffer.GetInt8(buffer.RootOffset(0)));
+        Assert.Equal(sbyte.MaxValue, buffer.GetInt8(buffer.RootOffset(1)));
+        Assert.Equal(byte.MaxValue, buffer.GetUInt8(buffer.RootOffset(2)));
+        Assert.Equal(short.MinValue, buffer.GetInt16(buffer.RootOffset(3)));
+        Assert.Equal(short.MaxValue, buffer.GetInt16(buffer.RootOffset(4)));
+        Assert.Equal(ushort.MaxValue, buffer.GetUInt16(buffer.RootOffset(5)));
+        Assert.Equal(int.MinValue, buffer.GetInt32(buffer.RootOffset(6)));
+        Assert.Equal(int.MaxValue, buffer.GetInt32(buffer.RootOffset(7)));
+        Assert.Equal(uint.MaxValue, buffer.GetUInt32(buffer.RootOffset(8)));
+        Assert.Equal(long.MinValue, buffer.GetInt64(buffer.RootOffset(9)));
+        Assert.Equal(long.MaxValue, buffer.GetInt64(buffer.RootOffset(10)));
+        Assert.Equal(ulong.MaxValue, buffer.GetUInt64(buffer.RootOffset(11)));
+        Assert.Equal([long.MinValue, -1, 0, long.MaxValue], buffer.GetInt64Array(buffer.RootOffset(12)).ToArray());
+        Assert.Equal([0, ulong.MaxValue], buffer.GetUInt64Array(buffer.RootOffset(13)).ToArray());
+        Assert.Equal([int.MinValue, int.MaxValue], buffer.GetInt32Array(buffer.RootOffset(14)).ToArray());
+        Assert.Equal([0, ushort.MaxValue], buffer.GetUInt16Array(buffer.RootOffset(15)).ToArray());
+    }
+
+    /// <summary>Every array type, empty, read at any address, which no element of an empty array needs</summary>
+    [Fact]
+    public void ReadsEmptyArraysAtAnyAddress()
+    {
+        var table = new Table(
+            Layout.Headerless(OffsetType.UInt32),
+            [.. Scalars.All.Select(type => (Field)new ArrayField(type, Array.Empty<ulong>())), new StringField(""), new StructArray(new[] { ScalarType.Int64 }, Array.Empty<Seq<Scalar>>())]
+        );
+
+        for (var byteOffset = 0; byteOffset < 8; byteOffset++)
+        {
+            var bytes = Bytes.AtByteOffset(table.Bytes(), byteOffset);
+            Assert.Equal(table, Read.Table(bytes, table));
+        }
+    }
+
+    /// <summary>Strings outside the Basic Multilingual Plane are their UTF-8, of four bytes a character, from their surrogate pairs</summary>
+    [Fact]
+    public void RoundTripsStringsOutsideTheBasicMultilingualPlane()
+    {
+        const string Value = "\U0001F600 \U00010000\U0010FFFF﻿";
+
+        var builder = new TableBuilder(1);
+        builder.SetString(Value);
+        var bytes = builder.ToArray();
+
+        Assert.Equal(Encoding.UTF8.GetBytes(Value), bytes[8..]);
+        Assert.Equal(Value, new ByteBuffer(bytes).GetString(4));
+    }
+
+    /// <summary>UTF-8 can't encode a lone surrogate, which the builder writes as U+FFFD, as Encoding.UTF8 does</summary>
+    [Fact]
+    public void WritesALoneSurrogateAsTheReplacementCharacter()
+    {
+        var builder = new TableBuilder(2);
+        builder.SetString("a\ud800b");
+        builder.SetString("\udc00");
+        var buffer = new ByteBuffer(builder.ToArray());
+
+        Assert.Equal("a�b", buffer.GetString(buffer.RootOffset(0)));
+        Assert.Equal("�", buffer.GetString(buffer.RootOffset(1)));
+    }
+
+    /// <summary>
+    /// The builder counts a long string's UTF-8 in parts of 2^20 characters, and a surrogate pair
+    /// across the end of a part counts as the four bytes of its character
+    /// </summary>
+    [Fact]
+    public void RoundTripsALongStringWithASurrogatePairAtAnyPosition()
+    {
+        const int Part = 1 << 20;
+
+        foreach (var at in new[] { Part - 2, Part - 1, Part, 2 * Part - 1 })
+        {
+            var characters = new string('a', 2 * Part + 3).ToCharArray();
+            characters[at] = '\ud83d';
+            characters[at + 1] = '\ude00';
+            var value = new string(characters);
+
+            var builder = new TableBuilder(1);
+            builder.SetString(value);
+            var bytes = builder.ToArray();
+
+            Assert.Equal(8 + Encoding.UTF8.GetByteCount(value), bytes.Length);
+            Assert.Equal(value, new ByteBuffer(bytes).GetString(4));
+        }
+    }
+
+    /// <summary>A setter copies its value, so that the value can change once it's set, and a nested builder too</summary>
+    [Fact]
+    public void ValuesThatChangeAfterTheyreSetLeaveTheTableAsItWas()
+    {
+        int[] values = [1, 2, 3];
+        byte[] structBytes = [4, 5];
+        var nested = new TableBuilder(1);
+        nested.SetInt32Array(values);
+
+        var builder = new TableBuilder(4);
+        builder.SetInt32Array(values);
+        builder.SetStruct(structBytes);
+        builder.SetTable(nested);
+        builder.SetVector(nested, nested);
+        var expected = builder.ToArray();
+
+        values[0] = 9;
+        structBytes[0] = 9;
+
+        Assert.Equal(expected, builder.ToArray());
+    }
+
+    [Fact]
+    public void NestsABuilderSeveralTimes()
+    {
+        var item = new TableBuilder(2);
+        item.SetUInt16(513);
+        item.SetString("item");
+
+        var builder = new TableBuilder(3);
+        builder.SetTable(item);
+        builder.SetTable(item);
+        builder.SetVector(item, item, item.ToArray());
+
+        var nested = new Nested(Source.Builder, new Table(Layout.Headerless(OffsetType.UInt32), new Scalar(ScalarType.UInt16, 513), new StringField("item")));
+        var table = new Table(
+            Layout.Headerless(OffsetType.UInt32),
+            new TableField(nested, null),
+            new TableField(nested, null),
+            new VectorField(new[] { nested, nested, nested with { From = Source.Bytes } })
+        );
+
+        Assert.Equal(table.Bytes(), builder.ToArray());
+        Assert.Equal(table, Read.Table(builder.ToArray(), table));
+    }
+
+    [Fact]
+    public void FindsVectorItemsFromTheirEnds()
+    {
+        var items = new NestedTable[3];
+        for (var index = 0; index < items.Length; index++)
+        {
+            var item = new TableBuilder(1);
+            item.SetString(new string('x', index));
+            items[index] = item;
+        }
+
+        var builder = new TableBuilder(1);
+        builder.SetVector(items);
+        var bytes = builder.ToArray();
+
+        var vector = new ByteBuffer(bytes).GetVector(4);
+        Assert.Equal(3, vector.Count);
+
+        var index2 = 0;
+        foreach (var item in vector.Items())
+        {
+            Assert.True(item.Span.SequenceEqual(vector.Get(index2).Span));
+            Assert.Equal(new string('x', index2), new ByteBuffer(item).GetString(new ByteBuffer(item).RootOffset(0)));
+            index2++;
+        }
+
+        Assert.Equal(3, index2);
+        Assert.Equal(bytes.Length - (4 + 16), vector.GetInPlace(0).Length);
+        Assert.Throws<ArgumentOutOfRangeException>(() => vector.Get(3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => vector.GetInPlace(-1));
+        Assert.Equal(0, default(Vector).Count);
+    }
+
+    /// <summary>
+    /// On a little-endian host that reads unaligned elements, arrays are spans of the table's bytes,
+    /// which show writes made to them later, at any alignment. A portable build copies them, as a
+    /// big-endian host does.
+    /// </summary>
+    [Fact]
+    public void ReadsArraysInPlaceOnALittleEndianHost()
+    {
+#if TAFLA_PORTABLE
+        var inPlace = false;
+#else
+        var inPlace = BitConverter.IsLittleEndian && RuntimeInformation.ProcessArchitecture is not (Architecture.Arm or Architecture.Armv6);
+#endif
+        var builder = new TableBuilder(2);
+        builder.SetUInt8(0);
+        builder.SetFloat64Array([1.5, 2.5]);
+
+        for (var byteOffset = 0; byteOffset < 8; byteOffset++)
+        {
+            var memory = Bytes.AtByteOffset(builder.ToArray(), byteOffset);
+            var buffer = new ByteBuffer(memory);
+            var values = buffer.GetFloat64Array(buffer.RootOffset(1));
+
+            MemoryMarshal.AsMemory(memory).Span[^8..].Clear();
+
+            Assert.Equal(inPlace ? [1.5, 0.0] : [1.5, 2.5], values.ToArray());
+        }
+    }
+}

@@ -1,0 +1,224 @@
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+namespace Tafla.Tests.Tables;
+
+/// <summary>
+/// The error of bytes that read without a decode error, but otherwise than their description: a
+/// sized table whose header holds another length, a vector of another number of items, or one whose
+/// items <see cref="Vector.Get"/> finds otherwise than reading them in order does.
+/// </summary>
+public sealed class MismatchException(string message) : Exception(message);
+
+/// <summary>
+/// Reads tables with <see cref="ByteBuffer"/> as their descriptions set them out, and returns the
+/// descriptions with the values read in place of theirs, so that they equal the descriptions when
+/// the bytes hold the described values.
+/// </summary>
+/// <remarks>
+/// A nested table is read in place when it has no header and its parent's offset type: a field from
+/// its position in its parent's bytes, and a vector item from the bytes that
+/// <see cref="Vector.ItemsInPlace"/> returns, which end where its parent's do. Any other is read as a
+/// table of its own: a field from its position to the end of its parent, since its length isn't
+/// written, and a vector item from the bytes that <see cref="Vector.Items"/> returns. The scalars of
+/// structs are read at their offsets in the bytes that GetStruct and GetStructArray return.
+/// </remarks>
+public static class Read
+{
+    /// <summary>
+    /// Reads a table from its own bytes, as the root or a vector item is read: its header, whose size
+    /// must be the table's byte length when it's sized, and then its fields.
+    /// </summary>
+    public static Table Table(ReadOnlyMemory<byte> bytes, Table table)
+    {
+        var buffer = new ByteBuffer(bytes, table.Layout.ToTableLayout());
+
+        if (table.Layout.Sized && buffer.GetSize() != bytes.Length)
+        {
+            throw new MismatchException($"The header holds the size {buffer.GetSize()} of {bytes.Length} bytes");
+        }
+
+        var version = table.Layout.Versioned ? buffer.GetVersion() : 0;
+
+        var fields = new List<Field>();
+        for (var index = 0; index < table.Fields.Count; index++)
+        {
+            fields.Add(Field(buffer, buffer.RootOffset(index), table.Fields[index]));
+        }
+
+        return new Table(table.Layout, version, fields);
+    }
+
+    /// <summary>Reads root field <paramref name="index"/> of a table of a layout as the field, without reading the header.</summary>
+    public static Field RootField(ReadOnlyMemory<byte> bytes, Layout layout, int index, Field field)
+    {
+        var buffer = new ByteBuffer(bytes, layout.ToTableLayout());
+        return Field(buffer, buffer.RootOffset(index), field);
+    }
+
+    /// <summary>Reads a field at a position of a table as the field describes it.</summary>
+    public static Field Field(ByteBuffer buffer, int position, Field field) =>
+        field switch
+        {
+            Scalar scalar => Scalars.Read(buffer, scalar.Type, position),
+            Bool => new Bool(buffer.GetUInt8(position) != 0),
+            ArrayField array => Scalars.ReadArray(buffer, array.Type, position),
+            StringField => new StringField(buffer.GetString(position)),
+            StructField value => new StructField(Struct(buffer, position, value)),
+            StructArray array => StructArray(buffer, position, array),
+            TableField table => new TableField(new Nested(table.Nested.From, NestedTable(buffer, position, table.Nested.Table)), table.Alignment),
+            VectorField vector => Vector(buffer, position, vector),
+            _ => throw new ArgumentException($"Unknown field {field}", nameof(field)),
+        };
+
+    private static Seq<Scalar> Struct(ByteBuffer buffer, int position, StructField value)
+    {
+        var types = value.Scalars.Select(scalar => scalar.Type).ToArray();
+        return Scalars.ReadStruct(buffer.GetStruct(position, Scalars.StructSize(types)), types);
+    }
+
+    private static StructArray StructArray(ByteBuffer buffer, int position, StructArray array)
+    {
+        int size = Scalars.StructSize(array.Types);
+        var bytes = buffer.GetStructArray(position, size);
+
+        var items = new List<Seq<Scalar>>();
+        for (var start = 0; start < bytes.Length; start += size)
+        {
+            items.Add(Scalars.ReadStruct(bytes.Slice(start, size), array.Types));
+        }
+
+        return new StructArray(array.Types, items);
+    }
+
+    /// <summary>Reads a table nested with SetTable</summary>
+    private static Table NestedTable(ByteBuffer buffer, int position, Table table)
+    {
+        if (ReadsInPlace(buffer, table))
+        {
+            return InPlace(buffer, position, table);
+        }
+
+        // A position past the end leaves no bytes, which the first read fails for
+        var bytes = buffer.Bytes;
+        return Table(bytes[Math.Clamp(position, 0, bytes.Length)..], table);
+    }
+
+    /// <summary>The bytes of a vector's item, or the error of reading it</summary>
+    private readonly record struct Item(ReadOnlyMemory<byte> Bytes, DecodeException? Error);
+
+    /// <summary>Reads a vector's items, after checking that finding each from its ends alone finds what reading them in order finds</summary>
+    private static VectorField Vector(ByteBuffer buffer, int position, VectorField items)
+    {
+        var vector = buffer.GetVector(position);
+        var inOrder = Items(vector.Items());
+        var inPlace = Items(vector.ItemsInPlace());
+
+        if (inOrder.Count != vector.Count || inPlace.Count != vector.Count)
+        {
+            throw new MismatchException($"A vector of {vector.Count} items reads {inOrder.Count} and {inPlace.Count} in order");
+        }
+
+        for (var index = 0; index < vector.Count; index++)
+        {
+            var item = Find(() => vector.Get(index));
+            var itemInPlace = Find(() => vector.GetInPlace(index));
+            if (!SameItem(item, inOrder[index]) || !SameItem(itemInPlace, inPlace[index]))
+            {
+                throw new MismatchException($"Get finds item {index} otherwise than reading in order does");
+            }
+        }
+
+        foreach (var error in inOrder.Concat(inPlace).Select(item => item.Error))
+        {
+            if (error is not null)
+            {
+                throw error;
+            }
+        }
+
+        if (vector.Count != items.Items.Count)
+        {
+            throw new MismatchException($"A vector of {vector.Count} items, rather than {items.Items.Count}");
+        }
+
+        var read = new List<Nested>();
+        for (var index = 0; index < items.Items.Count; index++)
+        {
+            var nested = items.Items[index];
+            var table = ReadsInPlace(buffer, nested.Table)
+                // At its start, in a buffer of its offset type, which is its parent's
+                ? InPlace(new ByteBuffer(inPlace[index].Bytes, nested.Table.Layout.ToTableLayout()), 0, nested.Table)
+                : Table(inOrder[index].Bytes, nested.Table);
+
+            read.Add(new Nested(nested.From, table));
+        }
+
+        return new VectorField(read);
+    }
+
+    /// <summary>Reads the items in order, each item's bytes or error, as an enumerator of them moves on past an item that fails</summary>
+    private static List<Item> Items(VectorItems items)
+    {
+        var all = new List<Item>();
+        var enumerator = items.GetEnumerator();
+        while (true)
+        {
+            try
+            {
+                if (!enumerator.MoveNext())
+                {
+                    return all;
+                }
+
+                all.Add(new Item(enumerator.Current, null));
+            }
+            catch (DecodeException error)
+            {
+                all.Add(new Item(default, error));
+            }
+        }
+    }
+
+    private static Item Find(Func<ReadOnlyMemory<byte>> find)
+    {
+        try
+        {
+            return new Item(find(), null);
+        }
+        catch (DecodeException error)
+        {
+            return new Item(default, error);
+        }
+    }
+
+    /// <summary>Whether two items are the same bytes, from the same position, or the same error</summary>
+    private static bool SameItem(Item a, Item b)
+    {
+        if (a.Error is not null || b.Error is not null)
+        {
+            return a.Error is { } x
+                && b.Error is { } y
+                && (x.Kind, x.Position, x.ByteLength, x.Available, x.End) == (y.Kind, y.Position, y.ByteLength, y.Available, y.End);
+        }
+
+        return a.Bytes.Length == b.Bytes.Length
+            && (a.Bytes.IsEmpty || Unsafe.AreSame(ref MemoryMarshal.GetReference(a.Bytes.Span), ref MemoryMarshal.GetReference(b.Bytes.Span)));
+    }
+
+    /// <summary>Whether a nested table is read in place: it has no header, and its parent's offset type</summary>
+    private static bool ReadsInPlace(ByteBuffer buffer, Table table) =>
+        table.Layout is { Sized: false, Versioned: false } && table.Layout.OffsetType == buffer.Layout.OffsetType;
+
+    /// <summary>Reads the fields of a table nested at a position, from offsets counted from its start, within its parent's bytes</summary>
+    private static Table InPlace(ByteBuffer buffer, int position, Table table)
+    {
+        var fields = new List<Field>();
+        for (var index = 0; index < table.Fields.Count; index++)
+        {
+            fields.Add(Field(buffer, buffer.FieldOffset(position, index), table.Fields[index]));
+        }
+
+        return new Table(table.Layout, 0, fields);
+    }
+}
