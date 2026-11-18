@@ -196,6 +196,13 @@ A float too large for a float32             ``ValueError`` from a scalar, and
                                             float32.
 A lone surrogate in a string                ``UnicodeEncodeError``, a
                                             ``ValueError``
+A value whose ``__index__()`` or            Its error from an array and from
+``__float__()`` raises                      an integer scalar, but
+                                            ``ValueError`` from a float scalar,
+                                            and from an integer scalar for an
+                                            error that ``struct`` raises
+                                            itself: ``OverflowError``,
+                                            ``IndexError`` or ``struct.error``
 ==========================================  ===================================
 
 Validation and errors

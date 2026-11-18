@@ -1,6 +1,7 @@
 import unittest
 from collections.abc import Callable
-from typing import Any, cast
+from struct import error as StructError
+from typing import Any, cast, override
 
 from hypothesis import assume, given
 from hypothesis.strategies import booleans, integers, one_of, sampled_from
@@ -283,6 +284,23 @@ class TestVersions(unittest.TestCase):
                     TableWriter(0, cast(Any, layout), cast(Any, version))
 
 
+class Unconvertible:
+    """An object whose conversion to an integer or a float raises ``error``"""
+
+    def __init__(self, error: type[Exception]) -> None:
+        self.error = error
+
+    def __index__(self) -> int:
+        raise self.error("no index")
+
+    def __float__(self) -> float:
+        raise self.error("no float")
+
+    @override
+    def __repr__(self) -> str:
+        return f"Unconvertible({self.error.__name__})"
+
+
 class TestValues(unittest.TestCase):
     def test_raises_the_errors_that_table_builder_raises_for_values_it_cant_write(
         self,
@@ -342,6 +360,48 @@ class TestValues(unittest.TestCase):
                 getattr(writer, setter)(0, value)
                 self.assertEqual(bytes(writer.bytes()), bytes(builder.bytes()))
                 self.assertTrue(bytes(writer.bytes()).endswith(expected))
+
+    def test_raises_for_a_value_whose_conversion_raises_as_the_package_docstring_states(
+        self,
+    ) -> None:
+        """Regression: the native setters of integers raised the error of a
+        value's ``__index__()`` as it was, even one that ``struct`` raises
+        itself, which the pure-Python ones raise as ``ValueError``"""
+        cases: list[tuple[str, type[Exception], type[Exception]]] = [
+            *(
+                (setter, error, ValueError)
+                for setter in ("set_int16", "set_uint64")
+                for error in (OverflowError, IndexError, StructError)
+            ),
+            # Another error of its own
+            ("set_int16", KeyError, KeyError),
+            # struct raises its own error for a float, whatever the value's
+            ("set_float64", OverflowError, ValueError),
+            ("set_float64", KeyError, ValueError),
+            # And array() the value's
+            ("set_int16_array", OverflowError, OverflowError),
+            ("set_float64_array", KeyError, KeyError),
+        ]
+        for setter, raised, expected in cases:
+            value: object = Unconvertible(raised)
+            if setter.endswith("_array"):
+                value = [value]
+            with self.subTest(setter=setter, raised=raised):
+                builder = TableBuilder(1)
+                with self.assertRaises(expected) as built:
+                    getattr(builder, setter)(value)
+                    builder.finalize()
+                writer = TableWriter(1)
+                with self.assertRaises(expected) as written:
+                    getattr(writer, setter)(0, value)
+
+                self.assertIs(type(written.exception), type(built.exception))
+                self.assertEqual(str(written.exception), str(built.exception))
+                # A scalar that raised wrote nothing
+                if not setter.endswith("_array"):
+                    self.assertEqual(
+                        bytes(writer.bytes()), bytes(TableWriter(1).bytes())
+                    )
 
     def test_raises_type_error_for_a_struct_that_isnt_c_contiguous_as_table_builder_does(
         self,

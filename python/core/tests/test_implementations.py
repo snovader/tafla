@@ -90,6 +90,26 @@ class Index:
         return f"Index({self.value!r})"
 
 
+class Unpackable:
+    """An object whose ``__index__()`` raises an error that ``struct`` raises
+    itself for a value that it can't pack, which the scalar setters raise as
+    their ``ValueError``, and ``array()`` as it is"""
+
+    def __init__(self, error: type[Exception]) -> None:
+        self.error = error
+
+    def __index__(self) -> int:
+        raise self.error("no index")
+
+    @override
+    def __repr__(self) -> str:
+        return f"Unpackable({self.error.__name__})"
+
+
+UNPACKABLE: SearchStrategy[Unpackable] = builds(
+    Unpackable, sampled_from([OverflowError, IndexError, struct.error])
+)
+
 FLOATS: SearchStrategy[float] = one_of(
     floats(),
     floats(width=32),
@@ -108,6 +128,7 @@ VALUES: SearchStrategy[Any] = one_of(
     just("x"),
     binary(max_size=6),
     builds(Index, one_of(none(), integers(-300, 300))),
+    UNPACKABLE,
 )
 
 
@@ -155,6 +176,7 @@ ELEMENTS: SearchStrategy[Any] = one_of(
     builds(Int, integers(-300, 300)),
     builds(Float, FLOATS),
     builds(Index, one_of(none(), integers(-300, 300))),
+    UNPACKABLE,
     none(),
     just("x"),
 )
@@ -547,6 +569,47 @@ class TestImplementations(unittest.TestCase):
                 calls = [("set_table", (0, 1)), ("write_table", ([1], ""))]
                 description = (300, ["b"], False)
                 self.assert_same_writes(arguments, 1, None, description, calls)
+
+    def test_raise_the_same_error_for_a_value_whose_index_raises_what_struct_raises(
+        self,
+    ) -> None:
+        """Regressions: for a value whose ``__index__()`` raised
+        ``OverflowError``, ``IndexError`` or ``struct.error``, the native
+        setters of integers raised that error, where the pure-Python ones
+        raise the ``ValueError`` of a value that ``struct`` can't pack"""
+        arguments = {"sized": False, "versioned": False, "offset_type": "uint16"}
+        description = (2, ["b", "Q"], False)
+        for error in (OverflowError, IndexError, struct.error):
+            value = Unpackable(error)
+            cases: list[list[tuple[str, tuple[Any, ...]]]] = [
+                *([(f"set_{kind}", (0, value))] for kind in sorted(FORMATS)),
+                [("set_fields", ([value, 1], ""))],
+                [("set_fields", ([1, value], ""))],
+                [("set_table", (0, 1)), ("write_table", ([1, value], ""))],
+                [("set_vector_tables", (0, [([1, 2], ""), ([value, 2], "")], 0))],
+            ]
+            for calls in cases:
+                with self.subTest(error=error.__name__, calls=calls):
+                    self.assert_same_writes(arguments, 2, None, description, calls)
+
+            written = [
+                outcome(
+                    partial(
+                        _write_message,
+                        implementation,
+                        arguments,
+                        description,
+                        (1, value),
+                        "",
+                        None,
+                    )
+                )
+                for implementation in (PURE, self.native)
+            ]
+            with self.subTest(error=error.__name__, call="write_fields"):
+                self.assertEqual(written[1], written[0])
+                assert isinstance(written[0], Raised)
+                self.assertIs(written[0].error, ValueError)
 
     def assert_same_writes(
         self,
