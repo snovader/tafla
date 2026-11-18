@@ -190,7 +190,9 @@ class TableWriter:
         ``values`` as ``set_fields()`` takes them, and ``string`` when they
         end with one, and returns its bytes, in one call. They're the bytes
         that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-        ``bytes()`` write, and it raises as they do.
+        ``bytes()`` write, and it raises as they do, in their order: the
+        constructor's error for a ``version`` that the layout can't hold comes
+        before the error of a value.
 
         Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
         doesn't.
@@ -224,6 +226,11 @@ class TableWriter:
                     return packed + encoded if encoded else packed
             except _FIELD_ERRORS:
                 pass
+            except Exception:
+                # A value's own error, such as its __index__()'s, unless the
+                # version doesn't fit, which the constructor raises for first
+                if version is None or 0 <= version <= MAX_LENGTHS[size]:
+                    raise
 
         layout = cast(Any, fields._layout)
         if version is None:

@@ -436,6 +436,36 @@ class TestMessages(unittest.TestCase):
         with self.assertRaises(ValueError):
             TableWriter.write_fields(versioned, (1,), version=2**32)
 
+    def test_raises_for_a_version_that_does_not_fit_before_a_value(self) -> None:
+        """Regression: the pure-Python ``write_fields()`` converted the values
+        before the version was checked, so a value whose conversion raised an
+        error of its own hid the constructor's error for the version"""
+        layout = TableLayout(versioned=True, offset_type="uint8")
+        fields = FixedFields(1, "b", layout=layout)
+        values = (Unconvertible(),)
+
+        for version in [256, -1]:
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(ValueError, "^Version .* doesn't fit"):
+                    TableWriter(1, layout, version)
+                with self.assertRaisesRegex(ValueError, "^Version .* doesn't fit"):
+                    TableWriter.write_fields(fields, values, version=version)
+
+        # And the value's own error for a version that fits, as set_fields()
+        # raises it
+        with self.assertRaisesRegex(KeyError, "no index"):
+            TableWriter(1, layout, 255).set_fields(fields, values)
+        with self.assertRaisesRegex(KeyError, "no index"):
+            TableWriter.write_fields(fields, values, version=255)
+
+
+class Unconvertible:
+    """An object whose conversion to an integer raises an error of its own,
+    which the writer propagates"""
+
+    def __index__(self) -> int:
+        raise KeyError("no index")
+
 
 def write_message(
     table: Description, fields: FixedFields, version: int | None
