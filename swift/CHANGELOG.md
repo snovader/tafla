@@ -1,7 +1,8 @@
 # Changelog
 
-The changes in each release of `Tafla`, tafla's runtime for Swift. Each of
-tafla's packages has a version and a changelog of its own, as
+The changes in each release of `Tafla`, tafla's runtime for Swift, whose
+releases are tagged `<version>`. Each of tafla's packages has a version and a
+changelog of its own, as
 [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. The format is that of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions
@@ -28,5 +29,8 @@ The first release.
   can't write.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- SwiftPM resolves the package from the repository's URL,
+  `https://github.com/snovader/tafla.git`, and its releases from tags such as
+  `0.1.0`.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift
