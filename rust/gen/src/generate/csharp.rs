@@ -14,6 +14,7 @@
 //! the sizes and alignments of structs and nested tables as numbers, so that a
 //! field may take the name of any declaration but its own.
 
+use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
@@ -24,6 +25,10 @@ use crate::naming::pascal_case;
 const RUNTIME: &str = "Tafla";
 
 const INDENT: &str = "    ";
+
+/// The longest table that the generated code lays out itself, whose
+/// positions an `int` holds, as spans of bytes count them
+const MAX_LAID_OUT: usize = i32::MAX as usize;
 
 /// The standard library's little-endian reads and writes of scalars
 const BINARY_PRIMITIVES: &str = "global::System.Buffers.Binary.BinaryPrimitives";
@@ -45,12 +50,13 @@ const STYLE: Style = Style {
 /// those of `object`, the private `PrintMembers()` of a record, a message's
 /// `FormatVersion`, `VersionOf()` and `TableLayout`, the `Serialize()` and
 /// `SerializeInto()` of its fields, the `AddTo()` and `WriteTo()` with which a
-/// table's fields are written in its parent, and a struct's `Size`,
+/// table's fields are written in its parent, or `PutTo()`, with which a
+/// table of fields of fixed sizes is written whole, and a struct's `Size`,
 /// `Alignment`, `Write()` and `SerializeArray()`. A field named after its own
 /// definition or its definition's fields takes one too, since C# reserves a
 /// type's name for its constructors. `reserved.rs` keeps declarations from
 /// taking the names of these members, which their own types would declare.
-const MEMBERS: [&str; 19] = [
+const MEMBERS: [&str; 20] = [
     "AddTo",
     "Alignment",
     "Equals",
@@ -60,6 +66,7 @@ const MEMBERS: [&str; 19] = [
     "GetType",
     "MemberwiseClone",
     "PrintMembers",
+    "PutTo",
     "ReferenceEquals",
     "Serialize",
     "SerializeArray",
@@ -174,6 +181,7 @@ pub fn generate(
     });
     let generator = Generator {
         schema,
+        fixed: FixedSizes::new(schema, MAX_LAID_OUT),
         runtime: format!("global::{}", options.runtime.as_deref().unwrap_or(RUNTIME)),
     };
 
@@ -203,12 +211,12 @@ pub fn generate(
             Kind::Message(layout) => {
                 generator.message(&mut writer, definition, layout);
                 writer.blank();
-                generator.fields(&mut writer, definition);
+                generator.fields(&mut writer, index);
             }
             Kind::Table => {
                 generator.table(&mut writer, definition);
                 writer.blank();
-                generator.fields(&mut writer, definition);
+                generator.fields(&mut writer, index);
             }
             Kind::Struct(_) => generator.structure(&mut writer, definition),
         }
@@ -231,6 +239,9 @@ pub fn generate(
 
 struct Generator<'a> {
     schema: &'a Schema,
+    /// The byte length of each table whose fields' sizes the schema fixes,
+    /// which the code writes whole rather than field by field
+    fixed: FixedSizes,
     /// The runtime's namespace from `global::`, which its types are named in
     runtime: String,
 }
@@ -460,7 +471,8 @@ impl Generator<'_> {
     /// required property of each field, and the methods that write them: a
     /// message's `Serialize()` and `SerializeInto()`, and a table's `AddTo()`
     /// and `WriteTo()`, which its parent calls
-    fn fields(&self, writer: &mut CodeWriter, definition: &Definition) {
+    fn fields(&self, writer: &mut CodeWriter, index: usize) {
+        let definition = self.schema.definition(index);
         let name = &definition.name;
 
         summary(
@@ -490,7 +502,10 @@ impl Generator<'_> {
 
         match definition.kind {
             Kind::Message(layout) => self.serialize(writer, definition, layout),
-            Kind::Table => self.add_to_and_write_to(writer, definition),
+            Kind::Table => match self.fixed.table(index) {
+                Some(size) => self.put_to(writer, definition, size),
+                None => self.add_to_and_write_to(writer, definition),
+            },
             Kind::Struct(_) => unreachable!("structs are their own fields"),
         }
         writer.close("}");
@@ -518,7 +533,10 @@ impl Generator<'_> {
         writer.line("public byte[] Serialize()");
         writer.line("{");
         writer.indent();
-        self.serialize_body(writer, definition, layout, false);
+        match self.whole_message(definition, layout) {
+            Some(whole) => self.serialize_whole(writer, definition, layout, &whole),
+            None => self.serialize_body(writer, definition, layout, false),
+        }
         writer.close("}");
         writer.blank();
 
@@ -549,6 +567,119 @@ impl Generator<'_> {
         writer.indent();
         self.serialize_body(writer, definition, layout, true);
         writer.close("}");
+    }
+
+    /// The layout of a message that `Serialize()` writes whole, when its
+    /// fields' sizes are all fixed but for a string after them, and their
+    /// positions lie within its offset type, as they do unless the message is
+    /// always too long for it
+    fn whole_message(&self, definition: &Definition, layout: Layout) -> Option<WholeMessage> {
+        let width = offset_size(layout.offset_type);
+        let header = (usize::from(layout.sized) + usize::from(layout.version.is_some())) * width;
+        let last = definition.fields.len() - 1;
+
+        let mut position = header + definition.fields.len() * width;
+        let mut fields = Vec::new();
+        let mut string = None;
+        for (index, field) in definition.fields.iter().enumerate() {
+            let property = member(&field.name, &definition.name);
+            fields.push((property.clone(), field.field_type, position));
+            if field.field_type == FieldType::String && index == last {
+                string = Some(property);
+                position += width;
+            } else {
+                position += self.fixed.field(self.schema, field.field_type)?;
+            }
+        }
+
+        let max = layout.offset_type.max_value().min(MAX_LAID_OUT as u64);
+        (position as u64 <= max).then_some(WholeMessage {
+            fields,
+            length: position,
+            string,
+        })
+    }
+
+    /// A message's `Serialize()` that writes it whole, each field and its
+    /// offset at a position that the generator works out, into the bytes that
+    /// the runtime's `TableWriter.CreateTableBytes()` returns with the header,
+    /// without a sizer and a writer
+    fn serialize_whole(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        layout: Layout,
+        whole: &WholeMessage,
+    ) {
+        let name = &definition.name;
+        let width = offset_size(layout.offset_type);
+        let slot = match layout.offset_type {
+            OffsetType::Uint8 => Scalar::Uint8,
+            OffsetType::Uint16 => Scalar::Uint16,
+            OffsetType::Uint32 => Scalar::Uint32,
+        };
+        let header = (usize::from(layout.sized) + usize::from(layout.version.is_some())) * width;
+
+        let mut length = whole.length.to_string();
+        if let Some(string) = &whole.string {
+            writer.line(format!(
+                "var length = {}.Utf8Length({string});",
+                self.runtime_type("TableSizer")
+            ));
+            length = format!("{length} + length");
+        }
+        let mut arguments = vec![
+            text(definition.fields.len().to_string()),
+            text(format!("{name}.TableLayout")),
+        ];
+        if layout.version.is_some() {
+            arguments.push(text(format!("{name}.FormatVersion")));
+        }
+        arguments.push(text(length));
+        writer.statement(
+            &STYLE,
+            "var table = ",
+            &call(
+                format!("{}.CreateTableBytes", self.runtime_type("TableWriter")),
+                arguments,
+            ),
+            ";",
+        );
+        writer.line("global::System.Span<byte> bytes = table;");
+        writer.blank();
+
+        for (index, (_, _, position)) in whole.fields.iter().enumerate() {
+            writer.line(scalar_write(
+                slot,
+                header + index * width,
+                &position.to_string(),
+            ));
+        }
+        for (field, field_type, position) in &whole.fields {
+            let at = *position;
+            match field_type {
+                FieldType::Scalar(scalar) => writer.line(scalar_write(*scalar, at, field)),
+                FieldType::Struct(_) => writer.line(format!("{field}.Write({});", bytes_from(at))),
+                FieldType::Table(_) => writer.line(format!("{field}.PutTo({});", bytes_from(at))),
+                FieldType::String => {
+                    let count = match layout.offset_type {
+                        OffsetType::Uint8 => "(byte)length",
+                        OffsetType::Uint16 => "(ushort)length",
+                        OffsetType::Uint32 => "(uint)length",
+                    };
+                    writer.line(scalar_write(slot, at, count));
+                    writer.line(format!(
+                        "global::System.Text.Encoding.UTF8.GetBytes({field}, bytes[{}..]);",
+                        at + width
+                    ));
+                }
+                _ => {
+                    unreachable!("a message written whole holds fields of fixed sizes and a string")
+                }
+            }
+        }
+        writer.blank();
+        writer.line("return table;");
     }
 
     /// The body of a message's `Serialize()` or, `into` the caller's bytes,
@@ -609,31 +740,6 @@ impl Generator<'_> {
                 cref(name)
             )],
         );
-        // A table of scalars and structs adds the same lengths whatever its
-        // values, but is added through its fields as every table is
-        let reads_values = definition.fields.iter().any(|field| {
-            !matches!(
-                field.field_type,
-                FieldType::Scalar(_) | FieldType::Struct(_)
-            )
-        });
-        if !reads_values {
-            writer.statement(
-                &STYLE,
-                "[",
-                &call(
-                    "global::System.Diagnostics.CodeAnalysis.SuppressMessage",
-                    vec![
-                        text("\"Performance\""),
-                        text("\"CA1822:Mark members as static\""),
-                        text(
-                            "Justification = \"Called on the parent's fields, as every table's is\"",
-                        ),
-                    ],
-                ),
-                "]",
-            );
-        }
         writer.line(format!(
             "internal void AddTo(ref {} sizer)",
             self.runtime_type("TableSizer")
@@ -666,6 +772,53 @@ impl Generator<'_> {
         writer.close("}");
     }
 
+    /// The `PutTo()` of a table whose fields' sizes the schema fixes, which
+    /// writes it whole, its offsets and its fields at positions that the
+    /// generator works out, where its parent's writer reserved its bytes. It
+    /// has no padding, since it holds no arrays, and its parent's sizer adds
+    /// its constant length, for every item of a vector of it at once.
+    fn put_to(&self, writer: &mut CodeWriter, definition: &Definition, size: usize) {
+        let name = &definition.name;
+
+        summary(
+            writer,
+            &[format!(
+                "Writes {} {} whole, its offsets and its fields, into the start of <paramref name=\"bytes\"/>, which hold its {size} bytes, where its parent's writer reserved them.",
+                indefinite_article(name),
+                cref(name)
+            )],
+        );
+        open_block(
+            writer,
+            "internal void PutTo(global::System.Span<byte> bytes)",
+        );
+
+        // Each field lies after the offsets and the fields before it
+        let mut offset = definition.fields.len() * NESTED_OFFSET_SIZE;
+        let mut fields = Vec::new();
+        for (index, field) in definition.fields.iter().enumerate() {
+            writer.line(scalar_write(
+                Scalar::Uint32,
+                index * NESTED_OFFSET_SIZE,
+                &offset.to_string(),
+            ));
+            fields.push((member(&field.name, name), field.field_type, offset));
+            offset += self
+                .fixed
+                .field(self.schema, field.field_type)
+                .expect("a table of fixed fields holds only fields of fixed sizes");
+        }
+        for (field, field_type, at) in fields {
+            writer.line(match field_type {
+                FieldType::Scalar(scalar) => scalar_write(scalar, at, &field),
+                FieldType::Struct(_) => format!("{field}.Write({});", bytes_from(at)),
+                FieldType::Table(_) => format!("{field}.PutTo({});", bytes_from(at)),
+                _ => unreachable!("a table of fixed fields holds only fields of fixed sizes"),
+            });
+        }
+        writer.close("}");
+    }
+
     /// The calls that add a table's fields to its sizer, in order
     fn sizes(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
@@ -689,10 +842,20 @@ impl Generator<'_> {
                         "sizer.AddTable(alignment: {});",
                         self.schema.table_alignment(index)
                     ));
-                    format!("{value}.AddTo(ref sizer);")
+                    match self.fixed.table(index) {
+                        Some(size) => format!("sizer.AddTableBytes(1, size: {size});"),
+                        None => format!("{value}.AddTo(ref sizer);"),
+                    }
                 }
-                FieldType::Vector(_) => {
+                FieldType::Vector(index) => {
                     writer.line(format!("sizer.AddVector({value}.Length);"));
+                    // Tables of fixed fields are all of the same length
+                    if let Some(size) = self.fixed.table(index) {
+                        writer.line(format!(
+                            "sizer.AddTableBytes({value}.Length, size: {size});"
+                        ));
+                        continue;
+                    }
                     writer.line(format!("foreach (ref readonly var item in {value}.Span)"));
                     writer.line("{");
                     writer.indent();
@@ -765,9 +928,18 @@ impl Generator<'_> {
                         "writer.SetTable({index}, alignment: {});",
                         self.schema.table_alignment(table)
                     ));
-                    format!("{value}.WriteTo(ref writer);")
+                    match self.fixed.table(table) {
+                        Some(size) => format!("{value}.PutTo(writer.ReserveTableBytes({size}));"),
+                        None => format!("{value}.WriteTo(ref writer);"),
+                    }
                 }
-                FieldType::Vector(_) => {
+                FieldType::Vector(table) => {
+                    let write = match self.fixed.table(table) {
+                        Some(size) => {
+                            format!("items{index}[item].PutTo(writer.ReserveTableBytes({size}));")
+                        }
+                        None => format!("items{index}[item].WriteTo(ref writer);"),
+                    };
                     writer.line(format!("var items{index} = {value}.Span;"));
                     writer.line(format!(
                         "var vector{index} = writer.SetVector({index}, items{index}.Length);"
@@ -777,7 +949,7 @@ impl Generator<'_> {
                     ));
                     writer.line("{");
                     writer.indent();
-                    writer.line(format!("items{index}[item].WriteTo(ref writer);"));
+                    writer.line(write);
                     writer.line(format!("writer.SetItemEnd(vector{index}, item);"));
                     writer.close("}");
                     continue;
@@ -1098,6 +1270,15 @@ impl Generator<'_> {
             _ => self.value_type(field_type),
         }
     }
+}
+
+/// The fields of a message that `Serialize()` writes whole, each with its
+/// property and position, the length of the table but for the string after
+/// them, and the string's property
+struct WholeMessage {
+    fields: Vec<(String, FieldType, usize)>,
+    length: usize,
+    string: Option<String>,
 }
 
 /// A field of a struct, with its property and its offset in the struct

@@ -105,41 +105,39 @@ public readonly record struct MembersFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(14, Members.TableLayout, Members.FormatVersion);
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddTable(alignment: 1);
-        Nested.AddTo(ref sizer);
-        sizer.AddStruct(size: 5);
+        var table = global::Tafla.TableWriter.CreateTableBytes(14, Members.TableLayout, Members.FormatVersion, 92);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetUInt8(0, FormatVersion_);
-        writer.SetUInt8(1, VersionOf_);
-        writer.SetUInt8(2, TableLayout_);
-        writer.SetUInt8(3, Serialize_);
-        writer.SetUInt8(4, SerializeInto_);
-        writer.SetUInt8(5, Equals_);
-        writer.SetUInt8(6, GetHashCode_);
-        writer.SetUInt8(7, ToString_);
-        writer.SetUInt8(8, GetType_);
-        writer.SetUInt8(9, PrintMembers_);
-        writer.SetUInt8(10, Members_);
-        writer.SetUInt8(11, MembersFields_);
-        writer.SetTable(12, alignment: 1);
-        Nested.WriteTo(ref writer);
-        Frame.Write(writer.ReserveStruct(13, size: 5));
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 60);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 61);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], 62);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[16..], 63);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[20..], 64);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[24..], 65);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[28..], 66);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[32..], 67);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[36..], 68);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[40..], 69);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[44..], 70);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[48..], 71);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[52..], 72);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[56..], 87);
+        bytes[60] = FormatVersion_;
+        bytes[61] = VersionOf_;
+        bytes[62] = TableLayout_;
+        bytes[63] = Serialize_;
+        bytes[64] = SerializeInto_;
+        bytes[65] = Equals_;
+        bytes[66] = GetHashCode_;
+        bytes[67] = ToString_;
+        bytes[68] = GetType_;
+        bytes[69] = PrintMembers_;
+        bytes[70] = Members_;
+        bytes[71] = MembersFields_;
+        Nested.PutTo(bytes[72..]);
+        Frame.Write(bytes[87..]);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -167,7 +165,7 @@ public readonly record struct MembersFields
         sizer.AddUInt8();
         sizer.AddUInt8();
         sizer.AddTable(alignment: 1);
-        Nested.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 15);
         sizer.AddStruct(size: 5);
 
         var writer = sizer.CreateWriter(bytes);
@@ -184,7 +182,7 @@ public readonly record struct MembersFields
         writer.SetUInt8(10, Members_);
         writer.SetUInt8(11, MembersFields_);
         writer.SetTable(12, alignment: 1);
-        Nested.WriteTo(ref writer);
+        Nested.PutTo(writer.ReserveTableBytes(15));
         Frame.Write(writer.ReserveStruct(13, size: 5));
 
         return writer.ByteLength;
@@ -219,29 +217,15 @@ public readonly record struct NestedFields
 
     public required byte Nested_ { get; init; }
 
-    /// <summary>Adds a <see cref="Nested"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="Nested"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 15 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(3);
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.AddUInt8();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="Nested"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(3);
-        writer.SetUInt8(0, AddTo_);
-        writer.SetUInt8(1, WriteTo_);
-        writer.SetUInt8(2, Nested_);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 13);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 14);
+        bytes[12] = AddTo_;
+        bytes[13] = WriteTo_;
+        bytes[14] = Nested_;
     }
 }
 
@@ -399,30 +383,18 @@ public readonly record struct ViewsFields
         sizer.AddStructArray(Count.Length, size: 1, alignment: 1);
         sizer.AddStructArray(Current.Length, size: 1, alignment: 1);
         sizer.AddVector(MoveNext.Length);
-        foreach (ref readonly var item in MoveNext.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(MoveNext.Length, size: 5);
         sizer.AddVector(Item.Length);
-        foreach (ref readonly var item in Item.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Item.Length, size: 5);
         sizer.AddStructArray(ToArray.Length, size: 1, alignment: 1);
         sizer.AddVector(GetEnumerator.Length);
-        foreach (ref readonly var item in GetEnumerator.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(GetEnumerator.Length, size: 5);
         sizer.AddUInt8();
         sizer.AddStruct(size: 4);
         sizer.AddVector(Range.Length);
-        foreach (ref readonly var item in Range.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Range.Length, size: 5);
         sizer.AddTable(alignment: 1);
-        First.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 5);
 
         var writer = sizer.CreateWriter();
         var structs0 = Count.Span;
@@ -441,14 +413,14 @@ public readonly record struct ViewsFields
         var vector2 = writer.SetVector(2, items2.Length);
         for (var item = 0; item < items2.Length; item++)
         {
-            items2[item].WriteTo(ref writer);
+            items2[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector2, item);
         }
         var items3 = Item.Span;
         var vector3 = writer.SetVector(3, items3.Length);
         for (var item = 0; item < items3.Length; item++)
         {
-            items3[item].WriteTo(ref writer);
+            items3[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector3, item);
         }
         var structs4 = ToArray.Span;
@@ -461,7 +433,7 @@ public readonly record struct ViewsFields
         var vector5 = writer.SetVector(5, items5.Length);
         for (var item = 0; item < items5.Length; item++)
         {
-            items5[item].WriteTo(ref writer);
+            items5[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector5, item);
         }
         writer.SetUInt8(6, Point);
@@ -470,11 +442,11 @@ public readonly record struct ViewsFields
         var vector8 = writer.SetVector(8, items8.Length);
         for (var item = 0; item < items8.Length; item++)
         {
-            items8[item].WriteTo(ref writer);
+            items8[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector8, item);
         }
         writer.SetTable(9, alignment: 1);
-        First.WriteTo(ref writer);
+        First.PutTo(writer.ReserveTableBytes(5));
 
         return writer.Bytes;
     }
@@ -494,30 +466,18 @@ public readonly record struct ViewsFields
         sizer.AddStructArray(Count.Length, size: 1, alignment: 1);
         sizer.AddStructArray(Current.Length, size: 1, alignment: 1);
         sizer.AddVector(MoveNext.Length);
-        foreach (ref readonly var item in MoveNext.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(MoveNext.Length, size: 5);
         sizer.AddVector(Item.Length);
-        foreach (ref readonly var item in Item.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Item.Length, size: 5);
         sizer.AddStructArray(ToArray.Length, size: 1, alignment: 1);
         sizer.AddVector(GetEnumerator.Length);
-        foreach (ref readonly var item in GetEnumerator.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(GetEnumerator.Length, size: 5);
         sizer.AddUInt8();
         sizer.AddStruct(size: 4);
         sizer.AddVector(Range.Length);
-        foreach (ref readonly var item in Range.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Range.Length, size: 5);
         sizer.AddTable(alignment: 1);
-        First.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 5);
 
         var writer = sizer.CreateWriter(bytes);
         var structs0 = Count.Span;
@@ -536,14 +496,14 @@ public readonly record struct ViewsFields
         var vector2 = writer.SetVector(2, items2.Length);
         for (var item = 0; item < items2.Length; item++)
         {
-            items2[item].WriteTo(ref writer);
+            items2[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector2, item);
         }
         var items3 = Item.Span;
         var vector3 = writer.SetVector(3, items3.Length);
         for (var item = 0; item < items3.Length; item++)
         {
-            items3[item].WriteTo(ref writer);
+            items3[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector3, item);
         }
         var structs4 = ToArray.Span;
@@ -556,7 +516,7 @@ public readonly record struct ViewsFields
         var vector5 = writer.SetVector(5, items5.Length);
         for (var item = 0; item < items5.Length; item++)
         {
-            items5[item].WriteTo(ref writer);
+            items5[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector5, item);
         }
         writer.SetUInt8(6, Point);
@@ -565,11 +525,11 @@ public readonly record struct ViewsFields
         var vector8 = writer.SetVector(8, items8.Length);
         for (var item = 0; item < items8.Length; item++)
         {
-            items8[item].WriteTo(ref writer);
+            items8[item].PutTo(writer.ReserveTableBytes(5));
             writer.SetItemEnd(vector8, item);
         }
         writer.SetTable(9, alignment: 1);
-        First.WriteTo(ref writer);
+        First.PutTo(writer.ReserveTableBytes(5));
 
         return writer.ByteLength;
     }
@@ -850,25 +810,11 @@ public readonly record struct MoveNextFields
 {
     public required byte Value { get; init; }
 
-    /// <summary>Adds a <see cref="MoveNext"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="MoveNext"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 5 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(1);
-        sizer.AddUInt8();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="MoveNext"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(1);
-        writer.SetUInt8(0, Value);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 4);
+        bytes[4] = Value;
     }
 }
 
@@ -955,25 +901,11 @@ public readonly record struct ItemFields
 {
     public required byte Value { get; init; }
 
-    /// <summary>Adds an <see cref="Item"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes an <see cref="Item"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 5 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(1);
-        sizer.AddUInt8();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes an <see cref="Item"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(1);
-        writer.SetUInt8(0, Value);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 4);
+        bytes[4] = Value;
     }
 }
 
@@ -1188,25 +1120,11 @@ public readonly record struct GetEnumeratorFields
 {
     public required byte Value { get; init; }
 
-    /// <summary>Adds a <see cref="GetEnumerator"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="GetEnumerator"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 5 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(1);
-        sizer.AddUInt8();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="GetEnumerator"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(1);
-        writer.SetUInt8(0, Value);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 4);
+        bytes[4] = Value;
     }
 }
 
@@ -1348,25 +1266,11 @@ public readonly record struct RangeFields
 {
     public required byte Start { get; init; }
 
-    /// <summary>Adds a <see cref="Range"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="Range"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 5 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(1);
-        sizer.AddUInt8();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="Range"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(1);
-        writer.SetUInt8(0, Start);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 4);
+        bytes[4] = Start;
     }
 }
 

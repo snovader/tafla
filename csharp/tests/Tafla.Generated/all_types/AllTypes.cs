@@ -72,33 +72,33 @@ public readonly record struct ScalarsFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(11, Scalars.TableLayout);
-        sizer.AddInt8();
-        sizer.AddUInt8();
-        sizer.AddInt16();
-        sizer.AddUInt16();
-        sizer.AddInt32();
-        sizer.AddUInt32();
-        sizer.AddInt64();
-        sizer.AddUInt64();
-        sizer.AddFloat32();
-        sizer.AddFloat64();
-        sizer.AddUInt8();
+        var table = global::Tafla.TableWriter.CreateTableBytes(11, Scalars.TableLayout, 87);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetInt8(0, Int8);
-        writer.SetUInt8(1, Uint8);
-        writer.SetInt16(2, Int16);
-        writer.SetUInt16(3, Uint16);
-        writer.SetInt32(4, Int32);
-        writer.SetUInt32(5, Uint32);
-        writer.SetInt64(6, Int64);
-        writer.SetUInt64(7, Uint64);
-        writer.SetFloat32(8, Float32);
-        writer.SetFloat64(9, Float64);
-        writer.SetUInt8(10, Bool ? (byte)1 : (byte)0);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 44);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 45);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 46);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], 48);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[16..], 50);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[20..], 54);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[24..], 58);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[28..], 66);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[32..], 74);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[36..], 78);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[40..], 86);
+        bytes[44] = (byte)Int8;
+        bytes[45] = Uint8;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes[46..], Int16);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[48..], Uint16);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes[50..], Int32);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[54..], Uint32);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(bytes[58..], Int64);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes[66..], Uint64);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[74..], Float32);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[78..], Float64);
+        bytes[86] = Bool ? (byte)1 : (byte)0;
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>

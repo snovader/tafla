@@ -374,8 +374,9 @@ fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names(
     // struct and of a table's fields
     assert_generates(
         "csharp",
-        "message Point { point: uint8; point_fields: uint8; inner: Inner; }\n\
-         table Inner { add_to: uint8; write_to: uint8; }\n\
+        "message Point { point: uint8; point_fields: uint8; inner: Inner; whole: Whole; }\n\
+         table Inner { add_to: uint8; write_to: uint8; name: string; }\n\
+         table Whole { put_to: uint8; }\n\
          struct Frame { size: uint8; alignment: uint8; serialize_array: uint8; frame: uint8; }",
         &[
             "    public byte Point_ => _reader.GetUInt8(_reader.RootOffset(0));",
@@ -383,6 +384,8 @@ fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names(
             "    public required byte AddTo_ { get; init; }",
             "    internal void AddTo(ref global::Tafla.TableSizer sizer)",
             "    public required byte WriteTo_ { get; init; }",
+            "    public required byte PutTo_ { get; init; }",
+            "    internal void PutTo(global::System.Span<byte> bytes)",
             "    public const int Size = 4;",
             "    public required byte Size_ { get; init; }",
             "    public required byte Alignment_ { get; init; }",

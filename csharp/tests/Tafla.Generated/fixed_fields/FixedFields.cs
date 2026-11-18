@@ -243,27 +243,13 @@ public readonly record struct RangeFields
 
     public required uint End { get; init; }
 
-    /// <summary>Adds a <see cref="Range"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="Range"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 16 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(2);
-        sizer.AddUInt32();
-        sizer.AddUInt32();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="Range"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(2);
-        writer.SetUInt32(0, Start);
-        writer.SetUInt32(1, End);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 8);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], Start);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], End);
     }
 }
 
@@ -362,26 +348,15 @@ public readonly record struct FrameFields
 
     public required ushort Flags { get; init; }
 
-    /// <summary>Adds a <see cref="Frame"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="Frame"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 38 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(3);
-        sizer.AddStruct(size: 8);
-        sizer.AddTable(alignment: 1);
-        Range.AddTo(ref sizer);
-        sizer.AddUInt16();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="Frame"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(3);
-        Origin.Write(writer.ReserveStruct(0, size: 8));
-        writer.SetTable(1, alignment: 1);
-        Range.WriteTo(ref writer);
-        writer.SetUInt16(2, Flags);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 20);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 36);
+        Origin.Write(bytes[12..]);
+        Range.PutTo(bytes[20..]);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[36..], Flags);
     }
 }
 
@@ -417,15 +392,15 @@ public readonly record struct TinyFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(2, Tiny.TableLayout);
-        sizer.AddUInt16();
-        sizer.AddUInt8();
+        var table = global::Tafla.TableWriter.CreateTableBytes(2, Tiny.TableLayout, 6);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetUInt16(0, Id);
-        writer.SetUInt8(1, Kind);
+        bytes[1] = 3;
+        bytes[2] = 5;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[3..], Id);
+        bytes[5] = Kind;
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -505,17 +480,24 @@ public readonly record struct TaggedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(3, Tagged.TableLayout, Tagged.FormatVersion);
-        sizer.AddUInt32();
-        sizer.AddStruct(size: 8);
-        sizer.AddString(Label);
+        var length = global::Tafla.TableSizer.Utf8Length(Label);
+        var table = global::Tafla.TableWriter.CreateTableBytes(
+            3,
+            Tagged.TableLayout,
+            Tagged.FormatVersion,
+            18 + length
+        );
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetUInt32(0, Id);
-        Position.Write(writer.ReserveStruct(1, size: 8));
-        writer.SetString(2, Label);
+        bytes[2] = 5;
+        bytes[3] = 9;
+        bytes[4] = 17;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[5..], Id);
+        Position.Write(bytes[9..]);
+        bytes[17] = (byte)length;
+        global::System.Text.Encoding.UTF8.GetBytes(Label, bytes[18..]);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -664,15 +646,15 @@ public readonly record struct PixelFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(2, Pixel.TableLayout, Pixel.FormatVersion);
-        sizer.AddStruct(size: 8);
-        sizer.AddUInt32();
+        var table = global::Tafla.TableWriter.CreateTableBytes(2, Pixel.TableLayout, Pixel.FormatVersion, 20);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        Position.Write(writer.ReserveStruct(0, size: 8));
-        writer.SetUInt32(1, Color);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[4..], 8);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[6..], 16);
+        Position.Write(bytes[8..]);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[16..], Color);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -820,19 +802,17 @@ public readonly record struct BoxFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(3, Box.TableLayout, Box.FormatVersion);
-        sizer.AddStruct(size: 8);
-        sizer.AddStruct(size: 8);
-        sizer.AddTable(alignment: 1);
-        Range.AddTo(ref sizer);
+        var table = global::Tafla.TableWriter.CreateTableBytes(3, Box.TableLayout, Box.FormatVersion, 48);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        Min.Write(writer.ReserveStruct(0, size: 8));
-        Max.Write(writer.ReserveStruct(1, size: 8));
-        writer.SetTable(2, alignment: 1);
-        Range.WriteTo(ref writer);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 16);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 24);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], 32);
+        Min.Write(bytes[16..]);
+        Max.Write(bytes[24..]);
+        Range.PutTo(bytes[32..]);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -850,13 +830,13 @@ public readonly record struct BoxFields
         sizer.AddStruct(size: 8);
         sizer.AddStruct(size: 8);
         sizer.AddTable(alignment: 1);
-        Range.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 16);
 
         var writer = sizer.CreateWriter(bytes);
         Min.Write(writer.ReserveStruct(0, size: 8));
         Max.Write(writer.ReserveStruct(1, size: 8));
         writer.SetTable(2, alignment: 1);
-        Range.WriteTo(ref writer);
+        Range.PutTo(writer.ReserveTableBytes(16));
 
         return writer.ByteLength;
     }
@@ -910,7 +890,7 @@ public readonly record struct TrackFields
         sizer.AddUInt32();
         sizer.AddStruct(size: 8);
         sizer.AddTable(alignment: 1);
-        Frame.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 38);
         sizer.AddFloat32Array(Points.Length);
         sizer.AddString(Name);
 
@@ -918,7 +898,7 @@ public readonly record struct TrackFields
         writer.SetUInt32(0, Id);
         Origin.Write(writer.ReserveStruct(1, size: 8));
         writer.SetTable(2, alignment: 1);
-        Frame.WriteTo(ref writer);
+        Frame.PutTo(writer.ReserveTableBytes(38));
         writer.SetFloat32Array(3, Points.Span);
         writer.SetString(4, Name);
 
@@ -940,7 +920,7 @@ public readonly record struct TrackFields
         sizer.AddUInt32();
         sizer.AddStruct(size: 8);
         sizer.AddTable(alignment: 1);
-        Frame.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 38);
         sizer.AddFloat32Array(Points.Length);
         sizer.AddString(Name);
 
@@ -948,7 +928,7 @@ public readonly record struct TrackFields
         writer.SetUInt32(0, Id);
         Origin.Write(writer.ReserveStruct(1, size: 8));
         writer.SetTable(2, alignment: 1);
-        Frame.WriteTo(ref writer);
+        Frame.PutTo(writer.ReserveTableBytes(38));
         writer.SetFloat32Array(3, Points.Span);
         writer.SetString(4, Name);
 
@@ -981,13 +961,15 @@ public readonly record struct LabelFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(1, Label.TableLayout);
-        sizer.AddString(Text);
+        var length = global::Tafla.TableSizer.Utf8Length(Text);
+        var table = global::Tafla.TableWriter.CreateTableBytes(1, Label.TableLayout, 8 + length);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetString(0, Text);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 4);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], (uint)length);
+        global::System.Text.Encoding.UTF8.GetBytes(Text, bytes[8..]);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -1053,26 +1035,23 @@ public readonly record struct SpanFields
         var sizer = new global::Tafla.TableSizer(4, Span.TableLayout);
         sizer.AddString(Name);
         sizer.AddTable(alignment: 1);
-        Range.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 16);
         sizer.AddTable(alignment: 1);
-        Frame.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 38);
         sizer.AddVector(Ranges.Length);
-        foreach (ref readonly var item in Ranges.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Ranges.Length, size: 16);
 
         var writer = sizer.CreateWriter();
         writer.SetString(0, Name);
         writer.SetTable(1, alignment: 1);
-        Range.WriteTo(ref writer);
+        Range.PutTo(writer.ReserveTableBytes(16));
         writer.SetTable(2, alignment: 1);
-        Frame.WriteTo(ref writer);
+        Frame.PutTo(writer.ReserveTableBytes(38));
         var items3 = Ranges.Span;
         var vector3 = writer.SetVector(3, items3.Length);
         for (var item = 0; item < items3.Length; item++)
         {
-            items3[item].WriteTo(ref writer);
+            items3[item].PutTo(writer.ReserveTableBytes(16));
             writer.SetItemEnd(vector3, item);
         }
 
@@ -1093,26 +1072,23 @@ public readonly record struct SpanFields
         var sizer = new global::Tafla.TableSizer(4, Span.TableLayout);
         sizer.AddString(Name);
         sizer.AddTable(alignment: 1);
-        Range.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 16);
         sizer.AddTable(alignment: 1);
-        Frame.AddTo(ref sizer);
+        sizer.AddTableBytes(1, size: 38);
         sizer.AddVector(Ranges.Length);
-        foreach (ref readonly var item in Ranges.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Ranges.Length, size: 16);
 
         var writer = sizer.CreateWriter(bytes);
         writer.SetString(0, Name);
         writer.SetTable(1, alignment: 1);
-        Range.WriteTo(ref writer);
+        Range.PutTo(writer.ReserveTableBytes(16));
         writer.SetTable(2, alignment: 1);
-        Frame.WriteTo(ref writer);
+        Frame.PutTo(writer.ReserveTableBytes(38));
         var items3 = Ranges.Span;
         var vector3 = writer.SetVector(3, items3.Length);
         for (var item = 0; item < items3.Length; item++)
         {
-            items3[item].WriteTo(ref writer);
+            items3[item].PutTo(writer.ReserveTableBytes(16));
             writer.SetItemEnd(vector3, item);
         }
 

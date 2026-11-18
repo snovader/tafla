@@ -32,6 +32,13 @@ The first release.
   `TableSizer` counted throws one of kind `NotAsSized`, as Go's, Rust's and
   C++'s writers report it, and never writes past the table, even into
   reused bytes longer than it.
+- `TableSizer.AddTableBytes()`, `TableWriter.ReserveTableBytes()`,
+  `TableWriter.CreateTableBytes()` and `TableSizer.Utf8Length()`, with which
+  code that lays out a table of fields of fixed sizes itself, such as
+  tafla-gen's, writes it whole rather than field by field: a vector's items
+  and nested tables in the bytes that the writer reserves for them, and a
+  message of such fields and a string after them in new bytes with its
+  header, without a sizer and a writer.
 - A public `DecodeException.OutOfRange()`, beside `UnsupportedVersion()`,
   with which code that reads bytes without a `TableReader`, such as the
   structs that tafla-gen generates, fails as the runtime's reads do.

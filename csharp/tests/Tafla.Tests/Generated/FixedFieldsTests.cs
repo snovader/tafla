@@ -235,6 +235,25 @@ public class FixedFieldsTests
         Assert.All(bytes, value => Assert.Equal(0, value));
     }
 
+    /// <summary>
+    /// A message of fixed fields and a string after them is written whole, which only its string can
+    /// make too long, as it's written field by field: its header, offsets and fixed fields take 18 of
+    /// the 255 bytes that uint8 offsets address
+    /// </summary>
+    [Fact]
+    public void AMessageWrittenWholeIsAsLongAsItsOffsetTypeAddressesAndRejectedPastIt()
+    {
+        var longest = new FixedFields.TaggedFields { Id = 1, Position = new() { X = 1, Y = 2 }, Label = new string('a', 237) };
+        Assert.Equal(255, longest.Serialize().Length);
+        Assert.Equal(longest.Label, new FixedFields.Tagged(longest.Serialize()).Label);
+
+        var tooLong = longest with { Label = new string('a', 238) };
+        var exception = Assert.Throws<BuildException>(() => tooLong.Serialize());
+        Assert.Equal((BuildErrorKind.TooLong, 2, 256L), (exception.Kind, exception.Index, exception.Length));
+        Assert.Equal(BuildErrorKind.TooLong, Assert.Throws<BuildException>(() => tooLong.SerializeInto(new byte[512])).Kind);
+        Assert.Throws<ArgumentNullException>(() => (longest with { Label = null! }).Serialize());
+    }
+
     private static StructField Describe(FixedFields.Vec2 vec2) => Struct(Of(vec2.X), Of(vec2.Y));
 
     private static TableField Describe(FixedFields.RangeFields range) => Nested(Of(range.Start), Of(range.End));

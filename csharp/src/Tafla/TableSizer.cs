@@ -256,6 +256,19 @@ public struct TableSizer
         _position += _layout.OffsetSize + TableBuilder.Utf8Length(value);
     }
 
+    /// <summary>
+    /// Returns the byte length of a string's UTF-8, as <see cref="AddString"/> counts it and
+    /// <see cref="TableWriter.SetString"/> writes it, with each lone surrogate as U+FFFD. It's counted
+    /// in a <see cref="long"/>, so that a string too long for any table counts past the longest, rather
+    /// than overflowing, for code that lays out a table itself, such as tafla-gen's, to reject it.
+    /// </summary>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
+    public static long Utf8Length(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        return TableBuilder.Utf8Length(value);
+    }
+
     /// <summary>Adds a struct field of <paramref name="size"/> bytes, which isn't padded.</summary>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is negative.</exception>
     public void AddStruct(int size)
@@ -303,6 +316,26 @@ public struct TableSizer
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         _position += (count + 1L) * _layout.OffsetSize;
+    }
+
+    /// <summary>
+    /// Adds <paramref name="count"/> nested tables of <paramref name="size"/> bytes each, whose fields'
+    /// sizes their schema fixes, which their writer lays out itself and writes whole into the bytes
+    /// that <see cref="TableWriter.ReserveTableBytes"/> returns: a field's table, after
+    /// <see cref="AddTable"/>, or a vector's items of the same length, after <see cref="AddVector"/>. It
+    /// takes the place of each table's <see cref="StartTable"/>, adders and <see cref="EndTable"/>.
+    /// </summary>
+    /// <remarks>
+    /// It's for the code that tafla-gen generates, as Go's <c>AddTableBytes()</c> and Rust's
+    /// <c>add_table_bytes()</c> are, which writes a vector of such tables in a third of the time that
+    /// writing each field takes.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> or <paramref name="size"/> is negative.</exception>
+    public void AddTableBytes(int count, int size)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+        _position += (long)count * size;
     }
 
     /// <summary>

@@ -9,13 +9,14 @@
 mod cpp;
 #[cfg(feature = "csharp")]
 mod csharp;
-// The fields that Go's, Rust's, C++'s and TypeScript's generated code lays
-// out itself
+// The fields that Go's, Rust's, C++'s, TypeScript's and C#'s generated code
+// lays out itself
 #[cfg(any(
     feature = "go",
     feature = "rust",
     feature = "cpp",
-    feature = "typescript"
+    feature = "typescript",
+    feature = "csharp"
 ))]
 mod fixed;
 #[cfg(feature = "go")]

@@ -78,16 +78,80 @@ public struct TableWriter
         _slots = _headerSize;
         _position = _headerSize + fields * layout.OffsetSize;
 
+        WriteHeader(bytes, length, layout, version);
+    }
+
+    /// <summary>
+    /// Returns new bytes for a table of <paramref name="fields"/> fields in <paramref name="layout"/>,
+    /// of <paramref name="length"/> bytes, with its header written, for the caller to write every other
+    /// byte itself, each field's offset and the field, at positions that it works out, without a sizer
+    /// and a writer.
+    /// </summary>
+    /// <remarks>
+    /// It's for the code that tafla-gen generates, as Rust's <c>table_bytes()</c> and Go's
+    /// <c>AppendTable()</c> are, which writes a message this way when its fields' sizes are all fixed
+    /// but for a string after them, so that only the string can make it too long, in a little more
+    /// than half the time that a sizer and a writer take.
+    /// </remarks>
+    /// <exception cref="BuildException">
+    /// The header alone is too long for the layout's offset type, as <see cref="TableSizer"/> rejects it,
+    /// or the table is, which names its last field, before anything is allocated.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="fields"/> is negative, or <paramref name="length"/> is shorter than the header
+    /// and the offsets.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// The layout is versioned, which the overload that takes a version writes.
+    /// </exception>
+    public static byte[] CreateTableBytes(int fields, TableLayout layout, long length) =>
+        CreateTableBytes(fields, layout, versioned: false, version: 0, length);
+
+    /// <summary>
+    /// Returns new bytes for a table of <paramref name="fields"/> fields in <paramref name="layout"/>,
+    /// of <paramref name="length"/> bytes, with <paramref name="version"/> in its header, as
+    /// <see cref="CreateTableBytes(int, TableLayout, long)"/> returns them.
+    /// </summary>
+    /// <exception cref="BuildException">
+    /// The version doesn't fit in the layout's offset type, or the table or its header alone is too
+    /// long for it, before anything is allocated.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="fields"/> is negative, or <paramref name="length"/> is shorter than the header
+    /// and the offsets.
+    /// </exception>
+    /// <exception cref="ArgumentException">The layout isn't versioned.</exception>
+    public static byte[] CreateTableBytes(int fields, TableLayout layout, uint version, long length) =>
+        CreateTableBytes(fields, layout, versioned: true, version, length);
+
+    private static byte[] CreateTableBytes(int fields, TableLayout layout, bool versioned, uint version, long length)
+    {
+        var header = TableLayout.HeaderLength(fields, layout, versioned, version);
+        ArgumentOutOfRangeException.ThrowIfLessThan(length, header);
+        if (length > layout.MaxLength)
+        {
+            throw BuildException.TooLong(Math.Max(fields - 1, 0), length, layout.OffsetType);
+        }
+
+        var bytes = new byte[length];
+        WriteHeader(bytes, (int)length, layout, version);
+
+        return bytes;
+    }
+
+    /// <summary>Writes the header of a table of <paramref name="length"/> bytes in <paramref name="layout"/>: its length when it's sized, and then its version when it's versioned</summary>
+    private static void WriteHeader(byte[] bytes, int length, TableLayout layout, uint version)
+    {
         var slot = 0;
         if (layout.Sized)
         {
-            WriteSlot(slot, (uint)length);
+            WriteSlot(bytes, slot, (uint)length, layout.OffsetType);
             slot += layout.OffsetSize;
         }
 
         if (layout.Versioned)
         {
-            WriteSlot(slot, version);
+            WriteSlot(bytes, slot, version, layout.OffsetType);
         }
     }
 
@@ -374,6 +438,25 @@ public struct TableWriter
         return new VectorPosition(position);
     }
 
+    /// <summary>
+    /// Returns the <paramref name="size"/> bytes of a nested table whose fields' sizes its schema fixes,
+    /// as <see cref="TableSizer.AddTableBytes"/> added it, for the caller to write every one of them:
+    /// its offsets, from its own start, and its fields, little-endian. It's a field's table, after
+    /// <see cref="SetTable"/>, or a vector's item, before its <see cref="SetItemEnd"/>, and takes the
+    /// place of the table's <see cref="StartTable"/>, setters and <see cref="EndTable"/>.
+    /// </summary>
+    /// <remarks>
+    /// It's for the code that tafla-gen generates, as Go's <c>ReserveTableBytes()</c> is. The bytes
+    /// aren't zero in bytes that the writer was given, or that it allocated without zeroing.
+    /// </remarks>
+    /// <exception cref="BuildException">The table ends past the table being written.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is negative.</exception>
+    public Span<byte> ReserveTableBytes(int size)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(size);
+        return Reserve(0, size);
+    }
+
     /// <summary>Writes the end of item <paramref name="item"/> of <paramref name="vector"/>, which was just written.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The item's end lies outside the bytes.</exception>
     public readonly void SetItemEnd(VectorPosition vector, int item) =>
@@ -443,20 +526,23 @@ public struct TableWriter
         WriteSlot(_slots + index * Width, (uint)(position - _table));
 
     /// <summary>Writes an offset, count, item end or header slot at <paramref name="position"/>, as wide as the offset size</summary>
-    private readonly void WriteSlot(int position, uint value)
+    private readonly void WriteSlot(int position, uint value) => WriteSlot(_bytes, position, value, _offsetType);
+
+    /// <summary>Writes a slot of <paramref name="offsetType"/> at <paramref name="position"/> in <paramref name="bytes"/></summary>
+    private static void WriteSlot(byte[]? bytes, int position, uint value, OffsetType offsetType)
     {
-        switch (_offsetType)
+        switch (offsetType)
         {
             case OffsetType.UInt8:
-                _bytes.AsSpan(position, sizeof(byte))[0] = (byte)value;
+                bytes.AsSpan(position, sizeof(byte))[0] = (byte)value;
                 break;
 
             case OffsetType.UInt16:
-                BinaryPrimitives.WriteUInt16LittleEndian(_bytes.AsSpan(position, sizeof(ushort)), (ushort)value);
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(position, sizeof(ushort)), (ushort)value);
                 break;
 
             default:
-                BinaryPrimitives.WriteUInt32LittleEndian(_bytes.AsSpan(position, sizeof(uint)), value);
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(position, sizeof(uint)), value);
                 break;
         }
     }

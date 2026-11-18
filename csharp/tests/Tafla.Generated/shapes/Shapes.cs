@@ -44,19 +44,21 @@ public readonly record struct PointFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(4, Point.TableLayout);
-        sizer.AddFloat64();
-        sizer.AddFloat64();
-        sizer.AddInt64();
-        sizer.AddString(Name);
+        var length = global::Tafla.TableSizer.Utf8Length(Name);
+        var table = global::Tafla.TableWriter.CreateTableBytes(4, Point.TableLayout, 44 + length);
+        global::System.Span<byte> bytes = table;
 
-        var writer = sizer.CreateWriter();
-        writer.SetFloat64(0, X);
-        writer.SetFloat64(1, Y);
-        writer.SetInt64(2, Id);
-        writer.SetString(3, Name);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 16);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 24);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 32);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[12..], 40);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[16..], X);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[24..], Y);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(bytes[32..], Id);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[40..], (uint)length);
+        global::System.Text.Encoding.UTF8.GetBytes(Name, bytes[44..]);
 
-        return writer.Bytes;
+        return table;
     }
 
     /// <summary>
@@ -276,17 +278,14 @@ public readonly record struct ItemListFields
     {
         var sizer = new global::Tafla.TableSizer(1, ItemList.TableLayout);
         sizer.AddVector(Items.Length);
-        foreach (ref readonly var item in Items.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Items.Length, size: 28);
 
         var writer = sizer.CreateWriter();
         var items0 = Items.Span;
         var vector0 = writer.SetVector(0, items0.Length);
         for (var item = 0; item < items0.Length; item++)
         {
-            items0[item].WriteTo(ref writer);
+            items0[item].PutTo(writer.ReserveTableBytes(28));
             writer.SetItemEnd(vector0, item);
         }
 
@@ -306,17 +305,14 @@ public readonly record struct ItemListFields
     {
         var sizer = new global::Tafla.TableSizer(1, ItemList.TableLayout);
         sizer.AddVector(Items.Length);
-        foreach (ref readonly var item in Items.Span)
-        {
-            item.AddTo(ref sizer);
-        }
+        sizer.AddTableBytes(Items.Length, size: 28);
 
         var writer = sizer.CreateWriter(bytes);
         var items0 = Items.Span;
         var vector0 = writer.SetVector(0, items0.Length);
         for (var item = 0; item < items0.Length; item++)
         {
-            items0[item].WriteTo(ref writer);
+            items0[item].PutTo(writer.ReserveTableBytes(28));
             writer.SetItemEnd(vector0, item);
         }
 
@@ -347,24 +343,13 @@ public readonly record struct ItemFields
 
     public required PairFields Pair { get; init; }
 
-    /// <summary>Adds an <see cref="Item"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes an <see cref="Item"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 28 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(2);
-        sizer.AddFloat32();
-        sizer.AddTable(alignment: 1);
-        Pair.AddTo(ref sizer);
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes an <see cref="Item"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(2);
-        writer.SetFloat32(0, Value);
-        writer.SetTable(1, alignment: 1);
-        Pair.WriteTo(ref writer);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 8);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[8..], Value);
+        Pair.PutTo(bytes[12..]);
     }
 }
 
@@ -456,27 +441,13 @@ public readonly record struct PairFields
 
     public required float Second { get; init; }
 
-    /// <summary>Adds a <see cref="Pair"/> to its parent's sizer, after the field or vector that holds it.</summary>
-    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Performance",
-        "CA1822:Mark members as static",
-        Justification = "Called on the parent's fields, as every table's is"
-    )]
-    internal void AddTo(ref global::Tafla.TableSizer sizer)
+    /// <summary>Writes a <see cref="Pair"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 16 bytes, where its parent's writer reserved them.</summary>
+    internal void PutTo(global::System.Span<byte> bytes)
     {
-        var parent = sizer.StartTable(2);
-        sizer.AddFloat32();
-        sizer.AddFloat32();
-        sizer.EndTable(parent);
-    }
-
-    /// <summary>Writes a <see cref="Pair"/> where its parent's writer is, after the field or vector that holds it.</summary>
-    internal void WriteTo(ref global::Tafla.TableWriter writer)
-    {
-        var parent = writer.StartTable(2);
-        writer.SetFloat32(0, First);
-        writer.SetFloat32(1, Second);
-        writer.EndTable(parent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 8);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 12);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[8..], First);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[12..], Second);
     }
 }
 
