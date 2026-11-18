@@ -177,7 +177,11 @@ public sealed class Suite
         return new Nested(from, ParseTable(nested.GetProperty("table")));
     }
 
-    private static Scalar ParseScalar(ScalarType type, JsonElement value)
+    /// <summary>
+    /// Parses a scalar of a type, as cases.json and conformance/generated/shapes.json write them: 64-bit
+    /// integers as strings, and the floats that JSON has no number for by name.
+    /// </summary>
+    public static Scalar ParseScalar(ScalarType type, JsonElement value)
     {
         ulong bits = type switch
         {
