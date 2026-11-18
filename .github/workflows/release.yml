@@ -1074,7 +1074,11 @@ jobs:
   # NuGet
 
   # Checks the C# runtime, packs it, with its symbols in a .snupkg, and tests
-  # the package as a project that uses it would, as the C# workflow does
+  # the package as a project that uses it would, as the C# workflow does. It
+  # checks the runtime and its tests by their projects rather than the
+  # solution, whose other projects, such as the benchmarks, bring packages
+  # and their source generators that have no part in building the package:
+  # the C# workflow checks those.
   nuget-build:
     name: NuGet (check and pack)
     needs: plan
@@ -1102,16 +1106,20 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Run formatting check
-        run: dotnet format --verify-no-changes
+        run: |
+          dotnet format src/Tafla --verify-no-changes
+          dotnet format tests/Tafla.Tests --verify-no-changes
 
+      # The tests' project builds the runtime and the generated code that it
+      # tests
       - name: Build
-        run: dotnet build
+        run: dotnet build tests/Tafla.Tests
 
       - name: Run tests
-        run: dotnet test --no-build
+        run: dotnet test --no-build --project tests/Tafla.Tests
 
       - name: Run tests of the portable path
-        run: dotnet test -p:TaflaPortable=true
+        run: dotnet test -p:TaflaPortable=true --project tests/Tafla.Tests
 
       - name: Pack the package
         run: dotnet pack src/Tafla
