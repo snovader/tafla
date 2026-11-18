@@ -420,7 +420,7 @@ fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names(
             "    public byte Write_ => _reader.GetUInt8(_reader.RootOffset(10));",
             "    public byte VersionOf_ => _reader.GetUInt8(_reader.RootOffset(12));",
             "    public required byte Serialize_ { get; init; }",
-            "    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>",
+            "    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>",
             "    public byte[] Serialize()",
             // PascalCase names are never C#'s keywords, nor Python's or
             // TypeScript's members

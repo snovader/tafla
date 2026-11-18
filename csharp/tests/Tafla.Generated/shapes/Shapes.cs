@@ -8,14 +8,14 @@
 namespace Shapes;
 
 /// <summary>A small table of two coordinates, an identifier and a name</summary>
-public readonly struct Point
+public readonly ref struct Point
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Point"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Point(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Point"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Point(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -92,7 +92,7 @@ public readonly record struct PointFields
 /// A document, whose header holds its length and version, with a nested
 /// table of columns of the same length
 /// </summary>
-public readonly struct Document
+public readonly ref struct Document
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
@@ -101,9 +101,9 @@ public readonly struct Document
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Document"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Document"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Document(global::System.ReadOnlyMemory<byte> bytes)
+    public Document(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -119,7 +119,7 @@ public readonly struct Document
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public double X => _reader.GetFloat64(_reader.RootOffset(0));
@@ -193,7 +193,7 @@ public readonly record struct DocumentFields
 }
 
 /// <summary>Columns with a value per key</summary>
-public readonly struct Columns
+public readonly ref struct Columns
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -250,14 +250,14 @@ public readonly record struct ColumnsFields
 }
 
 /// <summary>A list of items, each a table of its own</summary>
-public readonly struct ItemList
+public readonly ref struct ItemList
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads an <see cref="ItemList"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public ItemList(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads an <see cref="ItemList"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public ItemList(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -320,7 +320,7 @@ public readonly record struct ItemListFields
     }
 }
 
-public readonly struct Item
+public readonly ref struct Item
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -354,7 +354,7 @@ public readonly record struct ItemFields
 }
 
 /// <summary>A vector of <see cref="Item"/>s, which reads each item when it's asked for.</summary>
-public readonly struct ItemVector : global::System.Collections.Generic.IReadOnlyList<Item>
+public readonly ref struct ItemVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -374,16 +374,11 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<Item> global::System.Collections.Generic.IEnumerable<Item>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of an <see cref="ItemVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<Item>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -395,8 +390,6 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public Item Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -410,15 +403,11 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
             Current = new Item(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
 /// <summary>Two values of an item</summary>
-public readonly struct Pair
+public readonly ref struct Pair
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;

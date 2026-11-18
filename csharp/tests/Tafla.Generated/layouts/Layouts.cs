@@ -8,14 +8,14 @@
 namespace Layouts;
 
 /// <summary><c>uint8</c> offsets, for tables of up to 255 bytes</summary>
-public readonly struct Uint8Offsets
+public readonly ref struct Uint8Offsets
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint8Offsets"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint8Offsets(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint8Offsets"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint8Offsets(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -79,14 +79,14 @@ public readonly record struct Uint8OffsetsFields
 }
 
 /// <summary><c>uint8</c> offsets, after the table's length</summary>
-public readonly struct Uint8OffsetsSized
+public readonly ref struct Uint8OffsetsSized
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint8OffsetsSized"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint8OffsetsSized(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint8OffsetsSized"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint8OffsetsSized(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -150,7 +150,7 @@ public readonly record struct Uint8OffsetsSizedFields
 }
 
 /// <summary><c>uint8</c> offsets, after the largest version they hold</summary>
-public readonly struct Uint8OffsetsVersioned
+public readonly ref struct Uint8OffsetsVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 255;
@@ -159,9 +159,9 @@ public readonly struct Uint8OffsetsVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint8OffsetsVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint8OffsetsVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint8OffsetsVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint8OffsetsVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -177,7 +177,7 @@ public readonly struct Uint8OffsetsVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -247,7 +247,7 @@ public readonly record struct Uint8OffsetsVersionedFields
 }
 
 /// <summary><c>uint8</c> offsets, after the table's length and version zero</summary>
-public readonly struct Uint8OffsetsSizedVersioned
+public readonly ref struct Uint8OffsetsSizedVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 0;
@@ -256,9 +256,9 @@ public readonly struct Uint8OffsetsSizedVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint8OffsetsSizedVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint8OffsetsSizedVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint8OffsetsSizedVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint8OffsetsSizedVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -274,7 +274,7 @@ public readonly struct Uint8OffsetsSizedVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -344,14 +344,14 @@ public readonly record struct Uint8OffsetsSizedVersionedFields
 }
 
 /// <summary><c>uint16</c> offsets, for tables of up to 65,535 bytes</summary>
-public readonly struct Uint16Offsets
+public readonly ref struct Uint16Offsets
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint16Offsets"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint16Offsets(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint16Offsets"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint16Offsets(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -415,14 +415,14 @@ public readonly record struct Uint16OffsetsFields
 }
 
 /// <summary><c>uint16</c> offsets, after the table's length</summary>
-public readonly struct Uint16OffsetsSized
+public readonly ref struct Uint16OffsetsSized
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint16OffsetsSized"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint16OffsetsSized(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint16OffsetsSized"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint16OffsetsSized(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -486,7 +486,7 @@ public readonly record struct Uint16OffsetsSizedFields
 }
 
 /// <summary><c>uint16</c> offsets, after the largest version they hold</summary>
-public readonly struct Uint16OffsetsVersioned
+public readonly ref struct Uint16OffsetsVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 65535;
@@ -495,9 +495,9 @@ public readonly struct Uint16OffsetsVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint16OffsetsVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint16OffsetsVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint16OffsetsVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint16OffsetsVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -513,7 +513,7 @@ public readonly struct Uint16OffsetsVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -583,7 +583,7 @@ public readonly record struct Uint16OffsetsVersionedFields
 }
 
 /// <summary><c>uint16</c> offsets, after the table's length and a version</summary>
-public readonly struct Uint16OffsetsSizedVersioned
+public readonly ref struct Uint16OffsetsSizedVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
@@ -592,9 +592,9 @@ public readonly struct Uint16OffsetsSizedVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint16OffsetsSizedVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint16OffsetsSizedVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint16OffsetsSizedVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint16OffsetsSizedVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -610,7 +610,7 @@ public readonly struct Uint16OffsetsSizedVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -680,14 +680,14 @@ public readonly record struct Uint16OffsetsSizedVersionedFields
 }
 
 /// <summary><c>uint32</c> offsets, the default, for tables of up to 4 GiB</summary>
-public readonly struct Uint32Offsets
+public readonly ref struct Uint32Offsets
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint32Offsets"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint32Offsets(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint32Offsets"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint32Offsets(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -751,14 +751,14 @@ public readonly record struct Uint32OffsetsFields
 }
 
 /// <summary><c>uint32</c> offsets, after the table's length</summary>
-public readonly struct Uint32OffsetsSized
+public readonly ref struct Uint32OffsetsSized
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint32OffsetsSized"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Uint32OffsetsSized(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Uint32OffsetsSized"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Uint32OffsetsSized(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -822,7 +822,7 @@ public readonly record struct Uint32OffsetsSizedFields
 }
 
 /// <summary><c>uint32</c> offsets, after the largest version they hold</summary>
-public readonly struct Uint32OffsetsVersioned
+public readonly ref struct Uint32OffsetsVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 4294967295;
@@ -831,9 +831,9 @@ public readonly struct Uint32OffsetsVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint32OffsetsVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint32OffsetsVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint32OffsetsVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint32OffsetsVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -849,7 +849,7 @@ public readonly struct Uint32OffsetsVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -919,7 +919,7 @@ public readonly record struct Uint32OffsetsVersionedFields
 }
 
 /// <summary><c>uint32</c> offsets, after the table's length and a version</summary>
-public readonly struct Uint32OffsetsSizedVersioned
+public readonly ref struct Uint32OffsetsSizedVersioned
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 2;
@@ -928,9 +928,9 @@ public readonly struct Uint32OffsetsSizedVersioned
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Uint32OffsetsSizedVersioned"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Uint32OffsetsSizedVersioned"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Uint32OffsetsSizedVersioned(global::System.ReadOnlyMemory<byte> bytes)
+    public Uint32OffsetsSizedVersioned(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -946,7 +946,7 @@ public readonly struct Uint32OffsetsSizedVersioned
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));

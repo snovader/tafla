@@ -220,7 +220,7 @@ public readonly record struct Block
 }
 
 /// <summary>A table of only scalars, which nests whole</summary>
-public readonly struct Range
+public readonly ref struct Range
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -254,7 +254,7 @@ public readonly record struct RangeFields
 }
 
 /// <summary>A vector of <see cref="Range"/>s, which reads each item when it's asked for.</summary>
-public readonly struct RangeVector : global::System.Collections.Generic.IReadOnlyList<Range>
+public readonly ref struct RangeVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -274,16 +274,11 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<Range> global::System.Collections.Generic.IEnumerable<Range>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of a <see cref="RangeVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<Range>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -295,8 +290,6 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public Range Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -310,10 +303,6 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
             Current = new Range(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
@@ -321,7 +310,7 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
 /// A table of a struct, a table of fixed fields and a scalar, which nests
 /// whole too
 /// </summary>
-public readonly struct Frame
+public readonly ref struct Frame
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -364,14 +353,14 @@ public readonly record struct FrameFields
 /// <c>uint8</c> offsets after the table's length: only fixed fields, written
 /// whole
 /// </summary>
-public readonly struct Tiny
+public readonly ref struct Tiny
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Tiny"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Tiny(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Tiny"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Tiny(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -428,7 +417,7 @@ public readonly record struct TinyFields
 /// <c>uint8</c> offsets after the table's length and a version: fixed fields and
 /// a string after them, written whole
 /// </summary>
-public readonly struct Tagged
+public readonly ref struct Tagged
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 3;
@@ -437,9 +426,9 @@ public readonly struct Tagged
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Tagged"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Tagged"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Tagged(global::System.ReadOnlyMemory<byte> bytes)
+    public Tagged(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -455,7 +444,7 @@ public readonly struct Tagged
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public uint Id => _reader.GetUInt32(_reader.RootOffset(0));
@@ -524,14 +513,14 @@ public readonly record struct TaggedFields
 }
 
 /// <summary><c>uint8</c> offsets: two fixed fields together, and then an array</summary>
-public readonly struct Header
+public readonly ref struct Header
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Header"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Header(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Header"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Header(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -598,7 +587,7 @@ public readonly record struct HeaderFields
 /// <c>uint16</c> offsets after the table's length and a version: a struct among
 /// fixed fields, written whole
 /// </summary>
-public readonly struct Pixel
+public readonly ref struct Pixel
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 2;
@@ -607,9 +596,9 @@ public readonly struct Pixel
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Pixel"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Pixel"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Pixel(global::System.ReadOnlyMemory<byte> bytes)
+    public Pixel(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -625,7 +614,7 @@ public readonly struct Pixel
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public Vec2 Position => new(_reader.GetStruct(_reader.RootOffset(0), 8));
@@ -677,14 +666,14 @@ public readonly record struct PixelFields
 }
 
 /// <summary><c>uint16</c> offsets: fixed fields with a struct together, and then an array</summary>
-public readonly struct Strip
+public readonly ref struct Strip
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Strip"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Strip(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Strip"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Strip(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -748,7 +737,7 @@ public readonly record struct StripFields
 }
 
 /// <summary>A version: a struct and a nested table among fixed fields, written whole</summary>
-public readonly struct Box
+public readonly ref struct Box
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
@@ -757,9 +746,9 @@ public readonly struct Box
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Box"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Box"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Box(global::System.ReadOnlyMemory<byte> bytes)
+    public Box(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -775,7 +764,7 @@ public readonly struct Box
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public Vec2 Min => new(_reader.GetStruct(_reader.RootOffset(0), 8));
@@ -840,14 +829,14 @@ public readonly record struct BoxFields
 /// Fixed fields with a struct and a nested table together, and then other
 /// fields
 /// </summary>
-public readonly struct Track
+public readonly ref struct Track
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Track"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Track(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Track"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Track(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -931,14 +920,14 @@ public readonly record struct TrackFields
 }
 
 /// <summary>Only a string, written whole</summary>
-public readonly struct Label
+public readonly ref struct Label
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Label"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Label(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Label"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Label(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -988,14 +977,14 @@ public readonly record struct LabelFields
 }
 
 /// <summary>Fixed tables after other fields, alone and in a vector</summary>
-public readonly struct Span
+public readonly ref struct Span
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Span"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Span(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Span"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Span(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -1094,14 +1083,14 @@ public readonly record struct SpanFields
 /// <c>uint8</c> offsets whose fixed fields alone take more than 255 bytes, which
 /// generated code writes field by field, and fails to write as too long
 /// </summary>
-public readonly struct Overflow
+public readonly ref struct Overflow
 {
     internal static readonly global::Tafla.TableLayout TableLayout = new() { OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads an <see cref="Overflow"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Overflow(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads an <see cref="Overflow"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Overflow(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }

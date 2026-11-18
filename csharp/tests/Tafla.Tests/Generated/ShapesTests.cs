@@ -135,7 +135,7 @@ public class ShapesTests
         var items = new ItemList(bytes).Items;
 
         Assert.Equal(DescribeItem(item), DescribeItem(items[0]));
-        Assert.Equal(DescribeItem(item), DescribeItem(Assert.Single(items)));
+        Assert.Equal([DescribeItem(item)], DescribeItems(items));
     }
 
     [Fact]
@@ -153,12 +153,24 @@ public class ShapesTests
 
         Assert.Equal(2, items.Count);
         Assert.Equal(DescribeItem(first), DescribeItem(items[0]));
-        Assert.Throws<DecodeException>(() => items[1]);
+        Assert.Throws<DecodeException>(() => _ = new ItemList(bytes).Items[1]);
 
+        // The views are ref structs, which a lambda can't capture, so the second item is read where
+        // the enumerator is
         var enumerator = items.GetEnumerator();
         Assert.True(enumerator.MoveNext());
         Assert.Equal(DescribeItem(first), DescribeItem(enumerator.Current));
-        Assert.Throws<DecodeException>(() => enumerator.MoveNext());
+        DecodeException? failure = null;
+        try
+        {
+            enumerator.MoveNext();
+        }
+        catch (DecodeException exception)
+        {
+            failure = exception;
+        }
+
+        Assert.NotNull(failure);
     }
 
     // The struct
@@ -245,7 +257,19 @@ public class ShapesTests
     public static Table Describe(ItemListFields fields) =>
         Message(DefaultLayout, Vector(fields.Items.ToArray().Select(DescribeItem)));
 
-    public static Table Describe(ItemList itemList) => Message(DefaultLayout, Vector(itemList.Items.Select(DescribeItem)));
+    public static Table Describe(ItemList itemList) => Message(DefaultLayout, Vector(DescribeItems(itemList.Items)));
+
+    /// <summary>The items of a vector, read through its enumerator, as <c>foreach</c> reads them</summary>
+    private static List<TableField> DescribeItems(ItemVector items)
+    {
+        var described = new List<TableField>();
+        foreach (var item in items)
+        {
+            described.Add(DescribeItem(item));
+        }
+
+        return described;
+    }
 
     private static TableField DescribeItem(ItemFields item) =>
         Nested(Of(item.Value), Nested(Of(item.Pair.First), Of(item.Pair.Second)));

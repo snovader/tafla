@@ -1,7 +1,7 @@
 //! C# for the runtime's namespace `Tafla`, one file per schema, of C# 14 for
-//! .NET 10. Messages and tables are `readonly struct`s that read their fields
-//! lazily through a `TableReader`, and are written from `readonly record
-//! struct`s of their fields, which a `TableSizer` counts and a `TableWriter`
+//! .NET 10. Messages and tables are `readonly ref struct`s that read their
+//! fields lazily through a `TableReader`, which reads a span of their bytes in
+//! place, and are written from `readonly record struct`s of their fields, which a `TableSizer` counts and a `TableWriter`
 //! then writes, nested tables and vector items in place. Structs are `readonly
 //! record struct`s, read from and written into spans of their bytes with
 //! `BinaryPrimitives`.
@@ -259,7 +259,7 @@ impl Generator<'_> {
         let decode_exception = self.runtime_type("DecodeException");
 
         summary(writer, &schema_docs(&definition.docs));
-        open_block(writer, format!("public readonly struct {name}"));
+        open_block(writer, format!("public readonly ref struct {name}"));
         if let Some(version) = layout.version {
             summary(
                 writer,
@@ -283,7 +283,7 @@ impl Generator<'_> {
         summary(
             writer,
             &[format!(
-                "Reads {} {} from <paramref name=\"bytes\"/>, which it keeps rather than copying them.",
+                "Reads {} {} from <paramref name=\"bytes\"/>, in place, rather than copying them.",
                 indefinite_article(name),
                 cref(name)
             )],
@@ -294,7 +294,7 @@ impl Generator<'_> {
             ));
         }
         writer.line(format!(
-            "public {name}(global::System.ReadOnlyMemory<byte> bytes)"
+            "public {name}(global::System.ReadOnlySpan<byte> bytes)"
         ));
         writer.line("{");
         writer.indent();
@@ -328,8 +328,7 @@ impl Generator<'_> {
             writer.line(format!(
                 "/// <exception cref=\"{decode_exception}\">The bytes don't hold the header.</exception>"
             ));
-            writer
-                .line("public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>");
+            writer.line("public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>");
             writer.indent();
             writer.line(format!(
                 "new {}(bytes, TableLayout).GetVersion();",
@@ -349,7 +348,7 @@ impl Generator<'_> {
         let reader = self.runtime_type("TableReader");
 
         summary(writer, &schema_docs(&definition.docs));
-        open_block(writer, format!("public readonly struct {name}"));
+        open_block(writer, format!("public readonly ref struct {name}"));
         writer.line(format!("private readonly {reader} _reader;"));
         writer.line("private readonly int _position;");
         writer.blank();
@@ -1077,15 +1076,18 @@ impl Generator<'_> {
         }
         writer.close("}");
     }
-    /// The view of a vector of a table, an `IReadOnlyList` whose indexer reads
-    /// an item from its end and the end of the item before it, and whose
-    /// enumerator reads each item's end once
+
+    /// The view of a vector of a table, a `ref struct` over the runtime's
+    /// `Vector`, whose indexer reads an item from its end and the end of the
+    /// item before it, and whose enumerator reads each item's end once. It
+    /// holds the bytes as its reader does, so it lives no longer than them,
+    /// and implements no collection interface, which a `ref struct` can't be
+    /// used through, but `foreach` reads it.
     fn vector_view(&self, writer: &mut CodeWriter, definition: &Definition) {
         let table = &definition.name;
         let name = format!("{table}Vector");
         let reader = self.runtime_type("TableReader");
         let decode_exception = self.runtime_type("DecodeException");
-        let generic = "global::System.Collections.Generic";
 
         summary(
             writer,
@@ -1094,10 +1096,7 @@ impl Generator<'_> {
                 cref(table)
             )],
         );
-        open_block(
-            writer,
-            format!("public readonly struct {name} : {generic}.IReadOnlyList<{table}>"),
-        );
+        open_block(writer, format!("public readonly ref struct {name}"));
         writer.line(format!(
             "private readonly {} _vector;",
             self.runtime_type("Vector")
@@ -1142,29 +1141,17 @@ impl Generator<'_> {
             "public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());",
         );
         writer.blank();
-        expression_body(
-            writer,
-            &format!(
-                "{generic}.IEnumerator<{table}> {generic}.IEnumerable<{table}>.GetEnumerator()"
-            ),
-            "GetEnumerator()",
-        );
-        writer.blank();
-        writer.line(
-            "global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();",
-        );
-        writer.blank();
 
         self.vector_enumerator(writer, table, &name);
         writer.close("}");
     }
 
-    /// The enumerator of a vector's view, a struct that wraps the runtime's
-    /// enumerator of the items' bytes and reads each item that it reaches
+    /// The enumerator of a vector's view, a `ref struct` that wraps the
+    /// runtime's enumerator of the items' bytes and reads each item that it
+    /// reaches, which `foreach` takes by its members
     fn vector_enumerator(&self, writer: &mut CodeWriter, table: &str, name: &str) {
         let reader = self.runtime_type("TableReader");
         let decode_exception = self.runtime_type("DecodeException");
-        let generic = "global::System.Collections.Generic";
 
         summary(
             writer,
@@ -1180,10 +1167,7 @@ impl Generator<'_> {
                 ),
             ],
         );
-        open_block(
-            writer,
-            format!("public struct Enumerator : {generic}.IEnumerator<{table}>"),
-        );
+        open_block(writer, "public ref struct Enumerator");
         writer.line(format!(
             "private {} _items;",
             self.runtime_type("VectorItemEnumerator")
@@ -1204,8 +1188,6 @@ impl Generator<'_> {
             &["The item that <see cref=\"MoveNext\"/> moved to.".to_owned()],
         );
         writer.line(format!("public {table} Current {{ get; private set; }}"));
-        writer.blank();
-        writer.line("readonly object global::System.Collections.IEnumerator.Current => Current;");
         writer.blank();
         summary(
             writer,
@@ -1228,12 +1210,6 @@ impl Generator<'_> {
         ));
         writer.line("return true;");
         writer.close("}");
-        writer.blank();
-        writer.line(
-            "readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();",
-        );
-        writer.blank();
-        writer.line("readonly void global::System.IDisposable.Dispose() { }");
         writer.close("}");
     }
 

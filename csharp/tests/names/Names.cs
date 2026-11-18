@@ -11,7 +11,7 @@ namespace Names.@event.@global;
 /// Fields named after the members of a message's reader and fields, and of
 /// <c>object</c> and records
 /// </summary>
-public readonly struct Members
+public readonly ref struct Members
 {
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
@@ -20,9 +20,9 @@ public readonly struct Members
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Members"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
+    /// <summary>Reads a <see cref="Members"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header, or are in another format version.</exception>
-    public Members(global::System.ReadOnlyMemory<byte> bytes)
+    public Members(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
 
@@ -38,7 +38,7 @@ public readonly struct Members
     /// an application can choose the reader of that version.
     /// </summary>
     /// <exception cref="global::Tafla.DecodeException">The bytes don't hold the header.</exception>
-    public static uint VersionOf(global::System.ReadOnlyMemory<byte> bytes) =>
+    public static uint VersionOf(global::System.ReadOnlySpan<byte> bytes) =>
         new global::Tafla.TableReader(bytes, TableLayout).GetVersion();
 
     public byte FormatVersion_ => _reader.GetUInt8(_reader.RootOffset(0));
@@ -188,7 +188,7 @@ public readonly record struct MembersFields
 }
 
 /// <summary>Fields named after the members of a table's fields</summary>
-public readonly struct Nested
+public readonly ref struct Nested
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -303,14 +303,14 @@ public readonly record struct Frame
 /// Items named after the members of their views, and fields named after
 /// declarations of other types
 /// </summary>
-public readonly struct Views
+public readonly ref struct Views
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Views"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Views(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Views"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Views(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -789,7 +789,7 @@ public readonly ref struct CurrentArray
     }
 }
 
-public readonly struct MoveNext
+public readonly ref struct MoveNext
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -817,7 +817,7 @@ public readonly record struct MoveNextFields
 }
 
 /// <summary>A vector of <see cref="MoveNext"/>s, which reads each item when it's asked for.</summary>
-public readonly struct MoveNextVector : global::System.Collections.Generic.IReadOnlyList<MoveNext>
+public readonly ref struct MoveNextVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -837,16 +837,11 @@ public readonly struct MoveNextVector : global::System.Collections.Generic.IRead
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<MoveNext> global::System.Collections.Generic.IEnumerable<MoveNext>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of a <see cref="MoveNextVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<MoveNext>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -858,8 +853,6 @@ public readonly struct MoveNextVector : global::System.Collections.Generic.IRead
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public MoveNext Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -873,14 +866,10 @@ public readonly struct MoveNextVector : global::System.Collections.Generic.IRead
             Current = new MoveNext(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
-public readonly struct Item
+public readonly ref struct Item
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -908,7 +897,7 @@ public readonly record struct ItemFields
 }
 
 /// <summary>A vector of <see cref="Item"/>s, which reads each item when it's asked for.</summary>
-public readonly struct ItemVector : global::System.Collections.Generic.IReadOnlyList<Item>
+public readonly ref struct ItemVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -928,16 +917,11 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<Item> global::System.Collections.Generic.IEnumerable<Item>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of an <see cref="ItemVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<Item>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -949,8 +933,6 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public Item Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -964,10 +946,6 @@ public readonly struct ItemVector : global::System.Collections.Generic.IReadOnly
             Current = new Item(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
@@ -1099,7 +1077,7 @@ public readonly ref struct ToArrayArray
     }
 }
 
-public readonly struct GetEnumerator
+public readonly ref struct GetEnumerator
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -1127,7 +1105,7 @@ public readonly record struct GetEnumeratorFields
 }
 
 /// <summary>A vector of <see cref="GetEnumerator"/>s, which reads each item when it's asked for.</summary>
-public readonly struct GetEnumeratorVector : global::System.Collections.Generic.IReadOnlyList<GetEnumerator>
+public readonly ref struct GetEnumeratorVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -1147,16 +1125,11 @@ public readonly struct GetEnumeratorVector : global::System.Collections.Generic.
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<GetEnumerator> global::System.Collections.Generic.IEnumerable<GetEnumerator>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of a <see cref="GetEnumeratorVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<GetEnumerator>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -1168,8 +1141,6 @@ public readonly struct GetEnumeratorVector : global::System.Collections.Generic.
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public GetEnumerator Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -1183,10 +1154,6 @@ public readonly struct GetEnumeratorVector : global::System.Collections.Generic.
             Current = new GetEnumerator(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
@@ -1245,7 +1212,7 @@ public readonly record struct Point
     }
 }
 
-public readonly struct Range
+public readonly ref struct Range
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -1273,7 +1240,7 @@ public readonly record struct RangeFields
 }
 
 /// <summary>A vector of <see cref="Range"/>s, which reads each item when it's asked for.</summary>
-public readonly struct RangeVector : global::System.Collections.Generic.IReadOnlyList<Range>
+public readonly ref struct RangeVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -1293,16 +1260,11 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<Range> global::System.Collections.Generic.IEnumerable<Range>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of a <see cref="RangeVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<Range>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -1314,8 +1276,6 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public Range Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -1329,9 +1289,5 @@ public readonly struct RangeVector : global::System.Collections.Generic.IReadOnl
             Current = new Range(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }

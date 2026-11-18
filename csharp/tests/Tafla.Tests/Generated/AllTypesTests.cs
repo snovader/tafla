@@ -249,7 +249,14 @@ public class AllTypesTests
             var trees = new AllTypes.Nested(nestedFields.Serialize()).Trees;
             var structs = new AllTypes.Structs(structsFields.Serialize());
 
-            Assert.Equal(Items(trees).Select(DescribeTree), Enumerable.Range(0, trees.Count).Select(index => DescribeTree(trees[index])));
+            var indexed = new List<TableField>();
+            for (var index = 0; index < trees.Count; index++)
+            {
+                indexed.Add(DescribeTree(trees[index]));
+            }
+
+            var count = 0;
+            Assert.Equal(DescribeTrees(trees, ref count), indexed);
             Assert.Equal(Items(structs.Documented), Indexed(structs.Documented));
             Assert.Equal(Items(structs.Segments), Indexed(structs.Segments));
             Assert.Equal(Items(structs.Path.Points), Indexed(structs.Path.Points));
@@ -261,17 +268,18 @@ public class AllTypesTests
         Gen.Select(NestedFields, StructsFields, Gen.Int).Check(sample =>
         {
             var (nestedFields, structsFields, index) = sample;
-            var trees = new AllTypes.Nested(nestedFields.Serialize()).Trees;
-            var structs = new AllTypes.Structs(structsFields.Serialize());
+            var nestedBytes = nestedFields.Serialize();
+            var structsBytes = structsFields.Serialize();
 
-            if (index < 0 || index >= trees.Count)
+            // The views are ref structs, which a lambda can't capture, so each reads them anew
+            if (index < 0 || index >= new AllTypes.Nested(nestedBytes).Trees.Count)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => trees[index]);
+                Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AllTypes.Nested(nestedBytes).Trees[index]);
             }
 
-            if (index < 0 || index >= structs.Segments.Count)
+            if (index < 0 || index >= new AllTypes.Structs(structsBytes).Segments.Count)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => structs.Segments[index]);
+                Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AllTypes.Structs(structsBytes).Segments[index]);
             }
         });
 
@@ -296,7 +304,9 @@ public class AllTypesTests
         var trees = new AllTypes.Nested(nested.Serialize()).Trees;
         var read = new AllTypes.Structs(structs.Serialize());
 
-        Assert.Empty(trees);
+        Assert.Equal(0, trees.Count);
+        var count = 0;
+        Assert.Empty(DescribeTrees(trees, ref count));
         Assert.Equal(0, read.Documented.Count);
         Assert.Empty(Items(read.Documented));
         Assert.Empty(read.Segments.ToArray());
@@ -321,8 +331,7 @@ public class AllTypesTests
 
             GeneratedMessageTests.ReadsAsValuesOrThrowsDecodeException(() =>
             {
-                var trees = new AllTypes.Nested(nestedBytes).Trees;
-                return Enumerable.Range(0, trees.Count).Select(index => DescribeTreeIndexed(trees[index], 8)).ToList();
+                return DescribeTreesIndexed(new AllTypes.Nested(nestedBytes).Trees, 8);
             });
             GeneratedMessageTests.ReadsAsValuesOrThrowsDecodeException(() =>
             {
@@ -412,7 +421,7 @@ public class AllTypesTests
             DefaultLayout,
             Of(nested.Label),
             Nested(Of(outer.Count), Nested(Of(outer.Inner.Name), Of(outer.Inner.Values))),
-            Vector(Items(nested.Trees).Select(tree => DescribeTree(tree, ref trees)))
+            Vector(DescribeTrees(nested.Trees, ref trees))
         );
     }
 
@@ -505,13 +514,19 @@ public class AllTypesTests
             return Nested(Of(tree.Value));
         }
 
-        var children = new List<TableField>();
-        foreach (var child in tree.Children)
+        return Nested(Of(tree.Value), Vector(DescribeTrees(tree.Children, ref trees)));
+    }
+
+    /// <summary>Trees read through their vector's enumerator, up to <see cref="MostTrees"/> trees in all</summary>
+    private static List<TableField> DescribeTrees(AllTypes.TreeVector trees, ref int count)
+    {
+        var described = new List<TableField>();
+        foreach (var tree in trees)
         {
-            children.Add(DescribeTree(child, ref trees));
+            described.Add(DescribeTree(tree, ref count));
         }
 
-        return Nested(Of(tree.Value), Vector(children));
+        return described;
     }
 
     /// <summary>A tree read through its children's indexer, <paramref name="depth"/> levels deep at most</summary>
@@ -523,7 +538,19 @@ public class AllTypesTests
             return Nested(Of(tree.Value), Of(children.Count));
         }
 
-        return Nested(Of(tree.Value), Vector(Enumerable.Range(0, children.Count).Select(index => DescribeTreeIndexed(children[index], depth - 1))));
+        return Nested(Of(tree.Value), Vector(DescribeTreesIndexed(children, depth - 1)));
+    }
+
+    /// <summary>Trees read through their vector's indexer, <paramref name="depth"/> levels deep at most</summary>
+    private static List<TableField> DescribeTreesIndexed(AllTypes.TreeVector trees, int depth)
+    {
+        var described = new List<TableField>();
+        for (var index = 0; index < trees.Count; index++)
+        {
+            described.Add(DescribeTreeIndexed(trees[index], depth));
+        }
+
+        return described;
     }
 
     /// <summary>Trees whose children hold children <paramref name="depth"/> levels deep at most, and none below</summary>
@@ -568,17 +595,6 @@ public class AllTypesTests
     {
         var items = new List<AllTypes.Point>();
         foreach (var item in structs)
-        {
-            items.Add(item);
-        }
-
-        return items;
-    }
-
-    private static List<AllTypes.Tree> Items(AllTypes.TreeVector trees)
-    {
-        var items = new List<AllTypes.Tree>();
-        foreach (var item in trees)
         {
             items.Add(item);
         }

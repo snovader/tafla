@@ -8,14 +8,14 @@
 namespace AllTypes;
 
 /// <summary>A field of every scalar type, and a bool</summary>
-public readonly struct Scalars
+public readonly ref struct Scalars
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Scalars"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Scalars(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Scalars"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Scalars(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -141,14 +141,14 @@ public readonly record struct ScalarsFields
 }
 
 /// <summary>An array of every scalar type but bool, which has none</summary>
-public readonly struct Arrays
+public readonly ref struct Arrays
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads an <see cref="Arrays"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Arrays(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads an <see cref="Arrays"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Arrays(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -268,14 +268,14 @@ public readonly record struct ArraysFields
 }
 
 /// <summary>Tables nested in tables, by field and in vectors</summary>
-public readonly struct Nested
+public readonly ref struct Nested
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Nested"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Nested(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Nested"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Nested(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -376,7 +376,7 @@ public readonly record struct NestedFields
     }
 }
 
-public readonly struct Outer
+public readonly ref struct Outer
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -420,7 +420,7 @@ public readonly record struct OuterFields
     }
 }
 
-public readonly struct Inner
+public readonly ref struct Inner
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -466,7 +466,7 @@ public readonly record struct InnerFields
 /// A table that holds a vector of its own type, which a vector can since it
 /// may be empty
 /// </summary>
-public readonly struct Tree
+public readonly ref struct Tree
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -521,7 +521,7 @@ public readonly record struct TreeFields
 }
 
 /// <summary>A vector of <see cref="Tree"/>s, which reads each item when it's asked for.</summary>
-public readonly struct TreeVector : global::System.Collections.Generic.IReadOnlyList<Tree>
+public readonly ref struct TreeVector
 {
     private readonly global::Tafla.Vector _vector;
 
@@ -541,16 +541,11 @@ public readonly struct TreeVector : global::System.Collections.Generic.IReadOnly
     /// <summary>Returns an enumerator of the items in order, which reads each item's end once.</summary>
     public Enumerator GetEnumerator() => new(_vector.ItemsInPlace().GetEnumerator());
 
-    global::System.Collections.Generic.IEnumerator<Tree> global::System.Collections.Generic.IEnumerable<Tree>.GetEnumerator() =>
-        GetEnumerator();
-
-    global::System.Collections.IEnumerator global::System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-
     /// <summary>
     /// Reads the items of a <see cref="TreeVector"/> in order. Its <see cref="MoveNext"/> throws a
     /// <see cref="global::Tafla.DecodeException"/> if the item ends before it starts or past the bytes, and can move on to the next item after it.
     /// </summary>
-    public struct Enumerator : global::System.Collections.Generic.IEnumerator<Tree>
+    public ref struct Enumerator
     {
         private global::Tafla.VectorItemEnumerator _items;
 
@@ -562,8 +557,6 @@ public readonly struct TreeVector : global::System.Collections.Generic.IReadOnly
 
         /// <summary>The item that <see cref="MoveNext"/> moved to.</summary>
         public Tree Current { get; private set; }
-
-        readonly object global::System.Collections.IEnumerator.Current => Current;
 
         /// <summary>Moves to the next item, and returns false after the last.</summary>
         /// <exception cref="global::Tafla.DecodeException">The item ends before it starts or past the bytes.</exception>
@@ -577,15 +570,11 @@ public readonly struct TreeVector : global::System.Collections.Generic.IReadOnly
             Current = new Tree(new global::Tafla.TableReader(_items.Current), 0);
             return true;
         }
-
-        readonly void global::System.Collections.IEnumerator.Reset() => throw new global::System.NotSupportedException();
-
-        readonly void global::System.IDisposable.Dispose() { }
     }
 }
 
 /// <summary>Fields named after keywords of TypeScript, Python, Java or Rust</summary>
-public readonly struct Keywords
+public readonly ref struct Keywords
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;
@@ -652,14 +641,14 @@ public readonly record struct KeywordsFields
 }
 
 /// <summary>A message that nests the table of keywords, so that it's written</summary>
-public readonly struct Reserved
+public readonly ref struct Reserved
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Reserved"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Reserved(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Reserved"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Reserved(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -714,14 +703,14 @@ public readonly record struct ReservedFields
 /// Structs as fields, in place like scalars, and in arrays, which are aligned
 /// to their structs' largest scalar
 /// </summary>
-public readonly struct Structs
+public readonly ref struct Structs
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
 
     private readonly global::Tafla.TableReader _reader;
 
-    /// <summary>Reads a <see cref="Structs"/> from <paramref name="bytes"/>, which it keeps rather than copying them.</summary>
-    public Structs(global::System.ReadOnlyMemory<byte> bytes)
+    /// <summary>Reads a <see cref="Structs"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Structs(global::System.ReadOnlySpan<byte> bytes)
     {
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
@@ -842,7 +831,7 @@ public readonly record struct StructsFields
     }
 }
 
-public readonly struct Path
+public readonly ref struct Path
 {
     private readonly global::Tafla.TableReader _reader;
     private readonly int _position;

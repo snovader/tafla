@@ -206,7 +206,7 @@ public class FixedFieldsTests
                     Of(span.Name),
                     Describe(span.Range),
                     Describe(span.Frame),
-                    Vector(span.Ranges.Select(Describe))
+                    Vector(DescribeRanges(span.Ranges))
                 );
             }
         ),
@@ -259,6 +259,18 @@ public class FixedFieldsTests
     private static TableField Describe(FixedFields.RangeFields range) => Nested(Of(range.Start), Of(range.End));
 
     private static TableField Describe(FixedFields.Range range) => Nested(Of(range.Start), Of(range.End));
+
+    /// <summary>The ranges of a vector, read through its enumerator, as <c>foreach</c> reads them</summary>
+    private static List<TableField> DescribeRanges(FixedFields.RangeVector ranges)
+    {
+        var described = new List<TableField>();
+        foreach (var range in ranges)
+        {
+            described.Add(Describe(range));
+        }
+
+        return described;
+    }
 
     private static TableField Describe(FixedFields.FrameFields frame) =>
         Nested(Describe(frame.Origin), Describe(frame.Range), Of(frame.Flags));

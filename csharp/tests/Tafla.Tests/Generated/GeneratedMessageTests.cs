@@ -25,7 +25,7 @@ public abstract class GeneratedMessage
     /// Reads every field of the bytes with the generated reader, the items of vectors and arrays of
     /// structs through their views' enumerators, into their description.
     /// </summary>
-    public abstract Table Read(ReadOnlyMemory<byte> bytes);
+    public abstract Table Read(ReadOnlySpan<byte> bytes);
 
     public override string ToString() => Name;
 }
@@ -46,13 +46,13 @@ public sealed class GeneratedMessage<TFields>(
     Func<TFields, Table> describe,
     Func<TFields, byte[]> serialize,
     Func<TFields, byte[], int> serializeInto,
-    Func<ReadOnlyMemory<byte>, Table> read
+    Func<ReadOnlySpan<byte>, Table> read
 ) : GeneratedMessage(name)
 {
     public override Gen<Written> Samples =>
         fields.Select(value => new Written(describe(value), serialize(value), bytes => serializeInto(value, bytes)));
 
-    public override Table Read(ReadOnlyMemory<byte> bytes) => read(bytes);
+    public override Table Read(ReadOnlySpan<byte> bytes) => read(bytes);
 }
 
 /// <summary>
@@ -92,7 +92,7 @@ public class GeneratedMessageTests
         Gen.Select(message.Samples, Gen.Int[0, 7]).Check(sample =>
         {
             var (written, byteOffset) = sample;
-            Assert.Equal(written.Description, message.Read(Bytes.AtByteOffset(written.Bytes, byteOffset)));
+            Assert.Equal(written.Description, message.Read(Bytes.AtByteOffset(written.Bytes, byteOffset).Span));
         });
     }
 

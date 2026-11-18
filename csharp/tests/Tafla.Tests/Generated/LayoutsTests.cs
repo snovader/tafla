@@ -286,7 +286,7 @@ public class LayoutsTests
         Func<TFields, (uint Id, string Name, ReadOnlyMemory<ushort> Values)> values,
         Func<TFields, byte[]> serialize,
         Func<TFields, byte[], int> serializeInto,
-        Func<ReadOnlyMemory<byte>, Table> read
+        Func<ReadOnlySpan<byte>, Table> read
     )
     {
         // Few enough values and characters that a table of uint8 offsets holds them

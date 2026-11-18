@@ -87,13 +87,13 @@ public class NamesTests
             Assert.Equal(3, current.Value);
         }
 
-        Assert.Equal(4, Assert.Single(views.MoveNext).Value);
+        Assert.Equal((1, 4), (views.MoveNext.Count, views.MoveNext[0].Value));
         Assert.Equal(5, views.Item[0].Value);
         Assert.Equal(6, views.ToArray[0].Value);
-        Assert.Equal(7, Assert.Single(views.GetEnumerator).Value);
+        Assert.Equal((1, 7), (views.GetEnumerator.Count, views.GetEnumerator[0].Value));
         Assert.Equal(8, views.Point);
         Assert.Equal(Of(9.5f), Of(views.Origin.X));
-        Assert.Equal(10, Assert.Single(views.Range).Start);
+        Assert.Equal((1, 10), (views.Range.Count, views.Range[0].Start));
         Assert.Equal(11, views.First.Start);
     }
 }

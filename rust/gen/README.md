@@ -290,7 +290,7 @@ when the bytes are in another version.
 | Go         | `<package>.go`, a package of its name    | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 | C++        | `<schema>.hpp`, a header of C++20        | Views of their bytes, written from aggregates, `<Name>Fields`            | Aggregates, read and written at their offsets        |
 | Swift      | `<schema>.swift`                         | Nonescapable views of their bytes, written from `<Name>Fields` structs   | Structs, read and written at their offsets           |
-| C#         | `<Schema>.cs`, of C# 14 for .NET 10      | `readonly struct`s over a reader, written from `<Name>Fields` records    | `readonly record struct`s, read and written as spans |
+| C#         | `<Schema>.cs`, of C# 14 for .NET 10      | `readonly ref struct`s over a span, written from `<Name>Fields` records  | `readonly record struct`s, read and written as spans |
 
 A table's getter of a vector or an array of structs returns a view of its
 items, which reads an item only when it's asked for, as [Views](#views)
@@ -360,7 +360,7 @@ how deep it walks.
 | Go                     | `Len()`               | `Get(i)`, with an error for a vector's table, or a panic past the end, as indexing a slice  | `range view.All()`, which reads each item's end once   |
 | C++                    | `size()`, `empty()`   | `get(i)` of a vector, `at(i)` of an array, or a `std::out_of_range`                         | `for (auto item : view)`, reading each item's end once |
 | Swift                  | `count`, `isEmpty`    | `view[i]`, which throws for a vector's table, and stops the program past the end            | `for i in view.indices`, or `Array(view)` of structs   |
-| C#                     | `Count`               | `view[i]`, or an `ArgumentOutOfRangeException`: a vector's view is an `IReadOnlyList`       | `foreach (var item in view)`, reading each end once    |
+| C#                     | `Count`               | `view[i]`, or an `ArgumentOutOfRangeException`, from a `ref struct` view                    | `foreach (var item in view)`, reading each end once    |
 
 A view creates the reader of each item that it reads, but not those of the
 items it skips, nor an array of them. TypeScript's views aren't iterable,
@@ -582,7 +582,10 @@ a C# keyword is a verbatim identifier, such as `@event`. The code names the
 runtime and the standard library in full, from `global::`, and never names
 one of the schema's types where a property of a field could hide it, so that
 a field may take the name of any declaration but its own. A message's reader
-keeps the `ReadOnlyMemory<byte>` that it reads, and its getters are
+is a `ref struct` over the `ReadOnlySpan<byte>` that it reads, as the
+runtime's `TableReader` is, so it, its nested tables and the views of its
+vectors live no longer than the bytes, and `foreach` reads a view without a
+collection interface. Its getters are
 properties, which read the field each time they're read: a string into a new
 `string`, and an array as a `ReadOnlySpan<T>` of the bytes on a little-endian
 host. Its fields are a `readonly record struct` with a `required` property of
@@ -894,7 +897,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 563 KB. It has no imports, so any host runs it with an empty import
+about 562 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
