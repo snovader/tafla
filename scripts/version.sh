@@ -26,9 +26,9 @@ usage() {
 }
 
 # Sets locations to each place that records the package's version: a file, and
-# a Perl pattern that the version follows in it, up to its closing quote, or
-# the tag that closes an XML element. Each pattern matches once. The first
-# place is the package's manifest.
+# a Perl pattern that the version follows in it, up to its closing quote, the
+# tag that closes an XML element, or the comma of a NuGet version range. Each
+# pattern matches once. The first place is the package's manifest.
 locate() {
     case "$1" in
         typescript)
@@ -74,6 +74,12 @@ locate() {
         csharp)
             locations=(
                 'csharp/src/Tafla/Tafla.csproj|^        <Version>'
+                # The lock files of the projects that reference the runtime
+                # through another project, which record it as the least
+                # version of a range. A locked restore ignores it, but any
+                # other restore writes the runtime's version there.
+                'csharp/tests/Tafla.Tests/packages.lock.json|^          "Tafla": "\['
+                'csharp/benchmarks/Tafla.Benchmarks.Tests/packages.lock.json|^          "Tafla": "\['
             )
             ;;
         go)
@@ -98,7 +104,7 @@ read_version() {
         my ($file, $pattern) = @ARGV;
         open my $in, "<", $file or die "$file: $!\n";
         my $text = <$in>;
-        print $1 if $text =~ /${pattern}([^"<]*)["<]/m;
+        print $1 if $text =~ /${pattern}([^"<,]*)["<,]/m;
     ' "$1" "$2"
 }
 
@@ -110,7 +116,7 @@ write_version() {
         open my $in, "<", $file or die "$file: $!\n";
         my $text = <$in>;
         close $in;
-        $text =~ s/(${pattern})[^"<]*(?=["<])/$1$version/m or exit 1;
+        $text =~ s/(${pattern})[^"<,]*(?=["<,])/$1$version/m or exit 1;
         open my $out, ">", $file or die "$file: $!\n";
         print $out $text;
     ' "$1" "$2" "$3"
