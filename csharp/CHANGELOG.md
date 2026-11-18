@@ -20,7 +20,9 @@ The first release.
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` writes tables,
   and `TableReader` reads them, with arrays as `ReadOnlySpan<T>`s of the bytes
   on a little-endian host, and structs and vector items as spans of the
-  bytes.
+  bytes. `TableReader` and `Vector` are `ref struct`s over a
+  `ReadOnlySpan<byte>` of any memory, such as an array's, a slice's, or stack
+  or native memory, so that no read converts the bytes to a span.
 - The package, which is trimmable and compatible with Native AOT, with its
   symbols in a `.snupkg`, whose Source Link finds the sources of its commit
   on GitHub.

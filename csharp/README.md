@@ -6,8 +6,8 @@ structs and nested tables in tafla's format, which the TypeScript, Python,
 Java, Rust, Go and C++ runtimes write and read too. `TableBuilder` writes a
 table, copying arrays in bulk, `TableSizer` and `TableWriter` write one whose
 fields are known in advance into bytes of its exact length, and
-`TableReader` reads fields back by offset, with arrays, structs and vector
-items as spans of the bytes. Every read
+`TableReader` reads fields back by offset from a span of any memory, with
+arrays, structs and vector items as spans of the bytes. Every read
 checks that it stays within the bytes it was given. It depends only on
 .NET's base class library, and is marked compatible with trimming and
 ahead-of-time compilation, whose analyzers its build runs.
@@ -101,17 +101,26 @@ which covers the whole format, byte for byte.
   of a complete builder or of a table's bytes. `SetVector()` takes
   `NestedTable`s, which convert implicitly from a `TableBuilder`, a `byte[]`
   or a `ReadOnlyMemory<byte>`, so a vector can mix them.
-- **Arrays are read in place.** `TableReader` holds a `ReadOnlyMemory<byte>`,
-  and its array getters return a `ReadOnlySpan<T>` of the table's bytes, at
-  any alignment, where the host reads them so: on a little-endian host other
-  than 32-bit Arm, such as x64 and Arm64. A span in place shows writes made
-  to the bytes later, so copy it with `ToArray()` to keep the values.
-  Elsewhere the getters return a span of a copy, as the section on byte
-  orders describes.
+- **A reader is a view of the bytes.** `TableReader` is a `ref struct` over a
+  `ReadOnlySpan<byte>`, which can be an array's, which converts to it, a
+  slice's, a `ReadOnlyMemory<byte>`'s `Span`, or stack or native memory. It
+  lives on the stack, as a span does: it can't be stored in a class, captured
+  by a lambda or kept across an `await`. Code that keeps a table keeps its
+  bytes, and creates a reader, which is cheap, where it reads them. Holding a
+  span saves each read the conversion of a `ReadOnlyMemory<byte>` to one.
+- **Arrays are read in place.** The array getters return a `ReadOnlySpan<T>`
+  of the table's bytes, at any alignment, where the host reads them so: on a
+  little-endian host other than 32-bit Arm, such as x64 and Arm64. A span in
+  place shows writes made to the bytes later, so copy it with `ToArray()` to
+  keep the values. Elsewhere the getters return a span of a copy, as the
+  section on byte orders describes.
 - **Structs and vector items share the bytes too.** `GetStruct()` and
   `GetStructArray()` return a `ReadOnlySpan<byte>` of the structs, whose
-  scalars `BinaryPrimitives` reads at their offsets, and a `Vector`'s items
-  are `ReadOnlyMemory<byte>`, which a `TableReader` of the item's layout reads.
+  scalars `BinaryPrimitives` reads at their offsets. A `Vector` and its
+  enumerator are `ref struct`s too, and its items are `ReadOnlySpan<byte>`s,
+  which a `TableReader` of the item's layout reads. To nest an item in
+  another vector, copy it with `ToArray()`, since a `NestedTable` holds
+  memory rather than a span.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
   UTF-8 and decodes them into a new `string`, in one pass.
 
