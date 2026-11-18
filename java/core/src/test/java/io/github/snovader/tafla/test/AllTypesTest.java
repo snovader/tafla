@@ -1,6 +1,6 @@
 package io.github.snovader.tafla.test;
 
-import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.TableReader;
 import io.github.snovader.tafla.DecodeException;
 import io.github.snovader.tafla.test.generated.all_types.*;
 import net.jqwik.api.*;
@@ -87,7 +87,7 @@ public class AllTypesTest {
         @ForAll @IntRange(min = 2, max = 0xff) int value
     ) {
         var bytes = Scalars.serialize(withBool(fields, false));
-        bytes[new ByteBuffer(bytes).rootOffset(10)] = (byte) value;
+        bytes[new TableReader(bytes).rootOffset(10)] = (byte) value;
 
         assertEquals(describeScalars(withBool(fields, true)), describeScalars(readScalars(new Scalars(bytes))));
     }
@@ -460,7 +460,7 @@ public class AllTypesTest {
         // view holds as tafla's read-only, little-endian buffer
         var parts = List.of(before, packed.serialize(), documented.serialize(), segment.serialize(), point.serialize());
         var bytes = concatenated(parts);
-        var view = new ByteBuffer(bytes).getStruct(0, bytes.length);
+        var view = new TableReader(bytes).getStruct(0, bytes.length);
 
         var offset = before.length;
         assertEquals(describePacked(packed), describePacked(Packed.read(bytes, offset)));

@@ -1,4 +1,4 @@
-export { ByteBuffer } from './byteBuffer.ts';
+export { TableReader } from './tableReader.ts';
 export { DecodeError } from './errors.ts';
 export { TableLayout, type TableLayoutOptions } from './layout.ts';
 export { TableBuilder, type TableItem } from './tableBuilder.ts';

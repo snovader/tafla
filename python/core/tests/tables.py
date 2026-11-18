@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
-from tafla import ByteBuffer, OffsetType, TableBuilder, TableLayout, TableWriter
+from tafla import OffsetType, TableBuilder, TableLayout, TableReader, TableWriter
 
 # A table, field, layout or vector item as cases.json describes it
 type Description = dict[str, Any]
@@ -471,7 +471,7 @@ _COMPARABLE: dict[str, Callable[[Any], int | str]] = {
 
 
 class MismatchError(AssertionError):
-    """Raised by ``TableReader`` when the bytes hold a table of another shape
+    """Raised by ``DescriptionReader`` when the bytes hold a table of another shape
     than its description: a size slot that doesn't hold the table's length, or
     a vector of another number of items. It's the description's mismatch,
     rather than tafla's, which raises ``DecodeError``."""
@@ -493,7 +493,7 @@ class Placement:
 type Visit = Callable[[Placement], None]
 
 
-class TableReader:
+class DescriptionReader:
     """Reads the bytes of a table as descriptions of its fields set them out,
     and returns those descriptions with the values that were read in place of
     theirs, so that they compare equal with ``comparable_table()`` when the
@@ -515,7 +515,7 @@ class TableReader:
     def __init__(
         self, data: Buffer, layout: Description, visit: Visit | None = None
     ) -> None:
-        self.__buffer = ByteBuffer(data, layout_of(layout))
+        self.__buffer = TableReader(data, layout_of(layout))
         self.__offset_type = layout["offsetType"]
         self.__visit = visit
 
@@ -646,7 +646,9 @@ class TableReader:
         if self.__reads_in_place(table):
             return self.__read_in_place(position, table)
 
-        return TableReader(item_bytes, table["layout"], self.__visit).read_table(table)
+        return DescriptionReader(item_bytes, table["layout"], self.__visit).read_table(
+            table
+        )
 
     def __read_nested(self, position: int, table: Description) -> Description:
         """Reads a table nested with ``set_table()``"""
@@ -654,7 +656,7 @@ class TableReader:
             return self.__read_in_place(position, table)
 
         rest = self.__buffer.bytes()[position:]
-        reader = TableReader(rest, table["layout"], self.__visit)
+        reader = DescriptionReader(rest, table["layout"], self.__visit)
 
         return reader.__read_header_and_fields(table)
 
@@ -680,5 +682,5 @@ class TableReader:
 def read_table(
     data: Buffer, table: Description, visit: Visit | None = None
 ) -> Description:
-    """Reads a table from its own bytes, as ``TableReader.read_table()`` does"""
-    return TableReader(data, table["layout"], visit).read_table(table)
+    """Reads a table from its own bytes, as ``DescriptionReader.read_table()`` does"""
+    return DescriptionReader(data, table["layout"], visit).read_table(table)

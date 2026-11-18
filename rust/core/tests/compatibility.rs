@@ -3,7 +3,7 @@
 //! TypeScript `TableBuilder` with the same calls, field for field, as the
 //! builders here.
 
-use tafla::{Alignment, ByteBuffer, OffsetType, TableBuilder, TableLayout};
+use tafla::{Alignment, OffsetType, TableBuilder, TableLayout, TableReader};
 
 const KINDS: [u8; 290] = [
     96, 0, 0, 0, 97, 0, 0, 0, 98, 0, 0, 0, 100, 0, 0, 0, 102, 0, 0, 0, 106, 0, 0, 0, 110, 0, 0, 0,
@@ -65,7 +65,7 @@ fn test_every_kind_of_field() {
 
     assert_eq!(builder.to_bytes().unwrap(), KINDS);
 
-    let buffer = ByteBuffer::new(&KINDS, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&KINDS, TableLayout::DEFAULT);
     let at = |index| buffer.root_offset(index).unwrap();
 
     assert_eq!(buffer.get_i8(at(0)), Ok(i8::MIN));
@@ -127,7 +127,7 @@ fn test_versioned_document_with_nested_tables() {
 
     assert_eq!(document.to_bytes().unwrap(), DOCUMENT);
 
-    let buffer = ByteBuffer::new(&DOCUMENT, LAYOUT);
+    let buffer = TableReader::new(&DOCUMENT, LAYOUT);
     assert_eq!(buffer.size(), Ok(DOCUMENT.len()));
     assert_eq!(buffer.version(), Ok(3));
     assert_eq!(buffer.get_f64(buffer.root_offset(0).unwrap()), Ok(59.3293));
@@ -153,7 +153,7 @@ fn test_versioned_document_with_nested_tables() {
     let [item, bytes] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };
-    let item = ByteBuffer::new(item, TableLayout::DEFAULT);
+    let item = TableReader::new(item, TableLayout::DEFAULT);
     assert_eq!(item.get_f32(item.root_offset(0).unwrap()), Ok(0.5));
     assert_eq!(
         item.get_u16_array(item.root_offset(1).unwrap())
@@ -177,7 +177,7 @@ fn test_uint8_offsets_with_table_nested_as_bytes() {
 
     assert_eq!(small.to_bytes().unwrap(), SMALL);
 
-    let buffer = ByteBuffer::new(&SMALL, layout);
+    let buffer = TableReader::new(&SMALL, layout);
     let position = buffer.root_offset(2).unwrap();
     assert_eq!(position % Alignment::Four.bytes(), 0);
     assert_eq!(buffer.get_str(buffer.root_offset(0).unwrap()), Ok("hi"));
@@ -210,7 +210,7 @@ fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
 
     assert_eq!(medium.to_bytes().unwrap(), MEDIUM);
 
-    let buffer = ByteBuffer::new(&MEDIUM, layout);
+    let buffer = TableReader::new(&MEDIUM, layout);
     assert_eq!(buffer.version(), Ok(513));
     assert_eq!(
         buffer
@@ -224,8 +224,8 @@ fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
     let [narrow, wide] = vector.iter().collect::<Result<Vec<_>, _>>().unwrap()[..] else {
         panic!("Expected two items");
     };
-    let narrow = ByteBuffer::new(narrow, narrow_layout);
-    let wide = ByteBuffer::new(wide, TableLayout::DEFAULT);
+    let narrow = TableReader::new(narrow, narrow_layout);
+    let wide = TableReader::new(wide, TableLayout::DEFAULT);
     assert_eq!(narrow.get_u8(narrow.root_offset(0).unwrap()), Ok(42));
     assert_eq!(
         wide.get_f64_array(wide.root_offset(0).unwrap())

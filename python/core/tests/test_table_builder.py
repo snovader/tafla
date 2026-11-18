@@ -8,9 +8,9 @@ from hypothesis import given
 from hypothesis.strategies import integers, one_of
 
 from tafla import (
-    ByteBuffer,
     TableBuilder,
     TableLayout,
+    TableReader,
 )
 from tests.descriptions import tables
 from tests.tables import (
@@ -58,7 +58,7 @@ def _field_as_bytes(field: Description) -> Description:
     return field
 
 
-def root_vector(buffer: ByteBuffer, index: int) -> list[bytes]:
+def root_vector(buffer: TableReader, index: int) -> list[bytes]:
     """Reads the items of the vector of a root field"""
     return [bytes(item) for item in buffer.get_vector(buffer.root_offset(index))]
 
@@ -392,7 +392,7 @@ class TestVersions(unittest.TestCase):
 
     def test_rejects_reading_the_version_of_an_unversioned_table(self) -> None:
         layout = TableLayout(sized=True)
-        buffer = ByteBuffer(TableBuilder(0, layout).bytes(), layout)
+        buffer = TableReader(TableBuilder(0, layout).bytes(), layout)
 
         with self.assertRaises(TypeError):
             buffer.get_version()
@@ -460,7 +460,7 @@ class TestNestedBuilders(unittest.TestCase):
         self.assertEqual(parent_of(lambda: build_table(table), length), expected)
         self.assertEqual(parent_of(lambda: finalized, length), expected)
 
-        buffer = ByteBuffer(expected)
+        buffer = TableReader(expected)
         self.assertEqual(root_vector(buffer, 2), [own, own])
 
     def test_rejects_a_builder_with_fields_left_to_set(self) -> None:

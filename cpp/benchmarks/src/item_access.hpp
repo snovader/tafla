@@ -22,20 +22,20 @@
 
 namespace tafla::benchmarks {
 
-/// `ByteBuffer`'s getters by hand: each item in place, from
+/// `TableReader`'s getters by hand: each item in place, from
 /// `Vector::get_in_place()` of the last item or `items_in_place()`, and
 /// `get_struct_array()`'s bytes
 struct TaflaItems {
     static constexpr std::string_view name = "tafla";
 
     [[nodiscard]] double last_table(std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto vector = buffer.get_vector(buffer.root_offset(0));
         return sum_table(vector.get_in_place(vector.size() - 1));
     }
 
     [[nodiscard]] double every_table(std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto vector = buffer.get_vector(buffer.root_offset(0));
 
         double sum = 0;
@@ -46,13 +46,13 @@ struct TaflaItems {
     }
 
     [[nodiscard]] double last_struct(std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto structs = buffer.get_struct_array(buffer.root_offset(0), Tafla::kItemSize);
         return sum_struct(structs.data() + structs.size() - Tafla::kItemSize);
     }
 
     [[nodiscard]] double every_struct(std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto structs = buffer.get_struct_array(buffer.root_offset(0), Tafla::kItemSize);
 
         double sum = 0;
@@ -63,7 +63,7 @@ struct TaflaItems {
     }
 
     static double sum_table(std::span<const std::uint8_t> bytes) {
-        const ByteBuffer item(bytes, TableLayout());
+        const TableReader item(bytes, TableLayout());
         const auto pair = item.root_offset(1);
         return sum_item(item.get_float32(item.root_offset(0)), item.get_float32(item.field_offset(pair, 0)),
                         item.get_float32(item.field_offset(pair, 1)));
@@ -75,7 +75,7 @@ struct TaflaItems {
 };
 
 // The generated readers are a span of the bytes, which they're passed by as
-// `ByteBuffer`'s spans are by hand
+// `TableReader`'s spans are by hand
 
 inline double sum_of(::workloads::Item item) {
     const auto pair = item.pair();

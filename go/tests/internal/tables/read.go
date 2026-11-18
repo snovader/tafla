@@ -8,7 +8,7 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
-// Reads tables with ByteBuffer as their descriptions set them out, and
+// Reads tables with TableReader as their descriptions set them out, and
 // returns the descriptions with the values read in place of theirs, so that
 // they equal the descriptions when the bytes hold the described values.
 //
@@ -31,7 +31,7 @@ var ErrMismatch = errors.New("the bytes don't read as described")
 // read: its header, whose size must be the table's byte length when it's
 // sized, and then its fields.
 func ReadTable(bytes []byte, table Table) (Table, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, table.Layout.TableLayout())}
+	reader := reader{tafla.NewTableReader(bytes, table.Layout.TableLayout())}
 
 	if table.Layout.Sized {
 		size, err := reader.buffer.Size()
@@ -66,18 +66,18 @@ func ReadTable(bytes []byte, table Table) (Table, error) {
 // ReadRootField reads root field index of a table of layout as field,
 // without reading the header.
 func ReadRootField(bytes []byte, layout Layout, index int, field Field) (Field, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, layout.TableLayout())}
+	reader := reader{tafla.NewTableReader(bytes, layout.TableLayout())}
 	return reader.readRootField(index, field)
 }
 
 // ReadField reads field at position of a table of layout.
 func ReadField(bytes []byte, layout Layout, position int, field Field) (Field, error) {
-	reader := reader{tafla.NewByteBuffer(bytes, layout.TableLayout())}
+	reader := reader{tafla.NewTableReader(bytes, layout.TableLayout())}
 	return reader.readField(position, field)
 }
 
 type reader struct {
-	buffer tafla.ByteBuffer
+	buffer tafla.TableReader
 }
 
 func (r reader) readRootField(index int, field Field) (Field, error) {
@@ -261,7 +261,7 @@ func (r reader) readVector(position int, items Vector) (Field, error) {
 		if r.readsInPlace(nested.Table) {
 			// At its start, in a buffer of its offset type, which is its
 			// parent's
-			buffer := tafla.NewByteBuffer(inPlace[index].bytes, nested.Table.Layout.TableLayout())
+			buffer := tafla.NewTableReader(inPlace[index].bytes, nested.Table.Layout.TableLayout())
 			table, err = reader{buffer}.readInPlace(0, nested.Table)
 		} else {
 			table, err = ReadTable(iterated[index].bytes, nested.Table)
@@ -314,9 +314,9 @@ func (r reader) readInPlace(position int, table Table) (Table, error) {
 }
 
 // readStruct reads the scalars of a struct of types at their offsets in its
-// bytes, which a ByteBuffer reads in any layout
+// bytes, which a TableReader reads in any layout
 func readStruct(bytes []byte, types []ScalarType) ([]Field, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	scalars := make([]Field, 0, len(types))
 
 	offset := 0
@@ -332,7 +332,7 @@ func readStruct(bytes []byte, types []ScalarType) ([]Field, error) {
 	return scalars, nil
 }
 
-func readScalar(buffer tafla.ByteBuffer, scalar ScalarType, position int) (Field, error) {
+func readScalar(buffer tafla.TableReader, scalar ScalarType, position int) (Field, error) {
 	switch scalar {
 	case Int8Type:
 		value, err := buffer.GetInt8(position)

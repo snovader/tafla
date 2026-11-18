@@ -9,10 +9,10 @@ import {
     readUint16,
     readUint32,
     readUint64,
-    ByteBuffer,
     StructWriter,
     TableBuilder,
     TableLayout,
+    TableReader,
     TableSizer,
     TableWriter,
     type TableItem
@@ -973,10 +973,10 @@ function alignmentWithin(field: FieldDescription): Alignment {
 }
 
 /**
- * Thrown by {@link TableReader} when bytes read as values that don't match
- * the shape of a description: a size slot that doesn't hold the table's
- * length, or a vector of another number of items. Unlike a `DecodeError`, the
- * bytes were read.
+ * Thrown by {@link DescriptionReader} when bytes read as values that don't
+ * match the shape of a description: a size slot that doesn't hold the
+ * table's length, or a vector of another number of items. Unlike a
+ * `DecodeError`, the bytes were read.
  */
 export class DescriptionMismatch extends Error {
     constructor(message: string) {
@@ -995,12 +995,12 @@ export class DescriptionMismatch extends Error {
  * its own: a vector item from its bytes, and a field from its position to the
  * end of its parent.
  */
-export class TableReader {
-    readonly #buffer: ByteBuffer;
+export class DescriptionReader {
+    readonly #buffer: TableReader;
     readonly #layout: LayoutDescription;
 
     constructor(bytes: Uint8Array, layout: LayoutDescription) {
-        this.#buffer = new ByteBuffer(bytes, layoutOf(layout));
+        this.#buffer = new TableReader(bytes, layoutOf(layout));
         this.#layout = layout;
     }
 
@@ -1258,10 +1258,10 @@ export class TableReader {
     }
 }
 
-/** Reads a table from its own bytes, as {@link TableReader.readTable} does */
+/** Reads a table from its own bytes, as {@link DescriptionReader.readTable} does */
 export function readTable(
     bytes: Uint8Array,
     table: TableDescription
 ): TableDescription {
-    return new TableReader(bytes, table.layout).readTable(table);
+    return new DescriptionReader(bytes, table.layout).readTable(table);
 }

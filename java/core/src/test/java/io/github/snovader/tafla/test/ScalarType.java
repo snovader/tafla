@@ -14,7 +14,7 @@ import java.util.*;
  * name as {@code cases.json} does, such as {@code "uint16"} and {@code "uint16[]"}.
  *
  * <p>Descriptions hold every value as a {@code long}: an integer as its value, a {@code uint64} as
- * its bits, as {@link ByteBuffer} reads it, and a float as its raw bits, a float32's as an
+ * its bits, as {@link TableReader} reads it, and a float as its raw bits, a float32's as an
  * {@code int} widened to a {@code long}. Comparing values then compares floats by their bits,
  * telling -0.0 from 0.0, and NaN from any other value, NaNs included.</p>
  */
@@ -166,7 +166,7 @@ enum ScalarType {
         }
     }
 
-    long read(ByteBuffer buffer, int position) {
+    long read(TableReader buffer, int position) {
         return switch (this) {
             case INT8 -> buffer.getInt8(position);
             case UINT8 -> buffer.getUint8(position);
@@ -181,7 +181,7 @@ enum ScalarType {
         };
     }
 
-    long[] readArray(ByteBuffer buffer, int position) {
+    long[] readArray(TableReader buffer, int position) {
         return switch (this) {
             case INT8 -> fromBytes(buffer.getInt8Array(position));
             case UINT8 -> fromShorts(buffer.getUint8Array(position));
@@ -197,7 +197,7 @@ enum ScalarType {
     }
 
     /** Reads an array through its view getter, with unsigned elements widened as the array getters do */
-    long[] readArrayView(ByteBuffer buffer, int position) {
+    long[] readArrayView(TableReader buffer, int position) {
         return switch (this) {
             case INT8 -> fromBytes(toArray(buffer.getInt8ArrayView(position)));
             case UINT8 -> lowBits(fromBytes(toArray(buffer.getUint8ArrayView(position))));

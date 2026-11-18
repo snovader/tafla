@@ -3,7 +3,7 @@ import unittest
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 
-from tafla import ByteBuffer, DecodeError
+from tafla import DecodeError, TableReader
 
 
 @contextmanager
@@ -23,7 +23,7 @@ class TestDecodeError(unittest.TestCase):
 
     def test_raises_from_scalar_getters_outside_the_bytes(self) -> None:
         backing = bytearray(range(32))
-        buffer = ByteBuffer(memoryview(backing)[:8])
+        buffer = TableReader(memoryview(backing)[:8])
 
         reads: list[tuple[str, Callable[[], object]]] = [
             ("get_float64", lambda: buffer.get_float64(4)),
@@ -49,7 +49,7 @@ class TestDecodeError(unittest.TestCase):
         """struct takes positions as a C ssize_t, and once raised OverflowError
         for a larger one. Formatting a position of more digits than Python
         converts, 4,300 by default, once raised ValueError."""
-        buffer = ByteBuffer(bytes(8))
+        buffer = TableReader(bytes(8))
 
         reads: list[tuple[str, Callable[[int], object]]] = [
             ("get_uint32", buffer.get_uint32),
@@ -77,7 +77,7 @@ class TestDecodeError(unittest.TestCase):
         self,
     ) -> None:
         """Whatever the digit limit, which callers can lower to 640"""
-        buffer = ByteBuffer(bytes(8))
+        buffer = TableReader(bytes(8))
 
         cases: list[tuple[Callable[[], object], str]] = [
             (
@@ -121,7 +121,7 @@ class TestDecodeError(unittest.TestCase):
 
         for name, utf8 in cases:
             with self.subTest(case=name):
-                buffer = ByteBuffer(len(utf8).to_bytes(4, "little") + utf8)
+                buffer = TableReader(len(utf8).to_bytes(4, "little") + utf8)
 
                 with self.assertRaises(DecodeError) as context:
                     buffer.get_string(0)
@@ -131,7 +131,7 @@ class TestDecodeError(unittest.TestCase):
     def test_raises_from_struct_and_vector_getters_outside_the_bytes(self) -> None:
         # Bytes that a read past the slice's end would find
         backing = bytearray(b"\x41" * 32)
-        buffer = ByteBuffer(memoryview(backing)[:8])
+        buffer = TableReader(memoryview(backing)[:8])
         # A vector's count of 1 and its item's end at 13, which is also read as
         # the count of an array of structs
         backing[:8] = bytes([1, 0, 0, 0, 13, 0, 0, 0])
@@ -168,7 +168,7 @@ class TestDecodeError(unittest.TestCase):
     def test_raises_for_a_vector_item_that_ends_before_it_starts(self) -> None:
         # A count of 2 puts the first item after the ends, at 12, but it ends
         # at 11
-        buffer = ByteBuffer(bytes([2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0]))
+        buffer = TableReader(bytes([2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0]))
 
         reads: list[tuple[str, Callable[[], object]]] = [
             ("get_vector", lambda: buffer.get_vector(0)),
@@ -188,7 +188,7 @@ class TestDecodeError(unittest.TestCase):
     def test_rejects_counts_before_allocating_for_them_or_viewing_their_bytes(
         self,
     ) -> None:
-        buffer = ByteBuffer((2**32 - 1).to_bytes(4, "little") + bytes(4))
+        buffer = TableReader((2**32 - 1).to_bytes(4, "little") + bytes(4))
 
         reads: list[tuple[str, Callable[[], object]]] = [
             ("get_vector_length", lambda: buffer.get_vector_length(0)),

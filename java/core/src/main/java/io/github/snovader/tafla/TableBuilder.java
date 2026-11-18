@@ -10,7 +10,7 @@ import java.util.function.*;
  * when its layout has them, followed by the fields in the order they're set. Arrays, strings and
  * vectors start with their count, and a vector then holds the end of each item. Arrays of scalars
  * and of structs are padded so that their elements are aligned from the start of the table. Fields
- * are read back by index with {@link ByteBuffer#rootOffset}, or {@link ByteBuffer#fieldOffset} for
+ * are read back by index with {@link TableReader#rootOffset}, or {@link TableReader#fieldOffset} for
  * a table nested in another.
  *
  * <p>Setting a field records it and counts its bytes. {@link #bytes()} then allocates the table at
@@ -95,7 +95,7 @@ public final class TableBuilder {
 
     /**
      * @param version the version to write to the header. Readers can check it with
-     *     {@link ByteBuffer#getVersion()} before reading any field.
+     *     {@link TableReader#getVersion()} before reading any field.
      * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
      *     the layout's offset type, or the header alone is longer than the layout addresses
      */
@@ -245,7 +245,7 @@ public final class TableBuilder {
 
     /**
      * Sets a struct field from its bytes: its scalars, little-endian, one after another, which are
-     * written as they are, without padding. {@link ByteBuffer#getStruct} reads them back.
+     * written as they are, without padding. {@link TableReader#getStruct} reads them back.
      */
     public void setStruct(byte[] bytes) {
         addField(bytes.length, 0, (writer, index) -> writer.setStruct(index, bytes));
@@ -255,7 +255,7 @@ public final class TableBuilder {
      * Sets an array of structs of {@code size} bytes each, from their bytes one after another,
      * after their count. It's padded so that the structs start at a multiple of {@code alignment}
      * from the start of the table, which is the size of the structs' largest scalar.
-     * {@link ByteBuffer#getStructArray} reads them back.
+     * {@link TableReader#getStructArray} reads them back.
      *
      * @param alignment what the structs' start is padded to a multiple of: 1, 2, 4 or 8
      * @throws IllegalArgumentException if {@code size} is less than 1, {@code bytes} aren't a whole
@@ -281,7 +281,7 @@ public final class TableBuilder {
 
     /**
      * Embeds a table from its builder, without a length prefix. Readers find its fields with
-     * {@link ByteBuffer#fieldOffset} from the field's offset, so its layout must be
+     * {@link TableReader#fieldOffset} from the field's offset, so its layout must be
      * {@link TableLayout#DEFAULT}.
      *
      * <p>The builder must have all its fields set. {@link #bytes()} writes it straight into this
@@ -314,7 +314,7 @@ public final class TableBuilder {
 
     /**
      * Embeds a table from its bytes, without a length prefix. Readers find its fields with
-     * {@link ByteBuffer#fieldOffset} from the field's offset, so its layout must be
+     * {@link TableReader#fieldOffset} from the field's offset, so its layout must be
      * {@link TableLayout#DEFAULT}.
      *
      * <p>The nested table's arrays are aligned from its own start, so it's padded to start at a

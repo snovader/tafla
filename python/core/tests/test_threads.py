@@ -9,7 +9,7 @@ from array import array
 from collections.abc import Callable
 
 import tafla
-from tafla import ByteBuffer, TableBuilder, TableLayout, TableWriter
+from tafla import TableBuilder, TableLayout, TableReader, TableWriter
 
 THREADS = 8
 
@@ -44,13 +44,13 @@ def run_together(work: Callable[[], object]) -> list[BaseException]:
     return raised
 
 
-def shared_buffer() -> ByteBuffer:
+def shared_buffer() -> TableReader:
     layout = TableLayout(sized=True, versioned=True)
     builder = TableBuilder(3, layout, 1)
     builder.set_float64(59.3293)
     builder.set_string("Europe/Stockholm")
     builder.set_float32_array(array("f", range(1000)))
-    return ByteBuffer(builder.bytes(), layout)
+    return TableReader(builder.bytes(), layout)
 
 
 class TestThreads(unittest.TestCase):
@@ -135,7 +135,7 @@ class TestThreads(unittest.TestCase):
             for _ in range(200):
                 writer = TableWriter(1)
                 writer.set_float64_array(0, values)
-                buffer = ByteBuffer(bytes(writer.bytes()))
+                buffer = TableReader(bytes(writer.bytes()))
                 written = buffer.get_float64_array(buffer.root_offset(0))
                 assert len(set(written)) == 1, "the elements of two states"
                 assert len(written) == 1000 + int(written[0]) % 3, "another length"

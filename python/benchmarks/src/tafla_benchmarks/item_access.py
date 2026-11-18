@@ -8,7 +8,7 @@ from collections.abc import Buffer, Callable
 from dataclasses import dataclass, replace
 from struct import Struct
 
-from tafla import ByteBuffer
+from tafla import TableReader
 from tafla_benchmarks.generated.tafla.workloads import ItemList, Triple, Triples
 from tafla_benchmarks.workloads import ItemInput, ListInput
 
@@ -53,11 +53,11 @@ def sum_item(item: ItemInput) -> float:
 ITEM_STRUCT = Struct("<fff")
 """An item as a struct: its three float32s"""
 
-# ByteBuffer's getters by hand, as the tafla codec reads the list
+# TableReader's getters by hand, as the tafla codec reads the list
 
 
 def _last_table_by_hand(data: Buffer) -> float:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
     vector = buffer.root_offset(0)
     item = buffer.get_vector_offset(vector, buffer.get_vector_length(vector) - 1)
 
@@ -65,7 +65,7 @@ def _last_table_by_hand(data: Buffer) -> float:
 
 
 def _every_table_by_hand(data: Buffer) -> float:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
 
     total = 0.0
     for item in buffer.get_vector_offsets(buffer.root_offset(0)):
@@ -74,7 +74,7 @@ def _every_table_by_hand(data: Buffer) -> float:
     return total
 
 
-def _sum_table(buffer: ByteBuffer, item: int) -> float:
+def _sum_table(buffer: TableReader, item: int) -> float:
     pair = buffer.field_offset(item, 1)
 
     return (
@@ -85,7 +85,7 @@ def _sum_table(buffer: ByteBuffer, item: int) -> float:
 
 
 def _last_struct_by_hand(data: Buffer) -> float:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
     structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
     value, first, second = ITEM_STRUCT.unpack_from(
         structs, len(structs) - ITEM_STRUCT.size
@@ -95,7 +95,7 @@ def _last_struct_by_hand(data: Buffer) -> float:
 
 
 def _every_struct_by_hand(data: Buffer) -> float:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
     structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
 
     total = 0.0
@@ -105,7 +105,7 @@ def _every_struct_by_hand(data: Buffer) -> float:
     return total
 
 
-BYTE_BUFFER = ItemAccess(
+TABLE_READER = ItemAccess(
     "tafla",
     _last_table_by_hand,
     _every_table_by_hand,
@@ -155,7 +155,7 @@ GETTERS = ItemAccess(
 )
 
 ACCESSES: tuple[ItemAccess, ...] = (
-    BYTE_BUFFER,
+    TABLE_READER,
     GETTERS,
     # The getters twice, an A/A pair that shows the harness's noise
     replace(GETTERS, name="tafla-gen A/A"),

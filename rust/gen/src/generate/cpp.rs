@@ -567,7 +567,7 @@ impl Generator<'_> {
             }
             docs.push(getter_doc(field.field_type).to_owned());
 
-            // Inlined where they're called, as `ByteBuffer`'s getters are, so
+            // Inlined where they're called, as `TableReader`'s getters are, so
             // that the reader stays in registers and its layout's constants
             // fold, rather than a getter that the compiler leaves out of line,
             // such as a string's with its UTF-8 validation, taking the
@@ -582,15 +582,15 @@ impl Generator<'_> {
     }
 
     /// The definitions of a message's or table's getters, after every
-    /// declaration. Each reads with a buffer in the table's layout, a
+    /// declaration. Each reads with a reader in the table's layout, a
     /// constant, so that its reads compile for that layout's offset type.
     fn getter_definitions(&self, writer: &mut CodeWriter, definition: &Definition) {
         let class = &type_name(&definition.name);
         let is_root = matches!(definition.kind, Kind::Message(_));
-        let buffer = if is_root {
-            "const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);"
+        let reader = if is_root {
+            "const ::tafla::TableReader reader(bytes_, LAYOUT);"
         } else {
-            "const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());"
+            "const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());"
         };
 
         if let Kind::Message(Layout {
@@ -603,9 +603,9 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let name = identifier(&field.name);
             let offset = if is_root {
-                format!("buffer.root_offset({index})")
+                format!("reader.root_offset({index})")
             } else {
-                format!("buffer.field_offset(0, {index})")
+                format!("reader.field_offset(0, {index})")
             };
 
             writer.blank();
@@ -614,17 +614,17 @@ impl Generator<'_> {
                 self.value_type(field.field_type)
             ));
             writer.indent();
-            writer.line(buffer);
+            writer.line(reader);
             writer.line(format!("const auto position = {offset};"));
             let read = match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => "buffer.get_uint8(position) != 0".to_owned(),
-                FieldType::Scalar(scalar) => format!("buffer.get_{}(position)", scalar.name()),
-                FieldType::Array(scalar) => format!("buffer.get_{}_array(position)", scalar.name()),
-                FieldType::String => "buffer.get_string(position)".to_owned(),
+                FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
+                FieldType::Scalar(scalar) => format!("reader.get_{}(position)", scalar.name()),
+                FieldType::Array(scalar) => format!("reader.get_{}_array(position)", scalar.name()),
+                FieldType::String => "reader.get_string(position)".to_owned(),
                 FieldType::Struct(structure) => {
                     let structure = &type_name(&self.schema.definition(structure).name);
                     format!(
-                        "{structure}::from_bytes(buffer.get_struct(position, {structure}::SIZE).data())"
+                        "{structure}::from_bytes(reader.get_struct(position, {structure}::SIZE).data())"
                     )
                 }
                 // From the table's bytes, which `get_table()` checks lie
@@ -633,16 +633,16 @@ impl Generator<'_> {
                 // nested table's reads would wait for
                 FieldType::Table(table) => {
                     let table = &type_name(&self.schema.definition(table).name);
-                    format!("{table}(buffer.get_table(position), 0)")
+                    format!("{table}(reader.get_table(position), 0)")
                 }
                 FieldType::Vector(_) => {
                     let view = self.value_type(field.field_type);
-                    format!("{view}(buffer.get_vector(position))")
+                    format!("{view}(reader.get_vector(position))")
                 }
                 FieldType::StructArray(structure) => {
                     let view = self.value_type(field.field_type);
                     let structure = &type_name(&self.schema.definition(structure).name);
-                    format!("{view}(buffer.get_struct_array(position, {structure}::SIZE))")
+                    format!("{view}(reader.get_struct_array(position, {structure}::SIZE))")
                 }
             };
             writer.line(format!("return {read};"));
@@ -1807,7 +1807,7 @@ fn version_definitions(writer: &mut CodeWriter, class: &str) {
         "inline std::uint32_t {class}::version_of(std::span<const std::uint8_t> bytes) {{"
     ));
     writer.line(format!(
-        "{INDENT}return ::tafla::ByteBuffer(bytes, LAYOUT).version();"
+        "{INDENT}return ::tafla::TableReader(bytes, LAYOUT).version();"
     ));
     writer.line("}");
 }

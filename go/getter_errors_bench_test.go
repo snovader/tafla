@@ -38,7 +38,7 @@ func BenchmarkGetterErrors(b *testing.B) {
 	bytes := getterErrorTable()
 
 	b.Run("error", func(b *testing.B) {
-		buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+		buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 		for range b.N {
 			sum := 0.0
 			var err error

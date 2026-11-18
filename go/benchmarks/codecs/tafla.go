@@ -12,7 +12,7 @@ import (
 // Tafla writes tables with TableBuilder, recording nested tables in place
 // among their parent builder's fields with SetTableFunc() and SetVectorFunc().
 // The builders write each array in bulk into a table of its exact size. It
-// reads the tables with ByteBuffer's getters, with strings and columns in
+// reads the tables with TableReader's getters, with strings and columns in
 // place.
 type Tafla struct{}
 
@@ -43,7 +43,7 @@ func (Tafla) SerializeRecord(record workloads.Record) ([]byte, error) {
 }
 
 func (Tafla) DeserializeRecord(bytes []byte) (workloads.Record, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	var record workloads.Record
 
 	position, err := buffer.RootOffset(0)
@@ -104,7 +104,7 @@ func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
 }
 
 func (Tafla) DeserializeDocument(bytes []byte) (workloads.Document, error) {
-	buffer := tafla.NewByteBuffer(bytes, documentLayout)
+	buffer := tafla.NewTableReader(bytes, documentLayout)
 	if err := checkVersion(buffer); err != nil {
 		return workloads.Document{}, err
 	}
@@ -146,7 +146,7 @@ func (Tafla) DeserializeDocument(bytes []byte) (workloads.Document, error) {
 
 // readColumns reads the document's nested table of columns, at columns,
 // with each column in place where it's aligned
-func readColumns(buffer tafla.ByteBuffer, columns int, document *workloads.Document) error {
+func readColumns(buffer tafla.TableReader, columns int, document *workloads.Document) error {
 	position, err := buffer.FieldOffset(columns, 0)
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func readColumns(buffer tafla.ByteBuffer, columns int, document *workloads.Docum
 }
 
 func (Tafla) SumA(bytes []byte) (float64, error) {
-	buffer := tafla.NewByteBuffer(bytes, documentLayout)
+	buffer := tafla.NewTableReader(bytes, documentLayout)
 	if err := checkVersion(buffer); err != nil {
 		return 0, err
 	}
@@ -237,7 +237,7 @@ func setListItem(table tafla.Item, item workloads.Item) error {
 }
 
 func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return workloads.List{}, err
@@ -254,7 +254,7 @@ func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
 		}
 
 		// In place, at its start, in a buffer of its parent's offset type
-		read, err := readListItem(tafla.NewByteBuffer(item, tafla.TableLayout{}))
+		read, err := readListItem(tafla.NewTableReader(item, tafla.TableLayout{}))
 		if err != nil {
 			return workloads.List{}, err
 		}
@@ -265,7 +265,7 @@ func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
 }
 
 // readListItem reads an item of the vector, whose table starts at 0
-func readListItem(buffer tafla.ByteBuffer) (workloads.Item, error) {
+func readListItem(buffer tafla.TableReader) (workloads.Item, error) {
 	var item workloads.Item
 
 	position, err := buffer.FieldOffset(0, 0)
@@ -321,7 +321,7 @@ func (Tafla) SerializeStructs(list workloads.List) ([]byte, error) {
 }
 
 func (Tafla) DeserializeStructs(bytes []byte) (workloads.List, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return workloads.List{}, err
@@ -350,10 +350,10 @@ func (Tafla) SerializeSample(sample workloads.Sample) ([]byte, error) {
 	return Binary{}.SerializeSample(sample)
 }
 
-// DeserializeSample reads the fixed-size record with ByteBuffer's getters,
+// DeserializeSample reads the fixed-size record with TableReader's getters,
 // which check each read's range.
 func (Tafla) DeserializeSample(bytes []byte) (workloads.Sample, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	var sample workloads.Sample
 
 	var err error
@@ -370,7 +370,7 @@ func (Tafla) DeserializeSample(bytes []byte) (workloads.Sample, error) {
 	return sample, nil
 }
 
-func checkVersion(buffer tafla.ByteBuffer) error {
+func checkVersion(buffer tafla.TableReader) error {
 	version, err := buffer.Version()
 	if err != nil {
 		return err

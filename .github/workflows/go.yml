@@ -222,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzByteBuffer, FuzzConformance]
+        target: [FuzzTableReader, FuzzConformance]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7

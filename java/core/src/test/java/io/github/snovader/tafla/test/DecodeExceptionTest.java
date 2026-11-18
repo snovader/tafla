@@ -23,7 +23,7 @@ public class DecodeExceptionTest {
 
         for (int length = 0; length < bytes.length; length++) {
             // A copy, so that no read can reach the bytes after the cut
-            var reader = TableReader.lenient(Arrays.copyOf(bytes, length), table.layout());
+            var reader = DescriptionReader.lenient(Arrays.copyOf(bytes, length), table.layout());
 
             assertValuesOrDecodeException(() -> assertEquals(table.version(), reader.readHeader()));
             for (int index = 0; index < fields.size(); index++) {
@@ -48,7 +48,7 @@ public class DecodeExceptionTest {
         var position = at % bytes.length;
         System.arraycopy(overwrite, 0, bytes, position, Math.min(overwrite.length, bytes.length - position));
 
-        var reader = TableReader.lenient(bytes, table.layout());
+        var reader = DescriptionReader.lenient(bytes, table.layout());
         var fields = table.fields();
 
         assertValuesOrDecodeException(reader::readHeader);
@@ -65,7 +65,7 @@ public class DecodeExceptionTest {
         @ForAll("getters") Getter getter,
         @ForAll("positions") Position position
     ) {
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var buffer = new TableReader(bytes, layout.tableLayout());
 
         assertValuesOrDecodeException(buffer::getSize);
         if (layout.versioned()) {
@@ -84,7 +84,7 @@ public class DecodeExceptionTest {
         @ForAll @IntRange(min = 0, max = 20) int at
     ) {
         // A count other than the vector's reads other bytes as the item's ends
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var buffer = new TableReader(bytes, layout.tableLayout());
         var index = Math.min(at, count - 1);
 
         assertValuesOrDecodeException(() -> {
@@ -103,7 +103,7 @@ public class DecodeExceptionTest {
     ) {
         // An index past the count, or a start other than the previous item's end, reads other bytes
         // as the item's end, or checks it against another start
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var buffer = new TableReader(bytes, layout.tableLayout());
 
         assertValuesOrDecodeException(() -> {
             var end = buffer.getVectorItemEnd(position, index, start);
@@ -118,7 +118,7 @@ public class DecodeExceptionTest {
         @ForAll @IntRange(min = 0, max = 72) int position
     ) {
         // As a generated vector view's iterator reads them, from where the items start
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var buffer = new TableReader(bytes, layout.tableLayout());
 
         assertValuesOrDecodeException(() -> {
             var count = buffer.getVectorLength(position);
@@ -141,7 +141,7 @@ public class DecodeExceptionTest {
     ) {
         Assume.that(position < 0 || (long) position + type.size() > bytes.length);
 
-        var buffer = new ByteBuffer(bytes);
+        var buffer = new TableReader(bytes);
         var exception = assertThrows(DecodeException.class, () -> type.read(buffer, position));
 
         assertEquals(
@@ -167,7 +167,7 @@ public class DecodeExceptionTest {
                 .putInt(utf8.length)
                 .put(utf8)
                 .array();
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
 
             var exception = assertThrows(DecodeException.class, () -> buffer.getString(0));
             assertInstanceOf(CharacterCodingException.class, exception.getCause());
@@ -177,7 +177,7 @@ public class DecodeExceptionTest {
     @Example
     void should_throw_DecodeException_for_a_vector_item_that_ends_before_it_starts() {
         // A count of 2 puts the first item after the ends, at 12, but it ends at 11
-        var buffer = new ByteBuffer(new byte[] {2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0});
+        var buffer = new TableReader(new byte[] {2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0});
 
         var exception = assertThrows(DecodeException.class, () -> buffer.getVector(0));
         assertEquals("The vector item at 12 ends before it starts, at 11", exception.getMessage());
@@ -193,7 +193,7 @@ public class DecodeExceptionTest {
     @Example
     void should_throw_DecodeException_for_a_vector_item_that_ends_past_the_bytes() {
         // A vector of one item, which would end at 9 from the vector's position, of 8 bytes
-        var buffer = new ByteBuffer(new byte[] {1, 0, 0, 0, 9, 0, 0, 0});
+        var buffer = new TableReader(new byte[] {1, 0, 0, 0, 9, 0, 0, 0});
 
         var exception = assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, 0));
         assertEquals("Read exceeds the supplied buffer: 1 bytes at 8 of 8", exception.getMessage());
@@ -209,7 +209,7 @@ public class DecodeExceptionTest {
     @Example
     void should_throw_DecodeException_for_a_struct_or_structs_past_the_bytes() {
         // A count of 2 and then 5 bytes, which hold one struct of 3 bytes but not two
-        var buffer = new ByteBuffer(new byte[] {2, 0, 0, 0, 1, 2, 3, 4, 5});
+        var buffer = new TableReader(new byte[] {2, 0, 0, 0, 1, 2, 3, 4, 5});
 
         var exception = assertThrows(DecodeException.class, () -> buffer.getStructArray(0, 3));
         assertEquals("Read exceeds the supplied buffer: 6 bytes at 4 of 9", exception.getMessage());
@@ -225,10 +225,10 @@ public class DecodeExceptionTest {
         // 2^32 - 1, which once threw an AssertionError as an offset, and then four bytes
         var bytes = new byte[] {-1, -1, -1, -1, 0, 0, 0, 0};
 
-        assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).rootOffset(0));
-        assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).fieldOffset(0, 0));
-        assertThrows(DecodeException.class, () -> new ByteBuffer(bytes).getInt8Array(0));
-        assertEquals(4294967295L, new ByteBuffer(bytes, TableLayout.builder().sized(true).build()).getSize());
+        assertThrows(DecodeException.class, () -> new TableReader(bytes).rootOffset(0));
+        assertThrows(DecodeException.class, () -> new TableReader(bytes).fieldOffset(0, 0));
+        assertThrows(DecodeException.class, () -> new TableReader(bytes).getInt8Array(0));
+        assertEquals(4294967295L, new TableReader(bytes, TableLayout.builder().sized(true).build()).getSize());
     }
 
     @Provide
@@ -241,7 +241,7 @@ public class DecodeExceptionTest {
         return Descriptions.layouts();
     }
 
-    /** A getter of {@link ByteBuffer}'s, which shows as its type when a property fails */
+    /** A getter of {@link TableReader}'s, which shows as its type when a property fails */
     record Getter(String type, Read read) {
         @Override
         public String toString() {
@@ -251,7 +251,7 @@ public class DecodeExceptionTest {
 
     @FunctionalInterface
     interface Read {
-        void at(ByteBuffer buffer, int position);
+        void at(TableReader buffer, int position);
     }
 
     @Provide
@@ -262,12 +262,12 @@ public class DecodeExceptionTest {
             getters.add(new Getter(type.jsonName() + "[]", type::readArray));
         }
 
-        getters.add(new Getter("string", ByteBuffer::getString));
+        getters.add(new Getter("string", TableReader::getString));
         getters.add(new Getter("struct of 9 bytes", (buffer, position) -> buffer.getStruct(position, 9)));
         getters.add(new Getter("structs of 3 bytes", (buffer, position) -> buffer.getStructArray(position, 3)));
-        getters.add(new Getter("vector", ByteBuffer::getVector));
-        getters.add(new Getter("vector length", ByteBuffer::getVectorLength));
-        getters.add(new Getter("vector offsets", ByteBuffer::getVectorOffsets));
+        getters.add(new Getter("vector", TableReader::getVector));
+        getters.add(new Getter("vector length", TableReader::getVectorLength));
+        getters.add(new Getter("vector offsets", TableReader::getVectorOffsets));
         getters.add(new Getter("last vector offset", DecodeExceptionTest::getLastVectorOffset));
         getters.add(new Getter("vector offsets from the count", DecodeExceptionTest::getEachVectorItemOffset));
 
@@ -275,7 +275,7 @@ public class DecodeExceptionTest {
     }
 
     /** Finds the last item of a vector, which reads the ends before and after it, if it has any */
-    private static void getLastVectorOffset(ByteBuffer buffer, int position) {
+    private static void getLastVectorOffset(TableReader buffer, int position) {
         var length = buffer.getVectorLength(position);
         if (length > 0) {
             buffer.getVectorOffset(position, length - 1);
@@ -286,7 +286,7 @@ public class DecodeExceptionTest {
      * Finds each item of a vector from its count, read once, as a view of the vector does, and each
      * on its own, so that an item that throws leaves the others to find
      */
-    private static void getEachVectorItemOffset(ByteBuffer buffer, int position) {
+    private static void getEachVectorItemOffset(TableReader buffer, int position) {
         var count = buffer.getVectorLength(position);
         for (int index = 0; index < count; index++) {
             var itemIndex = index;
@@ -296,11 +296,11 @@ public class DecodeExceptionTest {
 
     /** Where a getter reads: at a root field's offset, at the offset of a field of a nested table, or anywhere */
     sealed interface Position {
-        int of(ByteBuffer buffer);
+        int of(TableReader buffer);
 
         record RootOffset(int index) implements Position {
             @Override
-            public int of(ByteBuffer buffer) {
+            public int of(TableReader buffer) {
                 return buffer.rootOffset(index);
             }
         }
@@ -308,14 +308,14 @@ public class DecodeExceptionTest {
         /** A field of the table at root field {@code tableIndex}, read in place */
         record FieldOffset(int tableIndex, int index) implements Position {
             @Override
-            public int of(ByteBuffer buffer) {
+            public int of(TableReader buffer) {
                 return buffer.fieldOffset(buffer.rootOffset(tableIndex), index);
             }
         }
 
         record At(int position) implements Position {
             @Override
-            public int of(ByteBuffer buffer) {
+            public int of(TableReader buffer) {
                 return position;
             }
         }

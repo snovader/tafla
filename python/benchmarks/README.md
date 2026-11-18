@@ -34,7 +34,7 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
 of its own, and `item_access.py` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: `get_vector_offset()`
+- **tafla** reads with `TableReader`'s getters by hand: `get_vector_offset()`
   of the last item or `get_vector_offsets()` of every item, and
   `get_struct_array()` with `Struct("<fff")`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
@@ -64,7 +64,7 @@ benchmark's call allocates.
   documentation recommends the standard library's `struct` for records at
   fixed offsets, so tafla's codec packs the fixed-size record field by field
   with `struct` into a new 12-byte `bytearray`, and reads it with
-  `ByteBuffer`'s getters at fixed positions. The `struct` codec packs and
+  `TableReader`'s getters at fixed positions. The `struct` codec packs and
   unpacks the whole record in one call.
 - FlatBuffers' Python runtime copies vectors in bulk only from and to numpy
   arrays, so its columns are written and read through numpy. Without numpy, it
@@ -116,7 +116,7 @@ comparison uses its counterpart:
   fixed-size `Sample` are written from their values, as positional
   arguments, with `serialize_values()`, and read into tuples of them with
   `read_values()`, without a reader: the record in one call, with
-  `ByteBuffer.read_fields()`. The document is written from the generated
+  `TableReader.read_fields()`. The document is written from the generated
   fields' dicts, and read into a tuple of its values with `read_values()`,
   its columns' in a tuple of their own, as views. The
   vector is written from a tuple of each item's values, each pair's in place
@@ -382,7 +382,7 @@ Fastest value in µs per call, and its ratio to tafla's:
   every library 3 to 5 ms.
 - `struct` packs the fixed-size record in 74 ns and unpacks it in 142 ns, about
   half of which is creating the result. tafla's codec took 637 ns and 636 ns,
-  when it wrote the record with `ByteBuffer`'s setters, which are gone.
+  when it wrote the record with `TableReader`'s setters, which are gone.
 
 Every deserialization includes creating the workload's dataclasses, about
 65 ns each, which the codecs share: 6.5 µs of reading the vector of 100 nested
@@ -477,13 +477,13 @@ Peak bytes per call, as `tafla_benchmarks.allocation` traces them:
   in an A/B run, creating the 100 `Triple`s took 15.6 µs rather than 24.1 µs,
   and the codec wrote the array 25% faster and read it 23% faster.
 - The generated readers read the record's and the documents' fields 10% to
-  11% slower than `ByteBuffer`'s getters called in place, and sum the column
+  11% slower than `TableReader`'s getters called in place, and sum the column
   within 5% of them. They create an object for each table they read, which
   the vector's peak bytes show, 17 KB against 12 KB, and read it 24% slower,
   in 106 µs against 86 µs.
 - The fixed-size record is a frozen `Sample`, whose `serialize()` and `read()`
   pack and unpack it with one `Struct` call each: 0.34 and 0.46 µs against
-  the tafla codec's 0.70 µs, through `ByteBuffer`'s setters, which are gone,
+  the tafla codec's 0.70 µs, through `TableReader`'s setters, which are gone,
   and its getters. Creating the `Sample` took 0.24 µs of the 0.34 µs.
 
 `python -m tafla_benchmarks.encoding` printed:
@@ -525,7 +525,7 @@ same machine and Python, alternating their order as above, with
 and 3.8, with a median of 2.5. pyperf's mean was within 5% of the fastest value
 for 14 of the 16 benchmarks, and at most 11% above it.
 
-Fastest value in µs, and its ratio to `ByteBuffer`'s by hand:
+Fastest value in µs, and its ratio to `TableReader`'s by hand:
 
 | Benchmark                                       | tafla |     tafla-gen | tafla-gen view | tafla-gen view A/A |
 | ----------------------------------------------- | ----: | ------------: | -------------: | -----------------: |
@@ -546,7 +546,7 @@ The most bytes that a call held at once, as tracemalloc traces them:
 - The views read the last item 6.7 times faster than the getters for the
   vector, 2.0 µs against 13.5 µs, and 25 times faster for the array, 1.3 µs
   against 33.0 µs: the getters create a reader or a `Triple` for each of the
-  100 items first. `ByteBuffer` by hand takes 1.6 µs and 0.8 µs.
+  100 items first. `TableReader` by hand takes 1.6 µs and 0.8 µs.
 - Iterating over every item takes as long as through the getters, 102.1 µs
   against 102.5 µs for the vector and 35.6 µs against 35.9 µs for the array,
   since CPython creates each item's reader or `Triple` either way. The views

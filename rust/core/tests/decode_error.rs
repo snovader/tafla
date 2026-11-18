@@ -13,7 +13,7 @@ use common::{
     strategy,
 };
 use proptest::{collection::vec, prelude::*, sample::Index};
-use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{DecodeError, TableBuilder, TableLayout, TableReader};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -121,7 +121,7 @@ proptest! {
         bytes.extend(&utf8);
         let copy = at_byte_offset(&bytes, byte_offset);
 
-        let read = ByteBuffer::new(copy.bytes(), TableLayout::DEFAULT).get_str(0);
+        let read = TableReader::new(copy.bytes(), TableLayout::DEFAULT).get_str(0);
         match std::str::from_utf8(&utf8) {
             Ok(string) => prop_assert_eq!(read, Ok(string)),
             Err(source) => prop_assert_eq!(read, Err(DecodeError::InvalidUtf8 { position: 0, source })),
@@ -197,8 +197,8 @@ impl Reads {
             fields.push(read_field(bytes, layout, position, field));
         }
 
-        let buffer = ByteBuffer::new(bytes, layout.unversioned());
-        let versioned = ByteBuffer::new(bytes, layout.unversioned().versioned());
+        let buffer = TableReader::new(bytes, layout.unversioned());
+        let versioned = TableReader::new(bytes, layout.unversioned().versioned());
 
         Self {
             table: read_table(bytes, table),
@@ -239,7 +239,7 @@ impl Reads {
 #[test]
 fn test_return_error_outside_slice() {
     let backing = [0_u8; 32];
-    let buffer = ByteBuffer::new(&backing[..8], TableLayout::DEFAULT);
+    let buffer = TableReader::new(&backing[..8], TableLayout::DEFAULT);
 
     assert_eq!(
         buffer.get_f64(4),
@@ -294,7 +294,7 @@ const fn outside(position: usize, byte_length: u64) -> DecodeError {
 #[test]
 fn test_reject_array_string_struct_and_vector_item_outside_slice() {
     let backing = slice_of(&[1, 13]);
-    let buffer = ByteBuffer::new(&backing[4..12], TableLayout::DEFAULT);
+    let buffer = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
 
     assert_eq!(buffer.get_u8_array(4), Err(outside(8, 13)));
     assert_eq!(buffer.get_str(4), Err(outside(8, 13)));
@@ -312,7 +312,7 @@ fn test_reject_array_string_struct_and_vector_item_outside_slice() {
 #[test]
 fn test_reject_vector_whose_ends_lie_outside_slice() {
     let backing = slice_of(&[3]);
-    let buffer = ByteBuffer::new(&backing[4..12], TableLayout::DEFAULT);
+    let buffer = TableReader::new(&backing[4..12], TableLayout::DEFAULT);
 
     // The count of 3, at 0, has three ends, of 12 bytes from 4
     assert_eq!(buffer.get_vector(0).unwrap_err(), outside(4, 12));
@@ -330,7 +330,7 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
     // A count of 2 puts the first item after the ends, at 12, but it ends
     // at 11
     let bytes = [2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0];
-    let vector = ByteBuffer::new(&bytes, TableLayout::DEFAULT)
+    let vector = TableReader::new(&bytes, TableLayout::DEFAULT)
         .get_vector(0)
         .unwrap();
 
@@ -351,7 +351,7 @@ fn test_reject_vector_item_that_ends_before_it_starts() {
 #[test]
 fn test_reject_array_whose_byte_length_overflows() {
     let bytes = [255, 255, 255, 255, 0, 0, 0, 0];
-    let buffer = ByteBuffer::new(&bytes, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&bytes, TableLayout::DEFAULT);
 
     assert_eq!(
         buffer.get_f64_array(0).unwrap_err(),
@@ -387,7 +387,7 @@ fn test_reject_invalid_utf8() {
         let mut bytes = u32::try_from(utf8.len()).unwrap().to_le_bytes().to_vec();
         bytes.extend(utf8);
 
-        let error = ByteBuffer::new(&bytes, TableLayout::DEFAULT)
+        let error = TableReader::new(&bytes, TableLayout::DEFAULT)
             .get_str(0)
             .unwrap_err();
         assert!(
@@ -406,7 +406,7 @@ fn test_describe_unsupported_version() {
     builder.set_u8(42).unwrap();
     let bytes = builder.to_bytes().unwrap();
 
-    let version = ByteBuffer::new(&bytes, layout).version().unwrap();
+    let version = TableReader::new(&bytes, layout).version().unwrap();
     let error = DecodeError::UnsupportedVersion {
         version,
         supported: 1,

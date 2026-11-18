@@ -4,7 +4,7 @@
 It writes and reads binary tables of scalars, strings, arrays, structs and
 nested tables in tafla's format, which the TypeScript, Python, Java and Rust
 runtimes write and read too. `TableBuilder` writes a table at its exact size,
-copying arrays in bulk, and `ByteBuffer` reads fields back by offset, sharing
+copying arrays in bulk, and `TableReader` reads fields back by offset, sharing
 arrays, strings and structs with the bytes. Every read checks that it stays
 within the bytes it was given. It depends only on Go's standard library.
 
@@ -36,16 +36,16 @@ err = builder.SetString("Europe/Stockholm")
 err = builder.SetTable(series) // written straight into the table
 bytes, err := builder.Bytes()
 
-buffer := tafla.NewByteBuffer(bytes, layout)
-version, err := buffer.Version()
+reader := tafla.NewTableReader(bytes, layout)
+version, err := reader.Version()
 if version != formatVersion {
 	return tafla.NewUnsupportedVersionError(version, formatVersion)
 }
-position, err := buffer.RootOffset(1)
-timeZone, err := buffer.GetString(position) // "Europe/Stockholm", sharing the bytes
-table, err := buffer.RootOffset(2)
-position, err = buffer.FieldOffset(table, 1)
-values, err := buffer.GetFloat32Array(position) // an ArrayView[float32]
+position, err := reader.RootOffset(1)
+timeZone, err := reader.GetString(position) // "Europe/Stockholm", sharing the bytes
+table, err := reader.RootOffset(2)
+position, err = reader.FieldOffset(table, 1)
+values, err := reader.GetFloat32Array(position) // an ArrayView[float32]
 values.Slice()                                  // []float32{21.75, 18.5}, in place
 ```
 
@@ -117,7 +117,7 @@ with the code that tafla-gen generates.
   and 6.1 µs through FlatBuffers. A table nested from a builder or bytes,
   with `SetTable()` and `SetVector()`, is still what a table built
   elsewhere, or reused, needs.
-- **Arrays are read in place.** `ByteBuffer`'s array getters return an
+- **Arrays are read in place.** `TableReader`'s array getters return an
   `ArrayView[T]`, which reads elements from the bytes at any alignment and in
   any host byte order. `AsSlice()` returns them as a slice of the bytes when
   the host is little-endian and the elements are aligned to their type in
@@ -139,13 +139,13 @@ with the code that tafla-gen generates.
 Every getter returns its value and an `error`, which is a `*DecodeError` when
 the bytes can't be read, and `errors.As` finds it:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given,
+- Every read checks its range against the bytes the `TableReader` was given,
   and fails with `OutOfRange` if it would leave them, which gives the read's
   position and length and the bytes available. Strings must be valid UTF-8,
   or they fail with `InvalidUTF8`. A vector item that ends before the one
   before it fails with `ItemEndsBeforeStart`. No bytes make a read panic, nor
   allocate more than they hold.
-- `ByteBuffer` doesn't compare versions. A reader returns
+- `TableReader` doesn't compare versions. A reader returns
   `NewUnsupportedVersionError()` when `Version()` isn't one it reads, as the
   example does, so that every decoding failure is a `*DecodeError`.
 - On a 32-bit host, an offset or length past the largest `int`, 2 GiB, fails
@@ -313,7 +313,7 @@ docker run --rm --platform linux/386 -v "$root:$root" -w "$PWD" alpine ./tafla-3
 `tests/fuzz_test.go` holds the fuzz targets. A panic, a hang, a run out of memory
 or a read that disagrees with `SPEC.md` is a finding:
 
-- `FuzzByteBuffer` reads arbitrary bytes with every getter of `ByteBuffer`,
+- `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
   at every position and past the end, in every offset type and header, and
   reads every array, struct array and vector there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
@@ -328,7 +328,7 @@ runs each target for a minute on every change, and the weekly Fuzz workflow
 for five minutes, from the corpus that its earlier runs grew.
 
 ```sh
-go test -run '^$' -fuzz FuzzByteBuffer -fuzztime 5m
+go test -run '^$' -fuzz FuzzTableReader -fuzztime 5m
 go test -run '^$' -fuzz FuzzConformance -fuzztime 5m
 ```
 

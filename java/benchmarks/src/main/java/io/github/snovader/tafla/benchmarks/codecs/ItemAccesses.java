@@ -1,6 +1,6 @@
 package io.github.snovader.tafla.benchmarks.codecs;
 
-import io.github.snovader.tafla.ByteBuffer;
+import io.github.snovader.tafla.TableReader;
 import io.github.snovader.tafla.benchmarks.*;
 import io.github.snovader.tafla.benchmarks.generated.tafla.ItemList;
 import io.github.snovader.tafla.benchmarks.generated.tafla.Triples;
@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.SequencedMap;
 
 /**
- * The ways of reading tafla's items: {@link ByteBuffer}'s getters by hand, as the tafla codec reads
+ * The ways of reading tafla's items: {@link TableReader}'s getters by hand, as the tafla codec reads
  * the list, and tafla-gen's getters, whose views read each item when it's asked for
  */
 public final class ItemAccesses {
@@ -18,10 +18,10 @@ public final class ItemAccesses {
 
     private ItemAccesses() {}
 
-    /** {@return a new access of each way by name, with tafla's {@code ByteBuffer} first} */
+    /** {@return a new access of each way by name, with tafla's {@code TableReader} first} */
     public static SequencedMap<String, ItemAccess> all() {
         var accesses = new LinkedHashMap<String, ItemAccess>();
-        accesses.put("tafla", new ByteBufferAccess());
+        accesses.put("tafla", new TableReaderAccess());
         accesses.put("tafla-gen", new GetterAccess());
         // The getters twice, an A/A pair that shows the harness's noise
         accesses.put("tafla-gen A/A", new GetterAccess());
@@ -48,10 +48,10 @@ public final class ItemAccesses {
         return (double) item.value() + item.first() + item.second();
     }
 
-    private static final class ByteBufferAccess implements ItemAccess {
+    private static final class TableReaderAccess implements ItemAccess {
         @Override
         public double lastTable(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var vector = buffer.rootOffset(0);
             var item = buffer.getVectorOffset(vector, buffer.getVectorLength(vector) - 1);
 
@@ -60,7 +60,7 @@ public final class ItemAccesses {
 
         @Override
         public double everyTable(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
             double sum = 0;
@@ -73,7 +73,7 @@ public final class ItemAccesses {
 
         @Override
         public double lastStruct(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
 
             return sumStruct(view, view.remaining() - ITEM_SIZE);
@@ -81,7 +81,7 @@ public final class ItemAccesses {
 
         @Override
         public double everyStruct(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
 
             double sum = 0;
@@ -92,7 +92,7 @@ public final class ItemAccesses {
             return sum;
         }
 
-        private static double sumTable(ByteBuffer buffer, int item) {
+        private static double sumTable(TableReader buffer, int item) {
             var pair = buffer.fieldOffset(item, 1);
 
             return (double) buffer.getFloat32(buffer.fieldOffset(item, 0))

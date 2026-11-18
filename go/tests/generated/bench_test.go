@@ -2,7 +2,7 @@ package generated_test
 
 // Benchmarks of the runtime's hot paths, through the code generated from
 // shapes.tafla, whose messages are the comparison suite's record, document
-// and vector of nested tables, and through ByteBuffer and TableBuilder by
+// and vector of nested tables, and through TableReader and TableBuilder by
 // hand. They compare versions of the runtime, with benchstat; the comparison
 // suite in benchmarks/ compares tafla with other libraries.
 //
@@ -86,7 +86,7 @@ func BenchmarkReadPointByHand(b *testing.B) {
 	b.ResetTimer()
 
 	for range b.N {
-		buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+		buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 		p0, err1 := buffer.RootOffset(0)
 		x, err2 := buffer.GetFloat64(p0)
 		p1, err3 := buffer.RootOffset(1)

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Protocol, Self, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
+from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -683,7 +683,7 @@ class BlockFields(Protocol):
 class Range:
     """A table of only scalars, which nests whole"""
 
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 1
     """The alignment that a parent pads a ``Range`` to: the largest
@@ -692,9 +692,9 @@ class Range:
 
     _FIXED_FIELDS: Final = FixedFields(2, "I", "I")
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -705,10 +705,10 @@ class Range:
         writer.write_table(Range._FIXED_FIELDS, (fields["start"], fields["end"]))
 
     def start(self) -> int:
-        return self._buffer.get_uint32(self._buffer.field_offset(self._position, 0))
+        return self._reader.get_uint32(self._reader.field_offset(self._position, 0))
 
     def end(self) -> int:
-        return self._buffer.get_uint32(self._buffer.field_offset(self._position, 1))
+        return self._reader.get_uint32(self._reader.field_offset(self._position, 1))
 
     def fields(self) -> RangeFields:
         """Reads every field at once, as ``write()`` takes them.
@@ -717,7 +717,7 @@ class Range:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return {"start": self.start(), "end": self.end()}
 
@@ -731,7 +731,7 @@ class Range:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return (self.start(), self.end())
 
@@ -754,17 +754,17 @@ class RangeVector:
     than when its parent's getter returns the vector
     """
 
-    __slots__ = ("_buffer", "_length", "_position")
+    __slots__ = ("_length", "_position", "_reader")
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Views the vector at ``position``, as its parent's getter finds it.
 
         Raises ``DecodeError`` if the vector's count or the ends of its items lie
         outside the bytes.
         """
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
-        self._length = buffer.get_vector_length(position)
+        self._length = reader.get_vector_length(position)
 
     def __len__(self) -> int:
         return self._length
@@ -778,19 +778,19 @@ class RangeVector:
         """
         if index < 0:
             index += self._length
-        offset = self._buffer.get_vector_item_offset(
+        offset = self._reader.get_vector_item_offset(
             self._position, self._length, index
         )
-        return Range(self._buffer, offset)
+        return Range(self._reader, offset)
 
     def __iter__(self) -> Iterator[Range]:
         """Reads the items one after another, after reading every item's end.
 
         Raises ``DecodeError`` if an item lies outside the bytes, before reading any.
         """
-        buffer = self._buffer
-        for offset in buffer.get_vector_offsets(self._position):
-            yield Range(buffer, offset)
+        reader = self._reader
+        for offset in reader.get_vector_offsets(self._position):
+            yield Range(reader, offset)
 
     def item_field_values(self, index: int) -> RangeFieldValues:
         """Reads the values of item ``index``, as ``Range.field_values()`` reads
@@ -801,12 +801,12 @@ class RangeVector:
         """
         if index < 0:
             index += self._length
-        offset = self._buffer.get_vector_item_offset(
+        offset = self._reader.get_vector_item_offset(
             self._position, self._length, index
         )
-        values = self._buffer.get_fields(offset, Range._FIXED_FIELDS)
+        values = self._reader.get_fields(offset, Range._FIXED_FIELDS)
         if values is None:
-            return Range(self._buffer, offset).field_values()
+            return Range(self._reader, offset).field_values()
 
         return values
 
@@ -815,7 +815,7 @@ class RangeVector:
         each, in one call when the items' offsets are those that their writer
         writes, and otherwise item by item
         """
-        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
+        items = self._reader.get_vector_fields(self._position, Range._FIXED_FIELDS)
         if items is None:
             return [item.field_values() for item in self]
 
@@ -827,11 +827,11 @@ class RangeVector:
         ``DecodeError`` for an item that doesn't lie within the bytes when it
         reaches it
         """
-        buffer = self._buffer
-        return buffer.iter_vector_fields(
+        reader = self._reader
+        return reader.iter_vector_fields(
             self._position,
             Range._FIXED_FIELDS,
-            lambda offset: Range(buffer, offset).field_values(),
+            lambda offset: Range(reader, offset).field_values(),
         )
 
     def fields(self) -> list[RangeFields]:
@@ -839,7 +839,7 @@ class RangeVector:
         in one call when the items' offsets are those that their writer writes,
         and otherwise item by item
         """
-        items = self._buffer.get_vector_fields(self._position, Range._FIXED_FIELDS)
+        items = self._reader.get_vector_fields(self._position, Range._FIXED_FIELDS)
         if items is None:
             return [item.fields() for item in self]
 
@@ -851,7 +851,7 @@ class Frame:
     whole too
     """
 
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 1
     """The alignment that a parent pads a ``Frame`` to: the largest
@@ -860,9 +860,9 @@ class Frame:
 
     _FIXED_FIELDS: Final = FixedFields(3, "8s", FixedFields(2, "I", "I"), "H")
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -882,16 +882,16 @@ class Frame:
 
     def origin(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(
-                self._buffer.field_offset(self._position, 0), Vec2.SIZE
+            self._reader.get_struct(
+                self._reader.field_offset(self._position, 0), Vec2.SIZE
             )
         )
 
     def range(self) -> Range:
-        return Range(self._buffer, self._buffer.field_offset(self._position, 1))
+        return Range(self._reader, self._reader.field_offset(self._position, 1))
 
     def flags(self) -> int:
-        return self._buffer.get_uint16(self._buffer.field_offset(self._position, 2))
+        return self._reader.get_uint16(self._reader.field_offset(self._position, 2))
 
     def fields(self) -> FrameFields:
         """Reads every field at once, as ``write()`` takes them, with a nested table's
@@ -901,7 +901,7 @@ class Frame:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return {
                 "origin": self.origin(),
@@ -924,7 +924,7 @@ class Frame:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return (self.origin(), *self.range().field_values(), self.flags())
 
@@ -947,14 +947,14 @@ class Tiny:
     whole
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(sized=True, offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(2, "H", "B", layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[TinyFields]) -> bytes:
@@ -971,10 +971,10 @@ class Tiny:
         return TableWriter.write_fields(cls._FIXED_FIELDS, (id, kind))
 
     def id(self) -> int:
-        return self._buffer.get_uint16(self._buffer.root_offset(0))
+        return self._reader.get_uint16(self._reader.root_offset(0))
 
     def kind(self) -> int:
-        return self._buffer.get_uint8(self._buffer.root_offset(1))
+        return self._reader.get_uint8(self._reader.root_offset(1))
 
     def fields(self) -> TinyFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -983,7 +983,7 @@ class Tiny:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "kind": self.kind()}
 
@@ -997,7 +997,7 @@ class Tiny:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.kind())
 
@@ -1006,12 +1006,12 @@ class Tiny:
     @classmethod
     def read_values(cls, data: Buffer) -> TinyFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating a ``Tiny``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
@@ -1033,7 +1033,7 @@ class Tagged:
     a string after them, written whole
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 3
     """The version of the format, which the header carries and the constructor
@@ -1047,9 +1047,9 @@ class Tagged:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Tagged, got {version}"
@@ -1062,7 +1062,7 @@ class Tagged:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[TaggedFields]) -> bytes:
@@ -1075,15 +1075,15 @@ class Tagged:
         )
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def position(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(1), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(1), Vec2.SIZE)
         )
 
     def label(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(2))
+        return self._reader.get_string(self._reader.root_offset(2))
 
     def fields(self) -> TaggedFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1092,7 +1092,7 @@ class Tagged:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "position": self.position(), "label": self.label()}
 
@@ -1106,7 +1106,7 @@ class Tagged:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.position(), self.label())
 
@@ -1115,12 +1115,12 @@ class Tagged:
     @classmethod
     def read_values(cls, data: Buffer) -> TaggedFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating a ``Tagged``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
         if values is None:
             return cls(data).field_values()
 
@@ -1141,14 +1141,14 @@ type TaggedFieldValues = tuple[int, Vec2, str]
 class Header:
     """``uint8`` offsets: two fixed fields together, and then an array"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(3, "B", "H", layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[HeaderFields]) -> memoryview:
@@ -1173,13 +1173,13 @@ class Header:
         return writer.bytes()
 
     def kind(self) -> int:
-        return self._buffer.get_uint8(self._buffer.root_offset(0))
+        return self._reader.get_uint8(self._reader.root_offset(0))
 
     def length(self) -> int:
-        return self._buffer.get_uint16(self._buffer.root_offset(1))
+        return self._reader.get_uint16(self._reader.root_offset(1))
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint8_array(self._buffer.root_offset(2))
+        return self._reader.get_uint8_array(self._reader.root_offset(2))
 
     def fields(self) -> HeaderFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1188,8 +1188,8 @@ class Header:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {
                 "kind": self.kind(),
@@ -1200,7 +1200,7 @@ class Header:
         return {
             "kind": values[0],
             "length": values[1],
-            "values": buffer.get_uint8_array(buffer.root_offset(2)),
+            "values": reader.get_uint8_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> HeaderFieldValues:
@@ -1211,27 +1211,27 @@ class Header:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.kind(), self.length(), self.values())
 
-        return (values[0], values[1], buffer.get_uint8_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint8_array(reader.root_offset(2)))
 
     @classmethod
     def read_values(cls, data: Buffer) -> HeaderFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Header``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
-        return (values[0], values[1], buffer.get_uint8_array(buffer.root_offset(2)))
+        return (values[0], values[1], reader.get_uint8_array(reader.root_offset(2)))
 
 
 class HeaderFields(TypedDict):
@@ -1250,7 +1250,7 @@ class Pixel:
     fixed fields, written whole
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 2
     """The version of the format, which the header carries and the constructor
@@ -1264,9 +1264,9 @@ class Pixel:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Pixel, got {version}"
@@ -1279,7 +1279,7 @@ class Pixel:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[PixelFields]) -> bytes:
@@ -1292,11 +1292,11 @@ class Pixel:
 
     def position(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(0), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(0), Vec2.SIZE)
         )
 
     def color(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(1))
+        return self._reader.get_uint32(self._reader.root_offset(1))
 
     def fields(self) -> PixelFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1305,7 +1305,7 @@ class Pixel:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"position": self.position(), "color": self.color()}
 
@@ -1319,7 +1319,7 @@ class Pixel:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.position(), self.color())
 
@@ -1328,12 +1328,12 @@ class Pixel:
     @classmethod
     def read_values(cls, data: Buffer) -> PixelFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating a ``Pixel``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
         if values is None:
             return cls(data).field_values()
 
@@ -1353,14 +1353,14 @@ type PixelFieldValues = tuple[Vec2, int]
 class Strip:
     """``uint16`` offsets: fixed fields with a struct together, and then an array"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint16")
     _FIXED_FIELDS: Final = FixedFields(3, "I", "8s", layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[StripFields]) -> memoryview:
@@ -1374,15 +1374,15 @@ class Strip:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def origin(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(1), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(1), Vec2.SIZE)
         )
 
     def values(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(2))
+        return self._reader.get_uint16_array(self._reader.root_offset(2))
 
     def fields(self) -> StripFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -1391,15 +1391,15 @@ class Strip:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "origin": self.origin(), "values": self.values()}
 
         return {
             "id": values[0],
             "origin": Vec2.read(values[1]),
-            "values": buffer.get_uint16_array(buffer.root_offset(2)),
+            "values": reader.get_uint16_array(reader.root_offset(2)),
         }
 
     def field_values(self) -> StripFieldValues:
@@ -1410,34 +1410,34 @@ class Strip:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.origin(), self.values())
 
         return (
             values[0],
             Vec2.read(values[1]),
-            buffer.get_uint16_array(buffer.root_offset(2)),
+            reader.get_uint16_array(reader.root_offset(2)),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> StripFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Strip``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
         return (
             values[0],
             Vec2.read(values[1]),
-            buffer.get_uint16_array(buffer.root_offset(2)),
+            reader.get_uint16_array(reader.root_offset(2)),
         )
 
 
@@ -1455,7 +1455,7 @@ type StripFieldValues = tuple[int, Vec2, memoryview[int]]
 class Box:
     """A version: a struct and a nested table among fixed fields, written whole"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     FORMAT_VERSION: Final = 1
     """The version of the format, which the header carries and the constructor
@@ -1471,9 +1471,9 @@ class Box:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         it's in another format version.
         """
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
-        version = self._buffer.get_version()
+        version = self._reader.get_version()
         if version != self.FORMAT_VERSION:
             raise DecodeError(
                 f"Expected format version {self.FORMAT_VERSION} of Box, got {version}"
@@ -1486,7 +1486,7 @@ class Box:
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` if
         the header doesn't fit in it.
         """
-        return ByteBuffer(data, cls._LAYOUT).get_version()
+        return TableReader(data, cls._LAYOUT).get_version()
 
     @classmethod
     def serialize(cls, **fields: Unpack[BoxFields]) -> bytes:
@@ -1504,16 +1504,16 @@ class Box:
 
     def min(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(0), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(0), Vec2.SIZE)
         )
 
     def max(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(1), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(1), Vec2.SIZE)
         )
 
     def range(self) -> Range:
-        return Range(self._buffer, self._buffer.root_offset(2))
+        return Range(self._reader, self._reader.root_offset(2))
 
     def fields(self) -> BoxFields:
         """Reads every field at once, as ``serialize()`` takes them, with a nested
@@ -1523,7 +1523,7 @@ class Box:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {
                 "min": self.min(),
@@ -1546,7 +1546,7 @@ class Box:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.min(), self.max(), *self.range().field_values())
 
@@ -1555,12 +1555,12 @@ class Box:
     @classmethod
     def read_values(cls, data: Buffer) -> BoxFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating a ``Box``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read or of another format version.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS, cls.FORMAT_VERSION)
         if values is None:
             return cls(data).field_values()
 
@@ -1583,7 +1583,7 @@ class Track:
     fields
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
     _FIXED_FIELDS: Final = FixedFields(
@@ -1596,7 +1596,7 @@ class Track:
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[TrackFields]) -> memoryview:
@@ -1619,21 +1619,21 @@ class Track:
         return writer.bytes()
 
     def id(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(0))
+        return self._reader.get_uint32(self._reader.root_offset(0))
 
     def origin(self) -> Vec2:
         return Vec2.read(
-            self._buffer.get_struct(self._buffer.root_offset(1), Vec2.SIZE)
+            self._reader.get_struct(self._reader.root_offset(1), Vec2.SIZE)
         )
 
     def frame(self) -> Frame:
-        return Frame(self._buffer, self._buffer.root_offset(2))
+        return Frame(self._reader, self._reader.root_offset(2))
 
     def points(self) -> memoryview[float]:
-        return self._buffer.get_float32_array(self._buffer.root_offset(3))
+        return self._reader.get_float32_array(self._reader.root_offset(3))
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(4))
+        return self._reader.get_string(self._reader.root_offset(4))
 
     def fields(self) -> TrackFields:
         """Reads every field at once, as ``serialize()`` takes them, with a nested
@@ -1643,8 +1643,8 @@ class Track:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {
                 "id": self.id(),
@@ -1662,8 +1662,8 @@ class Track:
                 "range": {"start": values[3], "end": values[4]},
                 "flags": values[5],
             },
-            "points": buffer.get_float32_array(buffer.root_offset(3)),
-            "name": buffer.get_string(buffer.root_offset(4)),
+            "points": reader.get_float32_array(reader.root_offset(3)),
+            "name": reader.get_string(reader.root_offset(4)),
         }
 
     def field_values(self) -> TrackFieldValues:
@@ -1675,8 +1675,8 @@ class Track:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        buffer = self._buffer
-        values = buffer.get_fields(0, self._FIXED_FIELDS)
+        reader = self._reader
+        values = reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (
                 self.id(),
@@ -1693,20 +1693,20 @@ class Track:
             values[3],
             values[4],
             values[5],
-            buffer.get_float32_array(buffer.root_offset(3)),
-            buffer.get_string(buffer.root_offset(4)),
+            reader.get_float32_array(reader.root_offset(3)),
+            reader.get_string(reader.root_offset(4)),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> TrackFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Track``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        values = buffer.get_fields(0, cls._FIXED_FIELDS)
+        reader = TableReader(data, cls._LAYOUT)
+        values = reader.get_fields(0, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
@@ -1717,8 +1717,8 @@ class Track:
             values[3],
             values[4],
             values[5],
-            buffer.get_float32_array(buffer.root_offset(3)),
-            buffer.get_string(buffer.root_offset(4)),
+            reader.get_float32_array(reader.root_offset(3)),
+            reader.get_string(reader.root_offset(4)),
         )
 
 
@@ -1738,13 +1738,13 @@ type TrackFieldValues = tuple[int, Vec2, Vec2, int, int, int, memoryview[float],
 class Label:
     """Only a string, written whole"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[LabelFields]) -> memoryview:
@@ -1765,15 +1765,15 @@ class Label:
         return writer.bytes()
 
     def text(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(0))
+        return self._reader.get_string(self._reader.root_offset(0))
 
     def fields(self) -> LabelFields:
         """Reads every field at once, as ``serialize()`` takes them.
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        return {"text": buffer.get_string(buffer.root_offset(0))}
+        reader = self._reader
+        return {"text": reader.get_string(reader.root_offset(0))}
 
     def field_values(self) -> LabelFieldValues:
         """Reads every field's value at once into a tuple, in the fields' order, as
@@ -1781,19 +1781,19 @@ class Label:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        return (buffer.get_string(buffer.root_offset(0)),)
+        reader = self._reader
+        return (reader.get_string(reader.root_offset(0)),)
 
     @classmethod
     def read_values(cls, data: Buffer) -> LabelFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Label``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        return (buffer.get_string(buffer.root_offset(0)),)
+        reader = TableReader(data, cls._LAYOUT)
+        return (reader.get_string(reader.root_offset(0)),)
 
 
 class LabelFields(TypedDict):
@@ -1808,13 +1808,13 @@ type LabelFieldValues = tuple[str]
 class Span:
     """Fixed tables after other fields, alone and in a vector"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[SpanFields]) -> memoryview:
@@ -1831,16 +1831,16 @@ class Span:
         return writer.bytes()
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.root_offset(0))
+        return self._reader.get_string(self._reader.root_offset(0))
 
     def range(self) -> Range:
-        return Range(self._buffer, self._buffer.root_offset(1))
+        return Range(self._reader, self._reader.root_offset(1))
 
     def frame(self) -> Frame:
-        return Frame(self._buffer, self._buffer.root_offset(2))
+        return Frame(self._reader, self._reader.root_offset(2))
 
     def ranges(self) -> RangeVector:
-        return RangeVector(self._buffer, self._buffer.root_offset(3))
+        return RangeVector(self._reader, self._reader.root_offset(3))
 
     def fields(self) -> SpanFields:
         """Reads every field at once, as ``serialize()`` takes them, with a nested
@@ -1849,12 +1849,12 @@ class Span:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return {
-            "name": buffer.get_string(buffer.root_offset(0)),
-            "range": Range(buffer, buffer.root_offset(1)).fields(),
-            "frame": Frame(buffer, buffer.root_offset(2)).fields(),
-            "ranges": RangeVector(buffer, buffer.root_offset(3)).fields(),
+            "name": reader.get_string(reader.root_offset(0)),
+            "range": Range(reader, reader.root_offset(1)).fields(),
+            "frame": Frame(reader, reader.root_offset(2)).fields(),
+            "ranges": RangeVector(reader, reader.root_offset(3)).fields(),
         }
 
     def field_values(self) -> SpanFieldValues:
@@ -1864,28 +1864,28 @@ class Span:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return (
-            buffer.get_string(buffer.root_offset(0)),
-            *Range(buffer, buffer.root_offset(1)).field_values(),
-            *Frame(buffer, buffer.root_offset(2)).field_values(),
-            RangeVector(buffer, buffer.root_offset(3)),
+            reader.get_string(reader.root_offset(0)),
+            *Range(reader, reader.root_offset(1)).field_values(),
+            *Frame(reader, reader.root_offset(2)).field_values(),
+            RangeVector(reader, reader.root_offset(3)),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> SpanFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Span``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
+        reader = TableReader(data, cls._LAYOUT)
         return (
-            buffer.get_string(buffer.root_offset(0)),
-            *Range(buffer, buffer.root_offset(1)).field_values(),
-            *Frame(buffer, buffer.root_offset(2)).field_values(),
-            RangeVector(buffer, buffer.root_offset(3)),
+            reader.get_string(reader.root_offset(0)),
+            *Range(reader, reader.root_offset(1)).field_values(),
+            *Frame(reader, reader.root_offset(2)).field_values(),
+            RangeVector(reader, reader.root_offset(3)),
         )
 
 
@@ -1906,14 +1906,14 @@ class Overflow:
     generated code writes field by field, and fails to write as too long
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout(offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(2, "B", "256s", layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[OverflowFields]) -> bytes:
@@ -1923,11 +1923,11 @@ class Overflow:
         )
 
     def id(self) -> int:
-        return self._buffer.get_uint8(self._buffer.root_offset(0))
+        return self._reader.get_uint8(self._reader.root_offset(0))
 
     def block(self) -> Block:
         return Block.read(
-            self._buffer.get_struct(self._buffer.root_offset(1), Block.SIZE)
+            self._reader.get_struct(self._reader.root_offset(1), Block.SIZE)
         )
 
     def fields(self) -> OverflowFields:
@@ -1937,7 +1937,7 @@ class Overflow:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {"id": self.id(), "block": self.block()}
 
@@ -1951,7 +1951,7 @@ class Overflow:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (self.id(), self.block())
 
@@ -1960,12 +1960,12 @@ class Overflow:
     @classmethod
     def read_values(cls, data: Buffer) -> OverflowFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating an ``Overflow``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 

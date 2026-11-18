@@ -1,4 +1,4 @@
-import { ByteBuffer } from 'tafla';
+import { TableReader } from 'tafla';
 import {
     toJsonNumber,
     type Alignment,
@@ -590,7 +590,7 @@ function invalidCases(): InvalidCase[] {
 interface Inspected {
     name: string;
     bytes: Uint8Array;
-    buffer: ByteBuffer;
+    buffer: TableReader;
 }
 
 function inspect(name: string): Inspected {
@@ -600,7 +600,7 @@ function inspect(name: string): Inspected {
     return {
         name,
         bytes,
-        buffer: new ByteBuffer(bytes, layoutOf(table.layout))
+        buffer: new TableReader(bytes, layoutOf(table.layout))
     };
 }
 

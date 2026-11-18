@@ -37,7 +37,7 @@ jobs:
       matrix:
         include:
           # Arbitrary bytes, read with every getter at every position
-          - target: byte_buffer
+          - target: table_reader
             seeds: ../conformance/valid ../conformance/equivalent ../conformance/invalid
             options: ""
           # The suite's tables, mutated and read as its descriptions
@@ -105,7 +105,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [FuzzByteBuffer, FuzzConformance]
+        target: [FuzzTableReader, FuzzConformance]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7
@@ -157,7 +157,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [byte_buffer, conformance]
+        target: [table_reader, conformance]
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7

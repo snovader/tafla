@@ -41,8 +41,8 @@ func Example() {
 }
 
 func readSeries(bytes []byte) (string, error) {
-	buffer := tafla.NewByteBuffer(bytes, layout)
-	version, err := buffer.Version()
+	reader := tafla.NewTableReader(bytes, layout)
+	version, err := reader.Version()
 	if err != nil {
 		return "", err
 	}
@@ -50,33 +50,33 @@ func readSeries(bytes []byte) (string, error) {
 		return "", tafla.NewUnsupportedVersionError(version, formatVersion)
 	}
 
-	position, err := buffer.RootOffset(0)
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return "", err
 	}
-	latitude, err := buffer.GetFloat64(position)
-	if err != nil {
-		return "", err
-	}
-
-	position, err = buffer.RootOffset(1)
-	if err != nil {
-		return "", err
-	}
-	timeZone, err := buffer.GetString(position)
+	latitude, err := reader.GetFloat64(position)
 	if err != nil {
 		return "", err
 	}
 
-	table, err := buffer.RootOffset(2)
+	position, err = reader.RootOffset(1)
 	if err != nil {
 		return "", err
 	}
-	position, err = buffer.FieldOffset(table, 1)
+	timeZone, err := reader.GetString(position)
 	if err != nil {
 		return "", err
 	}
-	values, err := buffer.GetFloat32Array(position)
+
+	table, err := reader.RootOffset(2)
+	if err != nil {
+		return "", err
+	}
+	position, err = reader.FieldOffset(table, 1)
+	if err != nil {
+		return "", err
+	}
+	values, err := reader.GetFloat32Array(position)
 	if err != nil {
 		return "", err
 	}
@@ -85,8 +85,8 @@ func readSeries(bytes []byte) (string, error) {
 }
 
 func ExampleDecodeError() {
-	buffer := tafla.NewByteBuffer([]byte{4, 0, 0, 0}, tafla.TableLayout{})
-	_, err := buffer.GetFloat64(0)
+	reader := tafla.NewTableReader([]byte{4, 0, 0, 0}, tafla.TableLayout{})
+	_, err := reader.GetFloat64(0)
 
 	var decodeError *tafla.DecodeError
 	if errors.As(err, &decodeError) {
@@ -126,12 +126,12 @@ func ExampleTableBuilder_SetVectorFunc() {
 
 // readY reads the y of point index of the vector
 func readY(bytes []byte, index int) (float32, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
-	position, err := buffer.RootOffset(0)
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return 0, err
 	}
-	vector, err := buffer.GetVector(position)
+	vector, err := reader.GetVector(position)
 	if err != nil {
 		return 0, err
 	}
@@ -140,8 +140,8 @@ func readY(bytes []byte, index int) (float32, error) {
 		return 0, err
 	}
 
-	// In place, at its start, in a buffer of its parent's offset type
-	point := tafla.NewByteBuffer(item, tafla.TableLayout{})
+	// In place, at its start, in a reader of its parent's offset type
+	point := tafla.NewTableReader(item, tafla.TableLayout{})
 	position, err = point.FieldOffset(0, 1)
 	if err != nil {
 		return 0, err

@@ -18,9 +18,9 @@ const (
 	// the first after the ends.
 	ItemEndsBeforeStart
 	// UnsupportedVersion is a header that carries format Version, which the
-	// reader can't read, since it reads version Supported. [ByteBuffer]
+	// reader can't read, since it reads version Supported. [TableReader]
 	// doesn't compare versions: a reader returns it when
-	// [ByteBuffer.Version] isn't its own.
+	// [TableReader.Version] isn't its own.
 	UnsupportedVersion
 )
 
@@ -42,7 +42,7 @@ func (k DecodeErrorKind) String() string {
 
 // DecodeError is returned when bytes can't be read as the table, array,
 // string, struct, vector or value that a read expects. Every read of a
-// [ByteBuffer], an [ArrayView]'s bytes and a [Vector] returns it, as a
+// [TableReader], an [ArrayView]'s bytes and a [Vector] returns it, as a
 // *DecodeError, which errors.As finds.
 //
 // Every read checks its range against the supplied bytes before it returns,
@@ -90,7 +90,7 @@ func (e *DecodeError) Error() string {
 
 // NewUnsupportedVersionError returns the error of a header that carries
 // version, which a reader of version supported can't read, as a reader
-// returns it when [ByteBuffer.Version] isn't its own.
+// returns it when [TableReader.Version] isn't its own.
 func NewUnsupportedVersionError(version, supported uint32) error {
 	return &DecodeError{Kind: UnsupportedVersion, Version: version, Supported: supported}
 }

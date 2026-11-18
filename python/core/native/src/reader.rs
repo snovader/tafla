@@ -13,7 +13,7 @@ use crate::python::{
 };
 use crate::values;
 
-/// The buffer that a `ByteBuffer` reads, held while it lives. It's requested
+/// The buffer that a `TableReader` reads, held while it lives. It's requested
 /// as plain bytes, which C-contiguous buffers of any shape and format export,
 /// and which leaves the request without pointers into itself, so it can move.
 struct Held(ffi::Py_buffer);
@@ -26,7 +26,7 @@ unsafe impl Sync for Held {}
 
 impl Drop for Held {
     fn drop(&mut self) {
-        // The ByteBuffer is dropped by its deallocation, with the thread
+        // The TableReader is dropped by its deallocation, with the thread
         // attached
         unsafe { ffi::PyBuffer_Release(&raw mut self.0) };
     }
@@ -42,9 +42,9 @@ impl Drop for Held {
 /// and bytes that aren't raise ``TypeError``.
 ///
 /// Tables are written with ``TableBuilder``, whose ``finalize()`` returns a
-/// ``ByteBuffer`` that reads the table, or with ``TableWriter``.
-#[pyclass(frozen, module = "tafla._native", name = "ByteBuffer")]
-pub struct ByteBuffer {
+/// ``TableReader`` that reads the table, or with ``TableWriter``.
+#[pyclass(frozen, module = "tafla._native", name = "TableReader")]
+pub struct TableReader {
     held: Held,
     shape: Shape,
     /// The view of the bytes that `bytes()` returns and reads slice, created
@@ -53,7 +53,7 @@ pub struct ByteBuffer {
     view: PyOnceLock<Py<PyAny>>,
 }
 
-impl ByteBuffer {
+impl TableReader {
     /// The bytes, which no Python code may run while they're borrowed, so
     /// that nothing changes them
     #[inline]
@@ -67,8 +67,8 @@ impl ByteBuffer {
     }
 
     #[inline]
-    fn core(&self) -> tafla::ByteBuffer<'_> {
-        tafla::ByteBuffer::new(self.bytes_slice(), self.shape.core())
+    fn core(&self) -> tafla::TableReader<'_> {
+        tafla::TableReader::new(self.bytes_slice(), self.shape.core())
     }
 
     #[inline]
@@ -256,10 +256,10 @@ fn hold(source: &Bound<'_, PyAny>) -> PyResult<Held> {
     Ok(Held(unsafe { held.assume_init() }))
 }
 
-/// A one-dimensional view of the bytes of `source`, which a `ByteBuffer`
+/// A one-dimensional view of the bytes of `source`, which a `TableReader`
 /// holds, as the pure-Python runtime views them: `memoryview(source)`, cast
 /// to bytes if it's of another format or shape. A memoryview is one that
-/// the `ByteBuffer` created of its own, which it views them through.
+/// the `TableReader` created of its own, which it views them through.
 fn byte_view(source: Bound<'_, PyAny>) -> PyResult<Bound<'_, PyAny>> {
     let py = source.py();
     if source.is_exact_instance_of::<pyo3::types::PyBytes>()
@@ -287,7 +287,7 @@ fn byte_view(source: Bound<'_, PyAny>) -> PyResult<Bound<'_, PyAny>> {
 macro_rules! scalar_getters {
     ($($name:ident: $core:ident -> $type:ty),* $(,)?) => {
         #[pymethods]
-        impl ByteBuffer {
+        impl TableReader {
             $(
                 fn $name(&self, py: Python<'_>, position: &Bound<'_, PyAny>) -> PyResult<$type> {
                     let at = self.position(position, size_of::<$type>())?;
@@ -313,7 +313,7 @@ scalar_getters!(
 macro_rules! array_getters {
     ($($name:ident: $code:literal, $size:literal),* $(,)?) => {
         #[pymethods]
-        impl ByteBuffer {
+        impl TableReader {
             $(
                 /// Reads the array at ``position``: a view of the buffer on a
                 /// little-endian host, and a copy on a big-endian host.
@@ -338,7 +338,7 @@ array_getters!(
 );
 
 #[pymethods]
-impl ByteBuffer {
+impl TableReader {
     /// Reads ``bytes`` in ``layout``, which must be the layout that the
     /// table was written in.
     ///
@@ -371,9 +371,9 @@ impl ByteBuffer {
 
     /// Returns the values of the fields that ``fields`` describes whole, a
     /// message's, of the message in ``data``, in the layout that ``fields``
-    /// was created with, as ``ByteBuffer(data, layout).get_fields(0,
+    /// was created with, as ``TableReader(data, layout).get_fields(0,
     /// fields)`` returns them, or ``None`` as it does, without creating a
-    /// ``ByteBuffer``. It returns ``None`` too if ``version`` isn't the one
+    /// ``TableReader``. It returns ``None`` too if ``version`` isn't the one
     /// that the header holds, for the reader's constructor to raise for.
     ///
     /// Raises ``TypeError`` if ``data`` isn't C-contiguous, if ``fields`` has
@@ -405,7 +405,7 @@ impl ByteBuffer {
 
         if let Some(version) = version {
             let layout = shape.core().versioned();
-            let Ok(found) = tafla::ByteBuffer::new(buffer.bytes_slice(), layout).version() else {
+            let Ok(found) = tafla::TableReader::new(buffer.bytes_slice(), layout).version() else {
                 return Ok(None);
             };
             if !version.eq(found)? {
@@ -426,12 +426,12 @@ impl ByteBuffer {
     /// Returns the version that the table's header carries after its
     /// length. It's as wide as the header's other slots.
     ///
-    /// Raises ``TypeError`` if the buffer's layout isn't versioned.
+    /// Raises ``TypeError`` if the reader's layout isn't versioned.
     fn get_version(&self, py: Python<'_>) -> PyResult<u32> {
         if !self.shape.versioned {
             return Err(PyTypeError::new_err("The table has no version"));
         }
-        tafla::ByteBuffer::new(self.bytes_slice(), self.shape.core().versioned())
+        tafla::TableReader::new(self.bytes_slice(), self.shape.core().versioned())
             .version()
             .map_err(|error| core_error(py, &error))
     }
@@ -747,19 +747,19 @@ impl ByteBuffer {
         read: Bound<'_, PyAny>,
     ) -> PyResult<VectorFields> {
         let py = slf.py();
-        let buffer = slf.get();
-        let count = buffer.get_vector_length(py, position)?;
-        let at = buffer.position(position, buffer.size())?;
-        fields.get().plan(buffer.size())?;
+        let reader = slf.get();
+        let count = reader.get_vector_length(py, position)?;
+        let at = reader.position(position, reader.size())?;
+        fields.get().plan(reader.size())?;
 
         Ok(VectorFields {
-            buffer: slf.clone().unbind(),
+            reader: slf.clone().unbind(),
             fields: fields.clone().unbind(),
             read: read.unbind(),
             position: at,
             count,
             index: 0,
-            start: (count + 1) * buffer.size(),
+            start: (count + 1) * reader.size(),
         })
     }
 
@@ -789,7 +789,7 @@ impl ByteBuffer {
     }
 }
 
-impl ByteBuffer {
+impl TableReader {
     /// The values of the fields of `plan`, of the table at `position`, as
     /// `get_fields()` returns them, or `None`
     fn fields_at<'py>(
@@ -886,12 +886,12 @@ impl ByteBuffer {
 }
 
 /// An iterator over the values of a vector's items, which
-/// ``ByteBuffer.iter_vector_fields()`` returns. It's for one thread at a
+/// ``TableReader.iter_vector_fields()`` returns. It's for one thread at a
 /// time: in free-threaded Python, a call while another thread's call to it
 /// runs raises ``RuntimeError``.
 #[pyclass(module = "tafla._native", name = "VectorFieldsIterator")]
 pub struct VectorFields {
-    buffer: Py<ByteBuffer>,
+    reader: Py<TableReader>,
     fields: Py<FixedFields>,
     /// What reads an item that `get_fields()` can't, from its position
     read: Py<PyAny>,
@@ -926,13 +926,13 @@ impl VectorFields {
 impl VectorFields {
     /// The values of the next item, after reading its end
     fn next_item<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let buffer = self.buffer.get();
-        let size = buffer.size();
-        let available = buffer.available();
+        let reader = self.reader.get();
+        let size = reader.size();
+        let available = reader.available();
 
         // The ends lie within the bytes, which the iterator checked first
         let slot = self.position + (self.index + 1) * size;
-        let end = read_slot(&buffer.bytes_slice()[slot..], size);
+        let end = read_slot(&reader.bytes_slice()[slot..], size);
         let start = self.start;
         if start > end
             || self
@@ -954,7 +954,7 @@ impl VectorFields {
 
         let offset = self.position + start;
         let plan = self.fields.get().plan(size)?;
-        match buffer.fields_at(py, plan, offset)? {
+        match reader.fields_at(py, plan, offset)? {
             Some(values) => Ok(values.into_any()),
             None => self.read.bind(py).call1((offset,)),
         }

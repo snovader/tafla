@@ -1,4 +1,4 @@
-// Reads arbitrary bytes with every getter of `ByteBuffer` at a position, in an
+// Reads arbitrary bytes with every getter of `TableReader` at a position, in an
 // offset type and header, and reads the arrays, struct arrays and vector that
 // it finds there.
 //
@@ -27,10 +27,10 @@
 
 namespace {
 
-using tafla::ByteBuffer;
 using tafla::DecodeError;
 using tafla::OffsetType;
 using tafla::TableLayout;
+using tafla::TableReader;
 using Bytes = std::span<const std::uint8_t>;
 
 /// The elements of an array, and items of a vector, at its start and end that
@@ -162,7 +162,7 @@ void check_header(const Buffer& buffer, std::size_t index) {
     }
 }
 
-void check_version(const ByteBuffer<true>& buffer, std::size_t index) {
+void check_version(const TableReader<true>& buffer, std::size_t index) {
     const auto layout = buffer.layout();
     const std::size_t position = layout.is_sized() ? layout.offset_size() : 0;
     check_result(
@@ -247,7 +247,7 @@ void check_array(Bytes bytes, OffsetType offset_type, std::size_t position, Get 
 
 /// Reads the first `kChecked` items of the vector at `position`, by iterating,
 /// by index and in place, and the last by index
-void check_vector(const ByteBuffer<false>& buffer, std::size_t position) {
+void check_vector(const TableReader<false>& buffer, std::size_t position) {
     const auto bytes = buffer.bytes();
     const auto offset_type = buffer.layout().offset_type();
     const std::uint64_t width = tafla::offset_size(offset_type);
@@ -326,7 +326,8 @@ void check_vector(const ByteBuffer<false>& buffer, std::size_t position) {
 
 /// Reads every type at `position`, a field of a table there at `index`, and
 /// structs of `struct_size` bytes and others
-void check_position(const ByteBuffer<false>& buffer, std::size_t position, std::size_t index, std::size_t struct_size) {
+void check_position(const TableReader<false>& buffer, std::size_t position, std::size_t index,
+                    std::size_t struct_size) {
     const auto bytes = buffer.bytes();
     const auto offset_type = buffer.layout().offset_type();
 
@@ -342,15 +343,15 @@ void check_position(const ByteBuffer<false>& buffer, std::size_t position, std::
     check_scalar<double>(bytes, position, [&](std::size_t at) { return buffer.get_float64(at); });
 
     const auto at = [&](auto get) { return [&buffer, get](std::size_t where) { return (buffer.*get)(where); }; };
-    check_array<std::int8_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_int8_array));
-    check_array<std::int16_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_int16_array));
-    check_array<std::uint16_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_uint16_array));
-    check_array<std::int32_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_int32_array));
-    check_array<std::uint32_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_uint32_array));
-    check_array<std::int64_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_int64_array));
-    check_array<std::uint64_t>(bytes, offset_type, position, at(&ByteBuffer<false>::get_uint64_array));
-    check_array<float>(bytes, offset_type, position, at(&ByteBuffer<false>::get_float32_array));
-    check_array<double>(bytes, offset_type, position, at(&ByteBuffer<false>::get_float64_array));
+    check_array<std::int8_t>(bytes, offset_type, position, at(&TableReader<false>::get_int8_array));
+    check_array<std::int16_t>(bytes, offset_type, position, at(&TableReader<false>::get_int16_array));
+    check_array<std::uint16_t>(bytes, offset_type, position, at(&TableReader<false>::get_uint16_array));
+    check_array<std::int32_t>(bytes, offset_type, position, at(&TableReader<false>::get_int32_array));
+    check_array<std::uint32_t>(bytes, offset_type, position, at(&TableReader<false>::get_uint32_array));
+    check_array<std::int64_t>(bytes, offset_type, position, at(&TableReader<false>::get_int64_array));
+    check_array<std::uint64_t>(bytes, offset_type, position, at(&TableReader<false>::get_uint64_array));
+    check_array<float>(bytes, offset_type, position, at(&TableReader<false>::get_float32_array));
+    check_array<double>(bytes, offset_type, position, at(&TableReader<false>::get_float64_array));
 
     const auto string_bytes = array(bytes, offset_type, position, 1);
     check_view(bytes, [&] { return buffer.get_uint8_array(position); }, string_bytes);
@@ -404,9 +405,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         layout = layout.sized();
     }
 
-    check_header(ByteBuffer(bytes, layout), index);
-    check_version(ByteBuffer(bytes, layout.versioned()), index);
-    check_position(ByteBuffer(bytes, layout), position, index, data[3]);
+    check_header(TableReader(bytes, layout), index);
+    check_version(TableReader(bytes, layout.versioned()), index);
+    check_position(TableReader(bytes, layout), position, index, data[3]);
 
     return 0;
 }

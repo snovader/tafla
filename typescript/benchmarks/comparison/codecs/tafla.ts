@@ -1,11 +1,11 @@
 import {
     readFloat32,
     readUint32,
-    ByteBuffer,
     SIZEOF_32,
     StructWriter,
     TableBuilder,
     TableLayout,
+    TableReader,
     type TableItem
 } from 'tafla';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
@@ -34,7 +34,7 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
+            const buffer = new TableReader(bytes);
 
             return {
                 x: buffer.getFloat64(buffer.rootOffset(0)),
@@ -101,7 +101,7 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
+            const buffer = new TableReader(bytes);
             const offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
             const items = new Array<ItemInput>(offsets.length);
@@ -138,7 +138,7 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
+            const buffer = new TableReader(bytes);
             const structs = buffer.getStructArray(
                 buffer.rootOffset(0),
                 ITEM_SIZE
@@ -179,8 +179,8 @@ export const tafla: Codec = {
 };
 
 /** @throws {Error} If the document is in another version */
-function openDocument(bytes: Uint8Array): ByteBuffer {
-    const buffer = new ByteBuffer(bytes, DOCUMENT_LAYOUT);
+function openDocument(bytes: Uint8Array): TableReader {
+    const buffer = new TableReader(bytes, DOCUMENT_LAYOUT);
     if (buffer.getVersion() !== DOCUMENT_VERSION) {
         throw new Error(`Unsupported document version ${buffer.getVersion()}`);
     }

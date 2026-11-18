@@ -23,7 +23,7 @@ namespace tafla::benchmarks {
 ///
 /// The runtime writes tables, and leaves fixed-size records to
 /// `tafla::store_le()` and `load_le()`. The fixed-size record is written with
-/// `store_le()` and read with `ByteBuffer`'s getters, and an array of structs
+/// `store_le()` and read with `TableReader`'s getters, and an array of structs
 /// with `store_le()` and `load_le()`, as tafla-gen's code writes and reads an
 /// array of them.
 struct Tafla {
@@ -46,7 +46,7 @@ struct Tafla {
     }
 
     [[nodiscard]] Record deserialize(RecordShape, std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         return {
             buffer.get_float64(buffer.root_offset(0)),
             buffer.get_float64(buffer.root_offset(1)),
@@ -99,7 +99,7 @@ struct Tafla {
     }
 
     [[nodiscard]] List deserialize(ListShape, std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto vector = buffer.get_vector(buffer.root_offset(0));
 
         List list{std::vector<Item>(vector.size())};
@@ -125,7 +125,7 @@ struct Tafla {
     }
 
     [[nodiscard]] List deserialize(StructsShape, std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         const auto structs = buffer.get_struct_array(buffer.root_offset(0), kItemSize);
 
         List list{std::vector<Item>(structs.size() / kItemSize)};
@@ -144,13 +144,13 @@ struct Tafla {
     }
 
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
-        const ByteBuffer buffer(bytes, TableLayout());
+        const TableReader buffer(bytes, TableLayout());
         return {buffer.get_uint32(0), buffer.get_float32(4), buffer.get_float32(8)};
     }
 
     /// Reads a document's header, which must carry the version it's written in
-    static ByteBuffer<true> open_document(std::span<const std::uint8_t> bytes) {
-        const ByteBuffer buffer(bytes, kDocumentLayout);
+    static TableReader<true> open_document(std::span<const std::uint8_t> bytes) {
+        const TableReader buffer(bytes, kDocumentLayout);
         const auto version = buffer.version();
         if (version != kDocumentVersion) {
             throw DecodeError::unsupported_version(version, kDocumentVersion);
@@ -179,7 +179,7 @@ struct Tafla {
     /// Reads an item of the vector in place, a table without a header, whose
     /// fields `root_offset()` finds from its start
     static Item read_item(std::span<const std::uint8_t> bytes) {
-        const ByteBuffer item(bytes, TableLayout());
+        const TableReader item(bytes, TableLayout());
         const auto pair = item.root_offset(1);
         return {
             item.get_float32(item.root_offset(0)),

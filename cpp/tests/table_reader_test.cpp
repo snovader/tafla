@@ -1,4 +1,4 @@
-// `ByteBuffer` reads every value where the format puts it, exactly when it
+// `TableReader` reads every value where the format puts it, exactly when it
 // lies within the bytes, and fails with `DecodeError` otherwise, at any
 // position, in every offset type and header
 
@@ -85,7 +85,7 @@ void check_array(const std::vector<std::uint8_t>& bytes, std::size_t position, s
 }
 
 template <bool Versioned>
-void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> buffer, std::size_t position) {
+void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> buffer, std::size_t position) {
     const std::uint64_t width = buffer.layout().offset_size();
 
     check_scalar<std::int8_t>(bytes, position, [&](std::size_t at) { return buffer.get_int8(at); });
@@ -140,7 +140,7 @@ void check_reads(const std::vector<std::uint8_t>& bytes, ByteBuffer<Versioned> b
 /// Every getter reads arbitrary bytes at every position, past the end too,
 /// in every offset type and header, as the bytes that lie where the format
 /// puts them, exactly when they lie within the bytes
-RC_GTEST_PROP(ByteBuffer, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
+RC_GTEST_PROP(TableReader, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
     const auto bytes =
         *rc::gen::resize(rc::kNominalSize, rc::gen::mapcat(rc::gen::inRange(0, 48), [](int count) {
                              return rc::gen::container<std::vector<std::uint8_t>>(
@@ -157,37 +157,37 @@ RC_GTEST_PROP(ByteBuffer, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
     }
 
     for (std::size_t position = 0; position <= bytes.size() + 8; ++position) {
-        check_reads(bytes, ByteBuffer(bytes, layout), position);
-        check_reads(bytes, ByteBuffer(bytes, layout.versioned()), position);
+        check_reads(bytes, TableReader(bytes, layout), position);
+        check_reads(bytes, TableReader(bytes, layout.versioned()), position);
     }
-    check_reads(bytes, ByteBuffer(bytes, layout), SIZE_MAX);
-    check_reads(bytes, ByteBuffer(bytes, layout), SIZE_MAX - 3);
+    check_reads(bytes, TableReader(bytes, layout), SIZE_MAX);
+    check_reads(bytes, TableReader(bytes, layout), SIZE_MAX - 3);
 
     // The header's slots
     const auto width = offset_size(offset_type);
-    const auto size = try_read([&] { return ByteBuffer(bytes, layout).size(); });
+    const auto size = try_read([&] { return TableReader(bytes, layout).size(); });
     RC_ASSERT(size ==
               (sized ? (little_endian(bytes, 0, width) ? std::optional<std::size_t>(*little_endian(bytes, 0, width))
                                                        : std::nullopt)
                      : std::optional<std::size_t>(bytes.size())));
 
-    const auto version = try_read([&] { return ByteBuffer(bytes, layout.versioned()).version(); });
+    const auto version = try_read([&] { return TableReader(bytes, layout.versioned()).version(); });
     const auto expected = little_endian(bytes, sized ? width : 0, width);
     RC_ASSERT(version ==
               (expected ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*expected)) : std::nullopt));
 }
 
-TEST(ByteBuffer, ReadsAnEmptyBufferAsOutOfRange) {
-    const ByteBuffer buffer{std::span<const std::uint8_t>(), TableLayout()};
+TEST(TableReader, ReadsAnEmptyBufferAsOutOfRange) {
+    const TableReader buffer{std::span<const std::uint8_t>(), TableLayout()};
     EXPECT_EQ(buffer.size(), 0U);
     EXPECT_THROW(static_cast<void>(buffer.root_offset(0)), DecodeError);
     EXPECT_THROW(static_cast<void>(buffer.get_uint8(0)), DecodeError);
     EXPECT_THROW(static_cast<void>(buffer.get_string(0)), DecodeError);
 }
 
-TEST(ByteBuffer, IsALiteralOfAConstantLayout) {
+TEST(TableReader, IsALiteralOfAConstantLayout) {
     static constexpr std::uint8_t bytes[] = {4, 0, 0, 0, 42};
-    constexpr ByteBuffer buffer{bytes, TableLayout()};
+    constexpr TableReader buffer{bytes, TableLayout()};
     static_assert(!buffer.layout().is_sized());
     EXPECT_EQ(buffer.get_uint8(buffer.root_offset(0)), 42);
 }

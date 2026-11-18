@@ -7,6 +7,6 @@ int main() {
     builder.set_string("installed");
     const auto bytes = builder.to_bytes();
 
-    const tafla::ByteBuffer buffer(bytes, tafla::TableLayout());
+    const tafla::TableReader buffer(bytes, tafla::TableLayout());
     return buffer.get_string(buffer.root_offset(0)) == "installed" ? 0 : 1;
 }

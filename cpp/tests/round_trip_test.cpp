@@ -69,7 +69,7 @@ TEST(RoundTrip, OwnedValues) {
     // Moving the builder keeps what it owns where its fields point
     const TableBuilder moved = std::move(builder);
     const auto bytes = moved.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
 
     EXPECT_EQ(buffer.get_float64_array(buffer.root_offset(0)).to_vector(), (std::vector<double>{1.5, -2.5}));
     EXPECT_EQ(buffer.get_string(buffer.root_offset(1)), "owned and longer than a short string's buffer");
@@ -95,7 +95,7 @@ TEST(RoundTrip, VectorItemsFoundFromTheirEnds) {
     builder.set_vector(std::move(items));
 
     const auto bytes = builder.to_bytes().to_vector();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
     const auto position = buffer.root_offset(0);
 
     // The count and the three ends, at 4, then the items, from 20
@@ -124,7 +124,7 @@ TEST(RoundTrip, Structs) {
     builder.set_struct_array(points, 6, Alignment::four);
 
     const auto bytes = builder.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
 
     // The struct follows the uint8 at 12 unpadded, at 13
     auto position = buffer.root_offset(1);
@@ -141,7 +141,7 @@ TEST(RoundTrip, Structs) {
     EXPECT_EQ(vector_of(structs), points);
     std::vector<float> ys;
     for (std::size_t start = 0; start < structs.size(); start += 6) {
-        const ByteBuffer item(structs.subspan(start, 6), TableLayout());
+        const TableReader item(structs.subspan(start, 6), TableLayout());
         ys.push_back(item.get_float32(2));
     }
     EXPECT_EQ(ys, (std::vector<float>{1.5F, -0.25F}));
@@ -161,7 +161,7 @@ TEST(RoundTrip, ArraysInPlaceWhenAligned) {
 
     for (std::size_t byte_offset = 0; byte_offset < 8; ++byte_offset) {
         const AtByteOffset copy(bytes, byte_offset);
-        const ByteBuffer buffer(copy.bytes(), TableLayout());
+        const TableReader buffer(copy.bytes(), TableLayout());
 
         const auto uint8s = buffer.get_uint8_array(buffer.root_offset(0));
         EXPECT_GE(uint8s.data(), copy.bytes().data());
@@ -215,7 +215,7 @@ TEST(RoundTrip, BuilderNestedSeveralTimes) {
     // The builder is unchanged by nesting
     EXPECT_EQ(nested.to_bytes(), own);
 
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
     const auto vector = buffer.get_vector(buffer.root_offset(1));
     for (auto item : vector.items()) {
         EXPECT_EQ(vector_of(item), own.to_vector());

@@ -92,13 +92,13 @@ constexpr Offset padding(Offset offset, Alignment alignment) noexcept {
 /// The header and offset type of a table.
 ///
 /// A format creates its layout once, as a constant, and passes it to both the
-/// `TableBuilder` or `TableSizer` that writes the table and the `ByteBuffer`
+/// `TableBuilder` or `TableSizer` that writes the table and the `TableReader`
 /// that reads it, so that the two can't disagree. The default layout has the
 /// offset type `uint32` and no header slots, which nested tables have.
 ///
 /// `Versioned` says whether the header has a slot for a version, so that the
 /// compiler requires a version exactly where a versioned table is written,
-/// and offers `ByteBuffer::version()` only where there is one.
+/// and offers `TableReader::version()` only where there is one.
 ///
 /// ```cpp
 /// constexpr auto document = tafla::TableLayout().sized().versioned();

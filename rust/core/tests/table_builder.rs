@@ -14,7 +14,7 @@ use proptest::{
     sample::{Index, select},
 };
 use tafla::{
-    Alignment, BuildError, ByteBuffer, NestedTable, OffsetType, TableBuilder, TableLayout,
+    Alignment, BuildError, NestedTable, OffsetType, TableBuilder, TableLayout, TableReader,
 };
 
 proptest! {
@@ -133,7 +133,7 @@ proptest! {
         prop_assert_eq!(&from_borrowed, &from_bytes);
         prop_assert_eq!(&from_owned, &from_bytes);
 
-        let buffer = ByteBuffer::new(&from_bytes, layout);
+        let buffer = TableReader::new(&from_bytes, layout);
         let nested = buffer.root_offset(1)?;
         prop_assert_eq!(nested % 8, 0);
         prop_assert_eq!(&from_bytes[nested..nested + bytes.len()], bytes.as_slice());
@@ -337,7 +337,7 @@ fn test_reject_field_that_makes_table_too_long() {
         fits.set_u8(7).unwrap();
 
         let table = fits.to_bytes().unwrap();
-        let buffer = ByteBuffer::new(&table, layout);
+        let buffer = TableReader::new(&table, layout);
         assert_eq!(table.len(), max);
         assert_eq!(buffer.get_u8(buffer.root_offset(1).unwrap()).unwrap(), 7);
 
@@ -478,7 +478,7 @@ fn test_reject_incomplete_nested_builder() {
     parent.set_vector([&nested]).unwrap();
 
     let table = parent.to_bytes().unwrap();
-    let buffer = ByteBuffer::new(&table, TableLayout::DEFAULT);
+    let buffer = TableReader::new(&table, TableLayout::DEFAULT);
     let position = buffer.root_offset(0).unwrap();
     assert_eq!(position, 8);
     assert_eq!(

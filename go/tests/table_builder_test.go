@@ -135,7 +135,7 @@ func TestATableNestedFromItsBuilderWritesTheSameParentAsFromItsBytes(t *testing.
 			t.Fatalf("wrote % x\nfrom the builder and % x\nfrom bytes", fromBuilder, fromBytes)
 		}
 
-		buffer := tafla.NewByteBuffer(fromBytes, layout)
+		buffer := tafla.NewTableReader(fromBytes, layout)
 		position := must(buffer.RootOffset(1))
 		if position%8 != 0 || !bytes.Equal(fromBytes[position:position+len(built)], built) {
 			t.Fatalf("the table at %d holds % x", position, fromBytes[position:])
@@ -500,7 +500,7 @@ func TestRejectsAFieldThatMakesTheTableTooLong(t *testing.T) {
 		check(t, fits.SetUint8(7))
 
 		table := must(fits.Bytes())
-		buffer := tafla.NewByteBuffer(table, layout)
+		buffer := tafla.NewTableReader(table, layout)
 		if len(table) != maxLength || must(buffer.GetUint8(must(buffer.RootOffset(1)))) != 7 {
 			t.Errorf("wrote %d bytes", len(table))
 		}
@@ -634,7 +634,7 @@ func TestRejectsAnIncompleteNestedBuilder(t *testing.T) {
 	check(t, parent.SetVector(nested))
 
 	table := must(parent.Bytes())
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
 	position := must(buffer.RootOffset(0))
 	if position != 8 || must(buffer.GetUint8(must(buffer.FieldOffset(position, 1)))) != 2 {
 		t.Errorf("read the nested table at %d", position)

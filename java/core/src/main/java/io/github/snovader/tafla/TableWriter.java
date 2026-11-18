@@ -324,7 +324,7 @@ public final class TableWriter {
      *     number of structs
      */
     static int structCount(int byteLength, int size) {
-        ByteBuffer.assertStructSize(size);
+        TableReader.assertStructSize(size);
         if (byteLength % size != 0) {
             throw new IllegalArgumentException(
                 String.format("%d bytes aren't a whole number of %d-byte structs", byteLength, size)

@@ -1,4 +1,4 @@
-//! Reads tables with `ByteBuffer` as their descriptions set them out, and
+//! Reads tables with `TableReader` as their descriptions set them out, and
 //! returns the descriptions with the values read in place of theirs, so
 //! that they equal the descriptions when the bytes hold the described
 //! values.
@@ -12,7 +12,7 @@
 //! bytes that `Vector` iterates over. The scalars of structs are read at their
 //! offsets in the bytes that `get_struct()` and `get_struct_array()` return.
 
-use tafla::{ByteBuffer, DecodeError, TableLayout};
+use tafla::{DecodeError, TableLayout, TableReader};
 
 use super::description::{Field, Layout, Nested, ScalarType, Table, struct_size, struct_types};
 
@@ -42,15 +42,15 @@ impl From<DecodeError> for ReadError {
 }
 
 /// Evaluates `$expression` with `$reader` reading `$bytes` in `$layout`,
-/// whose `ByteBuffer` type depends on whether the layout is versioned
+/// whose `TableReader` type depends on whether the layout is versioned
 macro_rules! with_reader {
     ($bytes:expr, $layout:expr, $reader:ident => $expression:expr) => {{
         let layout = $layout.unversioned();
         if $layout.versioned {
-            let $reader = Reader(ByteBuffer::new($bytes, layout.versioned()));
+            let $reader = Reader(TableReader::new($bytes, layout.versioned()));
             $expression
         } else {
-            let $reader = Reader(ByteBuffer::new($bytes, layout));
+            let $reader = Reader(TableReader::new($bytes, layout));
             $expression
         }
     }};
@@ -63,14 +63,14 @@ pub fn read_table(bytes: &[u8], table: &Table) -> Result<Table, ReadError> {
     let layout = table.layout.unversioned();
 
     let (version, fields) = if table.layout.versioned {
-        let reader = Reader(ByteBuffer::new(bytes, layout.versioned()));
+        let reader = Reader(TableReader::new(bytes, layout.versioned()));
         reader.check_size(table.layout)?;
         (
             Some(reader.0.version()?),
             reader.read_root_fields(&table.fields)?,
         )
     } else {
-        let reader = Reader(ByteBuffer::new(bytes, layout));
+        let reader = Reader(TableReader::new(bytes, layout));
         reader.check_size(table.layout)?;
         (None, reader.read_root_fields(&table.fields)?)
     };
@@ -103,7 +103,7 @@ pub fn read_field(
     with_reader!(bytes, layout, reader => reader.read_field(position, field))
 }
 
-struct Reader<'a, const V: bool>(ByteBuffer<'a, V>);
+struct Reader<'a, const V: bool>(TableReader<'a, V>);
 
 impl<const V: bool> Reader<'_, V> {
     fn check_size(&self, layout: Layout) -> Result<(), ReadError> {
@@ -226,7 +226,7 @@ impl<const V: bool> Reader<'_, V> {
             let table = if self.reads_in_place(&item.table) {
                 // At its start, in a buffer of its offset type, which is its
                 // parent's
-                let buffer = ByteBuffer::new(in_place, item.table.layout.unversioned());
+                let buffer = TableReader::new(in_place, item.table.layout.unversioned());
                 Reader(buffer).read_in_place(0, &item.table)?
             } else {
                 read_table(bytes, &item.table)?
@@ -271,12 +271,12 @@ impl<const V: bool> Reader<'_, V> {
 }
 
 /// Reads the scalars of a struct of `types` at their offsets in its bytes,
-/// which a `ByteBuffer` reads in any layout
+/// which a `TableReader` reads in any layout
 fn read_struct(
     bytes: &[u8],
     types: impl IntoIterator<Item = ScalarType>,
 ) -> Result<Vec<Field>, DecodeError> {
-    let buffer = ByteBuffer::new(bytes, TableLayout::DEFAULT);
+    let buffer = TableReader::new(bytes, TableLayout::DEFAULT);
     let mut scalars = Vec::new();
 
     let mut offset = 0;
@@ -289,7 +289,7 @@ fn read_struct(
 }
 
 fn read_scalar(
-    buffer: &ByteBuffer<'_>,
+    buffer: &TableReader<'_>,
     scalar: ScalarType,
     position: usize,
 ) -> Result<Field, DecodeError> {

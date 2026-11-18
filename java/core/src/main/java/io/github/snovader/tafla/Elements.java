@@ -11,7 +11,7 @@ import java.nio.*;
  */
 final class Elements {
     // Views of byte arrays as arrays of wider values, which read and write at any index,
-    // little-endian, and throw an IndexOutOfBoundsException past the end. ByteBuffer reads through
+    // little-endian, and throw an IndexOutOfBoundsException past the end. TableReader reads through
     // them too.
     static final VarHandle INT16 = MethodHandles.byteArrayViewVarHandle(short[].class, ByteOrder.LITTLE_ENDIAN);
     static final VarHandle INT32 = MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
@@ -71,15 +71,15 @@ final class Elements {
      * {@return a little-endian view of the {@code byteLength} bytes from {@code position}}, whose
      * typed views copy arrays in bulk
      */
-    private static java.nio.ByteBuffer view(byte[] bytes, int position, int byteLength) {
+    private static ByteBuffer view(byte[] bytes, int position, int byteLength) {
         // A typed view starts at the buffer's position, which wrap() sets to the offset
-        return java.nio.ByteBuffer.wrap(bytes, position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
+        return ByteBuffer.wrap(bytes, position, byteLength).order(ByteOrder.LITTLE_ENDIAN);
     }
 
     /**
      * Loads {@code jdk.internal.foreign.MemorySessionImpl}, a class in the signature of the JDK's
      * {@code ScopedMemoryAccess.copyMemory()}, in which the bulk copies of NIO's typed views end,
-     * those of {@link ByteBuffer}'s array getters too. C2 inlines that copy into a caller only if
+     * those of {@link TableReader}'s array getters too. C2 inlines that copy into a caller only if
      * the class is loaded when it compiles the caller. HotSpot loads it only when it queues the
      * copy itself for compilation, which grows hot as early as its callers do. A caller compiled
      * before then calls the copy, and allocates the two views, for every array, as

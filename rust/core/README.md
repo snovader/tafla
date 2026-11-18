@@ -2,12 +2,12 @@
 
 Binary tables of scalars, strings, arrays and structs, in tafla's format.
 `TableBuilder` writes a table at its exact size, copying arrays in bulk,
-and `ByteBuffer` reads fields back by offset, borrowing arrays, strings and
+and `TableReader` reads fields back by offset, borrowing arrays, strings and
 structs from the bytes. Every read checks that it stays within the bytes it was
 given.
 
 ```rust
-use tafla::{ByteBuffer, DecodeError, TableBuilder, TableLayout};
+use tafla::{TableReader, DecodeError, TableBuilder, TableLayout};
 
 // A format's header, shared by its writer and its readers
 const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
@@ -26,17 +26,17 @@ builder.set_str("Europe/Stockholm")?;
 builder.set_table(series)?; // written straight into the table
 let bytes = builder.to_bytes()?;
 
-let buffer = ByteBuffer::new(&bytes, LAYOUT);
-let version = buffer.version()?;
+let reader = TableReader::new(&bytes, LAYOUT);
+let version = reader.version()?;
 if version != FORMAT_VERSION {
     let supported = FORMAT_VERSION;
     return Err(DecodeError::UnsupportedVersion { version, supported }.into());
 }
 
-let latitude = buffer.get_f64(buffer.root_offset(0)?)?;
-let time_zone = buffer.get_str(buffer.root_offset(1)?)?;
-let table = buffer.root_offset(2)?;
-let read = buffer.get_f32_array(buffer.field_offset(table, 1)?)?;
+let latitude = reader.get_f64(reader.root_offset(0)?)?;
+let time_zone = reader.get_str(reader.root_offset(1)?)?;
+let table = reader.root_offset(2)?;
+let read = reader.get_f32_array(reader.field_offset(table, 1)?)?;
 
 assert_eq!((latitude, time_zone), (59.3293, "Europe/Stockholm"));
 assert_eq!(read.to_vec(), values);
@@ -159,7 +159,7 @@ repository's conformance suite, which covers the whole format.
   let bytes = builder.to_bytes()?;
   # Ok::<(), BuildError>(())
   ```
-- **Arrays are read in place.** `ByteBuffer`'s array getters return an
+- **Arrays are read in place.** `TableReader`'s array getters return an
   `ArrayView`, which reads elements from the bytes at any alignment and in
   any host byte order. `as_slice()` returns them as a slice when the host is
   little-endian and the elements are aligned to their type in memory, and
@@ -217,7 +217,7 @@ Each setter takes its field's own Rust type, such as `u8` for a `uint8` and
 
 Validation is always on:
 
-- Every read checks its range against the bytes the `ByteBuffer` was given
+- Every read checks its range against the bytes the `TableReader` was given
   and returns a `DecodeError` if it would leave them. Strings must be valid
   UTF-8. A truncated or corrupted buffer therefore returns an error rather
   than values from outside it, and no bytes make a read panic.
@@ -228,7 +228,7 @@ Validation is always on:
   when `Vector::get()` or the iterator reads it, which returns a `Result`. An
   item that ends before the one before it is
   `DecodeError::ItemEndsBeforeStart`.
-- `ByteBuffer` doesn't compare versions. A reader returns
+- `TableReader` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
   the example does, so that every decoding failure is a `DecodeError`.
 - Checks can't tell a value that was corrupted within range from a real one,
@@ -246,5 +246,5 @@ than panicking, since WebAssembly builds abort on panic:
   that doesn't fit, or a header too long for its offset type, is an error
   from the constructor.
 - The compiler requires a version exactly for a versioned layout, and offers
-  `ByteBuffer::version()` only for one, through `TableLayout`'s `VERSIONED`
+  `TableReader::version()` only for one, through `TableLayout`'s `VERSIONED`
   parameter.

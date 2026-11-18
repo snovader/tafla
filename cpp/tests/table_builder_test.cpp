@@ -243,7 +243,7 @@ RC_GTEST_PROP(TableBuilder, ATableNestedFromItsBuilderWritesTheSameParentAsFromI
     RC_ASSERT(from_borrowed == from_bytes);
     RC_ASSERT(from_owned == from_bytes);
 
-    const ByteBuffer buffer(from_bytes, layout);
+    const TableReader buffer(from_bytes, layout);
     const auto position = buffer.root_offset(1);
     RC_ASSERT(position % 8 == 0U);
     RC_ASSERT(std::ranges::equal(from_bytes.span().subspan(position, bytes.size()), bytes.span()));
@@ -495,7 +495,7 @@ TEST(TableBuilder, RejectsAFieldThatMakesTheTableTooLong) {
         fits.set_uint8(7);
 
         const auto table = fits.to_bytes();
-        const ByteBuffer buffer(table, layout);
+        const TableReader buffer(table, layout);
         EXPECT_EQ(table.size(), max);
         EXPECT_EQ(buffer.get_uint8(buffer.root_offset(1)), 7);
 
@@ -618,7 +618,7 @@ TEST(TableBuilder, RejectsAnIncompleteNestedBuilder) {
     parent.set_vector(std::move(complete_items));
 
     const auto table = parent.to_bytes();
-    const ByteBuffer buffer(table, TableLayout());
+    const TableReader buffer(table, TableLayout());
     const auto position = buffer.root_offset(0);
     EXPECT_EQ(position, 8U);
     EXPECT_EQ(buffer.get_uint8(buffer.field_offset(position, 1)), 2);
@@ -640,7 +640,7 @@ TEST(TableBuilder, OwnsStringsAndArraysGivenAsRvalues) {
     }
 
     const auto bytes = builder.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
     EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), "short");
     EXPECT_EQ(buffer.get_uint16_array(buffer.root_offset(1)).to_vector(), (std::vector<std::uint16_t>{1, 2, 3}));
     EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(2), 3), std::vector<std::uint8_t>{9, 8, 7}));

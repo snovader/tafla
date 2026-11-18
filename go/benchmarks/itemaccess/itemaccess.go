@@ -39,7 +39,7 @@ func Ways() []Way {
 
 var errEmpty = errors.New("there are no items")
 
-// ByHand reads with ByteBuffer's getters by hand: each item in place, from
+// ByHand reads with TableReader's getters by hand: each item in place, from
 // the vector's GetInPlace for the last item and ItemsInPlace for every item,
 // and the structs from GetStructArray's bytes.
 type ByHand struct{}
@@ -111,7 +111,7 @@ func (ByHand) EveryStruct(bytes []byte) (float64, error) {
 }
 
 func vectorOf(bytes []byte) (tafla.Vector, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return tafla.Vector{}, err
@@ -121,7 +121,7 @@ func vectorOf(bytes []byte) (tafla.Vector, error) {
 }
 
 func structsOf(bytes []byte) ([]byte, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	position, err := buffer.RootOffset(0)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func structsOf(bytes []byte) ([]byte, error) {
 
 // sumTable sums an item read in place: its value and its pair's two floats
 func sumTable(item []byte) (float64, error) {
-	buffer := tafla.NewByteBuffer(item, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(item, tafla.TableLayout{})
 	position, err := buffer.FieldOffset(0, 0)
 	if err != nil {
 		return 0, err

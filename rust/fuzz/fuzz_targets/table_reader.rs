@@ -1,4 +1,4 @@
-//! Reads arbitrary bytes with every getter of `ByteBuffer`, at every position
+//! Reads arbitrary bytes with every getter of `TableReader`, at every position
 //! and past the end, in every offset type and header, and reads every array,
 //! struct array and vector that it finds there.
 //!
@@ -15,7 +15,7 @@ use std::{
 };
 
 use libfuzzer_sys::fuzz_target;
-use tafla::{ArrayView, ByteBuffer, DecodeError, Element, OffsetType, TableLayout, Vector};
+use tafla::{ArrayView, DecodeError, Element, OffsetType, TableLayout, TableReader, Vector};
 
 /// The elements of an array, and items of a vector, at its start and end
 /// that are read and compared with the bytes
@@ -36,12 +36,12 @@ fuzz_target!(|bytes: &[u8]| {
     for offset_type in OFFSET_TYPES {
         let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
 
-        check_header(&ByteBuffer::new(bytes, layout));
-        check_header(&ByteBuffer::new(bytes, layout.sized()));
-        check_version(&ByteBuffer::new(bytes, layout.versioned()));
-        check_version(&ByteBuffer::new(bytes, layout.sized().versioned()));
+        check_header(&TableReader::new(bytes, layout));
+        check_header(&TableReader::new(bytes, layout.sized()));
+        check_version(&TableReader::new(bytes, layout.versioned()));
+        check_version(&TableReader::new(bytes, layout.sized().versioned()));
 
-        let buffer = ByteBuffer::new(bytes, layout);
+        let buffer = TableReader::new(bytes, layout);
         for position in positions(bytes.len()) {
             check_position(&buffer, position);
         }
@@ -54,7 +54,7 @@ fn positions(len: usize) -> impl Iterator<Item = usize> {
 }
 
 /// Reads the table's size and its root fields' offsets
-fn check_header<const V: bool>(buffer: &ByteBuffer<'_, V>) {
+fn check_header<const V: bool>(buffer: &TableReader<'_, V>) {
     let bytes = buffer.bytes();
     let layout = buffer.layout();
     let width = layout.offset_size();
@@ -75,7 +75,7 @@ fn check_header<const V: bool>(buffer: &ByteBuffer<'_, V>) {
     }
 }
 
-fn check_version(buffer: &ByteBuffer<'_, true>) {
+fn check_version(buffer: &TableReader<'_, true>) {
     let bytes = buffer.bytes();
     let layout = buffer.layout();
     let position = if layout.is_sized() {
@@ -91,7 +91,7 @@ fn check_version(buffer: &ByteBuffer<'_, true>) {
 }
 
 /// Reads every type at `position`
-fn check_position(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_position(buffer: &TableReader<'_>, position: usize) {
     let bytes = buffer.bytes();
     let offset_type = buffer.layout().offset_type();
 
@@ -136,7 +136,7 @@ macro_rules! check_scalar {
     })*};
 }
 
-fn check_scalars(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_scalars(buffer: &TableReader<'_>, position: usize) {
     check_scalar!(
         buffer, position,
         get_i8 -> i8, get_u8 -> u8,
@@ -163,7 +163,7 @@ macro_rules! check_array {
     })*};
 }
 
-fn check_arrays(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_arrays(buffer: &TableReader<'_>, position: usize) {
     check_array!(
         buffer, position,
         get_i8_array -> i8,
@@ -236,7 +236,7 @@ fn check_view<T: Element + Debug, const N: usize>(
 
 /// Reads the vector at `position` and each of its items, by iterating, by
 /// index and in place
-fn check_vector(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_vector(buffer: &TableReader<'_>, position: usize) {
     let bytes = buffer.bytes();
     let offset_type = buffer.layout().offset_type();
     let width = offset_type.size() as u128;

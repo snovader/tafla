@@ -134,7 +134,7 @@ the root and `fieldOffset(position, index)` for a field of a nested table read
 in place. A nested table that has no header and its parent's offset type is
 read in place, within its parent's bytes, as `SPEC.md` describes: a vector
 item from its position, from `getVectorOffsets()`. Any other is read as a
-table of its own, with a buffer of its own layout: a vector item from its
+table of its own, with a reader of its own layout: a vector item from its
 bytes, from `getVector()`, and a table field from its position to the end of
 its parent, since its length isn't written. The suite only nests tables
 without a header with `setTable()`.
@@ -244,7 +244,7 @@ The tests follow each implementation's API where it differs:
 - Rust's `Vector` returns its items' bytes rather than their positions. The
   Rust test reads an item in place from the bytes that `iter_in_place()`
   returns, which start where the item does and end where its parent's do,
-  with a buffer of its parent's offset type, and any other item from the
+  with a reader of its parent's offset type, and any other item from the
   bytes that iterating returns.
 - Each test also finds every vector item from its ends alone, with
   `getVectorOffset()` or Rust's `Vector::get()` and `Vector::get_in_place()`,

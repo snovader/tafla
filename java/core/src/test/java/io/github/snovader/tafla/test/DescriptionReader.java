@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Reads the bytes of a table as descriptions of its fields set them out, and returns those
  * descriptions with the values that were read in place of theirs, so that they equal the
- * descriptions when the bytes hold their values. Every read goes through {@link ByteBuffer}, and
+ * descriptions when the bytes hold their values. Every read goes through {@link TableReader}, and
  * throws its {@link DecodeException}.
  *
  * <p>A nested table, from {@link TableBuilder#setTable} or in a vector, is read in place when it
@@ -24,23 +24,23 @@ import static org.junit.jupiter.api.Assertions.*;
  * reader, for corrupted bytes, reads them without checking, and reads as many of a vector's items
  * as both the bytes and the description hold.</p>
  */
-final class TableReader {
-    private final ByteBuffer buffer;
+final class DescriptionReader {
+    private final TableReader buffer;
     private final LayoutDescription layout;
     private final boolean strict;
 
-    private TableReader(byte[] bytes, LayoutDescription layout, boolean strict) {
-        this.buffer = new ByteBuffer(bytes, layout.tableLayout());
+    private DescriptionReader(byte[] bytes, LayoutDescription layout, boolean strict) {
+        this.buffer = new TableReader(bytes, layout.tableLayout());
         this.layout = layout;
         this.strict = strict;
     }
 
-    static TableReader strict(byte[] bytes, LayoutDescription layout) {
-        return new TableReader(bytes, layout, true);
+    static DescriptionReader strict(byte[] bytes, LayoutDescription layout) {
+        return new DescriptionReader(bytes, layout, true);
     }
 
-    static TableReader lenient(byte[] bytes, LayoutDescription layout) {
-        return new TableReader(bytes, layout, false);
+    static DescriptionReader lenient(byte[] bytes, LayoutDescription layout) {
+        return new DescriptionReader(bytes, layout, false);
     }
 
     /** Reads the header and every field of the table, which must have the reader's layout */
@@ -102,7 +102,7 @@ final class TableReader {
         // throws for.
         var bytes = buffer.bytes();
         var rest = Arrays.copyOfRange(bytes, Math.min(position, bytes.length), bytes.length);
-        var reader = new TableReader(rest, table.layout(), strict);
+        var reader = new DescriptionReader(rest, table.layout(), strict);
 
         return new TableDescription(table.layout(), reader.readVersion(), reader.readRootFields(table.fields()));
     }
@@ -131,7 +131,7 @@ final class TableReader {
             var item = items.get(index);
             var table = readsInPlace(item.table().layout())
                 ? readInPlace(offsets[index], item.table())
-                : new TableReader(vector[index], item.table().layout(), strict).readTable(item.table());
+                : new DescriptionReader(vector[index], item.table().layout(), strict).readTable(item.table());
 
             read.add(new NestedTable(item.from(), table));
         }

@@ -4,7 +4,7 @@ import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
 import { writeSuite, SUITE_DIRECTORY } from './files.ts';
-import { buildTable, readTable, TableReader } from './tables.ts';
+import { buildTable, readTable, DescriptionReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;
 
@@ -83,7 +83,7 @@ describe('invalid cases', () => {
         'should read $name up to field $field and then throw DecodeError',
         ({ file, case: name, field }) => {
             const { table } = validCaseNamed(name);
-            const reader = new TableReader(bytesOf(file), table.layout);
+            const reader = new DescriptionReader(bytesOf(file), table.layout);
 
             for (let index = 0; index < field; index++) {
                 const read = reader.readRootField(index, table.fields[index]);

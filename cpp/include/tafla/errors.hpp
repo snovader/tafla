@@ -42,9 +42,9 @@ public:
         /// the ends.
         item_ends_before_start,
         /// The header carries format `version()`, which the reader can't
-        /// read, since it reads version `supported()`. `ByteBuffer` doesn't
+        /// read, since it reads version `supported()`. `TableReader` doesn't
         /// compare versions: a reader throws this when
-        /// `ByteBuffer::version()` isn't its own.
+        /// `TableReader::version()` isn't its own.
         unsupported_version,
     };
 

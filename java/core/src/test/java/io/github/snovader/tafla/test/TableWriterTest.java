@@ -106,7 +106,7 @@ public class TableWriterTest {
 
         var bytes = Tables.write(table);
         assertArrayEquals(Tables.build(table).bytes(), bytes);
-        assertEquals(table, TableReader.strict(bytes, layout).readTable(table));
+        assertEquals(table, DescriptionReader.strict(bytes, layout).readTable(table));
     }
 
     @Property
@@ -538,7 +538,7 @@ public class TableWriterTest {
                 type.put(expected, value);
             }
 
-            var buffer = new ByteBuffer(bytes, layout);
+            var buffer = new TableReader(bytes, layout);
             var elements = buffer.rootOffset(0) + offsetType.size();
             assertArrayEquals(expected.array(), Arrays.copyOfRange(bytes, elements, elements + expected.capacity()));
             assertEquals(0x12345678, buffer.getInt32(buffer.rootOffset(1)));

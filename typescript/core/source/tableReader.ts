@@ -29,7 +29,7 @@ import type { OffsetSize } from './types.ts';
  * Tables are written with `TableBuilder`, whose `finalize()` returns a reader
  * of its table, or with `TableSizer` and `TableWriter`.
  */
-export class ByteBuffer {
+export class TableReader {
     readonly #bytes: Uint8Array;
     readonly #view: DataView;
 
@@ -66,7 +66,7 @@ export class ByteBuffer {
      * Returns the version that the table's header carries after its length.
      * It's as wide as the header's other slots.
      *
-     * @throws {TypeError} If the buffer's layout isn't versioned.
+     * @throws {TypeError} If the reader's layout isn't versioned.
      */
     getVersion(): number {
         if (!this.#versioned) {

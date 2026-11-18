@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ByteBuffer, DecodeError, TableBuilder } from 'tafla';
+import { DecodeError, TableBuilder, TableReader } from 'tafla';
 
 describe('DecodeError', () => {
     it('should be a RangeError named DecodeError', () => {
@@ -9,7 +9,7 @@ describe('DecodeError', () => {
         expect(error.name).toBe('DecodeError');
     });
 
-    it.each<[string, (buffer: ByteBuffer) => unknown, string]>([
+    it.each<[string, (buffer: TableReader) => unknown, string]>([
         ['getFloat64()', buffer => buffer.getFloat64(4), '8 bytes at 4 of 8'],
         ['getInt64()', buffer => buffer.getInt64(-1), '8 bytes at -1 of 8'],
         ['getUint32()', buffer => buffer.getUint32(5), '4 bytes at 5 of 8'],
@@ -33,7 +33,7 @@ describe('DecodeError', () => {
             const backing = new Uint8Array(32).fill(0x41);
             const bytes = backing.subarray(0, 8);
             bytes.set([1, 0, 0, 0, 13, 0, 0, 0]);
-            const buffer = new ByteBuffer(bytes);
+            const buffer = new TableReader(bytes);
 
             expect(() => read(buffer)).toThrow(DecodeError);
             expect(() => read(buffer)).toThrow(`Read exceeds the supplied buffer: ${range}`);
@@ -44,11 +44,11 @@ describe('DecodeError', () => {
         // A count of 2 puts the first item after the ends, at 12, but it ends at 11
         const bytes = new Uint8Array([2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0]);
 
-        expect(() => new ByteBuffer(bytes).getVector(0)).toThrow(
+        expect(() => new TableReader(bytes).getVector(0)).toThrow(
             new DecodeError('The vector item at 12 ends before it starts, at 11')
         );
-        expect(() => new ByteBuffer(bytes).getVectorOffset(0, 0)).toThrow(DecodeError);
-        expect(() => new ByteBuffer(bytes).getVectorItemOffset(0, 2, 0)).toThrow(DecodeError);
+        expect(() => new TableReader(bytes).getVectorOffset(0, 0)).toThrow(DecodeError);
+        expect(() => new TableReader(bytes).getVectorItemOffset(0, 2, 0)).toThrow(DecodeError);
     });
 
     it.each([
@@ -59,13 +59,13 @@ describe('DecodeError', () => {
     ])('should throw DecodeError for a string with %s', (_, utf8) => {
         const bytes = new Uint8Array([utf8.length, 0, 0, 0, ...utf8]);
 
-        expect(() => new ByteBuffer(bytes).getString(0)).toThrow(
+        expect(() => new TableReader(bytes).getString(0)).toThrow(
             new DecodeError("The string at 0 isn't valid UTF-8")
         );
     });
 
     it('should keep the original error as the cause of an invalid string', () => {
-        const buffer = new ByteBuffer(new Uint8Array([1, 0, 0, 0, 0xff]));
+        const buffer = new TableReader(new Uint8Array([1, 0, 0, 0, 0xff]));
 
         expect(() => buffer.getString(0)).toThrow(
             // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
@@ -88,8 +88,8 @@ const TABLE = (() => {
 })();
 
 /** The getters that read each field of {@link TABLE} through `reader` */
-function gettersOf(reader: ByteBuffer): Record<string, () => unknown> {
-    const table = new ByteBuffer(TABLE);
+function gettersOf(reader: TableReader): Record<string, () => unknown> {
+    const table = new TableReader(TABLE);
     const [scalar, array, string, struct, structArray, vector] = [0, 1, 2, 3, 4, 5].map(index =>
         table.rootOffset(index)
     );
@@ -114,8 +114,8 @@ function gettersOf(reader: ByteBuffer): Record<string, () => unknown> {
     };
 }
 
-const GETTERS = Object.keys(gettersOf(new ByteBuffer(TABLE)));
-const EXPECTED = gettersOf(new ByteBuffer(TABLE));
+const GETTERS = Object.keys(gettersOf(new TableReader(TABLE)));
+const EXPECTED = gettersOf(new TableReader(TABLE));
 
 /**
  * Bytes of a resizable buffer: a slice of fixed length, or one made without
@@ -135,7 +135,7 @@ function resizableTable(slice: Slice): [ArrayBuffer, Record<string, () => unknow
             ? new Uint8Array(buffer, 8, TABLE.length)
             : new Uint8Array(buffer, 8);
 
-    return [buffer, gettersOf(new ByteBuffer(bytes))];
+    return [buffer, gettersOf(new TableReader(bytes))];
 }
 
 /**
@@ -208,7 +208,7 @@ describe('bytes lost after the reader was made', () => {
             const buffer = new ArrayBuffer(8 + held, { maxByteLength: 1024 });
             const bytes = new Uint8Array(buffer, 8);
             bytes.set(TABLE.subarray(0, held));
-            const getters = gettersOf(new ByteBuffer(bytes));
+            const getters = gettersOf(new TableReader(bytes));
 
             buffer.resize(8 + TABLE.length);
             bytes.set(TABLE);

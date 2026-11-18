@@ -40,7 +40,7 @@ from hypothesis.strategies import (
 )
 
 import tafla
-from tafla import byte_buffer, fixed_fields, layout, table_writer
+from tafla import fixed_fields, layout, table_reader, table_writer
 from tests.tables import FORMATS
 from tests.test_fixed_fields import Misreported
 
@@ -186,7 +186,7 @@ class Implementation:
     """The classes of one implementation, which never mix with the other's"""
 
     name: str
-    ByteBuffer: Any
+    TableReader: Any
     FixedFields: Any
     TableLayout: Any
     TableWriter: Any
@@ -194,7 +194,7 @@ class Implementation:
 
 PURE = Implementation(
     "python",
-    byte_buffer.ByteBuffer,
+    table_reader.TableReader,
     fixed_fields.FixedFields,
     layout.TableLayout,
     table_writer.TableWriter,
@@ -204,7 +204,7 @@ PURE = Implementation(
 def native_implementation(module: ModuleType) -> Implementation:
     return Implementation(
         "native",
-        module.ByteBuffer,
+        module.TableReader,
         module.FixedFields,
         module.TableLayout,
         module.TableWriter,
@@ -325,13 +325,13 @@ class TestImplementations(unittest.TestCase):
     def test_tafla_uses_the_native_classes_unless_pure_python_is_forced(self) -> None:
         if tafla.IMPLEMENTATION == "native":
             self.assertIs(tafla.TableWriter, self.native.TableWriter)
-            self.assertIs(tafla.ByteBuffer, self.native.ByteBuffer)
+            self.assertIs(tafla.TableReader, self.native.TableReader)
         else:
             self.assertIs(tafla.TableWriter, PURE.TableWriter)
-            self.assertIs(tafla.ByteBuffer, PURE.ByteBuffer)
+            self.assertIs(tafla.TableReader, PURE.TableReader)
 
     def test_have_the_same_methods_with_the_same_parameters(self) -> None:
-        for name in ["ByteBuffer", "FixedFields", "TableLayout", "TableWriter"]:
+        for name in ["TableReader", "FixedFields", "TableLayout", "TableWriter"]:
             pure, native = getattr(PURE, name), getattr(self.native, name)
             names = {
                 attribute
@@ -363,7 +363,7 @@ class TestImplementations(unittest.TestCase):
             writer.set_string(1, "a")
             data = bytes(writer.bytes())
 
-            buffer = self.native.ByteBuffer(data, table_layout)
+            buffer = self.native.TableReader(data, table_layout)
             self.assertEqual(buffer.get_version(), 3)
             self.assertEqual(buffer.get_fields(0, fields), (-2,))
             tables.append(data)
@@ -390,7 +390,7 @@ class TestImplementations(unittest.TestCase):
         buffers = [
             (
                 implementation,
-                implementation.ByteBuffer(
+                implementation.TableReader(
                     content, implementation.TableLayout(**arguments)
                 ),
             )
@@ -718,7 +718,7 @@ def _read_message(
 ) -> object:
     layout = implementation.TableLayout(**arguments)
     fields = fixed_fields_of(implementation, description, layout)
-    return implementation.ByteBuffer.read_fields(data, fields, version)
+    return implementation.TableReader.read_fields(data, fields, version)
 
 
 # Imports tafla with a finder that the module tafla._native finds first,
@@ -842,7 +842,7 @@ class FixedTable:
 
     def read(self, implementation: Implementation, data: bytes) -> object:
         table_layout = implementation.TableLayout(**self.arguments)
-        buffer = implementation.ByteBuffer(data, table_layout)
+        buffer = implementation.TableReader(data, table_layout)
         position = buffer.root_offset(self.description[0]) if self.nested else 0
         return buffer.get_fields(position, self.fields(implementation))
 

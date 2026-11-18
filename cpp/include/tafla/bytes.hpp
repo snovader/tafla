@@ -17,7 +17,7 @@ namespace tafla {
 ///
 /// Writers allocate a table's bytes at its exact length, and write every
 /// byte once, without zeroing them first, as a `std::vector` would. They
-/// convert to a `std::span` of their bytes, which `ByteBuffer` reads, and
+/// convert to a `std::span` of their bytes, which `TableReader` reads, and
 /// `to_vector()` copies them.
 class Bytes {
 public:

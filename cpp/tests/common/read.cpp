@@ -40,7 +40,7 @@ std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::v
 template <bool Versioned>
 class Reader {
 public:
-    explicit Reader(ByteBuffer<Versioned> buffer) : buffer_(buffer) {}
+    explicit Reader(TableReader<Versioned> buffer) : buffer_(buffer) {}
 
     void check_size(const Layout& layout) const {
         const auto length = buffer_.bytes().size();
@@ -207,7 +207,7 @@ private:
             if (reads_in_place(item.table)) {
                 // At its start, in a buffer of its offset type, which is its
                 // parent's
-                const ByteBuffer buffer(*in_place[index].bytes, item.table.layout.unversioned());
+                const TableReader buffer(*in_place[index].bytes, item.table.layout.unversioned());
                 read.push_back({item.from, Reader<false>(buffer).read_in_place(0, item.table)});
             } else {
                 read.push_back({item.from, read_table(*iterated[index].bytes, item.table)});
@@ -223,10 +223,10 @@ private:
         return !layout.sized && !layout.versioned && layout.offset_type == buffer_.layout().offset_type();
     }
 
-    ByteBuffer<Versioned> buffer_;
+    TableReader<Versioned> buffer_;
 };
 
-Field read_scalar(const ByteBuffer<false>& buffer, ScalarType type, std::size_t position) {
+Field read_scalar(const TableReader<false>& buffer, ScalarType type, std::size_t position) {
     switch (type) {
         case ScalarType::int8:
             return {buffer.get_int8(position)};
@@ -253,9 +253,9 @@ Field read_scalar(const ByteBuffer<false>& buffer, ScalarType type, std::size_t 
 }
 
 /// Reads the scalars of a struct of `types` at their offsets in its bytes,
-/// which a `ByteBuffer` reads in any layout
+/// which a `TableReader` reads in any layout
 std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::vector<ScalarType>& types) {
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
     std::vector<Field> scalars;
 
     std::size_t offset = 0;
@@ -270,9 +270,9 @@ template <class Function>
 auto with_reader(std::span<const std::uint8_t> bytes, const Layout& layout, Function function) {
     const auto unversioned = layout.unversioned();
     if (layout.versioned) {
-        return function(Reader<true>(ByteBuffer(bytes, unversioned.versioned())));
+        return function(Reader<true>(TableReader(bytes, unversioned.versioned())));
     }
-    return function(Reader<false>(ByteBuffer(bytes, unversioned)));
+    return function(Reader<false>(TableReader(bytes, unversioned)));
 }
 
 }  // namespace
@@ -281,13 +281,13 @@ Table read_table(std::span<const std::uint8_t> bytes, const Table& table) {
     const auto unversioned = table.layout.unversioned();
 
     if (table.layout.versioned) {
-        const Reader<true> reader(ByteBuffer(bytes, unversioned.versioned()));
+        const Reader<true> reader(TableReader(bytes, unversioned.versioned()));
         reader.check_size(table.layout);
-        const auto version = ByteBuffer(bytes, unversioned.versioned()).version();
+        const auto version = TableReader(bytes, unversioned.versioned()).version();
         return {table.layout, version, reader.read_root_fields(table.fields)};
     }
 
-    const Reader<false> reader(ByteBuffer(bytes, unversioned));
+    const Reader<false> reader(TableReader(bytes, unversioned));
     reader.check_size(table.layout);
     return {table.layout, std::nullopt, reader.read_root_fields(table.fields)};
 }

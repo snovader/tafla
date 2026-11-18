@@ -11,9 +11,9 @@ import java.util.*;
  * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
  * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
  * package documentation says. The fixed-size record is written through little-endian
- * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of
+ * {@link VarHandle}s and read with {@link TableReader}'s getters at fixed positions. An array of
  * structs is written through them too, into bytes that {@link TableBuilder#setStructArray} takes,
- * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code reads it. tafla-gen's
+ * and read from {@link TableReader#getStructArray}'s view, as tafla-gen's code reads it. tafla-gen's
  * code writes each struct straight into the table, with {@link TableWriter#setStructs}.
  */
 public final class TaflaCodec {
@@ -53,7 +53,7 @@ public final class TaflaCodec {
 
         @Override
         public RecordInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
 
             return new RecordInput(
                 buffer.getFloat64(buffer.rootOffset(0)),
@@ -117,8 +117,8 @@ public final class TaflaCodec {
         }
 
         /** @throws IllegalStateException if the document is in another version */
-        private static ByteBuffer openDocument(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes, DOCUMENT_LAYOUT);
+        private static TableReader openDocument(byte[] bytes) {
+            var buffer = new TableReader(bytes, DOCUMENT_LAYOUT);
             if (buffer.getVersion() != DOCUMENT_VERSION) {
                 throw new IllegalStateException("Unsupported document version " + buffer.getVersion());
             }
@@ -140,7 +140,7 @@ public final class TaflaCodec {
 
         @Override
         public ListInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
             var items = new ItemInput[offsets.length];
@@ -184,7 +184,7 @@ public final class TaflaCodec {
 
         @Override
         public ListInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
             var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
 
             var items = new ItemInput[view.remaining() / ITEM_SIZE];
@@ -220,7 +220,7 @@ public final class TaflaCodec {
 
         @Override
         public SampleInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var buffer = new TableReader(bytes);
 
             return new SampleInput(
                 buffer.getUint32(0),

@@ -2,7 +2,7 @@ package tafla
 
 import "unsafe"
 
-// StructsInPlace returns bytes, which [ByteBuffer.GetStructArray] read, as
+// StructsInPlace returns bytes, which [TableReader.GetStructArray] read, as
 // structs in place, and true, or nil and false when they aren't aligned to S
 // in memory or the host is big-endian. An empty array, and structs of single
 // bytes on any host, are always in place. The slice shares the bytes, so it

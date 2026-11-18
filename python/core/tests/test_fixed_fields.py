@@ -8,7 +8,7 @@ from typing import Any, Literal, overload, override
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
 
-from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
+from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
 from tests.descriptions import tables
 from tests.generated.byte_strategies import Overwrite, Truncation, corruptions
 from tests.tables import (
@@ -218,7 +218,7 @@ def whole_fixed(table: Description) -> Description | None:
 
 
 def read_by_getters(
-    buffer: ByteBuffer, table: Description, position: int | None = None
+    buffer: TableReader, table: Description, position: int | None = None
 ) -> list[Any]:
     """The values of a table's fields, read by their getters in the order that
     ``get_fields()`` returns them, a nested table's in place of it and a
@@ -311,13 +311,13 @@ class TestGetFields(unittest.TestCase):
         fields = fixed_fields(fixed, len(fixed["fields"]), layout)
         data = bytes(write_table(fixed))
 
-        written = ByteBuffer(data, layout)
+        written = TableReader(data, layout)
         self.assertEqual(
             comparable(written.get_fields(0, fields)),
             comparable(read_by_getters(written, fixed)),
         )
 
-        corrupted = ByteBuffer(corruption.apply(data), layout)
+        corrupted = TableReader(corruption.apply(data), layout)
         values = corrupted.get_fields(0, fields)
         if values is not None:
             self.assertEqual(
@@ -331,7 +331,7 @@ class TestGetFields(unittest.TestCase):
         pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
         table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
         fields = fixed_fields(table, 3)
-        buffer = ByteBuffer(data, TableLayout(offset_type=offset_type))
+        buffer = TableReader(data, TableLayout(offset_type=offset_type))
 
         values = buffer.get_fields(position, fields)
         if values is not None:
@@ -343,7 +343,7 @@ class TestGetFields(unittest.TestCase):
 class TestMessages(unittest.TestCase):
     # write_fields() writes a message of only fixed fields as the constructor,
     # set_fields() and bytes() write it, in one call, and read_fields() reads
-    # it as get_fields() reads its root, without a ByteBuffer
+    # it as get_fields() reads its root, without a TableReader
 
     @given(tables(), sampled_from([None, *INVALID]), corruptions)
     def test_writes_and_reads_a_message_as_the_writer_and_the_buffer_do(
@@ -372,7 +372,7 @@ class TestMessages(unittest.TestCase):
             return
 
         for data in [written, corruption.apply(written)]:
-            buffer = ByteBuffer(data, layout)
+            buffer = TableReader(data, layout)
             expected = read_outcome(
                 lambda buffer=buffer: [buffer.get_fields(0, fields)]
             )
@@ -396,17 +396,17 @@ class TestMessages(unittest.TestCase):
         table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
         layout = TableLayout(sized=True, versioned=True, offset_type=offset_type)
         fields = fixed_fields(table, 3, layout)
-        buffer = ByteBuffer(data, layout)
+        buffer = TableReader(data, layout)
 
         expected = outcome_of(partial(buffer.get_fields, 0, fields))
         if expected is not None and outcome_of(buffer.get_version) != version:
             expected = None
         self.assertEqual(
-            outcome_of(partial(ByteBuffer.read_fields, data, fields, version)),
+            outcome_of(partial(TableReader.read_fields, data, fields, version)),
             expected,
         )
         self.assertEqual(
-            outcome_of(partial(ByteBuffer.read_fields, data, fields)),
+            outcome_of(partial(TableReader.read_fields, data, fields)),
             outcome_of(partial(buffer.get_fields, 0, fields)),
         )
 
@@ -417,15 +417,15 @@ class TestMessages(unittest.TestCase):
         with self.assertRaises(TypeError):
             TableWriter.write_fields(nested_fields, (1, 2))
         with self.assertRaises(TypeError):
-            ByteBuffer.read_fields(bytes(16), nested_fields)
+            TableReader.read_fields(bytes(16), nested_fields)
 
         fields = FixedFields(2, "h", "h", layout=TableLayout.DEFAULT)
         data = TableWriter.write_fields(fields, (1, 2))
-        self.assertEqual(ByteBuffer.read_fields(data, fields), (1, 2))
+        self.assertEqual(TableReader.read_fields(data, fields), (1, 2))
         with self.assertRaises(TypeError):
-            ByteBuffer.read_fields(data, fields, 1)
+            TableReader.read_fields(data, fields, 1)
         with self.assertRaises(TypeError):
-            ByteBuffer.read_fields(memoryview(data * 2)[::2], fields)
+            TableReader.read_fields(memoryview(data * 2)[::2], fields)
         # The writer's constructor raises for a version that the layout has no
         # slot for, or needs
         with self.assertRaises(TypeError):
@@ -453,7 +453,7 @@ def write_message(
 def read_message(
     data: bytes, fields: FixedFields, version: int | None
 ) -> tuple[Any, ...] | None:
-    return ByteBuffer.read_fields(data, fields, version)
+    return TableReader.read_fields(data, fields, version)
 
 
 def outcome_of(call: Callable[[], object]) -> object:
@@ -509,7 +509,7 @@ class TestVectorTables(unittest.TestCase):
             return
 
         for data in [written, corruption.apply(written)]:
-            buffer = ByteBuffer(data, layout)
+            buffer = TableReader(data, layout)
             with self.subTest(data=data):
                 self.assertEqual(
                     read_outcome(partial(read_vector_fields, buffer, fields)),
@@ -527,7 +527,7 @@ class TestVectorTables(unittest.TestCase):
         pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
         table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
         fields = fixed_fields(table, 3)
-        buffer = ByteBuffer(data, TableLayout(offset_type=offset_type))
+        buffer = TableReader(data, TableLayout(offset_type=offset_type))
 
         self.assertEqual(
             read_outcome(partial(buffer.get_vector_fields, position, fields)),
@@ -548,7 +548,7 @@ class TestVectorTables(unittest.TestCase):
         # The vector at 4 holds its count and the ends of its items, the
         # second's at 12, which is made to end past the bytes
         data[12:16] = (len(data)).to_bytes(4, "little")
-        buffer = ByteBuffer(data)
+        buffer = TableReader(data)
 
         items = buffer.iter_vector_fields(buffer.root_offset(0), fields, _read_by_hand)
         self.assertEqual(next(items), (1, "a"))
@@ -574,7 +574,7 @@ class TestVectorTables(unittest.TestCase):
             writer.set_int16(0, number)
             writer.end_table(item)
             writer.set_item_end(vector, index)
-        buffer = ByteBuffer(writer.bytes())
+        buffer = TableReader(writer.bytes())
         vector = buffer.root_offset(0)
         offsets = list(buffer.get_vector_offsets(vector))
 
@@ -669,12 +669,12 @@ def write_each_item(
     return writer.bytes()
 
 
-def read_vector_fields(buffer: ByteBuffer, fields: FixedFields) -> object:
+def read_vector_fields(buffer: TableReader, fields: FixedFields) -> object:
     return buffer.get_vector_fields(buffer.root_offset(0), fields)
 
 
 def read_each_item(
-    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+    buffer: TableReader, fields: FixedFields, position: int | None = None
 ) -> object:
     """Reads the vector's items one by one, as ``get_vector_fields()`` reads
     them, at ``position``, or the root's first field"""
@@ -692,7 +692,7 @@ def read_each_item(
 
 
 def iterate_vector_fields(
-    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+    buffer: TableReader, fields: FixedFields, position: int | None = None
 ) -> Iterator[tuple[Any, ...]]:
     if position is None:
         position = buffer.root_offset(0)
@@ -700,7 +700,7 @@ def iterate_vector_fields(
 
 
 def iterate_each_item(
-    buffer: ByteBuffer, fields: FixedFields, position: int | None = None
+    buffer: TableReader, fields: FixedFields, position: int | None = None
 ) -> Iterator[tuple[Any, ...]]:
     """Reads the vector's items one by one, as ``iter_vector_fields()`` reads
     them, at ``position``, or the root's first field: after checking its count,

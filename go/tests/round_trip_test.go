@@ -52,7 +52,7 @@ func TestRoundTripsValuesThatChangeAfterTheTableIsWritten(t *testing.T) {
 	floats[0] = 0
 	name[0] = 'X'
 
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
 	read := must(buffer.GetFloat64Array(must(buffer.RootOffset(0))))
 	if got := read.Slice(); !slices.Equal(got, []float64{1.5, -2.5}) {
 		t.Errorf("read %v", got)
@@ -77,7 +77,7 @@ func TestFindsVectorItemsFromTheirEnds(t *testing.T) {
 	check(t, builder.SetVector(tafla.TableBytes{1}, tafla.TableBytes{}, tafla.TableBytes{2, 3}))
 
 	table := must(builder.Bytes())
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
 	position := must(buffer.RootOffset(0))
 
 	// The count and the three ends, at 4, then the items, from 20
@@ -120,7 +120,7 @@ func TestRoundTripsStructs(t *testing.T) {
 	check(t, builder.SetStructArray(points, 6, tafla.Align4))
 
 	table := must(builder.Bytes())
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
 
 	// The struct follows the uint8 at 12 unpadded, at 13
 	position := must(buffer.RootOffset(1))
@@ -141,7 +141,7 @@ func TestRoundTripsStructs(t *testing.T) {
 	}
 	var ys []float32
 	for start := 0; start < len(structs); start += 6 {
-		ys = append(ys, must(tafla.NewByteBuffer(structs[start:start+6], tafla.TableLayout{}).GetFloat32(2)))
+		ys = append(ys, must(tafla.NewTableReader(structs[start:start+6], tafla.TableLayout{}).GetFloat32(2)))
 	}
 	if !slices.Equal(ys, []float32{1.5, -0.25}) {
 		t.Errorf("read %v", ys)
@@ -157,7 +157,7 @@ func TestPanicsForAnIndexOutOfRangeWithTheIndexAndTheLength(t *testing.T) {
 	builder := must(tafla.NewTableBuilder(2, tafla.TableLayout{}))
 	check(t, builder.SetUint16Array([]uint16{1, 2, 3}))
 	check(t, builder.SetVector(tafla.TableBytes{1}, tafla.TableBytes{2}))
-	buffer := tafla.NewByteBuffer(must(builder.Bytes()), tafla.TableLayout{})
+	buffer := tafla.NewTableReader(must(builder.Bytes()), tafla.TableLayout{})
 	array := must(buffer.GetUint16Array(must(buffer.RootOffset(0))))
 	vector := must(buffer.GetVector(must(buffer.RootOffset(1))))
 
@@ -173,7 +173,7 @@ func TestReturnsAnEmptyArrayInPlaceAtAnyAddress(t *testing.T) {
 	table := must(builder.Bytes())
 
 	for byteOffset := range 8 {
-		buffer := tafla.NewByteBuffer(tables.AtByteOffset(table, byteOffset), tafla.TableLayout{})
+		buffer := tafla.NewTableReader(tables.AtByteOffset(table, byteOffset), tafla.TableLayout{})
 		float64s := must(buffer.GetFloat64Array(must(buffer.RootOffset(0))))
 
 		if values, ok := float64s.AsSlice(); !ok || len(values) != 0 {
@@ -190,7 +190,7 @@ func TestReadsVectorItemsInPlaceWithoutTheCapacityPastTheBytes(t *testing.T) {
 	// The bytes past the table, within its slice's capacity, must stay as
 	// they are when an item is appended to
 	backing := append(slices.Clone(table), 0xaa, 0xaa, 0xaa, 0xaa)
-	buffer := tafla.NewByteBuffer(backing[:len(table)], tafla.TableLayout{})
+	buffer := tafla.NewTableReader(backing[:len(table)], tafla.TableLayout{})
 	vector := must(buffer.GetVector(must(buffer.RootOffset(0))))
 
 	for index := range vector.Len() {
@@ -214,7 +214,7 @@ func TestReadsArraysInPlaceWhenAligned(t *testing.T) {
 
 	for byteOffset := range 8 {
 		copied := tables.AtByteOffset(table, byteOffset)
-		buffer := tafla.NewByteBuffer(copied, tafla.TableLayout{})
+		buffer := tafla.NewTableReader(copied, tafla.TableLayout{})
 
 		position := must(buffer.RootOffset(0))
 		uint8s := must(buffer.GetUint8Array(position))
@@ -287,7 +287,7 @@ func TestNestsABuilderSeveralTimes(t *testing.T) {
 		t.Error("nesting changed the builder")
 	}
 
-	buffer := tafla.NewByteBuffer(table, tafla.TableLayout{})
+	buffer := tafla.NewTableReader(table, tafla.TableLayout{})
 	vector := must(buffer.GetVector(must(buffer.RootOffset(1))))
 	for item, err := range vector.Items() {
 		if err != nil || !bytes.Equal(item, own) {

@@ -13,10 +13,10 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Tests of {@link ByteBuffer}'s reads, from bytes that the JDK's own little-endian buffer writes as
+ * Tests of {@link TableReader}'s reads, from bytes that the JDK's own little-endian buffer writes as
  * {@code SPEC.md} lays them out, so that they don't depend on tafla's writers.
  */
-public class ByteBufferTest {
+public class TableReaderTest {
     /**
      * Values are written after {@code start} bytes, so that scalars, and the views of arrays and
      * structs, lie at any alignment and start within the bytes, as in tables
@@ -42,7 +42,7 @@ public class ByteBufferTest {
         var bytes = new byte[start + (int) Descriptions.maxLength(field, layout.width())];
         Arrays.fill(bytes, 0, start, (byte) 0xff);
         put(littleEndian(bytes).position(start), field, layout.width());
-        var buffer = new ByteBuffer(bytes, layout.tableLayout());
+        var buffer = new TableReader(bytes, layout.tableLayout());
 
         assertEquals(field, readAt(buffer, start, field));
 
@@ -53,7 +53,7 @@ public class ByteBufferTest {
     }
 
     /** {@return the scalar, array, string, struct or array of structs of the field's type at {@code position}} */
-    private static FieldDescription readAt(ByteBuffer buffer, int position, FieldDescription field) {
+    private static FieldDescription readAt(TableReader buffer, int position, FieldDescription field) {
         return switch (field) {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(buffer, position));
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(buffer, position));
@@ -75,7 +75,7 @@ public class ByteBufferTest {
 
         var bytes = new byte[byteLength];
         putVector(littleEndian(bytes), items, width);
-        var buffer = new ByteBuffer(bytes, TableLayout.builder().offsetType(offsetType).build());
+        var buffer = new TableReader(bytes, TableLayout.builder().offsetType(offsetType).build());
 
         var vector = items.toArray(byte[][]::new);
         int[] offsets = buffer.getVectorOffsets(0);
@@ -177,7 +177,7 @@ public class ByteBufferTest {
     void should_find_each_vector_item_from_its_ends_as_reading_every_item_finds_it() {
         var builder = new TableBuilder(1);
         builder.setVector(new byte[][] {{1}, {}, {2, 3}});
-        var buffer = new ByteBuffer(builder.bytes());
+        var buffer = new TableReader(builder.bytes());
         var vector = buffer.rootOffset(0);
 
         // The count at 4 and the three ends, 17, 17 and 19 from there, then the items from 20
@@ -202,7 +202,7 @@ public class ByteBufferTest {
 
         var builder = new TableBuilder(1);
         builder.setVector(new byte[][] {{1}, {2, 3}});
-        var buffer = new ByteBuffer(builder.bytes());
+        var buffer = new TableReader(builder.bytes());
 
         var exception = assertThrows(IndexOutOfBoundsException.class, () -> buffer.getVectorOffset(4, index));
         assertEquals(String.format("Item %d is outside the vector of 2 at 4", index), exception.getMessage());
@@ -215,7 +215,7 @@ public class ByteBufferTest {
         @ForAll @IntRange(min = 0, max = 3) int index
     ) {
         // A count of 3, whose ends need 12 bytes after it, where 4 are left
-        var buffer = new ByteBuffer(new byte[] {3, 0, 0, 0, 8, 0, 0, 0});
+        var buffer = new TableReader(new byte[] {3, 0, 0, 0, 8, 0, 0, 0});
 
         assertThrows(DecodeException.class, () -> buffer.getVectorOffset(0, index));
     }
@@ -226,7 +226,7 @@ public class ByteBufferTest {
         var builder = new TableBuilder(2);
         builder.setUint8((short) 7);
         builder.setStruct(new byte[] {0x34, 0x12, 0, 0, (byte) 0xc0, 0x3f});
-        var buffer = new ByteBuffer(builder.bytes());
+        var buffer = new TableReader(builder.bytes());
 
         var struct = buffer.getStruct(buffer.rootOffset(1), 6);
         assertTrue(struct.isReadOnly());
@@ -241,7 +241,7 @@ public class ByteBufferTest {
     void struct_array_views_hold_every_struct_after_the_count() {
         // A uint16 count of 2, and then structs of a uint16 and a uint8
         var layout = TableLayout.builder().offsetType(OffsetType.UINT16).build();
-        var buffer = new ByteBuffer(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, layout);
+        var buffer = new TableReader(new byte[] {2, 0, 1, 0, 2, 3, 0, 4}, layout);
 
         var structs = buffer.getStructArray(0, 3);
         assertTrue(structs.isReadOnly());
@@ -255,7 +255,7 @@ public class ByteBufferTest {
 
     @Example
     void should_reject_a_struct_size_below_1_or_below_0_for_a_single_struct() {
-        var buffer = new ByteBuffer(new byte[Integer.BYTES + 4]);
+        var buffer = new TableReader(new byte[Integer.BYTES + 4]);
 
         var exception = assertThrows(IllegalArgumentException.class, () -> buffer.getStructArray(0, 0));
         assertEquals("A struct's size must be positive, not 0", exception.getMessage());
@@ -266,7 +266,7 @@ public class ByteBufferTest {
 
     @Example
     void should_reject_a_size_beyond_the_buffer_before_allocating_for_it() {
-        var buffer = new ByteBuffer(withSize(Integer.MAX_VALUE, 4));
+        var buffer = new TableReader(withSize(Integer.MAX_VALUE, 4));
 
         assertThrows(DecodeException.class, () -> buffer.getUint8Array(0));
         assertThrows(DecodeException.class, () -> buffer.getUint16Array(0));
@@ -284,7 +284,7 @@ public class ByteBufferTest {
     @Example
     void should_reject_a_size_whose_byte_length_overflows_an_int() {
         // 2^29 + 1 doubles take 2^32 + 8 bytes, which an int wraps around to 8
-        var buffer = new ByteBuffer(withSize((1 << 29) + 1, Double.BYTES));
+        var buffer = new TableReader(withSize((1 << 29) + 1, Double.BYTES));
 
         assertThrows(DecodeException.class, () -> buffer.getFloat64Array(0));
         assertThrows(DecodeException.class, () -> buffer.getFloat64ArrayView(0));
@@ -295,7 +295,7 @@ public class ByteBufferTest {
     void array_views_are_read_only_and_show_later_writes_to_the_bytes() {
         var bytes = new byte[Integer.BYTES + 2 * Float.BYTES];
         littleEndian(bytes).putInt(2).putFloat(1).putFloat(2);
-        var buffer = new ByteBuffer(bytes);
+        var buffer = new TableReader(bytes);
         var view = buffer.getFloat32ArrayView(0);
 
         assertTrue(view.isReadOnly());
@@ -314,14 +314,14 @@ public class ByteBufferTest {
         builder.setFloat64(1.5);
         var bytes = Arrays.copyOf(builder.bytes(), 20);
 
-        assertEquals(16, new ByteBuffer(bytes, layout).getSize());
-        assertEquals(20, new ByteBuffer(bytes).getSize());
+        assertEquals(16, new TableReader(bytes, layout).getSize());
+        assertEquals(20, new TableReader(bytes).getSize());
     }
 
     @Example
     void should_reject_reading_the_version_of_an_unversioned_table() {
         var layout = TableLayout.builder().sized(true).build();
-        var buffer = new ByteBuffer(new TableBuilder(0, layout).bytes(), layout);
+        var buffer = new TableReader(new TableBuilder(0, layout).bytes(), layout);
 
         assertThrows(IllegalStateException.class, buffer::getVersion);
     }

@@ -1,7 +1,7 @@
 from collections.abc import Buffer
 from struct import Struct
 
-from tafla import SIZEOF_32, ByteBuffer, TableBuilder, TableLayout
+from tafla import SIZEOF_32, TableBuilder, TableLayout, TableReader
 from tafla_benchmarks.codecs.codec import Codec, DocumentWorkload, Workload
 from tafla_benchmarks.workloads import (
     DocumentInput,
@@ -36,7 +36,7 @@ def serialize_record(input: RecordInput) -> memoryview:
 
 
 def deserialize_record(data: Buffer) -> RecordInput:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
 
     return RecordInput(
         buffer.get_float64(buffer.root_offset(0)),
@@ -93,9 +93,9 @@ def sum_a(data: Buffer) -> float:
     return total
 
 
-def _open_document(data: Buffer) -> ByteBuffer:
+def _open_document(data: Buffer) -> TableReader:
     """Raises ``ValueError`` if the document is in another version"""
-    buffer = ByteBuffer(data, DOCUMENT_LAYOUT)
+    buffer = TableReader(data, DOCUMENT_LAYOUT)
     if buffer.get_version() != DOCUMENT_VERSION:
         raise ValueError(f"Unsupported document version {buffer.get_version()}")
 
@@ -120,7 +120,7 @@ def _set_pair(pair: TableBuilder, input: ItemInput) -> None:
 
 
 def deserialize_list(data: Buffer) -> ListInput:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
     offsets = buffer.get_vector_offsets(buffer.root_offset(0))
 
     items: list[ItemInput] = []
@@ -155,7 +155,7 @@ def serialize_structs(input: ListInput) -> memoryview:
 
 def deserialize_structs(data: Buffer) -> ListInput:
     """Unpacks the array's view with ``struct``, as tafla-gen's code reads it"""
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
     structs = buffer.get_struct_array(buffer.root_offset(0), ITEM_STRUCT.size)
 
     return ListInput(
@@ -177,7 +177,7 @@ def serialize_sample(input: SampleInput) -> bytearray:
 
 
 def deserialize_sample(data: Buffer) -> SampleInput:
-    buffer = ByteBuffer(data)
+    buffer = TableReader(data)
 
     return SampleInput(
         buffer.get_uint32(0),
@@ -196,5 +196,5 @@ TAFLA = Codec(
 )
 """tafla's tables, nested from their builders, with columns read back as
 views. The fixed-size record is packed field by field with ``struct`` and read
-with ``ByteBuffer``'s getters at fixed positions, and an array of structs is
+with ``TableReader``'s getters at fixed positions, and an array of structs is
 packed and unpacked with ``struct``, as tafla-gen's code does."""

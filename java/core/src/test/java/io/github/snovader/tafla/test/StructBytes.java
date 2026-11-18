@@ -52,7 +52,7 @@ final class StructBytes {
      * {@return the struct of scalars of the types at {@code position}, read from the view of its
      * bytes}
      */
-    static StructField read(ByteBuffer buffer, int position, List<ScalarType> types) {
+    static StructField read(TableReader buffer, int position, List<ScalarType> types) {
         var values = valuesAt(buffer.getStruct(position, size(types)), types, 0);
 
         var scalars = new ArrayList<ScalarField>(types.size());
@@ -67,7 +67,7 @@ final class StructBytes {
      * {@return the array of structs of scalars of the types at {@code position}, each read from the
      * view of their bytes at its offset in it}
      */
-    static StructArrayField readArray(ByteBuffer buffer, int position, List<ScalarType> types) {
+    static StructArrayField readArray(TableReader buffer, int position, List<ScalarType> types) {
         var size = size(types);
         var structs = buffer.getStructArray(position, size);
         var count = structs.remaining() / size;

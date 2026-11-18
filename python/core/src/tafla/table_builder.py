@@ -3,7 +3,7 @@ from typing import Any, Literal, overload
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, byte_view, struct_count
-from .implementation import ByteBuffer, TableLayout, TableWriter
+from .implementation import TableLayout, TableReader, TableWriter
 from .layout import MAX_LENGTHS, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
 
@@ -37,8 +37,8 @@ class TableBuilder:
     in the order they're set. Arrays, strings and vectors start with their
     count, and a vector then holds the end of each item. Arrays of scalars and
     of structs are padded so their elements are aligned from the start of the
-    table. Fields are read back by index with ``ByteBuffer.root_offset()``, or
-    ``ByteBuffer.field_offset()`` for a table nested in another.
+    table. Fields are read back by index with ``TableReader.root_offset()``, or
+    ``TableReader.field_offset()`` for a table nested in another.
 
     Setting a field records it and counts the table's length. ``finalize()``
     then writes every field, in order, through a ``TableWriter``, so arrays,
@@ -72,7 +72,7 @@ class TableBuilder:
     __alignment: ElementSize
     # The table once written: its bytes, and then the buffer of them that
     # finalize() returns
-    __written: memoryview[int] | ByteBuffer | None
+    __written: memoryview[int] | TableReader | None
     # Per field: the TableWriter setter that writes it, the alignment that
     # it's padded to, which is 1 for a field that isn't, and its value. The
     # writer pads each field and writes its offset as it reaches it, so the
@@ -100,7 +100,7 @@ class TableBuilder:
         """``fields`` is the number of fields that the table will hold, and
         ``layout`` its header and offset type, which its readers must use too.
         ``version`` is written to the header, and required when the layout is
-        versioned. Readers can check it with ``ByteBuffer.get_version()``
+        versioned. Readers can check it with ``TableReader.get_version()``
         before reading any field.
 
         Raises ``TypeError`` if ``version`` is given for a layout without a
@@ -123,8 +123,8 @@ class TableBuilder:
         self.__alignment = SIZEOF_8
         self.__records = []
 
-    def finalize(self) -> ByteBuffer:
-        """Writes the table, once, and returns a ``ByteBuffer`` that reads
+    def finalize(self) -> TableReader:
+        """Writes the table, once, and returns a ``TableReader`` that reads
         it; later calls return the same buffer.
 
         Raises ``ValueError`` if fewer fields were set than the table holds, or
@@ -135,13 +135,13 @@ class TableBuilder:
         written = self.__written
         if written is None:
             written = self.__write()
-        elif isinstance(written, ByteBuffer):
+        elif isinstance(written, TableReader):
             return written
 
-        buffer = ByteBuffer(written, self.__layout)
-        self.__written = buffer
+        reader = TableReader(written, self.__layout)
+        self.__written = reader
 
-        return buffer
+        return reader
 
     def bytes(self) -> memoryview[int]:
         """Writes the table, once, as ``finalize()`` does, and returns its
@@ -151,7 +151,7 @@ class TableBuilder:
         if written is None:
             return self.__write()
 
-        return written.bytes() if isinstance(written, ByteBuffer) else written
+        return written.bytes() if isinstance(written, TableReader) else written
 
     def set_int8(self, value: int) -> None:
         self.__add_field(TableWriter.set_int8, value, SIZEOF_8)
@@ -308,7 +308,7 @@ class TableBuilder:
         self, table: TableBuilder | Buffer, alignment: ElementSize | None = None
     ) -> None:
         """Embeds a table, from its builder or its bytes, without a length
-        prefix. Readers find its fields with ``ByteBuffer.field_offset()`` from
+        prefix. Readers find its fields with ``TableReader.field_offset()`` from
         the field's offset, so its layout must be ``TableLayout.DEFAULT``.
 
         A builder must have all its fields set. ``finalize()`` writes it

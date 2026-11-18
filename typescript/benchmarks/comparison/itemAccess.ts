@@ -1,4 +1,4 @@
-import { readFloat32, ByteBuffer, SIZEOF_32 } from 'tafla';
+import { readFloat32, SIZEOF_32, TableReader } from 'tafla';
 import { ItemList, Triples } from './generated/tafla/workloads.ts';
 import type { ItemInput, ListInput } from './workloads.ts';
 
@@ -42,11 +42,11 @@ export function sumItem({ value, first, second }: ItemInput): number {
 /** An item as a struct: its three float32s */
 const ITEM_SIZE = 3 * SIZEOF_32;
 
-/** `ByteBuffer`'s getters by hand, as the tafla codec reads the list */
-export const byteBufferAccess: ItemAccess = {
+/** `TableReader`'s getters by hand, as the tafla codec reads the list */
+export const tableReaderAccess: ItemAccess = {
     name: 'tafla',
     lastTable(bytes) {
-        const buffer = new ByteBuffer(bytes);
+        const buffer = new TableReader(bytes);
         const vector = buffer.rootOffset(0);
         const item = buffer.getVectorOffset(
             vector,
@@ -56,7 +56,7 @@ export const byteBufferAccess: ItemAccess = {
         return sumTable(buffer, item);
     },
     everyTable(bytes) {
-        const buffer = new ByteBuffer(bytes);
+        const buffer = new TableReader(bytes);
         const offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
 
         // The reads are in the loop, as the codec's deserialize() has them:
@@ -74,13 +74,13 @@ export const byteBufferAccess: ItemAccess = {
         return sum;
     },
     lastStruct(bytes) {
-        const buffer = new ByteBuffer(bytes);
+        const buffer = new TableReader(bytes);
         const structs = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
 
         return sumStruct(structs, structs.length - ITEM_SIZE);
     },
     everyStruct(bytes) {
-        const buffer = new ByteBuffer(bytes);
+        const buffer = new TableReader(bytes);
         const structs = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
 
         let sum = 0;
@@ -92,7 +92,7 @@ export const byteBufferAccess: ItemAccess = {
     }
 };
 
-function sumTable(buffer: ByteBuffer, item: number): number {
+function sumTable(buffer: TableReader, item: number): number {
     const pair = buffer.fieldOffset(item, 1);
 
     return (

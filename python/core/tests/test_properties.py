@@ -28,7 +28,7 @@ from hypothesis.strategies import (
     tuples,
 )
 
-from tafla import ByteBuffer, DecodeError
+from tafla import DecodeError, TableReader
 from tests.descriptions import (
     LAYOUTS,
     OFFSET_TYPES,
@@ -42,10 +42,10 @@ from tests.tables import (
     FORMATS,
     LONGEST,
     Description,
+    DescriptionReader,
     MismatchError,
     OffsetType,
     Placement,
-    TableReader,
     alignment_of,
     build_table,
     comparable_field,
@@ -116,8 +116,8 @@ def read_corrupted(data: bytes, table: Description) -> None:
     ``DecodeError``, or ``MismatchError`` when the values don't have the
     description's shape; anything else propagates."""
     layout = table["layout"]
-    buffer = ByteBuffer(data, layout_of(layout))
-    reader = TableReader(data, layout)
+    buffer = TableReader(data, layout_of(layout))
+    reader = DescriptionReader(data, layout)
 
     reads: list[Callable[[], object]] = [buffer.get_size]
     if layout["versioned"]:
@@ -286,19 +286,19 @@ def packed_struct(types: list[str], values: list[object]) -> bytes:
     )
 
 
-def _last_vector_item(buffer: ByteBuffer, position: int) -> int | None:
+def _last_vector_item(buffer: TableReader, position: int) -> int | None:
     """Finds the last item of the vector at ``position`` from its ends, which
     reads the ends before and after it"""
     length = buffer.get_vector_length(position)
     return None if length == 0 else buffer.get_vector_offset(position, length - 1)
 
 
-type _Getter = Callable[[ByteBuffer, int], object]
+type _Getter = Callable[[TableReader, int], object]
 
 # Every getter of a value at a position, with sizes of structs that need one
 _GETTERS: dict[str, _Getter] = {
     **{
-        name: getattr(ByteBuffer, name)
+        name: getattr(TableReader, name)
         for name in [
             *(f"get_{kind}" for kind in FORMATS),
             *(f"get_{kind}_array" for kind in FORMATS),
@@ -339,8 +339,8 @@ class TestUntrustedBytes(unittest.TestCase):
         truncated = serialized[:length]
 
         layout = table["layout"]
-        buffer = ByteBuffer(truncated, layout_of(layout))
-        reader = TableReader(truncated, layout)
+        buffer = TableReader(truncated, layout_of(layout))
+        reader = DescriptionReader(truncated, layout)
 
         if layout["sized"]:
             with suppress(DecodeError):
@@ -387,7 +387,7 @@ class TestUntrustedBytes(unittest.TestCase):
     ) -> None:
         """Reads the header, and a value at the offset of a root field or of a
         field of a table nested in it, to the depth of ``indices``"""
-        buffer = ByteBuffer(data, layout_of(layout))
+        buffer = TableReader(data, layout_of(layout))
 
         def read_value() -> object:
             position = buffer.root_offset(indices[0])
@@ -421,7 +421,7 @@ class TestUntrustedBytes(unittest.TestCase):
     ) -> None:
         """Positions and field indices come from the caller as well as from
         the bytes, and may lie past any position that the bytes hold"""
-        buffer = ByteBuffer(data, layout_of(layout))
+        buffer = TableReader(data, layout_of(layout))
 
         reads: list[Callable[[], object]] = [
             partial(_GETTERS[getter], buffer, position),

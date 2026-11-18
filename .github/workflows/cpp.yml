@@ -239,7 +239,7 @@ jobs:
           -DTAFLA_BUILD_FUZZERS=ON -DTAFLA_SANITIZERS=address,undefined
 
       - name: Build the fuzz targets
-        run: cmake --build build --target fuzz_byte_buffer fuzz_conformance
+        run: cmake --build build --target fuzz_table_reader fuzz_conformance
 
       # Before the fuzz targets run, so that a crash doesn't discard the build
       - name: Save the compiler cache
@@ -250,7 +250,7 @@ jobs:
 
       - name: Run each fuzz target for a minute
         run: |
-          for target in byte_buffer conformance; do
+          for target in table_reader conformance; do
               mkdir -p build/corpus/$target
               build/fuzz/fuzz_$target build/corpus/$target ../conformance/valid ../conformance/equivalent \
                   ../conformance/invalid -max_total_time=60 -timeout=10

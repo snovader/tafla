@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError } from 'tafla';
+import { DecodeError, TableReader } from 'tafla';
 import {
     corruptionOf,
     fitsItsLayout,
@@ -42,14 +42,14 @@ import {
     structAlignment,
     structSize,
     DescriptionMismatch,
-    ELEMENT_SIZES,
-    TableReader
+    DescriptionReader,
+    ELEMENT_SIZES
 } from './conformance/tables.ts';
 
 // The properties that every implementation of tafla shares, of tables built
 // from arbitrary descriptions in the conformance suite's model. `tablesIn()`
 // reads the bytes that the format rules check with DataView, independently
-// of ByteBuffer.
+// of TableReader.
 
 it.prop([tables(), SLICES])(
     'should read back the values of a table built from any description, wherever its bytes lie',
@@ -281,7 +281,7 @@ const GETTERS = {
         const length = buffer.getVectorLength(position);
         return length === 0 ? null : buffer.getVectorItemOffset(position, length, length - 1);
     }
-} satisfies Record<string, (buffer: ByteBuffer, position: number) => unknown>;
+} satisfies Record<string, (buffer: TableReader, position: number) => unknown>;
 
 type Getter = keyof typeof GETTERS;
 
@@ -351,8 +351,8 @@ function expectReadsWithin(bytes: Uint8Array, table: TableDescription, byteOffse
  */
 function readFields(bytes: Uint8Array, table: TableDescription): unknown[] {
     const { layout, fields } = table;
-    const buffer = new ByteBuffer(bytes, layoutOf(layout));
-    const reader = new TableReader(bytes, layout);
+    const buffer = new TableReader(bytes, layoutOf(layout));
+    const reader = new DescriptionReader(bytes, layout);
 
     return [
         valueOrDecodeError(() => buffer.getSize()),
@@ -368,7 +368,7 @@ function readFields(bytes: Uint8Array, table: TableDescription): unknown[] {
  * hold values that don't match the description, which this returns as the
  * mismatch.
  */
-function readRootField(reader: TableReader, index: number, field: FieldDescription): unknown {
+function readRootField(reader: DescriptionReader, index: number, field: FieldDescription): unknown {
     try {
         return reader.readRootField(index, field);
     } catch (error) {
@@ -391,7 +391,7 @@ function readPath(
     getter: Getter,
     [root, ...path]: number[]
 ): unknown[] {
-    const buffer = new ByteBuffer(bytes, layoutOf(layout));
+    const buffer = new TableReader(bytes, layoutOf(layout));
 
     return [
         valueOrDecodeError(() => buffer.getSize()),

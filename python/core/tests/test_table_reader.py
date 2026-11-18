@@ -11,7 +11,7 @@ from struct import calcsize, iter_unpack, pack, unpack
 from hypothesis import given
 from hypothesis.strategies import DrawFn, binary, composite, integers, sampled_from
 
-from tafla import SIZEOF_32, ByteBuffer, DecodeError, TableBuilder
+from tafla import SIZEOF_32, DecodeError, TableBuilder, TableReader
 from tafla.types import IntTypeCode
 from tests.byte_order import big_endian_host
 from tests.descriptions import ARRAY_FIELDS
@@ -32,15 +32,15 @@ def strided_views(draw: DrawFn) -> memoryview:
     return memoryview(data).cast(type_code)[::step]
 
 
-class TestByteBuffer(unittest.TestCase):
+class TestTableReader(unittest.TestCase):
     @given(strided_views())
     def test_takes_bytes_only_when_theyre_c_contiguous(self, view: memoryview) -> None:
         """Reads return views of the bytes, which a copy of them wouldn't be"""
         if view.c_contiguous:
-            self.assertEqual(bytes(ByteBuffer(view).bytes()), view.tobytes())
+            self.assertEqual(bytes(TableReader(view).bytes()), view.tobytes())
         else:
             with self.assertRaisesRegex(TypeError, "isn't C-contiguous"):
-                ByteBuffer(view)
+                TableReader(view)
 
     @unittest.skipUnless(sys.byteorder == "little", "Big-endian hosts read copies")
     @given(ARRAY_FIELDS, integers(1, 7))
@@ -49,7 +49,7 @@ class TestByteBuffer(unittest.TestCase):
     ) -> None:
         table = {"layout": DEFAULT_LAYOUT, "fields": [field]}
         backing = bytearray(misalignment) + build_table(table).bytes()
-        buffer = ByteBuffer(memoryview(backing)[misalignment:])
+        buffer = TableReader(memoryview(backing)[misalignment:])
 
         element = field["type"].removesuffix("[]")
         values = getattr(buffer, f"get_{element}_array")(buffer.root_offset(0))
@@ -66,7 +66,7 @@ class TestByteBuffer(unittest.TestCase):
             builder.set_int32_array(values)
             serialized = bytes(builder.bytes())
 
-            read = ByteBuffer(serialized).get_int32_array(SIZEOF_32)
+            read = TableReader(serialized).get_int32_array(SIZEOF_32)
 
         self.assertEqual(values.tolist(), [1, -2])
         self.assertEqual(serialized[2 * SIZEOF_32 :], b"\0\0\0\x01\xff\xff\xff\xfe")
@@ -74,7 +74,7 @@ class TestByteBuffer(unittest.TestCase):
         self.assertIsNot(read.obj, serialized)
 
     def test_rejects_struct_sizes_less_than_1(self) -> None:
-        buffer = ByteBuffer(bytes(16))
+        buffer = TableReader(bytes(16))
 
         # A size of more digits than Python converts to a string is given by
         # its bit length
@@ -98,7 +98,7 @@ class TestByteBuffer(unittest.TestCase):
         builder.set_struct_array(pack("<hfhf", 3, 0.5, 4, -0.5), 6, 4)
 
         backing = bytearray(1) + builder.bytes()
-        buffer = ByteBuffer(memoryview(backing)[1:])
+        buffer = TableReader(memoryview(backing)[1:])
         struct_bytes = buffer.get_struct(buffer.root_offset(0), 6)
         array_bytes = buffer.get_struct_array(buffer.root_offset(1), 6)
 
@@ -152,7 +152,7 @@ class TestByteBuffer(unittest.TestCase):
             file.flush()
 
             with mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as mapped:
-                buffer = ByteBuffer(mapped)
+                buffer = TableReader(mapped)
                 try:
                     vector = position + buffer.get_uint32(position)
                     # The table's offset, then the vector's count and two ends
@@ -209,7 +209,7 @@ class TestByteBuffer(unittest.TestCase):
     ) -> None:
         """With the count that get_vector_length() returns, each item's
         position or DecodeError is get_vector_offset()'s, for any bytes"""
-        buffer = ByteBuffer(data)
+        buffer = TableReader(data)
         try:
             count = buffer.get_vector_length(position)
         except DecodeError:
@@ -229,7 +229,7 @@ class TestByteBuffer(unittest.TestCase):
         self,
     ) -> None:
         # A count of 3, whose ends need 12 bytes after it, where 4 are left
-        buffer = ByteBuffer(bytes([3, 0, 0, 0, 8, 0, 0, 0]))
+        buffer = TableReader(bytes([3, 0, 0, 0, 8, 0, 0, 0]))
 
         for index in [0, 3]:
             with self.subTest(index=index), self.assertRaises(DecodeError):

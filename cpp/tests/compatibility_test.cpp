@@ -95,7 +95,7 @@ TEST(Compatibility, EveryKindOfField) {
 
     EXPECT_EQ(builder.to_bytes().to_vector(), kKinds);
 
-    const ByteBuffer buffer(kKinds, TableLayout());
+    const TableReader buffer(kKinds, TableLayout());
     const auto at = [&buffer](std::size_t index) { return buffer.root_offset(index); };
 
     EXPECT_EQ(buffer.get_int8(at(0)), std::numeric_limits<std::int8_t>::min());
@@ -167,7 +167,7 @@ TEST(Compatibility, VersionedDocumentWithNestedTables) {
 
     EXPECT_EQ(document.to_bytes().to_vector(), kDocument);
 
-    const ByteBuffer buffer(kDocument, layout);
+    const TableReader buffer(kDocument, layout);
     EXPECT_EQ(buffer.size(), kDocument.size());
     EXPECT_EQ(buffer.version(), 3U);
     EXPECT_EQ(buffer.get_float64(buffer.root_offset(0)), 59.3293);
@@ -181,7 +181,7 @@ TEST(Compatibility, VersionedDocumentWithNestedTables) {
 
     const auto vector = buffer.get_vector(buffer.root_offset(4));
     ASSERT_EQ(vector.size(), 2U);
-    const ByteBuffer first(vector.get(0), TableLayout());
+    const TableReader first(vector.get(0), TableLayout());
     EXPECT_EQ(first.get_float32(first.root_offset(0)), 0.5F);
     EXPECT_EQ(first.get_uint16_array(first.root_offset(1)).to_vector(), item_values);
     EXPECT_EQ(vector_of(vector.get(1)), bytes_item);
@@ -199,7 +199,7 @@ TEST(Compatibility, Uint8OffsetsWithATableNestedAsBytes) {
 
     EXPECT_EQ(small.to_bytes().to_vector(), kSmall);
 
-    const ByteBuffer buffer(kSmall, layout);
+    const TableReader buffer(kSmall, layout);
     const auto position = buffer.root_offset(2);
     EXPECT_EQ(position % alignment_bytes(Alignment::four), 0U);
     EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), "hi");
@@ -227,14 +227,14 @@ TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
 
     EXPECT_EQ(medium.to_bytes().to_vector(), kMedium);
 
-    const ByteBuffer buffer(kMedium, layout);
+    const TableReader buffer(kMedium, layout);
     EXPECT_EQ(buffer.version(), 513U);
     EXPECT_EQ(buffer.get_float32_array(buffer.root_offset(0)).to_vector(), values);
 
     const auto vector = buffer.get_vector(buffer.root_offset(1));
     ASSERT_EQ(vector.size(), 2U);
-    const ByteBuffer narrow_item(vector.get(0), narrow_layout);
-    const ByteBuffer wide_item(vector.get(1), TableLayout());
+    const TableReader narrow_item(vector.get(0), narrow_layout);
+    const TableReader wide_item(vector.get(1), TableLayout());
     EXPECT_EQ(narrow_item.get_uint8(narrow_item.root_offset(0)), 42);
     EXPECT_EQ(wide_item.get_float64_array(wide_item.root_offset(0)).to_vector(), wide_values);
 }

@@ -28,11 +28,11 @@ pub enum DecodeError {
     /// starts where the item before it ends, and the first after the ends.
     ItemEndsBeforeStart { start: usize, end: usize },
     /// The header carries format `version`, which the reader can't read,
-    /// since it reads version `supported`. `ByteBuffer` doesn't compare
-    /// versions: a reader returns this when [`ByteBuffer::version()`] isn't
+    /// since it reads version `supported`. `TableReader` doesn't compare
+    /// versions: a reader returns this when [`TableReader::version()`] isn't
     /// its own.
     ///
-    /// [`ByteBuffer::version()`]: crate::ByteBuffer::version
+    /// [`TableReader::version()`]: crate::TableReader::version
     UnsupportedVersion { version: u32, supported: u32 },
 }
 

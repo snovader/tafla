@@ -93,8 +93,8 @@ void collect(Errors& errors, Read read) {
 std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Table& table, std::size_t position,
                                   std::size_t index, std::size_t size, Errors* errors) {
     const auto& layout = table.layout;
-    const ByteBuffer buffer(bytes, layout.unversioned());
-    const ByteBuffer versioned(bytes, layout.unversioned().versioned());
+    const TableReader buffer(bytes, layout.unversioned());
+    const TableReader versioned(bytes, layout.unversioned().versioned());
 
     std::vector<std::string> reads;
     const auto read = [&](auto function) {
@@ -239,7 +239,7 @@ void expect_outside(const tafla::DecodeError& error, std::size_t position, std::
 
 TEST(DecodeError, ThrownOutsideTheBytes) {
     const std::vector<std::uint8_t> backing(32, 0);
-    const ByteBuffer buffer{std::span(backing).first(8), TableLayout()};
+    const TableReader buffer{std::span(backing).first(8), TableLayout()};
 
     expect_outside(error_of([&] { return buffer.get_float64(4); }), 4, 8);
     EXPECT_EQ(std::string(error_of([&] { return buffer.get_int64(SIZE_MAX); }).what()),
@@ -272,7 +272,7 @@ std::vector<std::uint8_t> slice_of(std::initializer_list<std::uint32_t> uint32s)
 // also read as the count of an array, string or array of structs
 TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
     const auto backing = slice_of({1, 13});
-    const ByteBuffer buffer{std::span(backing).subspan(4, 8), TableLayout()};
+    const TableReader buffer{std::span(backing).subspan(4, 8), TableLayout()};
 
     expect_outside(error_of([&] { return buffer.get_uint8_array(4); }), 8, 13);
     expect_outside(error_of([&] { return buffer.get_string(4); }), 8, 13);
@@ -289,7 +289,7 @@ TEST(DecodeError, ThrownForAnArrayStringStructOrVectorItemOutsideTheBytes) {
 
 TEST(DecodeError, ThrownForAVectorWhoseEndsLieOutsideTheBytes) {
     const auto backing = slice_of({3});
-    const ByteBuffer buffer{std::span(backing).subspan(4, 8), TableLayout()};
+    const TableReader buffer{std::span(backing).subspan(4, 8), TableLayout()};
 
     // The count of 3, at 0, has three ends, of 12 bytes from 4. The count is
     // checked before any item is found, so an index past it fails with the
@@ -302,7 +302,7 @@ TEST(DecodeError, ThrownForAVectorItemThatEndsBeforeItStarts) {
     // A count of 2 puts the first item after the ends, at 12, but it ends at
     // 11
     const std::vector<std::uint8_t> bytes{2, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0};
-    const auto vector = ByteBuffer(bytes, TableLayout()).get_vector(0);
+    const auto vector = TableReader(bytes, TableLayout()).get_vector(0);
 
     const auto expect_ends_before_start = [](const tafla::DecodeError& error) {
         EXPECT_EQ(error.kind(), tafla::DecodeError::Kind::item_ends_before_start);
@@ -322,7 +322,7 @@ TEST(DecodeError, ThrownForAVectorItemThatEndsBeforeItStarts) {
 
 TEST(DecodeError, ThrownForAnArrayWhoseByteLengthOverflows) {
     const std::vector<std::uint8_t> bytes{255, 255, 255, 255, 0, 0, 0, 0};
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader buffer(bytes, TableLayout());
 
     expect_outside(error_of([&] { return buffer.get_float64_array(0); }), 4, 8ULL * 0xffff'ffff);
 
@@ -345,7 +345,7 @@ TEST(DecodeError, ThrownForInvalidUtf8) {
         detail::store(bytes.data(), static_cast<std::uint32_t>(utf8.size()));
         bytes.insert(bytes.end(), utf8.begin(), utf8.end());
 
-        const auto error = error_of([&] { return ByteBuffer(bytes, TableLayout()).get_string(0); });
+        const auto error = error_of([&] { return TableReader(bytes, TableLayout()).get_string(0); });
         EXPECT_EQ(error.kind(), tafla::DecodeError::Kind::invalid_utf8) << name;
         EXPECT_EQ(error.position(), 0U) << name;
         EXPECT_STREQ(error.what(), "The string at 0 isn't valid UTF-8") << name;
@@ -358,7 +358,7 @@ TEST(DecodeError, DescribesAnUnsupportedVersion) {
     builder.set_uint8(42);
     const auto bytes = builder.to_bytes();
 
-    const auto version = ByteBuffer(bytes, layout).version();
+    const auto version = TableReader(bytes, layout).version();
     const auto error = tafla::DecodeError::unsupported_version(version, 1);
 
     EXPECT_EQ(error.kind(), tafla::DecodeError::Kind::unsupported_version);

@@ -1,6 +1,6 @@
 import { describe, expect, vi } from 'vitest';
 import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, TableBuilder, TableLayout, type TableItem } from 'tafla';
+import { TableBuilder, TableLayout, TableReader, type TableItem } from 'tafla';
 import { tables, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
@@ -189,7 +189,7 @@ describe('tables nested from their builders', () => {
             expect(parentOf(() => buildTable(table), length)).toStrictEqual(expected);
             expect(parentOf(() => finalized, length)).toStrictEqual(expected);
 
-            const buffer = new ByteBuffer(expected);
+            const buffer = new TableReader(expected);
             expect(buffer.getVector(buffer.rootOffset(2))).toStrictEqual([bytes, bytes]);
         }
     );

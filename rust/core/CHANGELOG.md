@@ -19,7 +19,7 @@ first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - Bounds-checked reads, which fail on malformed input with `DecodeError`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
@@ -42,13 +42,14 @@ first commits, for code built from its source before the release.
 ### Changed
 
 - The project is named tafla rather than buffy.
+- The type that reads a table is `TableReader` rather than `ByteBuffer`.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
 - `TableWriter::set_structs()` takes each struct by reference, so it needn't
   be `Copy`.
-- `ByteBuffer::get_str()` checks whether a string is ASCII, a word at a time
+- `TableReader::get_str()` checks whether a string is ASCII, a word at a time
   at any address, before it checks its UTF-8 with `str::from_utf8()`, which
   checks a string's bytes one at a time but for whole pairs of aligned words.
   The benchmarks' record, whose 16-byte name isn't aligned, read in 6.3 ns

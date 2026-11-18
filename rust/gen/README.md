@@ -112,7 +112,7 @@ or read its tables, or a target couldn't generate its code:
 - A declaration can't take a name that a target's generated code imports or
   relies on, which it would clash with or hide, in any target, so that a
   schema generates code for every target. These are the runtime's classes,
-  such as `ByteBuffer` and `TableWriter`, the names of each language's
+  such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java and `Option`
   in Rust, `Fields`, the record of a Java class's fields, keywords, such as
@@ -219,7 +219,7 @@ rather than a view of a writer's, through the runtime's
 `TableWriter.write_fields()`. Every message has a static
 `read_values(data)`, which reads its values as `field_values()` does without
 creating a reader: those of a message of only such fields in one call,
-through `ByteBuffer.read_fields()`. A view of a vector
+through `TableReader.read_fields()`. A view of a vector
 has `field_values()`, which reads every item's values, at once when the
 table is of fixed size, `iter_field_values()`, which iterates over them,
 reading each item when it reaches it, and `item_field_values(index)`, which
@@ -290,7 +290,7 @@ array of them with `serializeArray()`, `serialize_array()` or
 In TypeScript and JavaScript, `fields()` reads every field of a message or a
 table at once into the `<Name>Fields` that it's written from, nested tables
 and the items of its vectors and arrays of structs included, without a reader
-for each, which a nested table's static `read(buffer, position)` reads. A
+for each, which a nested table's static `read(reader, position)` reads. A
 view's `fields()` reads every item's, and a struct's static
 `read(bytes, offset)` reads its fields without creating it. One call reads
 each nested table once, and allocates in proportion to the bytes: a table has
@@ -349,7 +349,7 @@ A view creates the reader of each item that it reads, but not those of the
 items it skips, nor an array of them. TypeScript's views aren't iterable,
 since a loop of `for...of` over them took twice as long as a loop of `get(i)`
 in V8. The comparison suites time reading the last item and every item
-through views, against `ByteBuffer` by hand.
+through views, against `TableReader` by hand.
 
 Java's getter of an array of scalars returns a copy, a Java array, where the
 other targets return the array in place. So beside it, `<field>View()`
@@ -484,7 +484,7 @@ a message holds the bytes from the table's start, 16 bytes on a 64-bit host,
 and reads its offsets at constant positions from there, so the positions of
 its decode errors count from the table's start too, as a vector item's do.
 Its parent's getter throws a `tafla::DecodeError` if the table's offset leads
-past the bytes, through the runtime's `ByteBuffer::get_table()`.
+past the bytes, through the runtime's `TableReader::get_table()`.
 It also has a default constructor, of no bytes, whose getters throw a
 `tafla::DecodeError`, so that `to_vector()` of a vector's view can size its
 `std::vector` before reading the items into it.
