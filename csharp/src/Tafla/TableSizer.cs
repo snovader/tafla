@@ -122,7 +122,8 @@ public struct TableSizer
     /// bytes, which takes its fields in the order that they were added. Its
     /// <see cref="TableWriter.ByteLength"/> is the table's length, the number of bytes that hold it. It
     /// writes every byte of the table, padding too, so the bytes needn't be zero, and leaves those
-    /// after it as they were.
+    /// after it as they were: fields that differ from those added throw rather than write past the
+    /// table.
     /// </summary>
     /// <remarks>
     /// The caller owns the bytes, and the writer keeps them only until the table is written. The table

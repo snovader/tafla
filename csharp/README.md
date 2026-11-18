@@ -151,6 +151,8 @@ the bytes of structs for the caller to write in place.
 The writer's calls follow from a schema, so it doesn't check them again: a
 field index outside its table, or an item outside its vector, leaves the
 table's bytes undefined, though every write stays within the writer's bytes.
+Fields that differ from those that the sizer counted, in their lengths or
+number, never write past the table, even in reused bytes longer than it.
 Hand-written tables use `TableBuilder`, which checks every field. Both are
 mutable structs, so that sizing and writing a table allocates only its
 bytes: use them as locals, or pass them by `ref`.
@@ -204,10 +206,10 @@ allocated, with the table's length and its last field's index.
 `TableWriter.SetStructArray()` throws `NotWholeStructs` as the builder does.
 A writer whose fields differ from those that its sizer counted throws
 `NotAsSized`, with the bytes that the fields wrote, `Written`, and the
-table's `Length`: a field that would end past the writer's bytes throws it
-without writing past them, after which the writer mustn't be used, and
-`Bytes` and `ByteLength` throw it when the fields didn't write the table's
-length.
+table's `Length`: a field that would end past the table throws it without
+writing past it, even in longer bytes, after which the writer mustn't be
+used, and `Bytes` and `ByteLength` throw it when the fields didn't fill the
+table.
 
 Mistakes of the code that calls the runtime, which no bytes or values cause,
 throw the argument exceptions of .NET's own APIs:

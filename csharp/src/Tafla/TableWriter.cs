@@ -32,12 +32,11 @@ namespace Tafla;
 /// tables use <see cref="TableBuilder"/>, which checks every field.
 /// </para>
 /// <para>
-/// Fields that differ from those that the sizer added, such as values that changed in between, never
-/// write outside the writer's bytes either: a field that would end past them throws a
-/// <see cref="BuildException"/> of kind <see cref="BuildErrorKind.NotAsSized"/>, after which the
-/// writer mustn't be used. In bytes longer than the table, such fields may write past its end before
-/// that. <see cref="Bytes"/> and <see cref="ByteLength"/> throw the same for fields that didn't write
-/// the table's length.
+/// Fields that differ from those that the sizer added, in their lengths or number, such as values
+/// that changed in between, never write past the table, even in bytes longer than it: a field that
+/// would end past it throws a <see cref="BuildException"/> of kind
+/// <see cref="BuildErrorKind.NotAsSized"/>, after which the writer mustn't be used, and
+/// <see cref="Bytes"/> and <see cref="ByteLength"/> throw the same for fields that didn't fill it.
 /// </para>
 /// <para>
 /// A writer is a mutable struct, so that writing a table allocates only its bytes. Use it as a local,
@@ -98,8 +97,7 @@ public struct TableWriter
     /// <see cref="TableSizer.CreateWriter(byte[])"/>, whose first <see cref="ByteLength"/> bytes hold it.
     /// </summary>
     /// <exception cref="BuildException">
-    /// The fields didn't write the table's length, as when they differ from those that the sizer
-    /// counted.
+    /// The fields didn't fill the table, as when they differ from those that the sizer counted.
     /// </exception>
     public readonly byte[] Bytes
     {
@@ -112,8 +110,7 @@ public struct TableWriter
 
     /// <summary>The table's length, the number of bytes from the start of <see cref="Bytes"/> that hold it.</summary>
     /// <exception cref="BuildException">
-    /// The fields didn't write the table's length, as when they differ from those that the sizer
-    /// counted.
+    /// The fields didn't fill the table, as when they differ from those that the sizer counted.
     /// </exception>
     public readonly int ByteLength
     {
@@ -132,7 +129,7 @@ public struct TableWriter
     /// its parent's <see cref="SetTable"/> or <see cref="SetVector"/>.
     /// </summary>
     /// <returns>The parent table, which <see cref="EndTable"/> takes back.</returns>
-    /// <exception cref="BuildException">The table's offsets end past the bytes.</exception>
+    /// <exception cref="BuildException">The nested table's offsets end past the table.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
     public WriterParent StartTable(int fields)
     {
@@ -158,50 +155,50 @@ public struct TableWriter
     // Scalars aren't aligned, so they need no padding
 
     /// <summary>Writes field <paramref name="index"/>, an <c>int8</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt8(int index, sbyte value) => StartField(index, 0, sizeof(sbyte))[0] = (byte)value;
 
     /// <summary>Writes field <paramref name="index"/>, a <c>uint8</c>, which is also how a <c>bool</c> is written, as 0 or 1.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt8(int index, byte value) => StartField(index, 0, sizeof(byte))[0] = value;
 
     /// <summary>Writes field <paramref name="index"/>, an <c>int16</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt16(int index, short value) =>
         BinaryPrimitives.WriteInt16LittleEndian(StartField(index, 0, sizeof(short)), value);
 
     /// <summary>Writes field <paramref name="index"/>, a <c>uint16</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt16(int index, ushort value) =>
         BinaryPrimitives.WriteUInt16LittleEndian(StartField(index, 0, sizeof(ushort)), value);
 
     /// <summary>Writes field <paramref name="index"/>, an <c>int32</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt32(int index, int value) =>
         BinaryPrimitives.WriteInt32LittleEndian(StartField(index, 0, sizeof(int)), value);
 
     /// <summary>Writes field <paramref name="index"/>, a <c>uint32</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt32(int index, uint value) =>
         BinaryPrimitives.WriteUInt32LittleEndian(StartField(index, 0, sizeof(uint)), value);
 
     /// <summary>Writes field <paramref name="index"/>, an <c>int64</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt64(int index, long value) =>
         BinaryPrimitives.WriteInt64LittleEndian(StartField(index, 0, sizeof(long)), value);
 
     /// <summary>Writes field <paramref name="index"/>, a <c>uint64</c>.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt64(int index, ulong value) =>
         BinaryPrimitives.WriteUInt64LittleEndian(StartField(index, 0, sizeof(ulong)), value);
 
     /// <summary>Writes field <paramref name="index"/>, a <c>float32</c>, with all its bits, a NaN's payload too.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetFloat32(int index, float value) =>
         BinaryPrimitives.WriteSingleLittleEndian(StartField(index, 0, sizeof(float)), value);
 
     /// <summary>Writes field <paramref name="index"/>, a <c>float64</c>, with all its bits, a NaN's payload too.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetFloat64(int index, double value) =>
         BinaryPrimitives.WriteDoubleLittleEndian(StartField(index, 0, sizeof(double)), value);
 
@@ -209,43 +206,43 @@ public struct TableWriter
     // a multiple of their size from the start of the table, and copied in bulk
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>int8</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt8Array(int index, ReadOnlySpan<sbyte> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>uint8</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt8Array(int index, ReadOnlySpan<byte> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>int16</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt16Array(int index, ReadOnlySpan<short> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>uint16</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt16Array(int index, ReadOnlySpan<ushort> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>int32</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt32Array(int index, ReadOnlySpan<int> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>uint32</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt32Array(int index, ReadOnlySpan<uint> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>int64</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetInt64Array(int index, ReadOnlySpan<long> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>uint64</c>s.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetUInt64Array(int index, ReadOnlySpan<ulong> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>float32</c>s, with all their bits.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetFloat32Array(int index, ReadOnlySpan<float> values) => SetArray(index, values);
 
     /// <summary>Writes field <paramref name="index"/>, an array of <c>float64</c>s, with all their bits.</summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetFloat64Array(int index, ReadOnlySpan<double> values) => SetArray(index, values);
 
     /// <summary>
@@ -253,7 +250,7 @@ public struct TableWriter
     /// the table, with each lone surrogate as U+FFFD, as <see cref="TableBuilder.SetString"/> writes it.
     /// </summary>
     /// <exception cref="ArgumentNullException"><paramref name="value"/> is null.</exception>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetString(int index, string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -261,15 +258,16 @@ public struct TableWriter
         var width = Width;
         var start = _position;
 
-        // The string's count, as well as its bytes, may lie past the writer's bytes. Compared unsigned,
-        // as the slice compares it, so that the JIT drops the slice's check.
-        var bytes = _bytes.AsSpan();
-        if ((uint)(start + width) > (uint)bytes.Length)
+        // The string is encoded into the rest of the table, rather than of the bytes, and its count, as
+        // well as its bytes, may end past it. Compared unsigned, as the slice compares it, so that the
+        // JIT drops the slice's check.
+        var table = _bytes.AsSpan(0, _length);
+        if ((uint)(start + width) > (uint)table.Length)
         {
             ThrowNotAsSized(start, _length);
         }
 
-        if (!Encoding.UTF8.TryGetBytes(value, bytes[(start + width)..], out var count))
+        if (!Encoding.UTF8.TryGetBytes(value, table[(start + width)..], out var count))
         {
             ThrowNotAsSized(start, _length);
         }
@@ -283,7 +281,7 @@ public struct TableWriter
     /// Writes field <paramref name="index"/>, a struct, from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding.
     /// </summary>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     public void SetStruct(int index, ReadOnlySpan<byte> bytes) => bytes.CopyTo(StartField(index, 0, bytes.Length));
 
     /// <summary>
@@ -291,7 +289,7 @@ public struct TableWriter
     /// caller to write every one of them: its scalars, little-endian, one after another.
     /// </summary>
     /// <remarks>The bytes aren't zero in bytes that the writer was given, or that it allocated without zeroing.</remarks>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="size"/> is negative.</exception>
     public Span<byte> ReserveStruct(int index, int size)
     {
@@ -306,7 +304,7 @@ public struct TableWriter
     /// <see cref="TableBuilder.SetStructArray"/> writes them.
     /// </summary>
     /// <exception cref="BuildException">
-    /// The bytes aren't a whole number of structs, or the field ends past the writer's bytes.
+    /// The bytes aren't a whole number of structs, or the field ends past the table.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="size"/> is less than 1, or <paramref name="alignment"/> isn't 1, 2, 4 or 8.
@@ -330,7 +328,7 @@ public struct TableWriter
     /// them, without collecting them first.
     /// </summary>
     /// <remarks>The bytes aren't zero in bytes that the writer was given, or that it allocated without zeroing.</remarks>
-    /// <exception cref="BuildException">The field ends past the bytes.</exception>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="count"/> is negative, <paramref name="size"/> is less than 1, or
     /// <paramref name="alignment"/> isn't 1, 2, 4 or 8.
@@ -349,7 +347,7 @@ public struct TableWriter
     /// multiple of <paramref name="alignment"/>, as the sizer's <see cref="TableSizer.AddTable"/> padded
     /// it. Its fields then follow between <see cref="StartTable"/> and <see cref="EndTable"/>.
     /// </summary>
-    /// <exception cref="BuildException">The padding ends past the bytes.</exception>
+    /// <exception cref="BuildException">The padding ends past the table.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="alignment"/> isn't 1, 2, 4 or 8.</exception>
     public void SetTable(int index, int alignment)
     {
@@ -363,7 +361,7 @@ public struct TableWriter
     /// and <see cref="EndTable"/>, and then <see cref="SetItemEnd"/>.
     /// </summary>
     /// <returns>The vector's position, which <see cref="SetItemEnd"/> takes.</returns>
-    /// <exception cref="BuildException">The vector's count and ends end past the bytes.</exception>
+    /// <exception cref="BuildException">The vector's count and ends end past the table.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
     public VectorPosition SetVector(int index, int count)
     {
@@ -408,7 +406,7 @@ public struct TableWriter
     /// Writes <paramref name="padding"/> zeros and the offset of field <paramref name="index"/> after
     /// them, moves past the field's <paramref name="byteLength"/> bytes, and returns them
     /// </summary>
-    /// <exception cref="BuildException">The field ends past the bytes, before anything is written.</exception>
+    /// <exception cref="BuildException">The field ends past the table, before anything is written.</exception>
     private Span<byte> StartField(int index, int padding, long byteLength)
     {
         var start = _position + padding;
@@ -422,11 +420,11 @@ public struct TableWriter
     /// Writes <paramref name="padding"/> zeros, moves past the <paramref name="byteLength"/> bytes after
     /// them, and returns those bytes
     /// </summary>
-    /// <exception cref="BuildException">They end past the bytes, before anything is written.</exception>
+    /// <exception cref="BuildException">They end past the table, before anything is written.</exception>
     private Span<byte> Reserve(int padding, long byteLength)
     {
         var start = (long)_position + padding;
-        if (start + byteLength > (_bytes?.Length ?? 0))
+        if (start + byteLength > _length)
         {
             ThrowNotAsSized(_position, _length);
         }
@@ -474,7 +472,7 @@ public struct TableWriter
     /// <summary>
     /// Throws the error of fields that differ from those sized, which wrote <paramref name="written"/>
     /// of the table's <paramref name="length"/> bytes, in all or before one that would end past the
-    /// writer's bytes
+    /// table
     /// </summary>
     /// <remarks>Static, and given the values, so that a writer kept in registers needn't be stored for it</remarks>
     [DoesNotReturn]

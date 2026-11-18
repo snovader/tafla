@@ -44,7 +44,7 @@ public enum BuildErrorKind
     /// A <see cref="TableWriter"/> whose fields differ from those that its <see cref="TableSizer"/>
     /// counted: they wrote <see cref="BuildException.Written"/> of the table's
     /// <see cref="BuildException.Length"/> bytes, in all or before the first field that would end past
-    /// the writer's bytes.
+    /// the table.
     /// </summary>
     NotAsSized,
 }

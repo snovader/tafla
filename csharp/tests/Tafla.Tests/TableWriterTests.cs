@@ -265,15 +265,15 @@ public class TableWriterTests
     }
 
     /// <summary>
-    /// A writer given another field than the sizer added, into new bytes or longer ones, throws
-    /// NotAsSized with the table's length, or writes the fields as TableBuilder does if they fill
-    /// the table, since the bytes come from the fields written
+    /// A writer given another field than the sizer added, into bytes of the table's length or longer,
+    /// throws NotAsSized with the table's length, or writes the fields as TableBuilder does if they
+    /// fill the table, since the bytes come from the fields written, and never writes past the table
     /// </summary>
     [Fact]
     public void AWriterOfOtherFieldsThanThoseSizedThrowsNotAsSizedOrWritesThemAsTableBuilderDoes() =>
-        Gen.Select(InPlaceTables, Strategy.Tables, Gen.Int[0, 63], Gen.Int[0, 63], Gen.Int[0, 8]).Check(sample =>
+        Gen.Select(InPlaceTables, Strategy.Tables, Gen.Int[0, 63], Gen.Int[0, 63], Gen.Int[0, 8], Gen.Byte).Check(sample =>
         {
-            var (table, replacements, at, with, extra) = sample;
+            var (table, replacements, at, with, extra, fill) = sample;
             if (table.Fields.Count == 0 || replacements.Fields.Count == 0 || Built(table) is not { } sized)
             {
                 return;
@@ -283,24 +283,29 @@ public class TableWriterTests
             fields[at % fields.Length] = replacements.Fields[with % replacements.Fields.Count];
             var written = (table with { Fields = fields }).NestedInPlace();
 
-            byte[] bytes;
-            try
+            var bytes = new byte[sized.Length + extra];
+            bytes.AsSpan().Fill(fill);
+
+            var exception = Record.Exception(() =>
             {
-                var writer = table.Sized().CreateWriter(new byte[sized.Length + extra]);
+                var writer = table.Sized().CreateWriter(bytes);
                 Write.SetFields(ref writer, written, index => index);
-                bytes = writer.Bytes[..writer.ByteLength];
-            }
-            catch (BuildException error)
+                _ = writer.Bytes;
+            });
+
+            Assert.All(bytes[sized.Length..], value => Assert.Equal(fill, value));
+            if (exception is null)
             {
-                Assert.Equal((BuildErrorKind.NotAsSized, (long)sized.Length), (error.Kind, error.Length));
+                Assert.Equal(written.Bytes(), bytes[..sized.Length]);
                 return;
             }
 
-            Assert.Equal(written.Bytes(), bytes);
+            var error = Assert.IsType<BuildException>(exception);
+            Assert.Equal((BuildErrorKind.NotAsSized, (long)sized.Length), (error.Kind, error.Length));
         });
 
     [Fact]
-    public void FieldsThatEndPastTheBytesThrowNotAsSized()
+    public void FieldsThatEndPastTheTableThrowNotAsSized()
     {
         var sizer = new TableSizer(1);
         sizer.AddString("a");
@@ -321,20 +326,55 @@ public class TableWriterTests
             AssertNotAsSized(() => write(sizer.CreateWriter()), 4, 9);
         }
 
-        // A string whose count alone would end past the bytes
+        // A string whose count alone would end past the table
         var bytes = new TableSizer(2);
         bytes.AddUInt8();
         bytes.AddUInt8();
         var counted = bytes.CreateWriter();
         counted.SetUInt8(0, 1);
         AssertNotAsSized(() => counted.SetString(1, ""), 9, 10);
+    }
 
-        // In longer bytes, a field may write past the table, but not past the bytes
-        var longer = new byte[16];
-        var writer = sizer.CreateWriter(longer);
-        writer.SetString(0, "abcd");
-        AssertNotAsSized(() => _ = writer.Bytes, 12, 9);
-        Assert.Equal([4, 0, 0, 0, 4, 0, 0, 0, .. "abcd"u8, 0, 0, 0, 0], longer);
+    /// <summary>
+    /// In bytes longer than the table, a field longer than the sizer added throws NotAsSized where it
+    /// would end past the table, rather than past the bytes, and every byte after the table stays as
+    /// it was
+    /// </summary>
+    [Fact]
+    public void FieldsLongerThanThoseSizedNeverWritePastTheTableInLongerBytes()
+    {
+        const byte Fill = 0xAA;
+        var sizer = new TableSizer(1);
+        sizer.AddString("a");
+        var length = sizer.GetByteLength();
+
+        var longer = new Action<TableWriter>[]
+        {
+            writer => writer.SetString(0, "abcd"),
+            writer => writer.SetUInt32Array(0, [1, 2]),
+            writer =>
+            {
+                writer.SetTable(0, 1);
+                writer.StartTable(1);
+                writer.SetInt64(0, -1);
+            },
+            writer =>
+            {
+                var vector = writer.SetVector(0, 1);
+                writer.EndTable(writer.StartTable(0));
+                writer.SetItemEnd(vector, 0);
+            },
+        };
+
+        foreach (var write in longer)
+        {
+            var bytes = new byte[32];
+            bytes.AsSpan().Fill(Fill);
+
+            var error = Assert.Throws<BuildException>(() => write(sizer.CreateWriter(bytes)));
+            Assert.Equal((BuildErrorKind.NotAsSized, (long)length), (error.Kind, error.Length));
+            Assert.All(bytes[length..], value => Assert.Equal(Fill, value));
+        }
     }
 
     [Fact]
