@@ -3,6 +3,7 @@
     <Project Path="src/Tafla/Tafla.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Tafla.Generated/Tafla.Generated.csproj" />
     <Project Path="tests/Tafla.Tests/Tafla.Tests.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">

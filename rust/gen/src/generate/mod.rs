@@ -7,13 +7,16 @@
 
 #[cfg(feature = "cpp")]
 mod cpp;
-// The fields that Go's, Rust's, C++'s and TypeScript's generated code lays
-// out itself
+#[cfg(feature = "csharp")]
+mod csharp;
+// The fields that Go's, Rust's, C++'s, TypeScript's and C#'s generated code
+// lays out itself
 #[cfg(any(
     feature = "go",
     feature = "rust",
     feature = "cpp",
-    feature = "typescript"
+    feature = "typescript",
+    feature = "csharp"
 ))]
 mod fixed;
 #[cfg(feature = "go")]
@@ -29,7 +32,8 @@ mod java_package;
     feature = "rust",
     feature = "go",
     feature = "cpp",
-    feature = "swift"
+    feature = "swift",
+    feature = "csharp"
 ))]
 mod prose;
 #[cfg(feature = "python")]
@@ -49,7 +53,8 @@ mod typescript;
     feature = "rust",
     feature = "go",
     feature = "cpp",
-    feature = "swift"
+    feature = "swift",
+    feature = "csharp"
 ))]
 // Go's and C++'s generators write their lines without the others'
 // expressions, and Swift's without some of their checks of width
@@ -58,7 +63,8 @@ mod typescript;
         feature = "typescript",
         feature = "python",
         feature = "java",
-        feature = "rust"
+        feature = "rust",
+        feature = "csharp"
     )),
     allow(dead_code)
 )]
@@ -89,6 +95,9 @@ pub enum Target {
     Cpp,
     #[cfg(feature = "swift")]
     Swift,
+    /// C# 14, for .NET 10
+    #[cfg(feature = "csharp")]
+    CSharp,
 }
 
 impl Target {
@@ -110,6 +119,8 @@ impl Target {
         (&["cpp"], Self::Cpp),
         #[cfg(feature = "swift")]
         (&["swift"], Self::Swift),
+        #[cfg(feature = "csharp")]
+        (&["csharp", "cs"], Self::CSharp),
     ];
 
     /// The target of a name or its abbreviation, if this build generates it
@@ -135,12 +146,14 @@ impl Target {
 /// Where the generated code finds its runtime, and where it goes
 #[derive(Clone, Debug, Default)]
 pub struct Options {
-    /// The runtime's module, package or crate, which is tafla's runtime for
-    /// the target by default: `tafla` for TypeScript, JavaScript, Python and
-    /// Rust, `io.github.snovader.tafla` for Java, and `Tafla` for Swift
+    /// The runtime's module, package, crate or namespace, which is tafla's
+    /// runtime for the target by default: `tafla` for TypeScript, JavaScript,
+    /// Python and Rust, `io.github.snovader.tafla` for Java, and `Tafla` for
+    /// Swift and C#
     pub runtime: Option<String>,
     /// The package of generated Java classes, which is `generated` by
-    /// default. Other targets ignore it.
+    /// default, and the namespace of C++ and C#, which is named after the
+    /// schema by default. Other targets ignore it.
     pub package: Option<JavaPackage>,
 }
 
@@ -162,7 +175,8 @@ pub struct GeneratedFile {
         feature = "java",
         feature = "rust",
         feature = "cpp",
-        feature = "swift"
+        feature = "swift",
+        feature = "csharp"
     )),
     allow(unused_variables)
 )]
@@ -196,6 +210,8 @@ pub fn generate(
         Target::Cpp => cpp::generate(schema, stem(file_name), &header, options),
         #[cfg(feature = "swift")]
         Target::Swift => swift::generate(schema, stem(file_name), &header, options),
+        #[cfg(feature = "csharp")]
+        Target::CSharp => csharp::generate(schema, stem(file_name), &header, options),
     }
 }
 
@@ -225,7 +241,8 @@ fn comment_text(file_name: &str) -> String {
     feature = "rust",
     feature = "go",
     feature = "cpp",
-    feature = "swift"
+    feature = "swift",
+    feature = "csharp"
 ))]
 fn stem(file_name: &str) -> &str {
     let name = file_name

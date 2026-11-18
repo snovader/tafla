@@ -181,7 +181,7 @@ are thrown.
 ## Writing tables of known fields
 
 Code that knows a table's fields before it writes them, such as the code
-that tafla-gen generates in the other languages, counts the table's bytes
+that tafla-gen generates, counts the table's bytes
 with a `TableSizer` and then writes it with the sizer's `TableWriter`, field
 by field, into bytes of exactly its length. The writer writes nested tables
 and vector items in place among their parent's fields, rather than copying
@@ -219,6 +219,20 @@ follow its `AddVector()` and `SetVector()` the same way, each followed by the
 writer's `SetItemEnd()`. `ReserveStruct()` and `ReserveStructArray()` return
 the bytes of structs for the caller to write in place.
 
+A table whose fields' sizes are fixed, of scalars, structs and such tables,
+has a fixed length, and code that lays it out itself, as tafla-gen's does,
+writes it whole rather than field by field. `AddTableBytes()` adds tables of
+one length in place of their fields, every item of a vector of them at once,
+and `ReserveTableBytes()` returns each one's bytes, for the caller to write
+its offsets and its fields at the positions that it works out. A message of
+such fields, and a string after them, is written whole without a sizer and a
+writer, into the bytes that `TableWriter.CreateTableBytes()` returns with
+its header, after `TableSizer.Utf8Length()` counts the string. On an Apple M2
+Pro with .NET 10, tafla-gen's code wrote a vector of 100 tables of a
+`float32` and a nested table of two `float32`s in 0.31 of the time that
+writing each field took, and a table of three 8-byte scalars and a 16-byte
+string in 0.67 of the time.
+
 The writer's calls follow from a schema, so it doesn't check them again: a
 field index outside its table, or an item outside its vector, leaves the
 table's bytes undefined, though every write stays within the writer's bytes.
@@ -238,7 +252,9 @@ whose `Kind` says why and whose properties describe the read:
   the `Available` bytes. An array's count is checked against the bytes
   before anything is allocated for it. An offset past the largest `int`
   leads past any bytes, since no span is that long, and fails when it's
-  read, as a position can't hold it.
+  read, as a position can't hold it. Code that reads bytes without a
+  `TableReader`, as tafla-gen's structs read theirs, throws
+  `DecodeException.OutOfRange()`.
 - `InvalidUtf8`: a string that isn't valid UTF-8, such as one with an
   overlong encoding or a surrogate.
 - `StringTooLong`: a string of `ByteLength` bytes that hold more characters
@@ -353,6 +369,7 @@ band. Run the commands below from this directory:
 
 ```sh
 dotnet format --verify-no-changes
+dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/
 dotnet build
 dotnet test
 dotnet test -p:TaflaPortable=true
@@ -367,9 +384,9 @@ and the benchmarks' check that every codec reads back what it wrote. The
 tests' packages, xUnit v3 and CsCheck, and the libraries that the
 benchmarks compare tafla with, are pinned in `Directory.Packages.props` and
 locked in each project's `packages.lock.json`, which CI restores in locked
-mode. The runtime depends on no package, and has
-no lock file: the SDK adds its trimming analyzers' package to it, at the
-SDK's own version, which a lock file would tie to one SDK. The build writes
+mode. The runtime and the library of generated code depend on no package,
+and have no lock file: the SDK adds its trimming analyzers' package to them,
+at the SDK's own version, which a lock file would tie to one SDK. The build writes
 everything under `artifacts/`.
 
 ```sh
@@ -416,9 +433,37 @@ The tests in `tests/Tafla.Tests` are:
   limits of each offset type, strings outside the Basic Multilingual Plane
   and unaligned bytes.
 - `ExampleTests`: the examples above.
+- `Generated/`: the code that tafla-gen generates from the example schemas
+  at the root of the repository, in `tests/Tafla.Generated`, writes what
+  `TableBuilder` writes of the same fields, reads them back, writes into the
+  caller's bytes as into new ones, reads corrupted and arbitrary bytes as
+  values or a `DecodeException`, and writes and reads the cases of
+  `conformance/generated` byte for byte, as every language's does.
+  `NamesTests` runs the code of `tests/names.tafla`, of names that would
+  clash in C#.
 
 The property tests run 256 cases each, on every core, and print the seed of
 a failing case, which `CsCheck_Seed=<seed> dotnet test` runs again.
 
-Not yet part of the runtime: the writer's reservations of fields that a
-schema lays out itself, as Go's `ReserveFields()` does.
+## Generated code
+
+tafla-gen's `csharp` target generates a file of C# from a schema, whose
+readers read its messages and tables through a `TableReader`, and whose
+fields write them with a `TableSizer` and a `TableWriter`, as
+[its README](../rust/gen/README.md) describes. The code that it generates
+from the example schemas at the root of the repository is its golden output,
+which `rust/gen/tests/golden.rs` keeps as it generates it: regenerate it with
+`TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen` from `rust/`, rather than edit
+it. It lies in `tests/Tafla.Generated`, a library of its own, which compiles
+it as a user's project would, without implicit usings, and with the
+analyzers of trimming and ahead-of-time compilation. Its
+`<auto-generated>` header keeps a project's analyzers and `dotnet format`
+off it; here `.editorconfig` turns the build's analyzers back on for it, and
+`dotnet format whitespace --folder --include-generated` checks its
+formatting, which plain `dotnet format` skips. `tests/names` holds the code
+of `tests/names.tafla`, which `rust/gen/tests/csharp_schemas.rs` keeps.
+
+Not yet part of the runtime: the writer's reservation of a table's leading
+fields of fixed sizes among its others, as Go's `ReserveFields()` does, which
+wrote the record above, with a sizer and a writer, in 0.89 of the time of
+each field's call in a prototype, where writing it whole took 0.56 there.

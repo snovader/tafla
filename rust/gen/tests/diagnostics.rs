@@ -228,6 +228,42 @@ fn declarations_cant_take_a_macro_of_the_c_standard_library() {
     }
 }
 
+/// C#'s generated code names the runtime and the standard library in full, so
+/// it imports no names, but a type can't declare a member of its own name,
+/// such as the `ToArray()` of `ToArray`, the view of an array of `To`s, and
+/// the views nest an `Enumerator`
+#[test]
+fn declarations_cant_take_the_name_of_a_member_of_the_generated_csharp() {
+    for name in [
+        "Size",
+        "Write",
+        "ToString",
+        "FormatVersion",
+        "To",
+        "Enumerator",
+    ] {
+        let source = format!("struct {name} {{ x: uint8; }}");
+        let diagnostics = parse(&source).unwrap_err();
+        let messages: Vec<&str> = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+
+        assert_eq!(
+            messages,
+            [format!(
+                "`{name}` clashes with a name of the generated code"
+            )]
+        );
+        assert!(
+            diagnostics[0]
+                .render("names.tafla", &source)
+                .contains(&format!("the code generated for C# uses `{name}`")),
+            "{name}"
+        );
+    }
+}
+
 /// The names that a generated file imports which a declaration could take,
 /// those that start with a capital letter, from each target's imports:
 /// lists in braces or parentheses, on one line or several, and Java's

@@ -80,6 +80,14 @@ jobs:
       - name: Run formatting check
         run: dotnet format --verify-no-changes
 
+      # The code that tafla-gen generates, whose header marks it as generated,
+      # which plain `dotnet format` skips, as it does in users' projects. The
+      # build checks it with the analyzers, as .editorconfig says.
+      - name: Run formatting check of the generated code
+        run: >-
+          dotnet format whitespace --folder --include-generated --verify-no-changes
+          --include tests/Tafla.Generated/ tests/names/
+
   test:
     name: Test (${{ matrix.os }})
     needs: changes

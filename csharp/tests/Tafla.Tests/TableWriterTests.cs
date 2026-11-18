@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using CsCheck;
 using Tafla.Tests.Tables;
 
@@ -157,6 +158,131 @@ public class TableWriterTests
 
             Assert.Equal(copied.Bytes, reserved.Bytes);
         });
+
+    /// <summary>
+    /// Tables of scalars, whose sizes are fixed, written whole into the bytes reserved for them, as
+    /// tafla-gen's code writes them, are the tables written field by field: a vector's items of the
+    /// same scalars, sized at once, and a field's table
+    /// </summary>
+    [Fact]
+    public void TablesReservedWholeHoldTheBytesOfThoseWrittenFieldByField() =>
+        Gen.OneOf(Scalars.All).Array[1, 4].SelectMany(types =>
+            Gen.ULong.Array[types.Length].Array[0, 5].Select(items => (types, items))
+        ).Check(sample =>
+        {
+            var (types, items) = sample;
+            var tables = items
+                .Select(bits => new Table(
+                    Layout.Headerless(OffsetType.UInt32),
+                    [.. types.Select((type, index) => new Scalar(type, Scalars.Truncate(type, bits[index])))]
+                ))
+                .ToArray();
+            var size = tables.Length > 0 ? tables[0].Bytes().Length : types.Length * sizeof(uint) + Scalars.StructSize(types);
+            var field = new Table(Layout.Headerless(OffsetType.UInt32), [.. types.Select(type => new Scalar(type, 0))]);
+
+            var builder = new TableBuilder(2);
+            builder.SetVector([.. tables.Select(table => (NestedTable)table.Built())]);
+            builder.SetTable(field.Built());
+
+            var sizer = new TableSizer(2);
+            sizer.AddVector(tables.Length);
+            sizer.AddTableBytes(tables.Length, size);
+            sizer.AddTable(1);
+            sizer.AddTableBytes(1, size);
+
+            var writer = sizer.CreateWriter();
+            var vector = writer.SetVector(0, tables.Length);
+            for (var index = 0; index < tables.Length; index++)
+            {
+                tables[index].Bytes().CopyTo(writer.ReserveTableBytes(size));
+                writer.SetItemEnd(vector, index);
+            }
+
+            writer.SetTable(1, 1);
+            field.Bytes().CopyTo(writer.ReserveTableBytes(size));
+
+            Assert.Equal(builder.ToArray(), writer.Bytes);
+        });
+
+    /// <summary>
+    /// The bytes of a table that its caller lays out itself, as tafla-gen's code lays out a message of
+    /// fixed fields, hold the header that a writer writes, and zeros after it
+    /// </summary>
+    [Fact]
+    public void TableBytesHoldTheHeaderThatAWriterWritesAndZerosAfterIt() =>
+        Gen.Select(Strategy.Layouts, Gen.Int[0, 8], Gen.Int[0, 40], Gen.UInt).Check(sample =>
+        {
+            var (layout, fields, extra, anyVersion) = sample;
+            var tableLayout = layout.ToTableLayout();
+            var version = (uint)(anyVersion % (tableLayout.OffsetType.MaxValue + 1L));
+            var rest = fields * tableLayout.OffsetSize + extra;
+            var length = tableLayout.HeaderSize + rest;
+            if (length > tableLayout.OffsetType.MaxValue)
+            {
+                return;
+            }
+
+            // A writer of no fields writes the header alone, and its bytes are zero after it
+            var sizer = layout.Versioned ? new TableSizer(0, tableLayout, version) : new TableSizer(0, tableLayout);
+            sizer.AddTableBytes(1, rest);
+            var writer = sizer.CreateWriter();
+            writer.ReserveTableBytes(rest);
+
+            var bytes = layout.Versioned
+                ? TableWriter.CreateTableBytes(fields, tableLayout, version, length)
+                : TableWriter.CreateTableBytes(fields, tableLayout, length);
+
+            Assert.Equal(writer.Bytes, bytes);
+        });
+
+    [Fact]
+    public void TableBytesLongerThanTheOffsetTypeAddressesAreRejectedBeforeAllocating()
+    {
+        var uint8 = new TableLayout { OffsetType = OffsetType.UInt8 };
+
+        Assert.Equal(255, TableWriter.CreateTableBytes(2, uint8, 255).Length);
+        var tooLong = Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(2, uint8, 256));
+        Assert.Equal((BuildErrorKind.TooLong, 1, 256L, OffsetType.UInt8), (tooLong.Kind, tooLong.Index, tooLong.Length, tooLong.OffsetType));
+        Assert.Equal(BuildErrorKind.TooLong, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(1, default, long.MaxValue)).Kind);
+
+        var versioned = new TableLayout { Versioned = true, OffsetType = OffsetType.UInt8 };
+        Assert.Equal(BuildErrorKind.VersionTooLarge, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(1, versioned, 256, 8)).Kind);
+        Assert.Equal(BuildErrorKind.HeaderTooLong, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(256, uint8, 256)).Kind);
+        Assert.Throws<ArgumentException>(() => TableWriter.CreateTableBytes(1, versioned, 8));
+        Assert.Throws<ArgumentException>(() => TableWriter.CreateTableBytes(1, uint8, 0, 8));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TableWriter.CreateTableBytes(2, uint8, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => TableWriter.CreateTableBytes(-1, uint8, 8));
+    }
+
+    /// <summary>A string's UTF-8 is counted as the writer writes it, a lone surrogate as U+FFFD's 3 bytes</summary>
+    [Fact]
+    public void AStringIsCountedAsItsUtf8IsWritten() =>
+        Strategy.String(16).Check(value =>
+        {
+            var sizer = new TableSizer(1);
+            sizer.AddString(value);
+            var writer = sizer.CreateWriter();
+            writer.SetString(0, value);
+
+            Assert.Equal(writer.Bytes.Length - 2 * sizeof(uint), TableSizer.Utf8Length(value));
+            Assert.Equal(Encoding.UTF8.GetByteCount(value), TableSizer.Utf8Length(value));
+            Assert.Equal(3 + 1, TableSizer.Utf8Length("\ud800a"));
+        });
+
+    [Fact]
+    public void ATableReservedPastTheTableThrowsNotAsSized()
+    {
+        var sizer = new TableSizer(1);
+        sizer.AddVector(1);
+        sizer.AddTableBytes(1, 8);
+
+        var writer = sizer.CreateWriter();
+        writer.SetVector(0, 1);
+
+        var exception = Assert.Throws<BuildException>(() => writer.ReserveTableBytes(9));
+        Assert.Equal(BuildErrorKind.NotAsSized, exception.Kind);
+        Assert.Equal(8, writer.ReserveTableBytes(8).Length);
+    }
 
     [Fact]
     public void AStructOf0BytesIsSizedAndWrittenAsTableBuilderBuildsIt()
@@ -392,6 +518,8 @@ public class TableWriterTests
             () => sizer.AddStructArray(1, 0, 4),
             () => sizer.AddStructArray(1, 4, 3),
             () => sizer.AddTable(16),
+            () => sizer.AddTableBytes(-1, 4),
+            () => sizer.AddTableBytes(1, -1),
         };
 
         foreach (var reject in rejected)
@@ -408,6 +536,7 @@ public class TableWriterTests
             () => writer.StartTable(-1),
             () => writer.SetVector(0, -1),
             () => writer.ReserveStruct(0, -1),
+            () => writer.ReserveTableBytes(-1),
             () => writer.ReserveStructArray(0, -1, 4, 4),
             () => writer.ReserveStructArray(0, 1, 0, 4),
             () => writer.SetStructArray(0, new byte[4], 0, 4),

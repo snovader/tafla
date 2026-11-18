@@ -169,14 +169,39 @@ const SWIFT: &[&str] = &[
     "Vector",
 ];
 
+/// The members that C#'s generated types declare beside their fields, which
+/// a type of the same name can't declare: a struct's `Size`, `Write()`,
+/// `Serialize()` and `SerializeArray()` and the members that a record
+/// declares, `Equals()`, `GetHashCode()`, `ToString()` and `PrintMembers()`,
+/// and a versioned message's `FormatVersion` and `VersionOf()`, `To`, whose
+/// array's view, `ToArray`, declares `ToArray()`, and `Enumerator`, which each
+/// view of a vector or an array of structs nests, and which would hide a
+/// declaration of that name within it. C# names the runtime and the standard
+/// library in full, from `global::`, so nothing else would clash.
+const CSHARP: &[&str] = &[
+    "Enumerator",
+    "Equals",
+    "FormatVersion",
+    "GetHashCode",
+    "PrintMembers",
+    "Serialize",
+    "SerializeArray",
+    "Size",
+    "To",
+    "ToString",
+    "VersionOf",
+    "Write",
+];
+
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 6] = [
+const RESERVED: [(&[&str], &[&str]); 7] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
     (&["C++"], CPP),
     (&["Swift"], SWIFT),
+    (&["C#"], CSHARP),
 ];
 
 /// The targets whose generated code uses `name`, which a declaration can't

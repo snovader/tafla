@@ -43,9 +43,9 @@ record a nested table, or each item of a vector, in place among its
 parent's fields, rather than from a builder of its own that's then copied.
 
 `TableSizer` and `TableWriter` write a table whose fields are known in
-advance, as the code that tafla-gen generates in the other languages does,
-into bytes of its exact length, with nested tables and vector items written
-in place among their parent's fields.
+advance, as the code that tafla-gen generates does, into bytes of its exact
+length, with nested tables and vector items written in place among their
+parent's fields.
 
 The package is for .NET 10. It depends only on .NET's base class library,
 and is trimmable and compatible with Native AOT.

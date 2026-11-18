@@ -109,7 +109,12 @@ public sealed class DecodeException : Exception
             SupportedVersion = supportedVersion,
         };
 
-    internal static DecodeException OutOfRange(long position, long byteLength, int available) =>
+    /// <summary>
+    /// Returns the error of a read of <paramref name="byteLength"/> bytes at <paramref name="position"/>
+    /// that would leave the <paramref name="available"/> bytes, for code that reads bytes without a
+    /// <see cref="TableReader"/>, such as tafla-gen's structs, to throw.
+    /// </summary>
+    public static DecodeException OutOfRange(long position, long byteLength, int available) =>
         new(
             DecodeErrorKind.OutOfRange,
             $"Read exceeds the supplied bytes: {byteLength} bytes at {position} of {available}"

@@ -28,7 +28,7 @@ packages.
 | Go         | `github.com/snovader/tafla/go`                    | `tafla-gen`'s `go` target                             |
 | C++        | The headers of `cpp/include`, not yet published   | `tafla-gen`, any of the above                         |
 | Swift      | `github.com/snovader/tafla` for SwiftPM           | `tafla-gen`'s `swift` target                          |
-| C#         | `Tafla` on NuGet                                  | Not yet                                               |
+| C#         | `Tafla` on NuGet                                  | `tafla-gen`'s `csharp` target                         |
 
 A runtime writes and reads tables. The code generator compiles a schema of
 messages and tables into code that writes and reads them with a language's
