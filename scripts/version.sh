@@ -10,7 +10,8 @@
 #                                            that records the package's version
 #
 # The packages are typescript, python, java, rust and tafla-gen. The Go module
-# records no version, since its tag, go/v<version>, is its version.
+# and the Swift package record no version, since their tags, go/v<version> and
+# <version>, are their versions.
 #
 # A version is MAJOR.MINOR.PATCH. Pre-releases are left out, since npm, PyPI
 # and crates.io spell them differently, and uv.lock records PyPI's spelling.
@@ -71,6 +72,10 @@ locate() {
             ;;
         go)
             echo "The Go module records no version: its tag, go/v<version>, is its version" >&2
+            exit 2
+            ;;
+        swift)
+            echo "The Swift package records no version: its tag, <version>, is its version" >&2
             exit 2
             ;;
         *)
