@@ -21,6 +21,11 @@ The first release.
   and `ByteBuffer` reads them, with arrays as `ReadOnlySpan<T>`s of the bytes
   on a little-endian host, and structs and vector items as spans of the
   bytes.
+- `TableSizer` and `TableWriter`, which write a table whose fields are known
+  in advance into bytes of its exact length, or into the start of bytes that
+  the caller reuses, with nested tables, vector items and structs written in
+  place, as the other runtimes' generated code writes tables. The bytes are
+  those that `TableBuilder` writes.
 - Bounds-checked reads, which fail on malformed input with a
   `DecodeException`, and builders that reject what they can't write with a
   `BuildException`.

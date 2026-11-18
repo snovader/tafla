@@ -4,8 +4,10 @@
 for .NET 10. It writes and reads binary tables of scalars, strings, arrays,
 structs and nested tables in tafla's format, which the TypeScript, Python,
 Java, Rust, Go and C++ runtimes write and read too. `TableBuilder` writes a
-table, copying arrays in bulk, and `ByteBuffer` reads fields back by offset,
-with arrays, structs and vector items as spans of the bytes. Every read
+table, copying arrays in bulk, `TableSizer` and `TableWriter` write one whose
+fields are known in advance into bytes of its exact length, and
+`ByteBuffer` reads fields back by offset, with arrays, structs and vector
+items as spans of the bytes. Every read
 checks that it stays within the bytes it was given. It depends only on
 .NET's base class library, and is marked compatible with trimming and
 ahead-of-time compilation, whose analyzers its build runs.
@@ -105,6 +107,54 @@ which covers the whole format, byte for byte.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
   UTF-8 and decodes them into a new `string`, in one pass.
 
+## Writing tables of known fields
+
+Code that knows a table's fields before it writes them, such as the code
+that tafla-gen generates in the other languages, counts the table's bytes
+with a `TableSizer` and then writes it with the sizer's `TableWriter`, field
+by field, into bytes of exactly its length. The writer writes nested tables
+and vector items in place among their parent's fields, rather than copying
+them, so the table is the one allocation, and with
+`TableSizer.CreateWriter(byte[])` it writes into the start of bytes that the
+caller reuses, which it leaves as they were after the table. The bytes are
+those that a `TableBuilder` of the same fields writes:
+
+```csharp
+var sizer = new TableSizer(3, Layout, FormatVersion);
+sizer.AddFloat64();
+sizer.AddString("Europe/Stockholm");
+sizer.AddTable(4); // aligned for its arrays of 4-byte elements
+var nested = sizer.StartTable(2);
+sizer.AddUInt32Array(2);
+sizer.AddFloat32Array(2);
+sizer.EndTable(nested);
+
+var writer = sizer.CreateWriter();
+writer.SetFloat64(0, 59.3293);
+writer.SetString(1, "Europe/Stockholm");
+writer.SetTable(2, 4);
+var series = writer.StartTable(2);
+writer.SetUInt32Array(0, [0, 86_400]);
+writer.SetFloat32Array(1, [21.75f, 18.5f]);
+writer.EndTable(series);
+byte[] written = writer.Bytes; // the builder's bytes, of the table's length
+```
+
+The sizer adds the fields in order, each with what decides its length, and
+the writer takes the same fields in the same order, each with its index in
+its table. A nested table's fields follow its parent's `AddTable()` and
+`SetTable()`, between `StartTable()` and `EndTable()`, and a vector's items
+follow its `AddVector()` and `SetVector()` the same way, each followed by the
+writer's `SetItemEnd()`. `ReserveStruct()` and `ReserveStructArray()` return
+the bytes of structs for the caller to write in place.
+
+The writer's calls follow from a schema, so it doesn't check them again: a
+field index outside its table, or an item outside its vector, leaves the
+table's bytes undefined, though every write stays within the writer's bytes.
+Hand-written tables use `TableBuilder`, which checks every field. Both are
+mutable structs, so that sizing and writing a table allocates only its
+bytes: use them as locals, or pass them by `ref`.
+
 ## Errors
 
 Every read of a `ByteBuffer` or a `Vector` checks its range against the bytes
@@ -147,6 +197,16 @@ the values, and leaves the builder as it was:
 - `ToArray()`, and nesting a builder, throw `Incomplete` while fields are left
   to set.
 
+`TableSizer`'s constructors check the version and the header as
+`TableBuilder`'s do, and `GetByteLength()` and `CreateWriter()` throw
+`TooLong` for a table too long for its offset type, before anything is
+allocated, with the table's length and its last field's index.
+`TableWriter.SetStructArray()` throws `NotWholeStructs` as the builder does.
+A writer's field that would end past its bytes throws an
+`ArgumentOutOfRangeException`, and `Bytes` and `ByteLength` throw an
+`InvalidOperationException` when the fields didn't fill the table, as when
+they differ from those that the sizer counted.
+
 Mistakes of the code that calls the runtime, which no bytes or values cause,
 throw the argument exceptions of .NET's own APIs:
 
@@ -160,6 +220,9 @@ throw the argument exceptions of .NET's own APIs:
 | `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields, and `ArgumentException` for a versioned layout without a version, or a version without one |
 | `SetTable()`, `SetStructArray()`                | `ArgumentOutOfRangeException` for an alignment other than 1, 2, 4 or 8, or a struct size below 1 |
 | `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
+| `new TableSizer()`                              | As `new TableBuilder()`                                                                   |
+| `TableSizer`'s and `TableWriter`'s methods      | `ArgumentOutOfRangeException` for a negative count, number of fields or struct size, a size of 0 of an array of structs, or an alignment other than 1, 2, 4 or 8, and `ArgumentNullException` for a null string |
+| `TableSizer.CreateWriter(byte[])`               | `ArgumentException` for bytes shorter than the table, before any of them is written      |
 
 ## Conversions
 
@@ -239,18 +302,20 @@ The tests in `tests/Tafla.Tests` are:
   read back their values and rebuild byte for byte, equivalent tables read
   their valid case's values, and invalid tables fail with a
   `DecodeException` at their field.
-- `RoundTripTests`, `FormatTests`, `DecodeExceptionTests` and
-  `TableBuilderTests`: properties of tables built from the conformance
+- `RoundTripTests`, `FormatTests`, `DecodeExceptionTests`,
+  `TableBuilderTests` and `TableWriterTests`: properties of tables built,
+  and sized and written, from the conformance
   suite's descriptions, which `Tables/` parses, generates with CsCheck, builds
   and reads, as Go's `tests/internal/tables` does, and examples of the errors
   and of every boundary: signed zero, NaN, integer limits, empty arrays, the
   limits of each offset type, strings outside the Basic Multilingual Plane
   and unaligned bytes.
-- `ExampleTests`: the example above.
+- `ExampleTests`: the examples above.
 
 The property tests run 256 cases each, on every core, and print the seed of
 a failing case, which `CsCheck_Seed=<seed> dotnet test` runs again.
 
-Not yet part of the runtime: `TableSizer` and `TableWriter`, which the code
-that tafla-gen generates writes tables with in the other languages, and
-recording nested tables in place, as their `SetTableFunc()` does.
+Not yet part of the runtime: recording nested tables in place among a
+`TableBuilder`'s fields, as Go's `SetTableFunc()` does, and the writer's
+reservations of fields that a schema lays out itself, as Go's
+`ReserveFields()` does.

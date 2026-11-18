@@ -67,4 +67,59 @@ public readonly record struct TableLayout
     /// bytes, or <see cref="Array.MaxLength"/> for <see cref="OffsetType.UInt32"/>.
     /// </summary>
     internal int MaxLength => (int)Math.Min(OffsetType.MaxValue, (uint)Array.MaxLength);
+
+    /// <summary>
+    /// Returns the length of the header and the offsets of a table of <paramref name="fields"/> fields
+    /// in <paramref name="layout"/>, after the checks of the constructors of <see cref="TableBuilder"/>
+    /// and <see cref="TableSizer"/>, which take a version when <paramref name="versioned"/>.
+    /// </summary>
+    /// <exception cref="BuildException">
+    /// The version doesn't fit in the layout's offset type, or the header alone is too long for it.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
+    /// <exception cref="ArgumentException">
+    /// The layout is versioned and no version was given, or a version was given to a layout without one.
+    /// </exception>
+    internal static int HeaderLength(int fields, TableLayout layout, bool versioned, uint version)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fields);
+        if (layout.Versioned != versioned)
+        {
+            throw new ArgumentException(
+                versioned ? "The layout has no version slot" : "A versioned layout needs a version",
+                nameof(layout)
+            );
+        }
+
+        var offsetType = layout.OffsetType;
+        if (version > offsetType.MaxValue)
+        {
+            throw BuildException.VersionTooLarge(version, offsetType);
+        }
+
+        long header = ((long)layout.HeaderSlots + fields) * layout.OffsetSize;
+        if (header > layout.MaxLength)
+        {
+            throw BuildException.HeaderTooLong(fields, offsetType);
+        }
+
+        return (int)header;
+    }
+
+    /// <summary>The padding that brings <paramref name="offset"/> to a multiple of <paramref name="alignment"/>, a power of 2.</summary>
+    internal static int Padding(long offset, int alignment) => (int)(-offset & (alignment - 1));
+
+    /// <summary>Checks an alignment of arrays of structs and nested tables.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="alignment"/> isn't 1, 2, 4 or 8.</exception>
+    internal static void CheckAlignment(int alignment)
+    {
+        if (alignment is not (1 or 2 or 4 or 8))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(alignment),
+                alignment,
+                "An alignment is 1, 2, 4 or 8 bytes"
+            );
+        }
+    }
 }

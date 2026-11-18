@@ -36,6 +36,23 @@ public class ConformanceTests
     }
 
     /// <summary>
+    /// Writes every valid table whose nested tables a writer writes in place, without a header and
+    /// with their parent's offset type, with a sizer and a writer, byte for byte
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidCases))]
+    public void RewritesEveryValidTableNestedInPlaceByteForByte(string name)
+    {
+        var valid = Suite.Valid.Single(valid => valid.Name == name);
+        if (valid.Table.NestedInPlace() != valid.Table)
+        {
+            return;
+        }
+
+        Assert.Equal(valid.Bytes, valid.Table.Written());
+    }
+
+    /// <summary>
     /// Reads every equivalent table, whose bytes differ from its valid case's, as the valid case's
     /// description, header included
     /// </summary>

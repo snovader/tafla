@@ -91,32 +91,13 @@ public sealed class TableBuilder
 
     private TableBuilder(int fields, TableLayout layout, bool versioned, uint version)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(fields);
-        if (layout.Versioned != versioned)
-        {
-            throw new ArgumentException(
-                versioned ? "The layout has no version slot" : "A versioned layout needs a version",
-                nameof(layout)
-            );
-        }
-
-        var offsetType = layout.OffsetType;
-        if (version > offsetType.MaxValue)
-        {
-            throw BuildException.VersionTooLarge(version, offsetType);
-        }
-
-        long header = ((long)layout.HeaderSlots + fields) * layout.OffsetSize;
-        if (header > layout.MaxLength)
-        {
-            throw BuildException.HeaderTooLong(fields, offsetType);
-        }
+        int header = TableLayout.HeaderLength(fields, layout, versioned, version);
 
         _layout = layout;
         _fields = fields;
         _maxLength = layout.MaxLength;
-        _length = (int)header;
-        _bytes = new byte[Math.Min(header + InitialCapacity, Array.MaxLength)];
+        _length = header;
+        _bytes = new byte[Math.Min((long)header + InitialCapacity, Array.MaxLength)];
 
         if (versioned)
         {
@@ -272,7 +253,7 @@ public sealed class TableBuilder
     public void SetStructArray(ReadOnlySpan<byte> bytes, int size, int alignment)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(size);
-        CheckAlignment(alignment);
+        TableLayout.CheckAlignment(alignment);
         if (bytes.Length % size != 0)
         {
             throw BuildException.NotWholeStructs(bytes.Length, size);
@@ -314,7 +295,7 @@ public sealed class TableBuilder
     public void SetTable(TableBuilder table, int alignment)
     {
         ArgumentNullException.ThrowIfNull(table);
-        CheckAlignment(alignment);
+        TableLayout.CheckAlignment(alignment);
         AddTable(table.WrittenBytes(), alignment);
     }
 
@@ -327,7 +308,7 @@ public sealed class TableBuilder
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="alignment"/> isn't 1, 2, 4 or 8.</exception>
     public void SetTable(ReadOnlySpan<byte> table, int alignment = DefaultTableAlignment)
     {
-        CheckAlignment(alignment);
+        TableLayout.CheckAlignment(alignment);
         AddTable(table, alignment);
     }
 
@@ -385,7 +366,7 @@ public sealed class TableBuilder
     }
 
     private void AddTable(ReadOnlySpan<byte> table, int alignment) =>
-        table.CopyTo(AddField(Padding(_length, alignment), table.Length, alignment));
+        table.CopyTo(AddField(TableLayout.Padding(_length, alignment), table.Length, alignment));
 
     /// <summary>
     /// Adds a field of a count of <paramref name="count"/> elements of <paramref name="size"/> bytes,
@@ -395,7 +376,11 @@ public sealed class TableBuilder
     private Span<byte> AddCounted(int count, int size, int alignment)
     {
         int width = _layout.OffsetSize;
-        var field = AddField(Padding((long)_length + width, alignment), width + (long)count * size, alignment);
+        var field = AddField(
+            TableLayout.Padding((long)_length + width, alignment),
+            width + (long)count * size,
+            alignment
+        );
 
         // The field fits in the table, so its count does too
         WriteSlot(field, (uint)count);
@@ -478,28 +463,13 @@ public sealed class TableBuilder
         }
     }
 
-    /// <summary>The padding that brings <paramref name="offset"/> to a multiple of <paramref name="alignment"/>, a power of 2</summary>
-    private static int Padding(long offset, int alignment) => (int)(-offset & (alignment - 1));
-
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="alignment"/> isn't 1, 2, 4 or 8.</exception>
-    private static void CheckAlignment(int alignment)
-    {
-        if (alignment is not (1 or 2 or 4 or 8))
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(alignment),
-                alignment,
-                "An alignment is 1, 2, 4 or 8 bytes"
-            );
-        }
-    }
-
     /// <summary>
     /// Counts the UTF-8 bytes of <paramref name="value"/>, as <see cref="Encoding.UTF8"/> encodes it,
     /// in parts that an <see cref="int"/> counts, so that a string too long for any table is rejected
     /// as too long rather than overflowing the count. A surrogate pair stays within one part.
+    /// <see cref="TableSizer"/> counts strings with it too.
     /// </summary>
-    private static long Utf8Length(ReadOnlySpan<char> value)
+    internal static long Utf8Length(ReadOnlySpan<char> value)
     {
         long length = 0;
         while (value.Length > Utf8CountedChars)
