@@ -1,0 +1,33 @@
+{
+  "originHash" : "7809f8d752c58ea8f796dc4ab85a39fe20a7895e6215ebe5d2d6f3d0b865083e",
+  "pins" : [
+    {
+      "identity" : "flatbuffers",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/google/flatbuffers.git",
+      "state" : {
+        "revision" : "7e163021e59cca4f8e1e35a7c828b5c6b7915953",
+        "version" : "25.12.19"
+      }
+    },
+    {
+      "identity" : "swift-msgpack",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/nnabeyang/swift-msgpack.git",
+      "state" : {
+        "revision" : "de5f85a3ce169c09b2d7edc7614bfbffab3b6340",
+        "version" : "1.2.1"
+      }
+    },
+    {
+      "identity" : "swift-protobuf",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-protobuf.git",
+      "state" : {
+        "revision" : "fed2f76413026cb0ae90999a8c9116949dfe6aa6",
+        "version" : "1.41.0"
+      }
+    }
+  ],
+  "version" : 3
+}

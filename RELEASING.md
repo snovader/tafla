@@ -72,7 +72,9 @@ clones the repository and builds the library from `swift/`.
 
 The root's manifest declares the library, `Tafla`, from the sources in
 `swift/`, and nothing else: not the tests, nor their dependency,
-PropertyBased. `swift/Package.swift`, from which the package is developed and
+PropertyBased, nor the fuzz targets and the benchmarks, which are packages of
+their own in `swift/Fuzz` and `swift/benchmarks` that aren't published.
+`swift/Package.swift`, from which the package is developed and
 tested, declares the same library with its tests. The workflow checks that
 the two declare the same library, platforms and settings, and a pull request
 that changes either runs a dry run of the Swift package.

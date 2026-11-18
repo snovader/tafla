@@ -163,7 +163,7 @@ pub struct BenchmarkSchema {
 /// Every suite's schema, which are copies of one schema, since the suites
 /// run the same workloads. Each directory holds the generated code and
 /// nothing else.
-pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 7] = [
+pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
     BenchmarkSchema {
         target: "typescript",
         schema: "typescript/benchmarks/comparison/workloads.tafla",
@@ -204,6 +204,12 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 7] = [
         target: "csharp",
         schema: "csharp/benchmarks/workloads.tafla",
         directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/workloads.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedTafla",
         package: None,
     },
 ];
