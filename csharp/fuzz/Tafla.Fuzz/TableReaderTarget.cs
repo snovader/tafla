@@ -136,7 +136,7 @@ internal static class TableReaderTarget
         var copy = input[4..].ToArray();
         var layout = new TableLayout { OffsetType = offsetType, Sized = sized };
         var reader = copy.Length == 0 && layout == TableLayout.Default ? default : new TableReader(copy, layout);
-        var bytes = reader.Bytes.Span;
+        var bytes = reader.Bytes;
 
         Check.That(reader.Layout == layout && bytes.Length == copy.Length);
         Check.That(copy.Length == 0 || Unsafe.AreSame(ref MemoryMarshal.GetReference(bytes), ref copy[0]));
@@ -416,7 +416,7 @@ internal static class TableReaderTarget
             CheckAllocation(Allocated() - start, 0);
             Check.That(moved);
 
-            var item = items.Current.Span;
+            var item = items.Current;
             return new Item(StartOf(item, bytes), item.Length, null);
         }
         catch (DecodeException error)
@@ -426,12 +426,12 @@ internal static class TableReaderTarget
         }
     }
 
-    private static Item Find(ReadOnlySpan<byte> bytes, Vector vector, Func<Vector, ReadOnlyMemory<byte>> find)
+    private static Item Find(ReadOnlySpan<byte> bytes, Vector vector, Func<Vector, ReadOnlySpan<byte>> find)
     {
         var start = Allocated();
         try
         {
-            var item = find(vector).Span;
+            var item = find(vector);
             CheckAllocation(Allocated() - start, 0);
 
             return new Item(StartOf(item, bytes), item.Length, null);
@@ -497,7 +497,7 @@ internal static class TableReaderTarget
             ? a.Error is { } x && b.Error is { } y && SameError(x, y)
             : a.Start == b.Start && a.Length == b.Length;
 
-    private static bool ThrowsOutOfRange(Vector vector, Func<Vector, ReadOnlyMemory<byte>> read)
+    private static bool ThrowsOutOfRange(Vector vector, Func<Vector, ReadOnlySpan<byte>> read)
     {
         try
         {
