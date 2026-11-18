@@ -314,6 +314,36 @@ public class AllTypesTests
     }
 
     /// <summary>
+    /// A reader's default value wraps the runtime's default reader, which reads no bytes, so its
+    /// getters throw a DecodeException, and a view's default value is empty, as the runtime's default
+    /// vector is
+    /// </summary>
+    [Fact]
+    public void DefaultReadersReadNoBytesAndDefaultViewsAreEmpty()
+    {
+        Assert.Throws<DecodeException>(() => default(AllTypes.Scalars).Int8);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Arrays).Float64.Length);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Nested).Label);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Nested).Outer.Inner.Name);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Outer).Count);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Tree).Children.Count);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Structs).Packed);
+        Assert.Throws<DecodeException>(() => default(AllTypes.Path).Points.Count);
+
+        var trees = default(AllTypes.TreeVector);
+        var count = 0;
+        Assert.Equal(0, trees.Count);
+        Assert.Empty(DescribeTrees(trees, ref count));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = default(AllTypes.TreeVector)[0]);
+
+        var points = default(AllTypes.PointArray);
+        Assert.Equal(0, points.Count);
+        Assert.Empty(Items(points));
+        Assert.Empty(points.ToArray());
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = default(AllTypes.PointArray)[0]);
+    }
+
+    /// <summary>
     /// A view reads an item without the items before it, from ends that corrupted bytes can lead
     /// anywhere, so the trees are read item by item through their indexers, to a bounded depth, as a
     /// caller that walks them recursively does

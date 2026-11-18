@@ -585,7 +585,9 @@ a field may take the name of any declaration but its own. A message's reader
 is a `ref struct` over the `ReadOnlySpan<byte>` that it reads, as the
 runtime's `TableReader` is, so it, its nested tables and the views of its
 vectors live no longer than the bytes, and `foreach` reads a view without a
-collection interface. Its getters are
+collection interface. A reader's default value wraps the runtime's default
+`TableReader`, which reads no bytes, so its getters throw a
+`DecodeException`, and a view's default value is empty. Its getters are
 properties, which read the field each time they're read: a string into a new
 `string`, and an array as a `ReadOnlySpan<T>` of the bytes on a little-endian
 host. Its fields are a `readonly record struct` with a `required` property of
