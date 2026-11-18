@@ -117,8 +117,12 @@ jobs:
 
       # Every read stays within the bytes it was given, which the runtime
       # loads from without the standard library's checks once it's checked
-      # them itself
+      # them itself. Without LeakSanitizer, as on macOS: it reports the
+      # conformance suite that the tests keep in a static, whose arrays Swift
+      # refers to from enum payloads that it doesn't recognize as pointers.
       - name: Run tests with AddressSanitizer
+        env:
+          ASAN_OPTIONS: detect_leaks=0
         run: swift test --sanitize=address
 
   macos:

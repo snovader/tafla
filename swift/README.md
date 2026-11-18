@@ -218,12 +218,15 @@ swift build
 swift test
 swift test -c release -Xswiftc -enable-testing
 swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
-swift test --scratch-path .build/asan --sanitize=address
+ASAN_OPTIONS=detect_leaks=0 swift test --scratch-path .build/asan --sanitize=address
 swift format lint --strict --recursive Package.swift Sources Tests
 ```
 
 `swift format --in-place --recursive Package.swift Sources Tests` formats the
-code as `.swift-format` configures it. The tests are:
+code as `.swift-format` configures it. LeakSanitizer, which AddressSanitizer
+runs on Linux, reports the conformance suite that the tests keep in a static,
+whose arrays Swift refers to from enum payloads, so `detect_leaks=0` turns it
+off, as it's off on macOS. The tests are:
 
 - `ConformanceTests.swift`: reads and rebuilds the conformance suite, at every
   byte offset from an aligned address.
