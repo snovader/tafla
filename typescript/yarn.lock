@@ -681,6 +681,12 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tafla/native@workspace:^, @tafla/native@workspace:native":
+  version: 0.0.0-use.local
+  resolution: "@tafla/native@workspace:native"
+  languageName: unknown
+  linkType: soft
+
 "@tybys/wasm-util@npm:^0.10.3":
   version: 0.10.4
   resolution: "@tybys/wasm-util@npm:0.10.4"
@@ -1657,6 +1663,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "tafla-benchmarks@workspace:benchmarks"
   dependencies:
+    "@tafla/native": "workspace:^"
     flatbuffers: "npm:25.9.23"
     msgpackr: "npm:2.1.4"
     protobufjs: "npm:8.8.1"

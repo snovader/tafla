@@ -12,6 +12,9 @@ node_modules
 !/typescript/.yarn/releases
 !/typescript/.yarn/sdks
 !/typescript/.yarn/versions
+# The native addon, which typescript/native/build.ts builds
+/typescript/native/target
+/typescript/native/*.node
 
 # Python
 __pycache__

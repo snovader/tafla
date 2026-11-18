@@ -1,0 +1,34 @@
+# The native addon of @tafla/native, which napi-rs binds to Node-API. It
+# isn't published as a crate.
+[package]
+name = "tafla-native"
+version = "0.0.0"
+description = "Batch reads of tafla tables for Node-API runtimes, through the Rust runtime"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Registers the module, and declares Node-API's functions. Node-API 6 has
+# the typed arrays of 64-bit integers.
+napi = { version = "=3.16.2", features = ["napi6"] }
+napi-derive = "=3.7.1"
+# Reads go through the Rust runtime's TableReader, for its bounds checks
+tafla = { path = "../../rust/core" }
+
+[build-dependencies]
+napi-build = "=2.6.0"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+must_use_candidate = { level = "allow", priority = 1 }
+
+[profile.release]
+codegen-units = 1
+lto = true

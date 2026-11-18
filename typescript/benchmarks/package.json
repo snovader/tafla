@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@tafla/native": "workspace:^",
     "flatbuffers": "25.9.23",
     "msgpackr": "2.1.4",
     "protobufjs": "8.8.1",

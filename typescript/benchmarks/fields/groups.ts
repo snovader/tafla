@@ -1,7 +1,7 @@
 import { TableBuilder, type TableReader } from 'tafla';
 import type { Group, Variant } from '../comparison/harness.ts';
 
-type TypedArray =
+export type TypedArray =
     | Int8Array<ArrayBuffer>
     | Uint8Array<ArrayBuffer>
     | Int16Array<ArrayBuffer>
@@ -13,10 +13,10 @@ type TypedArray =
     | Float32Array<ArrayBuffer>
     | Float64Array<ArrayBuffer>;
 
-type TypedArrayConstructor = new (length: number) => TypedArray;
+export type TypedArrayConstructor = new (length: number) => TypedArray;
 
 /** The fields of a table of scalars, and the elements of each array */
-const LENGTH = 1000;
+export const LENGTH = 1000;
 
 /** The fields of a table of arrays */
 const ARRAYS = 100;
@@ -34,7 +34,7 @@ const TYPES = [
     ['Float64', Float64Array]
 ] as const;
 
-type ElementType = (typeof TYPES)[number];
+export type ElementType = (typeof TYPES)[number];
 type TypeName = ElementType[0];
 
 /** Numbers the sources of the variants' calls, so that no two are the same */
@@ -201,7 +201,7 @@ function arraySetterVariant(
  * source of its own. Each source ends with a number of its own, since the
  * A/A pair, and the typed array and array setters, have the same code.
  */
-function compile(
+export function compile(
     parameters: Record<string, unknown>,
     body: string
 ): () => unknown {
@@ -217,7 +217,7 @@ function compile(
 }
 
 /** A table of a field of `values`' type for each of them */
-function tableOfFields(values: TypedArray, type: TypeName): TableReader {
+export function tableOfFields(values: TypedArray, type: TypeName): TableReader {
     const builder = new TableBuilder(values.length);
     const set = builder[`set${type}`].bind(builder) as (
         value: bigint | number
@@ -258,7 +258,7 @@ function fieldsOf(reader: TableReader, type: TypeName): Array<bigint | number> {
  * Throws unless `actual` holds the same values as `expected`, compared with
  * `Object.is`, which tells -0 from 0
  */
-function assertSameValues(
+export function assertSameValues(
     actual: ArrayLike<unknown>,
     expected: ArrayLike<unknown>,
     name: string
@@ -286,7 +286,7 @@ function randomArrays(TypedArray: TypedArrayConstructor): TypedArray[] {
  * Random values over the whole range of an integer type, or from -1 to 1 for
  * floats
  */
-function randomValues(TypedArray: TypedArrayConstructor): TypedArray {
+export function randomValues(TypedArray: TypedArrayConstructor): TypedArray {
     const array = new TypedArray(LENGTH);
 
     if (array instanceof Float32Array || array instanceof Float64Array) {

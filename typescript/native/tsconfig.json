@@ -1,0 +1,7 @@
+{
+    "extends": "../tsconfig.node.json",
+    "compilerOptions": {
+        "outDir": "../.cache/typescript/native"
+    },
+    "include": ["*.ts", "source"]
+}

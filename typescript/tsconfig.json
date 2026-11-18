@@ -14,6 +14,7 @@
         { "path": "./core" },
         { "path": "./core/test" },
         { "path": "./core/test/conformance" },
-        { "path": "./core/test/generated" }
+        { "path": "./core/test/generated" },
+        { "path": "./native" }
     ]
 }
