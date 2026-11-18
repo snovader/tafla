@@ -5,4 +5,8 @@
   <Folder Name="/tests/">
     <Project Path="tests/Tafla.Tests/Tafla.Tests.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Tafla.Benchmarks/Tafla.Benchmarks.csproj" />
+    <Project Path="benchmarks/Tafla.Benchmarks.Tests/Tafla.Benchmarks.Tests.csproj" />
+  </Folder>
 </Solution>

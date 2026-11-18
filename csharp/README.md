@@ -50,6 +50,12 @@ The runtime is released to NuGet as the package `Tafla`, whose page shows
 `src/Tafla/README.md`, as [RELEASING.md](../RELEASING.md) describes. It
 hasn't been released yet.
 
+`benchmarks/` compares tafla with FlatBuffers, protobuf, MessagePack and
+MemoryPack, on the same workloads as the other languages' comparisons. Its
+projects are their own, so that the runtime depends on none of their
+packages, and its [README](benchmarks/README.md) describes the method and
+has results.
+
 ## Format
 
 All values are little-endian. A table is its header, one offset per field
@@ -282,10 +288,12 @@ dotnet test -p:TaflaPortable=true
 the build treats every warning as an error, with .NET's recommended
 analyzers, the code style and the trimming and AOT analyzers, and requires
 documentation of every public API. `dotnet test` runs the tests with
-Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs.
-The tests' packages, xUnit v3 and CsCheck, are pinned in
-`Directory.Packages.props` and locked in the tests' `packages.lock.json`,
-which CI restores in locked mode. The runtime depends on no package, and has
+Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs,
+and the benchmarks' check that every codec reads back what it wrote. The
+tests' packages, xUnit v3 and CsCheck, and the libraries that the
+benchmarks compare tafla with, are pinned in `Directory.Packages.props` and
+locked in each project's `packages.lock.json`, which CI restores in locked
+mode. The runtime depends on no package, and has
 no lock file: the SDK adds its trimming analyzers' package to it, at the
 SDK's own version, which a lock file would tie to one SDK. The build writes
 everything under `artifacts/`.
