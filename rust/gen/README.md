@@ -996,6 +996,7 @@ where:
 | Go         | `go/benchmarks/workloads.tafla`, `go/benchmarks/generated/tafla/`                                                        |
 | C++        | `cpp/benchmarks/workloads.tafla`, `cpp/benchmarks/generated/tafla/`                                                      |
 | C#         | `csharp/benchmarks/workloads.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen/`                            |
+| Swift      | `swift/benchmarks/workloads.tafla`, `swift/benchmarks/Sources/GeneratedTafla/`, a module                                 |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

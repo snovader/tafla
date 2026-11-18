@@ -201,11 +201,44 @@ jobs:
           swift build --scratch-path .build/watchos --target Tafla \
               --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
 
+  # The comparison with other libraries, a package of its own, so that the
+  # runtime's package depends on none of them. Shared runners are too noisy
+  # for its timings, so this checks that it builds and reads back what every
+  # codec wrote.
+  benchmark:
+    name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: swift/benchmarks
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Its own code, apart from the code that FlatBuffers' and protobuf's
+      # generators generated in their style
+      - name: Run formatting check
+        run: |
+          swift format lint --strict --recursive Package.swift Tests Sources/Workloads Sources/Codecs \
+              Sources/Harness Sources/Comparison Sources/Encoding Sources/GeneratedTafla
+
+      # The workloads' values, and that every codec reads back what it wrote,
+      # built as the comparison is
+      - name: Run tests optimized
+        run: swift test -c release
+
+      - name: Print the encoded sizes
+        run: swift run -c release Encoding
+
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Swift.
   checks:
     name: Swift checks
-    needs: [changes, formatting, linux, sanitizers, fuzz, macos]
+    needs: [changes, formatting, linux, sanitizers, fuzz, macos, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

@@ -77,6 +77,8 @@ jobs:
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/**"
               - "python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla"
               - "python/benchmarks/src/tafla_benchmarks/generated/tafla/**"
+              - "swift/benchmarks/workloads.tafla"
+              - "swift/benchmarks/Sources/GeneratedTafla/**"
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
             # The runtime and what its tests read, which the jobs that test only

@@ -390,3 +390,11 @@ instead of fuzzing, which reproduces a finding:
 A finding becomes a regression test in `DecodeErrorTests.swift`. CI runs
 each target for a minute on every change, and the weekly Fuzz workflow for
 five minutes, from the corpus that its earlier runs grew.
+
+### Benchmarks
+
+`benchmarks/` compares the runtime with FlatBuffers, swift-protobuf and a
+MessagePack library on the workloads that every language's comparison runs,
+in a package of its own, so that the runtime's package depends on none of
+them. [benchmarks/README.md](benchmarks/README.md) describes the method and
+the results.
