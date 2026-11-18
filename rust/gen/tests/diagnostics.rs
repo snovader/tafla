@@ -230,10 +230,18 @@ fn declarations_cant_take_a_macro_of_the_c_standard_library() {
 
 /// C#'s generated code names the runtime and the standard library in full, so
 /// it imports no names, but a type can't declare a member of its own name,
-/// and the views nest an `Enumerator`
+/// such as the `ToArray()` of `ToArray`, the view of an array of `To`s, and
+/// the views nest an `Enumerator`
 #[test]
 fn declarations_cant_take_the_name_of_a_member_of_the_generated_csharp() {
-    for name in ["Size", "Write", "ToString", "FormatVersion", "Enumerator"] {
+    for name in [
+        "Size",
+        "Write",
+        "ToString",
+        "FormatVersion",
+        "To",
+        "Enumerator",
+    ] {
         let source = format!("struct {name} {{ x: uint8; }}");
         let diagnostics = parse(&source).unwrap_err();
         let messages: Vec<&str> = diagnostics

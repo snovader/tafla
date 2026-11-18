@@ -121,8 +121,8 @@ or read its tables, or a target couldn't generate its code:
   Rust and Swift, the macros of the C standard library that a C++ header
   may define, such as `NULL` and `EOF`, and the members that C#'s generated
   types declare, which a type of the same name can't, such as a struct's
-  `Size` and `Write()` and a record's `ToString()`, and `Enumerator`, which
-  its views nest; C++ and C# name everything else in full, and Swift names
+  `Size` and `Write()`, a record's `ToString()` and the `ToArray()` of the
+  view of an array of `To`s, and `Enumerator`, which its views nest; C++ and C# name everything else in full, and Swift names
   `Swift.Range`, so that a schema can declare `Range`.
   `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
