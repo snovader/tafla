@@ -17,7 +17,7 @@ from functools import partial
 from types import ModuleType
 from typing import Any, override
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis.strategies import (
     DataObject,
     DrawFn,
@@ -635,6 +635,34 @@ class TestImplementations(unittest.TestCase):
         one_of(text(max_size=4), sampled_from(["\ud800", "é" * 300])),
         one_of(none(), integers(0, 2**16), integers(-1, 1), INTEGERS),
         tuples(integers(0, 2**16), integers(0, 255)),
+    )
+    # Regressions: for a version that doesn't fit and a value whose conversion
+    # raises an error of its own, the pure-Python write_fields() raised the
+    # value's error, where the native one raises the constructor's
+    @example(
+        arguments={"sized": False, "versioned": True, "offset_type": "uint8"},
+        description=(1, ["b"], False),
+        values=[Index(None)],
+        string="",
+        version=256,
+        corruption=(0, 0),
+    )
+    @example(
+        arguments={"sized": True, "versioned": True, "offset_type": "uint16"},
+        description=(3, ["d", (1, ["H"], False)], True),
+        values=[1.5, Index(None)],
+        string="a",
+        version=-1,
+        corruption=(0, 0),
+    )
+    # And the value's own error for a version that fits
+    @example(
+        arguments={"sized": True, "versioned": True, "offset_type": "uint8"},
+        description=(1, ["b"], False),
+        values=[Index(None)],
+        string="",
+        version=255,
+        corruption=(0, 0),
     )
     def test_write_and_read_messages_of_fixed_fields_as_each_other_in_one_call(
         self,
