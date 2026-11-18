@@ -226,11 +226,74 @@ jobs:
       - name: Print the encoded sizes
         run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- encoding
 
+  # A 32-bit process on x86, with Microsoft's x86 SDK, where a .NET array's
+  # elements are aligned only to 4 bytes, positions plus lengths can overflow
+  # 32 bits, and floats return on the x87 stack
+  x86:
+    name: Test (32-bit x86)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET for x86
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          architecture: x86
+
+      - name: Build
+        run: dotnet build
+
+      # The summary names the process's architecture, x86
+      - name: Run tests
+        run: dotnet test --no-build
+
+  # 32-bit Arm, which reads every array as a copy, since it faults on some
+  # unaligned loads. GitHub's Arm runners run its binaries natively, so the
+  # tests, which build to IL, run in Microsoft's container of the .NET 10
+  # runtime for it. QEMU's emulation of 32-bit Arm crashes .NET.
+  arm:
+    name: Test (32-bit Arm)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build
+
+      # The tests find the conformance suite above the directory that they
+      # run in, so the container mounts the repository at its own path. The
+      # runner's banner names the process, 32-bit.
+      - name: Run tests on 32-bit Arm
+        run: >
+          docker run --rm --platform linux/arm/v7 -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" -w "$PWD"
+          mcr.microsoft.com/dotnet/runtime:10.0
+          dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian, package, benchmark]
+    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

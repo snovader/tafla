@@ -361,6 +361,11 @@ too, as the Development section describes.
 signalling NaN, so `GetFloat32()` and `GetFloat64()` may return one quieted
 there. The bytes themselves, and the spans of arrays, keep every bit.
 
+CI runs the tests in a 32-bit process on both: on x86 with Microsoft's x86
+SDK on Windows, and on 32-bit Arm natively, on GitHub's Arm runners, as the
+Development section describes. A 32-bit process skips one test, of a string
+longer than a .NET string holds, which needs 1 GiB of it.
+
 ## Development
 
 The runtime targets .NET 10, the current long-term support release, with
@@ -415,6 +420,20 @@ registered QEMU:
 ```sh
 docker run --rm --platform linux/s390x -v "$PWD/..:/repo:ro" -w /repo/csharp \
     registry.access.redhat.com/ubi9/dotnet-100-runtime \
+    dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+```
+
+CI runs the tests in a 32-bit process too. On Windows, Microsoft's x86 SDK
+builds and runs them as x86, as `dotnet test` from its directory does,
+`C:\Program Files (x86)\dotnet`. 32-bit Arm runs the same IL in Microsoft's
+container of the .NET 10 runtime for it, on a 64-bit Arm host that runs
+32-bit Arm natively, as GitHub's Arm runners do. Apple silicon doesn't, and
+QEMU's emulation of 32-bit Arm crashes .NET's runtime, in Docker Desktop and
+in QEMU 10.0 alike:
+
+```sh
+docker run --rm --platform linux/arm/v7 -v "$PWD/..:/repo:ro" -w /repo/csharp \
+    mcr.microsoft.com/dotnet/runtime:10.0 \
     dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
 ```
 
