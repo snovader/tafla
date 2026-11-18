@@ -357,9 +357,15 @@ path, without the byte swap, which only a big-endian host runs. CI runs the
 tests on s390x as well, emulated by QEMU, so that the byte swap is tested
 too, as the Development section describes.
 
-32-bit x86 returns floats on the x87 stack, whose loads may quiet a
-signalling NaN, so `GetFloat32()` and `GetFloat64()` may return one quieted
-there. The bytes themselves, and the spans of arrays, keep every bit.
+32-bit x86 returns floats on the x87 stack, whose loads quiet a signalling
+NaN, so `GetFloat32()` and `GetFloat64()` may return one quieted there, as
+may any method that returns a float, such as `BitConverter.UInt32BitsToSingle()`
+in unoptimized code. A float passed to a method keeps every bit, so the
+setters write every bit of the floats that they're given, and the bytes and
+the spans of arrays keep them too: read a signalling NaN's bits with
+`GetUInt32()` or `GetUInt64()`, or from an array. The tests make their floats
+from bits in memory, and accept a quieted signalling NaN only from the scalar
+getters, and only in a 32-bit x86 process.
 
 CI runs the tests in a 32-bit process on both: on x86 with Microsoft's x86
 SDK on Windows, and on 32-bit Arm natively, on GitHub's Arm runners, as the

@@ -60,7 +60,7 @@ public static class Read
     public static Field Field(TableReader reader, int position, Field field) =>
         field switch
         {
-            Scalar scalar => Scalars.Read(reader, scalar.Type, position),
+            Scalar scalar => Scalars.ReadAs(reader, scalar, position),
             Bool => new Bool(reader.GetUInt8(position) != 0),
             ArrayField array => Scalars.ReadArray(reader, array.Type, position),
             StringField => new StringField(reader.GetString(position)),
