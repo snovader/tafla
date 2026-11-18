@@ -49,7 +49,7 @@ reader can find without reading the others, and every item. Each way sums the
 three float32s of the items it reads as doubles, rather than creating objects
 of its own, and `ItemAccesses` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
+- **tafla** reads with `TableReader`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`'s
   view with `getFloat()`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
@@ -65,7 +65,7 @@ of its own, and `ItemAccesses` holds them:
 - Java's tafla has no `StructWriter`, and its package documentation leaves
   records at fixed offsets to `MethodHandles.byteArrayViewVarHandle`. So the
   tafla codec writes the fixed-size record through little-endian `VarHandle`s,
-  as tafla-gen's `Sample` does, and reads it with `ByteBuffer`'s getters at
+  as tafla-gen's `Sample` does, and reads it with `TableReader`'s getters at
   fixed positions.
 - msgpack-core has no typed arrays, and msgpackr's extension that copies their
   bytes is msgpackr's own, so MessagePack's columns are arrays of float32s and
@@ -292,7 +292,7 @@ Fastest iteration in µs per operation, and its ratio to tafla's:
   6.6 µs, against protobuf's 1.7 µs. protobuf also writes the record faster.
 - The sums of 100,000 floats take 86 µs through tafla's and FlatBuffers'
   accessors alike, bound by the additions; the 100-row sums differ.
-- The fixed-size record takes 2 to 3 ns with tafla's `ByteBuffer`, and 6 ns
+- The fixed-size record takes 2 to 3 ns with tafla's `TableReader`, and 6 ns
   with SBE, which writes and checks its 8-byte header too.
 
 An iteration can also run faster than the rest when fewer garbage collections
@@ -398,7 +398,7 @@ Bytes allocated per operation, the mean of the measured iterations:
   for each struct, before the codec creates the workload's records: 1.18 µs
   against 0.533 µs, and 0.519 µs against 0.200 µs, with twice the bytes.
 - tafla-gen writes and reads the fixed-size record through `VarHandle`s in
-  2.1 and 1.8 ns, against 2.2 and 2.4 ns with `ByteBuffer`'s setters, which
+  2.1 and 1.8 ns, against 2.2 and 2.4 ns with `TableReader`'s setters, which
   are gone, and getters. Both allocate only the 12-byte array, or the
   workload's record, 32 bytes, so escape analysis removes the generated
   `Sample` record.
@@ -442,7 +442,7 @@ of 4.9, which was 2.8 when the Python suite started after it. JMH's mean was wit
 of the fastest iteration for 14 of the 16 benchmarks, and at most 6.1% above
 it.
 
-Fastest iteration in µs per operation, and its ratio to `ByteBuffer`'s by
+Fastest iteration in µs per operation, and its ratio to `TableReader`'s by
 hand:
 
 | Benchmark                    |  tafla |      tafla-gen | tafla-gen view | tafla-gen view A/A |
@@ -461,7 +461,7 @@ Bytes allocated per operation:
 | ItemAccess: structsLastItem  |     0 |     2,816 |              0 |                  0 |
 | ItemAccess: structsEveryItem |     0 |     2,816 |              0 |                  0 |
 
-- The views read the vector's last item as fast as `ByteBuffer` by hand,
+- The views read the vector's last item as fast as `TableReader` by hand,
   0.0061 µs against 0.0062 µs, and the array's in 0.0042 µs against
   0.0034 µs, 64 and 45 times faster than the getters, which read all 100
   items first.

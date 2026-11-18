@@ -14,8 +14,8 @@ table Vector { x: uint8; }
 // java.lang.String, which a class in the same package hides
 table String { x: uint8; }
 
-// Every target imports the runtime's ByteBuffer
-table ByteBuffer { x: uint8; }
+// Every target imports the runtime's TableReader
+table TableReader { x: uint8; }
 // TypeScript's global
 struct Number { x: uint8; }
 // Python's typing

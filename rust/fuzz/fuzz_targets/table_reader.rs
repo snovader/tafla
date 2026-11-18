@@ -1,4 +1,4 @@
-//! Reads arbitrary bytes with every getter of `ByteBuffer`, at every position
+//! Reads arbitrary bytes with every getter of `TableReader`, at every position
 //! and past the end, in every offset type and header, and reads every array,
 //! struct array and vector that it finds there.
 //!
@@ -15,7 +15,7 @@ use std::{
 };
 
 use libfuzzer_sys::fuzz_target;
-use tafla::{ArrayView, ByteBuffer, DecodeError, Element, OffsetType, TableLayout, Vector};
+use tafla::{ArrayView, DecodeError, Element, OffsetType, TableLayout, TableReader, Vector};
 
 /// The elements of an array, and items of a vector, at its start and end
 /// that are read and compared with the bytes
@@ -36,14 +36,14 @@ fuzz_target!(|bytes: &[u8]| {
     for offset_type in OFFSET_TYPES {
         let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
 
-        check_header(&ByteBuffer::new(bytes, layout));
-        check_header(&ByteBuffer::new(bytes, layout.sized()));
-        check_version(&ByteBuffer::new(bytes, layout.versioned()));
-        check_version(&ByteBuffer::new(bytes, layout.sized().versioned()));
+        check_header(&TableReader::new(bytes, layout));
+        check_header(&TableReader::new(bytes, layout.sized()));
+        check_version(&TableReader::new(bytes, layout.versioned()));
+        check_version(&TableReader::new(bytes, layout.sized().versioned()));
 
-        let buffer = ByteBuffer::new(bytes, layout);
+        let reader = TableReader::new(bytes, layout);
         for position in positions(bytes.len()) {
-            check_position(&buffer, position);
+            check_position(&reader, position);
         }
     }
 });
@@ -54,12 +54,12 @@ fn positions(len: usize) -> impl Iterator<Item = usize> {
 }
 
 /// Reads the table's size and its root fields' offsets
-fn check_header<const V: bool>(buffer: &ByteBuffer<'_, V>) {
-    let bytes = buffer.bytes();
-    let layout = buffer.layout();
+fn check_header<const V: bool>(reader: &TableReader<'_, V>) {
+    let bytes = reader.bytes();
+    let layout = reader.layout();
     let width = layout.offset_size();
 
-    let size = buffer.size();
+    let size = reader.size();
     if layout.is_sized() {
         check_result(bytes, size, slot(bytes, 0, layout.offset_type()));
     } else {
@@ -71,13 +71,13 @@ fn check_header<const V: bool>(buffer: &ByteBuffer<'_, V>) {
         let position = index as u128 * width as u128 + layout.header_size() as u128;
         let expected = slot(bytes, position, layout.offset_type());
 
-        check_result(bytes, buffer.root_offset(index), expected);
+        check_result(bytes, reader.root_offset(index), expected);
     }
 }
 
-fn check_version(buffer: &ByteBuffer<'_, true>) {
-    let bytes = buffer.bytes();
-    let layout = buffer.layout();
+fn check_version(reader: &TableReader<'_, true>) {
+    let bytes = reader.bytes();
+    let layout = reader.layout();
     let position = if layout.is_sized() {
         layout.offset_size()
     } else {
@@ -86,59 +86,59 @@ fn check_version(buffer: &ByteBuffer<'_, true>) {
     let expected = slot(bytes, position as u128, layout.offset_type())
         .map(|version| u32::try_from(version).expect("A slot holds at most 4 bytes"));
 
-    check_result(bytes, buffer.version(), expected);
-    check_header(buffer);
+    check_result(bytes, reader.version(), expected);
+    check_header(reader);
 }
 
 /// Reads every type at `position`
-fn check_position(buffer: &ByteBuffer<'_>, position: usize) {
-    let bytes = buffer.bytes();
-    let offset_type = buffer.layout().offset_type();
+fn check_position(reader: &TableReader<'_>, position: usize) {
+    let bytes = reader.bytes();
+    let offset_type = reader.layout().offset_type();
 
-    check_scalars(buffer, position);
-    check_arrays(buffer, position);
+    check_scalars(reader, position);
+    check_arrays(reader, position);
 
     let string_bytes = array(bytes, offset_type, position, 1);
-    check_result(bytes, buffer.get_u8_array(position), string_bytes);
+    check_result(bytes, reader.get_u8_array(position), string_bytes);
     let string = string_bytes.and_then(|bytes| std::str::from_utf8(bytes).ok());
-    check_result(bytes, buffer.get_str(position), string);
+    check_result(bytes, reader.get_str(position), string);
 
     let remaining = bytes.len().saturating_sub(position);
     for size in [0, 1, 2, 3, 8, 13, remaining, remaining + 1, usize::MAX] {
         let expected = bytes.get(position..).and_then(|bytes| bytes.get(..size));
-        check_result(bytes, buffer.get_struct(position, size), expected);
+        check_result(bytes, reader.get_struct(position, size), expected);
 
         let expected = array(bytes, offset_type, position, size);
-        check_result(bytes, buffer.get_struct_array(position, size), expected);
+        check_result(bytes, reader.get_struct_array(position, size), expected);
     }
 
     for index in [0, 1, 2, usize::MAX] {
         let slot_position = position as u128 + index as u128 * offset_type.size() as u128;
         let expected = slot(bytes, slot_position, offset_type).map(|offset| position + offset);
 
-        check_result(bytes, buffer.field_offset(position, index), expected);
+        check_result(bytes, reader.field_offset(position, index), expected);
     }
 
-    check_vector(buffer, position);
+    check_vector(reader, position);
 }
 
 macro_rules! check_scalar {
-    ($buffer:expr, $position:expr, $($getter:ident -> $type:ty),*) => {$({
-        let bytes = $buffer.bytes();
+    ($reader:expr, $position:expr, $($getter:ident -> $type:ty),*) => {$({
+        let bytes = $reader.bytes();
         let expected = bytes
             .get($position..)
             .and_then(<[u8]>::first_chunk)
             .copied();
 
         // Compared by their bytes, which are the bits of floats
-        let read = $buffer.$getter($position).map(<$type>::to_le_bytes);
+        let read = $reader.$getter($position).map(<$type>::to_le_bytes);
         check_result(bytes, read, expected);
     })*};
 }
 
-fn check_scalars(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_scalars(reader: &TableReader<'_>, position: usize) {
     check_scalar!(
-        buffer, position,
+        reader, position,
         get_i8 -> i8, get_u8 -> u8,
         get_i16 -> i16, get_u16 -> u16,
         get_i32 -> i32, get_u32 -> u32,
@@ -148,12 +148,12 @@ fn check_scalars(buffer: &ByteBuffer<'_>, position: usize) {
 }
 
 macro_rules! check_array {
-    ($buffer:expr, $position:expr, $($getter:ident -> $type:ty),*) => {$({
-        let bytes = $buffer.bytes();
-        let offset_type = $buffer.layout().offset_type();
+    ($reader:expr, $position:expr, $($getter:ident -> $type:ty),*) => {$({
+        let bytes = $reader.bytes();
+        let offset_type = $reader.layout().offset_type();
         let expected = array(bytes, offset_type, $position, size_of::<$type>());
 
-        match $buffer.$getter($position) {
+        match $reader.$getter($position) {
             Ok(view) => {
                 check_in(view.as_bytes(), expected);
                 check_view(&view, <$type>::to_le_bytes);
@@ -163,9 +163,9 @@ macro_rules! check_array {
     })*};
 }
 
-fn check_arrays(buffer: &ByteBuffer<'_>, position: usize) {
+fn check_arrays(reader: &TableReader<'_>, position: usize) {
     check_array!(
-        buffer, position,
+        reader, position,
         get_i8_array -> i8,
         get_i16_array -> i16, get_u16_array -> u16,
         get_i32_array -> i32, get_u32_array -> u32,
@@ -236,9 +236,9 @@ fn check_view<T: Element + Debug, const N: usize>(
 
 /// Reads the vector at `position` and each of its items, by iterating, by
 /// index and in place
-fn check_vector(buffer: &ByteBuffer<'_>, position: usize) {
-    let bytes = buffer.bytes();
-    let offset_type = buffer.layout().offset_type();
+fn check_vector(reader: &TableReader<'_>, position: usize) {
+    let bytes = reader.bytes();
+    let offset_type = reader.layout().offset_type();
     let width = offset_type.size() as u128;
 
     // A count, and an end for each item after it, within the bytes
@@ -246,7 +246,7 @@ fn check_vector(buffer: &ByteBuffer<'_>, position: usize) {
     let ends = count
         .filter(|&count| position as u128 + width * (count as u128 + 1) <= bytes.len() as u128);
 
-    let vector = match buffer.get_vector(position) {
+    let vector = match reader.get_vector(position) {
         Ok(vector) => vector,
         Err(error) => return check_error(bytes, &error, ends.is_none()),
     };

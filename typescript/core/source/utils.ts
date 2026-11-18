@@ -3,7 +3,7 @@ import { encodeInto, utf8Length } from './encoding.ts';
 import { outOfRange, writeOutOfRange } from './errors.ts';
 
 // Little-endian reads straight from a Uint8Array, for small records at fixed
-// offsets, such as structs and stream frames, that aren't worth a ByteBuffer.
+// offsets, such as structs and stream frames, that aren't worth a TableReader.
 // Each throws a DecodeError if the value doesn't lie within `bytes`.
 
 const int32s = new Int32Array(1);

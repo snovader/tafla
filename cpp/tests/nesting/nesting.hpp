@@ -5606,9 +5606,9 @@ struct RootFields {
 }  // namespace generic
 
 inline std::uint8_t Leaf::value() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_uint8(position);
 }
 
 inline void LeafFields::size(::tafla::TableSizer& sizer_) const {
@@ -5629,21 +5629,21 @@ inline void LeafFields::to_bytes(std::uint8_t* bytes_) const noexcept {
 }
 
 inline Leaf Level62::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Leaf(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Leaf(reader.get_table(position), 0);
 }
 
 inline LeafVector Level62::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return LeafVector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return LeafVector(reader.get_vector(position));
 }
 
 inline LeafVector Level62::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return LeafVector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return LeafVector(reader.get_vector(position));
 }
 
 inline void Level62Fields::size(::tafla::TableSizer& sizer_) const {
@@ -5725,21 +5725,21 @@ inline void generic::Level62Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level62 Level61::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level62(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level62(reader.get_table(position), 0);
 }
 
 inline Level62Vector Level61::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level62Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level62Vector(reader.get_vector(position));
 }
 
 inline Level62Vector Level61::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level62Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level62Vector(reader.get_vector(position));
 }
 
 inline void Level61Fields::size(::tafla::TableSizer& sizer_) const {
@@ -5821,21 +5821,21 @@ inline void generic::Level61Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level61 Level60::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level61(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level61(reader.get_table(position), 0);
 }
 
 inline Level61Vector Level60::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level61Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level61Vector(reader.get_vector(position));
 }
 
 inline Level61Vector Level60::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level61Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level61Vector(reader.get_vector(position));
 }
 
 inline void Level60Fields::size(::tafla::TableSizer& sizer_) const {
@@ -5917,21 +5917,21 @@ inline void generic::Level60Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level60 Level59::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level60(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level60(reader.get_table(position), 0);
 }
 
 inline Level60Vector Level59::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level60Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level60Vector(reader.get_vector(position));
 }
 
 inline Level60Vector Level59::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level60Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level60Vector(reader.get_vector(position));
 }
 
 inline void Level59Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6013,21 +6013,21 @@ inline void generic::Level59Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level59 Level58::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level59(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level59(reader.get_table(position), 0);
 }
 
 inline Level59Vector Level58::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level59Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level59Vector(reader.get_vector(position));
 }
 
 inline Level59Vector Level58::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level59Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level59Vector(reader.get_vector(position));
 }
 
 inline void Level58Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6109,21 +6109,21 @@ inline void generic::Level58Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level58 Level57::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level58(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level58(reader.get_table(position), 0);
 }
 
 inline Level58Vector Level57::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level58Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level58Vector(reader.get_vector(position));
 }
 
 inline Level58Vector Level57::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level58Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level58Vector(reader.get_vector(position));
 }
 
 inline void Level57Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6205,21 +6205,21 @@ inline void generic::Level57Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level57 Level56::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level57(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level57(reader.get_table(position), 0);
 }
 
 inline Level57Vector Level56::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level57Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level57Vector(reader.get_vector(position));
 }
 
 inline Level57Vector Level56::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level57Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level57Vector(reader.get_vector(position));
 }
 
 inline void Level56Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6301,21 +6301,21 @@ inline void generic::Level56Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level56 Level55::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level56(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level56(reader.get_table(position), 0);
 }
 
 inline Level56Vector Level55::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level56Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level56Vector(reader.get_vector(position));
 }
 
 inline Level56Vector Level55::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level56Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level56Vector(reader.get_vector(position));
 }
 
 inline void Level55Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6397,21 +6397,21 @@ inline void generic::Level55Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level55 Level54::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level55(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level55(reader.get_table(position), 0);
 }
 
 inline Level55Vector Level54::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level55Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level55Vector(reader.get_vector(position));
 }
 
 inline Level55Vector Level54::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level55Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level55Vector(reader.get_vector(position));
 }
 
 inline void Level54Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6493,21 +6493,21 @@ inline void generic::Level54Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level54 Level53::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level54(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level54(reader.get_table(position), 0);
 }
 
 inline Level54Vector Level53::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level54Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level54Vector(reader.get_vector(position));
 }
 
 inline Level54Vector Level53::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level54Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level54Vector(reader.get_vector(position));
 }
 
 inline void Level53Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6589,21 +6589,21 @@ inline void generic::Level53Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level53 Level52::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level53(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level53(reader.get_table(position), 0);
 }
 
 inline Level53Vector Level52::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level53Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level53Vector(reader.get_vector(position));
 }
 
 inline Level53Vector Level52::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level53Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level53Vector(reader.get_vector(position));
 }
 
 inline void Level52Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6685,21 +6685,21 @@ inline void generic::Level52Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level52 Level51::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level52(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level52(reader.get_table(position), 0);
 }
 
 inline Level52Vector Level51::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level52Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level52Vector(reader.get_vector(position));
 }
 
 inline Level52Vector Level51::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level52Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level52Vector(reader.get_vector(position));
 }
 
 inline void Level51Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6781,21 +6781,21 @@ inline void generic::Level51Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level51 Level50::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level51(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level51(reader.get_table(position), 0);
 }
 
 inline Level51Vector Level50::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level51Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level51Vector(reader.get_vector(position));
 }
 
 inline Level51Vector Level50::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level51Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level51Vector(reader.get_vector(position));
 }
 
 inline void Level50Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6877,21 +6877,21 @@ inline void generic::Level50Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level50 Level49::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level50(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level50(reader.get_table(position), 0);
 }
 
 inline Level50Vector Level49::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level50Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level50Vector(reader.get_vector(position));
 }
 
 inline Level50Vector Level49::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level50Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level50Vector(reader.get_vector(position));
 }
 
 inline void Level49Fields::size(::tafla::TableSizer& sizer_) const {
@@ -6973,21 +6973,21 @@ inline void generic::Level49Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level49 Level48::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level49(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level49(reader.get_table(position), 0);
 }
 
 inline Level49Vector Level48::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level49Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level49Vector(reader.get_vector(position));
 }
 
 inline Level49Vector Level48::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level49Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level49Vector(reader.get_vector(position));
 }
 
 inline void Level48Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7069,21 +7069,21 @@ inline void generic::Level48Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level48 Level47::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level48(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level48(reader.get_table(position), 0);
 }
 
 inline Level48Vector Level47::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level48Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level48Vector(reader.get_vector(position));
 }
 
 inline Level48Vector Level47::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level48Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level48Vector(reader.get_vector(position));
 }
 
 inline void Level47Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7165,21 +7165,21 @@ inline void generic::Level47Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level47 Level46::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level47(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level47(reader.get_table(position), 0);
 }
 
 inline Level47Vector Level46::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level47Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level47Vector(reader.get_vector(position));
 }
 
 inline Level47Vector Level46::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level47Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level47Vector(reader.get_vector(position));
 }
 
 inline void Level46Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7261,21 +7261,21 @@ inline void generic::Level46Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level46 Level45::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level46(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level46(reader.get_table(position), 0);
 }
 
 inline Level46Vector Level45::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level46Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level46Vector(reader.get_vector(position));
 }
 
 inline Level46Vector Level45::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level46Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level46Vector(reader.get_vector(position));
 }
 
 inline void Level45Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7357,21 +7357,21 @@ inline void generic::Level45Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level45 Level44::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level45(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level45(reader.get_table(position), 0);
 }
 
 inline Level45Vector Level44::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level45Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level45Vector(reader.get_vector(position));
 }
 
 inline Level45Vector Level44::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level45Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level45Vector(reader.get_vector(position));
 }
 
 inline void Level44Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7453,21 +7453,21 @@ inline void generic::Level44Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level44 Level43::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level44(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level44(reader.get_table(position), 0);
 }
 
 inline Level44Vector Level43::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level44Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level44Vector(reader.get_vector(position));
 }
 
 inline Level44Vector Level43::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level44Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level44Vector(reader.get_vector(position));
 }
 
 inline void Level43Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7549,21 +7549,21 @@ inline void generic::Level43Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level43 Level42::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level43(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level43(reader.get_table(position), 0);
 }
 
 inline Level43Vector Level42::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level43Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level43Vector(reader.get_vector(position));
 }
 
 inline Level43Vector Level42::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level43Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level43Vector(reader.get_vector(position));
 }
 
 inline void Level42Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7645,21 +7645,21 @@ inline void generic::Level42Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level42 Level41::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level42(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level42(reader.get_table(position), 0);
 }
 
 inline Level42Vector Level41::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level42Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level42Vector(reader.get_vector(position));
 }
 
 inline Level42Vector Level41::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level42Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level42Vector(reader.get_vector(position));
 }
 
 inline void Level41Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7741,21 +7741,21 @@ inline void generic::Level41Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level41 Level40::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level41(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level41(reader.get_table(position), 0);
 }
 
 inline Level41Vector Level40::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level41Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level41Vector(reader.get_vector(position));
 }
 
 inline Level41Vector Level40::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level41Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level41Vector(reader.get_vector(position));
 }
 
 inline void Level40Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7837,21 +7837,21 @@ inline void generic::Level40Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level40 Level39::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level40(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level40(reader.get_table(position), 0);
 }
 
 inline Level40Vector Level39::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level40Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level40Vector(reader.get_vector(position));
 }
 
 inline Level40Vector Level39::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level40Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level40Vector(reader.get_vector(position));
 }
 
 inline void Level39Fields::size(::tafla::TableSizer& sizer_) const {
@@ -7933,21 +7933,21 @@ inline void generic::Level39Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level39 Level38::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level39(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level39(reader.get_table(position), 0);
 }
 
 inline Level39Vector Level38::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level39Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level39Vector(reader.get_vector(position));
 }
 
 inline Level39Vector Level38::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level39Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level39Vector(reader.get_vector(position));
 }
 
 inline void Level38Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8029,21 +8029,21 @@ inline void generic::Level38Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level38 Level37::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level38(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level38(reader.get_table(position), 0);
 }
 
 inline Level38Vector Level37::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level38Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level38Vector(reader.get_vector(position));
 }
 
 inline Level38Vector Level37::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level38Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level38Vector(reader.get_vector(position));
 }
 
 inline void Level37Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8125,21 +8125,21 @@ inline void generic::Level37Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level37 Level36::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level37(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level37(reader.get_table(position), 0);
 }
 
 inline Level37Vector Level36::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level37Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level37Vector(reader.get_vector(position));
 }
 
 inline Level37Vector Level36::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level37Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level37Vector(reader.get_vector(position));
 }
 
 inline void Level36Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8221,21 +8221,21 @@ inline void generic::Level36Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level36 Level35::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level36(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level36(reader.get_table(position), 0);
 }
 
 inline Level36Vector Level35::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level36Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level36Vector(reader.get_vector(position));
 }
 
 inline Level36Vector Level35::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level36Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level36Vector(reader.get_vector(position));
 }
 
 inline void Level35Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8317,21 +8317,21 @@ inline void generic::Level35Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level35 Level34::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level35(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level35(reader.get_table(position), 0);
 }
 
 inline Level35Vector Level34::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level35Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level35Vector(reader.get_vector(position));
 }
 
 inline Level35Vector Level34::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level35Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level35Vector(reader.get_vector(position));
 }
 
 inline void Level34Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8413,21 +8413,21 @@ inline void generic::Level34Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level34 Level33::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level34(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level34(reader.get_table(position), 0);
 }
 
 inline Level34Vector Level33::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level34Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level34Vector(reader.get_vector(position));
 }
 
 inline Level34Vector Level33::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level34Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level34Vector(reader.get_vector(position));
 }
 
 inline void Level33Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8509,21 +8509,21 @@ inline void generic::Level33Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level33 Level32::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level33(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level33(reader.get_table(position), 0);
 }
 
 inline Level33Vector Level32::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level33Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level33Vector(reader.get_vector(position));
 }
 
 inline Level33Vector Level32::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level33Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level33Vector(reader.get_vector(position));
 }
 
 inline void Level32Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8605,21 +8605,21 @@ inline void generic::Level32Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level32 Level31::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level32(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level32(reader.get_table(position), 0);
 }
 
 inline Level32Vector Level31::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level32Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level32Vector(reader.get_vector(position));
 }
 
 inline Level32Vector Level31::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level32Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level32Vector(reader.get_vector(position));
 }
 
 inline void Level31Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8701,21 +8701,21 @@ inline void generic::Level31Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level31 Level30::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level31(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level31(reader.get_table(position), 0);
 }
 
 inline Level31Vector Level30::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level31Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level31Vector(reader.get_vector(position));
 }
 
 inline Level31Vector Level30::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level31Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level31Vector(reader.get_vector(position));
 }
 
 inline void Level30Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8797,21 +8797,21 @@ inline void generic::Level30Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level30 Level29::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level30(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level30(reader.get_table(position), 0);
 }
 
 inline Level30Vector Level29::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level30Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level30Vector(reader.get_vector(position));
 }
 
 inline Level30Vector Level29::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level30Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level30Vector(reader.get_vector(position));
 }
 
 inline void Level29Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8893,21 +8893,21 @@ inline void generic::Level29Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level29 Level28::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level29(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level29(reader.get_table(position), 0);
 }
 
 inline Level29Vector Level28::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level29Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level29Vector(reader.get_vector(position));
 }
 
 inline Level29Vector Level28::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level29Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level29Vector(reader.get_vector(position));
 }
 
 inline void Level28Fields::size(::tafla::TableSizer& sizer_) const {
@@ -8989,21 +8989,21 @@ inline void generic::Level28Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level28 Level27::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level28(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level28(reader.get_table(position), 0);
 }
 
 inline Level28Vector Level27::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level28Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level28Vector(reader.get_vector(position));
 }
 
 inline Level28Vector Level27::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level28Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level28Vector(reader.get_vector(position));
 }
 
 inline void Level27Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9085,21 +9085,21 @@ inline void generic::Level27Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level27 Level26::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level27(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level27(reader.get_table(position), 0);
 }
 
 inline Level27Vector Level26::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level27Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level27Vector(reader.get_vector(position));
 }
 
 inline Level27Vector Level26::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level27Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level27Vector(reader.get_vector(position));
 }
 
 inline void Level26Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9181,21 +9181,21 @@ inline void generic::Level26Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level26 Level25::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level26(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level26(reader.get_table(position), 0);
 }
 
 inline Level26Vector Level25::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level26Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level26Vector(reader.get_vector(position));
 }
 
 inline Level26Vector Level25::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level26Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level26Vector(reader.get_vector(position));
 }
 
 inline void Level25Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9277,21 +9277,21 @@ inline void generic::Level25Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level25 Level24::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level25(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level25(reader.get_table(position), 0);
 }
 
 inline Level25Vector Level24::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level25Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level25Vector(reader.get_vector(position));
 }
 
 inline Level25Vector Level24::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level25Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level25Vector(reader.get_vector(position));
 }
 
 inline void Level24Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9373,21 +9373,21 @@ inline void generic::Level24Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level24 Level23::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level24(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level24(reader.get_table(position), 0);
 }
 
 inline Level24Vector Level23::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level24Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level24Vector(reader.get_vector(position));
 }
 
 inline Level24Vector Level23::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level24Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level24Vector(reader.get_vector(position));
 }
 
 inline void Level23Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9469,21 +9469,21 @@ inline void generic::Level23Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level23 Level22::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level23(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level23(reader.get_table(position), 0);
 }
 
 inline Level23Vector Level22::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level23Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level23Vector(reader.get_vector(position));
 }
 
 inline Level23Vector Level22::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level23Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level23Vector(reader.get_vector(position));
 }
 
 inline void Level22Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9565,21 +9565,21 @@ inline void generic::Level22Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level22 Level21::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level22(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level22(reader.get_table(position), 0);
 }
 
 inline Level22Vector Level21::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level22Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level22Vector(reader.get_vector(position));
 }
 
 inline Level22Vector Level21::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level22Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level22Vector(reader.get_vector(position));
 }
 
 inline void Level21Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9661,21 +9661,21 @@ inline void generic::Level21Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level21 Level20::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level21(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level21(reader.get_table(position), 0);
 }
 
 inline Level21Vector Level20::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level21Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level21Vector(reader.get_vector(position));
 }
 
 inline Level21Vector Level20::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level21Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level21Vector(reader.get_vector(position));
 }
 
 inline void Level20Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9757,21 +9757,21 @@ inline void generic::Level20Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level20 Level19::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level20(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level20(reader.get_table(position), 0);
 }
 
 inline Level20Vector Level19::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level20Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level20Vector(reader.get_vector(position));
 }
 
 inline Level20Vector Level19::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level20Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level20Vector(reader.get_vector(position));
 }
 
 inline void Level19Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9853,21 +9853,21 @@ inline void generic::Level19Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level19 Level18::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level19(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level19(reader.get_table(position), 0);
 }
 
 inline Level19Vector Level18::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level19Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level19Vector(reader.get_vector(position));
 }
 
 inline Level19Vector Level18::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level19Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level19Vector(reader.get_vector(position));
 }
 
 inline void Level18Fields::size(::tafla::TableSizer& sizer_) const {
@@ -9949,21 +9949,21 @@ inline void generic::Level18Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level18 Level17::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level18(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level18(reader.get_table(position), 0);
 }
 
 inline Level18Vector Level17::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level18Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level18Vector(reader.get_vector(position));
 }
 
 inline Level18Vector Level17::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level18Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level18Vector(reader.get_vector(position));
 }
 
 inline void Level17Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10045,21 +10045,21 @@ inline void generic::Level17Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level17 Level16::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level17(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level17(reader.get_table(position), 0);
 }
 
 inline Level17Vector Level16::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level17Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level17Vector(reader.get_vector(position));
 }
 
 inline Level17Vector Level16::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level17Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level17Vector(reader.get_vector(position));
 }
 
 inline void Level16Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10141,21 +10141,21 @@ inline void generic::Level16Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level16 Level15::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level16(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level16(reader.get_table(position), 0);
 }
 
 inline Level16Vector Level15::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level16Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level16Vector(reader.get_vector(position));
 }
 
 inline Level16Vector Level15::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level16Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level16Vector(reader.get_vector(position));
 }
 
 inline void Level15Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10237,21 +10237,21 @@ inline void generic::Level15Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level15 Level14::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level15(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level15(reader.get_table(position), 0);
 }
 
 inline Level15Vector Level14::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level15Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level15Vector(reader.get_vector(position));
 }
 
 inline Level15Vector Level14::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level15Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level15Vector(reader.get_vector(position));
 }
 
 inline void Level14Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10333,21 +10333,21 @@ inline void generic::Level14Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level14 Level13::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level14(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level14(reader.get_table(position), 0);
 }
 
 inline Level14Vector Level13::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level14Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level14Vector(reader.get_vector(position));
 }
 
 inline Level14Vector Level13::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level14Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level14Vector(reader.get_vector(position));
 }
 
 inline void Level13Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10429,21 +10429,21 @@ inline void generic::Level13Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level13 Level12::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level13(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level13(reader.get_table(position), 0);
 }
 
 inline Level13Vector Level12::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level13Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level13Vector(reader.get_vector(position));
 }
 
 inline Level13Vector Level12::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level13Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level13Vector(reader.get_vector(position));
 }
 
 inline void Level12Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10525,21 +10525,21 @@ inline void generic::Level12Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level12 Level11::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level12(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level12(reader.get_table(position), 0);
 }
 
 inline Level12Vector Level11::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level12Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level12Vector(reader.get_vector(position));
 }
 
 inline Level12Vector Level11::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level12Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level12Vector(reader.get_vector(position));
 }
 
 inline void Level11Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10621,21 +10621,21 @@ inline void generic::Level11Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level11 Level10::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level11(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level11(reader.get_table(position), 0);
 }
 
 inline Level11Vector Level10::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level11Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level11Vector(reader.get_vector(position));
 }
 
 inline Level11Vector Level10::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level11Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level11Vector(reader.get_vector(position));
 }
 
 inline void Level10Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10717,21 +10717,21 @@ inline void generic::Level10Fields<T, U>::write(::tafla::TableWriter& writer_) c
 }
 
 inline Level10 Level9::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level10(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level10(reader.get_table(position), 0);
 }
 
 inline Level10Vector Level9::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level10Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level10Vector(reader.get_vector(position));
 }
 
 inline Level10Vector Level9::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level10Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level10Vector(reader.get_vector(position));
 }
 
 inline void Level9Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10813,21 +10813,21 @@ inline void generic::Level9Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level9 Level8::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level9(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level9(reader.get_table(position), 0);
 }
 
 inline Level9Vector Level8::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level9Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level9Vector(reader.get_vector(position));
 }
 
 inline Level9Vector Level8::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level9Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level9Vector(reader.get_vector(position));
 }
 
 inline void Level8Fields::size(::tafla::TableSizer& sizer_) const {
@@ -10909,21 +10909,21 @@ inline void generic::Level8Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level8 Level7::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level8(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level8(reader.get_table(position), 0);
 }
 
 inline Level8Vector Level7::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level8Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level8Vector(reader.get_vector(position));
 }
 
 inline Level8Vector Level7::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level8Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level8Vector(reader.get_vector(position));
 }
 
 inline void Level7Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11005,21 +11005,21 @@ inline void generic::Level7Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level7 Level6::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level7(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level7(reader.get_table(position), 0);
 }
 
 inline Level7Vector Level6::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level7Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level7Vector(reader.get_vector(position));
 }
 
 inline Level7Vector Level6::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level7Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level7Vector(reader.get_vector(position));
 }
 
 inline void Level6Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11101,21 +11101,21 @@ inline void generic::Level6Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level6 Level5::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level6(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level6(reader.get_table(position), 0);
 }
 
 inline Level6Vector Level5::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level6Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level6Vector(reader.get_vector(position));
 }
 
 inline Level6Vector Level5::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level6Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level6Vector(reader.get_vector(position));
 }
 
 inline void Level5Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11197,21 +11197,21 @@ inline void generic::Level5Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level5 Level4::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level5(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level5(reader.get_table(position), 0);
 }
 
 inline Level5Vector Level4::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level5Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level5Vector(reader.get_vector(position));
 }
 
 inline Level5Vector Level4::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level5Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level5Vector(reader.get_vector(position));
 }
 
 inline void Level4Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11293,21 +11293,21 @@ inline void generic::Level4Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level4 Level3::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level4(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level4(reader.get_table(position), 0);
 }
 
 inline Level4Vector Level3::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level4Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level4Vector(reader.get_vector(position));
 }
 
 inline Level4Vector Level3::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level4Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level4Vector(reader.get_vector(position));
 }
 
 inline void Level3Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11389,21 +11389,21 @@ inline void generic::Level3Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level3 Level2::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level3(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level3(reader.get_table(position), 0);
 }
 
 inline Level3Vector Level2::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level3Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level3Vector(reader.get_vector(position));
 }
 
 inline Level3Vector Level2::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level3Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level3Vector(reader.get_vector(position));
 }
 
 inline void Level2Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11485,21 +11485,21 @@ inline void generic::Level2Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level2 Level1::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Level2(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Level2(reader.get_table(position), 0);
 }
 
 inline Level2Vector Level1::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Level2Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Level2Vector(reader.get_vector(position));
 }
 
 inline Level2Vector Level1::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return Level2Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return Level2Vector(reader.get_vector(position));
 }
 
 inline void Level1Fields::size(::tafla::TableSizer& sizer_) const {
@@ -11581,21 +11581,21 @@ inline void generic::Level1Fields<T, U>::write(::tafla::TableWriter& writer_) co
 }
 
 inline Level1 Root::level() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return Level1(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return Level1(reader.get_table(position), 0);
 }
 
 inline Level1Vector Root::first() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return Level1Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return Level1Vector(reader.get_vector(position));
 }
 
 inline Level1Vector Root::second() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return Level1Vector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return Level1Vector(reader.get_vector(position));
 }
 
 inline ::tafla::Bytes RootFields::serialize() const {

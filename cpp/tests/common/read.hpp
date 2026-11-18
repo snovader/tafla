@@ -1,4 +1,4 @@
-// Reads tables with `ByteBuffer` as their descriptions set them out, and
+// Reads tables with `TableReader` as their descriptions set them out, and
 // returns the descriptions with the values read in place of theirs, so that
 // they equal the descriptions when the bytes hold the described values.
 //

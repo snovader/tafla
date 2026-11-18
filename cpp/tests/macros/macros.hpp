@@ -140,15 +140,15 @@ struct MacrosFields {
 };
 
 inline ::tafla::ArrayView<float> Interface::min_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_float32_array(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_float32_array(position);
 }
 
 inline ::tafla::ArrayView<float> Interface::max_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return buffer.get_float32_array(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return reader.get_float32_array(position);
 }
 
 inline void InterfaceFields::size(::tafla::TableSizer& sizer_) const {
@@ -166,81 +166,81 @@ inline void InterfaceFields::write(::tafla::TableWriter& writer_) const {
 }
 
 inline std::uint8_t Macros::linux_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::unix_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::i386_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::sun_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(3);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::min_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(4);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(4);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::max_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(5);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(5);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::major_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(6);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(6);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::minor_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(7);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(7);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::errno_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(8);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(8);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::near_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(9);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(9);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::far_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(10);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(10);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Macros::small_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(11);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(11);
+    return reader.get_uint8(position);
 }
 
 inline Interface Macros::interface_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(12);
-    return Interface(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(12);
+    return Interface(reader.get_table(position), 0);
 }
 
 inline ::tafla::Bytes MacrosFields::serialize() const {

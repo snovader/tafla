@@ -12,7 +12,7 @@ import (
 // Tafla writes tables with TableBuilder, recording nested tables in place
 // among their parent builder's fields with SetTableFunc() and SetVectorFunc().
 // The builders write each array in bulk into a table of its exact size. It
-// reads the tables with ByteBuffer's getters, with strings and columns in
+// reads the tables with TableReader's getters, with strings and columns in
 // place.
 type Tafla struct{}
 
@@ -43,35 +43,35 @@ func (Tafla) SerializeRecord(record workloads.Record) ([]byte, error) {
 }
 
 func (Tafla) DeserializeRecord(bytes []byte) (workloads.Record, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	var record workloads.Record
 
-	position, err := buffer.RootOffset(0)
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return workloads.Record{}, err
 	}
-	if record.X, err = buffer.GetFloat64(position); err != nil {
+	if record.X, err = reader.GetFloat64(position); err != nil {
 		return workloads.Record{}, err
 	}
 
-	if position, err = buffer.RootOffset(1); err != nil {
+	if position, err = reader.RootOffset(1); err != nil {
 		return workloads.Record{}, err
 	}
-	if record.Y, err = buffer.GetFloat64(position); err != nil {
-		return workloads.Record{}, err
-	}
-
-	if position, err = buffer.RootOffset(2); err != nil {
-		return workloads.Record{}, err
-	}
-	if record.ID, err = buffer.GetInt64(position); err != nil {
+	if record.Y, err = reader.GetFloat64(position); err != nil {
 		return workloads.Record{}, err
 	}
 
-	if position, err = buffer.RootOffset(3); err != nil {
+	if position, err = reader.RootOffset(2); err != nil {
 		return workloads.Record{}, err
 	}
-	if record.Name, err = buffer.GetString(position); err != nil {
+	if record.ID, err = reader.GetInt64(position); err != nil {
+		return workloads.Record{}, err
+	}
+
+	if position, err = reader.RootOffset(3); err != nil {
+		return workloads.Record{}, err
+	}
+	if record.Name, err = reader.GetString(position); err != nil {
 		return workloads.Record{}, err
 	}
 
@@ -104,40 +104,40 @@ func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
 }
 
 func (Tafla) DeserializeDocument(bytes []byte) (workloads.Document, error) {
-	buffer := tafla.NewByteBuffer(bytes, documentLayout)
-	if err := checkVersion(buffer); err != nil {
+	reader := tafla.NewTableReader(bytes, documentLayout)
+	if err := checkVersion(reader); err != nil {
 		return workloads.Document{}, err
 	}
 
 	var document workloads.Document
 
-	position, err := buffer.RootOffset(0)
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return workloads.Document{}, err
 	}
-	if document.X, err = buffer.GetFloat64(position); err != nil {
+	if document.X, err = reader.GetFloat64(position); err != nil {
 		return workloads.Document{}, err
 	}
 
-	if position, err = buffer.RootOffset(1); err != nil {
+	if position, err = reader.RootOffset(1); err != nil {
 		return workloads.Document{}, err
 	}
-	if document.Y, err = buffer.GetFloat64(position); err != nil {
-		return workloads.Document{}, err
-	}
-
-	if position, err = buffer.RootOffset(2); err != nil {
-		return workloads.Document{}, err
-	}
-	if document.Name, err = buffer.GetString(position); err != nil {
+	if document.Y, err = reader.GetFloat64(position); err != nil {
 		return workloads.Document{}, err
 	}
 
-	columns, err := buffer.RootOffset(3)
+	if position, err = reader.RootOffset(2); err != nil {
+		return workloads.Document{}, err
+	}
+	if document.Name, err = reader.GetString(position); err != nil {
+		return workloads.Document{}, err
+	}
+
+	columns, err := reader.RootOffset(3)
 	if err != nil {
 		return workloads.Document{}, err
 	}
-	if err := readColumns(buffer, columns, &document); err != nil {
+	if err := readColumns(reader, columns, &document); err != nil {
 		return workloads.Document{}, err
 	}
 
@@ -146,35 +146,35 @@ func (Tafla) DeserializeDocument(bytes []byte) (workloads.Document, error) {
 
 // readColumns reads the document's nested table of columns, at columns,
 // with each column in place where it's aligned
-func readColumns(buffer tafla.ByteBuffer, columns int, document *workloads.Document) error {
-	position, err := buffer.FieldOffset(columns, 0)
+func readColumns(reader tafla.TableReader, columns int, document *workloads.Document) error {
+	position, err := reader.FieldOffset(columns, 0)
 	if err != nil {
 		return err
 	}
-	if document.Base, err = buffer.GetInt64(position); err != nil {
+	if document.Base, err = reader.GetInt64(position); err != nil {
 		return err
 	}
 
-	if position, err = buffer.FieldOffset(columns, 1); err != nil {
+	if position, err = reader.FieldOffset(columns, 1); err != nil {
 		return err
 	}
-	keys, err := buffer.GetUint32Array(position)
-	if err != nil {
-		return err
-	}
-
-	if position, err = buffer.FieldOffset(columns, 2); err != nil {
-		return err
-	}
-	a, err := buffer.GetFloat32Array(position)
+	keys, err := reader.GetUint32Array(position)
 	if err != nil {
 		return err
 	}
 
-	if position, err = buffer.FieldOffset(columns, 3); err != nil {
+	if position, err = reader.FieldOffset(columns, 2); err != nil {
 		return err
 	}
-	b, err := buffer.GetFloat32Array(position)
+	a, err := reader.GetFloat32Array(position)
+	if err != nil {
+		return err
+	}
+
+	if position, err = reader.FieldOffset(columns, 3); err != nil {
+		return err
+	}
+	b, err := reader.GetFloat32Array(position)
 	if err != nil {
 		return err
 	}
@@ -185,20 +185,20 @@ func readColumns(buffer tafla.ByteBuffer, columns int, document *workloads.Docum
 }
 
 func (Tafla) SumA(bytes []byte) (float64, error) {
-	buffer := tafla.NewByteBuffer(bytes, documentLayout)
-	if err := checkVersion(buffer); err != nil {
+	reader := tafla.NewTableReader(bytes, documentLayout)
+	if err := checkVersion(reader); err != nil {
 		return 0, err
 	}
 
-	columns, err := buffer.RootOffset(3)
+	columns, err := reader.RootOffset(3)
 	if err != nil {
 		return 0, err
 	}
-	position, err := buffer.FieldOffset(columns, 2)
+	position, err := reader.FieldOffset(columns, 2)
 	if err != nil {
 		return 0, err
 	}
-	a, err := buffer.GetFloat32Array(position)
+	a, err := reader.GetFloat32Array(position)
 	if err != nil {
 		return 0, err
 	}
@@ -237,12 +237,12 @@ func setListItem(table tafla.Item, item workloads.Item) error {
 }
 
 func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
-	position, err := buffer.RootOffset(0)
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return workloads.List{}, err
 	}
-	vector, err := buffer.GetVector(position)
+	vector, err := reader.GetVector(position)
 	if err != nil {
 		return workloads.List{}, err
 	}
@@ -253,8 +253,8 @@ func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
 			return workloads.List{}, err
 		}
 
-		// In place, at its start, in a buffer of its parent's offset type
-		read, err := readListItem(tafla.NewByteBuffer(item, tafla.TableLayout{}))
+		// In place, at its start, with a reader of its parent's offset type
+		read, err := readListItem(tafla.NewTableReader(item, tafla.TableLayout{}))
 		if err != nil {
 			return workloads.List{}, err
 		}
@@ -265,33 +265,33 @@ func (Tafla) DeserializeList(bytes []byte) (workloads.List, error) {
 }
 
 // readListItem reads an item of the vector, whose table starts at 0
-func readListItem(buffer tafla.ByteBuffer) (workloads.Item, error) {
+func readListItem(reader tafla.TableReader) (workloads.Item, error) {
 	var item workloads.Item
 
-	position, err := buffer.FieldOffset(0, 0)
+	position, err := reader.FieldOffset(0, 0)
 	if err != nil {
 		return workloads.Item{}, err
 	}
-	if item.Value, err = buffer.GetFloat32(position); err != nil {
+	if item.Value, err = reader.GetFloat32(position); err != nil {
 		return workloads.Item{}, err
 	}
 
-	pair, err := buffer.FieldOffset(0, 1)
+	pair, err := reader.FieldOffset(0, 1)
 	if err != nil {
 		return workloads.Item{}, err
 	}
 
-	if position, err = buffer.FieldOffset(pair, 0); err != nil {
+	if position, err = reader.FieldOffset(pair, 0); err != nil {
 		return workloads.Item{}, err
 	}
-	if item.First, err = buffer.GetFloat32(position); err != nil {
+	if item.First, err = reader.GetFloat32(position); err != nil {
 		return workloads.Item{}, err
 	}
 
-	if position, err = buffer.FieldOffset(pair, 1); err != nil {
+	if position, err = reader.FieldOffset(pair, 1); err != nil {
 		return workloads.Item{}, err
 	}
-	if item.Second, err = buffer.GetFloat32(position); err != nil {
+	if item.Second, err = reader.GetFloat32(position); err != nil {
 		return workloads.Item{}, err
 	}
 
@@ -321,12 +321,12 @@ func (Tafla) SerializeStructs(list workloads.List) ([]byte, error) {
 }
 
 func (Tafla) DeserializeStructs(bytes []byte) (workloads.List, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
-	position, err := buffer.RootOffset(0)
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
+	position, err := reader.RootOffset(0)
 	if err != nil {
 		return workloads.List{}, err
 	}
-	structs, err := buffer.GetStructArray(position, tripleSize)
+	structs, err := reader.GetStructArray(position, tripleSize)
 	if err != nil {
 		return workloads.List{}, err
 	}
@@ -350,28 +350,28 @@ func (Tafla) SerializeSample(sample workloads.Sample) ([]byte, error) {
 	return Binary{}.SerializeSample(sample)
 }
 
-// DeserializeSample reads the fixed-size record with ByteBuffer's getters,
+// DeserializeSample reads the fixed-size record with TableReader's getters,
 // which check each read's range.
 func (Tafla) DeserializeSample(bytes []byte) (workloads.Sample, error) {
-	buffer := tafla.NewByteBuffer(bytes, tafla.TableLayout{})
+	reader := tafla.NewTableReader(bytes, tafla.TableLayout{})
 	var sample workloads.Sample
 
 	var err error
-	if sample.Key, err = buffer.GetUint32(0); err != nil {
+	if sample.Key, err = reader.GetUint32(0); err != nil {
 		return workloads.Sample{}, err
 	}
-	if sample.A, err = buffer.GetFloat32(4); err != nil {
+	if sample.A, err = reader.GetFloat32(4); err != nil {
 		return workloads.Sample{}, err
 	}
-	if sample.B, err = buffer.GetFloat32(8); err != nil {
+	if sample.B, err = reader.GetFloat32(8); err != nil {
 		return workloads.Sample{}, err
 	}
 
 	return sample, nil
 }
 
-func checkVersion(buffer tafla.ByteBuffer) error {
-	version, err := buffer.Version()
+func checkVersion(reader tafla.TableReader) error {
+	version, err := reader.Version()
 	if err != nil {
 		return err
 	}

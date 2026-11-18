@@ -486,9 +486,6 @@ impl Generator<'_> {
 
         // (class, whether it's only a type here)
         let mut classes = Vec::new();
-        if has_table {
-            classes.push(("ByteBuffer", !has_message));
-        }
         if versioned {
             classes.push(("DecodeError", false));
         }
@@ -497,6 +494,9 @@ impl Generator<'_> {
         }
         if has_message {
             classes.push(("TableLayout", false));
+        }
+        if has_table {
+            classes.push(("TableReader", !has_message));
         }
         if has_sized || has_nested {
             classes.push(("TableSizer", !has_sized));
@@ -611,7 +611,7 @@ impl Generator<'_> {
             ";",
         );
         writer.blank();
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         writer.blank();
 
         let mut tags = vec!["@param {Uint8Array} bytes".to_owned()];
@@ -625,16 +625,16 @@ impl Generator<'_> {
         ));
         writer.statement(
             &STYLE,
-            "this.#buffer = ",
+            "this.#reader = ",
             &call(
-                "new ByteBuffer",
+                "new TableReader",
                 vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
             ),
             ";",
         );
         if layout.version.is_some() {
             writer.blank();
-            writer.line("const version = this.#buffer.getVersion();");
+            writer.line("const version = this.#reader.getVersion();");
             writer.open(format!("if (version !== {name}.FORMAT_VERSION) {{"));
             let message = format!(
                 "`Expected format version ${{{name}.FORMAT_VERSION}} of {name}, got ${{version}}`"
@@ -981,7 +981,7 @@ impl Generator<'_> {
             writer.line(format!("{}SIZE = {size};", self.static_readonly()));
             writer.blank();
         }
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         self.private_field(writer, "position", "number");
         writer.blank();
 
@@ -989,16 +989,16 @@ impl Generator<'_> {
             writer,
             &["Reads the table at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#buffer = buffer;");
+        writer.line("this.#reader = reader;");
         writer.line("this.#position = position;");
         writer.close("}");
         writer.blank();
@@ -1041,13 +1041,14 @@ impl Generator<'_> {
         if matches!(definition.kind, Kind::Message(_)) {
             return_object(writer, &self.table_reads(definition, TableAt::Root));
         } else {
-            writer.line(format!("return {name}.read(this.#buffer, this.#position);"));
+            writer.line(format!("return {name}.read(this.#reader, this.#position);"));
         }
         writer.close("}");
     }
 
     /// A nested table's static `read()`, which reads every field at once
-    /// without creating its reader, for its parent's `fields()` and a view's
+    /// without creating an instance of it, for its parent's `fields()` and a
+    /// view's
     fn static_read(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
 
@@ -1055,10 +1056,10 @@ impl Generator<'_> {
             writer,
             &[
                 "Reads every field of the table at `position`, as `fields()` does,".to_owned(),
-                "without creating its reader".to_owned(),
+                format!("without creating {}", article(name)),
             ],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 format!("@returns {{{name}Fields}}"),
             ],
@@ -1067,7 +1068,7 @@ impl Generator<'_> {
             writer,
             "static read",
             &[
-                ("buffer", "ByteBuffer".to_owned()),
+                ("reader", "TableReader".to_owned()),
                 ("position", "number".to_owned()),
             ],
             &format!("{name}Fields"),
@@ -1079,9 +1080,9 @@ impl Generator<'_> {
     /// The reads of every field of a table, in order, each of which reads a
     /// nested table, vector or array of structs whole
     fn table_reads<'d>(&self, definition: &'d Definition, at: TableAt) -> Vec<Read<'d>> {
-        let buffer = match at {
-            TableAt::Root => "this.#buffer",
-            TableAt::Position => "buffer",
+        let reader = match at {
+            TableAt::Root => "this.#reader",
+            TableAt::Position => "reader",
         };
 
         definition
@@ -1091,38 +1092,38 @@ impl Generator<'_> {
             .map(|(index, field)| {
                 let offset = match at {
                     TableAt::Root => call(
-                        format!("{buffer}.rootOffset"),
+                        format!("{reader}.rootOffset"),
                         vec![text(index.to_string())],
                     ),
                     TableAt::Position => call(
-                        format!("{buffer}.fieldOffset"),
+                        format!("{reader}.fieldOffset"),
                         vec![text("position"), text(index.to_string())],
                     ),
                 };
                 let mut suffix = "";
                 let read = match field.field_type {
                     FieldType::Scalar(scalar) => call(
-                        format!("{buffer}.get{}", scalar_method(scalar)),
+                        format!("{reader}.get{}", scalar_method(scalar)),
                         vec![offset],
                     ),
                     FieldType::Array(scalar) => call(
-                        format!("{buffer}.get{}Array", scalar_method(scalar)),
+                        format!("{reader}.get{}Array", scalar_method(scalar)),
                         vec![offset],
                     ),
-                    FieldType::String => call(format!("{buffer}.getString"), vec![offset]),
+                    FieldType::String => call(format!("{reader}.getString"), vec![offset]),
                     FieldType::Struct(index) => call(
                         format!("{}.read", self.schema.definition(index).name),
-                        vec![text(format!("{buffer}.bytes()")), offset],
+                        vec![text(format!("{reader}.bytes()")), offset],
                     ),
                     FieldType::Table(index) => call(
                         format!("{}.read", self.schema.definition(index).name),
-                        vec![text(buffer), offset],
+                        vec![text(reader), offset],
                     ),
                     // The view's fields(), which reads every item
                     FieldType::StructArray(_) | FieldType::Vector(_) => {
                         suffix = ".fields()";
                         let view = value_type(field.field_type, self.schema);
-                        call(format!("new {view}"), vec![text(buffer), offset])
+                        call(format!("new {view}"), vec![text(reader), offset])
                     }
                 };
                 Read {
@@ -1559,7 +1560,7 @@ impl Generator<'_> {
             self.annotation("Uint8Array")
         ));
         // The runtime's read functions, which check each read, skip making a
-        // ByteBuffer and its DataView, which took five times as long
+        // TableReader and its DataView, which took five times as long
         for Read {
             field,
             expression: read,
@@ -1816,7 +1817,7 @@ impl Generator<'_> {
             "A vector of `{table}`s, which reads each item when it's asked for"
         )]));
         writer.open(format!("export class {table}Vector {{"));
-        self.private_field(writer, "buffer", "ByteBuffer");
+        self.private_field(writer, "reader", "TableReader");
         self.private_field(writer, "position", "number");
         self.private_field(writer, "length", "number");
         writer.blank();
@@ -1825,7 +1826,7 @@ impl Generator<'_> {
             writer,
             &["Views the vector at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 "@throws {DecodeError} If the vector's count or the ends of its items lie"
                     .to_owned(),
@@ -1833,13 +1834,13 @@ impl Generator<'_> {
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#buffer = buffer;");
+        writer.line("this.#reader = reader;");
         writer.line("this.#position = position;");
-        writer.line("this.#length = buffer.getVectorLength(position);");
+        writer.line("this.#length = reader.getVectorLength(position);");
         writer.close("}");
         writer.blank();
 
@@ -1864,13 +1865,13 @@ impl Generator<'_> {
         // The count that the constructor checked, rather than reading and
         // checking it for each item, as getVectorOffset() would
         let offset = call(
-            "this.#buffer.getVectorItemOffset",
+            "this.#reader.getVectorItemOffset",
             vec![text("this.#position"), text("this.#length"), text("index")],
         );
         writer.statement(
             &STYLE,
             "return ",
-            &call(format!("new {table}"), vec![text("this.#buffer"), offset]),
+            &call(format!("new {table}"), vec![text("this.#reader"), offset]),
             ";",
         );
         writer.close("}");
@@ -1892,7 +1893,7 @@ impl Generator<'_> {
             &STYLE,
             "const offsets = ",
             &call(
-                "this.#buffer.getVectorOffsets",
+                "this.#reader.getVectorOffsets",
                 vec![text("this.#position")],
             ),
             ";",
@@ -1910,7 +1911,7 @@ impl Generator<'_> {
             "items[i] = ",
             &call(
                 format!("{table}.read"),
-                vec![text("this.#buffer"), text("offsets[i]")],
+                vec![text("this.#reader"), text("offsets[i]")],
             ),
             ";",
         );
@@ -1976,21 +1977,21 @@ impl Generator<'_> {
             writer,
             &["Views the array at `position`, as its parent's getter finds it".to_owned()],
             &[
-                "@param {ByteBuffer} buffer".to_owned(),
+                "@param {TableReader} reader".to_owned(),
                 "@param {number} position".to_owned(),
                 "@throws {DecodeError} If the array lies outside the bytes.".to_owned(),
             ],
         );
         writer.open(format!(
-            "constructor(buffer{}, position{}) {{",
-            self.annotation("ByteBuffer"),
+            "constructor(reader{}, position{}) {{",
+            self.annotation("TableReader"),
             self.annotation("number")
         ));
         writer.statement(
             &STYLE,
             "this.#bytes = ",
             &call(
-                "buffer.getStructArray",
+                "reader.getStructArray",
                 vec![text("position"), text(format!("{structure}.SIZE"))],
             ),
             ";",
@@ -2290,10 +2291,10 @@ impl Generator<'_> {
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, root: bool) {
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if root {
-                call("this.#buffer.rootOffset", vec![text(index.to_string())])
+                call("this.#reader.rootOffset", vec![text(index.to_string())])
             } else {
                 call(
-                    "this.#buffer.fieldOffset",
+                    "this.#reader.fieldOffset",
                     vec![text("this.#position"), text(index.to_string())],
                 )
             };
@@ -2310,7 +2311,7 @@ impl Generator<'_> {
             match field.field_type {
                 FieldType::Scalar(scalar) => {
                     let get = call(
-                        format!("this.#buffer.get{}", scalar_method(scalar)),
+                        format!("this.#reader.get{}", scalar_method(scalar)),
                         vec![offset],
                     );
                     if scalar == Scalar::Bool {
@@ -2321,7 +2322,7 @@ impl Generator<'_> {
                 }
                 FieldType::Array(scalar) => {
                     let get = call(
-                        format!("this.#buffer.get{}Array", scalar_method(scalar)),
+                        format!("this.#reader.get{}Array", scalar_method(scalar)),
                         vec![offset],
                     );
                     writer.statement(&STYLE, "return ", &get, ";");
@@ -2330,7 +2331,7 @@ impl Generator<'_> {
                     writer.statement(
                         &STYLE,
                         "return ",
-                        &call("this.#buffer.getString", vec![offset]),
+                        &call("this.#reader.getString", vec![offset]),
                         ";",
                     );
                 }
@@ -2338,20 +2339,20 @@ impl Generator<'_> {
                     let structure = &self.schema.definition(index).name;
                     let read = call(
                         format!("new {structure}"),
-                        vec![text("this.#buffer.bytes()"), offset],
+                        vec![text("this.#reader.bytes()"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
-                    let read = call(format!("new {table}"), vec![text("this.#buffer"), offset]);
+                    let read = call(format!("new {table}"), vec![text("this.#reader"), offset]);
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::StructArray(_) | FieldType::Vector(_) => {
                     // A view, which reads each item when it's asked for
                     let read = call(
                         format!("new {return_type}"),
-                        vec![text("this.#buffer"), offset],
+                        vec![text("this.#reader"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
@@ -2426,7 +2427,7 @@ impl Generator<'_> {
             &STYLE,
             "return ",
             &call(
-                "new ByteBuffer",
+                "new TableReader",
                 vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
             ),
             ".getVersion();",

@@ -32,7 +32,7 @@ reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads as `f64`s, rather than
 collecting items of its own, and `item_access.rs` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: each item in place,
+- **tafla** reads with `TableReader`'s getters by hand: each item in place,
   from `Vector::get_in_place()` of the last item or `Vector::iter_in_place()`,
   and `get_struct_array()`'s bytes with `as_chunks()`.
 - **tafla-gen** reads with the views that the generated getters, `items()`,
@@ -58,7 +58,7 @@ the allocations and bytes of each benchmark's call.
   `Vec`s. Summing a column shows them reading in place.
 - tafla's Rust runtime has no `StructWriter` or `readUint32()`. The tafla
   codec writes the fixed-size record with `to_le_bytes()` and reads it with
-  `ByteBuffer`'s getters, and tafla's README recommends the standard
+  `TableReader`'s getters, and tafla's README recommends the standard
   library's `to_le_bytes()` and `from_le_bytes()` for such records, which are
   compared too. tafla-gen's struct writes and reads them in the same way as
   the standard library's. So tafla, tafla-gen and `to_le_bytes` write the
@@ -105,7 +105,7 @@ comparison uses its counterpart:
   length with a `TableSizer`, and then writes every field, nested tables
   included, into a `Vec` of that capacity with a `TableWriter`, in one
   allocation. Its readers borrow strings and columns, as tafla's do. They
-  hold their bytes, and each getter reads them with a `ByteBuffer` in the
+  hold their bytes, and each getter reads them with a `TableReader` in the
   table's layout, a constant, as the hand-written reads make theirs, so that
   the getters compile for that layout wherever a reader is passed. It takes
   the workloads' types, as the other codecs do, so it collects the generated
@@ -365,7 +365,7 @@ Fastest sample in µs per call, and its ratio to tafla's:
   writes the vector in 38 ns and reads it in 31 ns, against tafla's 0.30 µs.
 - tafla and `to_le_bytes` write the fixed-size record in 0.71 ns alike, with
   the same code. Reading it takes `from_le_bytes()` 0.67 ns, rkyv 0.99 ns and
-  tafla's `ByteBuffer` getters 1.17 ns, which check each read's range. The
+  tafla's `TableReader` getters 1.17 ns, which check each read's range. The
   other crates allocate a `Vec` for each record, and take 20 to 167 ns to
   write it and 11 to 30 ns to read it.
 
@@ -394,7 +394,7 @@ within 8% of the full run's.
 tafla-gen's codec was added after those runs, and timed on 2026-11-02 in two
 runs of tafla's and tafla-gen's benchmarks, followed by the `allocation`
 binary. They alternated with two runs of the code before its readers held
-their bytes rather than a `ByteBuffer`, in the order old, new, new, old. The
+their bytes rather than a `TableReader`, in the order old, new, new, old. The
 1-minute load average was between 2.6 and 4.5 at the runs' starts and ends.
 The median sample was within 5% of the fastest for 79 of the 88 benchmarks,
 and at most 12% above it. tafla's fastest samples were within 4.1% of the
@@ -461,7 +461,7 @@ them, which the `allocation` binary counts:
   bytes first, so the vector takes 0.47 µs against 0.28 µs. Its view reads
   the items as fast as the hand-written reads, as the next section shows.
 - tafla-gen reads the fixed-size record with `from_le_bytes()`, in 0.77 ns,
-  against 1.18 ns with `ByteBuffer`'s getters, and 0.67 ns with
+  against 1.18 ns with `TableReader`'s getters, and 0.67 ns with
   `to_le_bytes`'s `from_le_bytes()` in the full run above.
 
 `cargo run -p tafla-benchmarks --bin encoding` printed:
@@ -510,7 +510,7 @@ tafla-gen's benchmarks above, of `cargo bench -p tafla-benchmarks --bench
 comparison -- /tafla`, which include the groups that `-- item` runs.
 
 Faster of the two runs' fastest samples in µs, and its ratio to
-`ByteBuffer`'s by hand:
+`TableReader`'s by hand:
 
 | Benchmark                                       |   tafla |       tafla-gen |  tafla-gen view | tafla-gen view A/A |
 | ----------------------------------------------- | ------: | --------------: | --------------: | -----------------: |
@@ -522,12 +522,12 @@ Faster of the two runs' fastest samples in µs, and its ratio to
 Only tafla-gen's getter of the vector allocates: 2,400 bytes, a `Vec` of the
 100 items' readers.
 
-- `iter()` of the vector's view sums every item in 221 ns, as `ByteBuffer`'s
+- `iter()` of the vector's view sums every item in 221 ns, as `TableReader`'s
   getters by hand do in 216 ns, against 455 ns through the getter, which
   collects the items' readers into the `Vec` and reads each back from it.
   The view's loop compiles to the same instructions as the hand-written one:
-  each generated getter reads with a `ByteBuffer` in the table's layout, a
-  constant. Readers that held a `ByteBuffer` took 437 to 449 ns in the old
+  each generated getter reads with a `TableReader` in the table's layout, a
+  constant. Readers that held a `TableReader` took 437 to 449 ns in the old
   code's runs: a function that takes a reader and isn't inlined, as the one
   that sums an item wasn't, read the reader's layout from memory, and
   branched on its offset size at every read.

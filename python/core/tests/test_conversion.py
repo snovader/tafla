@@ -36,8 +36,8 @@ def round_trip(element: str, values: Buffer | Iterable[Any]) -> list[Any]:
     builder = TableBuilder(1)
     set_array(builder, element)(values)
 
-    buffer = builder.finalize()
-    return getattr(buffer, f"get_{element}_array")(buffer.root_offset(0)).tolist()
+    reader = builder.finalize()
+    return getattr(reader, f"get_{element}_array")(reader.root_offset(0)).tolist()
 
 
 def set_array(builder: TableBuilder, element: str) -> Callable[[Any], None]:

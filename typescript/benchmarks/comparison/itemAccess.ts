@@ -1,4 +1,4 @@
-import { readFloat32, ByteBuffer, SIZEOF_32 } from 'tafla';
+import { readFloat32, SIZEOF_32, TableReader } from 'tafla';
 import { ItemList, Triples } from './generated/tafla/workloads.ts';
 import type { ItemInput, ListInput } from './workloads.ts';
 
@@ -42,46 +42,46 @@ export function sumItem({ value, first, second }: ItemInput): number {
 /** An item as a struct: its three float32s */
 const ITEM_SIZE = 3 * SIZEOF_32;
 
-/** `ByteBuffer`'s getters by hand, as the tafla codec reads the list */
-export const byteBufferAccess: ItemAccess = {
+/** `TableReader`'s getters by hand, as the tafla codec reads the list */
+export const tableReaderAccess: ItemAccess = {
     name: 'tafla',
     lastTable(bytes) {
-        const buffer = new ByteBuffer(bytes);
-        const vector = buffer.rootOffset(0);
-        const item = buffer.getVectorOffset(
+        const reader = new TableReader(bytes);
+        const vector = reader.rootOffset(0);
+        const item = reader.getVectorOffset(
             vector,
-            buffer.getVectorLength(vector) - 1
+            reader.getVectorLength(vector) - 1
         );
 
-        return sumTable(buffer, item);
+        return sumTable(reader, item);
     },
     everyTable(bytes) {
-        const buffer = new ByteBuffer(bytes);
-        const offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
+        const reader = new TableReader(bytes);
+        const offsets = reader.getVectorOffsets(reader.rootOffset(0));
 
         // The reads are in the loop, as the codec's deserialize() has them:
         // V8 didn't inline sumTable() here, which then boxed each item's sum
         let sum = 0;
         for (let i = 0; i < offsets.length; i++) {
             const item = offsets[i];
-            const pair = buffer.fieldOffset(item, 1);
+            const pair = reader.fieldOffset(item, 1);
             sum +=
-                buffer.getFloat32(buffer.fieldOffset(item, 0)) +
-                buffer.getFloat32(buffer.fieldOffset(pair, 0)) +
-                buffer.getFloat32(buffer.fieldOffset(pair, 1));
+                reader.getFloat32(reader.fieldOffset(item, 0)) +
+                reader.getFloat32(reader.fieldOffset(pair, 0)) +
+                reader.getFloat32(reader.fieldOffset(pair, 1));
         }
 
         return sum;
     },
     lastStruct(bytes) {
-        const buffer = new ByteBuffer(bytes);
-        const structs = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+        const reader = new TableReader(bytes);
+        const structs = reader.getStructArray(reader.rootOffset(0), ITEM_SIZE);
 
         return sumStruct(structs, structs.length - ITEM_SIZE);
     },
     everyStruct(bytes) {
-        const buffer = new ByteBuffer(bytes);
-        const structs = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+        const reader = new TableReader(bytes);
+        const structs = reader.getStructArray(reader.rootOffset(0), ITEM_SIZE);
 
         let sum = 0;
         for (let offset = 0; offset < structs.length; offset += ITEM_SIZE) {
@@ -92,13 +92,13 @@ export const byteBufferAccess: ItemAccess = {
     }
 };
 
-function sumTable(buffer: ByteBuffer, item: number): number {
-    const pair = buffer.fieldOffset(item, 1);
+function sumTable(reader: TableReader, item: number): number {
+    const pair = reader.fieldOffset(item, 1);
 
     return (
-        buffer.getFloat32(buffer.fieldOffset(item, 0)) +
-        buffer.getFloat32(buffer.fieldOffset(pair, 0)) +
-        buffer.getFloat32(buffer.fieldOffset(pair, 1))
+        reader.getFloat32(reader.fieldOffset(item, 0)) +
+        reader.getFloat32(reader.fieldOffset(pair, 0)) +
+        reader.getFloat32(reader.fieldOffset(pair, 1))
     );
 }
 

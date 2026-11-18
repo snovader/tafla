@@ -23,7 +23,7 @@ use tables::{
     expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
     to_vec, truncations, vector,
 };
-use tafla::{Alignment, BuildError, ByteBuffer, DecodeError, TableLayout};
+use tafla::{Alignment, BuildError, DecodeError, TableLayout, TableReader};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
@@ -821,7 +821,7 @@ proptest! {
     #[test]
     fn scalars_reads_any_byte_of_its_bool_but_0_as_true(fields in scalars(), byte in 2..=u8::MAX) {
         let mut bytes = ScalarsFields { bool: false, ..fields }.serialize()?;
-        let position = ByteBuffer::new(&bytes, TableLayout::DEFAULT).root_offset(10)?;
+        let position = TableReader::new(&bytes, TableLayout::DEFAULT).root_offset(10)?;
         bytes[position] = byte;
 
         let read = read_scalars(&Scalars::new(&bytes));

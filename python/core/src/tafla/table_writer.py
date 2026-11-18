@@ -19,7 +19,7 @@ from .layout import (
 from .structs import OFFSET_STRUCTS
 from .types import ElementSize, OffsetSize, TypeCode
 
-# The scalars' Structs, assigned rather than imported, as in byte_buffer.py,
+# The scalars' Structs, assigned rather than imported, as in table_reader.py,
 # so that their methods' calls specialize
 int8, uint8 = structs.int8, structs.uint8
 int16, uint16 = structs.int16, structs.uint16
@@ -647,7 +647,7 @@ class TableWriter:
         ``write_table()`` for each item and ``set_item_end()`` write it. Each
         item is a table's values as ``write_table()`` takes them, followed by
         its string when ``fields`` ends with one: the tuple that
-        ``ByteBuffer.get_fields()`` returns.
+        ``TableReader.get_fields()`` returns.
 
         Raises ``ValueError`` if iterating ``items`` gives more or fewer than
         their ``len()``, after which the table is undefined.

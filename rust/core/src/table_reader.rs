@@ -4,8 +4,8 @@ use crate::{ArrayView, DecodeError, Element, OffsetType, TableLayout, Vector};
 
 /// Reads a table from the supplied bytes, in the layout it was written with.
 ///
-/// Fields are found by index with [`ByteBuffer::root_offset()`], or
-/// [`ByteBuffer::field_offset()`] for a table nested in another, and then
+/// Fields are found by index with [`TableReader::root_offset()`], or
+/// [`TableReader::field_offset()`] for a table nested in another, and then
 /// read at that position by their type's getter.
 ///
 /// Every read checks that it stays within the bytes and returns a
@@ -15,7 +15,7 @@ use crate::{ArrayView, DecodeError, Element, OffsetType, TableLayout, Vector};
 /// Arrays, strings, structs and vector items are read in place, borrowing
 /// the bytes rather than copying them.
 #[derive(Clone, Copy, Debug)]
-pub struct ByteBuffer<'a, const VERSIONED: bool = false> {
+pub struct TableReader<'a, const VERSIONED: bool = false> {
     bytes: &'a [u8],
     layout: TableLayout<VERSIONED>,
 }
@@ -48,7 +48,7 @@ macro_rules! array_getters {
     )*};
 }
 
-impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
+impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     pub const fn new(bytes: &'a [u8], layout: TableLayout<VERSIONED>) -> Self {
         Self { bytes, layout }
     }
@@ -269,7 +269,7 @@ impl<'a, const VERSIONED: bool> ByteBuffer<'a, VERSIONED> {
     }
 }
 
-impl ByteBuffer<'_, true> {
+impl TableReader<'_, true> {
     /// Returns the version that the table's header carries after its length.
     /// It's as wide as the header's other slots.
     ///

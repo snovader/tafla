@@ -36,7 +36,7 @@ const SCALARS: [&str; 11] = [
 /// generated code's own locals and members
 const FIELD_NAMES: [&str; 24] = [
     "value", "x", "name", "values", "items", "class", "default", "in", "match", "self", "type",
-    "async", "yield", "null", "crate", "offsets", "i", "buffer", "position", "bytes", "version",
+    "async", "yield", "null", "crate", "offsets", "i", "reader", "position", "bytes", "version",
     "fields", "size", "count",
 ];
 

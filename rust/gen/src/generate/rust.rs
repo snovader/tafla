@@ -195,9 +195,6 @@ impl Generator<'_> {
         if has_messages {
             names.push("BuildError");
         }
-        if has_tables {
-            names.push("ByteBuffer");
-        }
         names.push("DecodeError");
         if has_offset_type {
             names.push("OffsetType");
@@ -206,6 +203,7 @@ impl Generator<'_> {
         // sizers and writers
         if has_tables {
             names.push("TableLayout");
+            names.push("TableReader");
         }
         if has_sized {
             names.push("TableSizer");
@@ -277,9 +275,9 @@ impl Generator<'_> {
             docs.extend(errors_doc("if `bytes` are in another format version"));
             rust_doc(writer, &docs);
             writer.open("pub fn new(bytes: &'a [u8]) -> Result<Self, DecodeError> {");
-            writer.line("let buffer = ByteBuffer::new(bytes, Self::LAYOUT);");
+            writer.line("let reader = TableReader::new(bytes, Self::LAYOUT);");
             writer.blank();
-            writer.line("let version = buffer.version()?;");
+            writer.line("let version = reader.version()?;");
             writer.open("if version != Self::FORMAT_VERSION {");
             writer.open("return Err(DecodeError::UnsupportedVersion {");
             writer.line("version,");
@@ -298,7 +296,7 @@ impl Generator<'_> {
             docs.extend(errors_doc("if the header doesn't fit in `bytes`"));
             rust_doc(writer, &docs);
             writer.open("pub fn version_of(bytes: &[u8]) -> Result<u32, DecodeError> {");
-            writer.line("ByteBuffer::new(bytes, Self::LAYOUT).version()");
+            writer.line("TableReader::new(bytes, Self::LAYOUT).version()");
             writer.close("}");
         } else {
             rust_doc(writer, &[format!("Reads {} from `bytes`", article(name))]);
@@ -1158,20 +1156,20 @@ impl Generator<'_> {
     }
 
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, is_root: bool) {
-        // Each getter reads with a buffer in the table's layout, a constant,
+        // Each getter reads with a reader in the table's layout, a constant,
         // rather than one that the reader holds, so that its reads compile
         // for that layout's offset type wherever the reader is passed
-        let buffer = if is_root {
-            "let buffer = ByteBuffer::new(self.bytes, Self::LAYOUT);"
+        let reader = if is_root {
+            "let reader = TableReader::new(self.bytes, Self::LAYOUT);"
         } else {
-            "let buffer = ByteBuffer::new(self.bytes, TableLayout::DEFAULT);"
+            "let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);"
         };
 
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if is_root {
-                format!("buffer.root_offset({})?", integer(&index))
+                format!("reader.root_offset({})?", integer(&index))
             } else {
-                format!("buffer.field_offset(self.position, {})?", integer(&index))
+                format!("reader.field_offset(self.position, {})?", integer(&index))
             };
 
             let docs = self.getter_docs(field);
@@ -1180,20 +1178,20 @@ impl Generator<'_> {
             let name = identifier(&field.name);
             let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
-            writer.line(buffer);
+            writer.line(reader);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => writer.line("Ok(buffer.get_u8(position)? != 0)"),
+                FieldType::Scalar(Scalar::Bool) => writer.line("Ok(reader.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("buffer.get_{}(position)", scalar_type(scalar)));
+                    writer.line(format!("reader.get_{}(position)", scalar_type(scalar)));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
-                        "buffer.get_{}_array(position)",
+                        "reader.get_{}_array(position)",
                         scalar_type(scalar)
                     ));
                 }
-                FieldType::String => writer.line("buffer.get_str(position)"),
+                FieldType::String => writer.line("reader.get_str(position)"),
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = format!("{table}::new(self.bytes, position)");
@@ -1214,7 +1212,7 @@ impl Generator<'_> {
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     writer.line(format!(
-                        "let bytes = buffer.get_struct(position, {structure}::SIZE)?;"
+                        "let bytes = reader.get_struct(position, {structure}::SIZE)?;"
                     ));
                     writer.blank();
                     writer.line(format!("{structure}::read(bytes)"));
@@ -1225,7 +1223,7 @@ impl Generator<'_> {
                         &STYLE,
                         "let bytes = ",
                         &call(
-                            "buffer.get_struct_array",
+                            "reader.get_struct_array",
                             vec![text("position"), text(format!("{structure}::SIZE"))],
                         ),
                         "?;",
@@ -1240,7 +1238,7 @@ impl Generator<'_> {
                 FieldType::Vector(table) => {
                     let table = &self.schema.definition(table).name;
                     writer.open(format!("Ok({table}Vector {{"));
-                    writer.line("vector: buffer.get_vector(position)?,");
+                    writer.line("vector: reader.get_vector(position)?,");
                     writer.close("})");
                 }
             }

@@ -947,69 +947,69 @@ struct StructsFields {
 }  // namespace generic
 
 inline std::int8_t Scalars::int8() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_int8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_int8(position);
 }
 
 inline std::uint8_t Scalars::uint8() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint8(position);
 }
 
 inline std::int16_t Scalars::int16() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_int16(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_int16(position);
 }
 
 inline std::uint16_t Scalars::uint16() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(3);
-    return buffer.get_uint16(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return reader.get_uint16(position);
 }
 
 inline std::int32_t Scalars::int32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(4);
-    return buffer.get_int32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(4);
+    return reader.get_int32(position);
 }
 
 inline std::uint32_t Scalars::uint32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(5);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(5);
+    return reader.get_uint32(position);
 }
 
 inline std::int64_t Scalars::int64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(6);
-    return buffer.get_int64(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(6);
+    return reader.get_int64(position);
 }
 
 inline std::uint64_t Scalars::uint64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(7);
-    return buffer.get_uint64(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(7);
+    return reader.get_uint64(position);
 }
 
 inline float Scalars::float32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(8);
-    return buffer.get_float32(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(8);
+    return reader.get_float32(position);
 }
 
 inline double Scalars::float64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(9);
-    return buffer.get_float64(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(9);
+    return reader.get_float64(position);
 }
 
 inline bool Scalars::bool_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(10);
-    return buffer.get_uint8(position) != 0;
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(10);
+    return reader.get_uint8(position) != 0;
 }
 
 inline ::tafla::Bytes ScalarsFields::serialize() const {
@@ -1072,63 +1072,63 @@ inline std::size_t ScalarsFields::serialize_into(std::span<std::uint8_t> given_)
 }
 
 inline ::tafla::ArrayView<std::int8_t> Arrays::int8() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_int8_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_int8_array(position);
 }
 
 inline std::span<const std::uint8_t> Arrays::uint8() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return buffer.get_uint8_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint8_array(position);
 }
 
 inline ::tafla::ArrayView<std::int16_t> Arrays::int16() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return buffer.get_int16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_int16_array(position);
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Arrays::uint16() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(3);
-    return buffer.get_uint16_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return reader.get_uint16_array(position);
 }
 
 inline ::tafla::ArrayView<std::int32_t> Arrays::int32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(4);
-    return buffer.get_int32_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(4);
+    return reader.get_int32_array(position);
 }
 
 inline ::tafla::ArrayView<std::uint32_t> Arrays::uint32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(5);
-    return buffer.get_uint32_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(5);
+    return reader.get_uint32_array(position);
 }
 
 inline ::tafla::ArrayView<std::int64_t> Arrays::int64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(6);
-    return buffer.get_int64_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(6);
+    return reader.get_int64_array(position);
 }
 
 inline ::tafla::ArrayView<std::uint64_t> Arrays::uint64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(7);
-    return buffer.get_uint64_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(7);
+    return reader.get_uint64_array(position);
 }
 
 inline ::tafla::ArrayView<float> Arrays::float32() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(8);
-    return buffer.get_float32_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(8);
+    return reader.get_float32_array(position);
 }
 
 inline ::tafla::ArrayView<double> Arrays::float64() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(9);
-    return buffer.get_float64_array(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(9);
+    return reader.get_float64_array(position);
 }
 
 inline ::tafla::Bytes ArraysFields::serialize() const {
@@ -1188,15 +1188,15 @@ inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) 
 }
 
 inline std::string_view Inner::name() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_string(position);
 }
 
 inline ::tafla::ArrayView<double> Inner::values() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return buffer.get_float64_array(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return reader.get_float64_array(position);
 }
 
 inline void InnerFields::size(::tafla::TableSizer& sizer_) const {
@@ -1214,15 +1214,15 @@ inline void InnerFields::write(::tafla::TableWriter& writer_) const {
 }
 
 inline std::uint32_t Outer::count() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_uint32(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_uint32(position);
 }
 
 inline Inner Outer::inner() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return Inner(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Inner(reader.get_table(position), 0);
 }
 
 inline void OuterFields::size(::tafla::TableSizer& sizer_) const {
@@ -1242,21 +1242,21 @@ inline void OuterFields::write(::tafla::TableWriter& writer_) const {
 }
 
 inline std::string_view Nested::label() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_string(position);
 }
 
 inline Outer Nested::outer() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return Outer(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return Outer(reader.get_table(position), 0);
 }
 
 inline TreeVector Nested::trees() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return TreeVector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return TreeVector(reader.get_vector(position));
 }
 
 inline ::tafla::Bytes NestedFields::serialize() const {
@@ -1364,15 +1364,15 @@ inline std::size_t generic::NestedFields<T>::serialize_into(std::span<std::uint8
 }
 
 inline std::int32_t Tree::value() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_int32(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_int32(position);
 }
 
 inline TreeVector Tree::children() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return TreeVector(buffer.get_vector(position));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return TreeVector(reader.get_vector(position));
 }
 
 inline void TreeFields::size(::tafla::TableSizer& sizer_) const {
@@ -1427,39 +1427,39 @@ inline void generic::TreeFields<T>::write(::tafla::TableWriter& writer_) const {
 }
 
 inline std::uint8_t Keywords::class_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::default_() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::in() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 2);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::match() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 3);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 3);
+    return reader.get_uint8(position);
 }
 
 inline std::uint8_t Keywords::self() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 4);
-    return buffer.get_uint8(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 4);
+    return reader.get_uint8(position);
 }
 
 inline std::string_view Keywords::type() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 5);
-    return buffer.get_string(position);
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 5);
+    return reader.get_string(position);
 }
 
 inline void KeywordsFields::size(::tafla::TableSizer& sizer_) const {
@@ -1485,9 +1485,9 @@ inline void KeywordsFields::write(::tafla::TableWriter& writer_) const {
 }
 
 inline Keywords Reserved::keywords() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return Keywords(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return Keywords(reader.get_table(position), 0);
 }
 
 inline ::tafla::Bytes ReservedFields::serialize() const {
@@ -1515,15 +1515,15 @@ inline std::size_t ReservedFields::serialize_into(std::span<std::uint8_t> bytes_
 }
 
 inline Point Path::start() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 0);
-    return Point::from_bytes(buffer.get_struct(position, Point::SIZE).data());
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return Point::from_bytes(reader.get_struct(position, Point::SIZE).data());
 }
 
 inline PointArray Path::points() const {
-    const ::tafla::ByteBuffer buffer(bytes_, ::tafla::TableLayout());
-    const auto position = buffer.field_offset(0, 1);
-    return PointArray(buffer.get_struct_array(position, Point::SIZE));
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return PointArray(reader.get_struct_array(position, Point::SIZE));
 }
 
 inline void PathFields::size(::tafla::TableSizer& sizer_) const {
@@ -1561,33 +1561,33 @@ inline void generic::PathFields<T>::write(::tafla::TableWriter& writer_) const {
 }
 
 inline Packed Structs::packed() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(0);
-    return Packed::from_bytes(buffer.get_struct(position, Packed::SIZE).data());
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return Packed::from_bytes(reader.get_struct(position, Packed::SIZE).data());
 }
 
 inline DocumentedArray Structs::documented() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(1);
-    return DocumentedArray(buffer.get_struct_array(position, Documented::SIZE));
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return DocumentedArray(reader.get_struct_array(position, Documented::SIZE));
 }
 
 inline Segment Structs::segment() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(2);
-    return Segment::from_bytes(buffer.get_struct(position, Segment::SIZE).data());
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return Segment::from_bytes(reader.get_struct(position, Segment::SIZE).data());
 }
 
 inline SegmentArray Structs::segments() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(3);
-    return SegmentArray(buffer.get_struct_array(position, Segment::SIZE));
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return SegmentArray(reader.get_struct_array(position, Segment::SIZE));
 }
 
 inline Path Structs::path() const {
-    const ::tafla::ByteBuffer buffer(bytes_, LAYOUT);
-    const auto position = buffer.root_offset(4);
-    return Path(buffer.get_table(position), 0);
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(4);
+    return Path(reader.get_table(position), 0);
 }
 
 inline ::tafla::Bytes StructsFields::serialize() const {
