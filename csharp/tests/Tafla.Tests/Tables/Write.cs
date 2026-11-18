@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Tafla.Tests.Tables;
 
 /// <summary>
@@ -313,10 +315,12 @@ public static class Write
                 writer.SetUInt64(index, bits);
                 break;
             case ScalarType.Float32:
-                writer.SetFloat32(index, BitConverter.UInt32BitsToSingle((uint)bits));
+                // From its bits in memory, as Scalars makes floats
+                var single = (uint)bits;
+                writer.SetFloat32(index, Unsafe.As<uint, float>(ref single));
                 break;
             default:
-                writer.SetFloat64(index, BitConverter.UInt64BitsToDouble(bits));
+                writer.SetFloat64(index, Unsafe.As<ulong, double>(ref bits));
                 break;
         }
     }
@@ -351,10 +355,10 @@ public static class Write
                 writer.SetUInt64Array(index, Values(bits, value => value));
                 break;
             case ScalarType.Float32:
-                writer.SetFloat32Array(index, Values(bits, value => BitConverter.UInt32BitsToSingle((uint)value)));
+                writer.SetFloat32Array(index, Scalars.Float32s(bits));
                 break;
             default:
-                writer.SetFloat64Array(index, Values(bits, BitConverter.UInt64BitsToDouble));
+                writer.SetFloat64Array(index, Scalars.Float64s(bits));
                 break;
         }
     }

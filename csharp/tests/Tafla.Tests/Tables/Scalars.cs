@@ -1,10 +1,25 @@
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Tafla.Tests.Tables;
 
 /// <summary>The sizes, names and bits of scalar types, and their setters and getters of each runtime type.</summary>
+/// <remarks>
+/// 32-bit x86 returns floats on the x87 stack, whose loads quiet a signalling NaN, so the tests never
+/// pass a float through a method's return there, as <see cref="BitConverter.UInt32BitsToSingle"/> is
+/// in their unoptimized build. They make floats from their bits in memory, which passing a float to
+/// a method keeps, and read arrays as bits. Only the getters of scalar floats return them, which
+/// <see cref="ReadsAs"/> allows for.
+/// </remarks>
 public static class Scalars
 {
+    /// <summary>
+    /// Whether a float that a method returns may be quieted: in a 32-bit x86 process, which returns
+    /// floats on the x87 stack.
+    /// </summary>
+    public static readonly bool QuietsReturnedFloats = RuntimeInformation.ProcessArchitecture == Architecture.X86;
+
     /// <summary>Every scalar type.</summary>
     public static readonly ScalarType[] All = Enum.GetValues<ScalarType>();
 
@@ -27,6 +42,35 @@ public static class Scalars
     /// <summary>Returns the bits of a value of the type, as wide as the type: its low bits.</summary>
     public static ulong Truncate(ScalarType type, ulong bits) =>
         type.Size() == 8 ? bits : bits & ((1UL << (8 * type.Size())) - 1);
+
+    /// <summary>
+    /// Returns whether a getter that returned the bits <paramref name="read"/> read the scalar of the
+    /// type of bits <paramref name="described"/>: the same bits, or a signalling NaN quieted where a
+    /// returned float may be, as csharp/README.md says <c>GetFloat32()</c> and <c>GetFloat64()</c> return
+    /// one on 32-bit x86.
+    /// </summary>
+    public static bool ReadsAs(ScalarType type, ulong described, ulong read) =>
+        read == described || (QuietsReturnedFloats && IsSignallingNaN(type, described) && read == (described | QuietBit(type)));
+
+    /// <summary>The bit of a float type's fraction that is set in a quiet NaN and clear in a signalling one: its top bit</summary>
+    private static ulong QuietBit(ScalarType type) => type == ScalarType.Float32 ? 1UL << 22 : 1UL << 51;
+
+    /// <summary>Whether the bits are a float type's signalling NaN: an exponent of all ones, and a fraction that isn't 0, with its quiet bit clear</summary>
+    private static bool IsSignallingNaN(ScalarType type, ulong bits) =>
+        type switch
+        {
+            ScalarType.Float32 => (bits & 0x7f80_0000) == 0x7f80_0000 && (bits & 0x007f_ffff) != 0 && (bits & QuietBit(type)) == 0,
+            ScalarType.Float64 => (bits & 0x7ff0_0000_0000_0000) == 0x7ff0_0000_0000_0000
+                && (bits & 0x000f_ffff_ffff_ffff) != 0
+                && (bits & QuietBit(type)) == 0,
+            _ => false,
+        };
+
+    /// <summary>Returns the float32s of the low bits of each value, made in memory rather than returned.</summary>
+    public static ReadOnlySpan<float> Float32s(IEnumerable<ulong> bits) => MemoryMarshal.Cast<uint, float>(bits.Select(value => (uint)value).ToArray());
+
+    /// <summary>Returns the float64s of the bits, made in memory rather than returned.</summary>
+    public static ReadOnlySpan<double> Float64s(IEnumerable<ulong> bits) => MemoryMarshal.Cast<ulong, double>(bits.ToArray());
 
     /// <summary>Returns the value of the type that its bits hold, for messages.</summary>
     public static object Value(ScalarType type, ulong bits) =>
@@ -115,12 +159,24 @@ public static class Scalars
                 target.SetUInt64(bits);
                 break;
             case ScalarType.Float32:
-                target.SetFloat32(BitConverter.UInt32BitsToSingle((uint)bits));
+                // From its bits in memory, as all floats are made
+                var single = (uint)bits;
+                target.SetFloat32(Unsafe.As<uint, float>(ref single));
                 break;
             default:
-                target.SetFloat64(BitConverter.UInt64BitsToDouble(bits));
+                target.SetFloat64(Unsafe.As<ulong, double>(ref bits));
                 break;
         }
+    }
+
+    /// <summary>
+    /// Reads the scalar that <paramref name="described"/> describes at a position, as <see cref="Read"/>
+    /// does, and returns it as described when it <see cref="ReadsAs"/> it.
+    /// </summary>
+    public static Scalar ReadAs(TableReader reader, Scalar described, int position)
+    {
+        var read = Read(reader, described.Type, position);
+        return ReadsAs(described.Type, described.Bits, read.Bits) ? described : read;
     }
 
     /// <summary>Reads a scalar of a type at a position with the reader's getter of the type.</summary>
@@ -175,10 +231,10 @@ public static class Scalars
                 target.SetUInt64Array(Values(bits, value => value));
                 break;
             case ScalarType.Float32:
-                target.SetFloat32Array(Values(bits, value => BitConverter.UInt32BitsToSingle((uint)value)));
+                target.SetFloat32Array(Float32s(bits));
                 break;
             default:
-                target.SetFloat64Array(Values(bits, BitConverter.UInt64BitsToDouble));
+                target.SetFloat64Array(Float64s(bits));
                 break;
         }
     }
@@ -196,8 +252,9 @@ public static class Scalars
             ScalarType.UInt32 => Bits(reader.GetUInt32Array(position), value => value),
             ScalarType.Int64 => Bits(reader.GetInt64Array(position), value => (ulong)value),
             ScalarType.UInt64 => Bits(reader.GetUInt64Array(position), value => value),
-            ScalarType.Float32 => Bits(reader.GetFloat32Array(position), value => BitConverter.SingleToUInt32Bits(value)),
-            _ => Bits(reader.GetFloat64Array(position), BitConverter.DoubleToUInt64Bits),
+            // As their bits in memory, since a float that a method returns may be quieted
+            ScalarType.Float32 => Bits(MemoryMarshal.Cast<float, uint>(reader.GetFloat32Array(position)), value => value),
+            _ => Bits(MemoryMarshal.Cast<double, ulong>(reader.GetFloat64Array(position)), value => value),
         };
 
         return new ArrayField(type, bits);

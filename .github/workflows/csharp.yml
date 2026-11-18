@@ -226,11 +226,124 @@ jobs:
       - name: Print the encoded sizes
         run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- encoding
 
+  # A 32-bit process on x86, with Microsoft's x86 SDK, where a .NET array's
+  # elements are aligned only to 4 bytes, positions plus lengths can overflow
+  # 32 bits, and floats return on the x87 stack
+  x86:
+    name: Test (32-bit x86)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET for x86
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          architecture: x86
+
+      - name: Build
+        run: dotnet build
+
+      # The summary names the process's architecture, x86
+      - name: Run tests
+        run: dotnet test --no-build
+
+  # 32-bit Arm, which reads every array as a copy, since it faults on some
+  # unaligned loads. GitHub's Arm runners run its binaries natively, so the
+  # tests, which build to IL, run in Microsoft's container of the .NET 10
+  # runtime for it. QEMU's emulation of 32-bit Arm crashes .NET.
+  arm:
+    name: Test (32-bit Arm)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build
+
+      # The tests find the conformance suite above the directory that they
+      # run in, so the container mounts the repository at its own path. The
+      # runner's banner names the process, 32-bit.
+      - name: Run tests on 32-bit Arm
+        run: >
+          docker run --rm --platform linux/arm/v7 -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" -w "$PWD"
+          mcr.microsoft.com/dotnet/runtime:10.0
+          dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+
+  # The reader's fuzz targets, run briefly under libFuzzer through SharpFuzz,
+  # so that a change that breaks them, or that they find quickly, fails here;
+  # the fuzz workflow runs them for longer every week
+  fuzz:
+    name: Fuzz
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Clang's runtime of libFuzzer, to build libfuzzer-dotnet with, whose
+      # package is named after the default Clang's major version
+      - name: Install libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # fuzz.sh builds libfuzzer-dotnet and the targets, and libFuzzer writes
+      # an input that fails to artifacts/fuzz/<target>/, which the next step
+      # uploads. table_reader runs again with the runtime built to copy every
+      # array, as a big-endian host and 32-bit Arm do.
+      - name: Run each fuzz target for a minute
+        run: |
+          for target in table_reader conformance; do
+              fuzz/fuzz.sh "$target" -max_total_time=60 -timeout=10
+          done
+          TAFLA_PORTABLE=true fuzz/fuzz.sh table_reader -max_total_time=60 -timeout=10
+
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-csharp
+          path: |
+            csharp/artifacts/fuzz/table_reader
+            csharp/artifacts/fuzz/conformance
+          if-no-files-found: ignore
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian, package, benchmark]
+    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm, fuzz]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
