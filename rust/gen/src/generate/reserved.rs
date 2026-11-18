@@ -127,6 +127,48 @@ const CPP: &[&str] = &[
     "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
 ];
 
+/// The names that Swift imports, the runtime's module and its types, the
+/// types of the standard library that it names, which a struct of the same
+/// name would hide, the protocols that its types conform to or suppress,
+/// `Element`, which is `Array`'s own in the extension that reads an array of
+/// structs, whatever a schema declares, and `Any` and `Self`, keywords. It
+/// names `Swift.Range` in full instead, since a schema may well declare
+/// `Range`, and so `Swift`, the standard library's module.
+const SWIFT: &[&str] = &[
+    "Alignment",
+    "Any",
+    "Array",
+    "ArrayView",
+    "Bool",
+    "BuildError",
+    "DecodeError",
+    "Double",
+    "Element",
+    "Escapable",
+    "Float",
+    "Hashable",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "RawSpan",
+    "Self",
+    "Sendable",
+    "String",
+    "Swift",
+    "TableLayout",
+    "TableReader",
+    "TableSizer",
+    "TableWriter",
+    "Tafla",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Vector",
+];
+
 /// The members that C#'s generated types declare beside their fields, which
 /// a type of the same name can't declare: a struct's `Size`, `Write()`,
 /// `Serialize()` and `SerializeArray()` and the members that a record
@@ -151,12 +193,13 @@ const CSHARP: &[&str] = &[
 ];
 
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 6] = [
+const RESERVED: [(&[&str], &[&str]); 7] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
     (&["C++"], CPP),
+    (&["Swift"], SWIFT),
     (&["C#"], CSHARP),
 ];
 

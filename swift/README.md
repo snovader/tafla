@@ -6,18 +6,20 @@ tables in tafla's format, which the TypeScript, Python, Java, Rust, Go and C++
 runtimes write and read too. `TableBuilder` writes a table at its exact size,
 copying arrays in bulk, and `TableReader` reads fields back by offset, with
 arrays, structs and vector items as views of the bytes. Every read checks that
-it stays within the bytes it was given. It depends only on Swift's standard
-library, without Foundation.
+it stays within the bytes it was given. `TableSizer` and `TableWriter` write
+the tables of the code that tafla-gen generates from a schema. It depends only
+on Swift's standard library, without Foundation.
 
 It needs Swift 6.2 or later, and runs on macOS 12, iOS 15, tvOS 15, watchOS 9
-and visionOS 1 or later, and on Linux. It isn't published yet, and
-[CHANGELOG.md](CHANGELOG.md) lists the changes that its first release will
-bring. Until then, a package can depend on it by its path in a checkout of the
-repository:
+and visionOS 1 or later, and on Linux. Each release is tagged `<version>`, and
+[CHANGELOG.md](CHANGELOG.md) lists the changes that it brings. SwiftPM resolves
+the package from the repository, whose root holds a manifest that declares
+this directory's library alone, so a package depends on a release by the
+repository's URL:
 
 ```swift
 dependencies: [
-    .package(name: "tafla", path: "../tafla/swift")
+    .package(url: "https://github.com/snovader/tafla.git", from: "0.1.0")
 ],
 targets: [
     .target(name: "App", dependencies: [.product(name: "Tafla", package: "tafla")])
@@ -181,6 +183,78 @@ negative field index or struct size; `version` of a layout without one; a
 negative number of fields; and a versioned layout without a version, or a
 version for a layout without one.
 
+## Writing without a builder
+
+`TableSizer` and `TableWriter` write a table whose fields are known before
+it's written, as the code that tafla-gen generates writes its tables. The
+sizer counts the table's length from its fields, each added with its type's
+method, which takes what decides its length: nothing for a scalar, the count
+of an array, the string itself. `bytes(_:)` then allocates bytes of that
+length, and gives its writer to a closure that sets the same fields, in the
+same order, each by its index, without recording them first as
+`TableBuilder` does:
+
+```swift
+var sizer = try TableSizer(fields: 2)
+sizer.addFloat64()
+sizer.addString("Europe/Stockholm")
+
+let bytes = try sizer.bytes { writer in
+    writer.setFloat64(0, 59.3293)
+    writer.setString(1, "Europe/Stockholm")
+}
+```
+
+A nested table's fields follow its `addTable(alignment:)` and
+`setTable(_:alignment:)`, between `startTable(fields:)` and `endTable(_:)`,
+and so do each vector item's, after the vector's `addVector(count:)` and
+`setVector(_:count:)`, followed by the writer's `setItemEnd(_:item:)`. A
+struct's scalars follow its `setStruct(_:)`, and an array's structs its
+`setStructArray(_:count:alignment:)`, each scalar written with
+`writeScalar(_:)`, so that the generated code writes its structs without
+collecting their bytes first. The writer writes into the bytes that
+`bytes(_:)` returns, rather than into bytes of its own that it copies, so it
+lives only while the closure runs, and can't be copied.
+
+`TableWriter` is the target of the generated code, whose calls follow from
+the schema, so it doesn't check them again. Its contract, which the other
+runtimes share:
+
+- Fields are set in index order, each once, as the sizer added them, and each
+  vector item is followed by its `setItemEnd(_:item:)`. A field index past its
+  table's fields, or an item past its vector's count, writes an offset or item
+  end over another slot or field, so the table's bytes are undefined.
+- Every write still stays within the table's bytes: one past them, such as of
+  a longer string than the one sized, is a programming error, which stops the
+  program, as a negative index, count or size does.
+- Fields that fall short of the table make `bytes(_:)` throw
+  `BuildError.notAsSized`. The sizer throws the `BuildError` that
+  `TableBuilder`'s setter of a field would have, from `byteLength` and
+  `bytes(_:)`, for a table too long for its offset type and an array of
+  0-byte structs, and its initializer throws as the builder's does.
+
+## Generated code
+
+tafla-gen, tafla's schema compiler, generates Swift from a schema with its
+`swift` target, which
+[rust/gen/README.md](https://github.com/snovader/tafla/blob/main/rust/gen/README.md)
+describes. Its messages and tables are nonescapable views of their bytes,
+whose lifetimes it declares with `@_lifetime`, so the target that holds the
+generated code enables the experimental feature `Lifetimes`, as this package
+enables it for its own targets. Code that only uses the views, such as a
+target that imports the generated module, needs nothing:
+
+```swift
+.target(
+    name: "Schemas",
+    dependencies: [.product(name: "Tafla", package: "tafla")],
+    swiftSettings: [.enableExperimentalFeature("Lifetimes")]
+)
+```
+
+A schema's types are declared at the top level of their module, so schemas
+that declare the same names generate code for a module each.
+
 ## Conversions
 
 Each setter takes its field's own Swift type, such as `UInt8` for a `uint8`,
@@ -220,15 +294,16 @@ swift test -c release -Xswiftc -enable-testing
 swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
 ASAN_OPTIONS=detect_leaks=0 swift test --scratch-path .build/asan --sanitize=address
 swift build --scratch-path .build/watchos --target Tafla --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
-swift format lint --strict --recursive Package.swift Sources Tests
+swift format lint --strict --recursive Package.swift Sources Tests Fuzz/Package.swift Fuzz/Sources
 ```
 
-`swift format --in-place --recursive Package.swift Sources Tests` formats the
-code as `.swift-format` configures it. LeakSanitizer, which AddressSanitizer
-runs on Linux, reports the conformance suite that the tests keep in a static,
-whose arrays Swift refers to from enum payloads, so `detect_leaks=0` turns it
-off, as it's off on macOS. On macOS, `swift build` for watchOS's `arm64_32`
-compiles the paths for hosts whose `Int` is 32 bits, without running them.
+`swift format --in-place --recursive Package.swift Sources Tests Fuzz/Package.swift Fuzz/Sources`
+formats the code as `.swift-format` configures it. LeakSanitizer, which
+AddressSanitizer runs on Linux, reports the conformance suite that the tests
+keep in a static, whose arrays Swift refers to from enum payloads, so
+`detect_leaks=0` turns it off, as it's off on macOS. On macOS, `swift build`
+for watchOS's `arm64_32` compiles the paths for hosts whose `Int` is 32 bits,
+without running them.
 The tests are:
 
 - `ConformanceTests.swift`: reads and rebuilds the conformance suite, at every
@@ -240,9 +315,24 @@ The tests are:
   boundary: signed zero, NaN, integer limits, empty arrays, the limits of each
   offset type, strings outside the Basic Multilingual Plane and unaligned
   bytes.
+- `TableWriterTests.swift`: `TableSizer` and `TableWriter` write the tables
+  that `TableBuilder` writes from the same descriptions, whose nested tables
+  `Tables/Write.swift` writes in place, and fail as it fails, with examples of
+  the writer's own errors and of what stops the program.
 - `UTF8Tests.swift`: the validator of strings on Apple's systems before 2024,
   whose standard library can't validate UTF-8, against the standard library's.
 - `ExampleTests.swift`: the example above.
+- `Generated/`: the code that tafla-gen generates from the example schemas in
+  `schemas/` at the root of the repository, which lies in `Tests/Generated`,
+  a module of each that `Package.swift` declares. It writes the tables that
+  `TableBuilder` writes from the same fields, or fails as it fails, reads back
+  what it writes at any byte offset, rejects other versions, and reads
+  corrupted and arbitrary bytes as values or decode errors, through its
+  getters and views. `ShapesCasesTests.swift` writes the tables of
+  `conformance/generated` byte for byte, and reads their values back, as the
+  code generated in every language does. The modules are the generator's
+  golden files: rewrite them with the generator rather than by hand, with
+  `TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen` from `rust/`.
 
 The property tests run 256 cases each, as proptest does in Rust's. A failing
 table shrinks by losing fields and vector items, and the failure gives the
@@ -257,3 +347,46 @@ the tests find the conformance suite:
 ```sh
 docker run --rm -v "$PWD":/tafla -w /tafla/swift swift:6.2-noble swift test --scratch-path /tmp/build
 ```
+
+### Fuzzing
+
+`Fuzz/` holds libFuzzer's targets, which mirror Rust's and Go's, in a
+package of their own, so that the runtime's package neither builds nor vends
+them. A trap, a report of AddressSanitizer's, or a read that disagrees with
+`SPEC.md` is a finding:
+
+- `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
+  at every position and past the end, in every offset type and header, and
+  reads every array, struct array and vector there. Each read must return
+  the bytes that lie where the format puts them, exactly when they lie
+  within the input, and the decode error otherwise.
+- `FuzzConformance` mutates the conformance suite's tables and reads them as
+  every valid case's description, as the conformance test reads them. Its
+  `Cases.swift`, `Description.swift` and `Read.swift` are links to the test
+  target's in `Tests/TaflaTests/Tables/`.
+
+They build only with Linux's toolchain, since Xcode's has no libFuzzer, so
+on macOS they run in Docker, from the repository's root. Swift's backtracer
+is off, since it held a crash for minutes rather than let libFuzzer report
+it, and so is LeakSanitizer, as in the tests:
+
+```sh
+docker run --rm -it -v "$PWD":/tafla -w /tafla/swift/Fuzz \
+    -e ASAN_OPTIONS=detect_leaks=0 -e SWIFT_BACKTRACE=enable=no swift:6.4-noble bash
+swift build -c release --sanitize=fuzzer --sanitize=address
+mkdir -p .build/corpus/FuzzTableReader .build/artifacts
+.build/release/FuzzTableReader .build/corpus/FuzzTableReader ../../conformance/valid \
+    ../../conformance/equivalent ../../conformance/invalid -max_total_time=300 -artifact_prefix=.build/artifacts/
+```
+
+Stop it with Ctrl-C or `-max_total_time`. libFuzzer writes an input that
+fails to `.build/artifacts/`, and the target reads the files that it's given
+instead of fuzzing, which reproduces a finding:
+
+```sh
+.build/release/FuzzTableReader .build/artifacts/crash-<sha1>
+```
+
+A finding becomes a regression test in `DecodeErrorTests.swift`. CI runs
+each target for a minute on every change, and the weekly Fuzz workflow for
+five minutes, from the corpus that its earlier runs grew.

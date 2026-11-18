@@ -180,8 +180,8 @@ fn check_declaration(
 }
 
 /// Checks that a definition's fields are `snake_case` and declared once, and
-/// that no two share a name in `camelCase`, which TypeScript, JavaScript and
-/// Java name them in
+/// that no two share a name in `camelCase`, which TypeScript, JavaScript,
+/// Java and Swift name them in
 fn check_field_names(declaration: &Declaration, errors: &mut Vec<Diagnostic>) {
     let mut names = HashSet::new();
     // Each camelCase name, with the field that takes it first
@@ -225,7 +225,7 @@ fn check_field_names(declaration: &Declaration, errors: &mut Vec<Diagnostic>) {
                     ),
                     name.span,
                 )
-                .with_help("TypeScript, JavaScript and Java name fields in camelCase"),
+                .with_help("TypeScript, JavaScript, Java and Swift name fields in camelCase"),
             ),
         }
     }

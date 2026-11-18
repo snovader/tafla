@@ -1,7 +1,7 @@
 # Changelog
 
-The changes in each release of tafla's runtime for .NET, in `csharp/`. Each
-of tafla's packages has a version and a changelog of its own, as
+The changes in each release of `Tafla` on NuGet, tafla's runtime for .NET.
+Each of tafla's packages has a version and a changelog of its own, as
 [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. The format is that of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions
@@ -21,6 +21,9 @@ The first release.
   and `TableReader` reads them, with arrays as `ReadOnlySpan<T>`s of the bytes
   on a little-endian host, and structs and vector items as spans of the
   bytes.
+- The package, which is trimmable and compatible with Native AOT, with its
+  symbols in a `.snupkg`, whose Source Link finds the sources of its commit
+  on GitHub.
 - `TableSizer` and `TableWriter`, which write a table whose fields are known
   in advance into bytes of its exact length, or into the start of bytes that
   the caller reuses, with nested tables, vector items and structs written in

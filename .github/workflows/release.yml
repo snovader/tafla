@@ -5,9 +5,10 @@ name: Release
 # version, checks the package and builds its artifacts, publishes them, and
 # then tags the commit <package>/v<version>. Each registry has jobs that check
 # its language and build its artifacts, which a dry run uploads to the
-# workflow run, and a job that publishes them. The Go module is published by
-# its tag, go/v<version>, which its publish job pushes once the module has
-# built, and from which the Go module proxy builds it.
+# workflow run, and a job that publishes them. The Go module and the Swift
+# package are published by their tags, go/v<version> and <version>, which
+# their publish jobs push once the package has built from the tag, and from
+# which the Go module proxy and SwiftPM build them.
 #
 # A dry run builds without publishing: a manual run does, unless it's on main
 # with dry_run turned off, and so does a pull request, for each package whose
@@ -31,8 +32,10 @@ on:
           - rust
           - tafla-gen
           - go
+          - swift
+          - csharp
       version:
-        description: "Its version, which must be its manifest's. The Go module records none, so this is its version."
+        description: "Its version, which must be its manifest's. The Go module and the Swift package record none, so this is their version."
         type: string
         required: true
       dry_run:
@@ -67,6 +70,7 @@ jobs:
       packages: ${{ steps.dispatch.outputs.packages || steps.pull_request.outputs.packages }}
       publish: ${{ steps.dispatch.outputs.publish || 'false' }}
       go_version: ${{ steps.dispatch.outputs.go_version || steps.pull_request.outputs.go_version }}
+      swift_version: ${{ steps.dispatch.outputs.swift_version || steps.pull_request.outputs.swift_version }}
     steps:
       # A pull request's checkout is the merge of its branch into main, which
       # it compares with its first parent, main
@@ -91,7 +95,9 @@ jobs:
             exit 1
           fi
 
-          if [[ "$PACKAGE" != go ]]; then
+          # The Go module and the Swift package record no version, since their
+          # tags are their versions
+          if [[ "$PACKAGE" != go && "$PACKAGE" != swift ]]; then
             own=$(scripts/version.sh "$PACKAGE")
             if [[ "$own" != "$VERSION" ]]; then
               echo "::error::The run releases $PACKAGE $VERSION, but $PACKAGE's version is $own"
@@ -108,6 +114,7 @@ jobs:
             echo "packages=$(jq -cn '$ARGS.positional' --args "$PACKAGE")"
             echo "publish=$publish"
             echo "go_version=$VERSION"
+            echo "swift_version=$VERSION"
           } >> "$GITHUB_OUTPUT"
           echo "Package: $PACKAGE $VERSION, publish: $publish"
 
@@ -117,7 +124,8 @@ jobs:
         if: steps.dispatch.outputs.publish == 'true'
         uses: ./.github/actions/release-tag
         with:
-          tag: ${{ inputs.package }}/v${{ inputs.version }}
+          package: ${{ inputs.package }}
+          version: ${{ inputs.version }}
 
       # A pull request builds each package whose version it changes, which a
       # release of the version would build, and every package when it changes
@@ -133,7 +141,7 @@ jobs:
           cp scripts/version.sh "$base/scripts/version.sh"
 
           packages=()
-          for package in typescript python java rust tafla-gen; do
+          for package in typescript python java rust tafla-gen csharp; do
             version=$(scripts/version.sh "$package")
             base_version=$("$base/scripts/version.sh" "$package" 2> /dev/null || true)
             if [[ "$version" != "$base_version" ]]; then
@@ -153,7 +161,7 @@ jobs:
           }
 
           if touches .github/workflows/release.yml .github/actions/release-tag/action.yml scripts/version.sh; then
-            packages=(typescript python java rust tafla-gen go)
+            packages=(typescript python java rust tafla-gen go swift csharp)
           fi
           if touches python/scripts/test-wheels.sh; then
             packages+=(python)
@@ -161,15 +169,23 @@ jobs:
           if touches go/go.mod; then
             packages+=(go)
           fi
+          # Either of the Swift package's manifests, which its release checks
+          # against each other
+          if touches Package.swift swift/Package.swift; then
+            packages+=(swift)
+          fi
 
           # The Go module has no version until its release names one, so its
           # dry run takes the first of its major version, which go.mod's
           # module path ends with from 2 on
           major=$(sed -nE 's#^module github\.com/snovader/tafla/go/v([0-9]+)$#\1#p' go/go.mod)
 
+          # The Swift package has no version until its release names one
+          # either, and its dry run takes 0.0.0
           {
             echo "packages=$(jq -cn '$ARGS.positional' --args "${packages[@]}")"
             echo "go_version=${major:-0}.0.0"
+            echo "swift_version=0.0.0"
           } >> "$GITHUB_OUTPUT"
           echo "Packages: ${packages[*]:-none}"
 
@@ -840,7 +856,8 @@ jobs:
       - name: Push the tag go/v<version>
         uses: ./.github/actions/release-tag
         with:
-          tag: go/v${{ inputs.version }}
+          package: go
+          version: ${{ inputs.version }}
           push: true
 
       - name: Setup Go
@@ -855,13 +872,324 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: go mod download -json "github.com/snovader/tafla/go@v$VERSION"
 
+  # Swift package
+
+  # Checks the Swift package, on Linux with the Swift of its tools version and
+  # the latest release, and on macOS, and builds it from a tag, as a
+  # dependency of a package that requires it. SwiftPM resolves a package from
+  # the manifest at the root of its repository, which declares the library of
+  # swift/ alone, so the job checks it against swift/Package.swift, from which
+  # the package is tested.
+  swift-build:
+    name: Swift package (check and build, ${{ matrix.name }})
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'swift')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    # None on macOS
+    container: ${{ matrix.container }}
+    strategy:
+      # Every platform builds, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux, Swift 6.2
+            runner: ubuntu-latest
+            container: swift:6.2-noble
+          - name: Linux, Swift 6.4
+            runner: ubuntu-latest
+            container: swift:6.4-noble
+            # The Swift workflow's swift-format, whose versions format alike
+            # only mostly
+            format: true
+          - name: macOS
+            runner: macos-26
+    defaults:
+      run:
+        working-directory: swift
+    env:
+      VERSION: ${{ needs.plan.outputs.swift_version }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # A container runs as another user than the one that owns the checkout,
+      # whose repository git then refuses to read, to tag or to clone from
+      - name: Trust the checkout
+        if: matrix.container
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/.git"
+
+      - name: Print the Swift version
+        run: swift --version
+
+      - name: Run formatting check
+        if: matrix.format
+        run: |
+          swift format lint --strict --recursive Package.swift Sources Tests
+          swift format lint --strict --configuration .swift-format ../Package.swift
+
+      # The library that the root's manifest declares, with the products and
+      # platforms that a package that depends on it sees, must be the one that
+      # swift/Package.swift declares and the tests test. jq is on the macOS
+      # runner, rather than in the Swift images.
+      - name: Check the root's manifest against the package's
+        if: runner.os == 'macOS'
+        working-directory: .
+        run: |
+          library() {
+            swift package --package-path "$1" dump-package |
+              jq -S 'del(.packageKind, .dependencies)
+                | .products |= map(select(.type | has("library")))
+                | .targets |= map(select(.name == "Tafla") | del(.path))'
+          }
+          diff -u <(library swift) <(library .)
+
+      - name: Run tests
+        run: swift test
+
+      - name: Run tests optimized
+        run: swift test -c release -Xswiftc -enable-testing
+
+      - name: Run tests of the portable path
+        if: runner.os == 'Linux'
+        run: swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
+
+      - name: Build for a 32-bit target
+        if: runner.os == 'macOS'
+        run: |
+          swift build --scratch-path .build/watchos --target Tafla \
+              --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
+
+      # SwiftPM builds the package from a tag, as it will from the pushed one:
+      # git fetches https://github.com/snovader/tafla.git from the checkout,
+      # where this step tags the commit without pushing the tag
+      - name: Tag the commit in the checkout
+        run: git tag "$VERSION"
+
+      # In a package that depends on tafla's by its URL, as a user's would, and
+      # on macOS from the earliest macOS that it supports: SwiftPM resolves the
+      # version from the tag and loads the root's manifest, which the shallow
+      # checkout holds, and the package builds the library, writes a table and
+      # reads it back
+      - name: Build the package from its tag
+        run: |
+          mkdir -p "$RUNNER_TEMP/consumer/Sources/Consumer"
+          cd "$RUNNER_TEMP/consumer"
+
+          cat > Package.swift <<EOF
+          // swift-tools-version:6.2
+
+          import PackageDescription
+
+          let package = Package(
+              name: "consumer",
+              platforms: [.macOS(.v12)],
+              dependencies: [
+                  .package(url: "https://github.com/snovader/tafla.git", exact: "$VERSION")
+              ],
+              targets: [
+                  .executableTarget(name: "Consumer", dependencies: [.product(name: "Tafla", package: "tafla")])
+              ]
+          )
+          EOF
+
+          cat > Sources/Consumer/main.swift <<'EOF'
+          import Tafla
+
+          func readBack() throws {
+              var builder = try TableBuilder(fields: 2)
+              try builder.setString("Europe/Stockholm")
+              try builder.setFloat32Array([21.75, 18.5])
+              let bytes = try builder.bytes()[...]
+
+              let reader = TableReader(bytes.span.bytes)
+              let timeZone = try reader.string(at: reader.rootOffset(0))
+              let values = Array(try reader.float32Array(at: reader.rootOffset(1)))
+              precondition(timeZone == "Europe/Stockholm" && values == [21.75, 18.5])
+          }
+
+          try readBack()
+          EOF
+
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="url.file://$GITHUB_WORKSPACE/.git.insteadOf"
+          export GIT_CONFIG_VALUE_0=https://github.com/snovader/tafla.git
+          swift run Consumer
+
+  # Pushes the tag that publishes the package, <version>, from which SwiftPM
+  # resolves it, and resolves it from GitHub, as a user's package would. Unlike
+  # an upload, the tag can't be taken back once a package has resolved it, since
+  # SwiftPM records the commit of each version that it resolves, so the job
+  # pushes it only once the package has built from it.
+  swift-publish:
+    name: Swift package (publish)
+    needs: [plan, swift-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'swift'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: swift:6.4-noble
+    environment:
+      name: swift-package
+      url: https://github.com/snovader/tafla/tree/${{ inputs.version }}
+    permissions:
+      # Pushes the tag
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # The container runs as another user than the one that owns the checkout
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Push the tag <version>
+        uses: ./.github/actions/release-tag
+        with:
+          package: swift
+          version: ${{ inputs.version }}
+          push: true
+
+      - name: Resolve the package from GitHub
+        run: |
+          mkdir "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          cat > Package.swift <<EOF
+          // swift-tools-version:6.2
+
+          import PackageDescription
+
+          let package = Package(
+              name: "consumer",
+              dependencies: [
+                  .package(url: "https://github.com/snovader/tafla.git", exact: "$VERSION")
+              ]
+          )
+          EOF
+          swift package resolve
+
+  # NuGet
+
+  # Checks the C# runtime, packs it, with its symbols in a .snupkg, and tests
+  # the package as a project that uses it would, as the C# workflow does
+  nuget-build:
+    name: NuGet (check and pack)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'csharp')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
+      # Restores the tests' packages as their lock file locks them, and maps
+      # the paths that the assembly and its symbols record, so that the commit
+      # builds the same assembly wherever the same SDK builds it
+      ContinuousIntegrationBuild: "true"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Run formatting check
+        run: dotnet format --verify-no-changes
+
+      - name: Build
+        run: dotnet build
+
+      - name: Run tests
+        run: dotnet test --no-build
+
+      - name: Run tests of the portable path
+        run: dotnet test -p:TaflaPortable=true
+
+      - name: Pack the package
+        run: dotnet pack src/Tafla
+
+      - name: Test the package
+        run: scripts/test-package.sh
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget
+          path: csharp/artifacts/package/release/
+          if-no-files-found: error
+
+  # Publishes the package, and its symbols, that nuget-build built and tested
+  nuget-publish:
+    name: NuGet (publish)
+    needs: [plan, nuget-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'csharp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Tafla/${{ inputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - name: Download the package
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget
+          path: nuget
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Exchanges the workflow's OIDC token for an API key that lasts an hour,
+      # as the trusted publishing policy on nuget.org allows, which can publish
+      # a package's first version too. The key is the policy's owner's, whose
+      # nuget.org user name is the NUGET_USER secret, so the job needs no
+      # API key.
+      - name: Authenticate with trusted publishing
+        id: auth
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # Pushes the .snupkg beside the package too. A version that nuget.org
+      # has fails, as on the other registries, but an attempt that runs the
+      # job again skips what an earlier attempt pushed, such as the package
+      # once its symbols failed.
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.auth.outputs.NUGET_API_KEY }}
+          VERSION: ${{ inputs.version }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          options=()
+          if ((RUN_ATTEMPT > 1)); then
+            options+=(--skip-duplicate)
+          fi
+          dotnet nuget push "nuget/Tafla.$VERSION.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json "${options[@]}"
+
   # Tags the commit that a package was published from <package>/v<version>,
   # once its publish job has succeeded, in a job of its own, so that the jobs
-  # that run the registries' tools can't push. Go's publish job pushes its
-  # tag itself, since the tag publishes the module.
+  # that run the registries' tools can't push. Go's and Swift's publish jobs
+  # push their tags themselves, since a tag publishes each.
   tag:
     name: Tag the release
-    needs: [plan, npm-publish, pypi-publish, crates-publish, maven-publish]
+    needs: [plan, npm-publish, pypi-publish, crates-publish, maven-publish, nuget-publish]
     # The other packages' publish jobs are skipped, so the job checks the
     # result of the released package's
     if: >-
@@ -869,7 +1197,8 @@ jobs:
         (inputs.package == 'typescript' && needs.npm-publish.result == 'success') ||
         (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
         (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
-        ((inputs.package == 'rust' || inputs.package == 'tafla-gen') && needs.crates-publish.result == 'success')
+        ((inputs.package == 'rust' || inputs.package == 'tafla-gen') && needs.crates-publish.result == 'success') ||
+        (inputs.package == 'csharp' && needs.nuget-publish.result == 'success')
       )
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -883,5 +1212,6 @@ jobs:
       - name: Push the tag ${{ inputs.package }}/v<version>
         uses: ./.github/actions/release-tag
         with:
-          tag: ${{ inputs.package }}/v${{ inputs.version }}
+          package: ${{ inputs.package }}
+          version: ${{ inputs.version }}
           push: true

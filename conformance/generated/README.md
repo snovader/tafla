@@ -14,6 +14,7 @@ the generators of every language are checked to write one format.
 | Rust       | `rust/gen/tests/shapes_cases.rs`                                                   |
 | Go         | `go/tests/generated/shapes_cases_test.go`                                          |
 | C++        | `cpp/tests/generated/shapes_cases_test.cpp`                                        |
+| Swift      | `swift/Tests/TaflaTests/Generated/ShapesCasesTests.swift`                          |
 | C#         | `csharp/tests/Tafla.Tests/Generated/ShapesCasesTests.cs`                           |
 
 Each language's CI runs its test when this directory changes.

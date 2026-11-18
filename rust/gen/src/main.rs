@@ -169,7 +169,8 @@ Options:
                        runtime from: `tafla` by default,
                        `io.github.snovader.tafla` in Java,
                        `github.com/snovader/tafla/go` in Go, the header
-                       `tafla/tafla.hpp` in C++ and the namespace `Tafla` in C#
+                       `tafla/tafla.hpp` in C++, `Tafla` in Swift and the
+                       namespace `Tafla` in C#
   --package <package>  The package of the Java classes, by default `generated`,
                        and the namespace of the C++, `a::b` for `a.b`, and of
                        the C#, by default the schema's name. Go's package is

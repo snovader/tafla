@@ -1,7 +1,8 @@
 # Changelog
 
-The changes in each release of `Tafla`, tafla's runtime for Swift. Each of
-tafla's packages has a version and a changelog of its own, as
+The changes in each release of `Tafla`, tafla's runtime for Swift, whose
+releases are tagged `<version>`. Each of tafla's packages has a version and a
+changelog of its own, as
 [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. The format is that of
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions
@@ -28,5 +29,18 @@ The first release.
   can't write.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- SwiftPM resolves the package from the repository's URL,
+  `https://github.com/snovader/tafla.git`, and its releases from tags such as
+  `0.1.0`.
+- `TableSizer` and `TableWriter`, which write a table whose fields are known
+  before it's written without recording them, as the code that tafla-gen's
+  `swift` target generates writes its tables: the sizer counts the table's
+  length, and `TableSizer.bytes(_:)` gives its writer to a closure that sets
+  the same fields, in the same order, into new bytes of that length.
+  `BuildError.notAsSized` reports fields that don't fill the table, and a
+  write past it stops the program.
+- `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
+  fixed offset in bytes, as a struct's scalars lie, and which the generated
+  structs read themselves with.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift

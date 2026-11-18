@@ -41,8 +41,9 @@ public enum DecodeError: Error, Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-/// Thrown when a `TableBuilder` can't write a table, whatever the values'
-/// bytes. A setter that throws leaves the builder as it was.
+/// Thrown when a `TableBuilder`, or a `TableSizer` and its `TableWriter`,
+/// can't write a table, whatever the values' bytes. A setter that throws
+/// leaves the builder as it was.
 ///
 /// Later versions may add cases, so a `switch` over them should have a
 /// `default`.
@@ -63,6 +64,9 @@ public enum BuildError: Error, Hashable, Sendable, CustomStringConvertible {
     /// The `length` bytes of an array of structs aren't a whole number of
     /// `size`-byte structs, or `size` isn't positive
     case notWholeStructs(length: Int, size: Int)
+    /// A `TableWriter`'s fields differ from those that its `TableSizer`
+    /// added: they wrote `written` of the table's `length` bytes
+    case notAsSized(written: Int, length: Int)
 
     public var description: String {
         switch self {
@@ -80,6 +84,8 @@ public enum BuildError: Error, Hashable, Sendable, CustomStringConvertible {
             "A struct can't be \(size) bytes"
         case .notWholeStructs(let length, let size):
             "\(length) bytes aren't a whole number of \(size)-byte structs"
+        case .notAsSized(let written, let length):
+            "The fields wrote \(written) of the table's \(length) bytes"
         }
     }
 }

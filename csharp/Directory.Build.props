@@ -31,6 +31,27 @@
         <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
     </PropertyGroup>
 
+    <!-- What every package of csharp/ shares, which only the runtime is: its owner and license, as
+         the other runtimes' packages have them, and its symbols, in a .snupkg beside the .nupkg,
+         whose Source Link names the sources at the commit on GitHub. ContinuousIntegrationBuild,
+         as CI and the release set it, maps the paths that the assembly and its symbols record to
+         /_/, so that a commit builds the same assembly wherever the same SDK builds it. Package
+         validation checks the package's contents when it's packed. -->
+    <PropertyGroup>
+        <Authors>snovader</Authors>
+        <Copyright>Copyright (c) 2026 snovader</Copyright>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/snovader/tafla</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+
+        <EnablePackageValidation>true</EnablePackageValidation>
+    </PropertyGroup>
+
     <!-- -p:TaflaPortable=true copies every array that the runtime reads, as on a big-endian host,
          rather than reading it in place, so that the tests cover that path on any host -->
     <PropertyGroup Condition="'$(TaflaPortable)' == 'true'">

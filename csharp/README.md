@@ -46,7 +46,9 @@ other runtimes' in C#'s case: table, field, layout (`TableLayout`), offset
 type (`OffsetType`) and offset size, vector, builder (`TableBuilder`) and
 decode error (`DecodeException`, as Java names it).
 
-The runtime isn't published to NuGet yet, and has no version until it is.
+The runtime is released to NuGet as the package `Tafla`, whose page shows
+`src/Tafla/README.md`, as [RELEASING.md](../RELEASING.md) describes. It
+hasn't been released yet.
 
 ## Format
 
@@ -304,6 +306,22 @@ which CI restores in locked mode. The runtime depends on no package, and has
 no lock file: the SDK adds its trimming analyzers' package to it, at the
 SDK's own version, which a lock file would tie to one SDK. The build writes
 everything under `artifacts/`.
+
+```sh
+dotnet pack src/Tafla
+scripts/test-package.sh
+```
+
+`dotnet pack` packs the runtime into `artifacts/package/release/`, with its
+symbols in a `.snupkg`, as the release publishes it, and
+`scripts/test-package.sh` tests the package as a project that uses it
+would: `tests/package` restores it from there and runs, and then runs
+compiled ahead of time with Native AOT, whose analysis of the trimmed package
+fails on any warning. Native AOT needs a C toolchain, and its packages come
+from nuget.org. Homebrew's .NET SDK, which is built from source, links
+executables of Native AOT with OpenSSL and Brotli, which
+`LIBRARY_PATH="$(brew --prefix openssl@3)/lib:$(brew --prefix brotli)/lib"`
+lets the linker find.
 
 The byte swap of a big-endian host runs only there. Microsoft builds no .NET
 for s390x, but Red Hat does, so CI runs the tests that `dotnet build` built,

@@ -280,7 +280,7 @@ private func parseScalar(_ json: JSON, _ type: ScalarType) throws -> Field {
 }
 
 /// A 64-bit integer, which the cases write as a decimal string
-private func parseInteger<T: FixedWidthInteger>(_ json: JSON) throws -> T {
+func parseInteger<T: FixedWidthInteger>(_ json: JSON) throws -> T {
     guard let value = T(try json.string) else {
         throw ParseError(description: "\(json) isn't a \(T.self)")
     }
@@ -290,7 +290,7 @@ private func parseInteger<T: FixedWidthInteger>(_ json: JSON) throws -> T {
 /// A float, which the cases write as a number, or by the name of a value that
 /// JSON has no number for. NaN is the quiet NaN, which JavaScript writes, and
 /// a float32 is the float64 that equals it, which narrows to it exactly.
-private func parseFloat(_ json: JSON) throws -> Double {
+func parseFloat(_ json: JSON) throws -> Double {
     guard case .string(let name) = json else {
         return try json.double
     }

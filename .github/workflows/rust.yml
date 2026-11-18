@@ -60,6 +60,7 @@ jobs:
               - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
+              - "swift/Tests/Generated/*/**"
               - "typescript/core/test/generated/*/**"
               # The C# tests' own schema and its generated code, which
               # tests/csharp_schemas.rs checks

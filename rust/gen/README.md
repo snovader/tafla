@@ -1,9 +1,10 @@
 # tafla-gen
 
 Compiles a schema of messages, tables and structs into code that writes and
-reads them with tafla's runtime for TypeScript, JavaScript, Python, Java, Rust,
-Go, C++ or C#. It runs as a command, as a Rust library, and as a WebAssembly module
-without imports, which the packages for the other languages run.
+reads them with tafla's runtime for TypeScript, JavaScript, Python, Java,
+Rust, Go, C++, Swift or C#. It runs as a command, as a Rust library, and as a
+WebAssembly module without imports, which the packages for the other
+languages run.
 
 ```text
 /// A document, whose header holds its length and version, with a nested
@@ -64,9 +65,9 @@ Each field is `name: type;`, of one of these types:
 
 A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
-TypeScript, JavaScript and Java, and `bool` in Python, Rust, Go, C++ and C#, and the
-generated code reads and writes it with the runtime's `uint8` getters and
-setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
+TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
+`Bool` in Swift, and the generated code reads and writes it with the runtime's
+`uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
 and 1 holds bools in the meantime.
 
 Every field is required, and is read by its index, so its position is part of
@@ -114,17 +115,19 @@ or read its tables, or a target couldn't generate its code:
   schema generates code for every target. These are the runtime's classes,
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
-  `TypedDict` in Python, `List`, `String` and `Override` in Java and `Option`
-  in Rust, `Fields`, the record of a Java class's fields, keywords, such as
-  `None` in Python and `Self` in Rust, the macros of the C standard
-  library that a C++ header may define, such as `NULL` and `EOF`, and the
-  members that C#'s generated types declare, which a type of the same name
-  can't, such as a struct's `Size` and `Write()` and a record's `ToString()`,
-  and `Enumerator`, which its views nest; C++ and C# name everything else in
-  full. `src/generate/reserved.rs` lists them.
+  `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
+  in Rust and `Int`, `RawSpan` and `Hashable` in Swift, `Fields`, the record
+  of a Java class's fields, keywords, such as `None` in Python and `Self` in
+  Rust and Swift, the macros of the C standard library that a C++ header
+  may define, such as `NULL` and `EOF`, and the members that C#'s generated
+  types declare, which a type of the same name can't, such as a struct's
+  `Size` and `Write()` and a record's `ToString()`, and `Enumerator`, which
+  its views nest; C++ and C# name everything else in full, and Swift names
+  `Swift.Range`, so that a schema can declare `Range`.
+  `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
-  TypeScript, JavaScript and Java name them in. It drops the underscores, so
-  `a_1` and `a1` are both `a1`.
+  TypeScript, JavaScript, Java and Swift name them in. It drops the
+  underscores, so `a_1` and `a1` are both `a1`.
 - Messages, tables and structs hold at least one field.
 - Only messages have attributes, each at most once.
 - A message's attributes are `sized`, `version: INTEGER` and
@@ -286,6 +289,7 @@ when the bytes are in another version.
 | Rust       | `<schema>.rs`                            | `Copy` views that borrow strings and arrays, written from `<Name>Fields` | Plain structs, read and written as arrays of bytes   |
 | Go         | `<package>.go`, a package of its name    | Readers that hold their bytes, written from `<Name>Fields` structs       | Plain structs, read and written at fixed offsets     |
 | C++        | `<schema>.hpp`, a header of C++20        | Views of their bytes, written from aggregates, `<Name>Fields`            | Aggregates, read and written at their offsets        |
+| Swift      | `<schema>.swift`                         | Nonescapable views of their bytes, written from `<Name>Fields` structs   | Structs, read and written at their offsets           |
 | C#         | `<Schema>.cs`, of C# 14 for .NET 10      | `readonly struct`s over a reader, written from `<Name>Fields` records    | `readonly record struct`s, read and written as spans |
 
 A table's getter of a vector or an array of structs returns a view of its
@@ -355,6 +359,7 @@ how deep it walks.
 | Rust                   | `len()`, `is_empty()` | `get(i)`, or `None`, as a `Result` for a vector's table                                     | `iter()`, which reads each item's end once             |
 | Go                     | `Len()`               | `Get(i)`, with an error for a vector's table, or a panic past the end, as indexing a slice  | `range view.All()`, which reads each item's end once   |
 | C++                    | `size()`, `empty()`   | `get(i)` of a vector, `at(i)` of an array, or a `std::out_of_range`                         | `for (auto item : view)`, reading each item's end once |
+| Swift                  | `count`, `isEmpty`    | `view[i]`, which throws for a vector's table, and stops the program past the end            | `for i in view.indices`, or `Array(view)` of structs   |
 | C#                     | `Count`               | `view[i]`, or an `ArgumentOutOfRangeException`: a vector's view is an `IReadOnlyList`       | `foreach (var item in view)`, reading each end once    |
 
 A view creates the reader of each item that it reads, but not those of the
@@ -386,13 +391,16 @@ assert_eq!(last.value()?, 3.0);
 ```
 
 Field names that are keywords in a target take a `_` after them, such as
-`class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust.
+`class_` in Python and Java, or are raw identifiers, such as `r#type` in Rust,
+or escaped, such as `` `class` `` in Swift, where `self` takes a `_`, since
+an initializer's parameter of its name would hide the instance.
 So do names that would clash, in a target, with a member that the generated
 code defines or inherits, or with a local that it reads fields beside, such as
 `constructor_`, `toString_` and `fields_` in TypeScript, `serialize_`, `int_`, `bool_`
 and `version_of_` in Python, `hashCode_` and `serialize_` in Java, `new_` and
 `version_of_` in Rust, `MarshalBinary_` in Go, as Go exports every name of a
-schema in `PascalCase`, which keywords don't clash with, and `serialize_`,
+schema in `PascalCase`, which keywords don't clash with, `serialize_` in
+Swift, and `serialize_`,
 `serialize_into_`, `size_`, `write_`, `read_`, `to_bytes_` and `version_of_`
 in C++, `Serialize_`, `Size_`, `Write_`, `ToString_` and `VersionOf_` in C#,
 whose `PascalCase` names keywords don't clash with either, and where a field
@@ -410,12 +418,13 @@ target's generator lists them; other targets keep the name.
 Each target's code is formatted as its formatter in this repository leaves
 it: oxfmt for TypeScript and JavaScript, Ruff for Python, rustfmt for Rust,
 gofmt for Go, which also reformats doc comments, as `go/doc/comment` parses
-them, clang-format for C++, and `dotnet format` for C#, with Java at 100
-columns. Go's files start with the comment that Go's tools take as generated
-code, `// Code generated ... DO NOT EDIT.`, and C#'s with an
-`// <auto-generated>` header, which keeps the analyzers and `dotnet format`
-of the projects that compile them off them; this repository checks them
-with its own, as `csharp/README.md` describes. With the schema above, from
+them, clang-format for C++, swift-format for Swift, and `dotnet format` for
+C#, with Java at 100 columns. Go's files start with the comment that Go's
+tools take as generated code, `// Code generated ... DO NOT EDIT.`, and C#'s
+with an `// <auto-generated>` header, which keeps the analyzers and
+`dotnet format` of the projects that compile them off them; this repository
+checks them with its own, as `csharp/README.md` describes. With the schema
+above, from
 `schemas/shapes.tafla`, the generated code reads and writes a document like
 this:
 
@@ -492,6 +501,20 @@ const shapes::Document document(bytes);  // checks the version
 document.columns().a();  // a tafla::ArrayView<float> of the bytes
 ```
 
+```swift
+let fields = DocumentFields(
+    x: 1.5,
+    y: 2,
+    name: "a",
+    columns: ColumnsFields(base: 0, keys: [1, 2], a: [0.5, 1.5], b: [2.5, 3.5])
+)
+let bytes = try fields.serialize()
+
+let all = bytes[...]
+let document = try Document(all.span.bytes)  // checks the version
+let a = try document.columns.a  // an ArrayView<Float> of the bytes
+```
+
 ```csharp
 using Shapes;
 
@@ -522,6 +545,34 @@ past the bytes, through the runtime's `TableReader::get_table()`.
 It also has a default constructor, of no bytes, whose getters throw a
 `tafla::DecodeError`, so that `to_vector()` of a vector's view can size its
 `std::vector` before reading the items into it.
+
+Swift's messages and tables are nonescapable views of a `RawSpan`, as the
+runtime's `TableReader` is, so the compiler keeps them, and the arrays and
+views that their getters return, within the lifetime of the bytes that
+they're read from. Their getters are throwing properties, which throw a
+`DecodeError`, and a nested table's getter returns its view, so that
+`try document.columns.a` reads an array of a nested table. Swift 6.2 to 6.4
+declare such views with the experimental feature `Lifetimes` and the
+attribute `@_lifetime`, so the target that holds the generated code enables
+the feature, as `swift/Package.swift` does for the example schemas' modules,
+and code that only uses the views, in other targets, needs nothing:
+
+```swift
+.target(
+    name: "Schemas",
+    dependencies: [.product(name: "Tafla", package: "tafla")],
+    swiftSettings: [.enableExperimentalFeature("Lifetimes")]
+)
+```
+
+A schema's types are declared at the top level of its module, so two schemas
+that declare the same name, such as `Point`, generate code for a module each.
+A message's `<Name>Fields` writes it with `serialize()`, which sizes it with
+the runtime's `TableSizer` and writes it with its `TableWriter`, every field
+in turn and a struct's scalars one after another, without laying out fields
+of fixed size itself as Go, C++, Rust, TypeScript and C# do. A struct reads
+itself from the start of bytes with `init(_:)`, and writes itself with
+`serialize()`, and an array of structs with `serializeArray(_:)`.
 
 C#'s namespace is `--package`, or the schema's file name in `PascalCase`:
 its runs of ASCII letters and digits, each from a capital letter, after
@@ -723,6 +774,7 @@ bytes don't hold the header:
 | Rust                   | `Document::version_of(&bytes)`, a `Result<u32, DecodeError>` |
 | Go                     | `DocumentVersionOf(bytes)`, a `uint32` and an `error`        |
 | C++                    | `Document::version_of(bytes)`, a `std::uint32_t`             |
+| Swift                  | `Document.version(of: bytes)`, a `UInt32` that throws        |
 | C#                     | `Document.VersionOf(bytes)`, a `uint`                        |
 
 An application that reads two versions of a document, declared with the same
@@ -745,7 +797,7 @@ switch (Document.versionOf(bytes)) {
 ## Command
 
 ```sh
-tafla-gen <typescript|javascript|python|java|rust|go|cpp|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
 `ts`, `js`, `py`, `rs` and `cs` abbreviate the targets. Options may come before,
@@ -782,6 +834,7 @@ they share.
   | Java                                 | `io.github.snovader.tafla`     |
   | Go                                   | `github.com/snovader/tafla/go` |
   | C++                                  | `tafla/tafla.hpp`, a header    |
+  | Swift                                | `Tafla`, the module            |
   | C#                                   | `Tafla`, a namespace           |
 
   Go imports it as `tafla`, whatever its path's last element.
@@ -829,10 +882,9 @@ assert!(Diagnostic::render_all(&errors, "point.tafla", source)
 ```
 
 Each target has a Cargo feature, `typescript` (which generates JavaScript
-too), `python`, `java`, `rust`, `go`, `cpp` and `csharp`, and the default features
-are all seven. A
-crate that generates one language from its build script can depend on that
-feature alone.
+too), `python`, `java`, `rust`, `go`, `cpp`, `swift` and `csharp`, and the
+default features are all eight. A crate that generates one language from its
+build script can depend on that feature alone.
 
 ## WebAssembly
 
@@ -842,7 +894,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 538 KB. It has no imports, so any host runs it with an empty import
+about 563 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
@@ -917,6 +969,7 @@ its runtime, in the same ways as the Rust:
 | Rust                   | `rust/gen/tests/golden/<schema>/rust/`                                      |
 | Go                     | `go/tests/generated/<schema>/`                                              |
 | C++                    | `cpp/tests/generated/<schema>/`                                             |
+| Swift                  | `swift/Tests/Generated/<schema>/`, a module of each                         |
 | C#                     | `csharp/tests/Tafla.Generated/<schema>/`, a library of its own              |
 
 The Java is generated with the package
