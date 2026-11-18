@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using CsCheck;
 using Tafla.Tests.Tables;
 
@@ -265,6 +266,29 @@ public class DecodeExceptionTests
             Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
             Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
         }
+    }
+
+    /// <summary>
+    /// A string of 1,073,741,792 NULs, one more than a .NET string holds, which a uint32 table can
+    /// hold. It takes 1 GiB, which only a 64-bit process can allocate.
+    /// </summary>
+    [Fact]
+    public void RejectsAStringLongerThanAStringCanBe()
+    {
+        Assert.SkipUnless(Environment.Is64BitProcess, "A 32-bit process can't allocate the string's 1 GiB");
+
+        const int length = 0x3fff_ffe0;
+        var bytes = new byte[sizeof(uint) + length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, length);
+        var buffer = new ByteBuffer(bytes);
+
+        var error = Assert.Throws<DecodeException>(() => buffer.GetString(0));
+        Assert.Equal((DecodeErrorKind.StringTooLong, 0L, length), (error.Kind, error.Position, error.ByteLength));
+        Assert.Equal("The string of 1073741792 bytes at 0 has more characters than a .NET string holds", error.Message);
+
+        // Invalid UTF-8 in so long a string fails as invalid, since its characters can't be counted
+        bytes[^1] = 0xff;
+        Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => buffer.GetString(0)).Kind);
     }
 
     /// <summary>A vector of two items whose second ends before the first does, at 11 rather than 12</summary>

@@ -118,6 +118,11 @@ whose `Kind` says why and whose properties describe the read:
   read, since a position can't hold it.
 - `InvalidUtf8`: a string that isn't valid UTF-8, such as one with an
   overlong encoding or a surrogate.
+- `StringTooLong`: a string of `ByteLength` bytes that hold more characters
+  than a .NET `string` can, 1,073,741,791. A table of `UInt32` offsets can
+  hold a longer string, so the bytes may be valid, but .NET can't decode it.
+  Only a string of more bytes than that can fail so, and its characters are
+  counted before anything is allocated for it.
 - `ItemEndsBeforeStart`: a vector item that ends before the item before it.
 - `UnsupportedVersion`: `ByteBuffer` doesn't compare versions. A reader
   throws `DecodeException.UnsupportedVersion()` when `GetVersion()` isn't its

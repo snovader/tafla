@@ -33,6 +33,9 @@ public readonly struct ByteBuffer
     /// <summary>A UTF-8 decoder that throws for invalid UTF-8, rather than replacing it with U+FFFD</summary>
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    /// <summary>The most characters that a <see cref="string"/> holds, which .NET doesn't expose</summary>
+    private const int MaxStringLength = 0x3fff_ffdf;
+
     private readonly ReadOnlyMemory<byte> _bytes;
     private readonly TableLayout _layout;
 
@@ -233,13 +236,23 @@ public readonly struct ByteBuffer
     /// Reads the string at <paramref name="position"/>, whose bytes must be valid UTF-8, into a new
     /// <see cref="string"/>. A leading U+FEFF is part of the string rather than a byte order mark.
     /// </summary>
-    /// <exception cref="DecodeException">The string doesn't lie within the bytes, or isn't valid UTF-8.</exception>
+    /// <exception cref="DecodeException">
+    /// The string doesn't lie within the bytes, isn't valid UTF-8, or has more characters than a
+    /// <see cref="string"/> holds, 1,073,741,791, which only a string of more bytes than that can.
+    /// </exception>
     public string GetString(int position)
     {
         var bytes = ArrayBytes(position, sizeof(byte));
 
         try
         {
+            // UTF-8 has at most one character per byte, so only a string of more bytes than a string
+            // holds characters is counted, before anything is allocated for it
+            if (bytes.Length > MaxStringLength && Utf8.GetCharCount(bytes) > MaxStringLength)
+            {
+                throw DecodeException.StringTooLong(position, bytes.Length);
+            }
+
             return Utf8.GetString(bytes);
         }
         catch (DecoderFallbackException exception)

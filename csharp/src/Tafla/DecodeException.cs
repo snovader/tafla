@@ -29,6 +29,15 @@ public enum DecodeErrorKind
     /// <see cref="ByteBuffer.GetVersion"/> isn't its own.
     /// </summary>
     UnsupportedVersion,
+
+    /// <summary>
+    /// A string, whose count lies at <see cref="DecodeException.Position"/>, of
+    /// <see cref="DecodeException.ByteLength"/> bytes that hold more characters than a .NET
+    /// <see cref="string"/> can, 1,073,741,791. The bytes may be a valid table, since a table of
+    /// <see cref="OffsetType.UInt32"/> offsets can hold a longer string, but .NET can't. Only a string
+    /// of more bytes than that can fail so, as UTF-8 has at most one character per byte.
+    /// </summary>
+    StringTooLong,
 }
 
 /// <summary>
@@ -61,13 +70,16 @@ public sealed class DecodeException : Exception
 
     /// <summary>
     /// Where the read starts, for <see cref="DecodeErrorKind.OutOfRange"/>, where the string's count lies,
-    /// for <see cref="DecodeErrorKind.InvalidUtf8"/>, and where the item starts, for
-    /// <see cref="DecodeErrorKind.ItemEndsBeforeStart"/>. It can be negative, or past the largest
-    /// <see cref="int"/>, for a read of a position that no bytes hold.
+    /// for <see cref="DecodeErrorKind.InvalidUtf8"/> and <see cref="DecodeErrorKind.StringTooLong"/>, and
+    /// where the item starts, for <see cref="DecodeErrorKind.ItemEndsBeforeStart"/>. It can be negative,
+    /// or past the largest <see cref="int"/>, for a read of a position that no bytes hold.
     /// </summary>
     public long Position { get; private init; }
 
-    /// <summary>The length of the read, for <see cref="DecodeErrorKind.OutOfRange"/>.</summary>
+    /// <summary>
+    /// The length of the read, for <see cref="DecodeErrorKind.OutOfRange"/>, and of the string's bytes,
+    /// for <see cref="DecodeErrorKind.StringTooLong"/>.
+    /// </summary>
     public long ByteLength { get; private init; }
 
     /// <summary>The length of the bytes, for <see cref="DecodeErrorKind.OutOfRange"/>.</summary>
@@ -112,6 +124,16 @@ public sealed class DecodeException : Exception
         new(DecodeErrorKind.InvalidUtf8, $"The string at {position} isn't valid UTF-8", innerException)
         {
             Position = position,
+        };
+
+    internal static DecodeException StringTooLong(int position, int byteLength) =>
+        new(
+            DecodeErrorKind.StringTooLong,
+            $"The string of {byteLength} bytes at {position} has more characters than a .NET string holds"
+        )
+        {
+            Position = position,
+            ByteLength = byteLength,
         };
 
     internal static DecodeException ItemEndsBeforeStart(long position, long end) =>
