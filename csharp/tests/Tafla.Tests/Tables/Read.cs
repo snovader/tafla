@@ -5,10 +5,18 @@ namespace Tafla.Tests.Tables;
 
 /// <summary>
 /// The error of bytes that read without a decode error, but otherwise than their description: a
-/// sized table whose header holds another length, a vector of another number of items, or one whose
-/// items <see cref="Vector.Get"/> finds otherwise than reading them in order does.
+/// sized table whose header holds another length, or a vector of another number of items. Bytes
+/// other than a description's cause it.
 /// </summary>
 public sealed class MismatchException(string message) : Exception(message);
+
+/// <summary>
+/// The error of a reader that reads the same bytes two ways and disagrees with itself: a vector whose
+/// items, read in order, are more or fewer than its count, or whose item <see cref="Vector.Get"/>
+/// finds otherwise than reading the items in order does. No bytes cause it, so it's a bug of the
+/// reader.
+/// </summary>
+public sealed class InconsistentReadException(string message) : Exception(message);
 
 /// <summary>
 /// Reads tables with <see cref="TableReader"/> as their descriptions set them out, and returns the
@@ -133,7 +141,7 @@ public static class Read
 
         if (inOrder.Count != vector.Count || inPlace.Count != vector.Count)
         {
-            throw new MismatchException($"A vector of {vector.Count} items reads {inOrder.Count} and {inPlace.Count} in order");
+            throw new InconsistentReadException($"A vector of {vector.Count} items reads {inOrder.Count} and {inPlace.Count} in order");
         }
 
         for (var index = 0; index < vector.Count; index++)
@@ -142,7 +150,7 @@ public static class Read
             var itemInPlace = Find(bytes, vector, index, inPlace: true);
             if (!SameItem(item, inOrder[index]) || !SameItem(itemInPlace, inPlace[index]))
             {
-                throw new MismatchException($"Get finds item {index} otherwise than reading in order does");
+                throw new InconsistentReadException($"Get finds item {index} otherwise than reading in order does");
             }
         }
 

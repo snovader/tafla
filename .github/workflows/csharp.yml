@@ -320,12 +320,14 @@ jobs:
 
       # fuzz.sh builds libfuzzer-dotnet and the targets, and libFuzzer writes
       # an input that fails to artifacts/fuzz/<target>/, which the next step
-      # uploads
+      # uploads. table_reader runs again with the runtime built to copy every
+      # array, as a big-endian host and 32-bit Arm do.
       - name: Run each fuzz target for a minute
         run: |
           for target in table_reader conformance; do
               fuzz/fuzz.sh "$target" -max_total_time=60 -timeout=10
           done
+          TAFLA_PORTABLE=true fuzz/fuzz.sh table_reader -max_total_time=60 -timeout=10
 
       - name: Upload the failing inputs
         if: failure()

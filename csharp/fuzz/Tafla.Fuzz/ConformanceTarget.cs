@@ -10,36 +10,38 @@ namespace Tafla.Fuzz;
 /// <remarks>
 /// Its seeds are the suite's tables, <c>conformance/valid/*.bin</c>,
 /// <c>conformance/equivalent/*.bin</c> and <c>conformance/invalid/*.bin</c>, so that the fuzzer
-/// mutates tables that the descriptions read deep into. Reads may fail, but only with a
-/// <see cref="DecodeException"/>, and finding a vector's item by index must find what reading the
-/// items in order finds. Any other exception escapes, and is a finding.
+/// mutates tables that the descriptions read deep into. Reads may fail with a
+/// <see cref="DecodeException"/>, or read values or numbers of items other than described, as a
+/// <see cref="MismatchException"/> says, but a valid case's own bytes read as it describes them.
+/// Any other exception escapes, and is a finding, such as an <see cref="InconsistentReadException"/>,
+/// of a vector whose items read in order differ from its count, or from those that finding them by
+/// index finds.
 /// </remarks>
 internal static class ConformanceTarget
 {
-    /// <summary>The descriptions of the suite's valid tables, which the conformance test parses</summary>
-    private static readonly Table[] Tables = [.. Suite.Instance.Valid.Select(valid => valid.Table)];
+    /// <summary>The suite's valid cases, which the conformance test parses</summary>
+    private static readonly ValidCase[] Cases = [.. Suite.Instance.Valid];
 
     public static void Run(ReadOnlySpan<byte> input)
     {
         // A copy of exactly the input, so that a read past it throws
         var bytes = input.ToArray();
 
-        foreach (var table in Tables)
+        foreach (var valid in Cases)
         {
             try
             {
-                // The bytes hold values of the described types where it reads them, which may differ
-                // from the description's
-                var read = Read.Table(bytes, table);
-                Check.That(read.Fields.Count == table.Fields.Count);
+                var read = Read.Table(bytes, valid.Table);
+                Check.That(!bytes.AsSpan().SequenceEqual(valid.Bytes) || read == valid.Table);
             }
             catch (DecodeException error)
             {
                 Check.That(error.Message.Length > 0);
             }
-            // The bytes read, but with a size or a number of items other than described, and never
-            // an item found otherwise by index than in order, which escapes
-            catch (MismatchException mismatch) when (!mismatch.Message.StartsWith("Get finds", StringComparison.Ordinal)) { }
+            catch (MismatchException mismatch)
+            {
+                Check.That(mismatch.Message.Length > 0);
+            }
         }
     }
 }

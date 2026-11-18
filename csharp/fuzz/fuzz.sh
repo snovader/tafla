@@ -2,10 +2,14 @@
 # Runs a fuzz target under libFuzzer, on Linux: builds libfuzzer-dotnet, which runs the .NET
 # process for libFuzzer and passes it the inputs, from its source at a pinned commit, builds the
 # fuzz targets, instruments the runtime with SharpFuzz, and runs the target from the corpus that
-# its earlier runs grew and the conformance suite's tables. It needs the .NET 10 SDK and a Clang
-# with libFuzzer, such as a Linux distribution's clang and libclang-rt-dev.
+# its earlier runs grew and the conformance suite's tables. It needs the .NET 10 SDK, a Clang with
+# libFuzzer, such as a Linux distribution's clang and libclang-rt-dev, curl and sha256sum, and the
+# network, to fetch libfuzzer-dotnet's source and the targets' packages the first time.
 #
 #   fuzz/fuzz.sh <table_reader|conformance> [libFuzzer option ...]
+#
+# TAFLA_PORTABLE=true builds the runtime to copy every array that it reads, as a big-endian host and
+# 32-bit Arm do, rather than read it in place.
 #
 # libFuzzer writes an input that fails to artifacts/fuzz/<target>/, which
 # `dotnet artifacts/bin/Tafla.Fuzz/release/Tafla.Fuzz.dll <target> <file>` reads again, on any host.
@@ -25,7 +29,7 @@ driver=$fuzz/libfuzzer-dotnet-$driver_commit
 mkdir -p "$fuzz/corpus/$target" "$fuzz/$target"
 
 if [ ! -x "$driver" ]; then
-    curl --fail --silent --show-error --location --output "$driver.cc" \
+    curl --fail --silent --show-error --location --retry 5 --retry-all-errors --output "$driver.cc" \
         "https://raw.githubusercontent.com/Metalnem/libfuzzer-dotnet/$driver_commit/libfuzzer-dotnet.cc"
     echo "$driver_sha256  $driver.cc" | sha256sum --check --quiet -
 
@@ -35,7 +39,7 @@ if [ ! -x "$driver" ]; then
 fi
 
 # The build copies the runtime anew, which is then instrumented
-dotnet build fuzz/Tafla.Fuzz --configuration Release
+dotnet build fuzz/Tafla.Fuzz --configuration Release "-p:TaflaPortable=${TAFLA_PORTABLE:-false}"
 dotnet artifacts/bin/Tafla.Fuzz/release/Tafla.Fuzz.dll instrument
 
 # libFuzzer adds the inputs that it finds to the first directory, the corpus

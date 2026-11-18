@@ -483,19 +483,25 @@ that escapes a target is a finding, as are a hang and a run out of memory:
 - `table_reader` reads the rest of its input with every getter of
   `TableReader` at a position, in an offset type and header, which the
   input's first four bytes choose, and reads every array, struct array and
-  vector there. Each read must return the bytes that lie where the format
-  puts them, exactly when they lie within the input, and throw a
-  `DecodeException` that describes the input otherwise. Any other exception,
-  such as an `ArgumentOutOfRangeException` or an `IndexOutOfRangeException`,
-  is a finding, since the target makes none of the mistakes of a caller that
-  those are for, and so are reads that allocate more than 16 bytes per byte
-  of the input and 1 MiB for their exceptions. Rust's target reads at every
+  vector there. Each read must return the value or bytes that lie where the
+  format puts them, exactly when they lie within the input, and otherwise
+  throw a `DecodeException` that describes the very read that leaves it.
+  Arrays must be spans of the input where the runtime reads them in place,
+  and copies outside it where it doesn't. Any other exception, such as an
+  `ArgumentOutOfRangeException` or an `IndexOutOfRangeException`, is a
+  finding, since the target makes none of the mistakes of a caller that
+  those are for. So is a read that allocates more than the string or copy
+  that it returns, or, when it throws, more than 4 KiB for its exception,
+  where the most measured was 1,672 bytes. Rust's target reads at every
   position of every input instead, which C++'s doesn't either: a .NET
   exception takes about 3 µs to throw and catch, and most reads of arbitrary
   bytes throw.
 - `conformance` reads its input as every valid case of the conformance suite
   describes it, with the conformance test's descriptions and reader in
-  `tests/Tafla.Tests/Tables/`.
+  `tests/Tafla.Tests/Tables/`. A case's own bytes must read as it describes
+  them, and a vector's items read in order must agree with its count and
+  with those found by index, or the reader throws an
+  `InconsistentReadException`, which escapes.
 
 The targets' process runs out of memory at 2 GiB of heap, as libFuzzer's
 default `-rss_limit_mb` bounds the other languages' targets, since libFuzzer
@@ -506,11 +512,16 @@ pinned commit with Clang's libFuzzer, builds the targets, instruments the
 runtime, and runs a target, with libFuzzer's options, from the corpus that
 its earlier runs grew in `artifacts/fuzz/corpus/` and the conformance
 suite's tables. It needs the .NET 10 SDK, Clang and Clang's runtime of
-libFuzzer, `libclang-rt-<version>-dev` on Debian and Ubuntu:
+libFuzzer, `libclang-rt-<version>-dev` on Debian and Ubuntu, curl and
+`sha256sum`, and the network, the first time, for libfuzzer-dotnet's source
+and the targets' packages. `TAFLA_PORTABLE=true` builds the runtime to copy
+every array that it reads, as `-p:TaflaPortable=true` does, so that the
+copies are fuzzed too:
 
 ```sh
 fuzz/fuzz.sh table_reader -max_total_time=300 -timeout=10
 fuzz/fuzz.sh conformance -max_total_time=300 -timeout=10
+TAFLA_PORTABLE=true fuzz/fuzz.sh table_reader -max_total_time=300 -timeout=10
 ```
 
 Elsewhere, Microsoft's container of the .NET 10 SDK, which is Ubuntu, runs
@@ -527,9 +538,10 @@ libFuzzer writes an input that fails to `artifacts/fuzz/<target>/`. The
 targets read files too, on any host, without libFuzzer, as
 `dotnet artifacts/bin/Tafla.Fuzz/debug/Tafla.Fuzz.dll table_reader <file>`
 does after `dotnet build`, and a finding becomes a regression test in
-`tests/`. The C# workflow runs each target for a minute, and the fuzz
-workflow for five minutes every week, from the corpus that its earlier runs
-grew, uploading what fails.
+`tests/`. The C# workflow runs each target for a minute, and `table_reader`
+again with arrays copied, and the fuzz workflow runs each target with arrays
+in place and copied for five minutes every week, from the corpus that its
+earlier runs grew, uploading what fails.
 
 ## Generated code
 
