@@ -19,8 +19,15 @@
         <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
 
         <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+
+    <!-- Every project but the runtime, which is the tests, locks its packages in packages.lock.json,
+         which CI restores as it is, failing if it's out of date. The runtime depends on no package,
+         and has no lock file: IsAotCompatible adds Microsoft.NET.ILLink.Tasks to it implicitly, at
+         the SDK's patch version and with a hash that a source-built SDK, such as Homebrew's,
+         changes, so a lock file would tie its restore to one build of one SDK. -->
+    <PropertyGroup Condition="'$(MSBuildProjectName)' != 'Tafla'">
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-        <!-- CI restores with the lock files as they are, and fails if they're out of date -->
         <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
     </PropertyGroup>
 

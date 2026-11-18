@@ -207,8 +207,11 @@ analyzers, the code style and the trimming and AOT analyzers, and requires
 documentation of every public API. `dotnet test` runs the tests with
 Microsoft.Testing.Platform, which `global.json` selects, as xUnit v3 needs.
 The tests' packages, xUnit v3 and CsCheck, are pinned in
-`Directory.Packages.props` and locked in `packages.lock.json`, which CI
-restores in locked mode. The build writes everything under `artifacts/`.
+`Directory.Packages.props` and locked in the tests' `packages.lock.json`,
+which CI restores in locked mode. The runtime depends on no package, and has
+no lock file: the SDK adds its trimming analyzers' package to it, at the
+SDK's own version, which a lock file would tie to one SDK. The build writes
+everything under `artifacts/`.
 
 The tests in `tests/Tafla.Tests` are:
 

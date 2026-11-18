@@ -21,8 +21,9 @@ env:
   DOTNET_NOLOGO: "true"
   DOTNET_CLI_TELEMETRY_OPTOUT: "true"
   TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
-  # Restores the tests' packages as packages.lock.json locks them, and fails
-  # if the lock files are out of date, as Directory.Build.props sets it
+  # Restores the tests' packages as their packages.lock.json locks them, and
+  # fails if it's out of date, as Directory.Build.props sets it. The runtime
+  # depends on no package, and has no lock file.
   ContinuousIntegrationBuild: "true"
 
 jobs:
