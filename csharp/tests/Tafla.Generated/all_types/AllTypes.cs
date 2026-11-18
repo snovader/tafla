@@ -85,7 +85,7 @@ public readonly record struct ScalarsFields
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[32..], 74);
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[36..], 78);
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[40..], 86);
-        bytes[44] = (byte)Int8;
+        bytes[44] = unchecked((byte)Int8);
         bytes[45] = Uint8;
         global::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes[46..], Int16);
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[48..], Uint16);
@@ -1178,7 +1178,7 @@ public readonly record struct Packed
             throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
         }
 
-        Int8 = (sbyte)bytes[0];
+        Int8 = unchecked((sbyte)bytes[0]);
         Uint8 = bytes[1];
         Int16 = global::System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes[2..]);
         Uint16 = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes[4..]);
@@ -1241,7 +1241,7 @@ public readonly record struct Packed
     {
         global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
 
-        bytes[0] = (byte)Int8;
+        bytes[0] = unchecked((byte)Int8);
         bytes[1] = Uint8;
         global::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes[2..], Int16);
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[4..], Uint16);

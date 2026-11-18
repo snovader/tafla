@@ -6,6 +6,9 @@
     <PropertyGroup>
         <IsAotCompatible>true</IsAotCompatible>
         <IsPackable>false</IsPackable>
+        <!-- Arithmetic overflow throws, as a project may set it, so that the tests check that the
+             generated code's conversions don't depend on the context they're compiled in -->
+        <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     </PropertyGroup>
 
     <ItemGroup>

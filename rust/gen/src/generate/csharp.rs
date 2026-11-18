@@ -1369,11 +1369,14 @@ fn struct_writes(writer: &mut CodeWriter, name: &str, fields: &[StructField]) {
     writer.close("}");
 }
 
-/// Reads a scalar at `offset` in `bytes`, little-endian
+/// Reads a scalar at `offset` in `bytes`, little-endian. An `int8` is the
+/// byte's bits, converted `unchecked`, since a project that compiles the code
+/// with overflow checking would otherwise throw an `OverflowException` for a
+/// byte past 127, which no bytes may make a read throw.
 fn scalar_read(scalar: Scalar, offset: usize) -> String {
     match scalar {
         Scalar::Bool => format!("bytes[{offset}] != 0"),
-        Scalar::Int8 => format!("(sbyte)bytes[{offset}]"),
+        Scalar::Int8 => format!("unchecked((sbyte)bytes[{offset}])"),
         Scalar::Uint8 => format!("bytes[{offset}]"),
         scalar => format!(
             "{BINARY_PRIMITIVES}.Read{}LittleEndian({})",
@@ -1384,11 +1387,12 @@ fn scalar_read(scalar: Scalar, offset: usize) -> String {
 }
 
 /// Writes `value`, a scalar, at `offset` in `bytes`, little-endian: a
-/// statement
+/// statement. A negative `int8` is written as its bits, `unchecked`, as it's
+/// read.
 fn scalar_write(scalar: Scalar, offset: usize, value: &str) -> String {
     match scalar {
         Scalar::Bool => format!("bytes[{offset}] = {value} ? (byte)1 : (byte)0;"),
-        Scalar::Int8 => format!("bytes[{offset}] = (byte){value};"),
+        Scalar::Int8 => format!("bytes[{offset}] = unchecked((byte){value});"),
         Scalar::Uint8 => format!("bytes[{offset}] = {value};"),
         scalar => format!(
             "{BINARY_PRIMITIVES}.Write{}LittleEndian({}, {value});",
