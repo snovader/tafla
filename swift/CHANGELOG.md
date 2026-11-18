@@ -18,8 +18,8 @@ The first release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` writes tables,
-  and `ByteBuffer` reads them.
-- `ByteBuffer`, `ArrayView` and `Vector` are nonescapable views of a
+  and `TableReader` reads them.
+- `TableReader`, `ArrayView` and `Vector` are nonescapable views of a
   `RawSpan`, such as `Data.bytes`, whose lifetimes the compiler keeps within
   the bytes'. `ArrayView.span` returns an array's elements as a `Span` in
   place, where the host is little-endian and they're aligned.

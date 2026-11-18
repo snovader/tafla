@@ -2,7 +2,7 @@ import Testing
 
 @testable import Tafla
 
-// ByteBuffer validates strings with the standard library where its runtime
+// TableReader validates strings with the standard library where its runtime
 // can, from Swift 6.0's on, and with a validator of its own on older Apple
 // systems, which CI's hosts don't run. The validator must accept exactly the
 // bytes that the standard library accepts.

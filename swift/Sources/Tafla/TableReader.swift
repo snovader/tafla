@@ -10,25 +10,25 @@
 /// stop the program or return values from outside them. Strings must be
 /// valid UTF-8.
 ///
-/// A buffer is a view of bytes that its caller owns, such as an array's or
+/// A reader is a view of bytes that its caller owns, such as an array's or
 /// `Data`'s, and arrays, structs and vector items are views of the same
 /// bytes rather than copies. Their lifetimes depend on the bytes', so the
 /// compiler keeps every view from outliving them:
 ///
 /// ```swift
-/// let buffer = ByteBuffer(data.bytes, layout: layout)
-/// let values = try buffer.float32Array(at: buffer.rootOffset(2))
+/// let reader = TableReader(data.bytes, layout: layout)
+/// let values = try reader.float32Array(at: reader.rootOffset(2))
 /// let copy = Array(values)  // [Float], which can outlive data
 /// ```
 ///
 /// Strings are copied, since a `String` owns its bytes.
-public struct ByteBuffer: ~Escapable {
-    /// The bytes that the buffer reads
+public struct TableReader: ~Escapable {
+    /// The bytes that the reader reads
     public let bytes: RawSpan
     /// The layout that the table was written with
     public let layout: TableLayout
 
-    /// Reads a table of `layout` from `bytes`, which the buffer, and the
+    /// Reads a table of `layout` from `bytes`, which the reader, and the
     /// views that it returns, can't outlive
     @inlinable
     @_lifetime(copy bytes)
@@ -78,7 +78,7 @@ public struct ByteBuffer: ~Escapable {
 
     /// Returns the position of field `index`, which must not be negative, of
     /// a nested table that's read in place: it has no header and stores its
-    /// field offsets from its own start, as wide as the buffer's.
+    /// field offsets from its own start, as wide as the reader's.
     /// `tablePosition` is the nested table's position, which is the position
     /// of the field that holds it.
     ///

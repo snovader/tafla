@@ -1,12 +1,12 @@
-/// Builds a table, which a ``ByteBuffer`` reads back.
+/// Builds a table, which a ``TableReader`` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in the
 /// order they're set. Arrays, strings and vectors start with their count, and
 /// a vector then holds the end of each item. Arrays of scalars and of structs
 /// are padded so their elements are aligned from the start of the table.
-/// Fields are read back by index with `ByteBuffer.rootOffset(_:)`, or
-/// `ByteBuffer.fieldOffset(_:inTableAt:)` for a table nested in another.
+/// Fields are read back by index with `TableReader.rootOffset(_:)`, or
+/// `TableReader.fieldOffset(_:inTableAt:)` for a table nested in another.
 ///
 /// Setting a field records it, keeping its value, and ``bytes()`` then writes
 /// every field into bytes of the table's exact length. A builder is a value:
@@ -249,10 +249,11 @@ public struct TableBuilder: Sendable {
     }
 
     /// Embeds a table, from its builder or its bytes, without a length
-    /// prefix. Readers find its fields with `ByteBuffer.fieldOffset(_:inTableAt:)`
-    /// from the field's position, which reads offsets of the parent's offset
-    /// type, so the table should have no header and the parent's offset type:
-    /// that's ``TableLayout/default`` in a parent of `uint32` offsets.
+    /// prefix. Readers find its fields with
+    /// `TableReader.fieldOffset(_:inTableAt:)` from the field's position,
+    /// which reads offsets of the parent's offset type, so the table should
+    /// have no header and the parent's offset type: that's
+    /// ``TableLayout/default`` in a parent of `uint32` offsets.
     ///
     /// A builder must have all its fields set, and is written straight into
     /// this table, in its own layout. The table's arrays are aligned from its

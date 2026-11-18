@@ -208,7 +208,7 @@ struct TableBuilderTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes throws in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
             #expect(try buffer.float32(at: buffer.rootOffset(0)).bitPattern == 0xffc0_0001)
             #expect(try buffer.float64(at: buffer.rootOffset(1)).bitPattern == (-0.0).bitPattern)
             #expect(try buffer.float32(at: buffer.rootOffset(2)) == .infinity)

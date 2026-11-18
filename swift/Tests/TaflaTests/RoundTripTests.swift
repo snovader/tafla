@@ -65,7 +65,7 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
             let value = try buffer.struct(at: buffer.rootOffset(0), size: 11)
             #expect(value.byteCount == 11)
             #expect(try readScalars(value, [.uint8, .float64, .int16]) == scalars)
@@ -94,7 +94,7 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes, atByteOffset: byteOffset) { bytes in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
             let floats = try buffer.float64Array(at: buffer.rootOffset(1))
 
             #expect(floats.count == 3)
@@ -130,7 +130,7 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
             let vector = try buffer.vector(at: buffer.rootOffset(2))
             #expect(vector.count == 3)
 
@@ -141,7 +141,7 @@ struct RoundTripTests {
 
             for index in 0..<2 {
                 let position = try buffer.rootOffset(index)
-                let item = ByteBuffer(bytes.extracting(position..<position + nestedBytes.count))
+                let item = TableReader(bytes.extracting(position..<position + nestedBytes.count))
                 #expect(item.bytes.withUnsafeBytes(Array.init) == nestedBytes)
             }
         }
@@ -159,10 +159,10 @@ struct RoundTripTests {
         let bytes = try builder.bytes()
 
         try withSpan(of: bytes) { bytes in
-            let buffer = ByteBuffer(bytes, layout: builder.layout)
+            let buffer = TableReader(bytes, layout: builder.layout)
             let vector = try buffer.vector(at: buffer.rootOffset(0))
 
-            let inPlace = ByteBuffer(try vector.itemInPlace(at: 1), layout: TableLayout(offsetType: .uint16))
+            let inPlace = TableReader(try vector.itemInPlace(at: 1), layout: TableLayout(offsetType: .uint16))
             #expect(try inPlace.string(at: inPlace.rootOffset(0)) == "item")
             #expect(try inPlace.bytes.byteCount > vector.item(at: 1).byteCount)
         }

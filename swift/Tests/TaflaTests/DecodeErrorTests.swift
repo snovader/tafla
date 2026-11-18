@@ -24,7 +24,7 @@ struct DecodeErrorTests {
             for cut in drawn.cuts.map({ $0 % built.count }) {
                 // A copy, so that no read can reach the bytes after the cut
                 try withSpan(of: Array(built[..<cut])) { bytes throws in
-                    let buffer = ByteBuffer(bytes, layout: drawn.table.layout)
+                    let buffer = TableReader(bytes, layout: drawn.table.layout)
 
                     for (index, field) in drawn.table.fields.enumerated() {
                         do {
@@ -65,7 +65,7 @@ struct DecodeErrorTests {
             try withSpan(of: built) { bytes throws in
                 checkReadError { _ = try readTable(bytes, drawn.table) }
 
-                let buffer = ByteBuffer(bytes, layout: drawn.table.layout)
+                let buffer = TableReader(bytes, layout: drawn.table.layout)
                 for (index, field) in drawn.table.fields.enumerated() {
                     checkReadError { _ = try readRootField(buffer, index, field) }
                 }
@@ -136,7 +136,8 @@ struct DecodeErrorTests {
                 for layout in layouts(of: offsetType) {
                     let slot = layout.headerSize + drawn.index * size
                     let read = withSpan(of: drawn.bytes) { bytes in
-                        Result { () throws(DecodeError) in try ByteBuffer(bytes, layout: layout).rootOffset(drawn.index)
+                        Result { () throws(DecodeError) in
+                            try TableReader(bytes, layout: layout).rootOffset(drawn.index)
                         }
                     }
                     #expect(read == expected(at: slot), "\(layout)")
@@ -144,7 +145,7 @@ struct DecodeErrorTests {
 
                 let read = withSpan(of: drawn.bytes) { bytes in
                     Result { () throws(DecodeError) in
-                        try ByteBuffer(bytes, layout: TableLayout(offsetType: offsetType))
+                        try TableReader(bytes, layout: TableLayout(offsetType: offsetType))
                             .fieldOffset(drawn.index, inTableAt: drawn.table)
                     }
                 }
@@ -165,7 +166,7 @@ struct DecodeErrorTests {
         let bytes: [UInt8] = [4, 0, 0, 0, 0xff, 1, 0]
 
         try withSpan(of: bytes) { bytes throws in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
 
             // An offset past the end, and a value
             #expect(throws: DecodeError.outOfRange(position: 4, byteLength: 4, available: 7)) {
@@ -182,7 +183,7 @@ struct DecodeErrorTests {
             }
 
             // The size in a sized header, and the version after it
-            let sized = ByteBuffer(
+            let sized = TableReader(
                 bytes.extracting(4..<7), layout: TableLayout(sized: true, versioned: true, offsetType: .uint16))
             #expect(try sized.size == 0x1ff)
             #expect(throws: DecodeError.outOfRange(position: 2, byteLength: 2, available: 3)) {
@@ -190,7 +191,7 @@ struct DecodeErrorTests {
             }
 
             // A count of 0x1ff elements, of 2 bytes each, after the count
-            let short = ByteBuffer(bytes.extracting(4..<7), layout: TableLayout(offsetType: .uint16))
+            let short = TableReader(bytes.extracting(4..<7), layout: TableLayout(offsetType: .uint16))
             #expect(throws: DecodeError.outOfRange(position: 2, byteLength: 0x3fe, available: 3)) {
                 _ = try short.uint16Array(at: 0)
             }
@@ -215,7 +216,7 @@ struct DecodeErrorTests {
     // them saturates rather than overflows
     @Test func rejectsAnArrayWhoseByteLengthOverflows() throws {
         try withSpan(of: [2, 0, 0, 0, 3, 0, 0, 0]) { bytes throws in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
 
             #expect(throws: DecodeError.outOfRange(position: 4, byteLength: 2 * UInt64(Int.max), available: 8)) {
                 _ = try buffer.structArray(at: 0, size: .max)
@@ -232,7 +233,7 @@ struct DecodeErrorTests {
         let vector: [UInt8] = [3, 5, 4, 9, 0xaa]
 
         try withSpan(of: vector) { bytes throws in
-            let read = try ByteBuffer(bytes, layout: TableLayout(offsetType: .uint8)).vector(at: 0)
+            let read = try TableReader(bytes, layout: TableLayout(offsetType: .uint8)).vector(at: 0)
             #expect(read.count == 3)
 
             #expect(try read.item(at: 0).byteCount == 1)
@@ -267,7 +268,7 @@ struct DecodeErrorTests {
         try builder.setUInt8Array(utf8)
 
         try withSpan(of: builder.bytes()) { bytes throws in
-            let buffer = ByteBuffer(bytes)
+            let buffer = TableReader(bytes)
             #expect(throws: DecodeError.invalidUTF8(position: 4)) {
                 _ = try buffer.string(at: buffer.rootOffset(0))
             }
@@ -289,22 +290,22 @@ struct DecodeErrorTests {
 
     @Test func stopsTheProgramForAMistakeOfTheCaller() async {
         await #expect(processExitsWith: .failure) {
-            _ = try? ByteBuffer(RawSpan()).rootOffset(-1)
+            _ = try? TableReader(RawSpan()).rootOffset(-1)
         }
         await #expect(processExitsWith: .failure) {
-            _ = try? ByteBuffer(RawSpan()).version
+            _ = try? TableReader(RawSpan()).version
         }
         await #expect(processExitsWith: .failure) {
-            _ = try? ByteBuffer(RawSpan()).struct(at: 0, size: -1)
+            _ = try? TableReader(RawSpan()).struct(at: 0, size: -1)
         }
         await #expect(processExitsWith: .failure) {
             try? withSpan(of: [1, 7]) { bytes in
-                _ = try ByteBuffer(bytes, layout: TableLayout(offsetType: .uint8)).uint8Array(at: 0)[1]
+                _ = try TableReader(bytes, layout: TableLayout(offsetType: .uint8)).uint8Array(at: 0)[1]
             }
         }
         await #expect(processExitsWith: .failure) {
             try? withSpan(of: [1, 2]) { bytes in
-                _ = try ByteBuffer(bytes, layout: TableLayout(offsetType: .uint8)).vector(at: 0).item(at: 1)
+                _ = try TableReader(bytes, layout: TableLayout(offsetType: .uint8)).vector(at: 0).item(at: 1)
             }
         }
     }
@@ -364,14 +365,14 @@ struct ArbitraryReads: Sendable {
         var reads: [Read] = []
 
         reads.append(read { .table(try readTable(bytes, table)) })
-        let root = ByteBuffer(bytes, layout: table.layout)
+        let root = TableReader(bytes, layout: table.layout)
         for (index, field) in table.fields.enumerated() {
             reads.append(read { .value(try readRootField(root, index, field)) })
         }
 
         for offsetType in OffsetType.allCases {
             for layout in layouts(of: offsetType) {
-                let buffer = ByteBuffer(bytes, layout: layout)
+                let buffer = TableReader(bytes, layout: layout)
                 reads.append(read { .position(try buffer.rootOffset(index)) })
                 reads.append(read { .count(try buffer.size) })
                 if layout.isVersioned {
@@ -379,7 +380,7 @@ struct ArbitraryReads: Sendable {
                 }
             }
 
-            let buffer = ByteBuffer(bytes, layout: TableLayout(offsetType: offsetType))
+            let buffer = TableReader(bytes, layout: TableLayout(offsetType: offsetType))
             reads.append(read { .position(try buffer.fieldOffset(index, inTableAt: position)) })
             reads += self.reads(of: buffer, within: bytes)
         }
@@ -388,7 +389,7 @@ struct ArbitraryReads: Sendable {
     }
 
     /// Reads every type at the position
-    func reads(of buffer: ByteBuffer, within bytes: RawSpan) -> [Read] {
+    func reads(of buffer: TableReader, within bytes: RawSpan) -> [Read] {
         let values: [Field] = [
             .int8(0), .uint8(0), .int16(0), .uint16(0), .int32(0), .uint32(0), .int64(0), .uint64(0),
             .float32(bits: 0), .float64(bits: 0), .int8Array([]), .uint8Array([]), .int16Array([]),

@@ -25,15 +25,15 @@ struct ExampleTests {
     @Test func readsData() throws {
         let data = Data(try write())
 
-        let buffer = ByteBuffer(data.bytes, layout: layout)  // a view of data's bytes
-        let version = try buffer.version
+        let reader = TableReader(data.bytes, layout: layout)  // a view of data's bytes
+        let version = try reader.version
         guard version == formatVersion else {
             throw DecodeError.unsupportedVersion(version: version, supported: formatVersion)
         }
 
-        let timeZone = try buffer.string(at: buffer.rootOffset(1))  // a String of its own
-        let table = try buffer.rootOffset(2)
-        let values = try buffer.float32Array(at: buffer.fieldOffset(1, inTableAt: table))  // ArrayView<Float>
+        let timeZone = try reader.string(at: reader.rootOffset(1))  // a String of its own
+        let table = try reader.rootOffset(2)
+        let values = try reader.float32Array(at: reader.fieldOffset(1, inTableAt: table))  // ArrayView<Float>
         let second = values[1]  // read in place
         let copy = Array(values)  // [Float], which can outlive data
 
@@ -49,12 +49,12 @@ struct ExampleTests {
         let bytes = try write()
         let all = bytes[...]
 
-        let buffer = ByteBuffer(all.span.bytes, layout: layout)
-        #expect(try buffer.float64(at: buffer.rootOffset(0)) == 59.3293)
+        let reader = TableReader(all.span.bytes, layout: layout)
+        #expect(try reader.float64(at: reader.rootOffset(0)) == 59.3293)
 
         if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
-            let buffer = ByteBuffer(bytes.span.bytes, layout: layout)
-            #expect(try buffer.string(at: buffer.rootOffset(1)) == "Europe/Stockholm")
+            let reader = TableReader(bytes.span.bytes, layout: layout)
+            #expect(try reader.string(at: reader.rootOffset(1)) == "Europe/Stockholm")
         }
     }
 }

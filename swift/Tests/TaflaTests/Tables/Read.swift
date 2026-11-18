@@ -1,6 +1,6 @@
 import Tafla
 
-// Reads tables with ByteBuffer as their descriptions set them out, and returns
+// Reads tables with TableReader as their descriptions set them out, and returns
 // the descriptions with the values read in place of theirs, so that they
 // equal the descriptions when the bytes hold the described values.
 //
@@ -40,7 +40,7 @@ struct Mismatch: Error, CustomStringConvertible {
 /// header, whose size must be the table's byte length when it's sized, and
 /// then its fields
 func readTable(_ bytes: RawSpan, _ table: Table) throws -> Table {
-    let buffer = ByteBuffer(bytes, layout: table.layout)
+    let buffer = TableReader(bytes, layout: table.layout)
 
     if table.layout.isSized {
         let size = try buffer.size
@@ -62,12 +62,12 @@ func readTable(_ bytes: RawSpan, _ table: Table) throws -> Table {
 }
 
 /// Reads root field `index` of a table as `field`, without reading the header
-func readRootField(_ buffer: ByteBuffer, _ index: Int, _ field: Field) throws -> Field {
+func readRootField(_ buffer: TableReader, _ index: Int, _ field: Field) throws -> Field {
     try readField(buffer, at: buffer.rootOffset(index), field)
 }
 
 /// Reads the field at `position` of the table that `buffer` reads
-func readField(_ buffer: ByteBuffer, at position: Int, _ field: Field) throws -> Field {
+func readField(_ buffer: TableReader, at position: Int, _ field: Field) throws -> Field {
     switch field {
     case .int8: .int8(try buffer.int8(at: position))
     case .uint8: .uint8(try buffer.uint8(at: position))
@@ -130,7 +130,7 @@ func elements<T: ArrayElement>(of view: ArrayView<T>) throws -> [T] {
 }
 
 /// Reads a table nested with setTable
-func readNested(_ buffer: ByteBuffer, at position: Int, _ table: Table) throws -> Table {
+func readNested(_ buffer: TableReader, at position: Int, _ table: Table) throws -> Table {
     if readsInPlace(table, within: buffer) {
         return try readInPlace(buffer, at: position, table)
     }
@@ -143,7 +143,7 @@ func readNested(_ buffer: ByteBuffer, at position: Int, _ table: Table) throws -
 
 /// Reads a vector's items, after checking that finding each from its ends
 /// in place finds what finding it as a table of its own finds
-func readVector(_ buffer: ByteBuffer, at position: Int, _ items: [Nested]) throws -> Field {
+func readVector(_ buffer: TableReader, at position: Int, _ items: [Nested]) throws -> Field {
     let vector = try buffer.vector(at: position)
 
     var firstError: DecodeError?
@@ -165,7 +165,7 @@ func readVector(_ buffer: ByteBuffer, at position: Int, _ items: [Nested]) throw
         if readsInPlace(nested.table, within: buffer) {
             // At its start, in a buffer of its offset type, which is its
             // parent's
-            let item = ByteBuffer(try vector.itemInPlace(at: index), layout: nested.table.layout)
+            let item = TableReader(try vector.itemInPlace(at: index), layout: nested.table.layout)
             table = try readInPlace(item, at: 0, nested.table)
         } else {
             table = try readTable(vector.item(at: index), nested.table)
@@ -206,14 +206,14 @@ func checkItem(_ vector: Vector, _ index: Int, within bytes: RawSpan) throws -> 
 
 /// Whether a nested table is read in place: it has no header, and its
 /// parent's offset type
-func readsInPlace(_ table: Table, within buffer: ByteBuffer) -> Bool {
+func readsInPlace(_ table: Table, within buffer: TableReader) -> Bool {
     let layout = table.layout
     return !layout.isSized && !layout.isVersioned && layout.offsetType == buffer.layout.offsetType
 }
 
 /// Reads the fields of a table nested at `position`, from offsets counted
 /// from its start, within its parent's bytes
-func readInPlace(_ buffer: ByteBuffer, at position: Int, _ table: Table) throws -> Table {
+func readInPlace(_ buffer: TableReader, at position: Int, _ table: Table) throws -> Table {
     var read = Table(layout: table.layout, version: nil, fields: [])
     for (index, field) in table.fields.enumerated() {
         let offset = try buffer.fieldOffset(index, inTableAt: position)
@@ -223,12 +223,12 @@ func readInPlace(_ buffer: ByteBuffer, at position: Int, _ table: Table) throws 
     return read
 }
 
-func readStruct(_ buffer: ByteBuffer, at position: Int, _ types: [ScalarType]) throws -> Field {
+func readStruct(_ buffer: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
     let bytes = try buffer.struct(at: position, size: structSize(types))
     return .struct(try readScalars(bytes, types))
 }
 
-func readStructArray(_ buffer: ByteBuffer, at position: Int, _ types: [ScalarType]) throws -> Field {
+func readStructArray(_ buffer: TableReader, at position: Int, _ types: [ScalarType]) throws -> Field {
     let size = structSize(types)
     let bytes = try buffer.structArray(at: position, size: size)
 
@@ -241,9 +241,9 @@ func readStructArray(_ buffer: ByteBuffer, at position: Int, _ types: [ScalarTyp
 }
 
 /// Reads the scalars of a struct of `types` at their offsets in its bytes,
-/// which a ByteBuffer reads in any layout
+/// which a TableReader reads in any layout
 func readScalars(_ bytes: RawSpan, _ types: [ScalarType]) throws -> [Field] {
-    let buffer = ByteBuffer(bytes)
+    let buffer = TableReader(bytes)
 
     var scalars: [Field] = []
     var offset = 0
@@ -255,7 +255,7 @@ func readScalars(_ bytes: RawSpan, _ types: [ScalarType]) throws -> [Field] {
     return scalars
 }
 
-func readScalar(_ buffer: ByteBuffer, at position: Int, _ type: ScalarType) throws -> Field {
+func readScalar(_ buffer: TableReader, at position: Int, _ type: ScalarType) throws -> Field {
     switch type {
     case .int8: .int8(try buffer.int8(at: position))
     case .uint8: .uint8(try buffer.uint8(at: position))

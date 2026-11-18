@@ -70,7 +70,7 @@ public enum Alignment: Int, Sendable, Hashable, Comparable, CaseIterable {
 /// The header and offset type of a table.
 ///
 /// A format creates its layout once and passes it to both the `TableBuilder`
-/// that writes the table and the `ByteBuffer` that reads it, so that the two
+/// that writes the table and the `TableReader` that reads it, so that the two
 /// can't disagree. Tables nested with `TableBuilder.setTable(_:alignment:)`
 /// have no header, as ``TableLayout/default`` has none.
 ///

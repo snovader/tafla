@@ -22,8 +22,8 @@ public enum DecodeError: Error, Hashable, Sendable, CustomStringConvertible {
     /// starts where the item before it ends, and the first after the ends.
     case itemEndsBeforeStart(start: Int, end: Int)
     /// The header carries format `version`, which the reader can't read,
-    /// since it reads version `supported`. `ByteBuffer` doesn't compare
-    /// versions: a reader throws this when ``ByteBuffer/version`` isn't its
+    /// since it reads version `supported`. `TableReader` doesn't compare
+    /// versions: a reader throws this when ``TableReader/version`` isn't its
     /// own.
     case unsupportedVersion(version: UInt32, supported: UInt32)
 

@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-// The views of a table's bytes, `ByteBuffer`, `ArrayView` and `Vector`, are
+// The views of a table's bytes, `TableReader`, `ArrayView` and `Vector`, are
 // nonescapable, and their lifetimes depend on the bytes', which needs the
 // experimental feature Lifetimes in Swift 6.2 to 6.4: README.md explains why.
 let lifetimes: SwiftSetting = .enableExperimentalFeature("Lifetimes")

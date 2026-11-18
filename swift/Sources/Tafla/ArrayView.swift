@@ -1,7 +1,7 @@
 /// An array read from a table: its elements' little-endian bytes, which it
 /// reads in place at any alignment and in any host byte order.
 ///
-/// It's a view of the bytes that its `ByteBuffer` reads, and its lifetime
+/// It's a view of the bytes that its `TableReader` reads, and its lifetime
 /// depends on theirs, so the compiler keeps it from outliving them. Reading
 /// it never allocates; `Array(_:)` copies the elements into an array of
 /// their own, which can outlive the bytes.

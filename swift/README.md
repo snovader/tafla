@@ -4,7 +4,7 @@
 writes and reads binary tables of scalars, strings, arrays, structs and nested
 tables in tafla's format, which the TypeScript, Python, Java, Rust, Go and C++
 runtimes write and read too. `TableBuilder` writes a table at its exact size,
-copying arrays in bulk, and `ByteBuffer` reads fields back by offset, with
+copying arrays in bulk, and `TableReader` reads fields back by offset, with
 arrays, structs and vector items as views of the bytes. Every read checks that
 it stays within the bytes it was given. It depends only on Swift's standard
 library, without Foundation.
@@ -42,15 +42,15 @@ try builder.setString("Europe/Stockholm")
 try builder.setTable(.builder(series))  // written straight into the table
 let data = Data(try builder.bytes())
 
-let buffer = ByteBuffer(data.bytes, layout: layout)  // a view of data's bytes
-let version = try buffer.version
+let reader = TableReader(data.bytes, layout: layout)  // a view of data's bytes
+let version = try reader.version
 guard version == formatVersion else {
     throw DecodeError.unsupportedVersion(version: version, supported: formatVersion)
 }
 
-let timeZone = try buffer.string(at: buffer.rootOffset(1))  // "Europe/Stockholm"
-let table = try buffer.rootOffset(2)
-let values = try buffer.float32Array(at: buffer.fieldOffset(1, inTableAt: table))
+let timeZone = try reader.string(at: reader.rootOffset(1))  // "Europe/Stockholm"
+let table = try reader.rootOffset(2)
+let values = try reader.float32Array(at: reader.fieldOffset(1, inTableAt: table))
 values[1]  // 18.5, read in place
 values.span  // a Span<Float> of the bytes, when they're aligned on a little-endian host
 let copy = Array(values)  // [21.75, 18.5], which can outlive data
@@ -92,7 +92,7 @@ repository's conformance suite, which covers the whole format.
 
 ## Views of the bytes
 
-`ByteBuffer` reads a `RawSpan`, the standard library's view of bytes that
+`TableReader` reads a `RawSpan`, the standard library's view of bytes that
 something else owns, such as an array or `Data`, and it's nonescapable, as a
 `RawSpan` is: its lifetime depends on the bytes', so the compiler keeps it
 from outliving them, and from being stored where it could. The views that it
@@ -108,14 +108,14 @@ returns depend on the same bytes, so they can't outlive them either:
   of their own, in one copy where the host is little-endian.
 - **Structs and vector items are bytes.** `struct(at:size:)`,
   `structArray(at:size:)`, `Vector.item(at:)` and `Vector.itemInPlace(at:)`
-  return a `RawSpan` of the bytes, from which a `ByteBuffer` reads a vector
+  return a `RawSpan` of the bytes, from which a `TableReader` reads a vector
   item.
 - **Strings are copied.** `string(at:)` validates the UTF-8 and returns a
   `String` of its own, since a `String` owns its bytes.
 - **The bytes come from their owner.** `Data.bytes` and `ArraySlice.span.bytes`
   are a `RawSpan` on every system that the package runs on, and
   `Array.span.bytes` from macOS 26 and iOS 26 on, and on Linux, so
-  `let all = bytes[...]` and then `ByteBuffer(all.span.bytes)` reads an
+  `let all = bytes[...]` and then `TableReader(all.span.bytes)` reads an
   array on older systems. Bytes in memory that something else manages are
   read through `RawSpan(_unsafeBytes:)`, within the scope where they stay
   valid.
@@ -152,13 +152,13 @@ Each API throws its own error, with typed throws, so a caller catches a
 `DecodeError` or a `BuildError` without casting, and no error is boxed:
 
 - **Every getter throws a `DecodeError` when the bytes can't be read.** Every
-  read checks its range against the bytes the `ByteBuffer` was given, and
+  read checks its range against the bytes the `TableReader` was given, and
   throws `outOfRange` if it would leave them, with the read's position and
   length and the bytes available. Strings must be valid UTF-8, or they throw
   `invalidUTF8`. A vector item that ends before the one before it throws
   `itemEndsBeforeStart`. No bytes make a read trap, overflow, or allocate more
   than they hold.
-- `ByteBuffer` doesn't compare versions. A reader throws
+- `TableReader` doesn't compare versions. A reader throws
   `DecodeError.unsupportedVersion` when `version` isn't one it reads, as the
   example does, so that every decoding failure is a `DecodeError`.
 - On a 32-bit host, such as watchOS's arm64_32, an offset or length past the

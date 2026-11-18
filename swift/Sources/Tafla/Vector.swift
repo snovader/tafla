@@ -1,23 +1,23 @@
 /// A vector read from a table: its items, which are tables.
 ///
 /// The vector holds its count, the end of each item, counted from the
-/// vector's position, and then the items. `ByteBuffer.vector(at:)` checks that
+/// vector's position, and then the items. `TableReader.vector(at:)` checks that
 /// the ends lie within the bytes, and each item is checked when it's read,
 /// so reading one can throw. ``item(at:)`` and ``itemInPlace(at:)`` find any
 /// item from its end and the one before it, without reading the others.
 ///
 /// An item that has no header and its parent's offset type is read in
 /// place: from the bytes that ``itemInPlace(at:)`` returns, which start where
-/// it does and end where its parent's do, with a `ByteBuffer` of its parent's
+/// it does and end where its parent's do, with a `TableReader` of its parent's
 /// offset type, at position 0. Its reads may reach past its end, as those of
 /// any table read in place may. Any other item is read as a table of its
-/// own, from the bytes that ``item(at:)`` returns, with a `ByteBuffer` of its
+/// own, from the bytes that ``item(at:)`` returns, with a `TableReader` of its
 /// own layout.
 ///
-/// Like the `ByteBuffer` that it's read from, a vector and its items' bytes
-/// can't outlive the bytes that the buffer reads.
+/// Like the `TableReader` that it's read from, a vector and its items' bytes
+/// can't outlive the bytes that the reader reads.
 public struct Vector: ~Escapable {
-    /// The bytes of the buffer that the vector lies in
+    /// The bytes of the reader that the vector lies in
     @usableFromInline
     let bytes: RawSpan
     /// The vector's position in the bytes, which is its count's
@@ -64,7 +64,7 @@ public struct Vector: ~Escapable {
     }
 
     /// Returns the bytes of item `index` to read it in place, from its start
-    /// to the end of the buffer's bytes. Only the ends of the item and the
+    /// to the end of the reader's bytes. Only the ends of the item and the
     /// one before it are read. `index` must be one of ``indices``, as for
     /// ``item(at:)``.
     ///
