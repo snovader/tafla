@@ -221,15 +221,16 @@ swift test -c release -Xswiftc -enable-testing
 swift test --scratch-path .build/portable -Xswiftc -DTAFLA_PORTABLE
 ASAN_OPTIONS=detect_leaks=0 swift test --scratch-path .build/asan --sanitize=address
 swift build --scratch-path .build/watchos --target Tafla --triple arm64_32-apple-watchos9.0 --sdk "$(xcrun --sdk watchos --show-sdk-path)"
-swift format lint --strict --recursive Package.swift Sources Tests
+swift format lint --strict --recursive Package.swift Sources Tests Fuzz/Package.swift Fuzz/Sources
 ```
 
-`swift format --in-place --recursive Package.swift Sources Tests` formats the
-code as `.swift-format` configures it. LeakSanitizer, which AddressSanitizer
-runs on Linux, reports the conformance suite that the tests keep in a static,
-whose arrays Swift refers to from enum payloads, so `detect_leaks=0` turns it
-off, as it's off on macOS. On macOS, `swift build` for watchOS's `arm64_32`
-compiles the paths for hosts whose `Int` is 32 bits, without running them.
+`swift format --in-place --recursive Package.swift Sources Tests Fuzz/Package.swift Fuzz/Sources`
+formats the code as `.swift-format` configures it. LeakSanitizer, which
+AddressSanitizer runs on Linux, reports the conformance suite that the tests
+keep in a static, whose arrays Swift refers to from enum payloads, so
+`detect_leaks=0` turns it off, as it's off on macOS. On macOS, `swift build`
+for watchOS's `arm64_32` compiles the paths for hosts whose `Int` is 32 bits,
+without running them.
 The tests are:
 
 - `ConformanceTests.swift`: reads and rebuilds the conformance suite, at every
@@ -258,3 +259,46 @@ the tests find the conformance suite:
 ```sh
 docker run --rm -v "$PWD":/tafla -w /tafla/swift swift:6.2-noble swift test --scratch-path /tmp/build
 ```
+
+### Fuzzing
+
+`Fuzz/` holds libFuzzer's targets, which mirror Rust's and Go's, in a
+package of their own, so that the runtime's package neither builds nor vends
+them. A trap, a report of AddressSanitizer's, or a read that disagrees with
+`SPEC.md` is a finding:
+
+- `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
+  at every position and past the end, in every offset type and header, and
+  reads every array, struct array and vector there. Each read must return
+  the bytes that lie where the format puts them, exactly when they lie
+  within the input, and the decode error otherwise.
+- `FuzzConformance` mutates the conformance suite's tables and reads them as
+  every valid case's description, as the conformance test reads them. Its
+  `Cases.swift`, `Description.swift` and `Read.swift` are links to the test
+  target's in `Tests/TaflaTests/Tables/`.
+
+They build only with Linux's toolchain, since Xcode's has no libFuzzer, so
+on macOS they run in Docker, from the repository's root. Swift's backtracer
+is off, since it held a crash for minutes rather than let libFuzzer report
+it, and so is LeakSanitizer, as in the tests:
+
+```sh
+docker run --rm -it -v "$PWD":/tafla -w /tafla/swift/Fuzz \
+    -e ASAN_OPTIONS=detect_leaks=0 -e SWIFT_BACKTRACE=enable=no swift:6.4-noble bash
+swift build -c release --sanitize=fuzzer --sanitize=address
+mkdir -p .build/corpus/FuzzTableReader .build/artifacts
+.build/release/FuzzTableReader .build/corpus/FuzzTableReader ../../conformance/valid \
+    ../../conformance/equivalent ../../conformance/invalid -max_total_time=300 -artifact_prefix=.build/artifacts/
+```
+
+Stop it with Ctrl-C or `-max_total_time`. libFuzzer writes an input that
+fails to `.build/artifacts/`, and the target reads the files that it's given
+instead of fuzzing, which reproduces a finding:
+
+```sh
+.build/release/FuzzTableReader .build/artifacts/crash-<sha1>
+```
+
+A finding becomes a regression test in `DecodeErrorTests.swift`. CI runs
+each target for a minute on every change, and the weekly Fuzz workflow for
+five minutes, from the corpus that its earlier runs grew.
