@@ -202,7 +202,7 @@ internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, 
     /// Reads an item of the vector, in place: its table starts at 0, and its reader has its parent's
     /// offset type.
     /// </summary>
-    public static Item ReadItem(ReadOnlyMemory<byte> inPlace)
+    public static Item ReadItem(ReadOnlySpan<byte> inPlace)
     {
         var reader = new TableReader(inPlace);
         var pair = reader.FieldOffset(0, 1);
