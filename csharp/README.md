@@ -369,7 +369,7 @@ band. Run the commands below from this directory:
 
 ```sh
 dotnet format --verify-no-changes
-dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/
+dotnet format whitespace --folder --include-generated --verify-no-changes --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
 dotnet build
 dotnet test
 dotnet test -p:TaflaPortable=true

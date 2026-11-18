@@ -9,6 +9,9 @@ namespace Tafla.Benchmarks;
 /// </summary>
 internal interface ITaflaRead
 {
+    /// <summary>The variant's name in the report: the code that reads.</summary>
+    static abstract string Name { get; }
+
     static abstract double Read(byte[] bytes);
 }
 
@@ -16,12 +19,14 @@ internal interface ITaflaRead
 // comparison's reads of whole workloads: the record's scalars, a column with a getter at each
 // element's position, and the items of the vector of nested tables and of the array of structs, the
 // last alone, which a reader finds without reading the others, and every one, as Go's item reads do.
-// They read the bytes of TaflaCodec, which TaflaWriterCodec writes too.
+// They read the bytes of TaflaCodec, which TaflaGenCodec writes too.
 internal static class TaflaReads
 {
     /// <summary>Sums the record's two float64s and its int64, without its string.</summary>
     internal readonly struct RecordScalars : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {
@@ -41,6 +46,8 @@ internal static class TaflaReads
     /// </summary>
     internal readonly struct ColumnByGetter : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {
@@ -64,6 +71,8 @@ internal static class TaflaReads
     /// <summary>Sums the last item of the vector of nested tables, read in place.</summary>
     internal readonly struct LastTable : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {
@@ -83,6 +92,8 @@ internal static class TaflaReads
     /// <summary>Sums every item of the vector of nested tables, each read in place, in order.</summary>
     internal readonly struct EveryTable : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {
@@ -111,6 +122,8 @@ internal static class TaflaReads
     /// <summary>Sums the last struct of the array, from its bytes in place.</summary>
     internal readonly struct LastStruct : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {
@@ -124,6 +137,8 @@ internal static class TaflaReads
     /// <summary>Sums every struct of the array, from their bytes in place, in order.</summary>
     internal readonly struct EveryStruct : ITaflaRead
     {
+        public static string Name => "tafla";
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static double Read(byte[] bytes)
         {

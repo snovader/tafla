@@ -11,7 +11,8 @@ namespace Tafla.Benchmarks;
 internal sealed record Benchmark(string Group, string Name, IReadOnlyList<Variant> Variants);
 
 /// <summary>
-/// The benchmarks: every codec's operations on every workload, and tafla's reads of only some fields.
+/// The benchmarks: every codec's operations on every workload, and tafla's and tafla-gen's reads of
+/// only some fields.
 /// tafla's variant comes first in each, and again as an A/A pair, which shows the harness's noise:
 /// the copy's loop is its own, but it calls the same compiled codec method.
 /// </summary>
@@ -80,7 +81,7 @@ internal static class Comparison
         Variant[] serialize =
         [
             .. Loops.WithCopy(new SerializeRecord<TaflaCodec>(record)),
-            Loops.Of<SerializeRecord<TaflaWriterCodec>, Original>(new(record)),
+            Loops.Of<SerializeRecord<TaflaGenCodec>, Original>(new(record)),
             Loops.Of<SerializeRecord<FlatBuffersCodec>, Original>(new(record)),
             Loops.Of<SerializeRecord<ProtobufCodec>, Original>(new(record)),
             Loops.Of<SerializeRecord<MessagePackCodec>, Original>(new(record)),
@@ -90,6 +91,7 @@ internal static class Comparison
         Variant[] deserialize =
         [
             .. Loops.WithCopy(new DeserializeRecord<TaflaCodec>(tafla, record)),
+            Loops.Of<DeserializeRecord<TaflaGenCodec>, Original>(new(default(TaflaGenCodec).SerializeRecord(record), record)),
             Loops.Of<DeserializeRecord<FlatBuffersCodec>, Original>(new(default(FlatBuffersCodec).SerializeRecord(record), record)),
             Loops.Of<DeserializeRecord<ProtobufCodec>, Original>(new(default(ProtobufCodec).SerializeRecord(record), record)),
             Loops.Of<DeserializeRecord<MessagePackCodec>, Original>(new(default(MessagePackCodec).SerializeRecord(record), record)),
@@ -107,7 +109,7 @@ internal static class Comparison
         Variant[] serialize =
         [
             .. Loops.WithCopy(new SerializeDocument<TaflaCodec>(document)),
-            Loops.Of<SerializeDocument<TaflaWriterCodec>, Original>(new(document)),
+            Loops.Of<SerializeDocument<TaflaGenCodec>, Original>(new(document)),
             Loops.Of<SerializeDocument<FlatBuffersCodec>, Original>(new(document)),
             Loops.Of<SerializeDocument<ProtobufCodec>, Original>(new(document)),
             Loops.Of<SerializeDocument<MessagePackCodec>, Original>(new(document)),
@@ -115,6 +117,7 @@ internal static class Comparison
         ];
 
         var tafla = default(TaflaCodec).SerializeDocument(document);
+        var taflaGen = default(TaflaGenCodec).SerializeDocument(document);
         var flatBuffers = default(FlatBuffersCodec).SerializeDocument(document);
         var protobuf = default(ProtobufCodec).SerializeDocument(document);
         var messagePack = default(MessagePackCodec).SerializeDocument(document);
@@ -123,6 +126,7 @@ internal static class Comparison
         Variant[] deserialize =
         [
             .. Loops.WithCopy(new DeserializeDocument<TaflaCodec>(tafla, document)),
+            Loops.Of<DeserializeDocument<TaflaGenCodec>, Original>(new(taflaGen, document)),
             Loops.Of<DeserializeDocument<FlatBuffersCodec>, Original>(new(flatBuffers, document)),
             Loops.Of<DeserializeDocument<ProtobufCodec>, Original>(new(protobuf, document)),
             Loops.Of<DeserializeDocument<MessagePackCodec>, Original>(new(messagePack, document)),
@@ -132,6 +136,7 @@ internal static class Comparison
         Variant[] sumA =
         [
             .. Loops.WithCopy(new SumA<TaflaCodec>(tafla, sum)),
+            Loops.Of<SumA<TaflaGenCodec>, Original>(new(taflaGen, sum)),
             Loops.Of<SumA<FlatBuffersCodec>, Original>(new(flatBuffers, sum)),
             Loops.Of<SumA<ProtobufCodec>, Original>(new(protobuf, sum)),
             Loops.Of<SumA<MessagePackCodec>, Original>(new(messagePack, sum)),
@@ -154,14 +159,15 @@ internal static class Comparison
 
     /// <summary>
     /// Writes the document into bytes that each variant keeps between calls, as long as the document,
-    /// by the codec that can: TableWriter, which takes the bytes to write into.
+    /// by tafla-gen's <c>SerializeInto()</c>, which takes the bytes to write into, as the other
+    /// languages' comparisons time it.
     /// </summary>
     private static Benchmark SerializeInto(string rows, Document document, byte[] expected)
     {
         Variant[] serialize =
         [
-            Loops.Of<SerializeDocumentInto<TaflaWriterCodec>, Original>(new(document, Filled(expected.Length), expected)),
-            Loops.Of<SerializeDocumentInto<TaflaWriterCodec>, Again>(new(document, Filled(expected.Length), expected)),
+            Loops.Of<SerializeDocumentInto<TaflaGenCodec>, Original>(new(document, Filled(expected.Length), expected)),
+            Loops.Of<SerializeDocumentInto<TaflaGenCodec>, Again>(new(document, Filled(expected.Length), expected)),
         ];
 
         return new(Codecs, $"{rows}: serialize into reused bytes", serialize);
@@ -173,7 +179,7 @@ internal static class Comparison
         Variant[] serialize =
         [
             .. Loops.WithCopy(new SerializeList<TaflaCodec>(list)),
-            Loops.Of<SerializeList<TaflaWriterCodec>, Original>(new(list)),
+            Loops.Of<SerializeList<TaflaGenCodec>, Original>(new(list)),
             Loops.Of<SerializeList<FlatBuffersCodec>, Original>(new(list)),
             Loops.Of<SerializeList<ProtobufCodec>, Original>(new(list)),
             Loops.Of<SerializeList<MessagePackCodec>, Original>(new(list)),
@@ -183,6 +189,7 @@ internal static class Comparison
         Variant[] deserialize =
         [
             .. Loops.WithCopy(new DeserializeList<TaflaCodec>(tafla, list)),
+            Loops.Of<DeserializeList<TaflaGenCodec>, Original>(new(default(TaflaGenCodec).SerializeList(list), list)),
             Loops.Of<DeserializeList<FlatBuffersCodec>, Original>(new(default(FlatBuffersCodec).SerializeList(list), list)),
             Loops.Of<DeserializeList<ProtobufCodec>, Original>(new(default(ProtobufCodec).SerializeList(list), list)),
             Loops.Of<DeserializeList<MessagePackCodec>, Original>(new(default(MessagePackCodec).SerializeList(list), list)),
@@ -202,7 +209,7 @@ internal static class Comparison
         Variant[] serialize =
         [
             .. Loops.WithCopy(new SerializeStructs<TaflaCodec>(list)),
-            Loops.Of<SerializeStructs<TaflaWriterCodec>, Original>(new(list)),
+            Loops.Of<SerializeStructs<TaflaGenCodec>, Original>(new(list)),
             Loops.Of<SerializeStructs<FlatBuffersCodec>, Original>(new(list)),
             Loops.Of<SerializeStructs<ProtobufCodec>, Original>(new(list)),
             Loops.Of<SerializeStructs<MessagePackCodec>, Original>(new(list)),
@@ -212,6 +219,7 @@ internal static class Comparison
         Variant[] deserialize =
         [
             .. Loops.WithCopy(new DeserializeStructs<TaflaCodec>(tafla, list)),
+            Loops.Of<DeserializeStructs<TaflaGenCodec>, Original>(new(default(TaflaGenCodec).SerializeStructs(list), list)),
             Loops.Of<DeserializeStructs<FlatBuffersCodec>, Original>(new(default(FlatBuffersCodec).SerializeStructs(list), list)),
             Loops.Of<DeserializeStructs<ProtobufCodec>, Original>(new(default(ProtobufCodec).SerializeStructs(list), list)),
             Loops.Of<DeserializeStructs<MessagePackCodec>, Original>(new(default(MessagePackCodec).SerializeStructs(list), list)),
@@ -231,6 +239,7 @@ internal static class Comparison
         Variant[] serialize =
         [
             .. Loops.WithCopy(new SerializeSample<TaflaCodec>(sample)),
+            Loops.Of<SerializeSample<TaflaGenCodec>, Original>(new(sample)),
             Loops.Of<SerializeSample<FlatBuffersCodec>, Original>(new(sample)),
             Loops.Of<SerializeSample<ProtobufCodec>, Original>(new(sample)),
             Loops.Of<SerializeSample<MessagePackCodec>, Original>(new(sample)),
@@ -241,6 +250,7 @@ internal static class Comparison
         Variant[] deserialize =
         [
             .. Loops.WithCopy(new DeserializeSample<TaflaCodec>(tafla, sample)),
+            Loops.Of<DeserializeSample<TaflaGenCodec>, Original>(new(default(TaflaGenCodec).SerializeSample(sample), sample)),
             Loops.Of<DeserializeSample<FlatBuffersCodec>, Original>(new(default(FlatBuffersCodec).SerializeSample(sample), sample)),
             Loops.Of<DeserializeSample<ProtobufCodec>, Original>(new(default(ProtobufCodec).SerializeSample(sample), sample)),
             Loops.Of<DeserializeSample<MessagePackCodec>, Original>(new(default(MessagePackCodec).SerializeSample(sample), sample)),
@@ -256,7 +266,13 @@ internal static class Comparison
         var bytes = default(TaflaCodec).SerializeRecord(record);
         var sum = TaflaReads.RecordScalars.Expected(record);
 
-        return new(Reads, "record: read the scalars", Loops.WithCopy(new Read<TaflaReads.RecordScalars>(bytes, sum)));
+        Variant[] variants =
+        [
+            .. Loops.WithCopy(new Read<TaflaReads.RecordScalars>(bytes, sum)),
+            Loops.Of<Read<TaflaGenReads.RecordScalars>, Original>(new(bytes, sum)),
+        ];
+
+        return new(Reads, "record: read the scalars", variants);
     }
 
     private static Benchmark ColumnByGetter(Document document)
@@ -279,8 +295,22 @@ internal static class Comparison
 
         return
         [
-            new(Reads, "vector of 100 nested tables: read the last item", Loops.WithCopy(new Read<TaflaReads.LastTable>(bytes, last))),
-            new(Reads, "vector of 100 nested tables: sum every item", Loops.WithCopy(new Read<TaflaReads.EveryTable>(bytes, every))),
+            new(
+                Reads,
+                "vector of 100 nested tables: read the last item",
+                [
+                    .. Loops.WithCopy(new Read<TaflaReads.LastTable>(bytes, last)),
+                    Loops.Of<Read<TaflaGenReads.LastTable>, Original>(new(bytes, last)),
+                ]
+            ),
+            new(
+                Reads,
+                "vector of 100 nested tables: sum every item",
+                [
+                    .. Loops.WithCopy(new Read<TaflaReads.EveryTable>(bytes, every)),
+                    Loops.Of<Read<TaflaGenReads.EveryTable>, Original>(new(bytes, every)),
+                ]
+            ),
         ];
     }
 
@@ -292,8 +322,22 @@ internal static class Comparison
 
         return
         [
-            new(Reads, "array of 100 structs: read the last item", Loops.WithCopy(new Read<TaflaReads.LastStruct>(bytes, last))),
-            new(Reads, "array of 100 structs: sum every item", Loops.WithCopy(new Read<TaflaReads.EveryStruct>(bytes, every))),
+            new(
+                Reads,
+                "array of 100 structs: read the last item",
+                [
+                    .. Loops.WithCopy(new Read<TaflaReads.LastStruct>(bytes, last)),
+                    Loops.Of<Read<TaflaGenReads.LastStruct>, Original>(new(bytes, last)),
+                ]
+            ),
+            new(
+                Reads,
+                "array of 100 structs: sum every item",
+                [
+                    .. Loops.WithCopy(new Read<TaflaReads.EveryStruct>(bytes, every)),
+                    Loops.Of<Read<TaflaGenReads.EveryStruct>, Original>(new(bytes, every)),
+                ]
+            ),
         ];
     }
 

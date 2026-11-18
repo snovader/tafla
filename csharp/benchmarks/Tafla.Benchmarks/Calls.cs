@@ -236,11 +236,11 @@ internal readonly struct DeserializeSample<TCodec>(byte[] bytes, Sample sample) 
     public bool Check() => Sink.Sample.Same(sample);
 }
 
-/// <summary>One of tafla's reads of <see cref="TaflaReads"/>, which sums what it reads.</summary>
+/// <summary>One of tafla's reads of <see cref="TaflaReads"/> or <see cref="TaflaGenReads"/>, which sums what it reads.</summary>
 internal readonly struct Read<TRead>(byte[] bytes, double sum) : ICall
     where TRead : struct, ITaflaRead
 {
-    public string Name => "tafla";
+    public string Name => TRead.Name;
 
     public void Call() => Sink.Number = TRead.Read(bytes);
 
