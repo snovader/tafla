@@ -9,7 +9,7 @@ let lifetimes: SwiftSetting = .enableExperimentalFeature("Lifetimes")
 
 let package = Package(
     name: "tafla",
-    platforms: [.macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v8), .visionOS(.v1)],
+    platforms: [.macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v9), .visionOS(.v1)],
     products: [
         .library(name: "Tafla", targets: ["Tafla"])
     ],

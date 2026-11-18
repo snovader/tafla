@@ -9,7 +9,7 @@ arrays, structs and vector items as views of the bytes. Every read checks that
 it stays within the bytes it was given. It depends only on Swift's standard
 library, without Foundation.
 
-It needs Swift 6.2 or later, and runs on macOS 12, iOS 15, tvOS 15, watchOS 8
+It needs Swift 6.2 or later, and runs on macOS 12, iOS 15, tvOS 15, watchOS 9
 and visionOS 1 or later, and on Linux. It isn't published yet, and
 [CHANGELOG.md](CHANGELOG.md) lists the changes that its first release will
 bring. Until then, a package can depend on it by its path in a checkout of the
