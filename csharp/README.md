@@ -231,8 +231,8 @@ whose `Kind` says why and whose properties describe the read:
 - `OutOfRange`: a read of `ByteLength` bytes at `Position` that would leave
   the `Available` bytes. An array's count is checked against the bytes
   before anything is allocated for it. An offset past the largest `int`
-  leads past any bytes, which a .NET array can't hold, and fails when it's
-  read, since a position can't hold it.
+  leads past any bytes, since no span is that long, and fails when it's
+  read, as a position can't hold it.
 - `InvalidUtf8`: a string that isn't valid UTF-8, such as one with an
   overlong encoding or a surrogate.
 - `StringTooLong`: a string of `ByteLength` bytes that hold more characters

@@ -302,7 +302,6 @@ public class RoundTripTests
         Assert.Equal(bytes.Length - (4 + 16), vector.GetInPlace(0).Length);
         Assert.Throws<ArgumentOutOfRangeException>(() => new TableReader(bytes).GetVector(4).Get(3));
         Assert.Throws<ArgumentOutOfRangeException>(() => new TableReader(bytes).GetVector(4).GetInPlace(-1));
-        Assert.Equal(0, default(Vector).Count);
     }
 
     /// <summary>

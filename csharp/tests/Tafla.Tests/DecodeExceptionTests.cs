@@ -325,6 +325,44 @@ public class DecodeExceptionTests
         Assert.Equal("Unsupported format version 2; the reader reads version 1", error.Message);
     }
 
+    /// <summary>
+    /// The default reader reads no bytes in the default layout, so its size is 0 and every read leaves
+    /// the bytes, and the default vector is empty
+    /// </summary>
+    [Fact]
+    public void TheDefaultReaderReadsNoBytes()
+    {
+        var reader = default(TableReader);
+        Assert.True(reader.Bytes.IsEmpty);
+        Assert.Equal(TableLayout.Default, reader.Layout);
+        Assert.Equal(0u, reader.GetSize());
+
+        var error = Assert.Throws<DecodeException>(() => default(TableReader).RootOffset(0));
+        Assert.Equal((DecodeErrorKind.OutOfRange, 0L, 4L, 0), (error.Kind, error.Position, error.ByteLength, error.Available));
+        Assert.Throws<DecodeException>(() => default(TableReader).FieldOffset(0, 0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetUInt8(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetFloat64(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetInt32Array(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetString(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetStruct(0, 1));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetVector(0));
+
+        var vector = default(Vector);
+        var items = 0;
+        foreach (var item in vector.Items())
+        {
+            items++;
+        }
+
+        foreach (var item in vector.ItemsInPlace())
+        {
+            items++;
+        }
+
+        Assert.Equal((0, 0), (vector.Count, items));
+        Assert.Throws<ArgumentOutOfRangeException>(() => default(Vector).Get(0));
+    }
+
     /// <summary>Mistakes of the code that calls the reader, which no bytes cause, throw other exceptions</summary>
     [Fact]
     public void ThrowsArgumentExceptionsForMistakesOfTheCaller()
