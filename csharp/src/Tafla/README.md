@@ -39,9 +39,9 @@ ReadOnlySpan<float> values = reader.GetFloat32Array(reader.FieldOffset(table, 1)
 ```
 
 `TableSizer` and `TableWriter` write a table whose fields are known in
-advance, as the code that tafla-gen generates in the other languages does,
-into bytes of its exact length, with nested tables and vector items written
-in place among their parent's fields.
+advance, as the code that tafla-gen generates does, into bytes of its exact
+length, with nested tables and vector items written in place among their
+parent's fields.
 
 The package is for .NET 10. It depends only on .NET's base class library,
 and is trimmable and compatible with Native AOT.
