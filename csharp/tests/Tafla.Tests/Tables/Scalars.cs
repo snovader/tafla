@@ -83,41 +83,42 @@ public static class Scalars
         return scalars;
     }
 
-    /// <summary>Sets a scalar field with the builder's setter of its type.</summary>
-    public static void Set(TableBuilder builder, Scalar scalar)
+    /// <summary>Sets a scalar field with the setter of its type.</summary>
+    public static void Set<T>(T target, Scalar scalar)
+        where T : ITarget, allows ref struct
     {
         var bits = scalar.Bits;
         switch (scalar.Type)
         {
             case ScalarType.Int8:
-                builder.SetInt8((sbyte)bits);
+                target.SetInt8((sbyte)bits);
                 break;
             case ScalarType.UInt8:
-                builder.SetUInt8((byte)bits);
+                target.SetUInt8((byte)bits);
                 break;
             case ScalarType.Int16:
-                builder.SetInt16((short)bits);
+                target.SetInt16((short)bits);
                 break;
             case ScalarType.UInt16:
-                builder.SetUInt16((ushort)bits);
+                target.SetUInt16((ushort)bits);
                 break;
             case ScalarType.Int32:
-                builder.SetInt32((int)bits);
+                target.SetInt32((int)bits);
                 break;
             case ScalarType.UInt32:
-                builder.SetUInt32((uint)bits);
+                target.SetUInt32((uint)bits);
                 break;
             case ScalarType.Int64:
-                builder.SetInt64((long)bits);
+                target.SetInt64((long)bits);
                 break;
             case ScalarType.UInt64:
-                builder.SetUInt64(bits);
+                target.SetUInt64(bits);
                 break;
             case ScalarType.Float32:
-                builder.SetFloat32(BitConverter.UInt32BitsToSingle((uint)bits));
+                target.SetFloat32(BitConverter.UInt32BitsToSingle((uint)bits));
                 break;
             default:
-                builder.SetFloat64(BitConverter.UInt64BitsToDouble(bits));
+                target.SetFloat64(BitConverter.UInt64BitsToDouble(bits));
                 break;
         }
     }
@@ -142,41 +143,42 @@ public static class Scalars
         return new Scalar(type, bits);
     }
 
-    /// <summary>Sets an array field with the builder's setter of its type.</summary>
-    public static void SetArray(TableBuilder builder, ArrayField array)
+    /// <summary>Sets an array field with the setter of its type.</summary>
+    public static void SetArray<T>(T target, ArrayField array)
+        where T : ITarget, allows ref struct
     {
         var bits = array.Bits;
         switch (array.Type)
         {
             case ScalarType.Int8:
-                builder.SetInt8Array(Values(bits, value => (sbyte)value));
+                target.SetInt8Array(Values(bits, value => (sbyte)value));
                 break;
             case ScalarType.UInt8:
-                builder.SetUInt8Array(Values(bits, value => (byte)value));
+                target.SetUInt8Array(Values(bits, value => (byte)value));
                 break;
             case ScalarType.Int16:
-                builder.SetInt16Array(Values(bits, value => (short)value));
+                target.SetInt16Array(Values(bits, value => (short)value));
                 break;
             case ScalarType.UInt16:
-                builder.SetUInt16Array(Values(bits, value => (ushort)value));
+                target.SetUInt16Array(Values(bits, value => (ushort)value));
                 break;
             case ScalarType.Int32:
-                builder.SetInt32Array(Values(bits, value => (int)value));
+                target.SetInt32Array(Values(bits, value => (int)value));
                 break;
             case ScalarType.UInt32:
-                builder.SetUInt32Array(Values(bits, value => (uint)value));
+                target.SetUInt32Array(Values(bits, value => (uint)value));
                 break;
             case ScalarType.Int64:
-                builder.SetInt64Array(Values(bits, value => (long)value));
+                target.SetInt64Array(Values(bits, value => (long)value));
                 break;
             case ScalarType.UInt64:
-                builder.SetUInt64Array(Values(bits, value => value));
+                target.SetUInt64Array(Values(bits, value => value));
                 break;
             case ScalarType.Float32:
-                builder.SetFloat32Array(Values(bits, value => BitConverter.UInt32BitsToSingle((uint)value)));
+                target.SetFloat32Array(Values(bits, value => BitConverter.UInt32BitsToSingle((uint)value)));
                 break;
             default:
-                builder.SetFloat64Array(Values(bits, BitConverter.UInt64BitsToDouble));
+                target.SetFloat64Array(Values(bits, BitConverter.UInt64BitsToDouble));
                 break;
         }
     }

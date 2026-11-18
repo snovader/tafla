@@ -91,10 +91,12 @@ which covers the whole format, byte for byte.
   slice of one or a collection expression. `ToArray()` copies the finished
   table, at its exact length, out of the builder's bytes, which grow as
   fields are set.
-- **Nested tables are copied.** `SetTable()` and `SetVector()` copy the bytes
-  of a complete builder or of a table's bytes. `SetVector()` takes
-  `NestedTable`s, which convert implicitly from a `TableBuilder`, a `byte[]`
-  or a `ReadOnlyMemory<byte>`, so a vector can mix them.
+- **Nested tables are copied, or recorded in place.** `SetTable()` and
+  `SetVector()` copy the bytes of a complete builder or of a table's bytes.
+  `SetVector()` takes `NestedTable`s, which convert implicitly from a
+  `TableBuilder`, a `byte[]` or a `ReadOnlyMemory<byte>`, so a vector can mix
+  them. Their overloads that take a `fill` record a nested table, or each item
+  of a vector, in place instead, as the next section describes.
 - **A reader is a view of the bytes.** `TableReader` is a `ref struct` over a
   `ReadOnlySpan<byte>`, which can be an array's, which converts to it, a
   slice's, a `ReadOnlyMemory<byte>`'s `Span`, or stack or native memory. It
@@ -117,6 +119,58 @@ which covers the whole format, byte for byte.
   memory rather than a span.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
   UTF-8 and decodes them into a new `string`, in one pass.
+
+## Recording nested tables in place
+
+`SetTable(fields, fill)` records a nested table straight among its parent's
+bytes, rather than from a `TableBuilder` of its own that's then copied, and
+`SetVector(count, fields, fill)` records each item of a vector so. `fill`
+sets the table's fields, in order, on the `TableBuilder.Item` that it's
+given, whose setters are the builder's, and can record the tables nested in
+it in place too. The bytes are those that nesting builders of the same fields
+writes, so the example's table can be written so:
+
+```csharp
+var builder = new TableBuilder(3, Layout, FormatVersion);
+builder.SetFloat64(59.3293);
+builder.SetString("Europe/Stockholm");
+builder.SetTable(2, static series =>
+{
+    series.SetUInt32Array([0, 86_400]);
+    series.SetFloat32Array([21.75f, 18.5f]);
+});
+byte[] bytes = builder.ToArray();
+```
+
+A lambda that captures variables allocates whenever it's created, so the
+overloads that take a `state` pass it to a `static` lambda instead, which
+allocates nothing. The vector's `fill` is given each item's index:
+
+```csharp
+(uint Time, float Value)[] readings = [(0, 21.75f), (86_400, 18.5f)];
+
+var list = new TableBuilder(1);
+list.SetVector(readings.Length, 2, readings, static (item, index, readings) =>
+{
+    item.SetUInt32(readings[index].Time);
+    item.SetFloat32(readings[index].Value);
+});
+```
+
+The item counts the table's own fields and length, as a builder of it would,
+so its setters throw as that builder's would. A table recorded in place has
+no header and its parent's offset type, and is padded as `SetTable()` pads a
+builder, to the largest alignment of its arrays and nested tables. That's
+known once its fields are set, so a table that needs padding is moved by those
+few bytes once `fill` returns. A vector's items aren't padded, so they're
+never moved.
+
+`TableBuilder.Item` is a `ref struct`, valid only while `fill` runs, which
+keeps a lambda from capturing it. The builder is used only through it
+meanwhile: `ToArray()` and nesting the builder throw
+`InvalidOperationException` until `fill` returns. Whatever `fill` throws is
+passed on, and the builder is left as it was, as it is when the errors below
+are thrown.
 
 ## Writing tables of known fields
 
@@ -209,6 +263,16 @@ the values, and leaves the builder as it was:
   whole number of structs.
 - `ToArray()`, and nesting a builder, throw `Incomplete` while fields are left
   to set.
+- `SetTable(fields, fill)` and `SetVector(count, fields, fill)` throw
+  `TooManyFields` as the other setters do, and `HeaderTooLong` when the
+  nested table's offsets alone are too long for the offset type, before
+  `fill` runs. They throw `Incomplete` when `fill` leaves fields of the
+  nested table unset, and `TooLong` when the table, with its padding, makes
+  its parent too long. A vector checks its count, its items' ends and the
+  offsets that every item holds before calling `fill`, so a vector that they
+  alone make too long throws `TooLong` first, with the length that they make.
+  The item's setters throw as the builder's do, for the nested table's own
+  fields and length, and so do their tables recorded in place.
 
 `TableSizer`'s constructors check the version and the header as
 `TableBuilder`'s do, and `GetByteLength()` and `CreateWriter()` throw
@@ -235,6 +299,7 @@ throw the argument exceptions of .NET's own APIs:
 | `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields, and `ArgumentException` for a versioned layout without a version, or a version without one |
 | `SetTable()`, `SetStructArray()`                | `ArgumentOutOfRangeException` for an alignment other than 1, 2, 4 or 8, or a struct size below 1 |
 | `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
+| `SetTable()` and `SetVector()` with a `fill`    | `ArgumentOutOfRangeException` for a negative number of fields or count, `ArgumentNullException` for a null `fill`, and while `fill` runs, `ToArray()` and nesting the builder throw `InvalidOperationException` |
 | `new TableSizer()`                              | As `new TableBuilder()`                                                                   |
 | `TableSizer`'s and `TableWriter`'s methods      | `ArgumentOutOfRangeException` for a negative count, number of fields or struct size, a size of 0 of an array of structs, or an alignment other than 1, 2, 4 or 8, and `ArgumentNullException` for a null string |
 | `TableWriter`'s field indices, `SetItemEnd()`   | `ArgumentOutOfRangeException` for an offset or item end that lies outside the writer's bytes. Within them, it writes over another slot or field |
@@ -347,7 +412,5 @@ The tests in `tests/Tafla.Tests` are:
 The property tests run 256 cases each, on every core, and print the seed of
 a failing case, which `CsCheck_Seed=<seed> dotnet test` runs again.
 
-Not yet part of the runtime: recording nested tables in place among a
-`TableBuilder`'s fields, as Go's `SetTableFunc()` does, and the writer's
-reservations of fields that a schema lays out itself, as Go's
-`ReserveFields()` does.
+Not yet part of the runtime: the writer's reservations of fields that a
+schema lays out itself, as Go's `ReserveFields()` does.

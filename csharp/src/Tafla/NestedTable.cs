@@ -3,7 +3,7 @@ using System;
 namespace Tafla;
 
 /// <summary>
-/// A table to nest in a vector with <see cref="TableBuilder.SetVector"/>: a complete
+/// A table to nest in a vector with <see cref="TableBuilder.SetVector(ReadOnlySpan{NestedTable})"/>: a complete
 /// <see cref="TableBuilder"/>, or the bytes of a table, as its builder wrote them. It converts
 /// implicitly from either, so that a vector can mix them.
 /// </summary>

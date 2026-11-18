@@ -39,6 +39,42 @@ public class ExampleTests
         Assert.Equal(bytes, Written());
     }
 
+    [Fact]
+    public void RecordsNestedTablesInPlaceAsTheReadmeShows()
+    {
+        var builder = new TableBuilder(3, Layout, FormatVersion);
+        builder.SetFloat64(59.3293);
+        builder.SetString("Europe/Stockholm");
+        builder.SetTable(2, static series =>
+        {
+            series.SetUInt32Array([0, 86_400]);
+            series.SetFloat32Array([21.75f, 18.5f]);
+        });
+        byte[] bytes = builder.ToArray();
+
+        (uint Time, float Value)[] readings = [(0, 21.75f), (86_400, 18.5f)];
+
+        var list = new TableBuilder(1);
+        list.SetVector(readings.Length, 2, readings, static (item, index, readings) =>
+        {
+            item.SetUInt32(readings[index].Time);
+            item.SetFloat32(readings[index].Value);
+        });
+
+        // The bytes of the first example, whose series is a builder of its own
+        Assert.Equal(Written(), bytes);
+
+        var vector = new TableReader(list.ToArray()).GetVector(4);
+        var read = new List<(uint, float)>();
+        foreach (var item in vector.Items())
+        {
+            var reader = new TableReader(item);
+            read.Add((reader.GetUInt32(reader.RootOffset(0)), reader.GetFloat32(reader.RootOffset(1))));
+        }
+
+        Assert.Equal(readings, read);
+    }
+
     /// <summary>Writes the example's table with a sizer and a writer, as the README shows.</summary>
     private static byte[] Written()
     {

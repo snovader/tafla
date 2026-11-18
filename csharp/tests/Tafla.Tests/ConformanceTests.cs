@@ -36,6 +36,19 @@ public class ConformanceTests
     }
 
     /// <summary>
+    /// Rebuilds every valid table with the tables nested in it that a builder writes in place,
+    /// without a header and with their parent's offset type, recorded in place, byte for byte
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ValidCases))]
+    public void RebuildsEveryValidTableRecordedInPlaceByteForByte(string name)
+    {
+        var valid = Suite.Valid.Single(valid => valid.Name == name);
+
+        Assert.Equal(valid.Bytes, valid.Table.BuiltInPlace().ToArray());
+    }
+
+    /// <summary>
     /// Writes every valid table whose nested tables a writer writes in place, without a header and
     /// with their parent's offset type, with a sizer and a writer, byte for byte
     /// </summary>
