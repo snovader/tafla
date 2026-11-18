@@ -55,6 +55,8 @@ jobs:
               - ".github/workflows/csharp.yml"
               - "conformance/**"
               - "csharp/**"
+              # Sets the runtime's version, in its lock files too
+              - "scripts/version.sh"
 
   formatting:
     name: Formatting
@@ -190,6 +192,24 @@ jobs:
 
       - name: Test the package
         run: scripts/test-package.sh
+
+      # The lock files of the projects that reference the runtime through
+      # another project record its version, which a locked restore ignores
+      # and any other restore writes. So a release's version must reach them
+      # as scripts/version.sh writes it: a restore that evaluates the lock
+      # files again then changes nothing.
+      - name: Check that setting a version keeps the lock files
+        working-directory: .
+        run: |
+          scripts/version.sh csharp 99.0.0
+          git diff > "$RUNNER_TEMP/version.diff"
+          dotnet restore csharp/Tafla.slnx --force-evaluate
+          if ! git diff | cmp --silent "$RUNNER_TEMP/version.diff" -; then
+            echo "::error::A restore changes the lock files after scripts/version.sh has set the version"
+            git diff -- "csharp/**/packages.lock.json"
+            exit 1
+          fi
+          git checkout -- .
 
   benchmark:
     name: Benchmark
