@@ -155,11 +155,39 @@ jobs:
           registry.access.redhat.com/ubi9/dotnet-100-runtime
           dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
 
+  # The package that the release publishes to NuGet, which a project restores
+  # from a local feed, as a user's would, and runs, just in time and compiled
+  # ahead of time with Native AOT, whose analysis of the package fails on any
+  # warning
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Pack the package
+        run: dotnet pack src/Tafla
+
+      - name: Test the package
+        run: scripts/test-package.sh
+
   # The check for the main branch's ruleset to require. It passes when every
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian]
+    needs: [changes, formatting, test, big-endian, package]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
