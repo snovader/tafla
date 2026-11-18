@@ -36,7 +36,9 @@ _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 # What struct raises for a value or slot that it can't write: struct.error for
 # an integer out of range or a slot past the bytes, OverflowError for a float
 # too large for a float32, and for a slot beyond a C ssize_t, which
-# pack_into() raises as IndexError in Python 3.14
+# pack_into() raises as IndexError in Python 3.14. A value's own __index__()
+# may raise one of them too, which the setters can't tell from struct's, so
+# they raise ValueError for it as well, and the native ones do the same.
 _PACK_ERRORS = (StructError, OverflowError, IndexError)
 
 # What set_fields() and write_table() fall back to the setters for: what

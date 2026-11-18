@@ -98,5 +98,11 @@ repository's first commits, for code built from its source before the release.
   that the layout can't hold before the error of a value, as the calls that
   it replaces do. The pure-Python one raised a value's own error first, such
   as its `__index__()`'s, where the native one raised the version's.
+- A scalar setter of an integer field raises `ValueError` for a value whose
+  `__index__()` raises an error that `struct` raises itself, `OverflowError`,
+  `IndexError` or `struct.error`, in both implementations, and so do
+  `set_fields()`, `write_table()`, `set_vector_tables()` and `write_fields()`.
+  The native ones raised the value's error as it was, where the pure-Python
+  ones, which can't tell it from `struct`'s, raised `ValueError`.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/python
