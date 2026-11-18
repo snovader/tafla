@@ -130,17 +130,20 @@ const CPP: &[&str] = &[
 /// The names that Swift imports, the runtime's module and its types, the
 /// types of the standard library that it names, which a struct of the same
 /// name would hide, the protocols that its types conform to or suppress,
-/// and `Self`, a keyword. It names `Swift.Range` in full instead, since a
-/// schema may well declare `Range`, and so `Swift`, the standard library's
-/// module.
+/// `Element`, which is `Array`'s own in the extension that reads an array of
+/// structs, whatever a schema declares, and `Any` and `Self`, keywords. It
+/// names `Swift.Range` in full instead, since a schema may well declare
+/// `Range`, and so `Swift`, the standard library's module.
 const SWIFT: &[&str] = &[
     "Alignment",
+    "Any",
     "Array",
     "ArrayView",
     "Bool",
     "BuildError",
     "DecodeError",
     "Double",
+    "Element",
     "Escapable",
     "Float",
     "Hashable",

@@ -57,3 +57,15 @@ error: `Self` clashes with a name of the generated code
    |
 28 | struct Self { x: uint8; }
    |        ^^^^ the code generated for Python, Rust and Swift uses `Self`
+
+error: `Any` clashes with a name of the generated code
+  --> reserved_names.tafla:30:7
+   |
+30 | table Any { x: uint8; }
+   |       ^^^ the code generated for Swift uses `Any`
+
+error: `Element` clashes with a name of the generated code
+  --> reserved_names.tafla:32:8
+   |
+32 | struct Element { x: uint8; }
+   |        ^^^^^^^ the code generated for Swift uses `Element`

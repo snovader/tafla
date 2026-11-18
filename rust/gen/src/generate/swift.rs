@@ -913,6 +913,8 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.close("}");
     writer.blank();
 
+    // `Element` is the array's own here, which the checker keeps a struct
+    // from being named
     writer.open(format!("extension Array where Element == {name} {{"));
     swift_doc(
         writer,
