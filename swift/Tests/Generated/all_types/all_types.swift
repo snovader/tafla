@@ -1085,8 +1085,11 @@ public struct SegmentArray: ~Escapable {
     /// error, which stops the program, as `Array`'s subscript does.
     @inlinable
     public subscript(index: Int) -> Segment {
-        precondition(index >= 0 && index < count, "Index out of range")
-        return Segment(bytes, at: index * Segment.size)
+        precondition(UInt(bitPattern: index) < UInt(count), "Index out of range")
+
+        // The precondition keeps the struct within the bytes
+        let offset = index &* Segment.size
+        return Segment(bytes.extracting(unchecked: offset..<offset &+ Segment.size), at: 0)
     }
 }
 
@@ -1187,8 +1190,11 @@ public struct PointArray: ~Escapable {
     /// error, which stops the program, as `Array`'s subscript does.
     @inlinable
     public subscript(index: Int) -> Point {
-        precondition(index >= 0 && index < count, "Index out of range")
-        return Point(bytes, at: index * Point.size)
+        precondition(UInt(bitPattern: index) < UInt(count), "Index out of range")
+
+        // The precondition keeps the struct within the bytes
+        let offset = index &* Point.size
+        return Point(bytes.extracting(unchecked: offset..<offset &+ Point.size), at: 0)
     }
 }
 
@@ -1428,8 +1434,11 @@ public struct DocumentedArray: ~Escapable {
     /// error, which stops the program, as `Array`'s subscript does.
     @inlinable
     public subscript(index: Int) -> Documented {
-        precondition(index >= 0 && index < count, "Index out of range")
-        return Documented(bytes, at: index * Documented.size)
+        precondition(UInt(bitPattern: index) < UInt(count), "Index out of range")
+
+        // The precondition keeps the struct within the bytes
+        let offset = index &* Documented.size
+        return Documented(bytes.extracting(unchecked: offset..<offset &+ Documented.size), at: 0)
     }
 }
 
