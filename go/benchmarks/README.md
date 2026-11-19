@@ -166,8 +166,8 @@ their codecs return as an error, since every workload has it.
 ## Method
 
 `cmd/comparison` times each benchmark's variants, one per library,
-interleaved, in `harness/`, as the TypeScript harness does: every round runs
-each variant once, in alternating order, and the fastest round counts. Load
+interleaved, in `harness/`: every round runs each variant once, in
+alternating order, and the fastest round counts. Load
 from other processes then slows every variant alike, and only for some
 rounds. A round of a variant repeats its call for about 20 ms, counted from
 its first calls and then again from its fastest of 3 warm-up rounds, and the

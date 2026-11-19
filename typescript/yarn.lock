@@ -1093,6 +1093,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"benk@github:snovader/benk#commit=ab12deb324c5df7cd120ba3cc5f90b0867582df7":
+  version: 0.0.0
+  resolution: "benk@https://github.com/snovader/benk.git#commit=ab12deb324c5df7cd120ba3cc5f90b0867582df7"
+  checksum: 10c0/daf5252e507f076f0dfe6de3c2b81f5c8f5af9fb083dfd91b579f9651791c1412c086ac00026231144e4f5abbc4f0f67b0640b7ce5568d24b509e009a648aec8
+  languageName: node
+  linkType: hard
+
 "chai@npm:^6.3.0":
   version: 6.3.0
   resolution: "chai@npm:6.3.0"
@@ -1744,6 +1751,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "tafla-benchmarks@workspace:benchmarks"
   dependencies:
+    benk: "github:snovader/benk#commit=ab12deb324c5df7cd120ba3cc5f90b0867582df7"
     flatbuffers: "npm:25.9.23"
     msgpackr: "npm:2.1.4"
     protobufjs: "npm:8.8.1"
