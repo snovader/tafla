@@ -5,8 +5,8 @@ import type {
     ScalarType,
     TableDescription
 } from '../conformance/description.ts';
-import * as javascript from './all_types/javascript/allTypes.js';
-import * as typescript from './all_types/typescript/allTypes.ts';
+import * as javascript from './all_types/javascript/all-types.js';
+import * as typescript from './all_types/typescript/all-types.ts';
 import type {
     ArraysFields,
     DocumentedFields,
@@ -22,7 +22,7 @@ import type {
     SegmentFields,
     StructsFields,
     TreeFields
-} from './all_types/typescript/allTypes.ts';
+} from './all_types/typescript/all-types.ts';
 import {
     array,
     bool,

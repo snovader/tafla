@@ -317,6 +317,12 @@ first commits, for code built from its source before the release.
   then read the last struct of its array of 100 in 4.1 ns rather than 7.1 ns,
   the last item of its vector of 100 nested tables in 21.8 ns rather than
   25.3 ns, and its record in 115 ns rather than 122 ns.
+- Generated TypeScript and JavaScript modules are named in kebab-case,
+  rather than in camelCase: the schema's file name with a `-` for each `_`,
+  such as `point-cloud.ts` of `point_cloud.tafla` rather than
+  `pointCloud.ts`. Its other characters stay as they are. This breaks the
+  imports of code generated before: an application that regenerates its
+  modules imports them by their new names.
 
 ### Fixed
 

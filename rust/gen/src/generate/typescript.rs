@@ -141,9 +141,16 @@ pub fn generate(
 
     let extension = if typed { "ts" } else { "js" };
     vec![GeneratedFile {
-        path: format!("{}.{extension}", camel_case(stem)),
+        path: format!("{}.{extension}", module_name(stem)),
         contents: writer.finish(),
     }]
+}
+
+/// The name of a schema's module, its file name in kebab-case, as TypeScript
+/// and JavaScript name modules: with a `-` for each `_`, and its other
+/// characters as they are, such as `point-cloud` of `point_cloud.v1.tafla`
+fn module_name(stem: &str) -> String {
+    stem.replace('_', "-")
 }
 
 /// A class of the generated module

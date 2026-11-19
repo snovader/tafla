@@ -13,8 +13,8 @@ import {
     vector,
     DEFAULT_LAYOUT
 } from './descriptions.ts';
-import * as javascript from './fixed_fields/javascript/fixedFields.js';
-import * as typescript from './fixed_fields/typescript/fixedFields.ts';
+import * as javascript from './fixed_fields/javascript/fixed-fields.js';
+import * as typescript from './fixed_fields/typescript/fixed-fields.ts';
 import type {
     BlockFields,
     FrameFields,
@@ -22,7 +22,7 @@ import type {
     RangeFields,
     TaggedFields,
     Vec2Fields
-} from './fixed_fields/typescript/fixedFields.ts';
+} from './fixed_fields/typescript/fixed-fields.ts';
 
 // The code generated from schemas/fixed_fields.tafla, in TypeScript and in
 // JavaScript, writes the tables that TableBuilder writes by hand in every
