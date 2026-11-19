@@ -1,11 +1,9 @@
 {
-    "extends": "./tsconfig.base.json",
+    "extends": [
+        "@snovader/tsconfig/isomorphic",
+        "@snovader/tsconfig/composite"
+    ],
     "compilerOptions": {
-        "lib": [
-            "ESNext",
-            "WebWorker",
-            "WebWorker.AsyncIterable",
-            "WebWorker.Iterable"
-        ]
+        "customConditions": ["tafla-source"]
     }
 }

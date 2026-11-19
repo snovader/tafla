@@ -20,6 +20,11 @@ updates:
           - "oxfmt"
           - "oxlint"
           - "oxlint-tsgolint"
+      # The shared configurations of oxfmt, oxlint and TypeScript, released
+      # from one repository
+      "snovader":
+        patterns:
+          - "@snovader/*"
 
   - package-ecosystem: "uv"
     directory: "/python"
