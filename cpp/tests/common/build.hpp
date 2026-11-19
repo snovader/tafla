@@ -36,7 +36,9 @@ NestedTable build_nested(const Nested& nested);
 /// builder that it writes in place with `set_table(fields, fill)`, and each
 /// vector of them, when its items hold as many fields, with
 /// `set_vector(count, fields, fill)`, rather than from their builders. Its
-/// bytes and errors are `to_bytes()`'s.
+/// bytes and errors are `to_bytes()`'s, but for a vector whose count and
+/// items' ends alone make its table too long, which fails before its items
+/// are recorded.
 Bytes to_bytes_in_place(const Table& table);
 
 /// Whether the table nested from `nested` is recorded in place in a table of

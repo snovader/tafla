@@ -440,9 +440,10 @@ public:
     /// `set_vector()` doesn't pad them.
     ///
     /// Throws a `BuildError` if the vector's count makes the table too long
-    /// before any item is recorded, if `fill` leaves an item's fields unset,
-    /// or as the setters do, and passes on what `fill` throws, leaving the
-    /// builder as it was either way.
+    /// before any item is recorded, with the length that its count and its
+    /// items' ends make it, if `fill` leaves an item's fields unset, or as
+    /// the setters do, and passes on what `fill` throws, leaving the builder
+    /// as it was either way.
     template <std::invocable<std::size_t, Item&> Fill>
     void set_vector(std::size_t count, std::size_t fields, Fill&& fill);
 
