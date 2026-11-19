@@ -3,29 +3,35 @@
 import Tafla
 
 /// `uint8` offsets, for tables of up to 255 bytes
+@frozen
 public struct Uint8Offsets: ~Escapable {
     /// The layout that a `Uint8Offsets` is written and read in
     public static let layout = TableLayout(offsetType: .uint8)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint8Offsets` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -62,29 +68,35 @@ public struct Uint8OffsetsFields: Hashable, Sendable {
 }
 
 /// `uint8` offsets, after the table's length
+@frozen
 public struct Uint8OffsetsSized: ~Escapable {
     /// The layout that a `Uint8OffsetsSized` is written and read in
     public static let layout = TableLayout(sized: true, offsetType: .uint8)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint8OffsetsSized` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -121,6 +133,7 @@ public struct Uint8OffsetsSizedFields: Hashable, Sendable {
 }
 
 /// `uint8` offsets, after the largest version they hold
+@frozen
 public struct Uint8OffsetsVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 255
@@ -128,11 +141,13 @@ public struct Uint8OffsetsVersioned: ~Escapable {
     /// The layout that a `Uint8OffsetsVersioned` is written and read in
     public static let layout = TableLayout(versioned: true, offsetType: .uint8)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint8OffsetsVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -147,21 +162,25 @@ public struct Uint8OffsetsVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -202,6 +221,7 @@ public struct Uint8OffsetsVersionedFields: Hashable, Sendable {
 }
 
 /// `uint8` offsets, after the table's length and version zero
+@frozen
 public struct Uint8OffsetsSizedVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 0
@@ -209,11 +229,13 @@ public struct Uint8OffsetsSizedVersioned: ~Escapable {
     /// The layout that a `Uint8OffsetsSizedVersioned` is written and read in
     public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint8)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint8OffsetsSizedVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -228,21 +250,25 @@ public struct Uint8OffsetsSizedVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -283,29 +309,35 @@ public struct Uint8OffsetsSizedVersionedFields: Hashable, Sendable {
 }
 
 /// `uint16` offsets, for tables of up to 65,535 bytes
+@frozen
 public struct Uint16Offsets: ~Escapable {
     /// The layout that a `Uint16Offsets` is written and read in
     public static let layout = TableLayout(offsetType: .uint16)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint16Offsets` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -342,29 +374,35 @@ public struct Uint16OffsetsFields: Hashable, Sendable {
 }
 
 /// `uint16` offsets, after the table's length
+@frozen
 public struct Uint16OffsetsSized: ~Escapable {
     /// The layout that a `Uint16OffsetsSized` is written and read in
     public static let layout = TableLayout(sized: true, offsetType: .uint16)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint16OffsetsSized` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -401,6 +439,7 @@ public struct Uint16OffsetsSizedFields: Hashable, Sendable {
 }
 
 /// `uint16` offsets, after the largest version they hold
+@frozen
 public struct Uint16OffsetsVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 65535
@@ -408,11 +447,13 @@ public struct Uint16OffsetsVersioned: ~Escapable {
     /// The layout that a `Uint16OffsetsVersioned` is written and read in
     public static let layout = TableLayout(versioned: true, offsetType: .uint16)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint16OffsetsVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -427,21 +468,25 @@ public struct Uint16OffsetsVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -482,6 +527,7 @@ public struct Uint16OffsetsVersionedFields: Hashable, Sendable {
 }
 
 /// `uint16` offsets, after the table's length and a version
+@frozen
 public struct Uint16OffsetsSizedVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 1
@@ -489,11 +535,13 @@ public struct Uint16OffsetsSizedVersioned: ~Escapable {
     /// The layout that a `Uint16OffsetsSizedVersioned` is written and read in
     public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint16)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint16OffsetsSizedVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -508,21 +556,25 @@ public struct Uint16OffsetsSizedVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -563,29 +615,35 @@ public struct Uint16OffsetsSizedVersionedFields: Hashable, Sendable {
 }
 
 /// `uint32` offsets, the default, for tables of up to 4 GiB
+@frozen
 public struct Uint32Offsets: ~Escapable {
     /// The layout that a `Uint32Offsets` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint32Offsets` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -622,29 +680,35 @@ public struct Uint32OffsetsFields: Hashable, Sendable {
 }
 
 /// `uint32` offsets, after the table's length
+@frozen
 public struct Uint32OffsetsSized: ~Escapable {
     /// The layout that a `Uint32OffsetsSized` is written and read in
     public static let layout = TableLayout(sized: true)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint32OffsetsSized` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -681,6 +745,7 @@ public struct Uint32OffsetsSizedFields: Hashable, Sendable {
 }
 
 /// `uint32` offsets, after the largest version they hold
+@frozen
 public struct Uint32OffsetsVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 4294967295
@@ -688,11 +753,13 @@ public struct Uint32OffsetsVersioned: ~Escapable {
     /// The layout that a `Uint32OffsetsVersioned` is written and read in
     public static let layout = TableLayout(versioned: true)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint32OffsetsVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -707,21 +774,25 @@ public struct Uint32OffsetsVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }
@@ -762,6 +833,7 @@ public struct Uint32OffsetsVersionedFields: Hashable, Sendable {
 }
 
 /// `uint32` offsets, after the table's length and a version
+@frozen
 public struct Uint32OffsetsSizedVersioned: ~Escapable {
     /// The version of the format, which the header carries and the initializer checks
     public static let formatVersion: UInt32 = 2
@@ -769,11 +841,13 @@ public struct Uint32OffsetsSizedVersioned: ~Escapable {
     /// The layout that a `Uint32OffsetsSizedVersioned` is written and read in
     public static let layout = TableLayout(sized: true, versioned: true)
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Uint32OffsetsSizedVersioned` from `bytes`, which it can't outlive.
     ///
     /// Throws a `DecodeError` if `bytes` are in another format version.
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) throws(DecodeError) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -788,21 +862,25 @@ public struct Uint32OffsetsSizedVersioned: ~Escapable {
     /// application can choose the reader of that version.
     ///
     /// Throws a `DecodeError` if the header doesn't fit in `bytes`.
+    @inlinable
     public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {
         try TableReader(bytes, layout: Self.layout).version
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var id: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(2)) }

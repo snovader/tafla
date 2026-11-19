@@ -9,6 +9,18 @@
 //! declare with the experimental feature `Lifetimes` and `@_lifetime`, so the
 //! target that holds the generated code enables the feature, as the runtime's
 //! does. Code that uses the views needs nothing.
+//!
+//! What reads is `@inlinable`, as the runtime's getters are, and the views'
+//! stored properties are `@usableFromInline`: the package manager's release
+//! build optimizes each module on its own, so that otherwise each getter of
+//! each item would be a call into the generated module. The views and
+//! structs are `@frozen`, so that a module built with library evolution, as a
+//! binary framework is, can still set their stored properties in an
+//! inlinable initializer. That commits them to those properties: a view's
+//! reader of its bytes, and a struct's fields, which the format fixes. What
+//! writes isn't inlinable: the optimizer doesn't inline a `serialize()` into
+//! its caller, which then calls the same code, and nested tables' `add(to:)`
+//! and `write(to:)` are called within the module.
 
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
@@ -163,6 +175,7 @@ impl Generator<'_> {
         let name = &definition.name;
 
         swift_doc(writer, &definition.docs);
+        writer.line("@frozen");
         writer.open(format!("public struct {name}: ~Escapable {{"));
         if let Some(version) = layout.version {
             swift_doc(
@@ -186,6 +199,7 @@ impl Generator<'_> {
             layout_expression(layout)
         ));
         writer.blank();
+        writer.line("@usableFromInline");
         writer.line("let _reader: TableReader");
         writer.blank();
 
@@ -201,6 +215,7 @@ impl Generator<'_> {
                     "Throws a `DecodeError` if `bytes` are in another format version.".to_owned(),
                 ],
             );
+            writer.line("@inlinable");
             writer.line("@_lifetime(copy bytes)");
             writer.open("public init(_ bytes: RawSpan) throws(DecodeError) {");
             writer.line("_reader = TableReader(bytes, layout: Self.layout)");
@@ -222,6 +237,7 @@ impl Generator<'_> {
                     "Throws a `DecodeError` if the header doesn't fit in `bytes`.",
                 ],
             );
+            writer.line("@inlinable");
             writer.open(
                 "public static func version(of bytes: RawSpan) throws(DecodeError) -> UInt32 {",
             );
@@ -235,6 +251,7 @@ impl Generator<'_> {
                     article(name)
                 )],
             );
+            writer.line("@inlinable");
             writer.line("@_lifetime(copy bytes)");
             writer.open("public init(_ bytes: RawSpan) {");
             writer.line("_reader = TableReader(bytes, layout: Self.layout)");
@@ -247,8 +264,11 @@ impl Generator<'_> {
 
     fn table(&self, writer: &mut CodeWriter, definition: &Definition) {
         swift_doc(writer, &definition.docs);
+        writer.line("@frozen");
         writer.open(format!("public struct {}: ~Escapable {{", definition.name));
+        writer.line("@usableFromInline");
         writer.line("let _reader: TableReader");
+        writer.line("@usableFromInline");
         writer.line("let _position: Int");
         writer.blank();
 
@@ -258,6 +278,7 @@ impl Generator<'_> {
                 "Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it",
             ],
         );
+        writer.line("@inlinable");
         writer.line("@_lifetime(copy reader)");
         writer.open("init(reader: TableReader, position: Int) {");
         writer.line("_reader = reader");
@@ -296,6 +317,7 @@ impl Generator<'_> {
             docs.extend(self.getter_docs(field.field_type));
             swift_doc(writer, &docs);
 
+            writer.line("@inlinable");
             writer.open(format!(
                 "public var {}: {value_type} {{",
                 identifier(&field.name)
@@ -657,6 +679,7 @@ impl Generator<'_> {
         let layout = definition.struct_layout();
 
         swift_doc(writer, &definition.docs);
+        writer.line("@frozen");
         writer.open(format!("public struct {name}: Hashable, Sendable {{"));
         swift_doc(writer, &[format!("The byte length of {}", article(name))]);
         writer.line(format!("public static let size = {}", layout.size));
@@ -684,6 +707,7 @@ impl Generator<'_> {
                 "Throws a `DecodeError` if `bytes` are shorter than `size`.".to_owned(),
             ],
         );
+        writer.line("@inlinable");
         writer.open("public init(_ bytes: RawSpan) throws(DecodeError) {");
         writer.line("self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)");
         writer.close("}");
@@ -696,6 +720,7 @@ impl Generator<'_> {
                 article(name)
             )],
         );
+        writer.line("@inlinable");
         writer.open("init(_ bytes: RawSpan, at offset: Int) {");
         let mut offset = 0;
         for field in &definition.fields {
@@ -832,20 +857,26 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
             "A vector of `{name}`s, which reads each item when it's asked for"
         )],
     );
+    writer.line("@frozen");
     writer.open(format!("public struct {name}Vector: ~Escapable {{"));
+    writer.line("@usableFromInline");
     writer.line("let vector: Vector");
     writer.blank();
+    writer.line("@inlinable");
     writer.line("@_lifetime(copy vector)");
     writer.open("init(_ vector: Vector) {");
     writer.line("self.vector = vector");
     writer.close("}");
     writer.blank();
     swift_doc(writer, &["The number of items"]);
+    writer.line("@inlinable");
     writer.line("public var count: Int { vector.count }");
     writer.blank();
+    writer.line("@inlinable");
     writer.line("public var isEmpty: Bool { vector.isEmpty }");
     writer.blank();
     swift_doc(writer, &["The indices of the items, from 0 to `count`"]);
+    writer.line("@inlinable");
     writer.line("public var indices: Swift.Range<Int> { vector.indices }");
     writer.blank();
     swift_doc(
@@ -857,6 +888,7 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
             "Throws a `DecodeError` if the item lies outside the bytes.",
         ],
     );
+    writer.line("@inlinable");
     writer.open(format!("public subscript(index: Int) -> {name} {{"));
     writer.line("@_lifetime(copy self)");
     writer.open("get throws(DecodeError) {");
@@ -880,23 +912,28 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
             "An array of `{name}`s, which reads each struct when it's asked for"
         )],
     );
+    writer.line("@frozen");
     writer.open(format!("public struct {name}Array: ~Escapable {{"));
     swift_doc(writer, &["The structs' bytes, one after another"]);
     writer.line("public let bytes: RawSpan");
     writer.blank();
+    writer.line("@inlinable");
     writer.line("@_lifetime(copy bytes)");
     writer.open("init(_ bytes: RawSpan) {");
     writer.line("self.bytes = bytes");
     writer.close("}");
     writer.blank();
     swift_doc(writer, &["The number of structs"]);
+    writer.line("@inlinable");
     writer.line(format!(
         "public var count: Int {{ bytes.byteCount / {name}.size }}"
     ));
     writer.blank();
+    writer.line("@inlinable");
     writer.line("public var isEmpty: Bool { bytes.isEmpty }");
     writer.blank();
     swift_doc(writer, &["The indices of the structs, from 0 to `count`"]);
+    writer.line("@inlinable");
     writer.line("public var indices: Swift.Range<Int> { 0..<count }");
     writer.blank();
     swift_doc(
@@ -906,6 +943,7 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
             "error, which stops the program, as `Array`'s subscript does.",
         ],
     );
+    writer.line("@inlinable");
     writer.open(format!("public subscript(index: Int) -> {name} {{"));
     writer.line("precondition(index >= 0 && index < count, \"Index out of range\")");
     writer.line(format!("return {name}(bytes, at: index * {name}.size)"));
@@ -920,6 +958,7 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
         writer,
         &["Reads every struct of an array read from a table, into an array of their own"],
     );
+    writer.line("@inlinable");
     writer.open(format!("public init(_ view: borrowing {name}Array) {{"));
     writer.line("self = view.indices.map { view[$0] }");
     writer.close("}");
