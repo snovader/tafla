@@ -570,8 +570,10 @@ that declare the same name, such as `Point`, generate code for a module each.
 The views' initializers, getters and subscripts, and structs' readers, are
 `@inlinable`, as the runtime's getters are, so that a release build inlines a
 read into the module that calls it, rather than calling into the generated
-module for each field. The views and structs are `@frozen`, so that the code
-compiles with library evolution too, as a binary framework's does.
+module for each field. A message's `layout` is a computed property, built
+where it's read rather than stored, so that the inlined getters know its
+offset type. The views and structs are `@frozen`, so that the code compiles
+with library evolution too, as a binary framework's does.
 A message's `<Name>Fields` writes it with `serialize()`, which sizes it with
 the runtime's `TableSizer` and writes it with its `TableWriter`, every field
 in turn and a struct's scalars one after another, without laying out fields

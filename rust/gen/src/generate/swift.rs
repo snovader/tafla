@@ -21,6 +21,13 @@
 //! writes isn't inlinable: the optimizer doesn't inline a `serialize()` into
 //! its caller, which then calls the same code, and nested tables' `add(to:)`
 //! and `write(to:)` are called within the module.
+//!
+//! The code builds each layout where it reads with it, with `TableLayout`'s
+//! small public initializer, which a caller's optimizer inlines, rather than
+//! reading a `static let` such as `TableLayout.default`, which a caller
+//! reaches through an accessor that it can't see into. So a message's
+//! `layout` is a computed property, and the getters inlined into a caller
+//! know its offset type, rather than loading it at each field.
 
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
@@ -30,6 +37,11 @@ use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
 const RUNTIME: &str = "Tafla";
+
+/// The default layout, built where it's read: that of a vector's items,
+/// which the checker keeps to `uint32` offsets, as every nested table, and of
+/// a reader of a struct's bytes alone
+const DEFAULT_LAYOUT: &str = "TableLayout()";
 
 /// swift-format's configuration in `swift/.swift-format`, whose line length
 /// is 120. It keeps a call or a declaration broken before each argument and
@@ -194,8 +206,9 @@ impl Generator<'_> {
                 article(name)
             )],
         );
+        writer.line("@inlinable");
         writer.line(format!(
-            "public static let layout = {}",
+            "public static var layout: TableLayout {{ {} }}",
             layout_expression(layout)
         ));
         writer.blank();
@@ -709,7 +722,9 @@ impl Generator<'_> {
         );
         writer.line("@inlinable");
         writer.open("public init(_ bytes: RawSpan) throws(DecodeError) {");
-        writer.line("self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)");
+        writer.line(format!(
+            "self.init(try TableReader(bytes, layout: {DEFAULT_LAYOUT}).struct(at: 0, size: Self.size), at: 0)"
+        ));
         writer.close("}");
         writer.blank();
 
@@ -894,8 +909,9 @@ fn vector_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.open("get throws(DecodeError) {");
     // In place, from the item's bytes and those after it in its parent's
     writer.line(format!(
-        "try {name}(reader: TableReader(vector.itemInPlace(at: index)), position: 0)"
+        "let reader = try TableReader(vector.itemInPlace(at: index), layout: {DEFAULT_LAYOUT})"
     ));
+    writer.line(format!("return {name}(reader: reader, position: 0)"));
     writer.close("}");
     writer.close("}");
     writer.close("}");
@@ -1012,7 +1028,7 @@ fn layout_expression(layout: Layout) -> String {
     }
 
     if arguments.is_empty() {
-        "TableLayout.default".to_owned()
+        DEFAULT_LAYOUT.to_owned()
     } else {
         format!("TableLayout({})", arguments.join(", "))
     }
@@ -1098,7 +1114,7 @@ mod tests {
         };
         assert_eq!(
             layout_expression(layout(false, None, OffsetType::Uint32)),
-            "TableLayout.default"
+            "TableLayout()"
         );
         assert_eq!(
             layout_expression(layout(true, Some(1), OffsetType::Uint8)),

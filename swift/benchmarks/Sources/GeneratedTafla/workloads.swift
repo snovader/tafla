@@ -6,7 +6,8 @@ import Tafla
 @frozen
 public struct Record: ~Escapable {
     /// The layout that a `Record` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout() }
 
     @usableFromInline
     let _reader: TableReader
@@ -84,7 +85,8 @@ public struct Document: ~Escapable {
     public static let formatVersion: UInt32 = 1
 
     /// The layout that a `Document` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true) }
 
     @usableFromInline
     let _reader: TableReader
@@ -263,7 +265,8 @@ public struct ColumnsFields: Hashable, Sendable {
 @frozen
 public struct ItemList: ~Escapable {
     /// The layout that an `ItemList` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout() }
 
     @usableFromInline
     let _reader: TableReader
@@ -415,7 +418,8 @@ public struct ItemVector: ~Escapable {
     public subscript(index: Int) -> Item {
         @_lifetime(copy self)
         get throws(DecodeError) {
-            try Item(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
+            let reader = try TableReader(vector.itemInPlace(at: index), layout: TableLayout())
+            return Item(reader: reader, position: 0)
         }
     }
 }
@@ -483,7 +487,8 @@ public struct PairFields: Hashable, Sendable {
 @frozen
 public struct Triples: ~Escapable {
     /// The layout that a `Triples` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout() }
 
     @usableFromInline
     let _reader: TableReader
@@ -555,7 +560,7 @@ public struct Triple: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Triple` at `offset` in `bytes`, which hold its scalars there
@@ -663,7 +668,7 @@ public struct Sample: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Sample` at `offset` in `bytes`, which hold its scalars there

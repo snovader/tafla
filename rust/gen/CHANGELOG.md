@@ -299,6 +299,14 @@ first commits, for code built from its source before the release.
   every struct of its array of 100 in 61 ns rather than 181 ns, as fast as
   `TableReader`'s getters by hand. The views and structs are `@frozen`, so
   that the code still compiles with library evolution.
+- Generated Swift builds each layout where it reads with it, so that the
+  getters inlined into a caller know its offset type: a message's `layout` is
+  a computed property rather than a `static let`, and a vector's items and a
+  struct's bytes are read with `TableLayout()` rather than
+  `TableLayout.default`, which a caller reads through an accessor at each
+  item. The comparison suite then summed every item of its vector of 100
+  nested tables in 0.35 µs rather than 1.22 µs, and read the fixed-size
+  record in 2.3 ns rather than 2.9 ns.
 
 ### Fixed
 
