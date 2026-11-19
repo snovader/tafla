@@ -412,11 +412,12 @@ func (b *TableBuilder) SetTableFunc(fields int, fill func(table Item) error) err
 // aren't padded, as SetVector doesn't pad them.
 //
 // It fails with TooLong before recording any item if the vector's count and
-// the ends of its items alone make the table too long, or after recording
-// them if the items do. It fails otherwise as SetTableFunc does, for each
-// item, and returns what fill returns, leaving the builder as it was in each
-// case. It panics if count or fields is negative. If fill panics, the
-// builder is left recording the item, and mustn't be used again.
+// the ends of its items alone make the table too long, with the length that
+// they make it, or after recording them if the items do. It fails otherwise
+// as SetTableFunc does, for each item, and returns what fill returns, leaving
+// the builder as it was in each case. It panics if count or fields is
+// negative. If fill panics, the builder is left recording the item, and
+// mustn't be used again.
 func (b *TableBuilder) SetVectorFunc(count, fields int, fill func(index int, item Item) error) error {
 	if count < 0 {
 		panic("tafla: a vector can't hold " + strconv.Itoa(count) + " items")
