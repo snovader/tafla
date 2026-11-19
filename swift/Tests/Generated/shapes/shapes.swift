@@ -6,7 +6,8 @@ import Tafla
 @frozen
 public struct Point: ~Escapable {
     /// The layout that a `Point` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -84,7 +85,8 @@ public struct Document: ~Escapable {
     public static let formatVersion: UInt32 = 1
 
     /// The layout that a `Document` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true) }
 
     @usableFromInline
     let _reader: TableReader
@@ -266,7 +268,8 @@ public struct ColumnsFields: Hashable, Sendable {
 @frozen
 public struct ItemList: ~Escapable {
     /// The layout that an `ItemList` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader

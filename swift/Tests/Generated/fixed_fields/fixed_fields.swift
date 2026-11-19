@@ -413,7 +413,8 @@ public struct FrameFields: Hashable, Sendable {
 @frozen
 public struct Tiny: ~Escapable {
     /// The layout that a `Tiny` is written and read in
-    public static let layout = TableLayout(sized: true, offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -471,7 +472,8 @@ public struct Tagged: ~Escapable {
     public static let formatVersion: UInt32 = 3
 
     /// The layout that a `Tagged` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -555,7 +557,8 @@ public struct TaggedFields: Hashable, Sendable {
 @frozen
 public struct Header: ~Escapable {
     /// The layout that a `Header` is written and read in
-    public static let layout = TableLayout(offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -624,7 +627,8 @@ public struct Pixel: ~Escapable {
     public static let formatVersion: UInt32 = 2
 
     /// The layout that a `Pixel` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -698,7 +702,8 @@ public struct PixelFields: Hashable, Sendable {
 @frozen
 public struct Strip: ~Escapable {
     /// The layout that a `Strip` is written and read in
-    public static let layout = TableLayout(offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -770,7 +775,8 @@ public struct Box: ~Escapable {
     public static let formatVersion: UInt32 = 1
 
     /// The layout that a `Box` is written and read in
-    public static let layout = TableLayout(versioned: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(versioned: true) }
 
     @usableFromInline
     let _reader: TableReader
@@ -865,7 +871,8 @@ public struct BoxFields: Hashable, Sendable {
 @frozen
 public struct Track: ~Escapable {
     /// The layout that a `Track` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -960,7 +967,8 @@ public struct TrackFields: Hashable, Sendable {
 @frozen
 public struct Label: ~Escapable {
     /// The layout that a `Label` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -1004,7 +1012,8 @@ public struct LabelFields: Hashable, Sendable {
 @frozen
 public struct Span: ~Escapable {
     /// The layout that a `Span` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -1106,7 +1115,8 @@ public struct SpanFields: Hashable, Sendable {
 @frozen
 public struct Overflow: ~Escapable {
     /// The layout that an `Overflow` is written and read in
-    public static let layout = TableLayout(offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader

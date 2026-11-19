@@ -6,7 +6,8 @@ import Tafla
 @frozen
 public struct Uint8Offsets: ~Escapable {
     /// The layout that a `Uint8Offsets` is written and read in
-    public static let layout = TableLayout(offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -71,7 +72,8 @@ public struct Uint8OffsetsFields: Hashable, Sendable {
 @frozen
 public struct Uint8OffsetsSized: ~Escapable {
     /// The layout that a `Uint8OffsetsSized` is written and read in
-    public static let layout = TableLayout(sized: true, offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -139,7 +141,8 @@ public struct Uint8OffsetsVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 255
 
     /// The layout that a `Uint8OffsetsVersioned` is written and read in
-    public static let layout = TableLayout(versioned: true, offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(versioned: true, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -227,7 +230,8 @@ public struct Uint8OffsetsSizedVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 0
 
     /// The layout that a `Uint8OffsetsSizedVersioned` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint8)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -312,7 +316,8 @@ public struct Uint8OffsetsSizedVersionedFields: Hashable, Sendable {
 @frozen
 public struct Uint16Offsets: ~Escapable {
     /// The layout that a `Uint16Offsets` is written and read in
-    public static let layout = TableLayout(offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -377,7 +382,8 @@ public struct Uint16OffsetsFields: Hashable, Sendable {
 @frozen
 public struct Uint16OffsetsSized: ~Escapable {
     /// The layout that a `Uint16OffsetsSized` is written and read in
-    public static let layout = TableLayout(sized: true, offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -445,7 +451,8 @@ public struct Uint16OffsetsVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 65535
 
     /// The layout that a `Uint16OffsetsVersioned` is written and read in
-    public static let layout = TableLayout(versioned: true, offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(versioned: true, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -533,7 +540,8 @@ public struct Uint16OffsetsSizedVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 1
 
     /// The layout that a `Uint16OffsetsSizedVersioned` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true, offsetType: .uint16)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -618,7 +626,8 @@ public struct Uint16OffsetsSizedVersionedFields: Hashable, Sendable {
 @frozen
 public struct Uint32Offsets: ~Escapable {
     /// The layout that a `Uint32Offsets` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -683,7 +692,8 @@ public struct Uint32OffsetsFields: Hashable, Sendable {
 @frozen
 public struct Uint32OffsetsSized: ~Escapable {
     /// The layout that a `Uint32OffsetsSized` is written and read in
-    public static let layout = TableLayout(sized: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true) }
 
     @usableFromInline
     let _reader: TableReader
@@ -751,7 +761,8 @@ public struct Uint32OffsetsVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 4294967295
 
     /// The layout that a `Uint32OffsetsVersioned` is written and read in
-    public static let layout = TableLayout(versioned: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(versioned: true) }
 
     @usableFromInline
     let _reader: TableReader
@@ -839,7 +850,8 @@ public struct Uint32OffsetsSizedVersioned: ~Escapable {
     public static let formatVersion: UInt32 = 2
 
     /// The layout that a `Uint32OffsetsSizedVersioned` is written and read in
-    public static let layout = TableLayout(sized: true, versioned: true)
+    @inlinable
+    public static var layout: TableLayout { TableLayout(sized: true, versioned: true) }
 
     @usableFromInline
     let _reader: TableReader

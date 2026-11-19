@@ -6,7 +6,8 @@ import Tafla
 @frozen
 public struct Scalars: ~Escapable {
     /// The layout that a `Scalars` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -162,7 +163,8 @@ public struct ScalarsFields: Hashable, Sendable {
 @frozen
 public struct Arrays: ~Escapable {
     /// The layout that an `Arrays` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -317,7 +319,8 @@ public struct ArraysFields: Hashable, Sendable {
 @frozen
 public struct Nested: ~Escapable {
     /// The layout that a `Nested` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -748,7 +751,8 @@ public struct KeywordsFields: Hashable, Sendable {
 @frozen
 public struct Reserved: ~Escapable {
     /// The layout that a `Reserved` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -799,7 +803,8 @@ public struct ReservedFields: Hashable, Sendable {
 @frozen
 public struct Structs: ~Escapable {
     /// The layout that a `Structs` is written and read in
-    public static let layout = TableLayout.default
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader

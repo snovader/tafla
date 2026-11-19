@@ -21,6 +21,13 @@
 //! writes isn't inlinable: the optimizer doesn't inline a `serialize()` into
 //! its caller, which then calls the same code, and nested tables' `add(to:)`
 //! and `write(to:)` are called within the module.
+//!
+//! A message's `layout` is an inlinable computed property, which builds the
+//! layout in the code that reads with it, as the runtime's
+//! `TableLayout.default` is. A caller reaches a `static let` of another
+//! module through an accessor that it can't see into, and the getters inlined
+//! into it would then load the layout's offset type from memory and switch on
+//! it at each field, rather than know it.
 
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
@@ -194,8 +201,9 @@ impl Generator<'_> {
                 article(name)
             )],
         );
+        writer.line("@inlinable");
         writer.line(format!(
-            "public static let layout = {}",
+            "public static var layout: TableLayout {{ {} }}",
             layout_expression(layout)
         ));
         writer.blank();
