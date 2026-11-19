@@ -24,17 +24,6 @@ export default defineConfig({
     },
     overrides: [
         {
-            // tafla-gen names a module after its schema, in camelCase, as
-            // `allTypes.ts` of `all_types.tafla`
-            files: [
-                'core/test/generated/*/javascript/*.js',
-                'core/test/generated/*/typescript/*.ts'
-            ],
-            rules: {
-                'unicorn/filename-case': 'off'
-            }
-        },
-        {
             // Written by hand in the shape that flatc generates
             files: ['benchmarks/comparison/generated/flatbuffers.ts'],
             rules: {

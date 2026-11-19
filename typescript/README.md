@@ -33,8 +33,8 @@ and
 which need Node 26 to load oxfmt's and oxlint's. `oxfmt.config.ts` adds the
 paths that oxfmt ignores and the name `tafla`, which sorts after the other
 packages. `oxlint.config.ts` adds the rules that tafla turns off. Files are
-named in kebab-case, as the shared rule checks, except the modules that
-tafla-gen generates, which it names in camelCase. `tsconfig.base.json`,
+named in kebab-case, as the shared rule checks, and as tafla-gen names the
+modules that it generates. `tsconfig.base.json`,
 `tsconfig.node.json` and `tsconfig.isomorphic.json` extend the presets of
 the same names, with the composite preset for `tsc -b`, and add the
 `tafla-source` condition; every project here extends one of them.
