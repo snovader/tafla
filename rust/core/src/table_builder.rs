@@ -388,10 +388,11 @@ impl<'a> TableBuilder<'a> {
     ///
     /// [`BuildError::TooManyFields`] if this table holds all its fields
     /// already, or [`BuildError::TooLong`] if the vector's count and its
-    /// items' ends make it too long, before any item is recorded, and
-    /// otherwise the errors of [`TableBuilder::set_table_with()`] for each
-    /// item, or [`BuildError::TooLong`] if the items make the table too long.
-    /// Each leaves the builder as it was, as a panic in `fill` does.
+    /// items' ends make it too long, before any item is recorded, with the
+    /// length that they make it, and otherwise the errors of
+    /// [`TableBuilder::set_table_with()`] for each item, or
+    /// [`BuildError::TooLong`] if the items make the table too long. Each
+    /// leaves the builder as it was, as a panic in `fill` does.
     #[allow(clippy::cast_possible_truncation)]
     pub fn set_vector_with<E, F>(
         &mut self,

@@ -146,7 +146,10 @@ proptest! {
     /// Tables nested from builders and recorded in place, with
     /// `set_table_with()` and `set_vector_with()`, write the bytes that their
     /// builders write, and fail as they fail, for tables of any offset type
-    /// and of short ones, whose limits the fields reach. Nesting every table
+    /// and of short ones, whose limits the fields reach. A vector whose
+    /// count and items' ends alone make its table too long fails before its
+    /// items, where its builders fail for them or count them too. Nesting
+    /// every table
     /// as one that's written in place records most of them in place, and
     /// the tables as they're generated mix them with tables from bytes and
     /// builders of other layouts.
@@ -157,8 +160,41 @@ proptest! {
     ) {
         let table = if nested_in_place { table.nested_in_place() } else { table };
 
-        prop_assert_eq!(table.to_bytes_in_place(), table.to_bytes());
+        let in_place = table.to_bytes_in_place();
+        let from_builders = table.to_bytes();
+
+        if !fails_before_its_items(&in_place, &from_builders) {
+            prop_assert_eq!(in_place, from_builders);
+        }
     }
+}
+
+/// Whether a table recorded in place failed for a vector whose count and
+/// items' ends alone make its table too long, which fails before its items
+/// are recorded: with that length, where its builders failed for the vector
+/// with its items too, which is longer, or for an item of it first
+fn fails_before_its_items(
+    in_place: &Result<Vec<u8>, BuildError>,
+    from_builders: &Result<Vec<u8>, BuildError>,
+) -> bool {
+    let (
+        Err(BuildError::TooLong {
+            index,
+            length,
+            offset_type,
+        }),
+        Err(BuildError::TooLong {
+            index: builder_index,
+            length: builder_length,
+            offset_type: builder_offset_type,
+        }),
+    ) = (in_place, from_builders)
+    else {
+        return false;
+    };
+
+    let same_field = index == builder_index && offset_type == builder_offset_type;
+    !same_field || length < builder_length
 }
 
 /// A parent of `before` bytes in a `uint8[]`, the table at alignment 8, and a
@@ -639,6 +675,38 @@ fn test_reject_vector_count_too_long_before_recording_items() {
         Err(BuildError::TooLong {
             index: 0,
             length: 1 + 301,
+            offset_type: OffsetType::Uint8
+        })
+    );
+}
+
+/// A vector recorded in place whose count and items' ends alone make its
+/// table too long reports that length, since its items aren't recorded,
+/// where a vector of their builders reports the length with its items
+#[test]
+fn test_vector_too_long_before_its_items_reports_its_length_without_them() {
+    let layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
+    let string = "a".repeat(249);
+    let mut builder = TableBuilder::new(2, layout).unwrap();
+    builder.set_str(string.as_str()).unwrap();
+    let mut item = TableBuilder::new(1, layout).unwrap();
+    item.set_u8(1).unwrap();
+
+    // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
+    // and of 3 items of an offset and a byte
+    assert_eq!(
+        builder.set_vector_with(3, 1, |_, item| item.set_u8(1)),
+        Err(BuildError::TooLong {
+            index: 1,
+            length: 256,
+            offset_type: OffsetType::Uint8
+        })
+    );
+    assert_eq!(
+        builder.set_vector([&item, &item, &item]),
+        Err(BuildError::TooLong {
+            index: 1,
+            length: 262,
             offset_type: OffsetType::Uint8
         })
     );

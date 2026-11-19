@@ -41,7 +41,9 @@ impl Table {
     /// from a builder that it writes in place with `set_table_with()`, and
     /// each vector of them, when its items hold as many fields, with
     /// `set_vector_with()`, rather than from their builders. Its bytes and
-    /// errors are `to_bytes()`'s.
+    /// errors are `to_bytes()`'s, but for a vector whose count and items'
+    /// ends alone make its table too long, which fails before its items are
+    /// recorded.
     pub fn to_bytes_in_place(&self) -> Result<Vec<u8>, BuildError> {
         let in_place = Some(self.layout.offset_type);
 
