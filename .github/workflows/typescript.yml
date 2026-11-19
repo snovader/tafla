@@ -47,7 +47,7 @@ jobs:
               - ".github/actions/prepare-node-environment/action.yml"
               - ".github/workflows/typescript.yml"
               # oxfmt's root configuration, which typescript/'s is nested in
-              - ".oxfmtrc.jsonc"
+              - "oxfmt.config.ts"
               - "conformance/**"
               - "typescript/**"
 
