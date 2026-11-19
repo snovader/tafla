@@ -1,6 +1,8 @@
+import oxfmt from '@snovader/oxc-config/oxfmt';
 import { defineConfig } from 'oxfmt';
 
 export default defineConfig({
+    ...oxfmt,
     ignorePatterns: [
         '.cache',
         'core/.bundle',
@@ -11,20 +13,12 @@ export default defineConfig({
         // Prose wrapped by hand, as in the other languages' READMEs
         '**/*.md'
     ],
-    endOfLine: 'lf',
-    tabWidth: 4,
-    printWidth: 80,
-    singleQuote: true,
-    quoteProps: 'as-needed',
-    trailingComma: 'none',
-    semi: true,
-    arrowParens: 'avoid',
-    bracketSpacing: true,
-    bracketSameLine: false,
-    objectWrap: 'preserve',
     // Node's modules, hypotes, other packages, this project's package and its
-    // `#` imports, then relative paths, nearest last
+    // `#` imports, then relative paths, nearest last. The shared order sorts
+    // hypotes among the other packages, and `#` imports after the package's
+    // name.
     sortImports: {
+        ...oxfmt.sortImports,
         customGroups: [
             {
                 groupName: 'hypotes',
@@ -40,17 +34,6 @@ export default defineConfig({
             ['sibling', 'index'],
             'unknown'
         ],
-        internalPattern: ['tafla'],
-        newlinesBetween: false
-    },
-    overrides: [
-        {
-            files: ['**/*.test.ts'],
-            options: { printWidth: 100 }
-        },
-        {
-            files: ['**/tsconfig.json', '**/tsconfig.*.json'],
-            options: { printWidth: 60 }
-        }
-    ]
+        internalPattern: ['tafla']
+    }
 });

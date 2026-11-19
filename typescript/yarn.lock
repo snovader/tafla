@@ -681,6 +681,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@snovader/oxc-config@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "@snovader/oxc-config@npm:0.1.0"
+  peerDependencies:
+    hypotes: ^0.1.0
+    oxfmt: ^0.79.0
+    oxlint: ^1.94.0
+    oxlint-tsgolint: ^7.0.2007
+  peerDependenciesMeta:
+    hypotes:
+      optional: true
+    oxfmt:
+      optional: true
+    oxlint:
+      optional: true
+    oxlint-tsgolint:
+      optional: true
+  checksum: 10c0/23d089ca030ff00249dd25eca2bade7ca6d687c64b5c29a6ca3b32b56422f0e30b72452d25303a76690f62e06a453ea0e953ae9c890b037b9bf7e42db0a1fe2a
+  languageName: node
+  linkType: hard
+
+"@snovader/tsconfig@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "@snovader/tsconfig@npm:0.1.0"
+  checksum: 10c0/794544ad5ded4f82cc81000cc0cf50c2284627a2670ab47e5bc9e7fc503845af262f77e996fa3fc67ec209382bc3bd0c42394a2ae790658d65b71414b2cdeba8
+  languageName: node
+  linkType: hard
+
 "@standard-schema/spec@npm:^1.1.0":
   version: 1.1.0
   resolution: "@standard-schema/spec@npm:1.1.0"
@@ -1514,6 +1542,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "tafla-typescript@workspace:."
   dependencies:
+    "@snovader/oxc-config": "npm:^0.1.0"
+    "@snovader/tsconfig": "npm:^0.1.0"
     "@types/node": "npm:^26.6.6"
     hypotes: "npm:^0.1.0"
     oxfmt: "npm:^0.79.0"

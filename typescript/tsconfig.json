@@ -3,11 +3,7 @@
     "compilerOptions": {
         "outDir": ".cache/typescript/configs"
     },
-    "include": [
-        "*.ts",
-        "core/rolldown.config.ts",
-        "lint/*.ts"
-    ],
+    "include": ["*.ts", "core/rolldown.config.ts"],
     "references": [
         { "path": "./benchmarks" },
         { "path": "./core" },

@@ -15,11 +15,13 @@
     "lint:check": "oxlint",
     "lint:write": "oxlint --fix",
     "package:check": "yarn workspace tafla build && node core/test/dist.ts",
-    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(bigEndian).test.ts' 'lint/*.test.ts' && node --conditions=tafla-source --import hypotes/register --test core/test/bigEndian.test.ts",
-    "test:watch": "node --conditions=tafla-source --import hypotes/register --test --watch 'core/test/**/*.test.ts' 'lint/*.test.ts'",
+    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(bigEndian).test.ts' && node --conditions=tafla-source --import hypotes/register --test core/test/bigEndian.test.ts",
+    "test:watch": "node --conditions=tafla-source --import hypotes/register --test --watch 'core/test/**/*.test.ts'",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
+    "@snovader/oxc-config": "^0.1.0",
+    "@snovader/tsconfig": "^0.1.0",
     "@types/node": "^26.6.6",
     "hypotes": "^0.1.0",
     "oxfmt": "^0.79.0",

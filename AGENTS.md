@@ -205,6 +205,11 @@ intent, not a requirement to preserve every detail.
   quotes, semicolons, no trailing commas, and contextual line widths.
   Intentional whitespace and readable structure still require judgment after
   automatic formatting.
+- TypeScript's configurations extend the shared ones of `@snovader/tsconfig`
+  and `@snovader/oxc-config`, and keep only what is tafla's own: the paths
+  that the tools ignore, the order of imports, the rules that tafla turns
+  off, each with its comment, and the `tafla-source` condition. Change a
+  shared setting in those packages, rather than overriding it here.
 
 ## Repository commands
 

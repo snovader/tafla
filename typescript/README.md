@@ -18,6 +18,18 @@ yarn test
 ```
 
 `yarn format:write` and `yarn lint:write` fix what they can.
+
+The configurations of oxfmt, oxlint and TypeScript extend the shared ones of
+[`@snovader/oxc-config`](https://github.com/snovader/tooling/tree/main/packages/oxc-config)
+and
+[`@snovader/tsconfig`](https://github.com/snovader/tooling/tree/main/packages/tsconfig),
+which need Node 26 to load oxfmt's and oxlint's. `oxfmt.config.ts` keeps
+tafla's order of imports, with hypotes before the other packages, and
+`oxlint.config.ts` the rules that tafla turns off, among them the shared
+rule that names files in kebab-case. `tsconfig.base.json`,
+`tsconfig.node.json` and `tsconfig.isomorphic.json` extend the presets of
+the same names, with the composite preset for `tsc -b`, and add the
+`tafla-source` condition; every project here extends one of them.
 `TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
 buffers of more than 4 GiB, which are skipped by default. `yarn test:watch`
 runs the tests again as their files and the package's source change.
