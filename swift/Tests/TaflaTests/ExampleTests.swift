@@ -2,7 +2,8 @@ import Foundation
 import Tafla
 import Testing
 
-// The example of README.md, which writes a table and reads it back
+// The examples of README.md, which write a table and read it back, and record
+// nested tables in place
 
 @Suite("Example")
 struct ExampleTests {
@@ -56,5 +57,41 @@ struct ExampleTests {
             let reader = TableReader(bytes.span.bytes, layout: layout)
             #expect(try reader.string(at: reader.rootOffset(1)) == "Europe/Stockholm")
         }
+    }
+
+    // The example's table, with its nested table recorded in place, is the
+    // same table
+    @Test func recordsTheNestedTableInPlace() throws {
+        var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+        try builder.setFloat64(59.3293)
+        try builder.setString("Europe/Stockholm")
+        try builder.setTable(fields: 2) { series throws(BuildError) in
+            try series.setUInt32Array([0, 86_400])
+            try series.setFloat32Array([21.75, 18.5])
+        }
+
+        #expect(try builder.bytes() == write())
+    }
+
+    @Test func recordsAVectorInPlace() throws {
+        let readings: [(time: UInt32, value: Float)] = [(0, 21.75), (86_400, 18.5)]
+
+        var list = try TableBuilder(fields: 1)
+        try list.setVector(count: readings.count, fields: 2) { index, item throws(BuildError) in
+            try item.setUInt32(readings[index].time)
+            try item.setFloat32(readings[index].value)
+        }
+
+        var items: [NestedTable] = []
+        for reading in readings {
+            var item = try TableBuilder(fields: 2)
+            try item.setUInt32(reading.time)
+            try item.setFloat32(reading.value)
+            items.append(.builder(item))
+        }
+        var fromBuilders = try TableBuilder(fields: 1)
+        try fromBuilders.setVector(items)
+
+        #expect(try list.bytes() == fromBuilders.bytes())
     }
 }

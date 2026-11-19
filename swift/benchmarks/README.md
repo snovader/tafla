@@ -96,10 +96,12 @@ Go's msgpack packs them through reflection.
 Each library is used as its documentation shows, and as the other
 comparisons use their counterparts:
 
-- **tafla** writes with `TableBuilder`, which writes nested builders, given
-  to `setTable(.builder(_:))` and `setVector(_:)`, straight into their
-  parent's bytes, and each array in bulk, into a table of its exact size.
-  Each builder records its fields in an array of its own until `bytes()`
+- **tafla** writes with `TableBuilder`, recording the document's columns
+  and the vector's items, with their pairs, in place among their parent's
+  fields, with `setTable(fields:_:)` and `setVector(count:fields:_:)`, as
+  Go's `SetTableFunc()` and C#'s `SetTable(fields, fill)` are given closures,
+  and each array in bulk, into a table of its exact size. A builder records
+  its first four fields within itself, and more in an array, until `bytes()`
   writes them. Readers check the document's version, and copy columns out of
   their `ArrayView`s with `Array(_:)`. The array of structs is written with
   `storeBytes(of:toByteOffset:as:)` into an array, which the builder keeps

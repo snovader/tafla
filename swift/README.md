@@ -153,6 +153,49 @@ A builder records up to four fields within itself, and a builder nested with
 table, nested or not, allocates nothing until it's written. A table of more
 fields keeps them in an array, which a parent shares rather than copies.
 
+## Recording nested tables in place
+
+`setTable(fields:_:)` records a nested table straight among its parent's
+fields, rather than from a builder of its own that its parent then copies,
+and `setVector(count:fields:_:)` records each item of a vector so. The closure
+sets the table's fields, in order, on the `TableBuilder.Item` that it's given,
+whose setters are the builder's, and can record the tables nested in it in
+place too. The bytes are those that nesting builders of the same fields
+writes, so the example's table can be written so:
+
+```swift
+var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+try builder.setFloat64(59.3293)
+try builder.setString("Europe/Stockholm")
+try builder.setTable(fields: 2) { series throws(BuildError) in
+    try series.setUInt32Array([0, 86_400])
+    try series.setFloat32Array([21.75, 18.5])
+}
+```
+
+The closure throws a `BuildError`, as the item's setters do, and says so,
+since Swift infers that a closure that throws throws `any Error`. A vector's
+closure is given each item's index:
+
+```swift
+let readings: [(time: UInt32, value: Float)] = [(0, 21.75), (86_400, 18.5)]
+
+var list = try TableBuilder(fields: 1)
+try list.setVector(count: readings.count, fields: 2) { index, item throws(BuildError) in
+    try item.setUInt32(readings[index].time)
+    try item.setFloat32(readings[index].value)
+}
+```
+
+The item counts the table's own fields and length, as a builder of it would,
+so its setters throw as that builder's would. A table recorded in place has no
+header and its parent's offset type, and is padded as `setTable(_:alignment:)`
+pads a builder, to the largest alignment of its arrays and nested tables. A
+vector's items aren't padded. An item can't be copied, so it can't outlive its
+closure, and Swift's exclusive access to the builder keeps the closure from
+using the builder itself. Whatever the closure throws is passed on, and the
+builder is left as it was, as it is when the errors below are thrown.
+
 ## Errors and preconditions
 
 Each API throws its own error, with typed throws, so a caller catches a
@@ -177,16 +220,20 @@ Each API throws its own error, with typed throws, so a caller catches a
   and `tooLong` for one that would make the table too long for its offset
   type, or for an `Int`, and `setStructArray()` throws `notWholeStructs` for
   bytes that aren't a whole number of structs. `bytes()`, and nesting a
-  builder, throw `incomplete` while fields are left to set. A version that
+  builder, throw `incomplete` while fields are left to set, as recording a
+  table in place does when its closure leaves them unset. A version that
   doesn't fit, or a header too long for its offset type, fails the
-  initializer.
+  initializer, as a table recorded in place whose offsets alone are too long
+  fails its setter. A vector recorded in place whose count and the ends of
+  its items alone make its table too long throws `tooLong` before any item
+  is recorded.
 
 A precondition stops the program only for a mistake of the code that calls the
 runtime, which no bytes can cause, as `Array` stops it for an index out of
 range: an index past an `ArrayView`'s or a `Vector`'s count, or negative; a
 negative field index or struct size; `version` of a layout without one; a
-negative number of fields; and a versioned layout without a version, or a
-version for a layout without one.
+negative number of fields, or of a vector's items recorded in place; and a
+versioned layout without a version, or a version for a layout without one.
 
 ## Writing without a builder
 

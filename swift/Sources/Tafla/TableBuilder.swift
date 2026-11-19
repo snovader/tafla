@@ -19,6 +19,9 @@
 /// in it with ``setTable(_:alignment:)`` records its fields among them, so
 /// that a small table, nested or not, allocates nothing until it's written.
 /// More fields go in an array, which a parent shares rather than copies.
+/// ``setTable(fields:_:)`` and ``setVector(count:fields:_:)`` record a
+/// nested table, or each item of a vector, in place, without a builder of
+/// its own.
 ///
 /// A setter throws a ``BuildError``, and leaves the builder as it was, when
 /// the table already holds all its fields or the field would make it too long
@@ -298,27 +301,157 @@ public struct TableBuilder: Sendable {
         try add(.vector(items))
     }
 
+    /// Records a table of `fields` fields, which mustn't be negative, nested
+    /// in this one, in place: `fill` sets its fields, in order, on the
+    /// ``Item`` that it's given, and each is recorded straight among this
+    /// builder's fields, rather than by a builder of the table's own. The
+    /// table has no header and this table's offset type, and is padded as
+    /// ``setTable(_:alignment:)`` pads a builder, to the largest alignment of
+    /// its arrays and nested tables, so the bytes are those that nesting a
+    /// builder of the same fields writes. The item's setters count the
+    /// table's own fields and length, as that builder's would, and a table
+    /// nested in it can be recorded in place too.
+    ///
+    /// ```swift
+    /// var builder = try TableBuilder(fields: 2)
+    /// try builder.setFloat64(59.3293)
+    /// try builder.setTable(fields: 2) { series throws(BuildError) in
+    ///     try series.setUInt32Array([0, 86_400])
+    ///     try series.setFloat32Array([21.75, 18.5])
+    /// }
+    /// ```
+    ///
+    /// `fill` throws a ``BuildError``, as the item's setters do, and a closure
+    /// that throws says so, since Swift infers that it throws `any Error`.
+    ///
+    /// Throws ``BuildError/tooManyFields(fields:)`` if this table holds all
+    /// its fields already, ``BuildError/headerTooLong(fields:offsetType:)``
+    /// if the nested table's offsets alone are too long for the offset type,
+    /// the error of an item's setter, which `fill` passes on,
+    /// ``BuildError/incomplete(set:fields:)`` if `fill` leaves fields of the
+    /// nested table unset, or ``BuildError/tooLong(index:length:offsetType:)``
+    /// if the nested table makes this one too long. Whatever is thrown, the
+    /// builder is left as it was.
+    public mutating func setTable(fields: Int, _ fill: (inout Item) throws(BuildError) -> Void) throws(BuildError) {
+        precondition(fields >= 0, "A table can't hold \(fields) fields")
+        try checkRoom()
+        let table = try nestedHeader(fields: fields)
+
+        let parent = counters
+        let start = self.fields.count
+        self.fields.append(.unset, fieldCount: Int(header.fieldCount))
+
+        do {
+            try record(table, fill)
+
+            let field = Field.table(header, alignment: alignment)
+            counters = parent
+            try add(field, at: start)
+        } catch {
+            rollBack(to: start, parent: parent)
+            throw error
+        }
+    }
+
+    /// Records a vector of `count` tables of `fields` fields each in place,
+    /// neither of which may be negative, as ``setTable(fields:_:)`` records
+    /// one: `fill` sets the fields of each item, in order, on the ``Item``
+    /// that it's given with the item's index. The vector's bytes are those
+    /// that ``setVector(_:)`` writes from builders of the items, which aren't
+    /// padded.
+    ///
+    /// Throws ``BuildError/tooLong(index:length:offsetType:)`` before
+    /// recording any item if the vector's count and the ends of its items
+    /// alone make this table too long, or once its items are recorded if
+    /// they do, and otherwise as ``setTable(fields:_:)`` throws, for each
+    /// item. Whatever is thrown, the builder is left as it was.
+    public mutating func setVector(
+        count: Int,
+        fields: Int,
+        _ fill: (Int, inout Item) throws(BuildError) -> Void
+    ) throws(BuildError) {
+        precondition(count >= 0, "A vector can't hold \(count) items")
+        precondition(fields >= 0, "A table can't hold \(fields) fields")
+        try checkRoom()
+
+        // The count and the ends of the items, which fail before any item is
+        // recorded, and only an item for its header, as its builder would
+        var length = saturating(UInt64(layout.offsetSize), plus: Tafla.length(of: count, size: layout.offsetSize))
+        _ = try checked(saturating(UInt64(header.length), plus: length))
+        let itemHeader = try nestedHeader(fields: count > 0 ? fields : 0)
+
+        let parent = counters
+        let start = self.fields.count
+        self.fields.append(.unset, fieldCount: Int(header.fieldCount))
+
+        do {
+            for index in 0..<count {
+                let itemStart = self.fields.count
+                self.fields.append(.unset, fieldCount: Int(header.fieldCount))
+                try record(itemHeader) { item throws(BuildError) in try fill(index, &item) }
+
+                self.fields.replace(at: itemStart, with: .table(header, alignment: .one))
+                length = saturating(length, plus: UInt64(header.length))
+                if index == 0 {
+                    reserveItems(count - 1, records: self.fields.count - itemStart, length: parent.header.length)
+                }
+            }
+
+            counters = parent
+            try add(.vectorInPlace(count: count, length: length), at: start)
+        } catch {
+            rollBack(to: start, parent: parent)
+            throw error
+        }
+    }
+
     /// Records a field after the padding that it needs. Checking the table's
     /// length here, rather than when writing it, reports a field too long for
     /// the layout from its own setter and leaves the builder as it was.
-    /// Every offset, count, length and item end is at most the table's
-    /// length, so that's the one value to check.
     @inline(__always)
     mutating func add(_ field: consuming Field) throws(BuildError) {
         try checkRoom()
+        let length = try length(after: field)
 
-        let width = UInt64(layout.offsetSize)
-        let start = UInt64(header.length) + field.padding(at: UInt64(header.length), width: width)
-        let (length, overflow) = start.addingReportingOverflow(field.byteLength(width: width))
-
-        guard !overflow, length <= UInt64(layout.offsetType.maxValue), length <= UInt64(Int.max) else {
-            throw .tooLong(index: fieldsSet, length: overflow ? .max : length, offsetType: layout.offsetType)
-        }
-
-        header.length = UInt32(length)
+        header.length = length
         alignment = max(alignment, field.alignment)
         fields.append(field, fieldCount: Int(header.fieldCount))
         fieldsSet += 1
+    }
+
+    /// Records a table, or vector of tables, recorded in place, in the field
+    /// at `start` that it held while its fields were recorded after it, as
+    /// ``add(_:)`` records a field
+    mutating func add(_ field: consuming Field, at start: Int) throws(BuildError) {
+        let length = try length(after: field)
+
+        header.length = length
+        alignment = max(alignment, field.alignment)
+        fields.replace(at: start, with: field)
+        fieldsSet += 1
+    }
+
+    /// The table's length with `field` after it, and the padding that it
+    /// needs. Every offset, count, length and item end is at most the
+    /// table's length, so that's the one value to check.
+    @inline(__always)
+    func length(after field: Field) throws(BuildError) -> UInt32 {
+        let width = UInt64(layout.offsetSize)
+        let start = UInt64(header.length) + field.padding(at: UInt64(header.length), width: width)
+
+        return try checked(saturating(start, plus: field.byteLength(width: width)))
+    }
+
+    /// `length`, or ``BuildError/tooLong(index:length:offsetType:)`` for the
+    /// field being set if it's too long for the table's offset type or an
+    /// `Int`
+    @inline(__always)
+    func checked(_ length: UInt64) throws(BuildError) -> UInt32 {
+        guard length <= UInt64(layout.offsetType.maxValue), length <= UInt64(Int.max) else {
+            throw .tooLong(index: fieldsSet, length: length, offsetType: layout.offsetType)
+        }
+
+        return UInt32(length)
     }
 
     /// Records a table nested from its builder, as ``add(_:)`` records a
@@ -334,6 +467,67 @@ public struct TableBuilder: Sendable {
         try add(.sharedTable(fields: shared, builder.header, alignment: alignment))
     }
 
+    /// The header of a table of `fields` fields recorded in place, with no
+    /// header slots and this table's offset type, or
+    /// ``BuildError/headerTooLong(fields:offsetType:)`` if its offsets alone
+    /// are too long for it
+    func nestedHeader(fields: Int) throws(BuildError) -> TableHeader {
+        let layout = TableLayout(offsetType: layout.offsetType)
+        let headerLength = try layout.headerLength(fields: fields)
+
+        return TableHeader(
+            layout: layout,
+            version: 0,
+            fieldCount: UInt32(fields),
+            headerLength: headerLength,
+            length: headerLength
+        )
+    }
+
+    /// Records the fields of a table in place: counts the table's fields
+    /// rather than this one's, and gives `fill` an item of this builder to
+    /// set them on, which must set every one
+    mutating func record(_ table: TableHeader, _ fill: (inout Item) throws(BuildError) -> Void) throws(BuildError) {
+        counters = Counters(header: table, fieldsSet: 0, alignment: .one)
+
+        try withUnsafeMutablePointer(to: &self) { builder throws(BuildError) in
+            var item = Item(builder: builder)
+            try fill(&item)
+        }
+        try checkComplete()
+    }
+
+    /// Makes room for `count` more items of a vector recorded in place, each
+    /// of `records` fields with their tables', as its first item recorded,
+    /// though for no more than the table, whose length is `length` before
+    /// the vector, can hold, since each takes an offset or an item's end
+    mutating func reserveItems(_ count: Int, records: Int, length: UInt32) {
+        let maxLength = min(UInt64(layout.offsetType.maxValue), UInt64(Int.max))
+        let room = (maxLength - min(UInt64(length), maxLength)) / UInt64(layout.offsetSize)
+        let (wanted, overflow) = UInt64(count).multipliedReportingOverflow(by: UInt64(records))
+
+        self.fields.reserveCapacity(self.fields.count + Int(min(overflow ? .max : wanted, room)))
+    }
+
+    /// Removes the fields of a table, or vector of tables, recorded in place
+    /// from `start` on, and counts the parent's fields again, after the table
+    /// failed
+    mutating func rollBack(to start: Int, parent: Counters) {
+        fields.removeFields(from: start)
+        counters = parent
+    }
+
+    /// The counters of the table whose fields are being set, which a table
+    /// recorded in place counts its own fields with while it's recorded
+    var counters: Counters {
+        get { Counters(header: header, fieldsSet: fieldsSet, alignment: alignment) }
+        set {
+            header = newValue.header
+            fieldsSet = newValue.fieldsSet
+            alignment = newValue.alignment
+        }
+    }
+
     func checkRoom() throws(BuildError) {
         let fieldCount = Int(header.fieldCount)
         guard fieldsSet < fieldCount else {
@@ -347,6 +541,13 @@ public struct TableBuilder: Sendable {
             throw .incomplete(set: fieldsSet, fields: fieldCount)
         }
     }
+}
+
+/// What a builder counts of the table whose fields are being set
+struct Counters {
+    var header: TableHeader
+    var fieldsSet: Int
+    var alignment: Alignment
 }
 
 /// A table to nest in another with `TableBuilder.setTable(_:alignment:)` or

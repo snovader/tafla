@@ -16,6 +16,10 @@ enum Field: Sendable {
     /// are those of the builder's array, which it shares
     case sharedTable(fields: [Field], TableHeader, alignment: Alignment)
     case vector([NestedTable])
+    /// A vector of `count` tables recorded in place, `length` bytes long with
+    /// its count and the ends of its items, whose items follow it among its
+    /// parent's fields, each a `table` field followed by its own
+    case vectorInPlace(count: Int, length: UInt64)
 
     /// What a slot of `Fields` without a field holds
     static var unset: Field { .scalar(bits: 0, size: 0) }
@@ -27,7 +31,7 @@ enum Field: Sendable {
         case .structArray(_, _, let alignment), .tableBytes(_, let alignment), .table(_, let alignment),
             .sharedTable(_, _, let alignment):
             alignment
-        case .scalar, .string, .structBytes, .vector: .one
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace: .one
         }
     }
 
@@ -38,7 +42,7 @@ enum Field: Sendable {
         switch self {
         case .array, .structArray: alignment.padding(at: offset + width)
         case .tableBytes, .table, .sharedTable: alignment.padding(at: offset)
-        case .scalar, .string, .structBytes, .vector: 0
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace: 0
         }
     }
 
@@ -67,6 +71,8 @@ enum Field: Sendable {
                 let (sum, overflow) = length.addingReportingOverflow(width + item.length)
                 length = overflow ? .max : sum
             }
+            return length
+        case .vectorInPlace(_, let length):
             return length
         }
     }
@@ -104,6 +110,8 @@ enum Field: Sendable {
             header.write(fields: shared, from: &first, to: &writer)
         case .vector(let items):
             writeVector(items, to: &writer, offsetType: offsetType)
+        case .vectorInPlace(let count, _):
+            writeVector(count: count, following: fields, from: &next, to: &writer, offsetType: offsetType)
         }
     }
 
@@ -118,6 +126,36 @@ enum Field: Sendable {
 
         for index in items.indices {
             items[index].write(to: &writer)
+            writer.writeSlot(UInt32(writer.position - position), at: ends + index * width, offsetType: offsetType)
+        }
+    }
+
+    /// Writes a vector of `count` tables recorded in place, as
+    /// ``writeVector(_:to:offsetType:)`` writes their builders, from the
+    /// fields from `next`: each item's `table` field and then its own. It's
+    /// kept out of ``write(to:offsetType:following:from:)``, which is inlined
+    /// into the writer of each table only while it's short.
+    @inline(never)
+    private func writeVector<Records: RandomAccessCollection<Field>>(
+        count: Int,
+        following fields: Records,
+        from next: inout Int,
+        to writer: inout ByteWriter,
+        offsetType: OffsetType
+    ) where Records.Index == Int {
+        let position = writer.position
+        let width = offsetType.size
+
+        writer.writeSlot(UInt32(count), offsetType: offsetType)
+        let ends = writer.reserve(count * width)
+
+        for index in 0..<count {
+            guard case .table(let header, _) = fields[next] else {
+                preconditionFailure("A vector's item is a table")
+            }
+            next += 1
+
+            header.write(fields: fields, from: &next, to: &writer)
             writer.writeSlot(UInt32(writer.position - position), at: ends + index * width, offsetType: offsetType)
         }
     }

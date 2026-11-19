@@ -76,16 +76,62 @@ struct Fields: Sendable, RandomAccessCollection {
         }
     }
 
+    /// Replaces the field at `index`, which held a table recorded in place
+    /// until its fields were
+    mutating func replace(at index: Int, with field: consuming Field) {
+        guard spilled.isEmpty else {
+            spilled[index] = field
+            return
+        }
+
+        switch index {
+        case 0: first = field
+        case 1: second = field
+        case 2: third = field
+        case 3: fourth = field
+        default: preconditionFailure("A field past the builder's")
+        }
+    }
+
+    /// Removes the fields from `index` on, of a table recorded in place that
+    /// failed
+    mutating func removeFields(from index: Int) {
+        guard spilled.isEmpty else {
+            spilled.removeSubrange(index...)
+            count = index
+            return
+        }
+
+        for slot in index..<count {
+            replace(at: slot, with: .unset)
+        }
+        count = index
+    }
+
+    /// Makes room for `count` fields at once, in the array when there are
+    /// more than fit within the builder
+    mutating func reserveCapacity(_ count: Int) {
+        guard count > Self.inlineCount else {
+            return
+        }
+
+        if spilled.isEmpty {
+            spill(reserving: count)
+        } else {
+            spilled.reserveCapacity(count)
+        }
+    }
+
     /// Moves the fields within the builder into the array, which then holds
     /// every field, with room for at least `fieldCount`, and grows as an
     /// array does
     private mutating func spill(reserving fieldCount: Int) {
         spilled.reserveCapacity(Swift.max(fieldCount, 2 * Self.inlineCount))
 
-        spilled.append(first)
-        spilled.append(second)
-        spilled.append(third)
-        spilled.append(fourth)
+        if count > 0 { spilled.append(first) }
+        if count > 1 { spilled.append(second) }
+        if count > 2 { spilled.append(third) }
+        if count > 3 { spilled.append(fourth) }
         (first, second, third, fourth) = (.unset, .unset, .unset, .unset)
     }
 }
