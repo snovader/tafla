@@ -148,6 +148,11 @@ straight into its parent, in its own layout, so the outermost table allocates
 and writes all the bytes once. `bytes()` allocates an array of the table's
 exact length and writes every byte of it once.
 
+A builder records up to four fields within itself, and a builder nested with
+`setTable(.builder(_:))` records its fields among its parent's, so a small
+table, nested or not, allocates nothing until it's written. A table of more
+fields keeps them in an array, which a parent shares rather than copies.
+
 ## Errors and preconditions
 
 Each API throws its own error, with typed throws, so a caller catches a

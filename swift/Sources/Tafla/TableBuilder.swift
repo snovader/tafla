@@ -15,6 +15,11 @@
 /// changes, so changing them afterwards changes neither the builder nor its
 /// table. Nested builders are written straight into their parent.
 ///
+/// A builder records up to four fields within itself, and a builder nested
+/// in it with ``setTable(_:alignment:)`` records its fields among them, so
+/// that a small table, nested or not, allocates nothing until it's written.
+/// More fields go in an array, which a parent shares rather than copies.
+///
 /// A setter throws a ``BuildError``, and leaves the builder as it was, when
 /// the table already holds all its fields or the field would make it too long
 /// for the layout's offset type: longer than 255 bytes, 64 KiB or 4 GiB, or
@@ -32,21 +37,20 @@
 /// let bytes = try builder.bytes()
 /// ```
 public struct TableBuilder: Sendable {
-    /// The layout that the table is written in, which its readers must use
-    public let layout: TableLayout
-    /// The version in the header, or 0 when the layout has no version
-    let version: UInt32
-    /// The number of fields that the table holds
-    let fieldCount: Int
-    /// The byte length of the header and the offsets
-    let headerLength: UInt32
-    /// The fields set so far
-    var fields: [Field]
-    /// The table's length so far, which is where the next field goes
-    var length: UInt32
+    /// The table's layout, version and number of fields, and its length so
+    /// far, which is where the next field goes
+    var header: TableHeader
+    /// The fields set so far, each followed by those of a table nested from
+    /// a builder that it records
+    var fields: Fields
+    /// The number of fields set so far
+    var fieldsSet: Int
     /// The largest alignment that a field needs from the table's start, which
     /// a parent pads this table to when it nests it
     var alignment: Alignment
+
+    /// The layout that the table is written in, which its readers must use
+    public var layout: TableLayout { header.layout }
 
     /// Starts a table of `fields` fields, which mustn't be negative, in
     /// `layout`, which its readers must use too, with `version` in its
@@ -70,15 +74,16 @@ public struct TableBuilder: Sendable {
         }
         let headerLength = try layout.headerLength(fields: fields)
 
-        self.layout = layout
-        self.version = version ?? 0
-        self.fieldCount = fields
-        self.headerLength = headerLength
-        self.fields = []
-        self.length = headerLength
+        self.header = TableHeader(
+            layout: layout,
+            version: version ?? 0,
+            fieldCount: UInt32(fields),
+            headerLength: headerLength,
+            length: headerLength
+        )
+        self.fields = Fields()
+        self.fieldsSet = 0
         self.alignment = .one
-
-        self.fields.reserveCapacity(fields)
     }
 
     /// Writes the table, at its exact size, into new bytes.
@@ -89,7 +94,7 @@ public struct TableBuilder: Sendable {
         try checkComplete()
 
         // Each setter checked that the table's length fits in an Int
-        let length = Int(self.length)
+        let length = Int(header.length)
 
         return [UInt8](unsafeUninitializedCapacity: length) { buffer, initialized in
             var writer = ByteWriter(bytes: UnsafeMutableRawBufferPointer(buffer))
@@ -214,7 +219,7 @@ public struct TableBuilder: Sendable {
 
     /// Sets the array field of `T`, as the setter of its type does
     public mutating func setArray<T: ArrayElement>(_ values: [T]) throws(BuildError) {
-        try add(.array(values))
+        try add(.array(Elements(values)))
     }
 
     /// Sets a string field, of its UTF-8, which a `String` always holds
@@ -269,7 +274,11 @@ public struct TableBuilder: Sendable {
         try checkRoom()
         try table.checkComplete()
 
-        try add(.table(table, alignment: alignment ?? table.defaultAlignment))
+        let alignment = alignment ?? table.defaultAlignment
+        switch table {
+        case .builder(let builder): try add(builder, alignment: alignment)
+        case .bytes(let bytes): try add(.tableBytes(bytes, alignment: alignment))
+        }
     }
 
     /// Writes a vector of tables, from their builders or their bytes, after
@@ -294,31 +303,48 @@ public struct TableBuilder: Sendable {
     /// the layout from its own setter and leaves the builder as it was.
     /// Every offset, count, length and item end is at most the table's
     /// length, so that's the one value to check.
-    mutating func add(_ field: Field) throws(BuildError) {
+    @inline(__always)
+    mutating func add(_ field: consuming Field) throws(BuildError) {
         try checkRoom()
 
         let width = UInt64(layout.offsetSize)
-        let start = UInt64(length) + field.padding(at: UInt64(length), width: width)
+        let start = UInt64(header.length) + field.padding(at: UInt64(header.length), width: width)
         let (length, overflow) = start.addingReportingOverflow(field.byteLength(width: width))
 
         guard !overflow, length <= UInt64(layout.offsetType.maxValue), length <= UInt64(Int.max) else {
-            throw .tooLong(index: fields.count, length: overflow ? .max : length, offsetType: layout.offsetType)
+            throw .tooLong(index: fieldsSet, length: overflow ? .max : length, offsetType: layout.offsetType)
         }
 
-        self.length = UInt32(length)
+        header.length = UInt32(length)
         alignment = max(alignment, field.alignment)
-        fields.append(field)
+        fields.append(field, fieldCount: Int(header.fieldCount))
+        fieldsSet += 1
+    }
+
+    /// Records a table nested from its builder, as ``add(_:)`` records a
+    /// field: the builder's fields follow it while they're within the
+    /// builder, and otherwise it shares the builder's array of them
+    mutating func add(_ builder: TableBuilder, alignment: Alignment) throws(BuildError) {
+        guard let shared = builder.fields.array else {
+            try add(.table(builder.header, alignment: alignment))
+            fields.append(contentsOf: builder.fields, fieldCount: Int(header.fieldCount))
+            return
+        }
+
+        try add(.sharedTable(fields: shared, builder.header, alignment: alignment))
     }
 
     func checkRoom() throws(BuildError) {
-        guard fields.count < fieldCount else {
+        let fieldCount = Int(header.fieldCount)
+        guard fieldsSet < fieldCount else {
             throw .tooManyFields(fields: fieldCount)
         }
     }
 
     func checkComplete() throws(BuildError) {
-        guard fields.count == fieldCount else {
-            throw .incomplete(set: fields.count, fields: fieldCount)
+        let fieldCount = Int(header.fieldCount)
+        guard fieldsSet == fieldCount else {
+            throw .incomplete(set: fieldsSet, fields: fieldCount)
         }
     }
 }
@@ -336,7 +362,7 @@ public enum NestedTable: Sendable {
     /// The table's byte length
     var length: UInt64 {
         switch self {
-        case .builder(let builder): UInt64(builder.length)
+        case .builder(let builder): UInt64(builder.header.length)
         case .bytes(let bytes): UInt64(bytes.count)
         }
     }

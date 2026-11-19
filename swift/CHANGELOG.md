@@ -44,6 +44,10 @@ The first release.
   the same fields, in the same order, into new bytes of that length.
   `BuildError.notAsSized` reports fields that don't fill the table, and a
   write past it stops the program.
+- `TableBuilder` records up to four fields within itself, and a builder
+  nested with `setTable(_:alignment:)` records its fields among its
+  parent's, so that a small table, nested or not, allocates nothing until
+  `bytes()` writes it.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.

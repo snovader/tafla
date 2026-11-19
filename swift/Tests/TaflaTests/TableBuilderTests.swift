@@ -151,6 +151,71 @@ struct TableBuilderTests {
         #expect(try builder.bytes() == [8, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0])
     }
 
+    // A builder is a value: a copy taken after any number of fields, as few as
+    // a builder holds within itself or more, sets the rest of its own, and
+    // neither changes the other
+    @Test func aCopyOfABuilderSetsItsOwnFields() throws {
+        let fields = 9
+        for copied in 0...fields {
+            var builder = try TableBuilder(fields: fields)
+            for index in 0..<copied {
+                try builder.setString("field \(index)")
+            }
+
+            var copy = builder
+            for index in copied..<fields {
+                try builder.setString("field \(index)")
+                try copy.setUInt8Array([UInt8(index)])
+            }
+
+            try withSpan(of: builder.bytes()) { bytes throws in
+                let reader = TableReader(bytes)
+                for index in 0..<fields {
+                    #expect(try reader.string(at: reader.rootOffset(index)) == "field \(index)")
+                }
+            }
+            try withSpan(of: copy.bytes()) { bytes throws in
+                let reader = TableReader(bytes)
+                for index in 0..<copied {
+                    #expect(try reader.string(at: reader.rootOffset(index)) == "field \(index)")
+                }
+                for index in copied..<fields {
+                    #expect(Array(try reader.uint8Array(at: reader.rootOffset(index))) == [UInt8(index)])
+                }
+            }
+        }
+    }
+
+    // A builder nested in another writes the bytes that it writes alone,
+    // whether its fields, and its parent's with it, are as few as a builder
+    // holds within itself or more, and with a builder nested in it in turn
+    @Test func aNestedBuilderWritesItsOwnBytesWithAnyNumberOfFields() throws {
+        var pair = try TableBuilder(fields: 2)
+        try pair.setUInt8(1)
+        try pair.setString("𝄞")
+
+        for nestedFields in 1...6 {
+            var nested = try TableBuilder(fields: nestedFields)
+            for index in 1..<nestedFields {
+                try nested.setUInt16(UInt16(index))
+            }
+            try nested.setTable(.builder(pair))
+
+            for parentFields in 1...6 {
+                var fromBuilder = try TableBuilder(fields: parentFields)
+                var fromBytes = try TableBuilder(fields: parentFields)
+                for index in 1..<parentFields {
+                    try fromBuilder.setInt32(Int32(index))
+                    try fromBytes.setInt32(Int32(index))
+                }
+                try fromBuilder.setTable(.builder(nested))
+                try fromBytes.setTable(.bytes(nested.bytes()), alignment: .one)
+
+                #expect(try fromBuilder.bytes() == fromBytes.bytes())
+            }
+        }
+    }
+
     // A table of 4 GiB can't be allocated in a test, but a vector that nests
     // a builder of 64 MiB 64 times is that long without allocating more
     @Test func rejectsATableOfUInt32OffsetsPast4GiBBeforeWritingIt() throws {
