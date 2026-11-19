@@ -13,27 +13,6 @@ export default defineConfig({
         // Prose wrapped by hand, as in the other languages' READMEs
         '**/*.md'
     ],
-    // Node's modules, hypotes, other packages, this project's package and its
-    // `#` imports, then relative paths, nearest last. The shared order sorts
-    // hypotes among the other packages, and `#` imports after the package's
-    // name.
-    sortImports: {
-        ...oxfmt.sortImports,
-        customGroups: [
-            {
-                groupName: 'hypotes',
-                elementNamePattern: ['hypotes', 'hypotes/**']
-            }
-        ],
-        groups: [
-            'builtin',
-            'hypotes',
-            'external',
-            ['internal', 'subpath'],
-            'parent',
-            ['sibling', 'index'],
-            'unknown'
-        ],
-        internalPattern: ['tafla']
-    }
+    // This project's package, which sorts after the other packages
+    sortImports: { ...oxfmt.sortImports, internalPattern: ['tafla'] }
 });
