@@ -291,6 +291,14 @@ first commits, for code built from its source before the release.
   allocated each item's reader, 4,280 bytes, and took 0.908 µs in Node 27,
   against 280 bytes and 0.825 µs now, with the runtime's inlined vector item
   reads.
+- Generated Swift views are `@inlinable`, with `@usableFromInline` stored
+  properties, as are structs' readers, so that a release build inlines their
+  getters into the module that calls them rather than calling into the
+  generated module for each field. Swift's comparison suite summed every item
+  of its vector of 100 nested tables in 1.21 µs rather than 2.21 µs, and
+  every struct of its array of 100 in 61 ns rather than 181 ns, as fast as
+  `TableReader`'s getters by hand. The views and structs are `@frozen`, so
+  that the code still compiles with library evolution.
 
 ### Fixed
 

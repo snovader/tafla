@@ -3,69 +3,83 @@
 import Tafla
 
 /// A field of every scalar type, and a bool
+@frozen
 public struct Scalars: ~Escapable {
     /// The layout that a `Scalars` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Scalars` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int8: Int8 {
         get throws(DecodeError) { try _reader.int8(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint8: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int16: Int16 {
         get throws(DecodeError) { try _reader.int16(at: _reader.rootOffset(2)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint16: UInt16 {
         get throws(DecodeError) { try _reader.uint16(at: _reader.rootOffset(3)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int32: Int32 {
         get throws(DecodeError) { try _reader.int32(at: _reader.rootOffset(4)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint32: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.rootOffset(5)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int64: Int64 {
         get throws(DecodeError) { try _reader.int64(at: _reader.rootOffset(6)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint64: UInt64 {
         get throws(DecodeError) { try _reader.uint64(at: _reader.rootOffset(7)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var float32: Float {
         get throws(DecodeError) { try _reader.float32(at: _reader.rootOffset(8)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var float64: Double {
         get throws(DecodeError) { try _reader.float64(at: _reader.rootOffset(9)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var bool: Bool {
         get throws(DecodeError) { try _reader.uint8(at: _reader.rootOffset(10)) != 0 }
     }
@@ -145,73 +159,86 @@ public struct ScalarsFields: Hashable, Sendable {
 }
 
 /// An array of every scalar type but bool, which has none
+@frozen
 public struct Arrays: ~Escapable {
     /// The layout that an `Arrays` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads an `Arrays` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int8: ArrayView<Int8> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.int8Array(at: _reader.rootOffset(0)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint8: ArrayView<UInt8> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint8Array(at: _reader.rootOffset(1)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int16: ArrayView<Int16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.int16Array(at: _reader.rootOffset(2)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint16: ArrayView<UInt16> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(3)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int32: ArrayView<Int32> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.int32Array(at: _reader.rootOffset(4)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint32: ArrayView<UInt32> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint32Array(at: _reader.rootOffset(5)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var int64: ArrayView<Int64> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.int64Array(at: _reader.rootOffset(6)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var uint64: ArrayView<UInt64> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.uint64Array(at: _reader.rootOffset(7)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var float32: ArrayView<Float> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.float32Array(at: _reader.rootOffset(8)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var float64: ArrayView<Double> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.float64Array(at: _reader.rootOffset(9)) }
@@ -287,13 +314,16 @@ public struct ArraysFields: Hashable, Sendable {
 }
 
 /// Tables nested in tables, by field and in vectors
+@frozen
 public struct Nested: ~Escapable {
     /// The layout that a `Nested` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Nested` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -302,6 +332,7 @@ public struct Nested: ~Escapable {
     /// A string beside the tables
     ///
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var label: String {
         get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(0)) }
     }
@@ -309,6 +340,7 @@ public struct Nested: ~Escapable {
     /// The first of three levels of tables
     ///
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var outer: Outer {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -324,6 +356,7 @@ public struct Nested: ~Escapable {
     ///
     /// Throws a `DecodeError` if the field, or the vector's count or the ends of its items, lie
     /// outside the bytes.
+    @inlinable
     public var trees: TreeVector {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -374,11 +407,15 @@ public struct NestedFields: Hashable, Sendable {
     }
 }
 
+@frozen
 public struct Outer: ~Escapable {
+    @usableFromInline
     let _reader: TableReader
+    @usableFromInline
     let _position: Int
 
     /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
     @_lifetime(copy reader)
     init(reader: TableReader, position: Int) {
         _reader = reader
@@ -386,11 +423,13 @@ public struct Outer: ~Escapable {
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var count: UInt32 {
         get throws(DecodeError) { try _reader.uint32(at: _reader.fieldOffset(0, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var inner: Inner {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -433,11 +472,15 @@ public struct OuterFields: Hashable, Sendable {
     }
 }
 
+@frozen
 public struct Inner: ~Escapable {
+    @usableFromInline
     let _reader: TableReader
+    @usableFromInline
     let _position: Int
 
     /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
     @_lifetime(copy reader)
     init(reader: TableReader, position: Int) {
         _reader = reader
@@ -445,11 +488,13 @@ public struct Inner: ~Escapable {
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var name: String {
         get throws(DecodeError) { try _reader.string(at: _reader.fieldOffset(0, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var values: ArrayView<Double> {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.float64Array(at: _reader.fieldOffset(1, inTableAt: _position)) }
@@ -489,11 +534,15 @@ public struct InnerFields: Hashable, Sendable {
 
 /// A table that holds a vector of its own type, which a vector can since it
 /// may be empty
+@frozen
 public struct Tree: ~Escapable {
+    @usableFromInline
     let _reader: TableReader
+    @usableFromInline
     let _position: Int
 
     /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
     @_lifetime(copy reader)
     init(reader: TableReader, position: Int) {
         _reader = reader
@@ -501,6 +550,7 @@ public struct Tree: ~Escapable {
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var value: Int32 {
         get throws(DecodeError) { try _reader.int32(at: _reader.fieldOffset(0, inTableAt: _position)) }
     }
@@ -510,6 +560,7 @@ public struct Tree: ~Escapable {
     ///
     /// Throws a `DecodeError` if the field, or the vector's count or the ends of its items, lie
     /// outside the bytes.
+    @inlinable
     public var children: TreeVector {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -558,26 +609,33 @@ public struct TreeFields: Hashable, Sendable {
 }
 
 /// A vector of `Tree`s, which reads each item when it's asked for
+@frozen
 public struct TreeVector: ~Escapable {
+    @usableFromInline
     let vector: Vector
 
+    @inlinable
     @_lifetime(copy vector)
     init(_ vector: Vector) {
         self.vector = vector
     }
 
     /// The number of items
+    @inlinable
     public var count: Int { vector.count }
 
+    @inlinable
     public var isEmpty: Bool { vector.isEmpty }
 
     /// The indices of the items, from 0 to `count`
+    @inlinable
     public var indices: Swift.Range<Int> { vector.indices }
 
     /// Reads item `index`, without reading the others. `index` must be one of `indices`: an index
     /// outside them is a programming error, which stops the program, as `Array`'s subscript does.
     ///
     /// Throws a `DecodeError` if the item lies outside the bytes.
+    @inlinable
     public subscript(index: Int) -> Tree {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -587,11 +645,15 @@ public struct TreeVector: ~Escapable {
 }
 
 /// Fields named after keywords of TypeScript, Python, Java or Rust
+@frozen
 public struct Keywords: ~Escapable {
+    @usableFromInline
     let _reader: TableReader
+    @usableFromInline
     let _position: Int
 
     /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
     @_lifetime(copy reader)
     init(reader: TableReader, position: Int) {
         _reader = reader
@@ -599,31 +661,37 @@ public struct Keywords: ~Escapable {
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var `class`: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.fieldOffset(0, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var `default`: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.fieldOffset(1, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var `in`: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.fieldOffset(2, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var match: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.fieldOffset(3, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var self_: UInt8 {
         get throws(DecodeError) { try _reader.uint8(at: _reader.fieldOffset(4, inTableAt: _position)) }
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var type: String {
         get throws(DecodeError) { try _reader.string(at: _reader.fieldOffset(5, inTableAt: _position)) }
     }
@@ -677,19 +745,23 @@ public struct KeywordsFields: Hashable, Sendable {
 }
 
 /// A message that nests the table of keywords, so that it's written
+@frozen
 public struct Reserved: ~Escapable {
     /// The layout that a `Reserved` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Reserved` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var keywords: Keywords {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -724,13 +796,16 @@ public struct ReservedFields: Hashable, Sendable {
 
 /// Structs as fields, in place like scalars, and in arrays, which are aligned
 /// to their structs' largest scalar
+@frozen
 public struct Structs: ~Escapable {
     /// The layout that a `Structs` is written and read in
     public static let layout = TableLayout.default
 
+    @usableFromInline
     let _reader: TableReader
 
     /// Reads a `Structs` from `bytes`, which it can't outlive
+    @inlinable
     @_lifetime(copy bytes)
     public init(_ bytes: RawSpan) {
         _reader = TableReader(bytes, layout: Self.layout)
@@ -739,6 +814,7 @@ public struct Structs: ~Escapable {
     /// A struct of every scalar type
     ///
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var packed: Packed {
         get throws(DecodeError) {
             let field = try _reader.rootOffset(0)
@@ -751,6 +827,7 @@ public struct Structs: ~Escapable {
     /// A view of the structs, which reads each `Documented` when it's asked for.
     ///
     /// Throws a `DecodeError` if the field, or its structs, lie outside the bytes.
+    @inlinable
     public var documented: DocumentedArray {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -762,6 +839,7 @@ public struct Structs: ~Escapable {
     /// A struct of structs
     ///
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var segment: Segment {
         get throws(DecodeError) {
             let field = try _reader.rootOffset(2)
@@ -772,6 +850,7 @@ public struct Structs: ~Escapable {
     /// A view of the structs, which reads each `Segment` when it's asked for.
     ///
     /// Throws a `DecodeError` if the field, or its structs, lie outside the bytes.
+    @inlinable
     public var segments: SegmentArray {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -783,6 +862,7 @@ public struct Structs: ~Escapable {
     /// A table nested in the message, which holds structs too
     ///
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var path: Path {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -843,11 +923,15 @@ public struct StructsFields: Hashable, Sendable {
     }
 }
 
+@frozen
 public struct Path: ~Escapable {
+    @usableFromInline
     let _reader: TableReader
+    @usableFromInline
     let _position: Int
 
     /// Reads the table at `position` in the bytes that `reader` reads, as its parent's getter finds it
+    @inlinable
     @_lifetime(copy reader)
     init(reader: TableReader, position: Int) {
         _reader = reader
@@ -855,6 +939,7 @@ public struct Path: ~Escapable {
     }
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
     public var start: Point {
         get throws(DecodeError) {
             let field = try _reader.fieldOffset(0, inTableAt: _position)
@@ -865,6 +950,7 @@ public struct Path: ~Escapable {
     /// A view of the structs, which reads each `Point` when it's asked for.
     ///
     /// Throws a `DecodeError` if the field, or its structs, lie outside the bytes.
+    @inlinable
     public var points: PointArray {
         @_lifetime(copy self)
         get throws(DecodeError) {
@@ -910,6 +996,7 @@ public struct PathFields: Hashable, Sendable {
 }
 
 /// Two points, whose scalars lie in the segment's place
+@frozen
 public struct Segment: Hashable, Sendable {
     /// The byte length of a `Segment`
     public static let size = 16
@@ -927,11 +1014,13 @@ public struct Segment: Hashable, Sendable {
     /// Reads a `Segment` from the start of `bytes`.
     ///
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
         self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Segment` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
     init(_ bytes: RawSpan, at offset: Int) {
         self.start = Point(bytes, at: offset)
         self.end = Point(bytes, at: offset + 8)
@@ -970,25 +1059,31 @@ public struct Segment: Hashable, Sendable {
 }
 
 /// An array of `Segment`s, which reads each struct when it's asked for
+@frozen
 public struct SegmentArray: ~Escapable {
     /// The structs' bytes, one after another
     public let bytes: RawSpan
 
+    @inlinable
     @_lifetime(copy bytes)
     init(_ bytes: RawSpan) {
         self.bytes = bytes
     }
 
     /// The number of structs
+    @inlinable
     public var count: Int { bytes.byteCount / Segment.size }
 
+    @inlinable
     public var isEmpty: Bool { bytes.isEmpty }
 
     /// The indices of the structs, from 0 to `count`
+    @inlinable
     public var indices: Swift.Range<Int> { 0..<count }
 
     /// Reads struct `index`, which must be one of `indices`: an index outside them is a programming
     /// error, which stops the program, as `Array`'s subscript does.
+    @inlinable
     public subscript(index: Int) -> Segment {
         precondition(index >= 0 && index < count, "Index out of range")
         return Segment(bytes, at: index * Segment.size)
@@ -997,11 +1092,13 @@ public struct SegmentArray: ~Escapable {
 
 extension Array where Element == Segment {
     /// Reads every struct of an array read from a table, into an array of their own
+    @inlinable
     public init(_ view: borrowing SegmentArray) {
         self = view.indices.map { view[$0] }
     }
 }
 
+@frozen
 public struct Point: Hashable, Sendable {
     /// The byte length of a `Point`
     public static let size = 8
@@ -1019,11 +1116,13 @@ public struct Point: Hashable, Sendable {
     /// Reads a `Point` from the start of `bytes`.
     ///
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
         self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Point` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
     init(_ bytes: RawSpan, at offset: Int) {
         self.x = Float(littleEndianBytes: bytes, at: offset)
         self.y = Float(littleEndianBytes: bytes, at: offset + 4)
@@ -1062,25 +1161,31 @@ public struct Point: Hashable, Sendable {
 }
 
 /// An array of `Point`s, which reads each struct when it's asked for
+@frozen
 public struct PointArray: ~Escapable {
     /// The structs' bytes, one after another
     public let bytes: RawSpan
 
+    @inlinable
     @_lifetime(copy bytes)
     init(_ bytes: RawSpan) {
         self.bytes = bytes
     }
 
     /// The number of structs
+    @inlinable
     public var count: Int { bytes.byteCount / Point.size }
 
+    @inlinable
     public var isEmpty: Bool { bytes.isEmpty }
 
     /// The indices of the structs, from 0 to `count`
+    @inlinable
     public var indices: Swift.Range<Int> { 0..<count }
 
     /// Reads struct `index`, which must be one of `indices`: an index outside them is a programming
     /// error, which stops the program, as `Array`'s subscript does.
+    @inlinable
     public subscript(index: Int) -> Point {
         precondition(index >= 0 && index < count, "Index out of range")
         return Point(bytes, at: index * Point.size)
@@ -1089,6 +1194,7 @@ public struct PointArray: ~Escapable {
 
 extension Array where Element == Point {
     /// Reads every struct of an array read from a table, into an array of their own
+    @inlinable
     public init(_ view: borrowing PointArray) {
         self = view.indices.map { view[$0] }
     }
@@ -1096,6 +1202,7 @@ extension Array where Element == Point {
 
 /// A struct of every scalar type and a bool, at fixed offsets without
 /// padding
+@frozen
 public struct Packed: Hashable, Sendable {
     /// The byte length of a `Packed`
     public static let size = 43
@@ -1143,11 +1250,13 @@ public struct Packed: Hashable, Sendable {
     /// Reads a `Packed` from the start of `bytes`.
     ///
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
         self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Packed` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
     init(_ bytes: RawSpan, at offset: Int) {
         self.int8 = Int8(littleEndianBytes: bytes, at: offset)
         self.uint8 = UInt8(littleEndianBytes: bytes, at: offset + 1)
@@ -1222,6 +1331,7 @@ public struct Packed: Hashable, Sendable {
 /// Javadoc's {@link Object} and `{@code x}`, Java's Unicode escape \u000A,
 /// and a tag at the start of a line:
 /// @deprecated
+@frozen
 public struct Documented: Hashable, Sendable {
     /// The byte length of a `Documented`
     public static let size = 7
@@ -1244,11 +1354,13 @@ public struct Documented: Hashable, Sendable {
     /// Reads a `Documented` from the start of `bytes`.
     ///
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
         self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Documented` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
     init(_ bytes: RawSpan, at offset: Int) {
         self.one = UInt8(littleEndianBytes: bytes, at: offset)
         self.two = UInt16(littleEndianBytes: bytes, at: offset + 1)
@@ -1290,25 +1402,31 @@ public struct Documented: Hashable, Sendable {
 }
 
 /// An array of `Documented`s, which reads each struct when it's asked for
+@frozen
 public struct DocumentedArray: ~Escapable {
     /// The structs' bytes, one after another
     public let bytes: RawSpan
 
+    @inlinable
     @_lifetime(copy bytes)
     init(_ bytes: RawSpan) {
         self.bytes = bytes
     }
 
     /// The number of structs
+    @inlinable
     public var count: Int { bytes.byteCount / Documented.size }
 
+    @inlinable
     public var isEmpty: Bool { bytes.isEmpty }
 
     /// The indices of the structs, from 0 to `count`
+    @inlinable
     public var indices: Swift.Range<Int> { 0..<count }
 
     /// Reads struct `index`, which must be one of `indices`: an index outside them is a programming
     /// error, which stops the program, as `Array`'s subscript does.
+    @inlinable
     public subscript(index: Int) -> Documented {
         precondition(index >= 0 && index < count, "Index out of range")
         return Documented(bytes, at: index * Documented.size)
@@ -1317,6 +1435,7 @@ public struct DocumentedArray: ~Escapable {
 
 extension Array where Element == Documented {
     /// Reads every struct of an array read from a table, into an array of their own
+    @inlinable
     public init(_ view: borrowing DocumentedArray) {
         self = view.indices.map { view[$0] }
     }
