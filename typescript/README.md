@@ -18,6 +18,13 @@ yarn test
 ```
 
 `yarn format:write` and `yarn lint:write` fix what they can.
+`TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
+buffers of more than 4 GiB, which are skipped by default. `yarn test:watch`
+runs the tests again as their files and the package's source change.
+`yarn conformance:generate` regenerates the conformance suite at the root of the
+repository from `core/test/conformance/cases.ts`, and the tables of the
+generated code in its `generated` directory from
+`core/test/generated/shapesCases.ts`.
 
 The configurations of oxfmt, oxlint and TypeScript extend the shared ones of
 [`@snovader/oxc-config`](https://github.com/snovader/tooling/tree/main/packages/oxc-config)
@@ -30,13 +37,6 @@ the shared rule that names files in kebab-case. `tsconfig.base.json`,
 `tsconfig.node.json` and `tsconfig.isomorphic.json` extend the presets of
 the same names, with the composite preset for `tsc -b`, and add the
 `tafla-source` condition; every project here extends one of them.
-`TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate
-buffers of more than 4 GiB, which are skipped by default. `yarn test:watch`
-runs the tests again as their files and the package's source change.
-`yarn conformance:generate` regenerates the conformance suite at the root of the
-repository from `core/test/conformance/cases.ts`, and the tables of the
-generated code in its `generated` directory from
-`core/test/generated/shapesCases.ts`.
 
 `core/test/generated` holds the TypeScript and JavaScript that tafla-gen
 generates from the example schemas in `schemas/`, in a directory of each
