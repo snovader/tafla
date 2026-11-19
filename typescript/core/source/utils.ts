@@ -8,8 +8,12 @@ import { outOfRange, writeOutOfRange } from './errors.ts';
 
 const int32s = new Int32Array(1);
 const float32s = new Float32Array(int32s.buffer);
-// A float64's words are set little-endian, whatever the host's byte order
-const float64s = new DataView(new ArrayBuffer(SIZEOF_64));
+// A 64-bit value's words are set little-endian, whatever the host's byte
+// order, and the value read from them. Adding an int64's words as bigints
+// allocates each of them, and took 26 ns a read rather than 5 to 10 in
+// Node 26. Each read sets the words itself: through a function that they
+// shared, readFloat64() took 6% longer.
+const words64 = new DataView(new ArrayBuffer(SIZEOF_64));
 
 export function readInt8(bytes: Uint8Array, offset: number): number {
     return (readUint8(bytes, offset) << 24) >> 24;
@@ -44,15 +48,17 @@ export function readUint32(bytes: Uint8Array, offset: number): number {
 }
 
 export function readInt64(bytes: Uint8Array, offset: number): bigint {
-    return BigInt.asIntN(64, readUint64(bytes, offset));
+    assertReadable(bytes, offset, SIZEOF_64);
+    words64.setInt32(0, readInt32(bytes, offset), true);
+    words64.setInt32(SIZEOF_32, readInt32(bytes, offset + SIZEOF_32), true);
+    return words64.getBigInt64(0, true);
 }
 
 export function readUint64(bytes: Uint8Array, offset: number): bigint {
     assertReadable(bytes, offset, SIZEOF_64);
-    return (
-        BigInt(readUint32(bytes, offset)) +
-        (BigInt(readUint32(bytes, offset + 4)) << 32n)
-    );
+    words64.setInt32(0, readInt32(bytes, offset), true);
+    words64.setInt32(SIZEOF_32, readInt32(bytes, offset + SIZEOF_32), true);
+    return words64.getBigUint64(0, true);
 }
 
 export function readFloat32(bytes: Uint8Array, offset: number): number {
@@ -62,9 +68,9 @@ export function readFloat32(bytes: Uint8Array, offset: number): number {
 
 export function readFloat64(bytes: Uint8Array, offset: number): number {
     assertReadable(bytes, offset, SIZEOF_64);
-    float64s.setInt32(0, readInt32(bytes, offset), true);
-    float64s.setInt32(4, readInt32(bytes, offset + 4), true);
-    return float64s.getFloat64(0, true);
+    words64.setInt32(0, readInt32(bytes, offset), true);
+    words64.setInt32(SIZEOF_32, readInt32(bytes, offset + SIZEOF_32), true);
+    return words64.getFloat64(0, true);
 }
 
 function assertReadable(

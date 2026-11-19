@@ -110,6 +110,15 @@ repository's first commits, for code built from its source before the release.
   0.087 µs rather than 0.108 in Node 27. `writeFloat64()`, `writeInt64()`
   and `writeUint64()` took 3% to 4% less, and `TableBuilder`'s setters 4% to
   9% less.
+- `readInt64()` and `readUint64()` copy a value's bytes to a scratch
+  `DataView` and read it from there, as `readFloat64()` does, rather than
+  adding its two 32-bit words as bigints, which allocated a bigint for each.
+  They return the same values and throw the same `DecodeError`. With the
+  package bundled in Node 26, 100 reads at unaligned offsets took 4.8 ns
+  each rather than 26.2 for `readInt64()`, and 9.7 ns rather than 26.3 for
+  `readUint64()`. `readFloat64()` took 2.75 ns, as before. The code that
+  tafla-gen generates for a struct of every scalar type, which has one field
+  of each, read its fields in 0.050 µs rather than 0.089.
 
 ### Removed
 
