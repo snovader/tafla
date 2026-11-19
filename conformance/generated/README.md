@@ -8,7 +8,7 @@ the generators of every language are checked to write one format.
 
 | Language   | Test                                                                               |
 | ---------- | ---------------------------------------------------------------------------------- |
-| TypeScript | `typescript/core/test/generated/shapesCases.test.ts`, of TypeScript and JavaScript |
+| TypeScript | `typescript/core/test/generated/shapes-cases.test.ts`, of TypeScript and JavaScript |
 | Python     | `python/core/tests/generated/test_shapes_cases.py`                                 |
 | Java       | `java/core/src/test/java/io/github/snovader/tafla/test/ShapesCasesTest.java`       |
 | Rust       | `rust/gen/tests/shapes_cases.rs`                                                   |
@@ -25,14 +25,14 @@ Each language's CI runs its test when this directory changes.
 - `shapes/<name>.bin`: the bytes of each case
 
 The generated TypeScript writes them. The cases are in
-`typescript/core/test/generated/shapesCases.ts`; to change a case or add one,
+`typescript/core/test/generated/shapes-cases.ts`; to change a case or add one,
 edit it there and regenerate the files from `typescript/`:
 
 ```sh
 yarn conformance:generate
 ```
 
-`shapesCases.test.ts` fails when the checked-in files no longer match what
+`shapes-cases.test.ts` fails when the checked-in files no longer match what
 it writes. Run the other languages' tests after regenerating. A change to the
 generator or to `schemas/shapes.tafla` that changes these bytes changes what
 the generated code of every language writes.

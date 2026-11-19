@@ -1,6 +1,6 @@
 import type { Codec, Workload } from './codecs/codec.ts';
 import { measureGroups, type Group, type RunOptions } from './harness.ts';
-import { sumItem, writeItems, type ItemAccess } from './itemAccess.ts';
+import { sumItem, writeItems, type ItemAccess } from './item-access.ts';
 import {
     documentInput,
     documentNumbers,

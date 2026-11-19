@@ -28,7 +28,7 @@ import {
     StructWriter
 } from 'tafla';
 import { sliceOf, SLICES, STRINGS } from './conformance/arbitraries.ts';
-import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './long-strings.ts';
 
 type Setter = Extract<keyof StructWriter, `set${string}`>;
 

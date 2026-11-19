@@ -28,7 +28,7 @@ import {
     RESERVED_FIELDS,
     SCALARS_FIELDS,
     STRUCTS_FIELDS
-} from './allTypesTables.ts';
+} from './all-types-tables.ts';
 import { expectValuesOrDecodeError, withPlainArrays } from './expectations.ts';
 
 /** An index outside a view of `length` items, from the view's length */

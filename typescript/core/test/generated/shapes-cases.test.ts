@@ -6,8 +6,8 @@ import {
     writeShapesCases,
     SHAPES_CASES,
     SHAPES_DIRECTORY
-} from './shapesCases.ts';
-import { SHAPES } from './shapesTables.ts';
+} from './shapes-cases.ts';
+import { SHAPES } from './shapes-tables.ts';
 
 // The code generated from schemas/shapes.tafla writes the tables of
 // conformance/generated, which the code generated in every language writes

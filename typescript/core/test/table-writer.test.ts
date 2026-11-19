@@ -1,7 +1,7 @@
 import { describe, expect } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
 import { TableBuilder, TableLayout, TableSizer, TableWriter } from 'tafla';
-import { growing } from './arrayLikes.ts';
+import { growing } from './array-likes.ts';
 import {
     fitsItsLayout,
     sliceOf,
@@ -33,7 +33,7 @@ import {
     writeTableThrough,
     ELEMENT_SIZES
 } from './conformance/tables.ts';
-import { LONG_STRINGS, SHORTFALL_STRINGS } from './longStrings.ts';
+import { LONG_STRINGS, SHORTFALL_STRINGS } from './long-strings.ts';
 
 /** Tables whose nested tables a TableWriter writes in place */
 function inPlaceTables(offsetTypes?: readonly OffsetType[]): fc.Arbitrary<TableDescription> {

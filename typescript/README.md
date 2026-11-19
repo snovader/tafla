@@ -24,7 +24,7 @@ runs the tests again as their files and the package's source change.
 `yarn conformance:generate` regenerates the conformance suite at the root of the
 repository from `core/test/conformance/cases.ts`, and the tables of the
 generated code in its `generated` directory from
-`core/test/generated/shapesCases.ts`.
+`core/test/generated/shapes-cases.ts`.
 
 The configurations of oxfmt, oxlint and TypeScript extend the shared ones of
 [`@snovader/oxc-config`](https://github.com/snovader/tooling/tree/main/packages/oxc-config)
@@ -32,8 +32,9 @@ and
 [`@snovader/tsconfig`](https://github.com/snovader/tooling/tree/main/packages/tsconfig),
 which need Node 26 to load oxfmt's and oxlint's. `oxfmt.config.ts` adds the
 paths that oxfmt ignores and the name `tafla`, which sorts after the other
-packages. `oxlint.config.ts` adds the rules that tafla turns off, among them
-the shared rule that names files in kebab-case. `tsconfig.base.json`,
+packages. `oxlint.config.ts` adds the rules that tafla turns off. Files are
+named in kebab-case, as the shared rule checks, except the modules that
+tafla-gen generates, which it names in camelCase. `tsconfig.base.json`,
 `tsconfig.node.json` and `tsconfig.isomorphic.json` extend the presets of
 the same names, with the composite preset for `tsc -b`, and add the
 `tafla-source` condition; every project here extends one of them.
