@@ -92,8 +92,16 @@ public struct TableLayout: Sendable, Hashable {
     public let offsetType: OffsetType
 
     /// No header slots, and offsets and lengths of the offset type `uint32`
-    public static let `default` = TableLayout()
+    @inlinable
+    public static var `default`: TableLayout {
+        // Computed rather than stored, so that it's a constant in the code
+        // that reads with it: another module loads a stored global from
+        // memory, and a reader built with it would then switch on its offset
+        // type at every read
+        TableLayout()
+    }
 
+    @inlinable
     public init(sized: Bool = false, versioned: Bool = false, offsetType: OffsetType = .uint32) {
         self.isSized = sized
         self.isVersioned = versioned
