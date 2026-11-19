@@ -285,6 +285,29 @@ struct AllTypesTests {
         }
     }
 
+    // The view reads a struct within its bytes without checking its scalars
+    // again, which its index's check keeps there
+    @Test func stopsTheProgramForAnIndexOutsideAnArray() async {
+        // Exit tests can't capture values before Swift 6.3
+        await #expect(processExitsWith: .failure) { try Self.readSegment(-1) }
+        await #expect(processExitsWith: .failure) { try Self.readSegment(2) }
+        await #expect(processExitsWith: .failure) { try Self.readSegment(Int.max) }
+    }
+
+    /// Reads segment `index` of an array of two
+    static func readSegment(_ index: Int) throws {
+        var fields = StructsFields.example
+        fields.segments = [
+            Segment(start: Point(x: 1, y: 2), end: Point(x: 3, y: 4)),
+            Segment(start: Point(x: 5, y: 6), end: Point(x: 7, y: 8)),
+        ]
+        let written = try fields.serialize()
+
+        try withSpan(of: written) { bytes throws in
+            _ = try Structs(bytes).segments[index]
+        }
+    }
+
     // Fields named after keywords are escaped, and `self`, which would hide
     // the instance in an initializer, takes a `_`
     @Test func writesAndReadsFieldsNamedAfterKeywords() throws {

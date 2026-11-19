@@ -24,6 +24,11 @@ The first release.
   `RawSpan`, such as `Data.bytes`, whose lifetimes the compiler keeps within
   the bytes'. `ArrayView.span` returns an array's elements as a `Span` in
   place, where the host is little-endian and they're aligned.
+- `TableLayout.default`, which `TableReader`, `TableBuilder` and
+  `TableSizer` take by default, is an inlinable computed property, so that
+  a reader built with it, such as
+  `TableReader(vector.itemInPlace(at: index))`, reads with a constant offset
+  type in the code that its getters are inlined into.
 - Bounds-checked reads, which throw a `DecodeError` on malformed input, with
   typed throws, and builders that throw a `BuildError` for a table that they
   can't write.

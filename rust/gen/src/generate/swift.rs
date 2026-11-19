@@ -961,8 +961,20 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
     );
     writer.line("@inlinable");
     writer.open(format!("public subscript(index: Int) -> {name} {{"));
-    writer.line("precondition(index >= 0 && index < count, \"Index out of range\")");
-    writer.line(format!("return {name}(bytes, at: index * {name}.size)"));
+    writer.line("precondition(UInt(bitPattern: index) < UInt(count), \"Index out of range\")");
+    writer.blank();
+    // The initializer reads the struct's own bytes, which the precondition
+    // keeps within the array's, so that its loads' checks compare their
+    // offsets with the struct's size, a constant, and fold away. Checked
+    // against the array's length, they stay in a loop over the indices for
+    // every struct wherever the compiler can't see where the bytes came
+    // from, such as in a function that takes the view, and keep the loop
+    // from being vectorized
+    writer.line("// The precondition keeps the struct within the bytes");
+    writer.line(format!("let offset = index &* {name}.size"));
+    writer.line(format!(
+        "return {name}(bytes.extracting(unchecked: offset..<offset &+ {name}.size), at: 0)"
+    ));
     writer.close("}");
     writer.close("}");
     writer.blank();

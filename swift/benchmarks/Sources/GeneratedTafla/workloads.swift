@@ -632,8 +632,11 @@ public struct TripleArray: ~Escapable {
     /// error, which stops the program, as `Array`'s subscript does.
     @inlinable
     public subscript(index: Int) -> Triple {
-        precondition(index >= 0 && index < count, "Index out of range")
-        return Triple(bytes, at: index * Triple.size)
+        precondition(UInt(bitPattern: index) < UInt(count), "Index out of range")
+
+        // The precondition keeps the struct within the bytes
+        let offset = index &* Triple.size
+        return Triple(bytes.extracting(unchecked: offset..<offset &+ Triple.size), at: 0)
     }
 }
 

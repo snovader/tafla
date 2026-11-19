@@ -299,6 +299,15 @@ first commits, for code built from its source before the release.
   every struct of its array of 100 in 61 ns rather than 181 ns, as fast as
   `TableReader`'s getters by hand. The views and structs are `@frozen`, so
   that the code still compiles with library evolution.
+- Generated Swift views of arrays of structs read a struct from its own
+  bytes, which the check of its index keeps within the array's, so that the
+  compiler folds the checks of its scalars' loads. Before, each load was
+  checked against the array's length, which the compiler can't prove it
+  within where it can't see where the bytes came from, such as in a function
+  that takes the view: a loop there checked every struct and wasn't
+  vectorized. Summing an array of 100 structs in such a function took 66 ns
+  rather than 114 ns, and reading the comparison suite's last struct 7.2 ns
+  rather than 7.9 ns.
 - Generated Swift builds each layout where it reads with it, so that the
   getters inlined into a caller know its offset type: a message's `layout` is
   a computed property rather than a `static let`, and a vector's items and a
