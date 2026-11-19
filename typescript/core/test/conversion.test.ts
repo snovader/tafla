@@ -1,5 +1,5 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
 import { TableBuilder, TableWriter } from 'tafla';
 
 type NumberArrayType =

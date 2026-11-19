@@ -1,8 +1,11 @@
-import { describe, expect, inject, test } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, expect, test } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
 import { DecodeError, TableBuilder, TableLayout, TableReader } from 'tafla';
 import { sliceOf, MAX_VALUES, SLICES, type Slice } from './conformance/arbitraries.ts';
 import type { OffsetType } from './conformance/description.ts';
+
+// Tests that allocate buffers of more than 4 GiB run only when asked for
+const LARGE_BUFFER_TESTS = process.env.TAFLA_LARGE_BUFFER_TESTS === '1';
 
 const IS_LITTLE_ENDIAN = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
@@ -73,35 +76,29 @@ it('should find each vector item from its ends, as reading every item finds it',
 
 // A buffer of many tables can hold a table past 4 GiB, whose positions don't
 // fit in 32 bits, though its own offsets do
-test.runIf(inject('largeBufferTests'))(
-    'should find vector items past 4 GiB in a larger buffer',
-    () => {
-        const builder = new TableBuilder(1);
-        builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
-        const table = builder.finalize();
-        const position = 2 ** 32;
+test.runIf(LARGE_BUFFER_TESTS)('should find vector items past 4 GiB in a larger buffer', () => {
+    const builder = new TableBuilder(1);
+    builder.setVector([new Uint8Array([1]), new Uint8Array([2, 3])]);
+    const table = builder.finalize();
+    const position = 2 ** 32;
 
-        // Allocated zeroed, so the bytes before the table take no memory
-        // until they're written
-        const bytes = new Uint8Array(position + table.bytes().length);
-        bytes.set(table.bytes(), position);
+    // Allocated zeroed, so the bytes before the table take no memory
+    // until they're written
+    const bytes = new Uint8Array(position + table.bytes().length);
+    bytes.set(table.bytes(), position);
 
-        const reader = new TableReader(bytes);
-        const vector = position + table.rootOffset(0);
-        // The count and the two ends, after the vector at 4
-        const expected = [position + 16, position + 17];
+    const reader = new TableReader(bytes);
+    const vector = position + table.rootOffset(0);
+    // The count and the two ends, after the vector at 4
+    const expected = [position + 16, position + 17];
 
-        expect(reader.getVectorOffsets(vector)).toStrictEqual(expected);
-        expect([0, 1].map(index => reader.getVectorOffset(vector, index))).toStrictEqual(expected);
-        expect([0, 1].map(index => reader.getVectorItemOffset(vector, 2, index))).toStrictEqual(
-            expected
-        );
-        expect(reader.getVector(vector)).toStrictEqual([
-            new Uint8Array([1]),
-            new Uint8Array([2, 3])
-        ]);
-    }
-);
+    expect(reader.getVectorOffsets(vector)).toStrictEqual(expected);
+    expect([0, 1].map(index => reader.getVectorOffset(vector, index))).toStrictEqual(expected);
+    expect([0, 1].map(index => reader.getVectorItemOffset(vector, 2, index))).toStrictEqual(
+        expected
+    );
+    expect(reader.getVector(vector)).toStrictEqual([new Uint8Array([1]), new Uint8Array([2, 3])]);
+});
 
 describe('versioned tables', () => {
     it.each([

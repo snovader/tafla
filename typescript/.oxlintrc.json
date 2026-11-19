@@ -13,11 +13,12 @@
         "oxc",
         "import",
         "jsdoc",
-        "promise",
-        "vitest"
+        "promise"
     ],
-    // oxfmt sorts import declarations, but not the names that they import
-    "jsPlugins": ["./lint/plugin.ts"],
+    // oxfmt sorts import declarations, but not the names that they import.
+    // oxlint's own rules for Vitest see only what is imported from `vitest`,
+    // so hypotes has rules for the tests declared through it.
+    "jsPlugins": ["./lint/plugin.ts", "hypotes/oxlint"],
     // Every rule of these categories runs, except those turned off below. Rules
     // of the style and restriction categories run only when listed, as most
     // describe a house style other than this one, and a new version of oxlint
@@ -124,21 +125,24 @@
         "unicorn/prefer-number-properties": "error",
         "unicorn/prefer-structured-clone": "error",
 
-        // fast-check's `it` and its `it.prop` are tests, assertions take
-        // messages as their second argument, and helpers whose names start
-        // with `expect` assert
-        "vitest/no-standalone-expect": [
-            "error",
-            { "additionalTestBlockFunctions": ["it", "it.each", "it.prop"] }
-        ],
-        "vitest/valid-expect": ["error", { "maxArgs": 2 }],
-        "vitest/expect-expect": [
-            "error",
-            { "assertFunctionNames": ["expect", "expect*"] }
-        ],
+        // Tests, which a helper whose name starts with `expect` asserts for
+        // too
+        "hypotes/no-focused-tests": "error",
+        "hypotes/no-disabled-tests": "error",
+        "hypotes/warn-todo": "error",
+        "hypotes/no-conditional-tests": "error",
+        "hypotes/valid-title": "error",
+        "hypotes/valid-describe-callback": "error",
+        "hypotes/expect-expect": "error",
+        "hypotes/no-standalone-expect": "error",
+        "hypotes/valid-expect": "error",
+        "hypotes/valid-expect-in-promise": "error",
+        "hypotes/require-to-throw-message": "error",
         // `toBe` compares with Object.is, which tells -0 from 0
-        "vitest/prefer-to-be": "error",
-        "vitest/prefer-to-have-length": "error",
+        "hypotes/prefer-to-be": "error",
+        "hypotes/prefer-to-have-length": "error",
+        "hypotes/hoisted-apis-on-top": "error",
+        "hypotes/require-mock-type-parameters": "error",
 
         // Turned off
 
@@ -215,9 +219,6 @@
         "jsdoc/require-throws-type": "off",
         "jsdoc/require-yields": "off",
         "jsdoc/require-yields-type": "off",
-        // Tests check what each generated case throws or returns
-        "vitest/no-conditional-in-test": "off",
-        "vitest/no-conditional-expect": "off",
         // Scripts that write files write them in order
         "eslint/no-await-in-loop": "off"
     },
@@ -238,13 +239,9 @@
             }
         },
         {
-            // Vitest, rolldown and oxlint read configurations and plugins from
-            // default exports
-            "files": [
-                "**/vitest.config.ts",
-                "core/rolldown.config.ts",
-                "lint/plugin.ts"
-            ],
+            // rolldown and oxlint read configurations and plugins from default
+            // exports
+            "files": ["core/rolldown.config.ts", "lint/plugin.ts"],
             "rules": {
                 "import/no-default-export": "off"
             }

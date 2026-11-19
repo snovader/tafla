@@ -1,5 +1,5 @@
-import { describe, expect, vi } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, expect, vi } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
 import { TableBuilder, TableLayout, TableReader, type TableItem } from 'tafla';
 import { tables, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';

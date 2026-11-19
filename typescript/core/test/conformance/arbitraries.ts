@@ -1,4 +1,4 @@
-import { fc } from '@fast-check/vitest';
+import { fc } from 'hypotes/fast-check';
 import {
     toJsonNumber,
     type Alignment,
