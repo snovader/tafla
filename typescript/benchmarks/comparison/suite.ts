@@ -1,5 +1,5 @@
+import { bench, parseOptions, type Group } from 'benk';
 import type { Codec, Workload } from './codecs/codec.ts';
-import { measureGroups, type Group, type RunOptions } from './harness.ts';
 import { sumItem, writeItems, type ItemAccess } from './item-access.ts';
 import {
     documentInput,
@@ -14,28 +14,55 @@ import {
     type ListInput
 } from './workloads.ts';
 
-export interface SuiteOptions extends RunOptions {
-    print: (line: string) => void;
-}
-
 /**
- * Runs every workload through every codec, and reads the items of tafla's
- * vector and array of structs with each of `accesses`. The groups with
- * typed-array inputs run first, since `number[]` inputs change the type
- * feedback of the code they share.
+ * Runs every workload through every codec with benk, and reads the items of
+ * tafla's vector and array of structs with each of `accesses`. Then prints
+ * each codec's encoded sizes, and what it does with a truncated document.
+ * `args` are benk's command-line options.
  */
-export function runSuite(
+export async function runSuite(
     codecs: Codec[],
     accesses: ItemAccess[],
-    options: SuiteOptions
-): void {
+    args: readonly string[]
+): Promise<void> {
     const documents = DOCUMENT_ROWS.map(documentInput);
     const list = listInput(LIST_ITEMS);
 
     checkRoundTrips(codecs, documents, list);
     checkItemAccess(accesses, list);
 
-    const groups = [
+    const print = printer(args);
+    const groups = suiteGroups(codecs, accesses, documents, list);
+
+    await bench(groups, { args, print });
+    printSizes(codecs, documents, list, print);
+    printTruncation(codecs, documents[documents.length - 1], print);
+}
+
+/**
+ * Prints a line where benk prints its tables: to stdout, or to stderr when
+ * `--json -` writes the results there
+ */
+function printer(args: readonly string[]): (line: string) => void {
+    const { json } = parseOptions(args);
+
+    return json === '-'
+        ? line => console.error(line)
+        : line => console.log(line);
+}
+
+/**
+ * The groups of every workload and way of reading items. The groups with
+ * typed-array inputs come first, since `number[]` inputs change the type
+ * feedback of the code they share.
+ */
+function suiteGroups(
+    codecs: Codec[],
+    accesses: ItemAccess[],
+    documents: DocumentInput[],
+    list: ListInput
+): Group[] {
+    return [
         ...workloadGroups(codecs, 'record', c => c.record, RECORD),
         ...documents.flatMap((input, i) => [
             ...workloadGroups(
@@ -81,10 +108,6 @@ export function runSuite(
             )
         )
     ];
-
-    measureGroups(groups, options, options.print);
-    printSizes(codecs, documents, list, options.print);
-    printTruncation(codecs, documents[documents.length - 1], options.print);
 }
 
 function workloadGroups<I, O>(

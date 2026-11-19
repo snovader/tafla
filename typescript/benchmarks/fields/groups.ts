@@ -1,5 +1,5 @@
+import type { Group, Variant } from 'benk';
 import { TableBuilder, type TableReader } from 'tafla';
-import type { Group, Variant } from '../comparison/harness.ts';
 
 type TypedArray =
     | Int8Array<ArrayBuffer>
@@ -43,22 +43,13 @@ let sourceId = 0;
 /**
  * The groups of `TableReader`'s getters and `TableBuilder`'s setters, with a
  * variant for each element type, each checked to read or write the values it
- * should. The primitive getters end with getInt32 again, an A/A pair that
- * shows the harness's noise. The array setters, of `number[]` and
- * `bigint[]`, come last, since they change the type feedback of the code that
- * the typed array setters share.
+ * should. The array setters, of `number[]` and `bigint[]`, come last, since
+ * they change the type feedback of the code that the typed array setters
+ * share.
  */
 export function fieldGroups(): Group[] {
     return [
-        {
-            name: 'primitive getters',
-            variants: [
-                ...TYPES.map(([type, TypedArray]) =>
-                    getterVariant(`get${type}`, type, TypedArray)
-                ),
-                getterVariant('getInt32 A/A', 'Int32', Int32Array)
-            ]
-        },
+        { name: 'primitive getters', variants: TYPES.map(getterVariant) },
         {
             name: 'typed array getters',
             variants: TYPES.map(arrayGetterVariant)
@@ -77,11 +68,8 @@ export function fieldGroups(): Group[] {
  * array of that type, which keeps every value without allocating, so that V8
  * can't discard the reads
  */
-function getterVariant(
-    name: string,
-    type: TypeName,
-    TypedArray: TypedArrayConstructor
-): Variant {
+function getterVariant([type, TypedArray]: ElementType): Variant {
+    const name = `get${type}`;
     const values = randomValues(TypedArray);
     const reader = tableOfFields(values, type);
     const results = new TypedArray(LENGTH);
@@ -199,7 +187,7 @@ function arraySetterVariant(
  * every type's getter goes megamorphic, and the getters after the first three
  * then took 14 to 19 µs per 1000 reads, against 3.2 to 3.5 µs each from a
  * source of its own. Each source ends with a number of its own, since the
- * A/A pair, and the typed array and array setters, have the same code.
+ * typed array and array setters have the same code.
  */
 function compile(
     parameters: Record<string, unknown>,
