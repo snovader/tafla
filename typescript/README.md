@@ -45,15 +45,28 @@ schema, and the tests that run them, of the JavaScript through its JSDoc
 types. They're the generator's golden files, which `rust/gen/README.md`
 describes: rewrite them with the generator rather than by hand.
 
-Tests run in Node's test runner, `node:test`, whose module loader strips the
-types of `.ts` files, through [hypotes](https://github.com/snovader/hypotes),
-which declares them with Vitest's API and asserts with Vitest's matchers.
+Tests run in Node's test runner, `node:test`, through
+[hypotes](https://github.com/snovader/hypotes), which declares them with
+Vitest's API and asserts with Vitest's matchers.
 Tests import `describe`, `it`, `expect` and `vi` from `hypotes`, as they would
 from `vitest`, and `fc` and `it`, with `it.prop()`, from `hypotes/fast-check`,
 as they would from `@fast-check/vitest`. oxlint's rules for Vitest see only
 what is imported from `vitest`, so the rules of `hypotes/oxlint` lint these
-tests, such as that each test asserts. CI runs them in Node 24 and 26; hypotes
-needs Node 24.13.1 or later.
+tests, such as that each test asserts. CI runs them in Node 24 and 26.
+
+Node runs this project's TypeScript through the hook of
+[`@snovader/node-hooks`](https://github.com/snovader/tooling/tree/main/packages/node-hooks),
+which strips the types with oxc, rather than through its own stripping. Every
+script that runs a `.ts` file passes Node
+`--no-strip-types --import @snovader/node-hooks/register`, for `bundle.ts`
+and for the command that it runs, since the tests and the benchmarks are
+TypeScript even when the package comes from the bundle. Pass the same flags
+to run a `.ts` file by hand. Node's own stripping of a module larger than
+about 1.2–1.7 KB detaches an `ArrayBuffer`, and V8's optimized code then
+checks every access to a typed array for a detached buffer, for the rest of
+the process. Developing needs Node 24.13.1 or later: the hooks need 24.12,
+and hypotes 24.13.1. The package itself supports the versions that its
+`engines` names.
 
 ## Source and build
 
@@ -71,9 +84,11 @@ the tests through it, all in one process, and `yarn bench` and
 after the others, in a process of their own, of the source, since they
 emulate a big-endian host by mocking `source/constants.ts`, which the bundle
 has no module of. `vi.mock()` needs the preload `hypotes/register`, which
-that process and `yarn test:watch` import. `yarn test:watch` runs every test
-of the source, each file in a process of its own, as nothing bundles the
-package again when it changes.
+that process and `yarn test:watch` import after `@snovader/node-hooks`.
+Node runs the hook registered last first, and the TypeScript hook ends the
+chain, so hypotes' hook hoists the mocks in the JavaScript that oxc writes.
+`yarn test:watch` runs every test of the source, each file in a process of
+its own, as nothing bundles the package again when it changes.
 
 `yarn workspace tafla build` bundles the package into `dist/index.js` with
 rolldown, and compiles its declarations to `dist` with tsc. In one module,

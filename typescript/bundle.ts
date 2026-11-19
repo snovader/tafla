@@ -1,8 +1,11 @@
 // Bundles the package as it's published, for tests and benchmarks to import
 // with the `tafla-bundle` condition: it bundles the package, runs the command
-// in its arguments, and removes the bundle.
+// in its arguments, and removes the bundle. Both processes strip types with
+// `@snovader/node-hooks`, as the README describes:
 //
-//     node bundle.ts node --conditions=tafla-bundle benchmarks/comparison/main.ts
+//     node --no-strip-types --import @snovader/node-hooks/register bundle.ts \
+//         node --no-strip-types --import @snovader/node-hooks/register \
+//         --conditions=tafla-bundle benchmarks/comparison/main.ts
 import { spawn } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
