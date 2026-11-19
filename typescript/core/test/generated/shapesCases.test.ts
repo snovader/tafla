@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'hypotes';
 import {
     read,
     serialize,

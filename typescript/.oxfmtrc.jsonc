@@ -21,24 +21,18 @@
     "bracketSpacing": true,
     "bracketSameLine": false,
     "objectWrap": "preserve",
-    // Node's modules, Vitest, then fast-check's tests for it, other packages,
-    // this project's package and its `#` imports, then relative paths,
-    // nearest last
+    // Node's modules, hypotes, other packages, this project's package and its
+    // `#` imports, then relative paths, nearest last
     "sortImports": {
         "customGroups": [
             {
-                "groupName": "vitest",
-                "elementNamePattern": ["vitest", "vitest/**", "@vitest/**"]
-            },
-            {
-                "groupName": "fast-check-vitest",
-                "elementNamePattern": ["@fast-check/vitest"]
+                "groupName": "hypotes",
+                "elementNamePattern": ["hypotes", "hypotes/**"]
             }
         ],
         "groups": [
             "builtin",
-            "vitest",
-            "fast-check-vitest",
+            "hypotes",
             "external",
             ["internal", "subpath"],
             "parent",
