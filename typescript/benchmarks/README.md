@@ -106,7 +106,7 @@ Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
-of its own, and `comparison/itemAccess.ts` holds them:
+of its own, and `comparison/item-access.ts` holds them:
 
 - **tafla** reads with `TableReader`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`

@@ -29,7 +29,7 @@ import {
     SAMPLE_FIELDS,
     SHAPES,
     type ItemList
-} from './shapesTables.ts';
+} from './shapes-tables.ts';
 
 // The code generated from schemas/shapes.tafla, in TypeScript and in
 // JavaScript, writes and reads tables with tafla

@@ -15,7 +15,7 @@
     "lint:check": "oxlint",
     "lint:write": "oxlint --fix",
     "package:check": "yarn workspace tafla build && node core/test/dist.ts",
-    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(bigEndian).test.ts' && node --conditions=tafla-source --import hypotes/register --test core/test/bigEndian.test.ts",
+    "test": "node bundle.ts node --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(big-endian).test.ts' && node --conditions=tafla-source --import hypotes/register --test core/test/big-endian.test.ts",
     "test:watch": "node --conditions=tafla-source --import hypotes/register --test --watch 'core/test/**/*.test.ts'",
     "typecheck": "tsc -b"
   },

@@ -1,7 +1,7 @@
 import { expect, vi } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
 import { TableWriter } from 'tafla';
-import { growing } from './arrayLikes.ts';
+import { growing } from './array-likes.ts';
 import { fitsItsLayout, sliceOf, tables, ARRAY_FIELDS, SLICES } from './conformance/arbitraries.ts';
 import { elementTypeOf, type TableDescription } from './conformance/description.ts';
 import { readScalar, readUnsigned } from './conformance/format.ts';

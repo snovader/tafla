@@ -6,9 +6,6 @@ export default defineConfig({
     extends: [oxlint, hypotes],
     ignorePatterns: ['.cache', 'core/.bundle', '.yarn', '**/dist'],
     rules: {
-        // tafla's files are named in camelCase, as `bigEndian.test.ts`, and
-        // aren't renamed to the shared kebab-case yet
-        'unicorn/filename-case': 'off',
         // Arrays allocated at their length and filled by index, as generated
         // code does
         'unicorn/no-new-array': 'off',
@@ -26,6 +23,17 @@ export default defineConfig({
         'eslint/no-await-in-loop': 'off'
     },
     overrides: [
+        {
+            // tafla-gen names a module after its schema, in camelCase, as
+            // `allTypes.ts` of `all_types.tafla`
+            files: [
+                'core/test/generated/*/javascript/*.js',
+                'core/test/generated/*/typescript/*.ts'
+            ],
+            rules: {
+                'unicorn/filename-case': 'off'
+            }
+        },
         {
             // Written by hand in the shape that flatc generates
             files: ['benchmarks/comparison/generated/flatbuffers.ts'],

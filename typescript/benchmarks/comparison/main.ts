@@ -1,10 +1,10 @@
 import { flatbuffers } from './codecs/flatbuffers.ts';
 import { msgpackr } from './codecs/msgpackr.ts';
 import { protobufjs } from './codecs/protobuf.ts';
+import { taflaGen } from './codecs/tafla-gen.ts';
 import { tafla } from './codecs/tafla.ts';
-import { taflaGen } from './codecs/taflaGen.ts';
 import { describeRun, runOptions } from './harness.ts';
-import { getterAccess, tableReaderAccess } from './itemAccess.ts';
+import { getterAccess, tableReaderAccess } from './item-access.ts';
 import { runSuite } from './suite.ts';
 
 const options = runOptions(process.argv.slice(2));

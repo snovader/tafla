@@ -1,5 +1,12 @@
 import { toJsonNumber } from '../conformance/description.ts';
 import { formatSuiteJson } from '../conformance/files.ts';
+import {
+    readDocument,
+    readItemList,
+    readPoint,
+    readSample,
+    type Shapes
+} from './shapes-tables.ts';
 import type {
     DocumentFields,
     ItemListFields,
@@ -7,13 +14,6 @@ import type {
     SampleFields
 } from './shapes/typescript/shapes.ts';
 import * as typescript from './shapes/typescript/shapes.ts';
-import {
-    readDocument,
-    readItemList,
-    readPoint,
-    readSample,
-    type Shapes
-} from './shapesTables.ts';
 
 // The cases of conformance/generated: values of the messages and the struct of
 // schemas/shapes.tafla, whose tables the code generated in every language

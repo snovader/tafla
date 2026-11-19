@@ -9,13 +9,13 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
-import { TableReader } from './tableReader.ts';
+import { TableReader } from './table-reader.ts';
 import {
     copyTable,
     newTableWriter,
     structCount,
     type TableWriter
-} from './tableWriter.ts';
+} from './table-writer.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
 // The kinds of field, which finalize() switches on to write each value

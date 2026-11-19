@@ -20,7 +20,7 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
-import { assertStructSize } from './tableReader.ts';
+import { assertStructSize } from './table-reader.ts';
 import type { ElementSize, OffsetSize } from './types.ts';
 
 /**
