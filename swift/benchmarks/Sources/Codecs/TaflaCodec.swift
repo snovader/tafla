@@ -1,8 +1,9 @@
 import Tafla
 import Workloads
 
-/// Writes tables with `TableBuilder`, which writes nested builders straight
-/// into their parent, and each array in bulk, into a table of its exact size.
+/// Writes tables with `TableBuilder`, recording the document's columns and the
+/// vector's items, with their pairs, in place among their parent's fields, and
+/// each array in bulk, into a table of its exact size.
 /// It reads the tables with `TableReader`'s getters, and copies each column
 /// out of its `ArrayView` in bulk.
 public struct TaflaCodec: SuiteCodec {
@@ -41,17 +42,16 @@ public struct TaflaCodec: SuiteCodec {
     }
 
     public func serializeDocument(_ document: Document) throws -> [UInt8] {
-        var columns = try TableBuilder(fields: 4)
-        try columns.setInt64(document.base)
-        try columns.setUInt32Array(document.keys)
-        try columns.setFloat32Array(document.a)
-        try columns.setFloat32Array(document.b)
-
         var builder = try TableBuilder(fields: 4, layout: Self.documentLayout, version: Self.documentVersion)
         try builder.setFloat64(document.x)
         try builder.setFloat64(document.y)
         try builder.setString(document.name)
-        try builder.setTable(.builder(columns))
+        try builder.setTable(fields: 4) { columns throws(BuildError) in
+            try columns.setInt64(document.base)
+            try columns.setUInt32Array(document.keys)
+            try columns.setFloat32Array(document.a)
+            try columns.setFloat32Array(document.b)
+        }
 
         return try builder.bytes()
     }
@@ -87,29 +87,22 @@ public struct TaflaCodec: SuiteCodec {
     }
 
     public func serializeList(_ list: List) throws -> [UInt8] {
-        var items: [NestedTable] = []
-        items.reserveCapacity(list.items.count)
-        for item in list.items {
-            items.append(.builder(try itemBuilder(item)))
-        }
-
         var builder = try TableBuilder(fields: 1)
-        try builder.setVector(items)
+        try builder.setVector(count: list.items.count, fields: 2) { index, item throws(BuildError) in
+            try Self.setItem(list.items[index], on: &item)
+        }
 
         return try builder.bytes()
     }
 
-    /// The builder of an item of the vector, with its pair nested in it
-    func itemBuilder(_ item: Item) throws -> TableBuilder {
-        var pair = try TableBuilder(fields: 2)
-        try pair.setFloat32(item.first)
-        try pair.setFloat32(item.second)
-
-        var builder = try TableBuilder(fields: 2)
-        try builder.setFloat32(item.value)
-        try builder.setTable(.builder(pair))
-
-        return builder
+    /// Sets the fields of an item of the vector, with its pair nested in it
+    /// in place
+    static func setItem(_ value: Item, on item: inout TableBuilder.Item) throws(BuildError) {
+        try item.setFloat32(value.value)
+        try item.setTable(fields: 2) { pair throws(BuildError) in
+            try pair.setFloat32(value.first)
+            try pair.setFloat32(value.second)
+        }
     }
 
     public func deserializeList(_ bytes: [UInt8]) throws -> List {

@@ -151,6 +151,187 @@ struct TableBuilderTests {
         #expect(try builder.bytes() == [8, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0])
     }
 
+    // A builder is a value: a copy taken after any number of fields, as few as
+    // a builder holds within itself or more, sets the rest of its own, and
+    // neither changes the other
+    @Test func aCopyOfABuilderSetsItsOwnFields() throws {
+        let fields = 9
+        for copied in 0...fields {
+            var builder = try TableBuilder(fields: fields)
+            for index in 0..<copied {
+                try builder.setString("field \(index)")
+            }
+
+            var copy = builder
+            for index in copied..<fields {
+                try builder.setString("field \(index)")
+                try copy.setUInt8Array([UInt8(index)])
+            }
+
+            try withSpan(of: builder.bytes()) { bytes throws in
+                let reader = TableReader(bytes)
+                for index in 0..<fields {
+                    #expect(try reader.string(at: reader.rootOffset(index)) == "field \(index)")
+                }
+            }
+            try withSpan(of: copy.bytes()) { bytes throws in
+                let reader = TableReader(bytes)
+                for index in 0..<copied {
+                    #expect(try reader.string(at: reader.rootOffset(index)) == "field \(index)")
+                }
+                for index in copied..<fields {
+                    #expect(Array(try reader.uint8Array(at: reader.rootOffset(index))) == [UInt8(index)])
+                }
+            }
+        }
+    }
+
+    // A builder nested in another writes the bytes that it writes alone,
+    // whether its fields, and its parent's with it, are as few as a builder
+    // holds within itself or more, and with a builder nested in it in turn
+    @Test func aNestedBuilderWritesItsOwnBytesWithAnyNumberOfFields() throws {
+        var pair = try TableBuilder(fields: 2)
+        try pair.setUInt8(1)
+        try pair.setString("𝄞")
+
+        for nestedFields in 1...6 {
+            var nested = try TableBuilder(fields: nestedFields)
+            for index in 1..<nestedFields {
+                try nested.setUInt16(UInt16(index))
+            }
+            try nested.setTable(.builder(pair))
+
+            for parentFields in 1...6 {
+                var fromBuilder = try TableBuilder(fields: parentFields)
+                var fromBytes = try TableBuilder(fields: parentFields)
+                for index in 1..<parentFields {
+                    try fromBuilder.setInt32(Int32(index))
+                    try fromBytes.setInt32(Int32(index))
+                }
+                try fromBuilder.setTable(.builder(nested))
+                try fromBytes.setTable(.bytes(nested.bytes()), alignment: .one)
+
+                #expect(try fromBuilder.bytes() == fromBytes.bytes())
+            }
+        }
+    }
+
+    // Tables nested from builders and recorded in place, with
+    // setTable(fields:_:) and setVector(count:fields:_:), write the bytes that
+    // their builders write, and fail as they fail, for tables of any offset
+    // type and of short ones, whose limits the fields reach. A vector whose
+    // count and item ends alone make its table too long fails before its
+    // items, where its builders fail for them or count them too. Most tables
+    // nest only tables that are recorded in place, and others any tables, of
+    // which those are recorded in place among the others.
+    @Test func tablesRecordedInPlaceWriteWhatTheirBuildersWrite() async {
+        await checkDrawn { draw in
+            let table = draw.bool() ? draw.table() : draw.table(of: [.uint8, .uint16])
+            return draw.int(0...3) > 0 ? table.recordedInPlace() : table
+        } _: { table in
+            let inPlace = Result { () throws(BuildError) in try table.bytesInPlace() }
+            let fromBuilders = Result { () throws(BuildError) in try table.bytes() }
+
+            #expect(inPlace == fromBuilders || failsBeforeItsItems(inPlace, ratherThan: fromBuilders))
+        }
+    }
+
+    // A vector recorded in place whose count and item ends alone make its
+    // table too long reports that length, since its items aren't recorded,
+    // where a vector of their builders reports the length with its items
+    @Test func aVectorRecordedInPlaceTooLongBeforeItsItemsReportsItsLengthWithoutThem() throws {
+        var builder = try TableBuilder(fields: 2, layout: TableLayout(offsetType: .uint8))
+        try builder.setUInt8Array(Array(repeating: 7, count: 249))
+        var item = try TableBuilder(fields: 1, layout: TableLayout(offsetType: .uint8))
+        try item.setUInt8(1)
+
+        // 2 offsets, a count and 249 bytes, and a vector of a count and 3
+        // ends, and of 3 items of an offset and a byte
+        #expect(throws: BuildError.tooLong(index: 1, length: 256, offsetType: .uint8)) {
+            try builder.setVector(count: 3, fields: 1) { _, item throws(BuildError) in
+                try item.setUInt8(1)
+            }
+        }
+        #expect(throws: BuildError.tooLong(index: 1, length: 262, offsetType: .uint8)) {
+            try builder.setVector(Array(repeating: .builder(item), count: 3))
+        }
+    }
+
+    // Whatever a table or vector recorded in place throws, from its fill or
+    // for the table itself, the builder is left as it was, whether the
+    // fields before it fit within the builder or not
+    @Test func aTableRecordedInPlaceThatFailsLeavesTheBuilderAsItWas() throws {
+        for before in 0...5 {
+            var builder = try TableBuilder(fields: before + 1)
+            var expected = try TableBuilder(fields: before + 1)
+            for index in 0..<before {
+                try builder.setString("field \(index)")
+                try expected.setString("field \(index)")
+            }
+
+            #expect(throws: BuildError.incomplete(set: 5, fields: 6)) {
+                try builder.setTable(fields: 6) { table throws(BuildError) in
+                    for index in 0..<5 {
+                        try table.setUInt16(UInt16(index))
+                    }
+                }
+            }
+            #expect(throws: BuildError.tooManyFields(fields: 1)) {
+                try builder.setTable(fields: 1) { table throws(BuildError) in
+                    try table.setTable(fields: 1) { nested throws(BuildError) in
+                        try nested.setUInt8(1)
+                    }
+                    try table.setUInt8(2)
+                }
+            }
+            #expect(throws: BuildError.tooManyFields(fields: 2)) {
+                try builder.setVector(count: 3, fields: 2) { index, item throws(BuildError) in
+                    try item.setUInt8(1)
+                    try item.setUInt8(2)
+                    if index == 2 {
+                        try item.setUInt8(3)
+                    }
+                }
+            }
+
+            try builder.setUInt8(0xff)
+            try expected.setUInt8(0xff)
+            #expect(try builder.bytes() == expected.bytes())
+        }
+    }
+
+    @Test func rejectsATableRecordedInPlaceThatMakesItsParentTooLong() throws {
+        var builder = try TableBuilder(fields: 2, layout: TableLayout(offsetType: .uint8))
+        try builder.setUInt8Array(Array(repeating: 7, count: 240))
+
+        // 2 offsets, a count and 240 bytes, and a table of an offset and a
+        // string of a count and 12 bytes
+        #expect(throws: BuildError.tooLong(index: 1, length: 257, offsetType: .uint8)) {
+            try builder.setTable(fields: 1) { table throws(BuildError) in
+                try table.setString("twelve bytes")
+            }
+        }
+
+        // A vector whose count and the ends of its items alone make the table
+        // too long fails before any item is recorded
+        var filled = 0
+        #expect(throws: BuildError.tooLong(index: 1, length: 256, offsetType: .uint8)) {
+            try builder.setVector(count: 12, fields: 0) { _, _ in
+                filled += 1
+            }
+        }
+        #expect(filled == 0)
+
+        #expect(throws: BuildError.headerTooLong(fields: 256, offsetType: .uint8)) {
+            try builder.setTable(fields: 256) { _ in }
+        }
+
+        try builder.setTable(fields: 1) { table throws(BuildError) in
+            try table.setString("a")
+        }
+        #expect(try builder.bytes().count == 246)
+    }
+
     // A table of 4 GiB can't be allocated in a test, but a vector that nests
     // a builder of 64 MiB 64 times is that long without allocating more
     @Test func rejectsATableOfUInt32OffsetsPast4GiBBeforeWritingIt() throws {
@@ -195,6 +376,21 @@ struct TableBuilderTests {
         await #expect(processExitsWith: .failure) {
             _ = try? TableBuilder(fields: 0, version: 1)
         }
+        await #expect(processExitsWith: .failure) {
+            var builder = try? TableBuilder(fields: 1)
+            try? builder?.setVector(count: -1, fields: 1) { _, _ in }
+        }
+
+        // A closure that uses the builder that it records a table in, rather
+        // than its item, is an overlapping access to the builder, which Swift
+        // rejects when it compiles a local one, and stops the program for
+        // otherwise
+        await #expect(processExitsWith: .failure) {
+            let shared = SharedBuilder(try! TableBuilder(fields: 1))
+            try? shared.builder.setTable(fields: 1) { _ throws(BuildError) in
+                try shared.builder.setUInt8(1)
+            }
+        }
     }
 
     // Each setter writes its field's own type, which Swift converts to
@@ -213,6 +409,33 @@ struct TableBuilderTests {
             #expect(try reader.float64(at: reader.rootOffset(1)).bitPattern == (-0.0).bitPattern)
             #expect(try reader.float32(at: reader.rootOffset(2)) == .infinity)
         }
+    }
+}
+
+/// Whether a table recorded in place failed for a vector whose count and item
+/// ends alone make its table too long, which fails before its items are
+/// recorded: with that length, where its builders failed for the vector with
+/// its items too, which is longer, or for an item of it first
+func failsBeforeItsItems(
+    _ inPlace: Result<[UInt8], BuildError>,
+    ratherThan fromBuilders: Result<[UInt8], BuildError>
+) -> Bool {
+    guard case .failure(.tooLong(let index, let length, let offsetType)) = inPlace,
+        case .failure(.tooLong(let builderIndex, let builderLength, let builderOffsetType)) = fromBuilders
+    else {
+        return false
+    }
+
+    let sameField = index == builderIndex && offsetType == builderOffsetType
+    return !sameField || length < builderLength
+}
+
+/// A builder in a class, whose accesses Swift checks while the program runs
+final class SharedBuilder {
+    var builder: TableBuilder
+
+    init(_ builder: TableBuilder) {
+        self.builder = builder
     }
 }
 

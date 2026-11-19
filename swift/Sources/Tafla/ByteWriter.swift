@@ -2,20 +2,37 @@
 enum Field: Sendable {
     /// A scalar's little-endian bits, of `size` bytes
     case scalar(bits: UInt64, size: Int)
-    case array(any ElementArray)
+    case array(Elements)
     case string(String, utf8Count: Int)
     case structBytes([UInt8])
     /// The bytes of structs of `size` bytes each, aligned to `alignment`
     case structArray([UInt8], size: Int, alignment: Alignment)
-    case table(NestedTable, alignment: Alignment)
+    /// A table nested from its bytes, aligned to `alignment`
+    case tableBytes([UInt8], alignment: Alignment)
+    /// A table nested from a builder, aligned to `alignment`, whose fields
+    /// follow this one among its parent's
+    case table(TableHeader, alignment: Alignment)
+    /// A table nested from a builder, aligned to `alignment`, whose fields
+    /// are those of the builder's array, which it shares
+    case sharedTable(fields: [Field], TableHeader, alignment: Alignment)
     case vector([NestedTable])
+    /// A vector of `count` tables recorded in place, `length` bytes long with
+    /// its count and the ends of its items, whose items follow it among its
+    /// parent's fields, each a `table` field followed by its own
+    case vectorInPlace(count: Int, length: UInt64)
+
+    /// What a slot of `Fields` without a field holds, which is never
+    /// written: a scalar of no size, which stops the program if it is
+    static var unset: Field { .scalar(bits: 0, size: 0) }
 
     /// The alignment that the field needs from the table's start
     var alignment: Alignment {
         switch self {
-        case .array(let values): values.elementAlignment
-        case .structArray(_, _, let alignment), .table(_, let alignment): alignment
-        case .scalar, .string, .structBytes, .vector: .one
+        case .array(let values): values.alignment
+        case .structArray(_, _, let alignment), .tableBytes(_, let alignment), .table(_, let alignment),
+            .sharedTable(_, _, let alignment):
+            alignment
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace: .one
         }
     }
 
@@ -25,8 +42,8 @@ enum Field: Sendable {
     func padding(at offset: UInt64, width: UInt64) -> UInt64 {
         switch self {
         case .array, .structArray: alignment.padding(at: offset + width)
-        case .table: alignment.padding(at: offset)
-        case .scalar, .string, .structBytes, .vector: 0
+        case .tableBytes, .table, .sharedTable: alignment.padding(at: offset)
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace: 0
         }
     }
 
@@ -45,8 +62,10 @@ enum Field: Sendable {
             return UInt64(bytes.count)
         case .structArray(let bytes, _, _):
             return width + UInt64(bytes.count)
-        case .table(let table, _):
-            return table.length
+        case .tableBytes(let bytes, _):
+            return UInt64(bytes.count)
+        case .table(let header, _), .sharedTable(_, let header, _):
+            return UInt64(header.length)
         case .vector(let items):
             var length = width
             for item in items {
@@ -54,12 +73,21 @@ enum Field: Sendable {
                 length = overflow ? .max : sum
             }
             return length
+        case .vectorInPlace(_, let length):
+            return length
         }
     }
 
     /// Writes the field at the writer's position, after its padding, in a
-    /// table of `offsetType` offsets
-    func write(to writer: inout ByteWriter, offsetType: OffsetType) {
+    /// table of `offsetType` offsets. A table nested from a builder whose
+    /// fields follow it takes them from `fields`, from `next`, and moves
+    /// `next` past them.
+    func write<Records: RandomAccessCollection<Field>>(
+        to writer: inout ByteWriter,
+        offsetType: OffsetType,
+        following fields: Records,
+        from next: inout Int
+    ) where Records.Index == Int {
         switch self {
         case .scalar(let bits, let size):
             writer.writeScalar(bits, size: size)
@@ -74,10 +102,17 @@ enum Field: Sendable {
         case .structArray(let bytes, let size, _):
             writer.writeSlot(UInt32(bytes.count / size), offsetType: offsetType)
             writer.writeBytes(bytes)
-        case .table(let table, _):
-            table.write(to: &writer)
+        case .tableBytes(let bytes, _):
+            writer.writeBytes(bytes)
+        case .table(let header, _):
+            header.write(fields: fields, from: &next, to: &writer)
+        case .sharedTable(let shared, let header, _):
+            var first = 0
+            header.write(fields: shared, from: &first, to: &writer)
         case .vector(let items):
             writeVector(items, to: &writer, offsetType: offsetType)
+        case .vectorInPlace(let count, _):
+            writeVector(count: count, following: fields, from: &next, to: &writer, offsetType: offsetType)
         }
     }
 
@@ -90,17 +125,54 @@ enum Field: Sendable {
         writer.writeSlot(UInt32(items.count), offsetType: offsetType)
         let ends = writer.reserve(items.count * width)
 
-        for (index, item) in items.enumerated() {
-            item.write(to: &writer)
+        for index in items.indices {
+            items[index].write(to: &writer)
+            writer.writeSlot(UInt32(writer.position - position), at: ends + index * width, offsetType: offsetType)
+        }
+    }
+
+    /// Writes a vector of `count` tables recorded in place, as
+    /// ``writeVector(_:to:offsetType:)`` writes their builders, from the
+    /// fields from `next`: each item's `table` field and then its own. It's
+    /// kept out of ``write(to:offsetType:following:from:)``, which is inlined
+    /// into the writer of each table only while it's short.
+    @inline(never)
+    private func writeVector<Records: RandomAccessCollection<Field>>(
+        count: Int,
+        following fields: Records,
+        from next: inout Int,
+        to writer: inout ByteWriter,
+        offsetType: OffsetType
+    ) where Records.Index == Int {
+        let position = writer.position
+        let width = offsetType.size
+
+        writer.writeSlot(UInt32(count), offsetType: offsetType)
+        let ends = writer.reserve(count * width)
+
+        for index in 0..<count {
+            guard case .table(let header, _) = fields[next] else {
+                preconditionFailure("A vector's item is a table")
+            }
+            next += 1
+
+            header.write(fields: fields, from: &next, to: &writer)
             writer.writeSlot(UInt32(writer.position - position), at: ends + index * width, offsetType: offsetType)
         }
     }
 }
 
-extension TableBuilder {
+extension TableHeader {
     /// Writes the table at the writer's position: its header, and then each
-    /// field after its padding, with its offset from the table's start
-    func write(to writer: inout ByteWriter) {
+    /// field after its padding, with its offset from the table's start. Its
+    /// fields are those of `fields` from `next`, each followed by those of a
+    /// table nested from a builder that it records, and it moves `next` past
+    /// them.
+    func write<Records: RandomAccessCollection<Field>>(
+        fields: Records,
+        from next: inout Int,
+        to writer: inout ByteWriter
+    ) where Records.Index == Int {
         let start = writer.position
         let width = layout.offsetSize
         let offsetType = layout.offsetType
@@ -114,13 +186,24 @@ extension TableBuilder {
         }
 
         var slot = header + layout.headerSize
-        for field in fields {
+        for _ in 0..<Int(fieldCount) {
+            let field = fields[next]
+            next += 1
+
             let offset = UInt64(writer.position - start)
             writer.writeZeros(Int(field.padding(at: offset, width: UInt64(width))))
             writer.writeSlot(UInt32(writer.position - start), at: slot, offsetType: offsetType)
-            field.write(to: &writer, offsetType: offsetType)
+            field.write(to: &writer, offsetType: offsetType, following: fields, from: &next)
             slot += width
         }
+    }
+}
+
+extension TableBuilder {
+    /// Writes the table at the writer's position
+    func write(to writer: inout ByteWriter) {
+        var next = 0
+        header.write(fields: fields, from: &next, to: &writer)
     }
 }
 
@@ -135,26 +218,95 @@ extension NestedTable {
     }
 }
 
-/// An array of elements that a `TableBuilder` keeps, of any element type
-protocol ElementArray: Sendable {
-    var count: Int { get }
+/// The elements of an array field, as the array of their type, which it
+/// shares. Each of the ten element types is a case, rather than an
+/// existential of them, which would make every field that a builder copies
+/// or reads a value of unknown size, copied through its type's metadata.
+enum Elements: Sendable {
+    case int8([Int8])
+    case uint8([UInt8])
+    case int16([Int16])
+    case uint16([UInt16])
+    case int32([Int32])
+    case uint32([UInt32])
+    case int64([Int64])
+    case uint64([UInt64])
+    case float32([Float])
+    case float64([Double])
 
-    /// The elements' byte length
-    var byteCount: Int { get }
+    /// The elements of `values`, whose type is one of the ten, as
+    /// `ArrayElement` documents, so that one cast is of the array to its own
+    /// type. An array of another type that conforms stops the program.
+    init<T: ArrayElement>(_ values: [T]) {
+        if T.self == Int8.self {
+            self = .int8(unsafeBitCast(values, to: [Int8].self))
+        } else if T.self == UInt8.self {
+            self = .uint8(unsafeBitCast(values, to: [UInt8].self))
+        } else if T.self == Int16.self {
+            self = .int16(unsafeBitCast(values, to: [Int16].self))
+        } else if T.self == UInt16.self {
+            self = .uint16(unsafeBitCast(values, to: [UInt16].self))
+        } else if T.self == Int32.self {
+            self = .int32(unsafeBitCast(values, to: [Int32].self))
+        } else if T.self == UInt32.self {
+            self = .uint32(unsafeBitCast(values, to: [UInt32].self))
+        } else if T.self == Int64.self {
+            self = .int64(unsafeBitCast(values, to: [Int64].self))
+        } else if T.self == UInt64.self {
+            self = .uint64(unsafeBitCast(values, to: [UInt64].self))
+        } else if T.self == Float.self {
+            self = .float32(unsafeBitCast(values, to: [Float].self))
+        } else if T.self == Double.self {
+            self = .float64(unsafeBitCast(values, to: [Double].self))
+        } else {
+            preconditionFailure("Only the ten element types conform to ArrayElement")
+        }
+    }
 
-    var elementAlignment: Alignment { get }
+    var count: Int {
+        switch self {
+        case .int8(let values): values.count
+        case .uint8(let values): values.count
+        case .int16(let values): values.count
+        case .uint16(let values): values.count
+        case .int32(let values): values.count
+        case .uint32(let values): values.count
+        case .int64(let values): values.count
+        case .uint64(let values): values.count
+        case .float32(let values): values.count
+        case .float64(let values): values.count
+        }
+    }
+
+    /// The elements' size, which they're aligned to from the table's start
+    var alignment: Alignment {
+        switch self {
+        case .int8, .uint8: .one
+        case .int16, .uint16: .two
+        case .int32, .uint32, .float32: .four
+        case .int64, .uint64, .float64: .eight
+        }
+    }
+
+    /// The elements' byte length, which fits in an `Int` as an array's does
+    var byteCount: Int {
+        count &* alignment.bytes
+    }
 
     /// Writes the elements' little-endian bytes at the writer's position
-    func write(to writer: inout ByteWriter)
-}
-
-extension Array: ElementArray where Element: ArrayElement {
-    var byteCount: Int { count * MemoryLayout<Element>.size }
-
-    var elementAlignment: Alignment { Element.alignment }
-
     func write(to writer: inout ByteWriter) {
-        writer.writeElements(self)
+        switch self {
+        case .int8(let values): writer.writeElements(values)
+        case .uint8(let values): writer.writeElements(values)
+        case .int16(let values): writer.writeElements(values)
+        case .uint16(let values): writer.writeElements(values)
+        case .int32(let values): writer.writeElements(values)
+        case .uint32(let values): writer.writeElements(values)
+        case .int64(let values): writer.writeElements(values)
+        case .uint64(let values): writer.writeElements(values)
+        case .float32(let values): writer.writeElements(values)
+        case .float64(let values): writer.writeElements(values)
+        }
     }
 }
 
@@ -204,7 +356,8 @@ struct ByteWriter {
         case 1: bytes.storeBytes(of: UInt8(truncatingIfNeeded: bits), toByteOffset: start, as: UInt8.self)
         case 2: UInt16(truncatingIfNeeded: bits).store(to: bytes, at: start)
         case 4: UInt32(truncatingIfNeeded: bits).store(to: bytes, at: start)
-        default: bits.store(to: bytes, at: start)
+        case 8: bits.store(to: bytes, at: start)
+        default: preconditionFailure("A scalar of another size than an element's")
         }
     }
 
