@@ -29,7 +29,9 @@ extension Table {
     /// records each table nested from a builder that it records in place with
     /// `setTable(fields:_:)`, and each vector of them whose items hold as many
     /// fields with `setVector(count:fields:_:)`, rather than from their
-    /// builders. Its bytes and errors are those of ``bytes()``.
+    /// builders. Its bytes and errors are those of ``bytes()``, but for a
+    /// vector whose count and item ends alone make its table too long, which
+    /// fails before its items are recorded.
     func bytesInPlace() throws(BuildError) -> [UInt8] {
         // The tables that its builder records in place: from a builder,
         // without a header, with this table's offset type, and padded to their

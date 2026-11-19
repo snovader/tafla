@@ -362,9 +362,10 @@ public struct TableBuilder: Sendable {
     ///
     /// Throws ``BuildError/tooLong(index:length:offsetType:)`` before
     /// recording any item if the vector's count and the ends of its items
-    /// alone make this table too long, or once its items are recorded if
-    /// they do, and otherwise as ``setTable(fields:_:)`` throws, for each
-    /// item. Whatever is thrown, the builder is left as it was.
+    /// alone make this table too long, with the length that they make it,
+    /// or once its items are recorded if they do, and otherwise as
+    /// ``setTable(fields:_:)`` throws, for each item. Whatever is thrown,
+    /// the builder is left as it was.
     public mutating func setVector(
         count: Int,
         fields: Int,

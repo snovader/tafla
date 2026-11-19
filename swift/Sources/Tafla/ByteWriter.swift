@@ -21,7 +21,8 @@ enum Field: Sendable {
     /// parent's fields, each a `table` field followed by its own
     case vectorInPlace(count: Int, length: UInt64)
 
-    /// What a slot of `Fields` without a field holds
+    /// What a slot of `Fields` without a field holds, which is never
+    /// written: a scalar of no size, which stops the program if it is
     static var unset: Field { .scalar(bits: 0, size: 0) }
 
     /// The alignment that the field needs from the table's start
@@ -233,8 +234,9 @@ enum Elements: Sendable {
     case float32([Float])
     case float64([Double])
 
-    /// The elements of `values`, whose type is one of the ten, so that one
-    /// cast is of the array to its own type
+    /// The elements of `values`, whose type is one of the ten, as
+    /// `ArrayElement` documents, so that one cast is of the array to its own
+    /// type. An array of another type that conforms stops the program.
     init<T: ArrayElement>(_ values: [T]) {
         if T.self == Int8.self {
             self = .int8(unsafeBitCast(values, to: [Int8].self))
@@ -257,18 +259,7 @@ enum Elements: Sendable {
         } else if T.self == Double.self {
             self = .float64(unsafeBitCast(values, to: [Double].self))
         } else {
-            self = Self(bitsOf: values)
-        }
-    }
-
-    /// The elements of another type that conforms to `ArrayElement`, though
-    /// it's documented that none does, as the bits that they're written as
-    private init<T: ArrayElement>(bitsOf values: [T]) {
-        switch MemoryLayout<T>.size {
-        case 1: self = .uint8(values.map { UInt8(truncatingIfNeeded: $0._taflaBits) })
-        case 2: self = .uint16(values.map { UInt16(truncatingIfNeeded: $0._taflaBits) })
-        case 4: self = .uint32(values.map { UInt32(truncatingIfNeeded: $0._taflaBits) })
-        default: self = .uint64(values.map { UInt64(truncatingIfNeeded: $0._taflaBits) })
+            preconditionFailure("Only the ten element types conform to ArrayElement")
         }
     }
 
@@ -365,7 +356,8 @@ struct ByteWriter {
         case 1: bytes.storeBytes(of: UInt8(truncatingIfNeeded: bits), toByteOffset: start, as: UInt8.self)
         case 2: UInt16(truncatingIfNeeded: bits).store(to: bytes, at: start)
         case 4: UInt32(truncatingIfNeeded: bits).store(to: bytes, at: start)
-        default: bits.store(to: bytes, at: start)
+        case 8: bits.store(to: bytes, at: start)
+        default: preconditionFailure("A scalar of another size than an element's")
         }
     }
 
