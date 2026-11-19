@@ -393,7 +393,7 @@ TEST(TableBuilder, AVectorTooLongBeforeItsItemsReportsItsLengthWithoutThem) {
     // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
     // and of 3 items of an offset and a byte
     const auto in_place = build_error_of(
-        [&] { builder.set_vector(3, 1, [](std::size_t, TableBuilder::Item& item) { item.set_uint8(1); }); });
+        [&] { builder.set_vector(3, 1, [](std::size_t, TableBuilder::Item& recorded) { recorded.set_uint8(1); }); });
     EXPECT_TRUE(same_error(in_place, BuildError::Kind::too_long, OffsetType::uint8, 1, 256));
 
     const auto from_builders = build_error_of([&] {
