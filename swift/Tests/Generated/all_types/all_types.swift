@@ -7,7 +7,7 @@ import Tafla
 public struct Scalars: ~Escapable {
     /// The layout that a `Scalars` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -164,7 +164,7 @@ public struct ScalarsFields: Hashable, Sendable {
 public struct Arrays: ~Escapable {
     /// The layout that an `Arrays` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -320,7 +320,7 @@ public struct ArraysFields: Hashable, Sendable {
 public struct Nested: ~Escapable {
     /// The layout that a `Nested` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -642,8 +642,7 @@ public struct TreeVector: ~Escapable {
     public subscript(index: Int) -> Tree {
         @_lifetime(copy self)
         get throws(DecodeError) {
-            let reader = try TableReader(vector.itemInPlace(at: index), layout: TableLayout())
-            return Tree(reader: reader, position: 0)
+            try Tree(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
         }
     }
 }
@@ -753,7 +752,7 @@ public struct KeywordsFields: Hashable, Sendable {
 public struct Reserved: ~Escapable {
     /// The layout that a `Reserved` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -805,7 +804,7 @@ public struct ReservedFields: Hashable, Sendable {
 public struct Structs: ~Escapable {
     /// The layout that a `Structs` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -1022,7 +1021,7 @@ public struct Segment: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Segment` at `offset` in `bytes`, which hold its scalars there
@@ -1127,7 +1126,7 @@ public struct Point: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Point` at `offset` in `bytes`, which hold its scalars there
@@ -1264,7 +1263,7 @@ public struct Packed: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Packed` at `offset` in `bytes`, which hold its scalars there
@@ -1368,7 +1367,7 @@ public struct Documented: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Documented` at `offset` in `bytes`, which hold its scalars there

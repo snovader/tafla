@@ -627,7 +627,7 @@ public struct Uint16OffsetsSizedVersionedFields: Hashable, Sendable {
 public struct Uint32Offsets: ~Escapable {
     /// The layout that a `Uint32Offsets` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader

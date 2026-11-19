@@ -23,7 +23,7 @@ public struct Vec2: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Vec2` at `offset` in `bytes`, which hold its scalars there
@@ -98,7 +98,7 @@ public struct Quad: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Quad` at `offset` in `bytes`, which hold its scalars there
@@ -183,7 +183,7 @@ public struct Block: Hashable, Sendable {
     /// Throws a `DecodeError` if `bytes` are shorter than `size`.
     @inlinable
     public init(_ bytes: RawSpan) throws(DecodeError) {
-        self.init(try TableReader(bytes, layout: TableLayout()).struct(at: 0, size: Self.size), at: 0)
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
     }
 
     /// Reads a `Block` at `offset` in `bytes`, which hold its scalars there
@@ -322,8 +322,7 @@ public struct RangeVector: ~Escapable {
     public subscript(index: Int) -> Range {
         @_lifetime(copy self)
         get throws(DecodeError) {
-            let reader = try TableReader(vector.itemInPlace(at: index), layout: TableLayout())
-            return Range(reader: reader, position: 0)
+            try Range(reader: TableReader(vector.itemInPlace(at: index)), position: 0)
         }
     }
 }
@@ -873,7 +872,7 @@ public struct BoxFields: Hashable, Sendable {
 public struct Track: ~Escapable {
     /// The layout that a `Track` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -969,7 +968,7 @@ public struct TrackFields: Hashable, Sendable {
 public struct Label: ~Escapable {
     /// The layout that a `Label` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader
@@ -1014,7 +1013,7 @@ public struct LabelFields: Hashable, Sendable {
 public struct Span: ~Escapable {
     /// The layout that a `Span` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout() }
+    public static var layout: TableLayout { TableLayout.default }
 
     @usableFromInline
     let _reader: TableReader

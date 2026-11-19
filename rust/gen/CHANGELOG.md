@@ -308,14 +308,15 @@ first commits, for code built from its source before the release.
   vectorized. Summing an array of 100 structs in such a function took 66 ns
   rather than 114 ns, and reading the comparison suite's last struct 7.2 ns
   rather than 7.9 ns.
-- Generated Swift builds each layout where it reads with it, so that the
-  getters inlined into a caller know its offset type: a message's `layout` is
-  a computed property rather than a `static let`, and a vector's items and a
-  struct's bytes are read with `TableLayout()` rather than
-  `TableLayout.default`, which a caller reads through an accessor at each
-  item. The comparison suite then summed every item of its vector of 100
-  nested tables in 0.35 µs rather than 1.22 µs, and read the fixed-size
-  record in 2.3 ns rather than 2.9 ns.
+- A generated Swift message's `layout` is an inlinable computed property
+  rather than a `static let`, which a caller in another module reads through
+  an accessor that it can't see into. The layout is then built in the code
+  that reads with it, as the runtime's `TableLayout.default` is, so that the
+  getters inlined into a caller know its offset type, rather than loading it
+  and switching on it at each of the message's fields. The comparison suite
+  then read the last struct of its array of 100 in 4.1 ns rather than 7.1 ns,
+  the last item of its vector of 100 nested tables in 21.8 ns rather than
+  25.3 ns, and its record in 115 ns rather than 122 ns.
 
 ### Fixed
 
