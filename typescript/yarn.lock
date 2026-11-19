@@ -1429,7 +1429,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rolldown@npm:~1.3.2":
+"rolldown@npm:^1.3.2":
   version: 1.3.2
   resolution: "rolldown@npm:1.3.2"
   dependencies:
@@ -1519,7 +1519,7 @@ __metadata:
     oxfmt: "npm:^0.78.0"
     oxlint: "npm:^1.94.0"
     oxlint-tsgolint: "npm:^7.0.2007"
-    rolldown: "npm:~1.3.2"
+    rolldown: "npm:^1.3.2"
     typescript: "npm:^7.0.2"
   languageName: unknown
   linkType: soft
@@ -1532,7 +1532,7 @@ __metadata:
     hypotes: "npm:^0.1.0"
     magic-string: "npm:^1.4.5"
     oxc-parser: "npm:^0.159.0"
-    rolldown: "npm:~1.3.2"
+    rolldown: "npm:^1.3.2"
     typescript: "npm:^7.0.2"
   languageName: unknown
   linkType: soft

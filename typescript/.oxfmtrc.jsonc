@@ -21,11 +21,18 @@
     "bracketSpacing": true,
     "bracketSameLine": false,
     "objectWrap": "preserve",
-    // Node's modules, other packages, this project's package and its `#`
-    // imports, then relative paths, nearest last
+    // Node's modules, hypotes, other packages, this project's package and its
+    // `#` imports, then relative paths, nearest last
     "sortImports": {
+        "customGroups": [
+            {
+                "groupName": "hypotes",
+                "elementNamePattern": ["hypotes", "hypotes/**"]
+            }
+        ],
         "groups": [
             "builtin",
+            "hypotes",
             "external",
             ["internal", "subpath"],
             "parent",
