@@ -14,7 +14,7 @@ own.
 | `python`     | `tafla` on PyPI                                        | `python/core/pyproject.toml`    | `python/core/CHANGELOG.md`     |
 | `java`       | `io.github.snovader.tafla:tafla` on Maven Central      | `java/core/build.gradle.kts`    | `java/core/CHANGELOG.md`       |
 | `rust`       | `tafla` on crates.io                                   | `rust/core/Cargo.toml`          | `rust/core/CHANGELOG.md`       |
-| `tafla-gen`  | `tafla-gen` on crates.io, `@tafla/gen` on npm          | `rust/gen/Cargo.toml`           | `rust/gen/CHANGELOG.md`        |
+| `tafla-gen`  | `tafla-gen` on crates.io and PyPI, `@tafla/gen` on npm | `rust/gen/Cargo.toml`           | `rust/gen/CHANGELOG.md`        |
 | `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`        | `go/CHANGELOG.md`              |
 | `swift`      | `https://github.com/snovader/tafla.git` for SwiftPM    | Its tag, `<version>`            | `swift/CHANGELOG.md`           |
 | `csharp`     | `Tafla` on NuGet                                       | `csharp/src/Tafla/Tafla.csproj` | `csharp/CHANGELOG.md`          |
@@ -33,7 +33,8 @@ can't be published again.
 
 tafla-gen is one generator with one version and one changelog, which each
 registry's package of it carries: the crate `tafla-gen` on crates.io, which
-is its source, and `@tafla/gen` on npm, which runs its WebAssembly module.
+is its source, `@tafla/gen` on npm, which runs its WebAssembly module, and
+`tafla-gen` on PyPI, whose wheels hold its command.
 `scripts/version.sh tafla-gen` writes the version into each package's
 manifest, and a release of `tafla-gen` publishes them all, each in a job of
 its own, and tags the commit once every one of them has published. A fix to
@@ -117,6 +118,26 @@ one. The release publishes:
 
 `python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
 that it's for, and the job that publishes them runs once every one has passed.
+
+## tafla-gen's Python distributions
+
+PyPI's `tafla-gen`, in `python/gen`, holds the generator's command and no
+Python. The release publishes:
+
+- A wheel for each of the platforms of `tafla`'s native wheels, Linux as
+  manylinux and `musllinux_1_2`, which holds the command built with
+  `--locked` from the Rust workspace's lock file. It serves every Python,
+  since the command links none.
+- The source distribution, which holds the crate's sources, and from which
+  pip builds the command with cargo on any other platform. maturin leaves the
+  workspace's other members out of it, so cargo resolves it anew rather than
+  with `--locked`. The command has no dependencies, so it builds the same,
+  but cargo reads the index of crates.io for the tests' dependencies, which
+  it doesn't build.
+
+`python/scripts/test-gen-wheels.sh` tests each wheel on its own: its command
+prints the wheel's version, and generates the golden Python of the example
+schemas.
 
 ## The NuGet package
 
@@ -207,9 +228,9 @@ can hold their secrets and require an approval before a job runs.
   `tafla`. Then add a trusted publisher on the package's settings page, with
   the repository `snovader/tafla`, the workflow `release.yml` and the
   environment `npm`, and delete the secret.
-- **PyPI**: add a pending trusted publisher for the project `tafla`, with the
-  repository `snovader/tafla`, the workflow `release.yml` and the environment
-  `pypi`. No secret is needed.
+- **PyPI**: add a pending trusted publisher for each of the projects `tafla`
+  and `tafla-gen`, with the repository `snovader/tafla`, the workflow
+  `release.yml` and the environment `pypi`. No secret is needed.
 - **crates.io** also trusts a publisher only for a crate that exists. Publish
   the first release of each crate with a `CARGO_REGISTRY_TOKEN` secret, a
   token with the `publish-new` and `publish-update` scopes. Then add a trusted
