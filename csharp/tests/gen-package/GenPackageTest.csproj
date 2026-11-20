@@ -1,0 +1,42 @@
+<Project>
+    <!-- A project that generates its code with the package Tafla.Gen, as a user's would, which
+         scripts/test-gen-package.sh builds and runs. It restores the packages that dotnet pack
+         wrote, at the versions that TaflaVersion and TaflaGenVersion name, as nuget.config
+         describes. It's outside Tafla.slnx, and imports the SDK itself, so that csharp/'s
+         Directory.Build.props and Directory.Packages.props, which the runtime builds with, don't
+         apply to it. -->
+    <PropertyGroup>
+        <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>
+        <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+        <ImportDirectoryPackagesProps>false</ImportDirectoryPackagesProps>
+        <!-- Before the SDK, which reads it there -->
+        <ArtifactsPath>$(MSBuildThisFileDirectory)../../artifacts/gen-package-test</ArtifactsPath>
+    </PropertyGroup>
+
+    <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Tafla" Version="$(TaflaVersion)" />
+        <PackageReference Include="Tafla.Gen" Version="$(TaflaGenVersion)" />
+    </ItemGroup>
+
+    <!-- A schema outside the project, in the namespace of its file's name, and one of the
+         project's own, in a namespace that the project names -->
+    <ItemGroup>
+        <TaflaSchema Include="../../../schemas/shapes.tafla" />
+        <TaflaSchema Include="labels.tafla" Namespace="Example.Labels" />
+        <!-- A schema with an error, which scripts/test-gen-package.sh names to check that it
+             fails the build -->
+        <TaflaSchema Include="$(InvalidSchema)" Condition="'$(InvalidSchema)' != ''" />
+    </ItemGroup>
+
+    <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

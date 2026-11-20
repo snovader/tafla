@@ -72,6 +72,8 @@ locate() {
                 # The npm package that runs the generator's WebAssembly
                 # module, whose `--version` is the crate's
                 'typescript/gen/package.json|^  "version": "'
+                # The package Tafla.Gen, which packs tafla-gen for NuGet
+                'csharp/src/Tafla.Gen/Tafla.Gen.csproj|^        <Version>'
             )
             ;;
         csharp)

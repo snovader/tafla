@@ -1,0 +1,106 @@
+<Project>
+    <!-- Generates C# from a project's TaflaSchema items before it compiles, with the tafla-gen
+         command of the host that builds the project, and compiles what it generates:
+
+             <TaflaSchema Include="shapes.tafla" />
+             <TaflaSchema Include="events.tafla" Namespace="Example.Events" />
+
+         Imported into a project that references the package Tafla.Gen, after the project's own
+         contents. README.md describes the items and the properties. -->
+
+    <!-- The host's command, whatever the project targets: the one of the architecture that MSBuild
+         runs as, which the host therefore runs too. A Linux command is linked statically, so it
+         runs with glibc and with musl. -->
+    <PropertyGroup Condition="'$(TaflaGenCommand)' == ''">
+        <_TaflaGenHostOS Condition="$([MSBuild]::IsOSPlatform('Windows'))">win</_TaflaGenHostOS>
+        <_TaflaGenHostOS Condition="$([MSBuild]::IsOSPlatform('OSX'))">osx</_TaflaGenHostOS>
+        <_TaflaGenHostOS Condition="'$(_TaflaGenHostOS)' == ''">linux</_TaflaGenHostOS>
+        <_TaflaGenHostArchitecture>$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</_TaflaGenHostArchitecture>
+        <_TaflaGenExtension Condition="'$(_TaflaGenHostOS)' == 'win'">.exe</_TaflaGenExtension>
+
+        <_TaflaGenHost>$(_TaflaGenHostOS)-$(_TaflaGenHostArchitecture)</_TaflaGenHost>
+        <TaflaGenCommand>$(TaflaGenToolsPath)$(_TaflaGenHost)/tafla-gen$(_TaflaGenExtension)</TaflaGenCommand>
+    </PropertyGroup>
+
+    <!-- Each namespace's schemas generate in a command of their own, into a directory of their
+         own, since the command takes one namespace for all of its schemas. Schemas without a
+         Namespace take the namespace of their file's name, and generate into the output directory
+         itself. -->
+    <Target Name="_TaflaGenCollectSchemas">
+        <PropertyGroup>
+            <TaflaGenOutputPath Condition="'$(TaflaGenOutputPath)' == ''">$(IntermediateOutputPath)tafla</TaflaGenOutputPath>
+            <!-- Without the separator at its end, which would escape the quote that follows the
+                 directory in a command on Windows -->
+            <_TaflaGenOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TaflaGenOutputPath)').TrimEnd('\').TrimEnd('/'))</_TaflaGenOutput>
+            <_TaflaGenStamp>$(_TaflaGenOutput)/.generated</_TaflaGenStamp>
+            <_TaflaGenInputsCache>$(IntermediateOutputPath)$(MSBuildProjectName).TaflaGen.cache</_TaflaGenInputsCache>
+            <_TaflaGenRuntime Condition="'$(TaflaRuntime)' != ''"> --runtime &quot;$(TaflaRuntime)&quot;</_TaflaGenRuntime>
+        </PropertyGroup>
+
+        <ItemGroup>
+            <_TaflaSchema Include="@(TaflaSchema)">
+                <OutputDirectory>$(_TaflaGenOutput)</OutputDirectory>
+                <Options>$(_TaflaGenRuntime)</Options>
+            </_TaflaSchema>
+            <_TaflaSchema Condition="'%(_TaflaSchema.Namespace)' != ''">
+                <OutputDirectory>$(_TaflaGenOutput)/%(_TaflaSchema.Namespace)</OutputDirectory>
+                <Options>$(_TaflaGenRuntime) --package &quot;%(_TaflaSchema.Namespace)&quot;</Options>
+            </_TaflaSchema>
+        </ItemGroup>
+
+        <!-- What the generated code depends on besides the schemas' contents, so that removing a
+             schema, or changing its namespace or the package's version, generates again. The file
+             is written only when its lines change. -->
+        <ItemGroup>
+            <_TaflaGenInput Include="$(TaflaGenCommand)" />
+            <_TaflaGenInput Include="@(_TaflaSchema->'%(Identity)|%(Options)')" />
+        </ItemGroup>
+
+        <WriteLinesToFile
+            File="$(_TaflaGenInputsCache)"
+            Lines="@(_TaflaGenInput)"
+            Overwrite="true"
+            WriteOnlyWhenDifferent="true" />
+
+        <ItemGroup>
+            <FileWrites Include="$(_TaflaGenInputsCache)" />
+        </ItemGroup>
+    </Target>
+
+    <!-- Generates every schema's code again when a schema, the list of them, or the command has
+         changed, into a directory that it empties first, so that it holds no code of a schema
+         that the project no longer has. The command takes a few milliseconds. -->
+    <Target
+        Name="_TaflaGenGenerate"
+        Inputs="@(_TaflaSchema);$(_TaflaGenInputsCache);$(TaflaGenCommand)"
+        Outputs="$(_TaflaGenStamp)">
+
+        <Error
+            Condition="!Exists('$(TaflaGenCommand)')"
+            Text="Tafla.Gen has no tafla-gen command for this host: $(TaflaGenCommand) doesn't exist. Set the property TaflaGenCommand to the path of a tafla-gen that runs here, such as the one that cargo install tafla-gen installs." />
+
+        <RemoveDir Directories="$(_TaflaGenOutput)" />
+
+        <!-- From the project's directory, so that the generated code's header and the command's
+             errors name a schema by its path in the project -->
+        <Exec
+            Command="&quot;$(TaflaGenCommand)&quot; csharp --out &quot;%(_TaflaSchema.OutputDirectory)&quot;%(_TaflaSchema.Options) -- @(_TaflaSchema->'&quot;%(Identity)&quot;', ' ')"
+            WorkingDirectory="$(MSBuildProjectDirectory)" />
+
+        <Touch Files="$(_TaflaGenStamp)" AlwaysCreate="true" />
+    </Target>
+
+    <!-- Compiles the generated code, whether this build generated it or found it up to date -->
+    <Target
+        Name="TaflaGenerate"
+        DependsOnTargets="_TaflaGenCollectSchemas;_TaflaGenGenerate"
+        BeforeTargets="BeforeCompile"
+        Condition="'@(TaflaSchema)' != ''">
+
+        <ItemGroup>
+            <_TaflaGenerated Include="$(_TaflaGenOutput)/**/*.cs" />
+            <Compile Include="@(_TaflaGenerated)" />
+            <FileWrites Include="@(_TaflaGenerated);$(_TaflaGenStamp)" />
+        </ItemGroup>
+    </Target>
+</Project>

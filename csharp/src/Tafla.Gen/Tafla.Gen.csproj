@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- tafla-gen for .NET projects, published to NuGet as the package Tafla.Gen, as RELEASING.md
+         describes: the tafla-gen commands of each host, and the MSBuild targets in build/ that
+         generate C# from a project's schemas with the host's. It holds no assembly. -->
+    <PropertyGroup>
+        <PackageId>Tafla.Gen</PackageId>
+        <!-- scripts/version.sh tafla-gen sets it, for a release -->
+        <Version>0.0.0</Version>
+        <Description>Generates C# that writes and reads tafla's binary tables from schemas, when a project builds</Description>
+        <PackageTags>codegen;schema;serialization;msbuild;tafla</PackageTags>
+        <PackageProjectUrl>https://github.com/snovader/tafla/tree/main/csharp/src/Tafla.Gen#readme</PackageProjectUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+
+        <!-- A project builds with the package, and what depends on the project doesn't get it -->
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <IncludeSymbols>false</IncludeSymbols>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <EnablePackageValidation>false</EnablePackageValidation>
+        <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+
+        <!-- The directory of the tafla-gen commands to pack, each in a directory named after its
+             host, as scripts/build-gen.sh writes this host's and the release every host's -->
+        <TaflaGenCommands Condition="'$(TaflaGenCommands)' == ''">$(ArtifactsPath)/tafla-gen/</TaflaGenCommands>
+    </PropertyGroup>
+
+    <!-- The hosts whose commands a release packs. -p:TaflaGenHosts=osx-arm64 packs one, to test the
+         package on that host. -->
+    <PropertyGroup>
+        <TaflaGenHosts Condition="'$(TaflaGenHosts)' == ''">linux-x64;linux-arm64;osx-x64;osx-arm64;win-x64;win-arm64</TaflaGenHosts>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <TaflaGenHost Include="$(TaflaGenHosts)" />
+        <TaflaGenHost Update="@(TaflaGenHost)" Host="%(Identity)" Command="$(TaflaGenCommands)%(Identity)/tafla-gen" />
+        <TaflaGenHost Update="@(TaflaGenHost)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('win-'))" Command="$(TaflaGenCommands)%(Identity)/tafla-gen.exe" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="build/Tafla.Gen.props;build/Tafla.Gen.targets" Pack="true" PackagePath="build/" />
+        <None Include="@(TaflaGenHost->'%(Command)')" Pack="true" PackagePath="tools/%(Host)/" Visible="false" />
+        <None Include="README.md" Pack="true" PackagePath="/" />
+        <None Include="../../../LICENSE" Pack="true" PackagePath="/" Visible="false" />
+    </ItemGroup>
+
+    <Target Name="CheckTaflaGenCommands" BeforeTargets="GenerateNuspec">
+        <Error
+            Condition="!Exists('%(TaflaGenHost.Command)')"
+            Text="%(TaflaGenHost.Command) doesn't exist: build tafla-gen for %(TaflaGenHost.Identity) there, or pack the hosts that have one with -p:TaflaGenHosts=" />
+    </Target>
+</Project>
