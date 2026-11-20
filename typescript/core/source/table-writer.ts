@@ -330,6 +330,34 @@ export class TableSizer {
 // oxlint-disable-next-line import/no-mutable-exports -- Assigned once, in TableWriter's static block
 export let copyTable: (writer: TableWriter, table: Uint8Array) => void;
 
+// The scalar types, which are also the kinds of `TableBuilder`'s scalar fields
+export const INT8 = 0;
+export const UINT8 = 1;
+export const INT16 = 2;
+export const UINT16 = 3;
+export const INT32 = 4;
+export const UINT32 = 5;
+export const INT64 = 6;
+export const UINT64 = 7;
+export const FLOAT32 = 8;
+export const FLOAT64 = 9;
+
+/**
+ * Reserves field `index`, a scalar of `size` bytes, as a setter does before
+ * it stores its value: it throws a `RangeError` if the scalar doesn't fit,
+ * and otherwise writes its offset, moves past it, and returns its position
+ * in `target()`, where `TableBuilder` then stores it with the setter's
+ * store. Each is a function that inlines little, so that TurboFan inlines
+ * the builder's scalars whole. Internal to the package, as
+ * {@link copyTable} is.
+ */
+// oxlint-disable-next-line import/no-mutable-exports -- Assigned once, in TableWriter's static block
+export let reserveScalar: (
+    writer: TableWriter,
+    index: number,
+    size: ElementSize
+) => number;
+
 /**
  * Passed to `TableWriter`'s constructor by {@link newTableWriter}, whose
  * callers checked what the constructor would. Only the package can pass it,
@@ -406,6 +434,7 @@ export class TableWriter {
 
     static {
         copyTable = (writer, table) => writer.#copyTable(table);
+        reserveScalar = TableWriter.#reserveScalar;
     }
 
     /**
@@ -887,6 +916,29 @@ export class TableWriter {
      */
     target(): Uint8Array {
         return this.#bytes;
+    }
+
+    /** {@link reserveScalar}, which reaches the writer's fields */
+    static #reserveScalar(
+        this: void,
+        writer: TableWriter,
+        index: number,
+        size: ElementSize
+    ): number {
+        const bytes = writer.#bytes;
+        const position = writer.#position;
+        assertFits(bytes, position + size);
+
+        const offsetSize = writer.#size;
+        setSlot(
+            bytes,
+            writer.#slots + index * offsetSize,
+            offsetSize,
+            position - writer.#table
+        );
+        writer.#position = position + size;
+
+        return position;
     }
 
     /** {@link copyTable}'s write, which only this class's fields can reach */
