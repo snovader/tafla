@@ -6,6 +6,8 @@ node_modules
 /typescript/.cache
 /typescript/core/.bundle
 /typescript/**/dist
+# tafla-gen's WebAssembly module, which the build of @tafla/gen copies there
+/typescript/gen/tafla_gen.wasm
 /typescript/.yarn/*
 !/typescript/.yarn/patches
 !/typescript/.yarn/plugins

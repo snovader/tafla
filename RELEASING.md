@@ -14,7 +14,7 @@ own.
 | `python`     | `tafla` on PyPI                                        | `python/core/pyproject.toml`    | `python/core/CHANGELOG.md`     |
 | `java`       | `io.github.snovader.tafla:tafla` on Maven Central      | `java/core/build.gradle.kts`    | `java/core/CHANGELOG.md`       |
 | `rust`       | `tafla` on crates.io                                   | `rust/core/Cargo.toml`          | `rust/core/CHANGELOG.md`       |
-| `tafla-gen`  | `tafla-gen` on crates.io                               | `rust/gen/Cargo.toml`           | `rust/gen/CHANGELOG.md`        |
+| `tafla-gen`  | `tafla-gen` on crates.io, `@tafla/gen` on npm          | `rust/gen/Cargo.toml`           | `rust/gen/CHANGELOG.md`        |
 | `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`        | `go/CHANGELOG.md`              |
 | `swift`      | `https://github.com/snovader/tafla.git` for SwiftPM    | Its tag, `<version>`            | `swift/CHANGELOG.md`           |
 | `csharp`     | `Tafla` on NuGet                                       | `csharp/src/Tafla/Tafla.csproj` | `csharp/CHANGELOG.md`          |
@@ -28,6 +28,16 @@ builds its artifacts, and publishes them, and then tags the commit
 `<version>` alone, such as `0.2.0`. Each registry has jobs of its own, and a
 job that fails can be run again. A version that a registry has published
 can't be published again.
+
+## tafla-gen's packages
+
+tafla-gen is one generator with one version and one changelog, which each
+registry's package of it carries: the crate `tafla-gen` on crates.io, which
+is its source, and `@tafla/gen` on npm, which runs its WebAssembly module.
+`scripts/version.sh tafla-gen` writes the version into each package's
+manifest, and a release of `tafla-gen` publishes them all, each in a job of
+its own, and tags the commit once every one of them has published. A fix to
+one package alone is still a release of them all.
 
 ## Versions that depend on each other
 

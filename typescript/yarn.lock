@@ -863,6 +863,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tafla/gen@workspace:gen":
+  version: 0.0.0-use.local
+  resolution: "@tafla/gen@workspace:gen"
+  dependencies:
+    hypotes: "npm:^0.1.0"
+    typescript: "npm:^7.0.2"
+  bin:
+    tafla-gen: ./dist/bin.js
+  languageName: unknown
+  linkType: soft
+
 "@tybys/wasm-util@npm:^0.10.3":
   version: 0.10.4
   resolution: "@tybys/wasm-util@npm:0.10.4"

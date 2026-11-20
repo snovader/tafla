@@ -815,6 +815,12 @@ switch (Document.versionOf(bytes)) {
 tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
 ```
 
+`cargo install tafla-gen` installs the command from crates.io. On npm,
+`@tafla/gen` holds the same command, which `npx @tafla/gen` runs without a
+Rust toolchain, as
+[its README](https://github.com/snovader/tafla/tree/main/typescript/gen#readme)
+describes.
+
 `ts`, `js`, `py`, `rs` and `cs` abbreviate the targets. Options may come before,
 between or after the schemas, and `--` ends them, so that every argument
 after it is a schema. The command writes each schema's files under `--out`,
@@ -896,6 +902,31 @@ assert!(Diagnostic::render_all(&errors, "point.tafla", source)
     .starts_with("error: unknown type `flaot64`\n --> point.tafla:1:20\n"));
 ```
 
+The `cli` module is the command without its files, for a program that runs
+it on files of its own, as the command's binary and the hosts of the
+WebAssembly module do. `Command::parse()` takes the arguments, and returns
+what to print and the exit code, for the help, the version and wrong
+arguments, or a `Generation`. Its `generate()` takes a function that reads
+each of its `schemas()`, and returns the files of each schema to write under
+its `out()`, and the errors, as the command prints them, of the others.
+
+```rust
+use tafla_gen::cli::{Command, USAGE_ERROR};
+
+let Command::Generate(generation) = Command::parse(["rs", "point.tafla"].map(Into::into)) else {
+    panic!("the arguments ask for code");
+};
+let generated = generation.generate(|_schema| Err("No such file".to_owned()));
+assert!(generated.file_sets.is_empty());
+assert_eq!(generated.errors, ["point.tafla: No such file\n"]);
+
+let Command::Print(output) = Command::parse(["cobol".into()]) else {
+    panic!("the target is unknown");
+};
+assert_eq!(output.code, USAGE_ERROR);
+assert!(output.stderr.starts_with("error: unknown target `cobol`"));
+```
+
 Each target has a Cargo feature, `typescript` (which generates JavaScript
 too), `python`, `java`, `rust`, `go`, `cpp`, `swift` and `csharp`, and the
 default features are all eight. A crate that generates one language from its
@@ -909,31 +940,68 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 562 KB. It has no imports, so any host runs it with an empty import
+about 590 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
-| Export                                            | Does                                                              |
-| ------------------------------------------------- | ----------------------------------------------------------------- |
-| `memory`                                          | The module's memory, which holds requests and responses           |
-| `tafla_alloc(length: i32) -> i32`                 | Allocates `length` bytes for a request, and returns their address |
-| `tafla_compile(request: i32, length: i32) -> i32` | Compiles a request, frees it, and returns the response's address  |
-| `tafla_free(pointer: i32, length: i32)`           | Frees a response, whose length is in its first 4 bytes            |
+| Export                                             | Does                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------- |
+| `memory`                                           | The module's memory, which holds requests and responses             |
+| `tafla_alloc(length: i32) -> i32`                  | Allocates `length` bytes for a request, and returns their address   |
+| `tafla_compile(request: i32, length: i32) -> i32`  | Compiles a schema, as the library's `compile()` does                |
+| `tafla_command(request: i32, length: i32) -> i32`  | Parses the command's arguments, and names the schemas to read       |
+| `tafla_generate(request: i32, length: i32) -> i32` | Runs the command on the schemas that the host read                  |
+| `tafla_free(pointer: i32, length: i32)`            | Frees a response, whose length is in its first 4 bytes              |
 
-Every string is its byte length as a little-endian `u32`, then its UTF-8
-bytes.
+`tafla_compile`, `tafla_command` and `tafla_generate` each take a request,
+free it, and return the address of a response, which the host frees. Every
+count, length and status is a little-endian `u32`, and every string is its
+byte length and then its UTF-8 bytes. A response is its own length, a
+status, and then what the status says.
 
-- A request is five strings: the target's name, the schema's file name, its
-  source, the runtime and the Java package. An empty runtime or package
+`tafla_compile` generates one schema's files from its source:
+
+- Its request is five strings: the target's name, the schema's file name,
+  its source, the runtime and the Java package. An empty runtime or package
   takes the default.
-- A response is its own length as a `u32`, a `u32` status, and then, for
-  status 0, a `u32` count of files and each file's path and contents, or, for
-  status 1, the errors as the command prints them. An unknown target, a
-  package that isn't a Java package and a malformed request are errors too.
+- Its response is, for status 0, a count of files and each file's path and
+  contents, or, for status 1, the errors as the command prints them. An
+  unknown target, a package that isn't a Java package and a malformed
+  request are errors too.
+
+`tafla_command` and `tafla_generate` are the command, as the library's `cli`
+module runs it, for a host that reads the schemas, writes the files and
+prints. A host calls the first with the command's arguments, reads the
+schemas that it names, and calls the second with the same arguments and what
+it read:
+
+- `tafla_command`'s request is the arguments, without the command's own
+  name, each a string, up to the request's end. Its response is, for status
+  0, a string of the directory to write under, a count of schemas, and each
+  schema's path. For status 1, the command is over, with the help, the
+  version or wrong arguments: an exit code, a string to print to stdout, and
+  a string to print to stderr.
+- `tafla_generate`'s request is a count of arguments and the same arguments,
+  and then each of those schemas, in their order: a `u32` of 0 and the
+  schema's bytes as a string, which needn't be UTF-8, or a `u32` of 1 and a
+  string of why it can't be read, such as the I/O error's message. Its
+  response is, for status 0, a count of the schemas that have files to
+  write, for each a count of files and each file's path and contents, and
+  then a count of errors and each error as a string. For status 1, it's as
+  `tafla_command`'s, for arguments that don't generate, and for a malformed
+  request, such as one without each of the schemas, with exit code 2.
+
+The host writes each file at its path under the directory, and makes the
+path's directories. It writes a schema's files up to the first that fails,
+and adds that file's error, `<path>: <why>` and a line feed, to the errors,
+and then writes the other schemas' files. It prints the errors to stderr with
+a line feed between them, so that an empty line separates them, and exits
+with 1 if there are any and 0 otherwise.
 
 Allocating and compiling may grow the memory, which detaches a host's views
 of it, so a host makes its views after each call. `tests/wasm/check.mjs`
-runs the module in Node.
+runs the module in Node, and `@tafla/gen`, the npm package in
+`typescript/gen`, is a host of the command.
 
 ## Development
 
@@ -957,7 +1025,9 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   more than 64 deep fail with errors that point at them, and the command writes and prints what the library generates and
   finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command, its arguments,
-  output and exit codes, and the library's options.
+  output and exit codes, and the library's options. The tests of
+  `typescript/gen` run the command's cases that a host of the WebAssembly
+  module could get wrong, through `@tafla/gen`.
 - `tests/members.rs`: fields named after the generated code's members take a
   `_` in the targets where the names clash.
 - `tests/generated_<schema>.rs`: the golden Rust, compiled against
@@ -1016,8 +1086,8 @@ run every language's tests:
 TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen
 ```
 
-CI also builds the WebAssembly module, and checks that it has no imports and
-generates the golden files and the expected errors:
+CI also builds the WebAssembly module, and checks that it has no imports,
+generates the golden files and the expected errors, and runs the command:
 
 ```sh
 node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm

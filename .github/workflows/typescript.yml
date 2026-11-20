@@ -30,6 +30,7 @@ jobs:
       pull-requests: read
     outputs:
       typescript: ${{ steps.filter.outputs.typescript }}
+      generator: ${{ steps.filter.outputs.generator }}
     steps:
       # A pull request lists its files through the API, and a push compares
       # its commits, which needs the repository
@@ -50,6 +51,19 @@ jobs:
               - "oxfmt.config.ts"
               - "conformance/**"
               - "typescript/**"
+            # @tafla/gen, which runs the generator's WebAssembly module, and
+            # the generator, the schemas and the golden files that its tests
+            # generate
+            generator:
+              - ".github/actions/prepare-node-dependencies/action.yml"
+              - ".github/actions/prepare-node-environment/action.yml"
+              - ".github/workflows/typescript.yml"
+              - "typescript/**"
+              - "rust/Cargo.*"
+              - "rust/rust-toolchain.toml"
+              - "rust/gen/**"
+              - "schemas/**"
+              - "python/core/tests/generated/**"
 
   verify:
     name: Verify
@@ -104,6 +118,35 @@ jobs:
       - name: Run tests
         run: yarn test
 
+  # Builds the generator's WebAssembly module and @tafla/gen, and runs the
+  # package's command and API from its build
+  generator:
+    name: Generator package
+    needs: changes
+    if: needs.changes.outputs.generator == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspaces: rust -> target
+          cache-key: wasm
+
+      - name: Prepare dependencies
+        uses: ./.github/actions/prepare-node-dependencies
+
+      - name: Build the package and run its tests
+        run: yarn test:gen
+
   benchmark:
     name: Benchmark
     needs: changes
@@ -134,7 +177,7 @@ jobs:
   # passed, or was skipped because the change doesn't touch TypeScript.
   checks:
     name: TypeScript checks
-    needs: [changes, verify, test, benchmark]
+    needs: [changes, verify, test, generator, benchmark]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()
