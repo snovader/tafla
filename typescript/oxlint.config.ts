@@ -6,21 +6,10 @@ export default defineConfig({
     extends: [oxlint, hypotes],
     ignorePatterns: ['.cache', 'core/.bundle', '.yarn', '**/dist'],
     rules: {
-        // Arrays allocated at their length and filled by index, as generated
-        // code does
-        'unicorn/no-new-array': 'off',
-        // UTF-16 code units, which encoding and its tests handle one by one,
-        // conversions to int32, and `.slice()`, which copies a typed array
-        'unicorn/prefer-code-point': 'off',
-        'unicorn/prefer-math-trunc': 'off',
+        // `.slice()`, which copies a typed array
         'unicorn/prefer-spread': 'off',
-        // Regular expressions of code units, as JSON escapes them
-        'eslint/require-unicode-regexp': 'off',
-        'unicorn/escape-case': 'off',
-        // Indexed access, rather than `.at()`, which the benchmarks compare
-        'unicorn/prefer-at': 'off',
-        // Scripts that write files write them in order
-        'eslint/no-await-in-loop': 'off'
+        // Escapes of code units in lower case, as JSON writes them
+        'unicorn/escape-case': 'off'
     },
     overrides: [
         {

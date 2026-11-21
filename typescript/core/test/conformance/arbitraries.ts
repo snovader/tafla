@@ -282,7 +282,7 @@ function tableField({
     alignment,
     table
 }: Omit<TableField, 'type'>): TableField {
-    return alignment === undefined
+    return alignment == null
         ? { type: 'table', from, table }
         : { type: 'table', from, alignment, table };
 }

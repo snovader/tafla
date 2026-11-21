@@ -33,7 +33,7 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
 
 function bytesOf(name: string): Uint8Array {
     const bytes = tables.get(`shapes/${name}.bin`);
-    if (bytes === undefined) {
+    if (bytes == null) {
         throw new Error(`Missing shapes/${name}.bin`);
     }
 

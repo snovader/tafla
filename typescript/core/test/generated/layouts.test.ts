@@ -77,7 +77,7 @@ const MESSAGES: readonly LayoutMessage[] = [
     }
 ];
 
-const VERSIONED = MESSAGES.filter(({ version }) => version !== undefined);
+const VERSIONED = MESSAGES.filter(({ version }) => version != null);
 const UINT16_OFFSETS = MESSAGES.find(({ name }) => name === 'Uint16Offsets')!;
 
 function layoutOf(

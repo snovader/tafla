@@ -496,7 +496,7 @@ describe('builder limits', () => {
                 ...longest,
                 fields: [...table.fields, expect.anything(), last]
             });
-            expect(read.fields.at(-2)).toHaveProperty('value.length', room);
+            expect(read.fields[read.fields.length - 2]).toHaveProperty('value.length', room);
 
             const builder = createBuilder(longest);
             for (const field of [...table.fields, bytesField(room + 1)]) {

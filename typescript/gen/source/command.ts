@@ -46,7 +46,7 @@ export function runCommand(commandArguments: readonly string[]): CommandOutput {
     const errors = generated.errors;
     for (const files of generated.fileSets) {
         const error = writeAll(generation.out, files);
-        if (error !== undefined) {
+        if (error) {
             errors.push(error);
         }
     }

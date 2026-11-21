@@ -68,7 +68,6 @@ describe('DecodeError', () => {
         const reader = new TableReader(new Uint8Array([1, 0, 0, 0, 0xff]));
 
         expect(() => reader.getString(0)).toThrow(
-            // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
             expect.objectContaining({ cause: expect.any(TypeError) })
         );
     });

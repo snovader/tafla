@@ -93,7 +93,7 @@ function setFieldInPlace(
 ): void {
     if (
         field.type === 'table' &&
-        field.alignment === undefined &&
+        field.alignment == null &&
         recordsInPlace(field, offsetType)
     ) {
         const { fields } = field.table;
@@ -359,7 +359,7 @@ function addReserved(sizer: TableSizer, field: FieldDescription): void {
 
         case 'vector': {
             const length = itemLength(field.items);
-            if (length === undefined) {
+            if (length == null) {
                 addField(sizer, field);
                 break;
             }
@@ -404,7 +404,7 @@ function writeReserved(
 
         case 'vector': {
             const length = itemLength(field.items);
-            if (length === undefined) {
+            if (length == null) {
                 writeField(writer, index, field);
                 break;
             }
@@ -939,7 +939,7 @@ function toBigInt(value: JsonNumber): bigint {
  * tables, or 1 if it has neither, and for bytes 4.
  */
 export function alignmentOf({ from, alignment, table }: TableField): Alignment {
-    if (alignment !== undefined) {
+    if (alignment != null) {
         return alignment;
     }
 
@@ -1026,7 +1026,7 @@ export class DescriptionReader {
             this.readRootField(index, field)
         );
 
-        return version === undefined
+        return version == null
             ? { layout, fields }
             : { layout, version, fields };
     }
