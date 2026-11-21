@@ -72,6 +72,8 @@ locate() {
                 # The npm package that runs the generator's WebAssembly
                 # module, whose `--version` is the crate's
                 'typescript/gen/package.json|^  "version": "'
+                # The distribution on PyPI, whose wheels hold the command
+                'python/gen/pyproject.toml|^version = "'
             )
             ;;
         csharp)
