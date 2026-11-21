@@ -1,6 +1,8 @@
 import { describe, expect } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
 import { TableBuilder, TableWriter } from 'tafla';
+import { sliceOf, SLICES } from './conformance/arbitraries.ts';
+import { setAttempts, writeAttempts, SCALAR_WRITES } from './scalars.ts';
 
 type NumberArrayType =
     | 'Float32'
@@ -157,4 +159,85 @@ function writeFloat64Array(bytes: Uint8Array, values: ArrayLike<number>): Uint8A
     writer.setFloat64Array(0, values);
 
     return writer.bytes();
+}
+
+describe.each(SCALAR_WRITES)('$type scalars', writes => {
+    const { size, one, wrongType, write, set: setter } = writes;
+
+    it.prop([writes.values, fc.nat({ max: 8 }), SLICES])(
+        "should write any value with the write function as DataView's setter writes it little-endian, or throw its error, writing nothing",
+        (value, offset, slice) => {
+            const bytes = sliceOf(new Uint8Array(offset + size), slice);
+            const { actual, expected } = writeAttempts(writes, bytes, offset, value);
+
+            expect(actual).toStrictEqual(expected);
+        }
+    );
+
+    it.prop([writes.values, fc.nat({ max: 0xff })])(
+        "should set any value with TableWriter as DataView's setter writes it little-endian, or throw its error, writing neither the field nor its offset",
+        (value, fill) => {
+            const { actual, expected } = setAttempts(writes, value, fill);
+
+            expect(actual).toStrictEqual(expected);
+        }
+    );
+
+    it('should convert a value once, with the write function and with TableWriter', () => {
+        const written = counting(one);
+        write(new Uint8Array(size), 0, written.value);
+        expect(written.conversions).toBe(1);
+
+        const set = counting(one);
+        setter(new TableWriter(new Uint8Array(4 + size), 1), 0, set.value);
+        expect(set.conversions).toBe(1);
+    });
+
+    it('should throw RangeError for a write past the bytes before converting its value, and TypeError for one of the wrong type within them, writing nothing', () => {
+        const bytes = new Uint8Array(size).fill(7);
+
+        const past = counting(wrongType);
+        expect(() => write(bytes, 1, past.value)).toThrow(
+            new RangeError(`Write exceeds the supplied buffer: ${size} bytes at 1 of ${size}`)
+        );
+        expect(past.conversions).toBe(0);
+
+        const within = counting(wrongType);
+        expect(() => write(bytes, 0, within.value)).toThrow(TypeError);
+        expect(within.conversions).toBe(1);
+
+        expect(bytes).toStrictEqual(new Uint8Array(size).fill(7));
+    });
+
+    it("should throw TableWriter's RangeError for a field that doesn't fit before converting its value, and TypeError for one of the wrong type that fits, writing neither the field nor its offset", () => {
+        // A table of one field, whose offset takes 4 bytes
+        const short = new Uint8Array(3 + size).fill(7);
+        const past = counting(wrongType);
+        expect(() => setter(new TableWriter(short, 1), 0, past.value)).toThrow(
+            new RangeError(`The fields need ${4 + size} bytes, more than the table's ${3 + size}`)
+        );
+        expect(past.conversions).toBe(0);
+        expect(short).toStrictEqual(new Uint8Array(3 + size).fill(7));
+
+        const bytes = new Uint8Array(4 + size).fill(7);
+        const within = counting(wrongType);
+        expect(() => setter(new TableWriter(bytes, 1), 0, within.value)).toThrow(TypeError);
+        expect(within.conversions).toBe(1);
+        expect(bytes).toStrictEqual(new Uint8Array(4 + size).fill(7));
+    });
+});
+
+/** A value that converts to `converted`, and counts its conversions */
+function counting(converted: unknown): { conversions: number; value: unknown } {
+    const counted = {
+        conversions: 0,
+        value: {
+            valueOf: (): unknown => {
+                counted.conversions++;
+                return converted;
+            }
+        }
+    };
+
+    return counted;
 }

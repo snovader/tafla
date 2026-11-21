@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { loadGenerator } from './generator.ts';
-import { readFiles, type GeneratedFile } from './index.ts';
+import type { GeneratedFile } from './index.ts';
 import { Request, type Response } from './wasm-module.ts';
 
 /** What the command prints, and its exit code */
@@ -89,7 +89,7 @@ function generate(
         status === 0
             ? {
                   fileSets: Array.from({ length: response.count() }, () =>
-                      readFiles(response)
+                      response.files()
                   ),
                   errors: response.strings()
               }
@@ -103,7 +103,7 @@ function addSource(request: Request, schema: string): void {
     try {
         bytes = readFileSync(schema);
     } catch (error) {
-        request.count(1).string(messageOf(error));
+        request.count(1).string(reasonOf(error));
         return;
     }
     request.count(0).bytes(bytes);
@@ -133,12 +133,25 @@ function writeAll(
             mkdirSync(dirname(path), { recursive: true });
             writeFileSync(path, file.contents);
         } catch (error) {
-            return `${path}: ${messageOf(error)}\n`;
+            return `${path}: ${reasonOf(error)}\n`;
         }
     }
     return undefined;
 }
 
-function messageOf(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+/**
+ * Why a file can't be read or written, in Node's words, without the system
+ * call and the file's path that Node's message ends with, since the command
+ * prints the path before it
+ */
+function reasonOf(error: unknown): string {
+    if (!(error instanceof Error)) {
+        return String(error);
+    }
+
+    const { path, syscall } = error as NodeJS.ErrnoException;
+    const suffix = `, ${syscall} '${path}'`;
+    return error.message.endsWith(suffix)
+        ? error.message.slice(0, -suffix.length)
+        : error.message;
 }
