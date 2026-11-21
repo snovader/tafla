@@ -143,6 +143,17 @@ repository's first commits, for code built from its source before the release.
   an integer held as a double could make the write functions take 3.7–4.3
   times as long for the rest of the process, as V8 stopped inlining the
   `DataView` setter that they called; the stores call none.
+- `TableBuilder` writes its scalars with less bytecode, so that V8 inlines
+  the write of every type into its loop over the fields, rather than only
+  some of the ten `TableWriter` setters that it called. One internal step of
+  the writer's reserves a scalar of any type, as a setter does: it checks
+  that the scalar fits and writes its offset. The builder then stores the
+  value with the store of its type. It writes the same bytes and throws the
+  same errors as the setters, in the same order. With the package bundled,
+  tables of 100 scalars of one type took 0.80–0.96 times as long to build in
+  Node 26 and 27, whether their integers were held as Smis or as doubles: 100
+  `setInt32()`s took 1.60 µs rather than 1.98 in Node 26, and 1.40 µs rather
+  than 1.76 in Node 27.
 
 ### Removed
 

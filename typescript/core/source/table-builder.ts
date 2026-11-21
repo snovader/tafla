@@ -9,26 +9,37 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
+import {
+    storeFloat32,
+    storeFloat64,
+    storeInt8,
+    storeInt16,
+    storeInt32,
+    storeInt64
+} from './scalars.ts';
 import { TableReader } from './table-reader.ts';
 import {
     copyTable,
     newTableWriter,
+    reserveScalar,
     structCount,
+    FLOAT32,
+    FLOAT64,
+    INT8,
+    INT16,
+    INT32,
+    INT64,
+    UINT8,
+    UINT16,
+    UINT32,
+    UINT64,
     type TableWriter
 } from './table-writer.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
 
-// The kinds of field, which finalize() switches on to write each value
-const INT8 = 0;
-const UINT8 = 1;
-const INT16 = 2;
-const UINT16 = 3;
-const INT32 = 4;
-const UINT32 = 5;
-const INT64 = 6;
-const UINT64 = 7;
-const FLOAT32 = 8;
-const FLOAT64 = 9;
+// The kinds of field, which finalize() switches on to write each value: the
+// writer's scalar types, INT8 to FLOAT64, which are 0 to 9, and then the
+// others
 const INT8_ARRAY = 10;
 const UINT8_ARRAY = 11;
 const INT16_ARRAY = 12;
@@ -48,6 +59,9 @@ const STRUCT_ARRAY = 24;
 const TABLE_IN_PLACE = 25;
 /** A vector recorded in place, whose items' fields' records follow its own */
 const VECTOR_IN_PLACE = 26;
+
+/** The size of a scalar of each kind, INT8 to FLOAT64 */
+const SIZES: readonly ElementSize[] = [1, 1, 2, 2, 4, 4, 8, 8, 4, 8];
 
 /** The longest that an array can be, 2^32 - 1 */
 const MAX_ARRAY_LENGTH = 0xffff_ffff;
@@ -855,7 +869,47 @@ export class TableBuilder {
             const value = records[record + 2];
             record += 3;
 
-            if (kind === TABLE) {
+            if (kind <= FLOAT64) {
+                // The writer reserves the scalar and writes its offset, and
+                // its store follows here, rather than in a function, which
+                // V8 could compile on its own first: TurboFan would then
+                // count the stores that it inlined against the budget.
+                // #writeFields() itself stays over V8's limit for inlining,
+                // 460 bytes of bytecode, as `yarn package:check` checks, so
+                // that V8 doesn't inline it into #writeInPlace(), where the
+                // scalars would take the budget of the nested tables' calls
+                const position = reserveScalar(writer, index, SIZES[kind]);
+                const bytes = writer.target();
+                switch (kind) {
+                    case INT8:
+                    case UINT8:
+                        storeInt8(bytes, position, value as number);
+                        break;
+
+                    case INT16:
+                    case UINT16:
+                        storeInt16(bytes, position, value as number);
+                        break;
+
+                    case INT32:
+                    case UINT32:
+                        storeInt32(bytes, position, value as number);
+                        break;
+
+                    case INT64:
+                    case UINT64:
+                        storeInt64(bytes, position, value as bigint);
+                        break;
+
+                    case FLOAT32:
+                        storeFloat32(bytes, position, value as number);
+                        break;
+
+                    case FLOAT64:
+                        storeFloat64(bytes, position, value as number);
+                        break;
+                }
+            } else if (kind === TABLE) {
                 writer.setTable(index, alignment);
                 this.#writeTable(writer, value as TableBuilder | Uint8Array);
             } else if (kind === VECTOR) {
@@ -931,6 +985,16 @@ export class TableBuilder {
     }
 }
 
+/**
+ * Writes a field of a kind that `#writeFields()` doesn't write itself, each
+ * through the writer's setter of its kind.
+ *
+ * Its bytecode stays over V8's limit for inlining, 460 bytes, as `yarn
+ * package:check` checks: 474 bytes in Node 26 and 461 in Node 27. So TurboFan
+ * compiles it on its own, with the setters that it calls, rather than
+ * inlining it and them into `#writeFields()`, where they take the budget of
+ * `#writeInPlace()`, `startTable()` and `endTable()`.
+ */
 function writeField(
     writer: TableWriter,
     index: number,
@@ -939,46 +1003,6 @@ function writeField(
     alignment: ElementSize
 ): void {
     switch (kind) {
-        case INT8:
-            writer.setInt8(index, value as number);
-            break;
-
-        case UINT8:
-            writer.setUint8(index, value as number);
-            break;
-
-        case INT16:
-            writer.setInt16(index, value as number);
-            break;
-
-        case UINT16:
-            writer.setUint16(index, value as number);
-            break;
-
-        case INT32:
-            writer.setInt32(index, value as number);
-            break;
-
-        case UINT32:
-            writer.setUint32(index, value as number);
-            break;
-
-        case INT64:
-            writer.setInt64(index, value as bigint);
-            break;
-
-        case UINT64:
-            writer.setUint64(index, value as bigint);
-            break;
-
-        case FLOAT32:
-            writer.setFloat32(index, value as number);
-            break;
-
-        case FLOAT64:
-            writer.setFloat64(index, value as number);
-            break;
-
         case INT8_ARRAY:
             writer.setInt8Array(index, value as ArrayLike<number>);
             break;
