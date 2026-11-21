@@ -1,0 +1,8 @@
+// A schema of the test's own, which the project generates into a namespace
+// that it names
+
+/// A name for an identifier
+message Label {
+    id: int64;
+    name: string;
+}

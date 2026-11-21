@@ -74,6 +74,8 @@ locate() {
                 'typescript/gen/package.json|^  "version": "'
                 # The distribution on PyPI, whose wheels hold the command
                 'python/gen/pyproject.toml|^version = "'
+                # The package Tafla.Gen, which packs tafla-gen for NuGet
+                'csharp/src/Tafla.Gen/Tafla.Gen.csproj|^        <Version>'
             )
             ;;
         csharp)
