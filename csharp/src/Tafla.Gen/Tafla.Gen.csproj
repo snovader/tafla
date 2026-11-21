@@ -33,7 +33,11 @@
     <ItemGroup>
         <TaflaGenHost Include="$(TaflaGenHosts)" />
         <TaflaGenHost Update="@(TaflaGenHost)" Host="%(Identity)" Command="$(TaflaGenCommands)%(Identity)/tafla-gen" />
-        <TaflaGenHost Update="@(TaflaGenHost)" Condition="$([System.String]::Copy('%(Identity)').StartsWith('win-'))" Command="$(TaflaGenCommands)%(Identity)/tafla-gen.exe" />
+        <!-- The condition is the metadata's, since an item's own can't read the item's metadata
+             outside a target -->
+        <TaflaGenHost Update="@(TaflaGenHost)">
+            <Command Condition="$([System.String]::Copy('%(Identity)').StartsWith('win-'))">$(TaflaGenCommands)%(Identity)/tafla-gen.exe</Command>
+        </TaflaGenHost>
     </ItemGroup>
 
     <ItemGroup>

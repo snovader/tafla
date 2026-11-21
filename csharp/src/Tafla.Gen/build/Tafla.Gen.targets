@@ -22,6 +22,12 @@
         <TaflaGenCommand>$(TaflaGenToolsPath)$(_TaflaGenHost)/tafla-gen$(_TaflaGenExtension)</TaflaGenCommand>
     </PropertyGroup>
 
+    <!-- An IDE's check of whether the project is up to date, which decides whether it builds at
+         all, counts the schemas among the project's inputs -->
+    <ItemGroup>
+        <UpToDateCheckInput Include="@(TaflaSchema)" />
+    </ItemGroup>
+
     <!-- Each namespace's schemas generate in a command of their own, into a directory of their
          own, since the command takes one namespace for all of its schemas. Schemas without a
          Namespace take the namespace of their file's name, and generate into the output directory
@@ -33,6 +39,8 @@
                  directory in a command on Windows -->
             <_TaflaGenOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(TaflaGenOutputPath)').TrimEnd('\').TrimEnd('/'))</_TaflaGenOutput>
             <_TaflaGenStamp>$(_TaflaGenOutput)/.generated</_TaflaGenStamp>
+            <!-- Marks the directory as the generator's own, which the build may empty -->
+            <_TaflaGenMarker>$(_TaflaGenOutput)/.tafla-gen</_TaflaGenMarker>
             <_TaflaGenInputsCache>$(IntermediateOutputPath)$(MSBuildProjectName).TaflaGen.cache</_TaflaGenInputsCache>
             <_TaflaGenRuntime Condition="'$(TaflaRuntime)' != ''"> --runtime &quot;$(TaflaRuntime)&quot;</_TaflaGenRuntime>
         </PropertyGroup>
@@ -79,7 +87,19 @@
             Condition="!Exists('$(TaflaGenCommand)')"
             Text="Tafla.Gen has no tafla-gen command for this host: $(TaflaGenCommand) doesn't exist. Set the property TaflaGenCommand to the path of a tafla-gen that runs here, such as the one that cargo install tafla-gen installs." />
 
+        <!-- A directory that the build didn't make, such as the project's own when
+             TaflaGenOutputPath names it by mistake, isn't emptied -->
+        <ItemGroup>
+            <_TaflaGenForeign Include="$(_TaflaGenOutput)/**/*" Condition="!Exists('$(_TaflaGenMarker)')" />
+        </ItemGroup>
+
+        <Error
+            Condition="'@(_TaflaGenForeign)' != ''"
+            Text="Tafla.Gen empties the directory that it generates into, and $(_TaflaGenOutput) holds files that it didn't generate. Set the property TaflaGenOutputPath to a directory of the generated code's own." />
+
         <RemoveDir Directories="$(_TaflaGenOutput)" />
+        <MakeDir Directories="$(_TaflaGenOutput)" />
+        <Touch Files="$(_TaflaGenMarker)" AlwaysCreate="true" />
 
         <!-- From the project's directory, so that the generated code's header and the command's
              errors name a schema by its path in the project -->
@@ -99,8 +119,11 @@
 
         <ItemGroup>
             <_TaflaGenerated Include="$(_TaflaGenOutput)/**/*.cs" />
-            <Compile Include="@(_TaflaGenerated)" />
-            <FileWrites Include="@(_TaflaGenerated);$(_TaflaGenStamp)" />
+            <!-- But for the files that the project compiles already, where TaflaGenOutputPath is
+                 among its own sources -->
+            <_TaflaGenCompiled Include="@(Compile->'%(FullPath)')" />
+            <Compile Include="@(_TaflaGenerated)" Exclude="@(_TaflaGenCompiled)" />
+            <FileWrites Include="@(_TaflaGenerated);$(_TaflaGenStamp);$(_TaflaGenMarker)" />
         </ItemGroup>
     </Target>
 </Project>

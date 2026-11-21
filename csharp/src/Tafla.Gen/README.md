@@ -54,6 +54,11 @@ with tafla-gen's error.
 | `TaflaGenOutputPath` | The directory of the generated code, which is `tafla` in the project's intermediate directory, in `obj` |
 | `TaflaGenCommand`    | The path of the tafla-gen command to run, rather than the package's own                                 |
 
+The directory of the generated code is the build's own: a build that
+generates empties it first, so that it holds no code of a schema that the
+project no longer has. A build fails rather than empty a directory that holds
+files it didn't generate.
+
 ## The build
 
 The code is generated before the project compiles, in an IDE's design-time

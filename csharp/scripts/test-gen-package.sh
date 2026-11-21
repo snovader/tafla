@@ -3,8 +3,9 @@
 # Tests the package Tafla.Gen that `dotnet pack` wrote, in artifacts/package/release,
 # as a project that uses it would: tests/gen-package restores it, and the runtime's
 # package, generates its schemas' code with this host's tafla-gen as it builds,
-# with warnings as errors, and runs. A second build generates nothing again, and a
-# schema with an error fails the build with the error.
+# with warnings as errors, and runs. A second build generates nothing again, a
+# schema with an error fails the build with the error, and so does a directory
+# to generate into that holds another file.
 #
 #   scripts/build-gen.sh
 #   dotnet pack src/Tafla
@@ -63,3 +64,19 @@ if ! grep -q 'unknown type `flaot64`' <<< "$output"; then
     exit 1
 fi
 echo "A schema with an error failed the build with its error"
+
+# The build empties the directory that it generates into, so it fails rather
+# than generate into one that holds another file, which it keeps
+foreign=artifacts/gen-package-test/foreign
+mkdir -p "$foreign"
+echo "A file that the build didn't generate" > "$foreign/notes.txt"
+if output=$(dotnet build tests/gen-package "${versions[@]}" -p:TaflaGenOutputPath="../../$foreign" 2>&1); then
+    echo "A build generated into a directory that held another file" >&2
+    exit 1
+fi
+if [[ ! -f "$foreign/notes.txt" ]] || ! grep -q "holds files that it didn't generate" <<< "$output"; then
+    echo "The build into a directory that held another file doesn't keep it and say so:" >&2
+    echo "$output" >&2
+    exit 1
+fi
+echo "A directory that held another file was kept, and failed the build"
