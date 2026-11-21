@@ -48,7 +48,10 @@ decode error (`DecodeException`, as Java names it).
 
 The runtime is released to NuGet as the package `Tafla`, whose page shows
 `src/Tafla/README.md`, as [RELEASING.md](../RELEASING.md) describes. It
-hasn't been released yet.
+hasn't been released yet. Nor has `Tafla.Gen`, the package of
+[tafla-gen](../rust/gen/README.md) for .NET projects, which generates a
+project's schemas' code when the project builds, as
+[its README](src/Tafla.Gen/README.md) describes.
 
 `benchmarks/` compares tafla, and the code that tafla-gen generates, with
 FlatBuffers, protobuf, MessagePack and MemoryPack, on the same workloads as
@@ -417,6 +420,26 @@ from nuget.org. Homebrew's .NET SDK, which is built from source, links
 executables of Native AOT with OpenSSL and Brotli, which
 `LIBRARY_PATH="$(brew --prefix openssl@3)/lib:$(brew --prefix brotli)/lib"`
 lets the linker find.
+
+```sh
+host=$(scripts/build-gen.sh)
+dotnet pack src/Tafla
+dotnet pack src/Tafla.Gen -p:TaflaGenHosts=$host
+scripts/test-gen-package.sh
+```
+
+`src/Tafla.Gen` packs tafla-gen for .NET projects: the tafla-gen command of
+each host, and the MSBuild targets in `src/Tafla.Gen/build` that generate a
+project's schemas' code with the host's. It builds no assembly, so it's
+outside `Tafla.slnx`. `scripts/build-gen.sh` builds this host's command from
+`rust/gen`, with cargo, into `artifacts/tafla-gen/`, and prints the host's
+name, and `-p:TaflaGenHosts` packs that host's command alone, where the
+release packs every host's. `scripts/test-gen-package.sh` tests the package
+as a project that uses it would: `tests/gen-package` restores it and the
+runtime's package, generates the code of an example schema and of a schema of
+its own as it builds, and runs it. The script then checks that a build that
+changes nothing doesn't generate again, and that a schema's error fails the
+build.
 
 The byte swap of a big-endian host runs only there. Microsoft builds no .NET
 for s390x, but Red Hat does, so CI runs the tests that `dotnet build` built,

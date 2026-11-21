@@ -53,6 +53,10 @@ jobs:
               - "conformance/**"
               - "rust/**"
               - "schemas/**"
+              # The generator's distribution on PyPI, and the script that
+              # tests its wheels
+              - "python/gen/**"
+              - "python/scripts/test-gen-wheels.sh"
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
               - "cpp/tests/generated/*/**"
@@ -343,11 +347,48 @@ jobs:
       - name: Check that the module has no imports and generates the golden files
         run: node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 
+  # The generator's distribution on PyPI, as it'd be published: the source
+  # distribution, and a wheel that maturin builds from it, as pip does where
+  # no published wheel fits, whose command generates the golden Python
+  pypi:
+    name: Package for PyPI
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python/gen
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, since the wheel builds from the source distribution,
+      # in a directory of uv's
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      # Without uv's cache, which the job would save under the key of the
+      # Python workflow's jobs
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --out-dir dist
+
+      - name: Test the wheel
+        run: ../scripts/test-gen-wheels.sh dist
+
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch Rust.
   checks:
     name: Rust checks
-    needs: [changes, formatting, lint, test, miri, i686, benchmark, wasm]
+    needs: [changes, formatting, lint, test, miri, i686, benchmark, wasm, pypi]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

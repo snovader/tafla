@@ -166,6 +166,9 @@ jobs:
           if touches python/scripts/test-wheels.sh; then
             packages+=(python)
           fi
+          if touches python/gen/pyproject.toml python/scripts/test-gen-wheels.sh; then
+            packages+=(tafla-gen)
+          fi
           if touches go/go.mod; then
             packages+=(go)
           fi
@@ -590,6 +593,167 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: pypi-*
+          merge-multiple: true
+          path: dist
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+
+      # PyPI trusts this workflow as a publisher, pending one for the first
+      # release, so the job needs no token
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always dist/*
+
+  # tafla-gen's distribution on PyPI holds the generator's command, the binary
+  # of the crate in rust/gen, without any Python. crates-build checks the
+  # crate.
+
+  # Builds the source distribution, and a wheel from it, as pip builds one
+  # where no wheel fits, to check that it builds
+  pypi-gen-build:
+    name: PyPI (tafla-gen, build)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python/gen
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, since the wheel builds from the source distribution,
+      # in a directory of uv's
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --out-dir "$RUNNER_TEMP/build"
+
+      - name: Test the wheel
+        run: ../scripts/test-gen-wheels.sh "$RUNNER_TEMP/build"
+
+      # PyPI rejects the wheel that the source distribution built on the
+      # runner, which isn't a manylinux wheel. pypi-gen-wheels builds those.
+      - name: Upload the source distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: tafla-gen-pypi-sdist
+          path: ${{ runner.temp }}/build/*.tar.gz
+          if-no-files-found: error
+
+  # Builds the wheel that holds the command for a platform, with the Rust
+  # workspace's lock file, and tests it. One wheel serves every Python, since
+  # the command links none. maturin-action builds Linux's in a manylinux or
+  # musllinux container, and the others on the runner.
+  pypi-gen-wheels:
+    name: PyPI (tafla-gen, wheel, ${{ matrix.name }})
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Every platform's wheel builds, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: auto
+          - name: Linux aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: auto
+          - name: Linux x86_64, musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: Linux aarch64, musl
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: macOS arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/gen
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out dist
+
+      # musl's runs in Alpine
+      - name: Test the wheel
+        env:
+          MUSL: ${{ endsWith(matrix.target, '-musl') }}
+        run: |
+          if [[ "$MUSL" == true ]]; then
+            docker run --rm -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$PWD" \
+              ghcr.io/astral-sh/uv:0.13.7-alpine scripts/test-gen-wheels.sh gen/dist
+          else
+            scripts/test-gen-wheels.sh gen/dist
+          fi
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: tafla-gen-pypi-wheel-${{ matrix.target }}
+          path: python/gen/dist/*.whl
+          if-no-files-found: error
+
+  # Publishes the distributions that pypi-gen-build and pypi-gen-wheels built
+  # and tested, in a release of tafla-gen, beside crates-publish
+  pypi-gen-publish:
+    name: PyPI (tafla-gen, publish)
+    needs: [plan, pypi-gen-build, pypi-gen-wheels]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'tafla-gen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tafla-gen/${{ inputs.version }}/
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tafla-gen-pypi-*
           merge-multiple: true
           path: dist
 
@@ -1383,13 +1547,238 @@ jobs:
           dotnet nuget push "nuget/Tafla.$VERSION.nupkg" --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json "${options[@]}"
 
+  # Builds the tafla-gen command that the package Tafla.Gen packs for a host,
+  # on a runner of the host, and runs it there. Linux's are built for musl,
+  # which links them statically, and run in Alpine too.
+  nuget-gen-commands:
+    name: NuGet (tafla-gen for ${{ matrix.host }})
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      # Every host's command builds, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - host: linux-x64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - host: linux-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - host: osx-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - host: osx-x64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - host: win-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - host: win-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: ${{ matrix.target }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspaces: rust -> target
+          cache-key: nuget-gen-${{ matrix.target }}
+          # scripts/build-gen.sh sets the flags of the build
+          rustflags: ""
+
+      - name: Build the command
+        env:
+          TARGET: ${{ matrix.target }}
+          HOST: ${{ matrix.host }}
+        run: |
+          host=$(scripts/build-gen.sh "$TARGET")
+          if [[ "$host" != "$HOST" ]]; then
+            echo "::error::scripts/build-gen.sh built $TARGET for $host, not $HOST"
+            exit 1
+          fi
+
+      - name: Run the command
+        env:
+          HOST: ${{ matrix.host }}
+        run: |
+          "artifacts/tafla-gen/$HOST/tafla-gen" --version
+          if [[ "$HOST" == linux-* ]]; then
+            docker run --rm -v "$PWD/artifacts/tafla-gen/$HOST:/tafla-gen:ro" alpine:3 /tafla-gen/tafla-gen --version
+          fi
+
+      - name: Upload the command
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-gen-command-${{ matrix.host }}
+          path: csharp/artifacts/tafla-gen/
+          if-no-files-found: error
+
+  # Packs Tafla.Gen with every host's command, and the runtime's package,
+  # whose API the generated code calls, and tests Tafla.Gen as a project that
+  # uses it would
+  nuget-gen-build:
+    name: NuGet (pack Tafla.Gen)
+    needs: [plan, nuget-gen-commands]
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      ContinuousIntegrationBuild: "true"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Download the commands
+        uses: actions/download-artifact@v8
+        with:
+          pattern: nuget-gen-command-*
+          path: csharp/artifacts/tafla-gen
+          merge-multiple: true
+
+      # Fails unless every host has its command
+      - name: Pack the packages
+        run: |
+          dotnet pack src/Tafla
+          dotnet pack src/Tafla.Gen
+
+      - name: Test the package
+        run: scripts/test-gen-package.sh
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-gen
+          path: csharp/artifacts/package/release/*.nupkg
+          if-no-files-found: error
+
+  # Tests the package on each other host whose command it holds, as
+  # nuget-gen-build tested it on Linux x64, so that a project there finds its
+  # host's command and runs it
+  nuget-gen-test:
+    name: NuGet (test Tafla.Gen on ${{ matrix.host }})
+    needs: [plan, nuget-gen-build]
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: linux-arm64
+            runner: ubuntu-24.04-arm
+          - host: osx-arm64
+            runner: macos-latest
+          - host: osx-x64
+            runner: macos-15-intel
+          - host: win-x64
+            runner: windows-latest
+          - host: win-arm64
+            runner: windows-11-arm
+    defaults:
+      run:
+        shell: bash
+        working-directory: csharp
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Download the packages
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget-gen
+          path: csharp/artifacts/package/release
+
+      - name: Test the package
+        run: scripts/test-gen-package.sh
+
+  # Publishes the package Tafla.Gen that nuget-gen-build packed and every host
+  # tested, for a release of tafla-gen, as nuget-publish publishes the
+  # runtime's
+  nuget-gen-publish:
+    name: NuGet (publish Tafla.Gen)
+    needs: [plan, nuget-gen-build, nuget-gen-test]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'tafla-gen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: nuget
+      url: https://www.nuget.org/packages/Tafla.Gen/${{ inputs.version }}
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v8
+        with:
+          name: nuget-gen
+          path: nuget
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Authenticate with trusted publishing
+        id: auth
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      # An attempt that runs the job again skips a package that an earlier
+      # attempt pushed
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.auth.outputs.NUGET_API_KEY }}
+          VERSION: ${{ inputs.version }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          options=()
+          if ((RUN_ATTEMPT > 1)); then
+            options+=(--skip-duplicate)
+          fi
+          dotnet nuget push "nuget/Tafla.Gen.$VERSION.nupkg" --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json "${options[@]}"
+
   # Tags the commit that a package was published from <package>/v<version>,
   # once its publish job has succeeded, in a job of its own, so that the jobs
   # that run the registries' tools can't push. Go's and Swift's publish jobs
   # push their tags themselves, since a tag publishes each.
   tag:
     name: Tag the release
-    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, crates-publish, maven-publish, maven-gen-publish, nuget-publish]
+    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, pypi-gen-publish, crates-publish, maven-publish, maven-gen-publish, nuget-publish, nuget-gen-publish]
     # The other packages' publish jobs are skipped, so the job checks the
     # result of the released package's, and of each registry's for tafla-gen
     if: >-
@@ -1398,7 +1787,7 @@ jobs:
         (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
         (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
         (inputs.package == 'rust' && needs.crates-publish.result == 'success') ||
-        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success' && needs.maven-gen-publish.result == 'success') ||
+        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success' && needs.pypi-gen-publish.result == 'success' && needs.maven-gen-publish.result == 'success' && needs.nuget-gen-publish.result == 'success') ||
         (inputs.package == 'csharp' && needs.nuget-publish.result == 'success')
       )
     runs-on: ubuntu-latest

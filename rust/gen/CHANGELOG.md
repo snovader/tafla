@@ -2,9 +2,10 @@
 
 The changes in each release of tafla-gen, tafla's schema compiler: the crate
 `tafla-gen` on crates.io, `@tafla/gen` on npm, which runs its WebAssembly
-module, and `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar of
-the module. Each of tafla's packages has a version and a changelog of its own,
-as [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
+module, `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar of the
+module, and `Tafla.Gen` on NuGet, which holds its command. Each of tafla's
+packages has a version and a changelog of its own, as
+[RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. When the code that tafla-gen generates for a language needs a
 newer release of that language's runtime, its entry names the release. The
 format is that of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
@@ -27,6 +28,10 @@ first commits, for code built from its source before the release.
   `tafla-gen` of a project that depends on it, and generates a schema's files
   with `compile()`, through the WebAssembly module and without a Rust
   toolchain.
+- The package `Tafla.Gen` on NuGet, which holds tafla-gen for Linux, macOS
+  and Windows on x64 and Arm64, and generates C# from a .NET project's
+  `TaflaSchema` items when the project builds, with the command of the host
+  that builds it.
 - `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
   command, as `java -jar` or a build's task does, on Java 21 or later and
   without a Rust toolchain. It holds the WebAssembly module compiled to
@@ -35,6 +40,10 @@ first commits, for code built from its source before the release.
   the schemas that its caller reads, and the WebAssembly module's
   `tafla_command` and `tafla_generate` exports of it, so that a host of the
   module only reads schemas, writes files and prints.
+- `tafla-gen` on PyPI, which holds the command built for Linux, macOS and
+  Windows, so that `uvx tafla-gen` and `pipx run tafla-gen` run it without a
+  Rust toolchain. Its source distribution builds the command with cargo on
+  other platforms.
 - [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
   describes how a format's messages evolve: each version fixes its fields and
   keeps the same layout, and a new version appends fields to the previous

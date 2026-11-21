@@ -1,0 +1,14 @@
+<Project>
+    <!-- Imported into a project that references the package Tafla.Gen, before the project's own
+         contents, which can therefore set any of these properties again -->
+    <PropertyGroup>
+        <!-- The directory of the package's tafla-gen commands, each in a directory named after its
+             operating system and architecture, such as osx-arm64 -->
+        <TaflaGenToolsPath Condition="'$(TaflaGenToolsPath)' == ''">$(MSBuildThisFileDirectory)../tools/</TaflaGenToolsPath>
+    </PropertyGroup>
+
+    <!-- Lists TaflaSchema among a file's build actions in an IDE -->
+    <ItemGroup>
+        <AvailableItemName Include="TaflaSchema" />
+    </ItemGroup>
+</Project>
