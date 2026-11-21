@@ -72,6 +72,8 @@ locate() {
                 # The npm package that runs the generator's WebAssembly
                 # module, whose `--version` is the crate's
                 'typescript/gen/package.json|^  "version": "'
+                # The jar that runs the module, compiled to classes of the JVM
+                'java/gen/build.gradle.kts|^version = "'
             )
             ;;
         csharp)

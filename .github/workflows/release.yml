@@ -798,6 +798,108 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
         run: ./gradlew :core:publishToMavenCentral
 
+  # Builds the generator's WebAssembly module and the jar that runs it,
+  # compiled to classes of the JVM, runs the jar's command against the
+  # generator's golden files, and publishes it to a local repository
+  maven-gen-build:
+    name: Maven Central (check and build tafla-gen)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspaces: rust -> target
+          cache-key: wasm
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run Gradle build
+        run: ./gradlew :gen:build :gen:javadoc
+
+      # As the runtime's dry run: signed with a key of its own, which nothing
+      # trusts, and its signatures checked
+      - name: Publish to a local repository, signed with a throwaway key
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          gpg --batch --pinentry-mode loopback --passphrase dry-run \
+            --quick-gen-key "tafla dry run <dry-run@example.invalid>" rsa3072 sign never
+
+          ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --batch --pinentry-mode loopback --passphrase dry-run --armor --export-secret-keys)" \
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword=dry-run \
+            ./gradlew :gen:publishToMavenLocal -Dmaven.repo.local="$RUNNER_TEMP/maven"
+
+          for signature in "$RUNNER_TEMP"/maven/io/github/snovader/tafla/tafla-gen/*/*.asc; do
+            gpg --batch --verify "$signature" "${signature%.asc}"
+          done
+
+      - name: Upload the repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: maven-gen
+          path: ${{ runner.temp }}/maven/io/github/snovader/tafla/
+          if-no-files-found: error
+
+  maven-gen-publish:
+    name: Maven Central (publish tafla-gen)
+    needs: [plan, maven-gen-build]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'tafla-gen'
+    runs-on: ubuntu-latest
+    # Waits for the Central Portal to validate the deployment
+    timeout-minutes: 60
+    environment:
+      name: maven-central
+      url: https://central.sonatype.com/artifact/io.github.snovader.tafla/tafla-gen/${{ inputs.version }}
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Publishing builds the jar, which builds the generator's module
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
+          cache: false
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: "microsoft"
+          java-version: 25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # As the runtime is published, with the same account and key
+      - name: Publish to Maven Central
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+        run: ./gradlew :gen:publishToMavenCentral
+
   # Go module proxy
 
   go-build:
@@ -1287,7 +1389,7 @@ jobs:
   # push their tags themselves, since a tag publishes each.
   tag:
     name: Tag the release
-    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, crates-publish, maven-publish, nuget-publish]
+    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, crates-publish, maven-publish, maven-gen-publish, nuget-publish]
     # The other packages' publish jobs are skipped, so the job checks the
     # result of the released package's, and of each registry's for tafla-gen
     if: >-
@@ -1296,7 +1398,7 @@ jobs:
         (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
         (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
         (inputs.package == 'rust' && needs.crates-publish.result == 'success') ||
-        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success') ||
+        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success' && needs.maven-gen-publish.result == 'success') ||
         (inputs.package == 'csharp' && needs.nuget-publish.result == 'success')
       )
     runs-on: ubuntu-latest

@@ -33,7 +33,9 @@ can't be published again.
 
 tafla-gen is one generator with one version and one changelog, which each
 registry's package of it carries: the crate `tafla-gen` on crates.io, which
-is its source, and `@tafla/gen` on npm, which runs its WebAssembly module.
+is its source, `@tafla/gen` on npm, which runs its WebAssembly module, and
+`io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
+module compiled to classes of the JVM.
 `scripts/version.sh tafla-gen` writes the version into each package's
 manifest, and a release of `tafla-gen` publishes them all, each in a job of
 its own, and tags the commit once every one of them has published. A fix to

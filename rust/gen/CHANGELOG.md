@@ -1,8 +1,9 @@
 # Changelog
 
 The changes in each release of tafla-gen, tafla's schema compiler: the crate
-`tafla-gen` on crates.io, and `@tafla/gen` on npm, which runs its WebAssembly
-module. Each of tafla's packages has a version and a changelog of its own,
+`tafla-gen` on crates.io, `@tafla/gen` on npm, which runs its WebAssembly
+module, and `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar of
+the module. Each of tafla's packages has a version and a changelog of its own,
 as [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. When the code that tafla-gen generates for a language needs a
 newer release of that language's runtime, its entry names the release. The
@@ -26,6 +27,10 @@ first commits, for code built from its source before the release.
   `tafla-gen` of a project that depends on it, and generates a schema's files
   with `compile()`, through the WebAssembly module and without a Rust
   toolchain.
+- `io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
+  command, as `java -jar` or a build's task does, on Java 21 or later and
+  without a Rust toolchain. It holds the WebAssembly module compiled to
+  classes of the JVM, and depends on nothing.
 - The `cli` module, which parses the command's arguments and generates from
   the schemas that its caller reads, and the WebAssembly module's
   `tafla_command` and `tafla_generate` exports of it, so that a host of the

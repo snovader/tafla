@@ -1001,7 +1001,7 @@ with 1 if there are any and 0 otherwise.
 Allocating and compiling may grow the memory, which detaches a host's views
 of it, so a host makes its views after each call. `tests/wasm/check.mjs`
 runs the module in Node, and `@tafla/gen`, the npm package in
-`typescript/gen`, is a host of the command.
+`typescript/gen`, and the jar in `java/gen` are hosts of the command.
 
 ## Development
 
