@@ -43,7 +43,6 @@ target_compile_definitions(tafla_test_common PUBLIC TAFLA_CONFORMANCE="${PROJECT
 
 set(TAFLA_TESTS
     array_view_test
-    byte_buffer_test
     compatibility_test
     conformance_test
     decode_error_test
@@ -54,6 +53,7 @@ set(TAFLA_TESTS
     nesting_test
     round_trip_test
     table_builder_test
+    table_reader_test
     table_writer_test
     utf8_test)
 

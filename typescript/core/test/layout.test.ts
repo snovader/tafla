@@ -1,6 +1,6 @@
-import { describe, expect } from 'vitest';
-import { it } from '@fast-check/vitest';
-import { type OffsetType, TableLayout, type TableLayoutOptions } from 'tafla';
+import { describe, expect } from 'hypotes';
+import { it } from 'hypotes/fast-check';
+import { TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf, OFFSET_SIZES } from './conformance/format.ts';
 
@@ -43,6 +43,7 @@ describe('TableLayout', () => {
     it.each([
         ['an offset size', 2, 'number'],
         ['an array of a name', ['uint8'], 'object'],
+        // oxlint-disable-next-line eslint/no-new-wrappers, unicorn/new-for-builtins -- The object is the input
         ['a String object', new String('uint16'), 'object'],
         ['an object that converts to a name', { toString: () => 'uint32' }, 'object'],
         ['null', null, 'object']

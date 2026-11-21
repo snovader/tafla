@@ -1446,7 +1446,9 @@ impl TableWriter {
     /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
     /// end with one, and returns its bytes, in one call. They're the bytes
     /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-    /// ``bytes()`` write, and it raises as they do.
+    /// ``bytes()`` write, and it raises as they do, in their order: the
+    /// constructor's error for a ``version`` that the layout can't hold comes
+    /// before the error of a value.
     ///
     /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
     /// doesn't.
@@ -1633,7 +1635,7 @@ impl TableWriter {
     /// ``write_table()`` for each item and ``set_item_end()`` write it. Each
     /// item is a table's values as ``write_table()`` takes them, followed by
     /// its string when ``fields`` ends with one: the tuple that
-    /// ``ByteBuffer.get_fields()`` returns.
+    /// ``TableReader.get_fields()`` returns.
     ///
     /// Raises ``ValueError`` if iterating ``items`` gives more or fewer than
     /// their ``len()``, after which the table is undefined.

@@ -1,6 +1,8 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
 import { TableBuilder, TableWriter } from 'tafla';
+import { sliceOf, SLICES } from './conformance/arbitraries.ts';
+import { setAttempts, writeAttempts, SCALAR_WRITES } from './scalars.ts';
 
 type NumberArrayType =
     | 'Float32'
@@ -36,6 +38,7 @@ function numberInputs(values: number[]): Array<[string, ArrayLike<number>]> {
         ['number[] of doubles', values],
         ['number[] of SMIs', smis],
         ['holey number[]', holey],
+        // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
         ['array-like object', { ...values, length: values.length }],
         ['Float64Array', Float64Array.from(values)],
         ['Float32Array', Float32Array.from(values)],
@@ -52,13 +55,13 @@ const doubles = fc.array(
     )
 );
 
-/** Writes `values` with the builder and reads them back with the buffer */
+/** Writes `values` with the builder and reads them back with the reader */
 function roundTrip(type: NumberArrayType, values: ArrayLike<number>): ArrayLike<number> {
     const builder = new TableBuilder(1);
-    (builder[`set${type}Array`] as (values: ArrayLike<number>) => void)(values);
+    builder[`set${type}Array`](values);
 
-    const buffer = builder.finalize();
-    return buffer[`get${type}Array`](buffer.rootOffset(0));
+    const reader = builder.finalize();
+    return reader[`get${type}Array`](reader.rootOffset(0));
 }
 
 function expectElements(
@@ -66,7 +69,7 @@ function expectElements(
     expected: ArrayLike<unknown>,
     kind?: string
 ): void {
-    expect(actual.length, kind).toBe(expected.length);
+    expect(actual, kind).toHaveLength(expected.length);
 
     // toBe compares with Object.is, so -0 and NaN must match exactly
     for (let i = 0; i < expected.length; i++) {
@@ -88,7 +91,7 @@ describe.each(numberTypes)('set%sArray()', (type, TypedArray) => {
     );
 
     it('should convert holes like the typed array constructor', () => {
-        // biome-ignore lint/suspicious/noSparseArray: Holes are the input
+        // oxlint-disable-next-line eslint/no-sparse-arrays -- Holes are the input
         const values = [1.5, , -0, Number.NaN] as number[];
 
         expectElements(roundTrip(type, values), TypedArray.from(values));
@@ -104,6 +107,7 @@ describe.each([
         values => {
             const inputs: Array<ArrayLike<bigint>> = [
                 values,
+                // oxlint-disable-next-line typescript/no-misused-spread -- An array-like object of the elements
                 { ...values, length: values.length },
                 BigInt64Array.from(values, value => BigInt.asIntN(64, value)),
                 BigUint64Array.from(values, value => BigInt.asUintN(64, value))
@@ -113,9 +117,9 @@ describe.each([
                 const builder = new TableBuilder(1);
                 builder[`set${type}Array`](input);
 
-                const buffer = builder.finalize();
+                const reader = builder.finalize();
                 expectElements(
-                    buffer[`get${type}Array`](buffer.rootOffset(0)),
+                    reader[`get${type}Array`](reader.rootOffset(0)),
                     TypedArray.from(input)
                 );
             }
@@ -155,4 +159,85 @@ function writeFloat64Array(bytes: Uint8Array, values: ArrayLike<number>): Uint8A
     writer.setFloat64Array(0, values);
 
     return writer.bytes();
+}
+
+describe.each(SCALAR_WRITES)('$type scalars', writes => {
+    const { size, one, wrongType, write, set: setter } = writes;
+
+    it.prop([writes.values, fc.nat({ max: 8 }), SLICES])(
+        "should write any value with the write function as DataView's setter writes it little-endian, or throw its error, writing nothing",
+        (value, offset, slice) => {
+            const bytes = sliceOf(new Uint8Array(offset + size), slice);
+            const { actual, expected } = writeAttempts(writes, bytes, offset, value);
+
+            expect(actual).toStrictEqual(expected);
+        }
+    );
+
+    it.prop([writes.values, fc.nat({ max: 0xff })])(
+        "should set any value with TableWriter as DataView's setter writes it little-endian, or throw its error, writing neither the field nor its offset",
+        (value, fill) => {
+            const { actual, expected } = setAttempts(writes, value, fill);
+
+            expect(actual).toStrictEqual(expected);
+        }
+    );
+
+    it('should convert a value once, with the write function and with TableWriter', () => {
+        const written = counting(one);
+        write(new Uint8Array(size), 0, written.value);
+        expect(written.conversions).toBe(1);
+
+        const set = counting(one);
+        setter(new TableWriter(new Uint8Array(4 + size), 1), 0, set.value);
+        expect(set.conversions).toBe(1);
+    });
+
+    it('should throw RangeError for a write past the bytes before converting its value, and TypeError for one of the wrong type within them, writing nothing', () => {
+        const bytes = new Uint8Array(size).fill(7);
+
+        const past = counting(wrongType);
+        expect(() => write(bytes, 1, past.value)).toThrow(
+            new RangeError(`Write exceeds the supplied buffer: ${size} bytes at 1 of ${size}`)
+        );
+        expect(past.conversions).toBe(0);
+
+        const within = counting(wrongType);
+        expect(() => write(bytes, 0, within.value)).toThrow(TypeError);
+        expect(within.conversions).toBe(1);
+
+        expect(bytes).toStrictEqual(new Uint8Array(size).fill(7));
+    });
+
+    it("should throw TableWriter's RangeError for a field that doesn't fit before converting its value, and TypeError for one of the wrong type that fits, writing neither the field nor its offset", () => {
+        // A table of one field, whose offset takes 4 bytes
+        const short = new Uint8Array(3 + size).fill(7);
+        const past = counting(wrongType);
+        expect(() => setter(new TableWriter(short, 1), 0, past.value)).toThrow(
+            new RangeError(`The fields need ${4 + size} bytes, more than the table's ${3 + size}`)
+        );
+        expect(past.conversions).toBe(0);
+        expect(short).toStrictEqual(new Uint8Array(3 + size).fill(7));
+
+        const bytes = new Uint8Array(4 + size).fill(7);
+        const within = counting(wrongType);
+        expect(() => setter(new TableWriter(bytes, 1), 0, within.value)).toThrow(TypeError);
+        expect(within.conversions).toBe(1);
+        expect(bytes).toStrictEqual(new Uint8Array(4 + size).fill(7));
+    });
+});
+
+/** A value that converts to `converted`, and counts its conversions */
+function counting(converted: unknown): { conversions: number; value: unknown } {
+    const counted = {
+        conversions: 0,
+        value: {
+            valueOf: (): unknown => {
+                counted.conversions++;
+                return converted;
+            }
+        }
+    };
+
+    return counted;
 }

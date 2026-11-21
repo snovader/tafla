@@ -17,7 +17,6 @@ const TYPESCRIPT: &[&str] = &[
     "ArrayLike",
     "BigInt64Array",
     "BigUint64Array",
-    "ByteBuffer",
     "DecodeError",
     "Float32Array",
     "Float64Array",
@@ -28,6 +27,7 @@ const TYPESCRIPT: &[&str] = &[
     "RangeError",
     "StructWriter",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "Uint16Array",
@@ -41,7 +41,6 @@ const TYPESCRIPT: &[&str] = &[
 const PYTHON: &[&str] = &[
     "Buffer",
     "BufferError",
-    "ByteBuffer",
     "ClassVar",
     "DecodeError",
     "False",
@@ -58,6 +57,7 @@ const PYTHON: &[&str] = &[
     "Sequence",
     "Struct",
     "TableLayout",
+    "TableReader",
     "TableWriter",
     "True",
     "TypeError",
@@ -91,6 +91,7 @@ const JAVA: &[&str] = &[
     "String",
     "SuppressWarnings",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "VarHandle",
@@ -103,7 +104,6 @@ const RUST: &[&str] = &[
     "Alignment",
     "ArrayView",
     "BuildError",
-    "ByteBuffer",
     "DecodeError",
     "ExactSizeIterator",
     "OffsetType",
@@ -111,6 +111,7 @@ const RUST: &[&str] = &[
     "Result",
     "Self",
     "TableLayout",
+    "TableReader",
     "TableSizer",
     "TableWriter",
     "Vec",
@@ -126,13 +127,81 @@ const CPP: &[&str] = &[
     "SIGILL", "SIGINT", "SIGSEGV", "SIGTERM",
 ];
 
+/// The names that Swift imports, the runtime's module and its types, the
+/// types of the standard library that it names, which a struct of the same
+/// name would hide, the protocols that its types conform to or suppress,
+/// `Element`, which is `Array`'s own in the extension that reads an array of
+/// structs, whatever a schema declares, and `Any` and `Self`, keywords. It
+/// names `Swift.Range` in full instead, since a schema may well declare
+/// `Range`, and so `Swift`, the standard library's module.
+const SWIFT: &[&str] = &[
+    "Alignment",
+    "Any",
+    "Array",
+    "ArrayView",
+    "Bool",
+    "BuildError",
+    "DecodeError",
+    "Double",
+    "Element",
+    "Escapable",
+    "Float",
+    "Hashable",
+    "Int",
+    "Int16",
+    "Int32",
+    "Int64",
+    "Int8",
+    "RawSpan",
+    "Self",
+    "Sendable",
+    "String",
+    "Swift",
+    "TableLayout",
+    "TableReader",
+    "TableSizer",
+    "TableWriter",
+    "Tafla",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "UInt8",
+    "Vector",
+];
+
+/// The members that C#'s generated types declare beside their fields, which
+/// a type of the same name can't declare: a struct's `Size`, `Write()`,
+/// `Serialize()` and `SerializeArray()` and the members that a record
+/// declares, `Equals()`, `GetHashCode()`, `ToString()` and `PrintMembers()`,
+/// and a versioned message's `FormatVersion` and `VersionOf()`, `To`, whose
+/// array's view, `ToArray`, declares `ToArray()`, and `Enumerator`, which each
+/// view of a vector or an array of structs nests, and which would hide a
+/// declaration of that name within it. C# names the runtime and the standard
+/// library in full, from `global::`, so nothing else would clash.
+const CSHARP: &[&str] = &[
+    "Enumerator",
+    "Equals",
+    "FormatVersion",
+    "GetHashCode",
+    "PrintMembers",
+    "Serialize",
+    "SerializeArray",
+    "Size",
+    "To",
+    "ToString",
+    "VersionOf",
+    "Write",
+];
+
 /// Each target's names, after the names of the targets that use them
-const RESERVED: [(&[&str], &[&str]); 5] = [
+const RESERVED: [(&[&str], &[&str]); 7] = [
     (&["TypeScript", "JavaScript"], TYPESCRIPT),
     (&["Python"], PYTHON),
     (&["Java"], JAVA),
     (&["Rust"], RUST),
     (&["C++"], CPP),
+    (&["Swift"], SWIFT),
+    (&["C#"], CSHARP),
 ];
 
 /// The targets whose generated code uses `name`, which a declaration can't

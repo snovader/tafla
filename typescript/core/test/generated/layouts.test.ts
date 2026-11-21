@@ -1,14 +1,14 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
+import { describe, expect } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
 import { DecodeError } from 'tafla';
 import {
-    CORRUPTIONS,
     corruptionOf,
+    sliceOf,
+    CORRUPTIONS,
     MAX_VALUES,
     SCALAR_VALUES,
     SLICES,
-    STRINGS,
-    sliceOf
+    STRINGS
 } from '../conformance/arbitraries.ts';
 import {
     corrupt,
@@ -196,7 +196,7 @@ describe.each(LAYOUTS)('%s', (_, layouts) => {
         const tooLong = { ...longest, values: [...longest.values, 0] };
 
         const bytes = layouts.Uint16Offsets.serialize(longest);
-        expect(bytes.length).toBe(65_534);
+        expect(bytes).toHaveLength(65_534);
         expect(read(layouts, UINT16_OFFSETS, bytes)).toEqual(longest);
         expect(() => layouts.Uint16Offsets.serialize(tooLong)).toThrow(RangeError);
     });

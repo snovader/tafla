@@ -243,12 +243,12 @@ RC_GTEST_PROP(TableBuilder, ATableNestedFromItsBuilderWritesTheSameParentAsFromI
     RC_ASSERT(from_borrowed == from_bytes);
     RC_ASSERT(from_owned == from_bytes);
 
-    const ByteBuffer buffer(from_bytes, layout);
-    const auto position = buffer.root_offset(1);
+    const TableReader reader(from_bytes, layout);
+    const auto position = reader.root_offset(1);
     RC_ASSERT(position % 8 == 0U);
     RC_ASSERT(std::ranges::equal(from_bytes.span().subspan(position, bytes.size()), bytes.span()));
 
-    for (auto item : buffer.get_vector(buffer.root_offset(2)).items()) {
+    for (auto item : reader.get_vector(reader.root_offset(2)).items()) {
         RC_ASSERT(std::ranges::equal(item, bytes.span()));
     }
 }
@@ -275,15 +275,36 @@ bool same_built(const Built& left, const Built& right) {
     return same_error(*left.error, details.kind, details.offset_type, details.first, details.second);
 }
 
+/// Whether a table recorded in place failed for a vector whose count and
+/// items' ends alone make its table too long, which fails before its items
+/// are recorded: with that length, where its builders failed for the vector
+/// with its items too, which is longer, or for an item of it first
+bool fails_before_its_items(const Built& in_place, const Built& from_builders) {
+    if (!in_place.error || !from_builders.error) {
+        return false;
+    }
+    const auto& early = in_place.error->details();
+    const auto& late = from_builders.error->details();
+    if (early.kind != BuildError::Kind::too_long || late.kind != BuildError::Kind::too_long) {
+        return false;
+    }
+
+    const bool same_field = early.first == late.first && early.offset_type == late.offset_type;
+    return !same_field || early.second < late.second;
+}
+
 /// Tables nested from builders and recorded in place, with
 /// `set_table(fields, fill)` and `set_vector(count, fields, fill)`, write the
 /// bytes that their builders write, and fail as they fail, for tables of any
-/// offset type and of short ones, whose limits the fields reach
+/// offset type and of short ones, whose limits the fields reach. A vector
+/// whose count and items' ends alone make its table too long fails before its
+/// items, where its builders fail for them or count them too.
 RC_GTEST_PROP(TableBuilder, TablesRecordedInPlaceWriteWhatTheirBuildersWrite, ()) {
     const auto table = nested_in_place(*rc::gen::oneOf(strategy::table(), tables_of_short_offsets()));
 
-    RC_ASSERT(
-        same_built(built_by([&] { return to_bytes_in_place(table); }), built_by([&] { return to_bytes(table); })));
+    const auto in_place = built_by([&] { return to_bytes_in_place(table); });
+    const auto from_builders = built_by([&] { return to_bytes(table); });
+    RC_ASSERT(same_built(in_place, from_builders) || fails_before_its_items(in_place, from_builders));
 }
 
 /// The two tables of the vector of nested tables that the benchmarks write:
@@ -356,6 +377,33 @@ TEST(TableBuilder, AnItemThatFailsLeavesTheBuilderAsItWas) {
                                               }),
                  BuildError);
     EXPECT_EQ(items_of(values, nested_incomplete), expected);
+}
+
+/// A vector recorded in place whose count and items' ends alone make its
+/// table too long reports that length, since its items aren't recorded, where
+/// a vector of their builders reports the length with its items
+TEST(TableBuilder, AVectorTooLongBeforeItsItemsReportsItsLengthWithoutThem) {
+    const auto layout = TableLayout().with_offset_type(OffsetType::uint8);
+    const std::vector<std::uint8_t> bytes(249, 0);
+    TableBuilder builder(2, layout);
+    builder.set_uint8_array(bytes);
+    TableBuilder item(1, layout);
+    item.set_uint8(1);
+
+    // 2 offsets, a count and 249 bytes, and a vector of a count and 3 ends,
+    // and of 3 items of an offset and a byte
+    const auto in_place = build_error_of(
+        [&] { builder.set_vector(3, 1, [](std::size_t, TableBuilder::Item& recorded) { recorded.set_uint8(1); }); });
+    EXPECT_TRUE(same_error(in_place, BuildError::Kind::too_long, OffsetType::uint8, 1, 256));
+
+    const auto from_builders = build_error_of([&] {
+        std::vector<NestedTable> items;
+        for (int index = 0; index < 3; ++index) {
+            items.emplace_back(item);
+        }
+        builder.set_vector(std::move(items));
+    });
+    EXPECT_TRUE(same_error(from_builders, BuildError::Kind::too_long, OffsetType::uint8, 1, 262));
 }
 
 TEST(TableBuilder, RejectsAnItemFieldBeyondItsCount) {
@@ -495,9 +543,9 @@ TEST(TableBuilder, RejectsAFieldThatMakesTheTableTooLong) {
         fits.set_uint8(7);
 
         const auto table = fits.to_bytes();
-        const ByteBuffer buffer(table, layout);
+        const TableReader reader(table, layout);
         EXPECT_EQ(table.size(), max);
-        EXPECT_EQ(buffer.get_uint8(buffer.root_offset(1)), 7);
+        EXPECT_EQ(reader.get_uint8(reader.root_offset(1)), 7);
 
         const std::vector<std::uint8_t> filling(max - 3 * width, 0);
         TableBuilder too_long(2, layout);
@@ -618,12 +666,12 @@ TEST(TableBuilder, RejectsAnIncompleteNestedBuilder) {
     parent.set_vector(std::move(complete_items));
 
     const auto table = parent.to_bytes();
-    const ByteBuffer buffer(table, TableLayout());
-    const auto position = buffer.root_offset(0);
+    const TableReader reader(table, TableLayout());
+    const auto position = reader.root_offset(0);
     EXPECT_EQ(position, 8U);
-    EXPECT_EQ(buffer.get_uint8(buffer.field_offset(position, 1)), 2);
+    EXPECT_EQ(reader.get_uint8(reader.field_offset(position, 1)), 2);
 
-    const auto vector = buffer.get_vector(buffer.root_offset(1));
+    const auto vector = reader.get_vector(reader.root_offset(1));
     ASSERT_EQ(vector.size(), 1U);
     EXPECT_TRUE(std::ranges::equal(vector.get(0), complete.to_bytes().span()));
 }
@@ -640,10 +688,10 @@ TEST(TableBuilder, OwnsStringsAndArraysGivenAsRvalues) {
     }
 
     const auto bytes = builder.to_bytes();
-    const ByteBuffer buffer(bytes, TableLayout());
-    EXPECT_EQ(buffer.get_string(buffer.root_offset(0)), "short");
-    EXPECT_EQ(buffer.get_uint16_array(buffer.root_offset(1)).to_vector(), (std::vector<std::uint16_t>{1, 2, 3}));
-    EXPECT_TRUE(std::ranges::equal(buffer.get_struct(buffer.root_offset(2), 3), std::vector<std::uint8_t>{9, 8, 7}));
+    const TableReader reader(bytes, TableLayout());
+    EXPECT_EQ(reader.get_string(reader.root_offset(0)), "short");
+    EXPECT_EQ(reader.get_uint16_array(reader.root_offset(1)).to_vector(), (std::vector<std::uint16_t>{1, 2, 3}));
+    EXPECT_TRUE(std::ranges::equal(reader.get_struct(reader.root_offset(2), 3), std::vector<std::uint8_t>{9, 8, 7}));
 }
 
 TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {

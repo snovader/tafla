@@ -2,7 +2,7 @@
 
 Binary tables of scalars, strings and typed arrays, in tafla's format.
 `TableBuilder` writes a table at its exact size, copying typed arrays in bulk,
-and `ByteBuffer` reads fields back by offset, with arrays as views of the
+and `TableReader` reads fields back by offset, with arrays as views of the
 bytes. Every read checks that it stays within the bytes it was given.
 `TableWriter` writes a table whose fields are known as it's written, as the
 code that tafla-gen generates writes its tables, without recording them first
@@ -10,7 +10,7 @@ as `TableBuilder` does.
 
 ```pycon
 >>> from array import array
->>> from tafla import ByteBuffer, TableBuilder, TableLayout
+>>> from tafla import TableReader, TableBuilder, TableLayout
 
 >>> LAYOUT = TableLayout(sized=True, versioned=True)  # shared by writers and readers
 >>> series = TableBuilder(2)
@@ -23,13 +23,13 @@ as `TableBuilder` does.
 >>> builder.set_table(series)  # written straight into the table
 >>> data = builder.bytes()
 
->>> buffer = ByteBuffer(data, LAYOUT)
->>> buffer.get_version()
+>>> reader = TableReader(data, LAYOUT)
+>>> reader.get_version()
 1
->>> buffer.get_string(buffer.root_offset(1))
+>>> reader.get_string(reader.root_offset(1))
 'Europe/Stockholm'
->>> table = buffer.root_offset(2)
->>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
+>>> table = reader.root_offset(2)
+>>> reader.get_float32_array(reader.field_offset(table, 1)).tolist()
 [21.75, 18.5]
 ```
 

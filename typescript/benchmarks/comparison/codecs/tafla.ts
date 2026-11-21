@@ -1,12 +1,12 @@
 import {
-    ByteBuffer,
     readFloat32,
     readUint32,
     SIZEOF_32,
     StructWriter,
     TableBuilder,
-    type TableItem,
-    TableLayout
+    TableLayout,
+    TableReader,
+    type TableItem
 } from 'tafla';
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
 import type { Codec } from './codec.ts';
@@ -34,13 +34,13 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
+            const reader = new TableReader(bytes);
 
             return {
-                x: buffer.getFloat64(buffer.rootOffset(0)),
-                y: buffer.getFloat64(buffer.rootOffset(1)),
-                id: buffer.getInt64(buffer.rootOffset(2)),
-                name: buffer.getString(buffer.rootOffset(3))
+                x: reader.getFloat64(reader.rootOffset(0)),
+                y: reader.getFloat64(reader.rootOffset(1)),
+                id: reader.getInt64(reader.rootOffset(2)),
+                name: reader.getString(reader.rootOffset(3))
             };
         }
     },
@@ -64,23 +64,23 @@ export const tafla: Codec = {
             return document.bytes();
         },
         deserialize(bytes): DocumentOutput {
-            const buffer = openDocument(bytes);
-            const columns = buffer.rootOffset(3);
+            const reader = openDocument(bytes);
+            const columns = reader.rootOffset(3);
 
             return {
-                x: buffer.getFloat64(buffer.rootOffset(0)),
-                y: buffer.getFloat64(buffer.rootOffset(1)),
-                name: buffer.getString(buffer.rootOffset(2)),
-                base: buffer.getInt64(buffer.fieldOffset(columns, 0)),
-                keys: buffer.getUint32Array(buffer.fieldOffset(columns, 1)),
-                a: buffer.getFloat32Array(buffer.fieldOffset(columns, 2)),
-                b: buffer.getFloat32Array(buffer.fieldOffset(columns, 3))
+                x: reader.getFloat64(reader.rootOffset(0)),
+                y: reader.getFloat64(reader.rootOffset(1)),
+                name: reader.getString(reader.rootOffset(2)),
+                base: reader.getInt64(reader.fieldOffset(columns, 0)),
+                keys: reader.getUint32Array(reader.fieldOffset(columns, 1)),
+                a: reader.getFloat32Array(reader.fieldOffset(columns, 2)),
+                b: reader.getFloat32Array(reader.fieldOffset(columns, 3))
             };
         },
         sumA(bytes) {
-            const buffer = openDocument(bytes);
-            const a = buffer.getFloat32Array(
-                buffer.fieldOffset(buffer.rootOffset(3), 2)
+            const reader = openDocument(bytes);
+            const a = reader.getFloat32Array(
+                reader.fieldOffset(reader.rootOffset(3), 2)
             );
 
             let sum = 0;
@@ -101,18 +101,18 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
-            const offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
+            const reader = new TableReader(bytes);
+            const offsets = reader.getVectorOffsets(reader.rootOffset(0));
 
             const items = new Array<ItemInput>(offsets.length);
             for (let i = 0; i < offsets.length; i++) {
                 const item = offsets[i];
-                const pair = buffer.fieldOffset(item, 1);
+                const pair = reader.fieldOffset(item, 1);
 
                 items[i] = {
-                    value: buffer.getFloat32(buffer.fieldOffset(item, 0)),
-                    first: buffer.getFloat32(buffer.fieldOffset(pair, 0)),
-                    second: buffer.getFloat32(buffer.fieldOffset(pair, 1))
+                    value: reader.getFloat32(reader.fieldOffset(item, 0)),
+                    first: reader.getFloat32(reader.fieldOffset(pair, 0)),
+                    second: reader.getFloat32(reader.fieldOffset(pair, 1))
                 };
             }
 
@@ -138,9 +138,9 @@ export const tafla: Codec = {
             return builder.bytes();
         },
         deserialize(bytes) {
-            const buffer = new ByteBuffer(bytes);
-            const structs = buffer.getStructArray(
-                buffer.rootOffset(0),
+            const reader = new TableReader(bytes);
+            const structs = reader.getStructArray(
+                reader.rootOffset(0),
                 ITEM_SIZE
             );
 
@@ -179,13 +179,13 @@ export const tafla: Codec = {
 };
 
 /** @throws {Error} If the document is in another version */
-function openDocument(bytes: Uint8Array): ByteBuffer {
-    const buffer = new ByteBuffer(bytes, DOCUMENT_LAYOUT);
-    if (buffer.getVersion() !== DOCUMENT_VERSION) {
-        throw new Error(`Unsupported document version ${buffer.getVersion()}`);
+function openDocument(bytes: Uint8Array): TableReader {
+    const reader = new TableReader(bytes, DOCUMENT_LAYOUT);
+    if (reader.getVersion() !== DOCUMENT_VERSION) {
+        throw new Error(`Unsupported document version ${reader.getVersion()}`);
     }
 
-    return buffer;
+    return reader;
 }
 
 function setItem(item: TableItem, { value, first, second }: ItemInput): void {

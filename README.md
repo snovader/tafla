@@ -1,11 +1,11 @@
 # tafla
 
 Binary tables of scalars, strings and typed arrays, in one format with
-implementations in TypeScript, Python, Java, Rust, Go and C++. A builder
-writes a table at its exact size, copying typed arrays in bulk, and a reader
-reads fields back by offset, with arrays as views of the bytes where it can.
-Every read checks that it stays within the bytes it was given, so tables can
-come from untrusted sources.
+implementations in TypeScript, Python, Java, Rust, Go, C++, Swift and C#. A
+builder writes a table at its exact size, copying typed arrays in bulk, and a
+reader reads fields back by offset, with arrays as views of the bytes where it
+can. Every read checks that it stays within the bytes it was given, so tables
+can come from untrusted sources.
 
 ## Status
 
@@ -27,6 +27,8 @@ packages.
 | Rust       | `tafla` on crates.io                              | `tafla-gen` on crates.io                              |
 | Go         | `github.com/snovader/tafla/go`                    | `tafla-gen`'s `go` target                             |
 | C++        | The headers of `cpp/include`, not yet published   | `tafla-gen`, any of the above                         |
+| Swift      | `github.com/snovader/tafla` for SwiftPM           | `tafla-gen`'s `swift` target                          |
+| C#         | `Tafla` on NuGet                                  | `tafla-gen`'s `csharp` target                         |
 
 A runtime writes and reads tables. The code generator compiles a schema of
 messages and tables into code that writes and reads them with a language's
@@ -38,7 +40,11 @@ and is released on its own. Every implementation reads and writes the format
 that [SPEC.md](SPEC.md) describes, whatever its version, and passes the same
 conformance suite. A Go module is published by a git tag, so each release of
 the Go runtime is tagged `go/v<version>`, and
-`go get github.com/snovader/tafla/go@v0.1.0` adds its release 0.1.0.
+`go get github.com/snovader/tafla/go@v0.1.0` adds its release 0.1.0. SwiftPM
+resolves a package from the manifest at the root of its repository and its
+versions from tags of the form `<version>`, so the root's `Package.swift`
+declares the Swift runtime, and each of its releases is tagged `<version>`,
+such as `0.1.0`.
 
 ## Repository
 
@@ -51,6 +57,8 @@ the Go runtime is tagged `go/v<version>`, and
 | `rust/`        | The Rust runtime and the generator                                       |
 | `go/`          | The Go runtime                                                           |
 | `cpp/`         | The C++ runtime, a header-only library of C++20                          |
+| `swift/`       | The Swift runtime, a Swift package                                       |
+| `csharp/`      | The C# runtime, for .NET 10                                              |
 | `schemas/`     | Example schemas, which the generator's tests compile                     |
 
 Each language's directory is the root of its own toolchain, and its README

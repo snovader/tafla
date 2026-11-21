@@ -1,6 +1,6 @@
 // The code generated from `schemas/shapes.tafla`'s fields and reads as the
 // tests' descriptions of tables, which `TableBuilder` builds by hand and
-// `ByteBuffer` reads, and which compare floats by their bits
+// `TableReader` reads, and which compare floats by their bits
 
 #ifndef TAFLA_TEST_GENERATED_SHAPES_DESCRIBE_HPP
 #define TAFLA_TEST_GENERATED_SHAPES_DESCRIBE_HPP

@@ -125,7 +125,7 @@ public final class TableSizer {
      *
      * <p>The caller owns the bytes, and the writer keeps them only until the table is written. The
      * table stays in them until they're written again, such as by the next table written into
-     * them, which also changes what a {@link ByteBuffer} or array view of them reads. To keep the
+     * them, which also changes what a {@link TableReader} or array view of them reads. To keep the
      * table, or to read exactly its bytes, copy them with
      * {@code Arrays.copyOf(bytes, writer.byteLength())}.</p>
      *
@@ -303,7 +303,7 @@ public final class TableSizer {
      *     the alignment isn't 1, 2, 4 or 8
      */
     public void addStructArray(int count, int size, int alignment) {
-        ByteBuffer.assertStructSize(size);
+        TableReader.assertStructSize(size);
         addArray(count, size, alignment);
     }
 

@@ -1,0 +1,89 @@
+// Names that would clash in the generated C#, which it renames or names
+// without clashing: fields named after the members of the generated types,
+// after their own definition and its fields, and after other declarations
+// of other types, and declarations named after the members of the views
+// that hold them. Its code, generated in the namespace `Names.@event.@global`
+// of keywords, lies in names/, which Tafla.Generated compiles and Tafla.Tests
+// runs, and rust/gen/tests/csharp_schemas.rs keeps it generated.
+
+/// Fields named after the members of a message's reader and fields, and of
+/// `object` and records
+message Members (version: 1) {
+    format_version: uint8;
+    version_of: uint8;
+    table_layout: uint8;
+    serialize: uint8;
+    serialize_into: uint8;
+    equals: uint8;
+    get_hash_code: uint8;
+    to_string: uint8;
+    get_type: uint8;
+    print_members: uint8;
+    members: uint8;
+    members_fields: uint8;
+    nested: Nested;
+    frame: Frame;
+}
+
+/// Fields named after the members of a table's fields
+table Nested {
+    add_to: uint8;
+    write_to: uint8;
+    nested: uint8;
+}
+
+/// Fields named after a struct's members
+struct Frame {
+    size: uint8;
+    alignment: uint8;
+    write: uint8;
+    serialize_array: uint8;
+    frame: uint8;
+}
+
+/// Items named after the members of their views, and fields named after
+/// declarations of other types
+message Views {
+    count: [Count];
+    current: [Current];
+    move_next: [MoveNext];
+    item: [Item];
+    to_array: [ToArray];
+    get_enumerator: [GetEnumerator];
+    point: uint8;
+    origin: Point;
+    range: [Range];
+    first: Range;
+}
+
+struct Count {
+    value: uint8;
+}
+
+struct Current {
+    value: uint8;
+}
+
+table MoveNext {
+    value: uint8;
+}
+
+table Item {
+    value: uint8;
+}
+
+struct ToArray {
+    value: uint8;
+}
+
+table GetEnumerator {
+    value: uint8;
+}
+
+struct Point {
+    x: float32;
+}
+
+table Range {
+    start: uint8;
+}

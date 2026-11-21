@@ -80,12 +80,12 @@ impl Alignment {
 /// The header and offset type of a table.
 ///
 /// A format creates its layout once and passes it to both the `TableBuilder`
-/// that writes the table and the `ByteBuffer` that reads it, so that the two
+/// that writes the table and the `TableReader` that reads it, so that the two
 /// can't disagree. Nested tables use [`TableLayout::DEFAULT`].
 ///
 /// `VERSIONED` says whether the header has a slot for a version, so that the
 /// compiler requires a version exactly where a versioned table is built, and
-/// offers `ByteBuffer::version()` only where there is one.
+/// offers `TableReader::version()` only where there is one.
 ///
 /// ```
 /// use tafla::{OffsetType, TableLayout};

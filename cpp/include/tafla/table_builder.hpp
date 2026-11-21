@@ -63,15 +63,15 @@ concept Temporary = std::ranges::contiguous_range<Range> && !std::ranges::borrow
 
 }  // namespace detail
 
-/// Builds a table, which a `ByteBuffer` reads back.
+/// Builds a table, which a `TableReader` reads back.
 ///
 /// A table is a header with one offset per field, after the table's total
 /// length and version when its layout has them, followed by the fields in
 /// the order they're set. Arrays, strings and vectors start with their
 /// count, and a vector then holds the end of each item. Arrays of scalars
 /// and of structs are padded so their elements are aligned from the start of
-/// the table. Fields are read back by index with `ByteBuffer::root_offset()`,
-/// or `ByteBuffer::field_offset()` for a table nested in another.
+/// the table. Fields are read back by index with `TableReader::root_offset()`,
+/// or `TableReader::field_offset()` for a table nested in another.
 ///
 /// Setting a field records it, and `to_bytes()` then writes every field
 /// through a `TableWriter`, into bytes of the table's exact length. Tables
@@ -105,7 +105,7 @@ public:
                        layout.is_sized(), std::nullopt, layout.offset_type()) {}
 
     /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `ByteBuffer::version()` before
+    /// header. Readers can check it with `TableReader::version()` before
     /// reading any field.
     ///
     /// Throws a `BuildError` if `version` doesn't fit in the layout's offset
@@ -374,7 +374,7 @@ public:
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
     /// Embeds a table, from its builder or its bytes, without a length
-    /// prefix. Readers find its fields with `ByteBuffer::field_offset()` from
+    /// prefix. Readers find its fields with `TableReader::field_offset()` from
     /// the field's position, which reads offsets of the parent's offset type,
     /// so the table should have no header and the parent's offset type:
     /// that's the default layout in a parent of `uint32` offsets.
@@ -440,9 +440,10 @@ public:
     /// `set_vector()` doesn't pad them.
     ///
     /// Throws a `BuildError` if the vector's count makes the table too long
-    /// before any item is recorded, if `fill` leaves an item's fields unset,
-    /// or as the setters do, and passes on what `fill` throws, leaving the
-    /// builder as it was either way.
+    /// before any item is recorded, with the length that its count and its
+    /// items' ends make it, if `fill` leaves an item's fields unset, or as
+    /// the setters do, and passes on what `fill` throws, leaving the builder
+    /// as it was either way.
     template <std::invocable<std::size_t, Item&> Fill>
     void set_vector(std::size_t count, std::size_t fields, Fill&& fill);
 

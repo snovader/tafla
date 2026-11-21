@@ -1,53 +1,68 @@
+import { bench, parseOptions, type Group } from 'benk';
 import type { Codec, Workload } from './codecs/codec.ts';
+import { sumItem, writeItems, type ItemAccess } from './item-access.ts';
 import {
-    type Measurement,
-    type MeasureOptions,
-    measure,
-    type Variant
-} from './harness.ts';
-import { type ItemAccess, sumItem, writeItems } from './itemAccess.ts';
-import {
-    DOCUMENT_ROWS,
-    type DocumentInput,
-    type DocumentOutput,
     documentInput,
     documentNumbers,
-    LIST_ITEMS,
-    type ListInput,
     listInput,
+    DOCUMENT_ROWS,
+    LIST_ITEMS,
     RECORD,
-    SAMPLE
+    SAMPLE,
+    type DocumentInput,
+    type DocumentOutput,
+    type ListInput
 } from './workloads.ts';
 
-export interface SuiteOptions extends MeasureOptions {
-    /** Runs only the groups whose name matches */
-    filter: RegExp;
-    print: (line: string) => void;
-}
-
-interface Group {
-    name: string;
-    variants: Variant[];
-}
-
 /**
- * Runs every workload through every codec, and reads the items of tafla's
- * vector and array of structs with each of `accesses`. The groups with
- * typed-array inputs run first, since `number[]` inputs change the type
- * feedback of the code they share.
+ * Runs every workload through every codec with benk, and reads the items of
+ * tafla's vector and array of structs with each of `accesses`. Then prints
+ * each codec's encoded sizes, and what it does with a truncated document.
+ * `args` are benk's command-line options.
  */
-export function runSuite(
+export async function runSuite(
     codecs: Codec[],
     accesses: ItemAccess[],
-    options: SuiteOptions
-): void {
+    args: readonly string[]
+): Promise<void> {
     const documents = DOCUMENT_ROWS.map(documentInput);
     const list = listInput(LIST_ITEMS);
 
     checkRoundTrips(codecs, documents, list);
     checkItemAccess(accesses, list);
 
-    const groups = [
+    const print = printer(args);
+    const groups = suiteGroups(codecs, accesses, documents, list);
+
+    await bench(groups, { args, print });
+    printSizes(codecs, documents, list, print);
+    printTruncation(codecs, documents[documents.length - 1], print);
+}
+
+/**
+ * Prints a line where benk prints its tables: to stdout, or to stderr when
+ * `--json -` writes the results there
+ */
+function printer(args: readonly string[]): (line: string) => void {
+    const { json } = parseOptions(args);
+
+    return json === '-'
+        ? line => console.error(line)
+        : line => console.log(line);
+}
+
+/**
+ * The groups of every workload and way of reading items. The groups with
+ * typed-array inputs come first, since `number[]` inputs change the type
+ * feedback of the code they share.
+ */
+function suiteGroups(
+    codecs: Codec[],
+    accesses: ItemAccess[],
+    documents: DocumentInput[],
+    list: ListInput
+): Group[] {
+    return [
         ...workloadGroups(codecs, 'record', c => c.record, RECORD),
         ...documents.flatMap((input, i) => [
             ...workloadGroups(
@@ -93,17 +108,6 @@ export function runSuite(
             )
         )
     ];
-
-    for (const { name, variants } of groups) {
-        if (!options.filter.test(name)) {
-            continue;
-        }
-
-        printMeasurements(name, measure(variants, options), options.print);
-    }
-
-    printSizes(codecs, documents, list, options.print);
-    printTruncation(codecs, documents[documents.length - 1], options.print);
 }
 
 function workloadGroups<I, O>(
@@ -197,31 +201,6 @@ function group<T extends { name: string }>(
             run: createRun(reader)
         }))
     };
-}
-
-function printMeasurements(
-    name: string,
-    measurements: Measurement[],
-    print: (line: string) => void
-): void {
-    const [reference] = measurements;
-
-    print(`\n${name}`);
-    for (const { name: variant, microseconds, heapBytes } of measurements) {
-        const ratio = microseconds / reference.microseconds;
-        print(
-            `  ${variant.padEnd(18)} ${formatMicroseconds(microseconds).padStart(9)} µs ${ratio.toFixed(2).padStart(7)}× ${formatBytes(heapBytes).padStart(12)}`
-        );
-    }
-}
-
-function formatMicroseconds(microseconds: number): string {
-    return microseconds.toFixed(microseconds < 10 ? 3 : 1);
-}
-
-/** Bytes allocated on V8's heap per call, rounded to whole bytes */
-function formatBytes(bytes: number): string {
-    return `${Math.max(0, Math.round(bytes)).toLocaleString('en-US')} B`;
 }
 
 function printSizes(
@@ -367,7 +346,9 @@ function checkItemAccess(accesses: ItemAccess[], list: ListInput): void {
         const expected = [last, every, last, every];
 
         if (!sums.every((sum, i) => Object.is(sum, expected[i]))) {
-            throw new Error(`${access.name} didn't sum the items: ${sums}`);
+            throw new Error(
+                `${access.name} didn't sum the items: ${sums.join(', ')}`
+            );
         }
     }
 }
@@ -419,7 +400,7 @@ function assertEqual(
 ): void {
     // Keys in a fixed order, and bigints as strings
     const stringify = (value: object): string =>
-        JSON.stringify(value, (_, v) =>
+        JSON.stringify(value, (_, v: unknown) =>
             typeof v === 'bigint' ? String(v) : v
         );
 

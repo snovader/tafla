@@ -1,16 +1,16 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'hypotes';
 import { DecodeError } from 'tafla';
 import { SUITE } from './cases.ts';
 import type { Suite, ValidCase } from './description.ts';
-import { SUITE_DIRECTORY, writeSuite } from './files.ts';
-import { buildTable, readTable, TableReader } from './tables.ts';
+import { writeSuite, SUITE_DIRECTORY } from './files.ts';
+import { buildTable, readTable, DescriptionReader } from './tables.ts';
 
 const directory = SUITE_DIRECTORY;
 
 // The checked-in suite, which the other implementations of tafla load too
 const json = await readFile(new URL('cases.json', directory), 'utf8');
-const suite: Suite = JSON.parse(json);
+const suite = JSON.parse(json) as Suite;
 const tables = await readTables();
 
 async function readTables(): Promise<Map<string, Uint8Array>> {
@@ -83,7 +83,7 @@ describe('invalid cases', () => {
         'should read $name up to field $field and then throw DecodeError',
         ({ file, case: name, field }) => {
             const { table } = validCaseNamed(name);
-            const reader = new TableReader(bytesOf(file), table.layout);
+            const reader = new DescriptionReader(bytesOf(file), table.layout);
 
             for (let index = 0; index < field; index++) {
                 const read = reader.readRootField(index, table.fields[index]);

@@ -34,7 +34,7 @@ pub struct GoldenRoot {
 /// target's language, whose tests run them against its runtime and whose
 /// checks type-check, lint and format-check them; `tests/wasm/check.mjs`
 /// keeps the same table.
-pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
+pub const GOLDEN_ROOTS: [GoldenRoot; 9] = [
     GoldenRoot {
         target: "typescript",
         root: "typescript/core/test/generated",
@@ -71,6 +71,19 @@ pub const GOLDEN_ROOTS: [GoldenRoot; 7] = [
     GoldenRoot {
         target: "cpp",
         root: "cpp/tests/generated",
+        subdirectory: None,
+    },
+    // A module of each schema, which swift/Package.swift declares, and
+    // whose tests lie in swift/Tests/TaflaTests/Generated
+    GoldenRoot {
+        target: "swift",
+        root: "swift/Tests/Generated",
+        subdirectory: None,
+    },
+    // A library of their own, which csharp/tests/Tafla.Tests runs
+    GoldenRoot {
+        target: "csharp",
+        root: "csharp/tests/Tafla.Generated",
         subdirectory: None,
     },
 ];
@@ -150,7 +163,7 @@ pub struct BenchmarkSchema {
 /// Every suite's schema, which are copies of one schema, since the suites
 /// run the same workloads. Each directory holds the generated code and
 /// nothing else.
-pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 6] = [
+pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
     BenchmarkSchema {
         target: "typescript",
         schema: "typescript/benchmarks/comparison/workloads.tafla",
@@ -185,6 +198,18 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 6] = [
         target: "cpp",
         schema: "cpp/benchmarks/workloads.tafla",
         directory: "cpp/benchmarks/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "csharp",
+        schema: "csharp/benchmarks/workloads.tafla",
+        directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/workloads.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedTafla",
         package: None,
     },
 ];

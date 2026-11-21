@@ -3,7 +3,7 @@
     "compilerOptions": {
         "outDir": ".cache/typescript/configs"
     },
-    "include": ["*.ts", "core/vitest.config.ts"],
+    "include": ["*.ts", "core/rolldown.config.ts"],
     "references": [
         { "path": "./benchmarks" },
         { "path": "./core" },

@@ -15,7 +15,7 @@ _OFFSET_CODES: dict[OffsetSize, str] = {1: "B", 2: "H", 4: "I"}
 # A function that packs the values of a table's fixed fields
 type Packer = Callable[..., bytes]
 
-# What ByteBuffer.get_fields() reads a table's fixed fields with: the Struct,
+# What TableReader.get_fields() reads a table's fixed fields with: the Struct,
 # the header before the slots, a getter of the offsets from what the Struct
 # unpacks and the offsets that it expects, a getter of the values, and
 # whether a string's length follows them
@@ -26,7 +26,7 @@ class FixedFields:
     """The leading fields of a table whose offsets don't depend on any value,
     which ``TableWriter.set_fields()`` and ``write_table()`` pack with the
     table's offsets in one call to a ``struct.Struct``, rather than with a
-    setter for each field, and ``ByteBuffer.get_fields()`` unpacks. The code
+    setter for each field, and ``TableReader.get_fields()`` unpacks. The code
     that tafla-gen generates creates one for each table that starts with such
     fields.
 
@@ -105,7 +105,7 @@ class FixedFields:
         self._readers = cast(tuple[Reader, ...], tuple(readers))
 
         # A message's layout, which TableWriter.write_fields() and
-        # ByteBuffer.read_fields() write and read its header in
+        # TableReader.read_fields() write and read its header in
         self._layout = layout
         self._header = None if layout is None else _header(layout)
 
@@ -150,7 +150,7 @@ class FixedFields:
         return position
 
 
-# What TableWriter.write_fields() and ByteBuffer.read_fields() read of a
+# What TableWriter.write_fields() and TableReader.read_fields() read of a
 # message's layout: its offset size, the Struct of its header's slots, the
 # length's and then the version's, and whether it has each
 type Header = tuple[OffsetSize, Struct, bool, bool]

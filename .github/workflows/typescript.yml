@@ -46,8 +46,8 @@ jobs:
               - ".github/actions/prepare-node-dependencies/action.yml"
               - ".github/actions/prepare-node-environment/action.yml"
               - ".github/workflows/typescript.yml"
-              # Biome's root configuration, which typescript/'s is nested in
-              - "biome.jsonc"
+              # oxfmt's root configuration, which typescript/'s is nested in
+              - "oxfmt.config.ts"
               - "conformance/**"
               - "typescript/**"
 
@@ -78,9 +78,6 @@ jobs:
 
       - name: Check the package
         run: yarn package:check
-
-      - name: Vulnerability audit
-        run: yarn npm audit -RA
 
   test:
     name: Test (Node ${{ matrix.node_version }})
@@ -124,10 +121,11 @@ jobs:
         uses: ./.github/actions/prepare-node-dependencies
 
       # Shared runners are too noisy for the numbers to mean much; these runs
-      # check that the benchmarks work, and that every codec in the comparison
+      # check that the benchmarks work, that every getter and setter reads or
+      # writes the values it should, and that every codec in the comparison
       # reads back what it wrote
       - name: Run benchmarks
-        run: yarn bench
+        run: yarn bench --rounds 3 --sample-ms 0.2
 
       - name: Run comparison
         run: yarn bench:compare --rounds 3 --sample-ms 0.2

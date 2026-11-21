@@ -1,11 +1,11 @@
 use std::{iter::FusedIterator, mem};
 
-use crate::{DecodeError, OffsetType, byte_buffer::read_slot};
+use crate::{DecodeError, OffsetType, table_reader::read_slot};
 
 /// A vector read from a table: its items, which are tables.
 ///
 /// The vector holds its count, the end of each item, counted from the
-/// vector's position, and then the items. `ByteBuffer::get_vector()` checks
+/// vector's position, and then the items. `TableReader::get_vector()` checks
 /// that the ends lie within the bytes, and each item is checked when it's
 /// read, so reading one can fail. [`Vector::get()`] and
 /// [`Vector::get_in_place()`] find any item from its end and the one before
@@ -13,11 +13,11 @@ use crate::{DecodeError, OffsetType, byte_buffer::read_slot};
 ///
 /// An item that has no header and its parent's offset type is read in
 /// place: from the bytes that [`Vector::get_in_place()`] returns, which start
-/// where it does and end where its parent's do, with a `ByteBuffer` of its
+/// where it does and end where its parent's do, with a `TableReader` of its
 /// parent's offset type, at position 0. Its reads may reach past its end, as
 /// those of any table read in place may. Any other item is read as a table
 /// of its own, from the bytes that [`Vector::get()`] returns, with a
-/// `ByteBuffer` of its own layout.
+/// `TableReader` of its own layout.
 #[derive(Clone, Copy, Debug)]
 pub struct Vector<'a> {
     /// The bytes from the vector's position, which is its count's, to the

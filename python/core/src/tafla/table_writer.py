@@ -19,7 +19,7 @@ from .layout import (
 from .structs import OFFSET_STRUCTS
 from .types import ElementSize, OffsetSize, TypeCode
 
-# The scalars' Structs, assigned rather than imported, as in byte_buffer.py,
+# The scalars' Structs, assigned rather than imported, as in table_reader.py,
 # so that their methods' calls specialize
 int8, uint8 = structs.int8, structs.uint8
 int16, uint16 = structs.int16, structs.uint16
@@ -36,7 +36,9 @@ _ZEROS = tuple(bytes(length) for length in range(16 * SIZEOF_32 + 1))
 # What struct raises for a value or slot that it can't write: struct.error for
 # an integer out of range or a slot past the bytes, OverflowError for a float
 # too large for a float32, and for a slot beyond a C ssize_t, which
-# pack_into() raises as IndexError in Python 3.14
+# pack_into() raises as IndexError in Python 3.14. A value's own __index__()
+# may raise one of them too, which the setters can't tell from struct's, so
+# they raise ValueError for it as well, and the native ones do the same.
 _PACK_ERRORS = (StructError, OverflowError, IndexError)
 
 # What set_fields() and write_table() fall back to the setters for: what
@@ -190,7 +192,9 @@ class TableWriter:
         ``values`` as ``set_fields()`` takes them, and ``string`` when they
         end with one, and returns its bytes, in one call. They're the bytes
         that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-        ``bytes()`` write, and it raises as they do.
+        ``bytes()`` write, and it raises as they do, in their order: the
+        constructor's error for a ``version`` that the layout can't hold comes
+        before the error of a value.
 
         Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
         doesn't.
@@ -224,6 +228,11 @@ class TableWriter:
                     return packed + encoded if encoded else packed
             except _FIELD_ERRORS:
                 pass
+            except Exception:
+                # A value's own error, such as its __index__()'s, unless the
+                # version doesn't fit, which the constructor raises for first
+                if version is None or 0 <= version <= MAX_LENGTHS[size]:
+                    raise
 
         layout = cast(Any, fields._layout)
         if version is None:
@@ -647,7 +656,7 @@ class TableWriter:
         ``write_table()`` for each item and ``set_item_end()`` write it. Each
         item is a table's values as ``write_table()`` takes them, followed by
         its string when ``fields`` ends with one: the tuple that
-        ``ByteBuffer.get_fields()`` returns.
+        ``TableReader.get_fields()`` returns.
 
         Raises ``ValueError`` if iterating ``items`` gives more or fewer than
         their ``len()``, after which the table is undefined.

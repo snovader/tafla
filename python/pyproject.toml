@@ -3,7 +3,7 @@
 # fails for want of a [project], and `uv build --package tafla` builds the
 # runtime.
 [build-system]
-requires = ["uv_build>=0.13.7,<0.14"]
+requires = ["uv_build>=0.13.8,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]
@@ -15,7 +15,7 @@ members = ["core", "benchmarks"]
 config-settings-package = { tafla = { build-args = "--features test-hooks" } }
 
 [dependency-groups]
-dev = ["hypothesis>=6.170.15", "ruff>=0.17.4", "ty>=0.0.100"]
+dev = ["hypothesis>=6.170.15", "ruff>=0.17.5", "ty>=0.0.104"]
 
 [tool.ty.src]
 include = ["core/src", "core/tests", "benchmarks/src", "benchmarks/tests"]

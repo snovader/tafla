@@ -11,9 +11,9 @@ import java.util.*;
  * tafla's tables, written by {@link TableBuilder}s that record their nested tables in place. The
  * runtime writes tables, and leaves records at fixed offsets to the standard library, as its
  * package documentation says. The fixed-size record is written through little-endian
- * {@link VarHandle}s and read with {@link ByteBuffer}'s getters at fixed positions. An array of
+ * {@link VarHandle}s and read with {@link TableReader}'s getters at fixed positions. An array of
  * structs is written through them too, into bytes that {@link TableBuilder#setStructArray} takes,
- * and read from {@link ByteBuffer#getStructArray}'s view, as tafla-gen's code reads it. tafla-gen's
+ * and read from {@link TableReader#getStructArray}'s view, as tafla-gen's code reads it. tafla-gen's
  * code writes each struct straight into the table, with {@link TableWriter#setStructs}.
  */
 public final class TaflaCodec {
@@ -53,13 +53,13 @@ public final class TaflaCodec {
 
         @Override
         public RecordInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var reader = new TableReader(bytes);
 
             return new RecordInput(
-                buffer.getFloat64(buffer.rootOffset(0)),
-                buffer.getFloat64(buffer.rootOffset(1)),
-                buffer.getInt64(buffer.rootOffset(2)),
-                buffer.getString(buffer.rootOffset(3))
+                reader.getFloat64(reader.rootOffset(0)),
+                reader.getFloat64(reader.rootOffset(1)),
+                reader.getInt64(reader.rootOffset(2)),
+                reader.getString(reader.rootOffset(3))
             );
         }
     }
@@ -83,47 +83,47 @@ public final class TaflaCodec {
 
         @Override
         public DocumentInput deserialize(byte[] bytes) {
-            var buffer = openDocument(bytes);
-            var columns = buffer.rootOffset(3);
+            var reader = openDocument(bytes);
+            var columns = reader.rootOffset(3);
 
             return new DocumentInput(
-                buffer.getFloat64(buffer.rootOffset(0)),
-                buffer.getFloat64(buffer.rootOffset(1)),
-                buffer.getString(buffer.rootOffset(2)),
-                buffer.getInt64(buffer.fieldOffset(columns, 0)),
-                buffer.getUint32Array(buffer.fieldOffset(columns, 1)),
-                buffer.getFloat32Array(buffer.fieldOffset(columns, 2)),
-                buffer.getFloat32Array(buffer.fieldOffset(columns, 3))
+                reader.getFloat64(reader.rootOffset(0)),
+                reader.getFloat64(reader.rootOffset(1)),
+                reader.getString(reader.rootOffset(2)),
+                reader.getInt64(reader.fieldOffset(columns, 0)),
+                reader.getUint32Array(reader.fieldOffset(columns, 1)),
+                reader.getFloat32Array(reader.fieldOffset(columns, 2)),
+                reader.getFloat32Array(reader.fieldOffset(columns, 3))
             );
         }
 
         @Override
         public double sumA(byte[] bytes) {
-            var buffer = openDocument(bytes);
-            var a = buffer.fieldOffset(buffer.rootOffset(3), 2);
+            var reader = openDocument(bytes);
+            var a = reader.fieldOffset(reader.rootOffset(3), 2);
 
             // The elements follow their count, which is of the layout's offset type, uint32. An
             // int count makes this a counted loop, which C2 optimizes; a long one made summing 100
             // elements 2.8 times slower.
-            var length = Math.toIntExact(buffer.getUint32(a));
+            var length = Math.toIntExact(reader.getUint32(a));
             var elements = a + Integer.BYTES;
 
             double sum = 0;
             for (int i = 0; i < length; i++) {
-                sum += buffer.getFloat32(elements + i * Float.BYTES);
+                sum += reader.getFloat32(elements + i * Float.BYTES);
             }
 
             return sum;
         }
 
         /** @throws IllegalStateException if the document is in another version */
-        private static ByteBuffer openDocument(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes, DOCUMENT_LAYOUT);
-            if (buffer.getVersion() != DOCUMENT_VERSION) {
-                throw new IllegalStateException("Unsupported document version " + buffer.getVersion());
+        private static TableReader openDocument(byte[] bytes) {
+            var reader = new TableReader(bytes, DOCUMENT_LAYOUT);
+            if (reader.getVersion() != DOCUMENT_VERSION) {
+                throw new IllegalStateException("Unsupported document version " + reader.getVersion());
             }
 
-            return buffer;
+            return reader;
         }
     }
 
@@ -140,18 +140,18 @@ public final class TaflaCodec {
 
         @Override
         public ListInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
-            var offsets = buffer.getVectorOffsets(buffer.rootOffset(0));
+            var reader = new TableReader(bytes);
+            var offsets = reader.getVectorOffsets(reader.rootOffset(0));
 
             var items = new ItemInput[offsets.length];
             for (int i = 0; i < offsets.length; i++) {
                 var item = offsets[i];
-                var pair = buffer.fieldOffset(item, 1);
+                var pair = reader.fieldOffset(item, 1);
 
                 items[i] = new ItemInput(
-                    buffer.getFloat32(buffer.fieldOffset(item, 0)),
-                    buffer.getFloat32(buffer.fieldOffset(pair, 0)),
-                    buffer.getFloat32(buffer.fieldOffset(pair, 1))
+                    reader.getFloat32(reader.fieldOffset(item, 0)),
+                    reader.getFloat32(reader.fieldOffset(pair, 0)),
+                    reader.getFloat32(reader.fieldOffset(pair, 1))
                 );
             }
 
@@ -184,8 +184,8 @@ public final class TaflaCodec {
 
         @Override
         public ListInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
-            var view = buffer.getStructArray(buffer.rootOffset(0), ITEM_SIZE);
+            var reader = new TableReader(bytes);
+            var view = reader.getStructArray(reader.rootOffset(0), ITEM_SIZE);
 
             var items = new ItemInput[view.remaining() / ITEM_SIZE];
             for (int i = 0; i < items.length; i++) {
@@ -220,12 +220,12 @@ public final class TaflaCodec {
 
         @Override
         public SampleInput deserialize(byte[] bytes) {
-            var buffer = new ByteBuffer(bytes);
+            var reader = new TableReader(bytes);
 
             return new SampleInput(
-                buffer.getUint32(0),
-                buffer.getFloat32(Integer.BYTES),
-                buffer.getFloat32(Integer.BYTES + Float.BYTES)
+                reader.getUint32(0),
+                reader.getFloat32(Integer.BYTES),
+                reader.getFloat32(Integer.BYTES + Float.BYTES)
             );
         }
     }

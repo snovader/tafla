@@ -56,19 +56,29 @@ jobs:
               # The generator's golden files of the other targets, in their
               # languages' test trees, and not the tests beside them
               - "cpp/tests/generated/*/**"
+              - "csharp/tests/Tafla.Generated/*/**"
               - "go/tests/generated/*/**"
               - "java/core/src/test/java/io/github/snovader/tafla/test/generated/*/**"
               - "python/core/tests/generated/*/**"
+              - "swift/Tests/Generated/*/**"
               - "typescript/core/test/generated/*/**"
+              # The C# tests' own schema and its generated code, which
+              # tests/csharp_schemas.rs checks
+              - "csharp/tests/names.tafla"
+              - "csharp/tests/names/**"
               # The other comparison suites' schemas and generated code
               - "cpp/benchmarks/workloads.tafla"
               - "cpp/benchmarks/generated/tafla/**"
+              - "csharp/benchmarks/workloads.tafla"
+              - "csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen/**"
               - "go/benchmarks/workloads.tafla"
               - "go/benchmarks/generated/tafla/**"
               - "java/benchmarks/src/main/tafla/workloads.tafla"
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/tafla/**"
               - "python/benchmarks/src/tafla_benchmarks/generated/workloads.tafla"
               - "python/benchmarks/src/tafla_benchmarks/generated/tafla/**"
+              - "swift/benchmarks/workloads.tafla"
+              - "swift/benchmarks/Sources/GeneratedTafla/**"
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
             # The runtime and what its tests read, which the jobs that test only

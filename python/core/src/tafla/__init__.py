@@ -1,12 +1,12 @@
 """Binary tables of scalars, strings and typed arrays. ``TableBuilder`` writes a
-table at its exact size, copying typed arrays in bulk, and ``ByteBuffer`` reads
+table at its exact size, copying typed arrays in bulk, and ``TableReader`` reads
 fields back by offset, with arrays as views of the bytes. Every read checks
 that it stays within the bytes it was given. ``TableWriter`` writes a table
 whose fields are known as it's written, as the code that tafla-gen generates
 writes its tables, without recording them first as ``TableBuilder`` does.
 
 >>> from array import array
->>> from tafla import ByteBuffer, TableBuilder, TableLayout
+>>> from tafla import TableReader, TableBuilder, TableLayout
 
 A format's header, shared by its writer and its readers:
 
@@ -23,15 +23,15 @@ A format's header, shared by its writer and its readers:
 >>> builder.set_table(series)  # written straight into the table
 >>> data = builder.bytes()
 
->>> buffer = ByteBuffer(data, LAYOUT)
->>> buffer.get_version() == FORMAT_VERSION
+>>> reader = TableReader(data, LAYOUT)
+>>> reader.get_version() == FORMAT_VERSION
 True
->>> buffer.get_float64(buffer.root_offset(0))
+>>> reader.get_float64(reader.root_offset(0))
 59.3293
->>> buffer.get_string(buffer.root_offset(1))
+>>> reader.get_string(reader.root_offset(1))
 'Europe/Stockholm'
->>> table = buffer.root_offset(2)
->>> buffer.get_float32_array(buffer.field_offset(table, 1)).tolist()
+>>> table = reader.root_offset(2)
+>>> reader.get_float32_array(reader.field_offset(table, 1)).tolist()
 [21.75, 18.5]
 
 Structs are bytes that the standard library's ``struct`` packs and unpacks
@@ -42,10 +42,10 @@ little-endian, without padding:
 >>> shape = TableBuilder(2)
 >>> shape.set_struct(POINT.pack(0, 1.5))
 >>> shape.set_struct_array(POINT.pack(1, 2.5) + POINT.pack(2, -0.5), POINT.size, 4)
->>> buffer = shape.finalize()
->>> POINT.unpack(buffer.get_struct(buffer.root_offset(0), POINT.size))
+>>> reader = shape.finalize()
+>>> POINT.unpack(reader.get_struct(reader.root_offset(0), POINT.size))
 (0, 1.5)
->>> points = buffer.get_struct_array(buffer.root_offset(1), POINT.size)
+>>> points = reader.get_struct_array(reader.root_offset(1), POINT.size)
 >>> list(POINT.iter_unpack(points))
 [(1, 2.5), (2, -0.5)]
 
@@ -58,9 +58,9 @@ rather than from a builder of its own:
 ...     item.set_float32(reading[1])
 >>> log = TableBuilder(1)
 >>> log.set_vector_in_place([(0, 21.75), (86400, 18.5)], set_reading, fields=2)
->>> buffer = log.finalize()
->>> items = buffer.get_vector_offsets(buffer.root_offset(0))
->>> [buffer.get_float32(buffer.field_offset(item, 1)) for item in items]
+>>> reader = log.finalize()
+>>> items = reader.get_vector_offsets(reader.root_offset(0))
+>>> [reader.get_float32(reader.field_offset(item, 1)) for item in items]
 [21.75, 18.5]
 
 Records at fixed offsets without a header or offsets, such as stream frames,
@@ -95,7 +95,7 @@ Implementations
 ---------------
 
 The classes that the code that tafla-gen generates calls, ``TableLayout``,
-``FixedFields``, ``TableWriter`` and ``ByteBuffer``, have two implementations
+``FixedFields``, ``TableWriter`` and ``TableReader``, have two implementations
 with the same API, conversions and errors: a native one, written in Rust,
 which the platform wheels hold, and a pure-Python one, which the pure
 ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
@@ -116,13 +116,13 @@ and their messages included. They differ only in these ways:
 - A ``TableWriter`` is for one thread at a time. Free-threaded Python runs
   threads in parallel, and a native writer then raises ``RuntimeError`` for a
   call while another thread's call to it runs, where the pure-Python one
-  writes undefined bytes. A ``ByteBuffer`` can be read by several threads at
+  writes undefined bytes. A ``TableReader`` can be read by several threads at
   once, except that CPython's free-threaded builds, 3.14 and 3.15 at least,
   release a ``memoryview`` that threads slice at once, which each
   implementation's array reads do, and the pure-Python one's string reads,
   so that they raise ``ValueError``: python/cpython#127716. The native
   string reads don't slice it.
-- The iterator that ``ByteBuffer.iter_vector_fields()`` returns is for one
+- The iterator that ``TableReader.iter_vector_fields()`` returns is for one
   thread at a time too: a native one raises ``RuntimeError`` for a call
   while another thread's call to it runs, where the pure-Python one, a
   generator, raises ``ValueError``.
@@ -132,7 +132,7 @@ and their messages included. They differ only in these ways:
   class derived from one.
 
 The classes are public as ``tafla`` exports them. The submodules that hold
-the pure-Python ones, such as ``tafla.layout`` and ``tafla.byte_buffer``,
+the pure-Python ones, such as ``tafla.layout`` and ``tafla.table_reader``,
 aren't, and ``tafla._native`` isn't either. The native classes take a
 pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
 for anything else, so a layout created from ``tafla.layout`` serves both.
@@ -196,6 +196,13 @@ A float too large for a float32             ``ValueError`` from a scalar, and
                                             float32.
 A lone surrogate in a string                ``UnicodeEncodeError``, a
                                             ``ValueError``
+A value whose ``__index__()`` or            Its error from an array and from
+``__float__()`` raises                      an integer scalar, but
+                                            ``ValueError`` from a float scalar,
+                                            and from an integer scalar for an
+                                            error that ``struct`` raises
+                                            itself: ``OverflowError``,
+                                            ``IndexError`` or ``struct.error``
 ==========================================  ===================================
 
 Validation and errors
@@ -203,7 +210,7 @@ Validation and errors
 
 Validation is always on:
 
-- Every read checks its range against the bytes the ``ByteBuffer`` was given
+- Every read checks its range against the bytes the ``TableReader`` was given
   and raises ``DecodeError`` if it would leave them, at any position, however
   large. Strings must be valid UTF-8, and vector items must start no later
   than they end. A truncated or corrupted buffer therefore raises rather than
@@ -223,7 +230,7 @@ Validation is always on:
 Using the API wrongly raises other errors, whatever the bytes:
 
 - A buffer that isn't C-contiguous, such as a slice with a step, raises
-  ``TypeError`` where it's taken as bytes: by ``ByteBuffer()``, whose reads
+  ``TypeError`` where it's taken as bytes: by ``TableReader()``, whose reads
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
@@ -280,9 +287,9 @@ from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .errors import DecodeError
 from .implementation import (
     IMPLEMENTATION,
-    ByteBuffer,
     FixedFields,
     TableLayout,
+    TableReader,
     TableWriter,
 )
 from .table_builder import TableBuilder
@@ -290,7 +297,7 @@ from .types import OffsetSize, OffsetType
 
 __all__ = [
     "IMPLEMENTATION",
-    "ByteBuffer",
+    "TableReader",
     "DecodeError",
     "FixedFields",
     "OffsetSize",

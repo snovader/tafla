@@ -9,7 +9,7 @@ intent, not a requirement to preserve every detail.
 - Give each function, class, and module a clear scope of responsibility. Keep
   layout, writing, reading, and code generation with their respective owners.
   For example, `TableLayout` describes a table's header and offset type,
-  `TableBuilder` writes tables, and `ByteBuffer` reads them. In the generator,
+  `TableBuilder` writes tables, and `TableReader` reads them. In the generator,
   the parser owns syntax, the checker owns a schema's rules, and each target
   owns its language's code.
 - Search for existing implementations and related abstractions before adding
@@ -98,8 +98,8 @@ intent, not a requirement to preserve every detail.
   than edit it, as `rust/gen/README.md` describes; a check or test that it
   fails is a bug of the generator.
 - Keep the domain names the same in every language: table, field, layout,
-  offset type, offset size, vector, builder, and decode error. Make the syntax
-  idiomatic for each language.
+  offset type, offset size, vector, builder, reader, and decode error. Make
+  the syntax idiomatic for each language.
 - The runtimes depend only on their language's standard library, except for
   JSpecify's annotations in Java, and PyO3, which binds the Python runtime's
   native classes, written in Rust. PyO3 and the Rust runtime are built into
@@ -112,9 +112,9 @@ intent, not a requirement to preserve every detail.
 
 - Readers decode bytes from untrusted sources. Every read stays within the bytes
   it was given, and malformed input fails with the implementation's decode error
-  (`DecodeError`, or `DecodeException` in Java). It never fails with another
-  error, a crash, a panic, an out-of-bounds read, or an allocation out of
-  proportion to the input.
+  (`DecodeError`, or `DecodeException` in Java and C#). It never fails with
+  another error, a crash, a panic, an out-of-bounds read, or an allocation out
+  of proportion to the input.
 - Builders reject what they can't write, such as a table too long for its
   offset type, with a documented error, rather than writing a table that
   readers misread. Values converted to a field's type, such as numbers written
@@ -201,10 +201,16 @@ intent, not a requirement to preserve every detail.
 ## Formatting
 
 - Follow each language's formatter and compiler configurations, which live in
-  its directory. In TypeScript, Biome sets four-space indentation, single
+  its directory. In TypeScript, oxfmt sets four-space indentation, single
   quotes, semicolons, no trailing commas, and contextual line widths.
   Intentional whitespace and readable structure still require judgment after
   automatic formatting.
+- TypeScript's configurations extend the shared ones of `@snovader/tsconfig`
+  and `@snovader/oxc-config`, and keep only what is tafla's own: the paths
+  that the tools ignore, the name `tafla` that oxfmt sorts after other
+  packages, the rules that tafla turns off, each with its comment, and the
+  `tafla-source` condition. Change a shared setting in those packages,
+  rather than overriding it here.
 
 ## Repository commands
 

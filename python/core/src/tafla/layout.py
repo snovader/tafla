@@ -13,7 +13,7 @@ OFFSET_SIZES: dict[OffsetType, OffsetSize] = {
 
 # The offset type of each offset size, which errors name. TableWriter looks it
 # up when it raises, since storing the offset type made its constructor 22 ns,
-# or 6%, slower; TableBuilder and ByteBuffer keep their layout.
+# or 6%, slower; TableBuilder and TableReader keep their layout.
 OFFSET_TYPES: dict[OffsetSize, OffsetType] = {
     size: offset_type for offset_type, size in OFFSET_SIZES.items()
 }
@@ -22,7 +22,7 @@ OFFSET_TYPES: dict[OffsetSize, OffsetType] = {
 class TableLayout[Versioned: bool = bool]:
     """The header and offset type of a table. A format creates its layout once
     and passes it to both the ``TableBuilder`` that writes the table and the
-    ``ByteBuffer`` that reads it, so that the two can't disagree. Nested tables
+    ``TableReader`` that reads it, so that the two can't disagree. Nested tables
     use ``TableLayout.DEFAULT``.
 
     - ``sized``: whether the header starts with the table's total byte length.

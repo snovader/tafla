@@ -1,0 +1,91 @@
+# The formatting and code style of tafla's C#, which `dotnet format` applies and checks, and which
+# the build enforces, with the analyzers that Directory.Build.props enables
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,slnx}]
+indent_size = 4
+
+[*.cs]
+# Usings, outside the file-scoped namespace, System's first
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_diagnostic.IDE0005.severity = warning
+
+# Braces on their own lines, and around every block
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = true:warning
+dotnet_diagnostic.IDE0011.severity = warning
+
+# Explicit accessibility, and readonly fields that aren't reassigned
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_diagnostic.IDE0040.severity = warning
+dotnet_style_readonly_field = true:warning
+dotnet_diagnostic.IDE0044.severity = warning
+
+# Predefined types, such as int rather than Int32
+dotnet_style_predefined_type_for_locals_parameters_members = true:warning
+dotnet_style_predefined_type_for_member_access = true:warning
+dotnet_diagnostic.IDE0049.severity = warning
+
+# No this. qualification
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+dotnet_diagnostic.IDE0003.severity = warning
+
+# Names: private and internal instance fields are _camelCase; constants and static readonly fields
+# are PascalCase, as types and members are
+dotnet_naming_symbols.instance_fields.applicable_kinds = field
+dotnet_naming_symbols.instance_fields.applicable_accessibilities = private, internal, private_protected
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+dotnet_naming_rule.instance_fields_are_underscore_camel_case.symbols = instance_fields
+dotnet_naming_rule.instance_fields_are_underscore_camel_case.style = underscore_camel_case
+dotnet_naming_rule.instance_fields_are_underscore_camel_case.severity = warning
+
+dotnet_naming_symbols.static_fields.applicable_kinds = field
+dotnet_naming_symbols.static_fields.required_modifiers = static
+dotnet_naming_symbols.constants.applicable_kinds = field
+dotnet_naming_symbols.constants.required_modifiers = const
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_rule.constants_are_pascal_case.symbols = constants
+dotnet_naming_rule.constants_are_pascal_case.style = pascal_case
+dotnet_naming_rule.constants_are_pascal_case.severity = warning
+dotnet_naming_rule.static_fields_are_pascal_case.symbols = static_fields
+dotnet_naming_rule.static_fields_are_pascal_case.style = pascal_case
+dotnet_naming_rule.static_fields_are_pascal_case.severity = warning
+dotnet_diagnostic.IDE1006.severity = warning
+
+[tests/**.cs]
+# Test methods are named by what they check, and the tests' model names scalar types and fields
+# after the format's types, such as Int8 and String
+dotnet_diagnostic.CA1720.severity = none
+
+[tests/{Tafla.Generated,names}/**.cs]
+# tafla-gen's code of the example schemas and the tests' own, whose header marks it as generated, which analyzers and
+# `dotnet format` skip in users' projects. Here the build's analyzers check it as the rest, and
+# `dotnet format whitespace --folder` with `--include-generated` its formatting, which plain
+# `dotnet format` skips whatever this says.
+generated_code = false
+
+[benchmarks/Tafla.Benchmarks/Generated/TaflaGen/**.cs]
+# The benchmarks' copy of tafla-gen's code, of their workloads.tafla, which the build's analyzers and
+# CI's whitespace check check as they check the tests' copies
+generated_code = false
+
+[tests/names/**.cs]
+# The schema of names that would clash: the fields that the generated code renames take a `_` after
+# their names, as in every target, and its namespace's names are keywords, which it escapes
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1716.severity = none

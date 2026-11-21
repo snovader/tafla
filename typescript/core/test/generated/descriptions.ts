@@ -1,10 +1,10 @@
 import {
+    toJsonNumber,
     type FieldDescription,
     type JsonNumber,
     type LayoutDescription,
     type ScalarType,
-    type TableDescription,
-    toJsonNumber
+    type TableDescription
 } from '../conformance/description.ts';
 
 // The fields of generated messages and tables in the conformance suite's

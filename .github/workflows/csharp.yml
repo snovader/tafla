@@ -1,0 +1,375 @@
+name: C#
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+# Read-only, unless a job asks for more
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  TESTINGPLATFORM_TELEMETRY_OPTOUT: "true"
+  # Restores the tests' packages as their packages.lock.json locks them, and
+  # fails if it's out of date, as Directory.Build.props sets it. The runtime
+  # depends on no package, and has no lock file.
+  ContinuousIntegrationBuild: "true"
+
+jobs:
+  # Every push and pull request runs this workflow, so that its required check
+  # always reports, and the jobs below run only when the change touches these
+  # paths
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      csharp: ${{ steps.filter.outputs.csharp }}
+    steps:
+      # A pull request lists its files through the API, and a push compares
+      # its commits, which needs the repository
+      - name: Checkout GitHub repo
+        if: github.event_name == 'push'
+        uses: actions/checkout@v7
+
+      - name: Filter the changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            csharp:
+              - ".github/workflows/csharp.yml"
+              - "conformance/**"
+              - "csharp/**"
+              # Sets the runtime's version, in its lock files too
+              - "scripts/version.sh"
+
+  formatting:
+    name: Formatting
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # The SDK that global.json asks for: the latest of .NET 10
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # The formatting and code style of .editorconfig, and the analyzers'
+      # diagnostics
+      - name: Run formatting check
+        run: dotnet format --verify-no-changes
+
+      # The code that tafla-gen generates, whose header marks it as generated,
+      # which plain `dotnet format` skips, as it does in users' projects. The
+      # build checks it with the analyzers, as .editorconfig says.
+      - name: Run formatting check of the generated code
+        run: >-
+          dotnet format whitespace --folder --include-generated --verify-no-changes
+          --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # Every warning is an error, with the analyzers that Directory.Build.props
+      # enables
+      - name: Build
+        run: dotnet build
+
+      # The conformance suite, the property tests and the examples
+      - name: Run tests
+        run: dotnet test --no-build
+
+      # Reads every array as a copy, as on a big-endian host, rather than in
+      # place
+      - name: Run tests of the portable path
+        run: dotnet test -p:TaflaPortable=true
+
+  # A big-endian host, s390x, emulated by QEMU, which reads and writes every
+  # array through its byte-swapping path. Microsoft builds no .NET for s390x,
+  # so the tests, which build to IL, run in Red Hat's container of the .NET 10
+  # runtime for it.
+  big-endian:
+    name: Test (big-endian)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build
+
+      # Registers QEMU to run s390x's binaries, in containers too
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: s390x
+
+      # The tests find the conformance suite above the directory that they
+      # run in, so the container mounts the repository at its own path
+      - name: Run tests on s390x
+        run: >
+          docker run --rm --platform linux/s390x -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" -w "$PWD"
+          registry.access.redhat.com/ubi9/dotnet-100-runtime
+          dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+
+  # The package that the release publishes to NuGet, which a project restores
+  # from a local feed, as a user's would, and runs, just in time and compiled
+  # ahead of time with Native AOT, whose analysis of the package fails on any
+  # warning
+  package:
+    name: Package
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Pack the package
+        run: dotnet pack src/Tafla
+
+      - name: Test the package
+        run: scripts/test-package.sh
+
+      # The lock files of the projects that reference the runtime through
+      # another project record its version, which a locked restore ignores
+      # and any other restore writes. So a release's version must reach them
+      # as scripts/version.sh writes it: a restore that evaluates the lock
+      # files again then changes nothing.
+      - name: Check that setting a version keeps the lock files
+        working-directory: .
+        run: |
+          scripts/version.sh csharp 99.0.0
+          git diff > "$RUNNER_TEMP/version.diff"
+          dotnet restore csharp/Tafla.slnx --force-evaluate
+          if ! git diff | cmp --silent "$RUNNER_TEMP/version.diff" -; then
+            echo "::error::A restore changes the lock files after scripts/version.sh has set the version"
+            git diff -- "csharp/**/packages.lock.json"
+            exit 1
+          fi
+          git checkout -- .
+
+  benchmark:
+    name: Benchmark
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # The benchmarks and their tests, in Release, as the benchmarks are
+      # timed
+      - name: Build
+        run: dotnet build -c Release benchmarks/Tafla.Benchmarks.Tests
+
+      # The workloads' values, and that every codec reads back what it wrote
+      - name: Run round-trip tests
+        run: dotnet test -c Release --no-build --project benchmarks/Tafla.Benchmarks.Tests
+
+      # Shared runners are too noisy for the numbers to mean much; this run
+      # checks that the benchmarks work
+      - name: Run benchmarks briefly
+        run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- --quick
+
+      - name: Print the encoded sizes
+        run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- encoding
+
+  # A 32-bit process on x86, with Microsoft's x86 SDK, where a .NET array's
+  # elements are aligned only to 4 bytes, positions plus lengths can overflow
+  # 32 bits, and floats return on the x87 stack
+  x86:
+    name: Test (32-bit x86)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET for x86
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+          architecture: x86
+
+      - name: Build
+        run: dotnet build
+
+      # The summary names the process's architecture, x86
+      - name: Run tests
+        run: dotnet test --no-build
+
+  # 32-bit Arm, which reads every array as a copy, since it faults on some
+  # unaligned loads. GitHub's Arm runners run its binaries natively, so the
+  # tests, which build to IL, run in Microsoft's container of the .NET 10
+  # runtime for it. QEMU's emulation of 32-bit Arm crashes .NET.
+  arm:
+    name: Test (32-bit Arm)
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build
+        run: dotnet build
+
+      # The tests find the conformance suite above the directory that they
+      # run in, so the container mounts the repository at its own path. The
+      # runner's banner names the process, 32-bit.
+      - name: Run tests on 32-bit Arm
+        run: >
+          docker run --rm --platform linux/arm/v7 -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE:ro" -w "$PWD"
+          mcr.microsoft.com/dotnet/runtime:10.0
+          dotnet artifacts/bin/Tafla.Tests/debug/Tafla.Tests.dll
+
+  # The reader's fuzz targets, run briefly under libFuzzer through SharpFuzz,
+  # so that a change that breaks them, or that they find quickly, fails here;
+  # the fuzz workflow runs them for longer every week
+  fuzz:
+    name: Fuzz
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Clang's runtime of libFuzzer, to build libfuzzer-dotnet with, whose
+      # package is named after the default Clang's major version
+      - name: Install libFuzzer
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+              "libclang-rt-$(clang++ -dumpversion | cut -d. -f1)-dev"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      # fuzz.sh builds libfuzzer-dotnet and the targets, and libFuzzer writes
+      # an input that fails to artifacts/fuzz/<target>/, which the next step
+      # uploads. table_reader runs again with the runtime built to copy every
+      # array, as a big-endian host and 32-bit Arm do.
+      - name: Run each fuzz target for a minute
+        run: |
+          for target in table_reader conformance; do
+              fuzz/fuzz.sh "$target" -max_total_time=60 -timeout=10
+          done
+          TAFLA_PORTABLE=true fuzz/fuzz.sh table_reader -max_total_time=60 -timeout=10
+
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-csharp
+          path: |
+            csharp/artifacts/fuzz/table_reader
+            csharp/artifacts/fuzz/conformance
+          if-no-files-found: ignore
+
+  # The check for the main branch's ruleset to require. It passes when every
+  # job passed, or was skipped because the change doesn't touch C#.
+  checks:
+    name: C# checks
+    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm, fuzz]
+    # Runs after a failure too, since GitHub counts a skipped required check as
+    # passed
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

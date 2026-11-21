@@ -2,7 +2,9 @@
 
 # TypeScript
 node_modules
+# The declarations and build info of tsc -b, which the tsconfigs' outDir sets
 /typescript/.cache
+/typescript/core/.bundle
 /typescript/**/dist
 /typescript/.yarn/*
 !/typescript/.yarn/patches
@@ -31,3 +33,8 @@ __pycache__
 
 # Rust
 /rust/**/target
+
+# Swift: SwiftPM's build directory and Xcode's package workspace, for the
+# manifest at the root
+/.build
+/.swiftpm

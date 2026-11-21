@@ -6,13 +6,13 @@
 #define TAFLA_TAFLA_HPP
 
 #include "array_view.hpp"
-#include "byte_buffer.hpp"
 #include "bytes.hpp"
 #include "element.hpp"
 #include "errors.hpp"
 #include "layout.hpp"
 #include "structs.hpp"
 #include "table_builder.hpp"
+#include "table_reader.hpp"
 #include "table_vector.hpp"
 #include "table_writer.hpp"
 #include "vector.hpp"

@@ -20,15 +20,15 @@ repository's first commits, for code built from its source before the release.
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,
   structs and arrays of structs, with a layout that sets the header and the
   offset type (`uint8`, `uint16` or `uint32`). `TableBuilder` and
-  `TableWriter` write tables, and `ByteBuffer` reads them.
+  `TableWriter` write tables, and `TableReader` reads them.
 - Bounds-checked reads, which fail on malformed input with
   `DecodeException`.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
-- `ByteBuffer.getVectorItemOffset()`, which finds a vector item from the count
+- `TableReader.getVectorItemOffset()`, which finds a vector item from the count
   that `getVectorLength()` read, so that a reader of several items reads and
   checks the count once.
-- `ByteBuffer.getVectorItemsStart()`, where a vector's items start, and
+- `TableReader.getVectorItemsStart()`, where a vector's items start, and
   `getVectorItemEnd()`, which reads where a vector item ends after checking it
   against where it starts, so that a reader of the items in order carries each
   item's end to the next and reads one end for each item, as
@@ -54,13 +54,15 @@ repository's first commits, for code built from its source before the release.
 ### Changed
 
 - The project is named tafla rather than buffy.
+- The class that reads a table is `TableReader` rather than `ByteBuffer`,
+  which shared its name with `java.nio.ByteBuffer`.
 - `TableBuilder` writes nested builders 5% faster: the benchmarks' vector of
   100 nested tables took 4.4 µs from a builder per item, against 4.6 µs.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,
   in the API and its errors.
-- `ByteBuffer` reads a vector item in place within its message, as the format
+- `TableReader` reads a vector item in place within its message, as the format
   now specifies, including an item whose offsets point past its end.
-- `ByteBuffer` reads scalars, offsets and counts from its bytes through
+- `TableReader` reads scalars, offsets and counts from its bytes through
   `VarHandle`s, rather than through a wrapped `java.nio.ByteBuffer`, with
   the same checks and `DecodeException`s. The benchmarks' hand-written read
   of the vector of 100 nested tables takes 0.48 µs rather than 0.54.
@@ -74,7 +76,7 @@ repository's first commits, for code built from its source before the release.
 
 ### Removed
 
-- `ByteBuffer` only reads tables, and its setters are removed, with
+- `TableReader` only reads tables, and its setters are removed, with
   `allocate()`. Tables are written with `TableBuilder`, or with `TableWriter`
   and `TableSizer`, and structs and other records at fixed offsets with the
   standard library's `VarHandle`s.

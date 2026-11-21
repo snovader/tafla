@@ -24,15 +24,21 @@ fn imports_the_runtime_that_the_options_name() {
         (
             "python",
             "tables.tafla",
-            "from tables.tafla import ByteBuffer",
+            "from tables.tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
         ),
         (
             "java",
             "org.example.tafla",
-            "import org.example.tafla.ByteBuffer;\n",
+            "import org.example.tafla.TableReader;\n",
         ),
         ("rust", "crate::tafla", "use crate::tafla::{"),
         ("cpp", "vendor/tafla.hpp", "\n#include <vendor/tafla.hpp>\n"),
+        ("swift", "VendoredTafla", "\nimport VendoredTafla\n"),
+        (
+            "csharp",
+            "Vendor.Tafla",
+            " _reader = new global::Vendor.Tafla.TableReader(bytes, TableLayout);\n",
+        ),
     ] {
         let options = Options {
             runtime: Some(runtime.to_owned()),
@@ -54,10 +60,18 @@ fn imports_taflas_runtimes_by_default() {
     for (target, import) in [
         ("typescript", "} from 'tafla';\n"),
         ("javascript", "} from 'tafla';\n"),
-        ("python", "from tafla import ByteBuffer"),
-        ("java", "import io.github.snovader.tafla.ByteBuffer;\n"),
+        (
+            "python",
+            "from tafla import FixedFields, TableLayout, TableReader, TableWriter\n",
+        ),
+        ("java", "import io.github.snovader.tafla.TableReader;\n"),
         ("rust", "use tafla::{"),
         ("cpp", "\n#include <tafla/tafla.hpp>\n"),
+        ("swift", "\nimport Tafla\n"),
+        (
+            "csharp",
+            " _reader = new global::Tafla.TableReader(bytes, TableLayout);\n",
+        ),
     ] {
         for file in generate("point.tafla", SCHEMA, target, &Options::default()) {
             assert!(
@@ -98,8 +112,9 @@ fn rust_imports_break_where_rustfmt_breaks_them() {
 
 #[test]
 fn rust_imports_fill_lines_as_rustfmt_fills_them() {
-    // Every name that the module imports, whose first line rustfmt fills to
-    // 99 columns, a column less than its `max_width`
+    // Every name that the module imports. rustfmt fills a line to 99 columns,
+    // a column less than its `max_width`, so `TableSizer`, which would end the
+    // first line at column 100, starts the second
     let source = "\
 struct Pair { a: uint8; }
 table Nested { a: uint8; }
@@ -109,8 +124,8 @@ message Vectors { nested: Nested; items: [Nested]; }
     let files = generate("every.tafla", source, "rust", &Options::default());
 
     let expected = "use tafla::{
-    Alignment, ArrayView, BuildError, ByteBuffer, DecodeError, OffsetType, TableLayout, TableSizer,
-    TableWriter, Vector,
+    Alignment, ArrayView, BuildError, DecodeError, OffsetType, TableLayout, TableReader,
+    TableSizer, TableWriter, Vector,
 };
 ";
     assert!(
@@ -217,6 +232,44 @@ fn the_cpp_namespace_is_the_package_or_the_schemas_name() {
 }
 
 #[test]
+fn the_csharp_namespace_is_the_package_or_the_schemas_name() {
+    let namespace = |file_name: &str, package: Option<&str>| {
+        let options = Options {
+            runtime: None,
+            package: package.map(|package| package.parse().unwrap()),
+        };
+        let files = generate(file_name, SCHEMA, "csharp", &options);
+        let contents = &files[0].contents;
+
+        let start = contents.find("\nnamespace ").unwrap() + "\nnamespace ".len();
+        let end = start + contents[start..].find(";\n").unwrap();
+        contents[start..end].to_owned()
+    };
+
+    assert_eq!(
+        namespace("point.tafla", Some("Org.Example.Tables")),
+        "Org.Example.Tables"
+    );
+    // C#'s keywords and `global` as verbatim identifiers, and Java's `$`,
+    // which C# names can't hold
+    assert_eq!(
+        namespace("point.tafla", Some("org.event.global.$d.a$b")),
+        "org.@event.@global._d.a_b"
+    );
+    for (file_name, expected) in [
+        ("schemas/point_cloud.v1.tafla", "PointCloud"),
+        ("point-cloud.tafla", "PointCloud"),
+        ("my--points.tafla", "MyPoints"),
+        ("1st.tafla", "Schema1st"),
+        ("_points.tafla", "Points"),
+        ("class.tafla", "Class"),
+        ("punktwolke_ä.tafla", "Punktwolke"),
+    ] {
+        assert_eq!(namespace(file_name, None), expected, "{file_name}");
+    }
+}
+
+#[test]
 fn a_java_package_is_identifiers_separated_by_dots() {
     for name in ["generated", "org.example.tables", "a1.$b._c", "org.Example"] {
         let package: JavaPackage = name.parse().unwrap();
@@ -258,11 +311,13 @@ fn files_are_named_after_the_schema_and_name_it() {
     let file_name = "schemas/v1/point_cloud.v1.tafla";
 
     for (target, path) in [
-        ("typescript", "pointCloud.ts"),
-        ("javascript", "pointCloud.js"),
+        ("typescript", "point-cloud.ts"),
+        ("javascript", "point-cloud.js"),
         ("python", "point_cloud.py"),
         ("rust", "point_cloud.rs"),
         ("cpp", "point_cloud.hpp"),
+        ("swift", "point_cloud.swift"),
+        ("csharp", "PointCloud.cs"),
     ] {
         let files = generate(file_name, SCHEMA, target, &Options::default());
 
@@ -272,6 +327,25 @@ fn files_are_named_after_the_schema_and_name_it() {
                 "Generated by tafla-gen from schemas/v1/point_cloud.v1.tafla. Do not edit."
             )
         );
+    }
+}
+
+#[test]
+fn typescript_and_javascript_modules_take_a_hyphen_for_each_underscore() {
+    for (file_name, module) in [
+        ("point_cloud.tafla", "point-cloud"),
+        ("point-cloud.tafla", "point-cloud"),
+        ("pointCloud.tafla", "pointCloud"),
+        ("points_2d.tafla", "points-2d"),
+    ] {
+        for (target, extension) in [("typescript", "ts"), ("javascript", "js")] {
+            let files = generate(file_name, SCHEMA, target, &Options::default());
+            assert_eq!(
+                paths(&files),
+                [format!("{module}.{extension}")],
+                "{file_name}"
+            );
+        }
     }
 }
 
@@ -316,10 +390,12 @@ fn files_are_named_after_the_schema_without_its_windows_directory() {
         "C:point_cloud.tafla",
     ] {
         for (target, path) in [
-            ("typescript", "pointCloud.ts"),
+            ("typescript", "point-cloud.ts"),
             ("python", "point_cloud.py"),
             ("rust", "point_cloud.rs"),
             ("cpp", "point_cloud.hpp"),
+            ("swift", "point_cloud.swift"),
+            ("csharp", "PointCloud.cs"),
         ] {
             let files = generate(file_name, SCHEMA, target, &Options::default());
             assert_eq!(paths(&files), [path], "{file_name}");
@@ -342,9 +418,17 @@ fn a_header_names_any_path_in_one_comment() {
         ("java", "//", shown.replace("\\u", "\\u005cu")),
         ("rust", "//", shown.to_owned()),
         ("cpp", "//", shown.to_owned()),
+        ("swift", "//", shown.to_owned()),
+        ("csharp", "//", shown.to_owned()),
     ] {
         for file in generate(file_name, SCHEMA, target, &Options::default()) {
-            let header = file.contents.lines().next().unwrap();
+            // C#'s tools take a comment that starts with `<auto-generated>` as
+            // marking generated code, which this one is within
+            let mut lines = file.contents.lines();
+            if target == "csharp" {
+                assert_eq!(lines.next(), Some("// <auto-generated>"));
+            }
+            let header = lines.next().unwrap();
             assert_eq!(
                 header,
                 format!("{comment} Generated by tafla-gen from {shown}. Do not edit."),
@@ -365,6 +449,11 @@ fn a_schema_without_definitions_generates_modules_without_imports() {
         ("python", format!("# {header}\n")),
         ("rust", format!("// {header}\n")),
         ("cpp", format!("// {header}\n")),
+        ("swift", format!("// {header}\n")),
+        (
+            "csharp",
+            format!("// <auto-generated>\n// {header}\n// </auto-generated>\n"),
+        ),
     ] {
         let files = generate("empty.tafla", source, target, &Options::default());
         assert_eq!(files[0].contents, contents, "{target}");
@@ -435,7 +524,9 @@ fn targets_are_found_by_name_or_abbreviation() {
             "java",
             "rust",
             "go",
-            "cpp"
+            "cpp",
+            "swift",
+            "csharp"
         ]
     );
 
@@ -444,6 +535,7 @@ fn targets_are_found_by_name_or_abbreviation() {
         ("js", "javascript"),
         ("py", "python"),
         ("rs", "rust"),
+        ("cs", "csharp"),
     ] {
         assert_eq!(Target::from_name(abbreviation), Target::from_name(name));
     }

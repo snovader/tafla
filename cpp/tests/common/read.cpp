@@ -40,12 +40,12 @@ std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::v
 template <bool Versioned>
 class Reader {
 public:
-    explicit Reader(ByteBuffer<Versioned> buffer) : buffer_(buffer) {}
+    explicit Reader(TableReader<Versioned> reader) : reader_(reader) {}
 
     void check_size(const Layout& layout) const {
-        const auto length = buffer_.bytes().size();
+        const auto length = reader_.bytes().size();
         if (layout.sized) {
-            const auto size = buffer_.size();
+            const auto size = reader_.size();
             if (size != length) {
                 throw ReadMismatch("The header holds the size " + std::to_string(size) + " of a table of " +
                                    std::to_string(length) + " bytes");
@@ -62,67 +62,67 @@ public:
     }
 
     Field read_root_field(std::size_t index, const Field& field) const {
-        return read_field(buffer_.root_offset(index), field);
+        return read_field(reader_.root_offset(index), field);
     }
 
     Field read_field(std::size_t position, const Field& field) const {
         return std::visit(
             [this, position](const auto& value) -> Field {
                 using T = std::decay_t<decltype(value)>;
-                const auto& buffer = buffer_;
+                const auto& reader = reader_;
 
                 if constexpr (std::is_same_v<T, std::int8_t>) {
-                    return {buffer.get_int8(position)};
+                    return {reader.get_int8(position)};
                 } else if constexpr (std::is_same_v<T, std::uint8_t>) {
-                    return {buffer.get_uint8(position)};
+                    return {reader.get_uint8(position)};
                 } else if constexpr (std::is_same_v<T, std::int16_t>) {
-                    return {buffer.get_int16(position)};
+                    return {reader.get_int16(position)};
                 } else if constexpr (std::is_same_v<T, std::uint16_t>) {
-                    return {buffer.get_uint16(position)};
+                    return {reader.get_uint16(position)};
                 } else if constexpr (std::is_same_v<T, std::int32_t>) {
-                    return {buffer.get_int32(position)};
+                    return {reader.get_int32(position)};
                 } else if constexpr (std::is_same_v<T, std::uint32_t>) {
-                    return {buffer.get_uint32(position)};
+                    return {reader.get_uint32(position)};
                 } else if constexpr (std::is_same_v<T, std::int64_t>) {
-                    return {buffer.get_int64(position)};
+                    return {reader.get_int64(position)};
                 } else if constexpr (std::is_same_v<T, std::uint64_t>) {
-                    return {buffer.get_uint64(position)};
+                    return {reader.get_uint64(position)};
                 } else if constexpr (std::is_same_v<T, float>) {
-                    return {buffer.get_float32(position)};
+                    return {reader.get_float32(position)};
                 } else if constexpr (std::is_same_v<T, double>) {
-                    return {buffer.get_float64(position)};
+                    return {reader.get_float64(position)};
                 } else if constexpr (std::is_same_v<T, Bool>) {
-                    return {Bool{buffer.get_uint8(position) != 0}};
+                    return {Bool{reader.get_uint8(position) != 0}};
                 } else if constexpr (std::is_same_v<T, std::vector<std::int8_t>>) {
-                    return {buffer.get_int8_array(position).to_vector()};
+                    return {reader.get_int8_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::uint8_t>>) {
-                    const auto bytes = buffer.get_uint8_array(position);
+                    const auto bytes = reader.get_uint8_array(position);
                     return {std::vector<std::uint8_t>(bytes.begin(), bytes.end())};
                 } else if constexpr (std::is_same_v<T, std::vector<std::int16_t>>) {
-                    return {buffer.get_int16_array(position).to_vector()};
+                    return {reader.get_int16_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::uint16_t>>) {
-                    return {buffer.get_uint16_array(position).to_vector()};
+                    return {reader.get_uint16_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::int32_t>>) {
-                    return {buffer.get_int32_array(position).to_vector()};
+                    return {reader.get_int32_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::uint32_t>>) {
-                    return {buffer.get_uint32_array(position).to_vector()};
+                    return {reader.get_uint32_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::int64_t>>) {
-                    return {buffer.get_int64_array(position).to_vector()};
+                    return {reader.get_int64_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<std::uint64_t>>) {
-                    return {buffer.get_uint64_array(position).to_vector()};
+                    return {reader.get_uint64_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<float>>) {
-                    return {buffer.get_float32_array(position).to_vector()};
+                    return {reader.get_float32_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<double>>) {
-                    return {buffer.get_float64_array(position).to_vector()};
+                    return {reader.get_float64_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::string>) {
-                    return {std::string(buffer.get_string(position))};
+                    return {std::string(reader.get_string(position))};
                 } else if constexpr (std::is_same_v<T, Struct>) {
                     const auto types = struct_types(value.scalars);
-                    const auto bytes = buffer.get_struct(position, struct_size(types));
+                    const auto bytes = reader.get_struct(position, struct_size(types));
                     return {Struct{read_struct(bytes, types)}};
                 } else if constexpr (std::is_same_v<T, StructArray>) {
                     const auto size = struct_size(value.types);
-                    const auto bytes = buffer.get_struct_array(position, size);
+                    const auto bytes = reader.get_struct_array(position, size);
 
                     StructArray array{value.types, {}};
                     for (std::size_t start = 0; start + size <= bytes.size(); start += size) {
@@ -145,7 +145,7 @@ public:
     Table read_in_place(std::size_t position, const Table& table) const {
         Table read{table.layout, std::nullopt, {}};
         for (std::size_t index = 0; index < table.fields.size(); ++index) {
-            read.fields.push_back(read_field(buffer_.field_offset(position, index), table.fields[index]));
+            read.fields.push_back(read_field(reader_.field_offset(position, index), table.fields[index]));
         }
         return read;
     }
@@ -159,14 +159,14 @@ private:
 
         // A position past the end leaves no bytes, which the first read fails
         // for
-        const auto bytes = buffer_.bytes();
+        const auto bytes = reader_.bytes();
         return read_table(bytes.subspan(std::min(position, bytes.size())), table);
     }
 
     /// Reads a vector's items, after checking that finding each from its ends
     /// alone finds what iterating finds
     std::vector<Nested> read_vector(std::size_t position, const std::vector<Nested>& items) const {
-        const auto vector = buffer_.get_vector(position);
+        const auto vector = reader_.get_vector(position);
 
         std::vector<ItemResult> iterated;
         std::vector<ItemResult> in_place;
@@ -205,10 +205,10 @@ private:
         for (std::size_t index = 0; index < items.size(); ++index) {
             const auto& item = items[index];
             if (reads_in_place(item.table)) {
-                // At its start, in a buffer of its offset type, which is its
+                // At its start, with a reader of its offset type, which is its
                 // parent's
-                const ByteBuffer buffer(*in_place[index].bytes, item.table.layout.unversioned());
-                read.push_back({item.from, Reader<false>(buffer).read_in_place(0, item.table)});
+                const TableReader reader(*in_place[index].bytes, item.table.layout.unversioned());
+                read.push_back({item.from, Reader<false>(reader).read_in_place(0, item.table)});
             } else {
                 read.push_back({item.from, read_table(*iterated[index].bytes, item.table)});
             }
@@ -220,47 +220,47 @@ private:
     /// parent's offset type
     bool reads_in_place(const Table& table) const {
         const auto& layout = table.layout;
-        return !layout.sized && !layout.versioned && layout.offset_type == buffer_.layout().offset_type();
+        return !layout.sized && !layout.versioned && layout.offset_type == reader_.layout().offset_type();
     }
 
-    ByteBuffer<Versioned> buffer_;
+    TableReader<Versioned> reader_;
 };
 
-Field read_scalar(const ByteBuffer<false>& buffer, ScalarType type, std::size_t position) {
+Field read_scalar(const TableReader<false>& reader, ScalarType type, std::size_t position) {
     switch (type) {
         case ScalarType::int8:
-            return {buffer.get_int8(position)};
+            return {reader.get_int8(position)};
         case ScalarType::uint8:
-            return {buffer.get_uint8(position)};
+            return {reader.get_uint8(position)};
         case ScalarType::int16:
-            return {buffer.get_int16(position)};
+            return {reader.get_int16(position)};
         case ScalarType::uint16:
-            return {buffer.get_uint16(position)};
+            return {reader.get_uint16(position)};
         case ScalarType::int32:
-            return {buffer.get_int32(position)};
+            return {reader.get_int32(position)};
         case ScalarType::uint32:
-            return {buffer.get_uint32(position)};
+            return {reader.get_uint32(position)};
         case ScalarType::int64:
-            return {buffer.get_int64(position)};
+            return {reader.get_int64(position)};
         case ScalarType::uint64:
-            return {buffer.get_uint64(position)};
+            return {reader.get_uint64(position)};
         case ScalarType::float32:
-            return {buffer.get_float32(position)};
+            return {reader.get_float32(position)};
         case ScalarType::float64:
             break;
     }
-    return {buffer.get_float64(position)};
+    return {reader.get_float64(position)};
 }
 
 /// Reads the scalars of a struct of `types` at their offsets in its bytes,
-/// which a `ByteBuffer` reads in any layout
+/// which a `TableReader` reads in any layout
 std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::vector<ScalarType>& types) {
-    const ByteBuffer buffer(bytes, TableLayout());
+    const TableReader reader(bytes, TableLayout());
     std::vector<Field> scalars;
 
     std::size_t offset = 0;
     for (auto type : types) {
-        scalars.push_back(read_scalar(buffer, type, offset));
+        scalars.push_back(read_scalar(reader, type, offset));
         offset += size_of(type);
     }
     return scalars;
@@ -270,9 +270,9 @@ template <class Function>
 auto with_reader(std::span<const std::uint8_t> bytes, const Layout& layout, Function function) {
     const auto unversioned = layout.unversioned();
     if (layout.versioned) {
-        return function(Reader<true>(ByteBuffer(bytes, unversioned.versioned())));
+        return function(Reader<true>(TableReader(bytes, unversioned.versioned())));
     }
-    return function(Reader<false>(ByteBuffer(bytes, unversioned)));
+    return function(Reader<false>(TableReader(bytes, unversioned)));
 }
 
 }  // namespace
@@ -281,13 +281,13 @@ Table read_table(std::span<const std::uint8_t> bytes, const Table& table) {
     const auto unversioned = table.layout.unversioned();
 
     if (table.layout.versioned) {
-        const Reader<true> reader(ByteBuffer(bytes, unversioned.versioned()));
+        const Reader<true> reader(TableReader(bytes, unversioned.versioned()));
         reader.check_size(table.layout);
-        const auto version = ByteBuffer(bytes, unversioned.versioned()).version();
+        const auto version = TableReader(bytes, unversioned.versioned()).version();
         return {table.layout, version, reader.read_root_fields(table.fields)};
     }
 
-    const Reader<false> reader(ByteBuffer(bytes, unversioned));
+    const Reader<false> reader(TableReader(bytes, unversioned));
     reader.check_size(table.layout);
     return {table.layout, std::nullopt, reader.read_root_fields(table.fields)};
 }

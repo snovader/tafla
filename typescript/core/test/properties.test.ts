@@ -1,24 +1,24 @@
-import { describe, expect } from 'vitest';
-import { fc, it } from '@fast-check/vitest';
-import { ByteBuffer, DecodeError } from 'tafla';
+import { describe, expect } from 'hypotes';
+import { fc, it } from 'hypotes/fast-check';
+import { DecodeError, TableReader } from 'tafla';
 import {
+    corruptionOf,
+    fitsItsLayout,
+    sliceOf,
+    tables,
     BYTE_OFFSETS,
     CORRUPTIONS,
-    corruptionOf,
     FIELDS,
-    fitsItsLayout,
     LAYOUTS,
     MAX_VALUES,
     SCALAR_TYPES,
-    SLICES,
-    sliceOf,
-    tables
+    SLICES
 } from './conformance/arbitraries.ts';
 import {
     corrupt,
     elementTypeOf,
-    type FieldDescription,
     isArrayField,
+    type FieldDescription,
     type LayoutDescription,
     type OffsetSize,
     type OffsetType,
@@ -27,29 +27,29 @@ import {
 } from './conformance/description.ts';
 import {
     headerSizeOf,
-    OFFSET_SIZES,
     readScalar,
     readUnsigned,
-    tablesIn
+    tablesIn,
+    OFFSET_SIZES
 } from './conformance/format.ts';
 import {
     alignmentOf,
     buildTable,
     createBuilder,
-    DescriptionMismatch,
-    ELEMENT_SIZES,
     layoutOf,
     readTable,
     setField,
     structAlignment,
     structSize,
-    TableReader
+    DescriptionMismatch,
+    DescriptionReader,
+    ELEMENT_SIZES
 } from './conformance/tables.ts';
 
 // The properties that every implementation of tafla shares, of tables built
 // from arbitrary descriptions in the conformance suite's model. `tablesIn()`
 // reads the bytes that the format rules check with DataView, independently
-// of ByteBuffer.
+// of TableReader.
 
 it.prop([tables(), SLICES])(
     'should read back the values of a table built from any description, wherever its bytes lie',
@@ -247,41 +247,41 @@ function expectLittleEndian(
 
 /** Every getter of a value at a position, with sizes of structs that need one */
 const GETTERS = {
-    getInt8: (buffer, position) => buffer.getInt8(position),
-    getUint8: (buffer, position) => buffer.getUint8(position),
-    getInt16: (buffer, position) => buffer.getInt16(position),
-    getUint16: (buffer, position) => buffer.getUint16(position),
-    getInt32: (buffer, position) => buffer.getInt32(position),
-    getUint32: (buffer, position) => buffer.getUint32(position),
-    getInt64: (buffer, position) => buffer.getInt64(position),
-    getUint64: (buffer, position) => buffer.getUint64(position),
-    getFloat32: (buffer, position) => buffer.getFloat32(position),
-    getFloat64: (buffer, position) => buffer.getFloat64(position),
-    getInt8Array: (buffer, position) => buffer.getInt8Array(position),
-    getUint8Array: (buffer, position) => buffer.getUint8Array(position),
-    getInt16Array: (buffer, position) => buffer.getInt16Array(position),
-    getUint16Array: (buffer, position) => buffer.getUint16Array(position),
-    getInt32Array: (buffer, position) => buffer.getInt32Array(position),
-    getUint32Array: (buffer, position) => buffer.getUint32Array(position),
-    getInt64Array: (buffer, position) => buffer.getInt64Array(position),
-    getUint64Array: (buffer, position) => buffer.getUint64Array(position),
-    getFloat32Array: (buffer, position) => buffer.getFloat32Array(position),
-    getFloat64Array: (buffer, position) => buffer.getFloat64Array(position),
-    getString: (buffer, position) => buffer.getString(position),
-    getStruct: (buffer, position) => buffer.getStruct(position, 9),
-    getStructArray: (buffer, position) => buffer.getStructArray(position, 3),
-    getVector: (buffer, position) => buffer.getVector(position),
-    getVectorOffsets: (buffer, position) => buffer.getVectorOffsets(position),
+    getInt8: (reader, position) => reader.getInt8(position),
+    getUint8: (reader, position) => reader.getUint8(position),
+    getInt16: (reader, position) => reader.getInt16(position),
+    getUint16: (reader, position) => reader.getUint16(position),
+    getInt32: (reader, position) => reader.getInt32(position),
+    getUint32: (reader, position) => reader.getUint32(position),
+    getInt64: (reader, position) => reader.getInt64(position),
+    getUint64: (reader, position) => reader.getUint64(position),
+    getFloat32: (reader, position) => reader.getFloat32(position),
+    getFloat64: (reader, position) => reader.getFloat64(position),
+    getInt8Array: (reader, position) => reader.getInt8Array(position),
+    getUint8Array: (reader, position) => reader.getUint8Array(position),
+    getInt16Array: (reader, position) => reader.getInt16Array(position),
+    getUint16Array: (reader, position) => reader.getUint16Array(position),
+    getInt32Array: (reader, position) => reader.getInt32Array(position),
+    getUint32Array: (reader, position) => reader.getUint32Array(position),
+    getInt64Array: (reader, position) => reader.getInt64Array(position),
+    getUint64Array: (reader, position) => reader.getUint64Array(position),
+    getFloat32Array: (reader, position) => reader.getFloat32Array(position),
+    getFloat64Array: (reader, position) => reader.getFloat64Array(position),
+    getString: (reader, position) => reader.getString(position),
+    getStruct: (reader, position) => reader.getStruct(position, 9),
+    getStructArray: (reader, position) => reader.getStructArray(position, 3),
+    getVector: (reader, position) => reader.getVector(position),
+    getVectorOffsets: (reader, position) => reader.getVectorOffsets(position),
     // The last item, which reads the ends before and after it
-    getVectorOffset: (buffer, position) => {
-        const length = buffer.getVectorLength(position);
-        return length === 0 ? null : buffer.getVectorOffset(position, length - 1);
+    getVectorOffset: (reader, position) => {
+        const length = reader.getVectorLength(position);
+        return length === 0 ? null : reader.getVectorOffset(position, length - 1);
     },
-    getVectorItemOffset: (buffer, position) => {
-        const length = buffer.getVectorLength(position);
-        return length === 0 ? null : buffer.getVectorItemOffset(position, length, length - 1);
+    getVectorItemOffset: (reader, position) => {
+        const length = reader.getVectorLength(position);
+        return length === 0 ? null : reader.getVectorItemOffset(position, length, length - 1);
     }
-} satisfies Record<string, (buffer: ByteBuffer, position: number) => unknown>;
+} satisfies Record<string, (reader: TableReader, position: number) => unknown>;
 
 type Getter = keyof typeof GETTERS;
 
@@ -351,14 +351,14 @@ function expectReadsWithin(bytes: Uint8Array, table: TableDescription, byteOffse
  */
 function readFields(bytes: Uint8Array, table: TableDescription): unknown[] {
     const { layout, fields } = table;
-    const buffer = new ByteBuffer(bytes, layoutOf(layout));
-    const reader = new TableReader(bytes, layout);
+    const reader = new TableReader(bytes, layoutOf(layout));
+    const descriptionReader = new DescriptionReader(bytes, layout);
 
     return [
-        valueOrDecodeError(() => buffer.getSize()),
-        valueOrDecodeError(() => (layout.versioned ? buffer.getVersion() : null)),
+        valueOrDecodeError(() => reader.getSize()),
+        valueOrDecodeError(() => (layout.versioned ? reader.getVersion() : null)),
         ...fields.map((field, index) =>
-            valueOrDecodeError(() => readRootField(reader, index, field))
+            valueOrDecodeError(() => readRootField(descriptionReader, index, field))
         )
     ];
 }
@@ -368,7 +368,7 @@ function readFields(bytes: Uint8Array, table: TableDescription): unknown[] {
  * hold values that don't match the description, which this returns as the
  * mismatch.
  */
-function readRootField(reader: TableReader, index: number, field: FieldDescription): unknown {
+function readRootField(reader: DescriptionReader, index: number, field: FieldDescription): unknown {
     try {
         return reader.readRootField(index, field);
     } catch (error) {
@@ -391,18 +391,18 @@ function readPath(
     getter: Getter,
     [root, ...path]: number[]
 ): unknown[] {
-    const buffer = new ByteBuffer(bytes, layoutOf(layout));
+    const reader = new TableReader(bytes, layoutOf(layout));
 
     return [
-        valueOrDecodeError(() => buffer.getSize()),
-        valueOrDecodeError(() => (layout.versioned ? buffer.getVersion() : null)),
+        valueOrDecodeError(() => reader.getSize()),
+        valueOrDecodeError(() => (layout.versioned ? reader.getVersion() : null)),
         valueOrDecodeError(() => {
-            let position = buffer.rootOffset(root);
+            let position = reader.rootOffset(root);
             for (const index of path) {
-                position = buffer.fieldOffset(position, index);
+                position = reader.fieldOffset(position, index);
             }
 
-            return GETTERS[getter](buffer, position);
+            return GETTERS[getter](reader, position);
         })
     ];
 }

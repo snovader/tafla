@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.13.7,<0.14"]
+requires = ["uv_build>=0.13.8,<0.14"]
 build-backend = "uv_build"
 
 [project]
@@ -14,7 +14,7 @@ dependencies = [
   "tafla",
   "flatbuffers>=25.12.19",
   "msgpack>=1.2.4",
-  "numpy>=2.5.4",
+  "numpy>=2.5.5",
   "protobuf>=7.36.2",
   "pyperf>=2.11.0",
 ]

@@ -3,7 +3,7 @@
 // Java and Rust runtimes write and read too.
 //
 // [TableBuilder] writes a table at its exact size, copying arrays in bulk,
-// and [ByteBuffer] reads fields back by offset, sharing arrays, strings and
+// and [TableReader] reads fields back by offset, sharing arrays, strings and
 // structs with the bytes. Every read checks that it stays within the bytes
 // it was given, and fails with a [*DecodeError] otherwise, so tables can come
 // from untrusted sources.

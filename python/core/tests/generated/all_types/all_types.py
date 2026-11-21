@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from struct import Struct, error
 from typing import ClassVar, Final, Literal, Protocol, Self, TypedDict, Unpack
 
-from tafla import ByteBuffer, DecodeError, FixedFields, TableLayout, TableWriter
+from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
 
 
 class Scalars:
     """A field of every scalar type, and a bool"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
     _FIXED_FIELDS: Final = FixedFields(
@@ -21,7 +21,7 @@ class Scalars:
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[ScalarsFields]) -> bytes:
@@ -80,37 +80,37 @@ class Scalars:
         )
 
     def int8(self) -> int:
-        return self._buffer.get_int8(self._buffer.root_offset(0))
+        return self._reader.get_int8(self._reader.root_offset(0))
 
     def uint8(self) -> int:
-        return self._buffer.get_uint8(self._buffer.root_offset(1))
+        return self._reader.get_uint8(self._reader.root_offset(1))
 
     def int16(self) -> int:
-        return self._buffer.get_int16(self._buffer.root_offset(2))
+        return self._reader.get_int16(self._reader.root_offset(2))
 
     def uint16(self) -> int:
-        return self._buffer.get_uint16(self._buffer.root_offset(3))
+        return self._reader.get_uint16(self._reader.root_offset(3))
 
     def int32(self) -> int:
-        return self._buffer.get_int32(self._buffer.root_offset(4))
+        return self._reader.get_int32(self._reader.root_offset(4))
 
     def uint32(self) -> int:
-        return self._buffer.get_uint32(self._buffer.root_offset(5))
+        return self._reader.get_uint32(self._reader.root_offset(5))
 
     def int64(self) -> int:
-        return self._buffer.get_int64(self._buffer.root_offset(6))
+        return self._reader.get_int64(self._reader.root_offset(6))
 
     def uint64(self) -> int:
-        return self._buffer.get_uint64(self._buffer.root_offset(7))
+        return self._reader.get_uint64(self._reader.root_offset(7))
 
     def float32(self) -> float:
-        return self._buffer.get_float32(self._buffer.root_offset(8))
+        return self._reader.get_float32(self._reader.root_offset(8))
 
     def float64(self) -> float:
-        return self._buffer.get_float64(self._buffer.root_offset(9))
+        return self._reader.get_float64(self._reader.root_offset(9))
 
     def bool_(self) -> bool:
-        return self._buffer.get_uint8(self._buffer.root_offset(10)) != 0
+        return self._reader.get_uint8(self._reader.root_offset(10)) != 0
 
     def fields(self) -> ScalarsFields:
         """Reads every field at once, as ``serialize()`` takes them.
@@ -119,7 +119,7 @@ class Scalars:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return {
                 "int8": self.int8(),
@@ -157,7 +157,7 @@ class Scalars:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(0, self._FIXED_FIELDS)
+        values = self._reader.get_fields(0, self._FIXED_FIELDS)
         if values is None:
             return (
                 self.int8(),
@@ -178,12 +178,12 @@ class Scalars:
     @classmethod
     def read_values(cls, data: Buffer) -> ScalarsFieldValues:
         """Reads every field's value from ``data`` at once, as ``field_values()``
-        reads them, without creating a reader.
+        reads them, without creating a ``Scalars``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        values = ByteBuffer.read_fields(data, cls._FIXED_FIELDS)
+        values = TableReader.read_fields(data, cls._FIXED_FIELDS)
         if values is None:
             return cls(data).field_values()
 
@@ -214,13 +214,13 @@ type ScalarsFieldValues = tuple[
 class Arrays:
     """An array of every scalar type but bool, which has none"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[ArraysFields]) -> memoryview:
@@ -272,52 +272,52 @@ class Arrays:
         return writer.bytes()
 
     def int8(self) -> memoryview[int]:
-        return self._buffer.get_int8_array(self._buffer.root_offset(0))
+        return self._reader.get_int8_array(self._reader.root_offset(0))
 
     def uint8(self) -> memoryview[int]:
-        return self._buffer.get_uint8_array(self._buffer.root_offset(1))
+        return self._reader.get_uint8_array(self._reader.root_offset(1))
 
     def int16(self) -> memoryview[int]:
-        return self._buffer.get_int16_array(self._buffer.root_offset(2))
+        return self._reader.get_int16_array(self._reader.root_offset(2))
 
     def uint16(self) -> memoryview[int]:
-        return self._buffer.get_uint16_array(self._buffer.root_offset(3))
+        return self._reader.get_uint16_array(self._reader.root_offset(3))
 
     def int32(self) -> memoryview[int]:
-        return self._buffer.get_int32_array(self._buffer.root_offset(4))
+        return self._reader.get_int32_array(self._reader.root_offset(4))
 
     def uint32(self) -> memoryview[int]:
-        return self._buffer.get_uint32_array(self._buffer.root_offset(5))
+        return self._reader.get_uint32_array(self._reader.root_offset(5))
 
     def int64(self) -> memoryview[int]:
-        return self._buffer.get_int64_array(self._buffer.root_offset(6))
+        return self._reader.get_int64_array(self._reader.root_offset(6))
 
     def uint64(self) -> memoryview[int]:
-        return self._buffer.get_uint64_array(self._buffer.root_offset(7))
+        return self._reader.get_uint64_array(self._reader.root_offset(7))
 
     def float32(self) -> memoryview[float]:
-        return self._buffer.get_float32_array(self._buffer.root_offset(8))
+        return self._reader.get_float32_array(self._reader.root_offset(8))
 
     def float64(self) -> memoryview[float]:
-        return self._buffer.get_float64_array(self._buffer.root_offset(9))
+        return self._reader.get_float64_array(self._reader.root_offset(9))
 
     def fields(self) -> ArraysFields:
         """Reads every field at once, as ``serialize()`` takes them.
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return {
-            "int8": buffer.get_int8_array(buffer.root_offset(0)),
-            "uint8": buffer.get_uint8_array(buffer.root_offset(1)),
-            "int16": buffer.get_int16_array(buffer.root_offset(2)),
-            "uint16": buffer.get_uint16_array(buffer.root_offset(3)),
-            "int32": buffer.get_int32_array(buffer.root_offset(4)),
-            "uint32": buffer.get_uint32_array(buffer.root_offset(5)),
-            "int64": buffer.get_int64_array(buffer.root_offset(6)),
-            "uint64": buffer.get_uint64_array(buffer.root_offset(7)),
-            "float32": buffer.get_float32_array(buffer.root_offset(8)),
-            "float64": buffer.get_float64_array(buffer.root_offset(9)),
+            "int8": reader.get_int8_array(reader.root_offset(0)),
+            "uint8": reader.get_uint8_array(reader.root_offset(1)),
+            "int16": reader.get_int16_array(reader.root_offset(2)),
+            "uint16": reader.get_uint16_array(reader.root_offset(3)),
+            "int32": reader.get_int32_array(reader.root_offset(4)),
+            "uint32": reader.get_uint32_array(reader.root_offset(5)),
+            "int64": reader.get_int64_array(reader.root_offset(6)),
+            "uint64": reader.get_uint64_array(reader.root_offset(7)),
+            "float32": reader.get_float32_array(reader.root_offset(8)),
+            "float64": reader.get_float64_array(reader.root_offset(9)),
         }
 
     def field_values(self) -> ArraysFieldValues:
@@ -326,40 +326,40 @@ class Arrays:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return (
-            buffer.get_int8_array(buffer.root_offset(0)),
-            buffer.get_uint8_array(buffer.root_offset(1)),
-            buffer.get_int16_array(buffer.root_offset(2)),
-            buffer.get_uint16_array(buffer.root_offset(3)),
-            buffer.get_int32_array(buffer.root_offset(4)),
-            buffer.get_uint32_array(buffer.root_offset(5)),
-            buffer.get_int64_array(buffer.root_offset(6)),
-            buffer.get_uint64_array(buffer.root_offset(7)),
-            buffer.get_float32_array(buffer.root_offset(8)),
-            buffer.get_float64_array(buffer.root_offset(9)),
+            reader.get_int8_array(reader.root_offset(0)),
+            reader.get_uint8_array(reader.root_offset(1)),
+            reader.get_int16_array(reader.root_offset(2)),
+            reader.get_uint16_array(reader.root_offset(3)),
+            reader.get_int32_array(reader.root_offset(4)),
+            reader.get_uint32_array(reader.root_offset(5)),
+            reader.get_int64_array(reader.root_offset(6)),
+            reader.get_uint64_array(reader.root_offset(7)),
+            reader.get_float32_array(reader.root_offset(8)),
+            reader.get_float64_array(reader.root_offset(9)),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> ArraysFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating an ``Arrays``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
+        reader = TableReader(data, cls._LAYOUT)
         return (
-            buffer.get_int8_array(buffer.root_offset(0)),
-            buffer.get_uint8_array(buffer.root_offset(1)),
-            buffer.get_int16_array(buffer.root_offset(2)),
-            buffer.get_uint16_array(buffer.root_offset(3)),
-            buffer.get_int32_array(buffer.root_offset(4)),
-            buffer.get_uint32_array(buffer.root_offset(5)),
-            buffer.get_int64_array(buffer.root_offset(6)),
-            buffer.get_uint64_array(buffer.root_offset(7)),
-            buffer.get_float32_array(buffer.root_offset(8)),
-            buffer.get_float64_array(buffer.root_offset(9)),
+            reader.get_int8_array(reader.root_offset(0)),
+            reader.get_uint8_array(reader.root_offset(1)),
+            reader.get_int16_array(reader.root_offset(2)),
+            reader.get_uint16_array(reader.root_offset(3)),
+            reader.get_int32_array(reader.root_offset(4)),
+            reader.get_uint32_array(reader.root_offset(5)),
+            reader.get_int64_array(reader.root_offset(6)),
+            reader.get_uint64_array(reader.root_offset(7)),
+            reader.get_float32_array(reader.root_offset(8)),
+            reader.get_float64_array(reader.root_offset(9)),
         )
 
 
@@ -395,13 +395,13 @@ type ArraysFieldValues = tuple[
 class Nested:
     """Tables nested in tables, by field and in vectors"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[NestedFields]) -> memoryview:
@@ -419,15 +419,15 @@ class Nested:
 
     def label(self) -> str:
         """A string beside the tables"""
-        return self._buffer.get_string(self._buffer.root_offset(0))
+        return self._reader.get_string(self._reader.root_offset(0))
 
     def outer(self) -> Outer:
         """The first of three levels of tables"""
-        return Outer(self._buffer, self._buffer.root_offset(1))
+        return Outer(self._reader, self._reader.root_offset(1))
 
     def trees(self) -> TreeVector:
         """A vector of tables that hold vectors of themselves"""
-        return TreeVector(self._buffer, self._buffer.root_offset(2))
+        return TreeVector(self._reader, self._reader.root_offset(2))
 
     def field_values(self) -> NestedFieldValues:
         """Reads every field's value into a tuple, in the fields' order, as its getter
@@ -436,46 +436,46 @@ class Nested:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        label = buffer.get_string(buffer.root_offset(0))
-        outer = buffer.root_offset(1)
-        count = buffer.get_uint32(buffer.field_offset(outer, 0))
-        inner = buffer.field_offset(outer, 1)
+        reader = self._reader
+        label = reader.get_string(reader.root_offset(0))
+        outer = reader.root_offset(1)
+        count = reader.get_uint32(reader.field_offset(outer, 0))
+        inner = reader.field_offset(outer, 1)
         return (
             label,
             (
                 count,
                 (
-                    buffer.get_string(buffer.field_offset(inner, 0)),
-                    buffer.get_float64_array(buffer.field_offset(inner, 1)),
+                    reader.get_string(reader.field_offset(inner, 0)),
+                    reader.get_float64_array(reader.field_offset(inner, 1)),
                 ),
             ),
-            TreeVector(buffer, buffer.root_offset(2)),
+            TreeVector(reader, reader.root_offset(2)),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> NestedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Nested``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        label = buffer.get_string(buffer.root_offset(0))
-        outer = buffer.root_offset(1)
-        count = buffer.get_uint32(buffer.field_offset(outer, 0))
-        inner = buffer.field_offset(outer, 1)
+        reader = TableReader(data, cls._LAYOUT)
+        label = reader.get_string(reader.root_offset(0))
+        outer = reader.root_offset(1)
+        count = reader.get_uint32(reader.field_offset(outer, 0))
+        inner = reader.field_offset(outer, 1)
         return (
             label,
             (
                 count,
                 (
-                    buffer.get_string(buffer.field_offset(inner, 0)),
-                    buffer.get_float64_array(buffer.field_offset(inner, 1)),
+                    reader.get_string(reader.field_offset(inner, 0)),
+                    reader.get_float64_array(reader.field_offset(inner, 1)),
                 ),
             ),
-            TreeVector(buffer, buffer.root_offset(2)),
+            TreeVector(reader, reader.root_offset(2)),
         )
 
 
@@ -494,16 +494,16 @@ type NestedFieldValues = tuple[str, OuterFieldValues, TreeVector]
 
 
 class Outer:
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 8
     """The alignment that a parent pads an ``Outer`` to: the largest
     alignment of its arrays and nested tables, or 1
     """
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -518,10 +518,10 @@ class Outer:
         writer.end_table(parent)
 
     def count(self) -> int:
-        return self._buffer.get_uint32(self._buffer.field_offset(self._position, 0))
+        return self._reader.get_uint32(self._reader.field_offset(self._position, 0))
 
     def inner(self) -> Inner:
-        return Inner(self._buffer, self._buffer.field_offset(self._position, 1))
+        return Inner(self._reader, self._reader.field_offset(self._position, 1))
 
     def fields(self) -> OuterFields:
         """Reads every field at once, as ``write()`` takes them, with a nested table's
@@ -529,14 +529,14 @@ class Outer:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        count = buffer.get_uint32(buffer.field_offset(self._position, 0))
-        inner = buffer.field_offset(self._position, 1)
+        reader = self._reader
+        count = reader.get_uint32(reader.field_offset(self._position, 0))
+        inner = reader.field_offset(self._position, 1)
         return {
             "count": count,
             "inner": {
-                "name": buffer.get_string(buffer.field_offset(inner, 0)),
-                "values": buffer.get_float64_array(buffer.field_offset(inner, 1)),
+                "name": reader.get_string(reader.field_offset(inner, 0)),
+                "values": reader.get_float64_array(reader.field_offset(inner, 1)),
             },
         }
 
@@ -547,14 +547,14 @@ class Outer:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        count = buffer.get_uint32(buffer.field_offset(self._position, 0))
-        inner = buffer.field_offset(self._position, 1)
+        reader = self._reader
+        count = reader.get_uint32(reader.field_offset(self._position, 0))
+        inner = reader.field_offset(self._position, 1)
         return (
             count,
             (
-                buffer.get_string(buffer.field_offset(inner, 0)),
-                buffer.get_float64_array(buffer.field_offset(inner, 1)),
+                reader.get_string(reader.field_offset(inner, 0)),
+                reader.get_float64_array(reader.field_offset(inner, 1)),
             ),
         )
 
@@ -570,16 +570,16 @@ type OuterFieldValues = tuple[int, InnerFieldValues]
 
 
 class Inner:
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 8
     """The alignment that a parent pads an ``Inner`` to: the largest
     alignment of its arrays and nested tables, or 1
     """
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -593,11 +593,11 @@ class Inner:
         writer.end_table(parent)
 
     def name(self) -> str:
-        return self._buffer.get_string(self._buffer.field_offset(self._position, 0))
+        return self._reader.get_string(self._reader.field_offset(self._position, 0))
 
     def values(self) -> memoryview[float]:
-        return self._buffer.get_float64_array(
-            self._buffer.field_offset(self._position, 1)
+        return self._reader.get_float64_array(
+            self._reader.field_offset(self._position, 1)
         )
 
     def fields(self) -> InnerFields:
@@ -605,10 +605,10 @@ class Inner:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return {
-            "name": buffer.get_string(buffer.field_offset(self._position, 0)),
-            "values": buffer.get_float64_array(buffer.field_offset(self._position, 1)),
+            "name": reader.get_string(reader.field_offset(self._position, 0)),
+            "values": reader.get_float64_array(reader.field_offset(self._position, 1)),
         }
 
     def field_values(self) -> InnerFieldValues:
@@ -617,10 +617,10 @@ class Inner:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return (
-            buffer.get_string(buffer.field_offset(self._position, 0)),
-            buffer.get_float64_array(buffer.field_offset(self._position, 1)),
+            reader.get_string(reader.field_offset(self._position, 0)),
+            reader.get_float64_array(reader.field_offset(self._position, 1)),
         )
 
 
@@ -639,16 +639,16 @@ class Tree:
     may be empty
     """
 
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 1
     """The alignment that a parent pads a ``Tree`` to: the largest
     alignment of its arrays and nested tables, or 1
     """
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -665,10 +665,10 @@ class Tree:
         writer.end_table(parent)
 
     def value(self) -> int:
-        return self._buffer.get_int32(self._buffer.field_offset(self._position, 0))
+        return self._reader.get_int32(self._reader.field_offset(self._position, 0))
 
     def children(self) -> TreeVector:
-        return TreeVector(self._buffer, self._buffer.field_offset(self._position, 1))
+        return TreeVector(self._reader, self._reader.field_offset(self._position, 1))
 
     def field_values(self) -> TreeFieldValues:
         """Reads every field's value into a tuple, in the fields' order, as its getter
@@ -676,10 +676,10 @@ class Tree:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return (
-            buffer.get_int32(buffer.field_offset(self._position, 0)),
-            TreeVector(buffer, buffer.field_offset(self._position, 1)),
+            reader.get_int32(reader.field_offset(self._position, 0)),
+            TreeVector(reader, reader.field_offset(self._position, 1)),
         )
 
 
@@ -699,17 +699,17 @@ class TreeVector:
     than when its parent's getter returns the vector
     """
 
-    __slots__ = ("_buffer", "_length", "_position")
+    __slots__ = ("_length", "_position", "_reader")
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Views the vector at ``position``, as its parent's getter finds it.
 
         Raises ``DecodeError`` if the vector's count or the ends of its items lie
         outside the bytes.
         """
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
-        self._length = buffer.get_vector_length(position)
+        self._length = reader.get_vector_length(position)
 
     def __len__(self) -> int:
         return self._length
@@ -723,19 +723,19 @@ class TreeVector:
         """
         if index < 0:
             index += self._length
-        offset = self._buffer.get_vector_item_offset(
+        offset = self._reader.get_vector_item_offset(
             self._position, self._length, index
         )
-        return Tree(self._buffer, offset)
+        return Tree(self._reader, offset)
 
     def __iter__(self) -> Iterator[Tree]:
         """Reads the items one after another, after reading every item's end.
 
         Raises ``DecodeError`` if an item lies outside the bytes, before reading any.
         """
-        buffer = self._buffer
-        for offset in buffer.get_vector_offsets(self._position):
-            yield Tree(buffer, offset)
+        reader = self._reader
+        for offset in reader.get_vector_offsets(self._position):
+            yield Tree(reader, offset)
 
     def item_field_values(self, index: int) -> TreeFieldValues:
         """Reads the values of item ``index``, as ``Tree.field_values()`` reads
@@ -761,7 +761,7 @@ class TreeVector:
 class Keywords:
     """Fields named after keywords of TypeScript, Python, Java or Rust"""
 
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 1
     """The alignment that a parent pads a ``Keywords`` to: the largest
@@ -770,9 +770,9 @@ class Keywords:
 
     _FIXED_FIELDS: Final = FixedFields(6, "B", "B", "B", "B", "B", string=True)
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -793,22 +793,22 @@ class Keywords:
         )
 
     def class_(self) -> int:
-        return self._buffer.get_uint8(self._buffer.field_offset(self._position, 0))
+        return self._reader.get_uint8(self._reader.field_offset(self._position, 0))
 
     def default(self) -> int:
-        return self._buffer.get_uint8(self._buffer.field_offset(self._position, 1))
+        return self._reader.get_uint8(self._reader.field_offset(self._position, 1))
 
     def in_(self) -> int:
-        return self._buffer.get_uint8(self._buffer.field_offset(self._position, 2))
+        return self._reader.get_uint8(self._reader.field_offset(self._position, 2))
 
     def match_(self) -> int:
-        return self._buffer.get_uint8(self._buffer.field_offset(self._position, 3))
+        return self._reader.get_uint8(self._reader.field_offset(self._position, 3))
 
     def self(self) -> int:
-        return self._buffer.get_uint8(self._buffer.field_offset(self._position, 4))
+        return self._reader.get_uint8(self._reader.field_offset(self._position, 4))
 
     def type_(self) -> str:
-        return self._buffer.get_string(self._buffer.field_offset(self._position, 5))
+        return self._reader.get_string(self._reader.field_offset(self._position, 5))
 
     def fields(self) -> KeywordsFields:
         """Reads every field at once, as ``write()`` takes them.
@@ -817,7 +817,7 @@ class Keywords:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return {
                 "class_": self.class_(),
@@ -845,7 +845,7 @@ class Keywords:
         offsets are those that its writer writes, and otherwise every field
         through the getters, which raise ``DecodeError`` for bytes they can't read.
         """
-        values = self._buffer.get_fields(self._position, self._FIXED_FIELDS)
+        values = self._reader.get_fields(self._position, self._FIXED_FIELDS)
         if values is None:
             return (
                 self.class_(),
@@ -876,13 +876,13 @@ type KeywordsFieldValues = tuple[int, int, int, int, int, str]
 class Reserved:
     """A message that nests the table of keywords, so that it's written"""
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[ReservedFields]) -> memoryview:
@@ -894,7 +894,7 @@ class Reserved:
         return writer.bytes()
 
     def keywords(self) -> Keywords:
-        return Keywords(self._buffer, self._buffer.root_offset(0))
+        return Keywords(self._reader, self._reader.root_offset(0))
 
     def fields(self) -> ReservedFields:
         """Reads every field at once, as ``serialize()`` takes them, with a nested
@@ -902,8 +902,8 @@ class Reserved:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        return {"keywords": Keywords(buffer, buffer.root_offset(0)).fields()}
+        reader = self._reader
+        return {"keywords": Keywords(reader, reader.root_offset(0)).fields()}
 
     def field_values(self) -> ReservedFieldValues:
         """Reads every field's value into a tuple, in the fields' order, as its getter
@@ -912,19 +912,19 @@ class Reserved:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        return (*Keywords(buffer, buffer.root_offset(0)).field_values(),)
+        reader = self._reader
+        return (*Keywords(reader, reader.root_offset(0)).field_values(),)
 
     @classmethod
     def read_values(cls, data: Buffer) -> ReservedFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Reserved``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        return (*Keywords(buffer, buffer.root_offset(0)).field_values(),)
+        reader = TableReader(data, cls._LAYOUT)
+        return (*Keywords(reader, reader.root_offset(0)).field_values(),)
 
 
 class ReservedFields(TypedDict):
@@ -941,13 +941,13 @@ class Structs:
     to their structs' largest scalar
     """
 
-    __slots__ = ("_buffer",)
+    __slots__ = ("_reader",)
 
     _LAYOUT: Final = TableLayout.DEFAULT
 
     def __init__(self, data: Buffer) -> None:
         """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
-        self._buffer = ByteBuffer(data, self._LAYOUT)
+        self._reader = TableReader(data, self._LAYOUT)
 
     @classmethod
     def serialize(cls, **fields: Unpack[StructsFields]) -> memoryview:
@@ -975,25 +975,25 @@ class Structs:
     def packed(self) -> Packed:
         """A struct of every scalar type"""
         return Packed.read(
-            self._buffer.get_struct(self._buffer.root_offset(0), Packed.SIZE)
+            self._reader.get_struct(self._reader.root_offset(0), Packed.SIZE)
         )
 
     def documented(self) -> DocumentedArray:
         """An array of structs of 7 bytes, aligned to 4"""
-        return DocumentedArray(self._buffer, self._buffer.root_offset(1))
+        return DocumentedArray(self._reader, self._reader.root_offset(1))
 
     def segment(self) -> Segment:
         """A struct of structs"""
         return Segment.read(
-            self._buffer.get_struct(self._buffer.root_offset(2), Segment.SIZE)
+            self._reader.get_struct(self._reader.root_offset(2), Segment.SIZE)
         )
 
     def segments(self) -> SegmentArray:
-        return SegmentArray(self._buffer, self._buffer.root_offset(3))
+        return SegmentArray(self._reader, self._reader.root_offset(3))
 
     def path(self) -> Path:
         """A table nested in the message, which holds structs too"""
-        return Path(self._buffer, self._buffer.root_offset(4))
+        return Path(self._reader, self._reader.root_offset(4))
 
     def fields(self) -> StructsFields:
         """Reads every field at once, as ``serialize()`` takes them, with a nested
@@ -1002,16 +1002,16 @@ class Structs:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        packed = Packed.read(buffer.get_struct(buffer.root_offset(0), Packed.SIZE))
+        reader = self._reader
+        packed = Packed.read(reader.get_struct(reader.root_offset(0), Packed.SIZE))
         documented = Documented.read_array(
-            buffer.get_struct_array(buffer.root_offset(1), Documented.SIZE)
+            reader.get_struct_array(reader.root_offset(1), Documented.SIZE)
         )
-        segment = Segment.read(buffer.get_struct(buffer.root_offset(2), Segment.SIZE))
+        segment = Segment.read(reader.get_struct(reader.root_offset(2), Segment.SIZE))
         segments = Segment.read_array(
-            buffer.get_struct_array(buffer.root_offset(3), Segment.SIZE)
+            reader.get_struct_array(reader.root_offset(3), Segment.SIZE)
         )
-        path = buffer.root_offset(4)
+        path = reader.root_offset(4)
         return {
             "packed": packed,
             "documented": documented,
@@ -1019,10 +1019,10 @@ class Structs:
             "segments": segments,
             "path": {
                 "start": Point.read(
-                    buffer.get_struct(buffer.field_offset(path, 0), Point.SIZE)
+                    reader.get_struct(reader.field_offset(path, 0), Point.SIZE)
                 ),
                 "points": Point.read_array(
-                    buffer.get_struct_array(buffer.field_offset(path, 1), Point.SIZE)
+                    reader.get_struct_array(reader.field_offset(path, 1), Point.SIZE)
                 ),
             },
         }
@@ -1034,45 +1034,45 @@ class Structs:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
-        packed = Packed.read(buffer.get_struct(buffer.root_offset(0), Packed.SIZE))
-        documented = DocumentedArray(buffer, buffer.root_offset(1))
-        segment = Segment.read(buffer.get_struct(buffer.root_offset(2), Segment.SIZE))
-        segments = SegmentArray(buffer, buffer.root_offset(3))
-        path = buffer.root_offset(4)
+        reader = self._reader
+        packed = Packed.read(reader.get_struct(reader.root_offset(0), Packed.SIZE))
+        documented = DocumentedArray(reader, reader.root_offset(1))
+        segment = Segment.read(reader.get_struct(reader.root_offset(2), Segment.SIZE))
+        segments = SegmentArray(reader, reader.root_offset(3))
+        path = reader.root_offset(4)
         return (
             packed,
             documented,
             segment,
             segments,
             (
-                Point.read(buffer.get_struct(buffer.field_offset(path, 0), Point.SIZE)),
-                PointArray(buffer, buffer.field_offset(path, 1)),
+                Point.read(reader.get_struct(reader.field_offset(path, 0), Point.SIZE)),
+                PointArray(reader, reader.field_offset(path, 1)),
             ),
         )
 
     @classmethod
     def read_values(cls, data: Buffer) -> StructsFieldValues:
         """Reads every field's value from ``data`` as ``field_values()`` reads them,
-        without creating a reader.
+        without creating a ``Structs``.
 
         Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
         bytes that the getters can't read.
         """
-        buffer = ByteBuffer(data, cls._LAYOUT)
-        packed = Packed.read(buffer.get_struct(buffer.root_offset(0), Packed.SIZE))
-        documented = DocumentedArray(buffer, buffer.root_offset(1))
-        segment = Segment.read(buffer.get_struct(buffer.root_offset(2), Segment.SIZE))
-        segments = SegmentArray(buffer, buffer.root_offset(3))
-        path = buffer.root_offset(4)
+        reader = TableReader(data, cls._LAYOUT)
+        packed = Packed.read(reader.get_struct(reader.root_offset(0), Packed.SIZE))
+        documented = DocumentedArray(reader, reader.root_offset(1))
+        segment = Segment.read(reader.get_struct(reader.root_offset(2), Segment.SIZE))
+        segments = SegmentArray(reader, reader.root_offset(3))
+        path = reader.root_offset(4)
         return (
             packed,
             documented,
             segment,
             segments,
             (
-                Point.read(buffer.get_struct(buffer.field_offset(path, 0), Point.SIZE)),
-                PointArray(buffer, buffer.field_offset(path, 1)),
+                Point.read(reader.get_struct(reader.field_offset(path, 0), Point.SIZE)),
+                PointArray(reader, reader.field_offset(path, 1)),
             ),
         )
 
@@ -1097,16 +1097,16 @@ type StructsFieldValues = tuple[
 
 
 class Path:
-    __slots__ = ("_buffer", "_position")
+    __slots__ = ("_position", "_reader")
 
     ALIGNMENT: Final = 4
     """The alignment that a parent pads a ``Path`` to: the largest
     alignment of its arrays and nested tables, or 1
     """
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
-        self._buffer = buffer
+        self._reader = reader
         self._position = position
 
     @staticmethod
@@ -1123,13 +1123,13 @@ class Path:
 
     def start(self) -> Point:
         return Point.read(
-            self._buffer.get_struct(
-                self._buffer.field_offset(self._position, 0), Point.SIZE
+            self._reader.get_struct(
+                self._reader.field_offset(self._position, 0), Point.SIZE
             )
         )
 
     def points(self) -> PointArray:
-        return PointArray(self._buffer, self._buffer.field_offset(self._position, 1))
+        return PointArray(self._reader, self._reader.field_offset(self._position, 1))
 
     def fields(self) -> PathFields:
         """Reads every field at once, as ``write()`` takes them, with the items of
@@ -1137,14 +1137,14 @@ class Path:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return {
             "start": Point.read(
-                buffer.get_struct(buffer.field_offset(self._position, 0), Point.SIZE)
+                reader.get_struct(reader.field_offset(self._position, 0), Point.SIZE)
             ),
             "points": Point.read_array(
-                buffer.get_struct_array(
-                    buffer.field_offset(self._position, 1), Point.SIZE
+                reader.get_struct_array(
+                    reader.field_offset(self._position, 1), Point.SIZE
                 )
             ),
         }
@@ -1155,12 +1155,12 @@ class Path:
 
         It raises ``DecodeError`` for bytes that the getters can't read, as they do.
         """
-        buffer = self._buffer
+        reader = self._reader
         return (
             Point.read(
-                buffer.get_struct(buffer.field_offset(self._position, 0), Point.SIZE)
+                reader.get_struct(reader.field_offset(self._position, 0), Point.SIZE)
             ),
-            PointArray(buffer, buffer.field_offset(self._position, 1)),
+            PointArray(reader, reader.field_offset(self._position, 1)),
         )
 
 
@@ -1294,12 +1294,12 @@ class SegmentArray:
 
     __slots__ = ("_data",)
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
 
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
-        self._data = buffer.get_struct_array(position, Segment.SIZE)
+        self._data = reader.get_struct_array(position, Segment.SIZE)
 
     def __len__(self) -> int:
         return len(self._data) // Segment.SIZE
@@ -1480,12 +1480,12 @@ class PointArray:
 
     __slots__ = ("_data",)
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
 
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
-        self._data = buffer.get_struct_array(position, Point.SIZE)
+        self._data = reader.get_struct_array(position, Point.SIZE)
 
     def __len__(self) -> int:
         return len(self._data) // Point.SIZE
@@ -2020,12 +2020,12 @@ class DocumentedArray:
 
     __slots__ = ("_data",)
 
-    def __init__(self, buffer: ByteBuffer, position: int) -> None:
+    def __init__(self, reader: TableReader, position: int) -> None:
         """Views the array at ``position``, as its parent's getter finds it.
 
         Raises ``DecodeError`` if the array lies outside the bytes.
         """
-        self._data = buffer.get_struct_array(position, Documented.SIZE)
+        self._data = reader.get_struct_array(position, Documented.SIZE)
 
     def __len__(self) -> int:
         return len(self._data) // Documented.SIZE

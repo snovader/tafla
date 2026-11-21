@@ -4,6 +4,48 @@
 on their own, and `yarn bench:compare` compares the package with other
 JavaScript libraries. Run both from `typescript/`.
 
+## Getters and setters
+
+`yarn bench` times `TableReader`'s getters and `TableBuilder`'s setters of
+each element type, from int8 to float64, in five groups:
+
+- **primitive getters** read every field of a table of 1000 fields of one
+  type.
+- **typed array getters** read every array of a table of 100 arrays of 1000
+  elements, as views of its bytes.
+- **primitive setters** write a table of 1000 fields of one type.
+- **typed array setters** write a table of 100 arrays of 1000 elements from
+  typed arrays of that type.
+- **array setters** write the same table from `number[]`s or `bigint[]`s,
+  which the builder converts element by element. They run last, since they
+  change the type feedback of the code that the typed array setters share.
+
+benk times them, as it times the comparison, which [Method](#method)
+describes, and adds an A/A copy of each group's first variant, such as
+getInt8 A/A, whose ratio to the first shows the run's noise.
+
+Each variant's call is compiled from a source of its own, which calls its
+getter or setter by name, as a caller of that one method would. V8 shares
+type feedback between the closures of one function literal, and between
+identical sources through its compilation cache, so a loop that every type
+shares calls their getters from one megamorphic call site. The Vitest
+benchmark that `fields/` replaced had such a loop, and discarded the values:
+getInt8 took 2.7 µs per 1000 reads, getUint8 to getUint16 about 7 µs, and the
+other getters 14 to 19 µs, where each now takes 3.2 to 3.5 µs and keeps them.
+
+The getters write each value into a typed array of their type, and each
+array into an array, which keeps every result without allocating, so that V8
+can't discard the reads: getInt64's values stay in a `BigInt64Array`, rather
+than as BigInts on the heap. Before timing, each variant's first call must
+read or write the values it should, compared with `Object.is`.
+
+```sh
+uptime
+yarn bench
+```
+
+It takes the comparison's options, which [Running](#running) lists.
+
 ## Comparison
 
 The comparison times tafla and other JavaScript libraries that encode small
@@ -39,7 +81,7 @@ tafla is timed twice, and both write the same bytes:
 
 - **tafla** writes each table with a `TableBuilder` by hand, recording its
   nested tables among the builder's fields with `setTableInPlace()` and
-  `setVectorInPlace()`, and reads the tables with `ByteBuffer`'s getters.
+  `setVectorInPlace()`, and reads the tables with `TableReader`'s getters.
 - **tafla-gen** is the code that tafla-gen generates from
   `comparison/workloads.tafla`, in `comparison/generated/tafla/`. A message's
   `serialize()` counts the table's length with a `TableSizer`, and then writes
@@ -64,17 +106,15 @@ Four more groups time only tafla's bytes of the vector of nested tables and
 of the array of structs, read in two ways: **read the last item**, which a
 reader can find without reading the others, and **sum every item**. Each way
 sums the three float32s of the items it reads, rather than creating objects
-of its own, and `comparison/itemAccess.ts` holds them:
+of its own, and `comparison/item-access.ts` holds them:
 
-- **tafla** reads with `ByteBuffer`'s getters by hand: `getVectorOffset()` of
+- **tafla** reads with `TableReader`'s getters by hand: `getVectorOffset()` of
   the last item or `getVectorOffsets()` of every item, and `getStructArray()`
   with `readFloat32()`.
 - **tafla-gen** reads with the generated getters, `items()`, which return
   views: the vector's `get(i)` reads one item, and the array of structs'
   getter of each field, such as `value(i)`, reads that field of one struct
   without creating the struct. A loop reads every item.
-- **tafla-gen A/A** reads with the getters again, an A/A pair that shows the
-  harness's noise.
 
 Each library writes the array of structs in its own fixed-size encoding:
 FlatBuffers as a vector of structs, protobuf as a repeated message of the three
@@ -96,25 +136,58 @@ same size.
 
 ### Method
 
-Each group runs its variants interleaved, in alternating order, over 31 rounds
-by default, after 10 warm-up rounds, and reports the fastest call. Load from
-other processes then slows every variant alike, and only for some rounds.
-Every variant has its own timer loop, compiled from a unique source, so that
-call sites and type feedback aren't shared. Groups with `number[]` inputs run
-last, since they change the type feedback of code the typed-array groups
-share. Before timing, every codec must read back exactly what it wrote.
+[benk](https://github.com/snovader/benk) times the variants. It isn't on npm
+yet, so `package.json` installs it from GitHub at a fixed commit, which Yarn
+builds as it installs it, and `.yarnrc.yml` approves its repository.
 
-Beside each time, the suite prints the bytes that a call allocates on V8's
-heap. After a group's timed rounds, each variant's timer loop runs 5 more
-samples of its calls, apart from the timings, with a `GCProfiler` from
-`node:v8` started around each. A sample's bytes are how much the heap's used
-size grew, plus what the garbage collections during it freed, which the
-profiler reports, less what a sample of nothing takes. The fewest over the
-samples counts, since compiling and deoptimizing allocate too, and it's what
-the optimized code allocates, after escape analysis has removed the objects
-that don't escape. V8's own count of allocated bytes,
-`total_allocated_bytes`, grows in steps of whole allocation buffers, of
-100 KiB or more, which is too coarse for a call.
+Each group runs its variants interleaved over at least 31 rounds of 1 ms each,
+after 10 warm-up rounds, in an order that rotates, so that each variant takes
+each position, and follows each other variant, equally often. Load from other
+processes then slows every variant alike. benk adds an A/A copy of each
+group's first variant, whose ratio to the first shows the run's noise. Every
+variant has its own timer loop, compiled from a unique source, which also
+counts the calls of a round, so that call sites and type feedback aren't
+shared. Groups with `number[]` inputs run last, since they change the type
+feedback of code the typed-array groups share. Before timing, every codec
+must read back exactly what it wrote.
+
+The scripts run the suite's TypeScript through `@snovader/node-hooks`, as
+[the package's README](../README.md) describes, rather than through Node's
+own type stripping. Node's stripping invalidates V8's `ArrayBufferDetaching`
+protector, in Node 26.13.0 and 27.0.0-alpha alike
+([nodejs/node#67632](https://github.com/nodejs/node/issues/67632)). V8's
+optimized code then checks typed-array accesses for detached buffers for the
+rest of the process, which took tafla's primitive getters about 1.6 times as
+long. Run a `.ts` file of the suite by hand with the scripts' flags, and
+`node --trace-protector-invalidation` prints nothing.
+
+Each row gives a variant's fastest and median round, per call; their spread,
+the interquartile range as a share of the median; the ratio to the group's
+first variant; a 95% interval of that ratio from the rounds; and the bytes
+that a call allocates on V8's heap. A group compares its variants' fastest
+rounds when every median call takes under 1 µs and allocates under 1 KiB, and
+their median rounds otherwise, since the fastest round of a longer or
+allocating call leaves out garbage collection that its calls cause. A
+variant whose rounds fall into two clusters gets a note below the table.
+benk's README describes each column.
+
+A call's heap bytes are how much the heap's used size grew over a sample of
+calls, plus what the garbage collections during it freed, which a
+`GCProfiler` from `node:v8` reports, less what a sample of nothing takes: the
+median of 5 samples after the timed rounds. V8's own count of allocated
+bytes, `total_allocated_bytes`, grows in steps of whole allocation buffers,
+of 100 KiB or more, which is too coarse for a call.
+
+Until 2026-11-19, the suite timed its variants with a harness of its own,
+which ran them in alternating order, and counted the calls of a round from a
+loop that every variant shared. With it, some short calls took longer in
+every process: on 2026-11-19, with Node 27.0.0-alpha, tafla's read of the
+last struct took 94 to 97 ns against 84 to 86 ns with benk, and tafla-gen's
+record deserialize and protobufjs's fixed-size record serialize took 8 to 10%
+longer. When the harness counted the calls with each variant's own timer
+loop, as benk does, they took as long as with benk. The two agreed on the
+other rows: benk's fastest round was within 2% of the harness's on most of
+them, and the median ratio was 0.999.
 
 ### Running
 
@@ -123,9 +196,15 @@ uptime
 yarn bench:compare --rounds 41
 ```
 
-`--filter <regex>` runs only the matching groups, and `--sample-ms` sets how
-long one round of one variant takes (1 ms by default). Check `uptime` first:
-a high load from other processes makes even the minimum unreliable.
+`--rounds` sets the least rounds (31 by default), `--warmup-rounds` the
+warm-up rounds (10), `--sample-ms` how long one round of one variant takes
+(1 ms), and `--filter <regex>` runs only the matching groups. `--json <path>`
+writes every round's time and position as JSON, and `--json -` writes it to
+stdout, with the tables, the encoded sizes included, on stderr. `--no-aa`
+leaves out the A/A copies, and `--no-heap` the heap bytes. An unknown
+option, or an option without a value, stops the run with an error. Check
+`uptime` first: a high load from other processes makes even the fastest
+round unreliable.
 
 ### Limitations
 
@@ -149,6 +228,10 @@ a high load from other processes makes even the minimum unreliable.
   create.
 
 ### Results
+
+These results came from the suite's earlier harness, which
+[Method](#method) compares with benk, in processes whose type stripping
+had invalidated the protector.
 
 One run on 2026-11-02, on an Apple M2 Pro with 32 GB in macOS 27.0.1, with
 Node 26.13.0, of `yarn bench:compare --rounds 61 --sample-ms 5`. It took 23
@@ -219,7 +302,7 @@ Bytes allocated on V8's heap per call, which leave out the contents of
   0.85 µs, by the same `StructWriter` sequence, into a table that the
   writer sizes rather than a builder.
 - The generated readers read the record and the documents within 6% of the
-  hand-written reads, which call the same `ByteBuffer` getters. They're
+  hand-written reads, which call the same `TableReader` getters. They're
   slower where they create objects of their own: the vector's reader creates
   an `Item` and a `Pair` for each item, and the array's reader a `Triple` for
   each struct, from which the codec creates the workload's items. Reading the
@@ -238,7 +321,7 @@ sum of the array of structs: 1.20 µs rather than 1.33 µs. V8 resizes its young
 generation as a process allocates, which moved that sum between 1.1 and 4.8
 µs from one process to another while the views were designed.
 
-Fastest call in µs, and its ratio to `ByteBuffer`'s by hand:
+Fastest call in µs, and its ratio to `TableReader`'s by hand:
 
 | Benchmark                                       | tafla |      tafla-gen | tafla-gen view | tafla-gen view A/A |
 | ----------------------------------------------- | ----: | -------------: | -------------: | -----------------: |
@@ -256,7 +339,7 @@ Bytes allocated on V8's heap per call:
 | array of 100 structs: read the last item        |   328 |    10,807 |            496 |                496 |
 | array of 100 structs: sum every item            |   328 |    10,809 |         10,001 |             10,001 |
 
-- The views read the last item without reading the others, as `ByteBuffer`
+- The views read the last item without reading the others, as `TableReader`
   does by hand: 0.092 µs against 0.091 µs for the vector, and 0.115 µs
   against 0.103 µs for the array, 12 times faster than the getters, which
   read all 100 items first.
