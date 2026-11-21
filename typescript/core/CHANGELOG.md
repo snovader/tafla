@@ -41,13 +41,15 @@ repository's first commits, for code built from its source before the release.
   and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
   `DataView` of a range of bytes, for a long run of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
-  `setVectorInPlace(count, fields, fill)`, which record a nested table, or
+  `setVectorInPlace(count, fields, fill)`, which write a nested table, or
   each item of a vector, among the builder's own fields, through the
   `TableItem` that `fill` sets its fields on, rather than from a builder of
   its own. They write the bytes that nested builders write, and leave the
-  builder as it was if `fill` throws or leaves fields unset. The comparison
-  suite's vector of 100 nested tables took 11.5 µs rather than 13.7 µs, and
-  allocated 31 KB on V8's heap rather than 47 KB.
+  builder as it was if `fill` throws or leaves fields unset. They're the way
+  to nest tables that a program builds as it writes their parent: in Node
+  26, the comparison suite's vector of 100 nested tables took 5.4 µs so,
+  against 21 µs from a builder per item and 29 µs from the bytes of each,
+  and allocated 16 KB on V8's heap rather than 94 KB and 114 KB.
 
 ### Changed
 
@@ -80,6 +82,55 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
+- `TableBuilder` writes each field, and its offset, into a buffer when it's
+  set, rather than recording it and writing every field through a
+  `TableWriter` in `bytes()` and `finalize()`, which now copy the table out
+  of the buffer into bytes of its length and leave the buffer for the next
+  builder. It writes the same bytes, and its setters throw the same errors
+  and leave it as it was when they throw. Arrays, arrays of structs, structs
+  and tables given as bytes of 1 KiB or more are kept until the table is
+  written and copied into it once; shorter values are copied when they're
+  set, rather than all of them when the table is written. A string is given
+  room in the buffer for its longest UTF-8 rather than counted first. So:
+  - A number for an `int64` field, or a `bigint` for another, throws its
+    `TypeError` from the setter, which leaves the builder as it was, rather
+    than from `finalize()`, except in an array of 1 KiB or more.
+  - Only an array of 1 KiB or more whose length has changed when the table
+    is written makes `finalize()` and `bytes()` throw a `RangeError`, with a
+    message of its own, and one whose buffer was transferred throws a
+    `RangeError` rather than a `TypeError`.
+  - An array-like whose length isn't a non-negative integer throws its
+    `RangeError` from the setter, which leaves the builder as it was.
+  - A nested builder is copied into its parent when it's nested, whatever
+    its layout, rather than written into it when the parent is written,
+    unless its table is 256 bytes or longer: its table is then written once,
+    when the parent is, rather than copied into each table that nests it in
+    turn.
+
+  With the package bundled, in Node 26 and 27, against the builder that wrote
+  through `TableWriter`: tables of 100 scalars of one type took 0.33–0.54
+  times as long to build, whether their integers were held as Smis or as
+  doubles, 100 short strings 0.40–0.45, 100 `Float64Array`s of 8 0.72–0.73,
+  a record of 6 fields 0.79–0.80, a document of 100 rows in 4 typed-array
+  columns 0.89–0.95, and a vector of 100 tables written in place 0.55–0.74. A
+  string of 2,000 ASCII characters took 0.39 µs rather than 4.1 in Node 26. A
+  long string is written into room for 3 bytes for each character, outside
+  V8's heap, which is then cut to the string's length.
+
+  Some shapes take longer, since a table is written into a buffer and then
+  copied or kept, where it was recorded and written once, and only one buffer
+  is kept between builders:
+  - A vector of 100 nested tables from a builder per item took 1.2 to 1.4
+    times as long, and 32 builders, each nested in the next, 2.9 to 3.7 times.
+  - A vector of 200 builders, all built before it, each of a `uint32` and a
+    `Float32Array` of 128, took 3.1 to 3.6 times as long, since each builder
+    grows a buffer of its own.
+  - Two builders written at once took 1.2 times as long for a record, and
+    one after a builder that was never written 1.6 to 1.7 times, since the
+    second builder grows a buffer of its own.
+  - Tables longer than 64 KiB, whose buffer isn't kept for the next builder:
+    130 columns of 500 bytes took 1.2 to 1.4 times as long, and a vector in
+    place of 1,000 tables of a `uint32` and a `Float32Array` of 128 the same.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in
@@ -126,34 +177,18 @@ repository's first commits, for code built from its source before the release.
   offset outside the bytes throws a `RangeError` rather than a `TypeError`,
   and its `valueOf()` isn't called. `TableWriter`'s int64 and float setters
   copy their value's 32-bit words, as the write functions do, rather than its
-  bytes. In Node 26 and 27, 100 integers of up to 32 bits took 0.55–0.89
-  times as long to write with the write functions, and 0.85–0.99 with
-  `TableWriter`; 100 float32s took 0.89–1.02 with `writeFloat32()`, and 100
-  int64s and floats 0.95–1.02 with `TableWriter`. `TableBuilder`'s setters,
-  which write through `TableWriter`, took 0.86–1.06 by median, and its int8
-  setter up to 1.15: V8 inlines only some of `TableWriter`'s setters into the
-  function that writes `TableBuilder`'s fields, and the others are now small
-  enough to fit ahead of it. Main's int64 setter took 1.2–1.3 times as long as
-  its uint64 setter for the same reason. The 64-bit write functions check
-  their offset in a function of their own, so that V8 inlines them into
-  tafla-gen's serializers without counting them against its budget. In Node 26
-  the comparison suite's record then took as long to write as before, 78 ns,
-  and 100 64-bit writes in a loop 1.04–1.07 times as long; in Node 27 the
-  record took 0.99–1.02, and the 64-bit writes as long as before. In Node 26,
-  an integer held as a double could make the write functions take 3.7–4.3
-  times as long for the rest of the process, as V8 stopped inlining the
-  `DataView` setter that they called; the stores call none.
-- `TableBuilder` writes its scalars with less bytecode, so that V8 inlines
-  the write of every type into its loop over the fields, rather than only
-  some of the ten `TableWriter` setters that it called. One internal step of
-  the writer's reserves a scalar of any type, as a setter does: it checks
-  that the scalar fits and writes its offset. The builder then stores the
-  value with the store of its type. It writes the same bytes and throws the
-  same errors as the setters, in the same order. With the package bundled,
-  tables of 100 scalars of one type took 0.80–0.96 times as long to build in
-  Node 26 and 27, whether their integers were held as Smis or as doubles: 100
-  `setInt32()`s took 1.60 µs rather than 1.98 in Node 26, and 1.40 µs rather
-  than 1.76 in Node 27.
+  bytes. In Node 26 and 27, 100 integers of up to 32 bits took 0.55–0.89 times
+  as long to write with the write functions, and 0.85–0.99 with `TableWriter`;
+  100 float32s took 0.89–1.02 with `writeFloat32()`, and 100 int64s and floats
+  0.95–1.02 with `TableWriter`. The 64-bit write functions check their offset
+  in a function of their own, so that V8 inlines them into tafla-gen's
+  serializers without counting them against its budget. In Node 26 the
+  comparison suite's record then took as long to write as before, 78 ns, and
+  100 64-bit writes in a loop 1.04–1.07 times as long; in Node 27 the record
+  took 0.99–1.02, and the 64-bit writes as long as before. In Node 26, an
+  integer held as a double could make the write functions take 3.7–4.3 times
+  as long for the rest of the process, as V8 stopped inlining the `DataView`
+  setter that they called; the stores call none.
 
 ### Removed
 
