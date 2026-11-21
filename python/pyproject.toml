@@ -6,6 +6,9 @@
 requires = ["uv_build>=0.13.8,<0.14"]
 build-backend = "uv_build"
 
+# gen, the distribution of tafla-gen's command, isn't a member: its build
+# compiles the generator, which this environment has no use for. gen/README.md
+# describes it.
 [tool.uv.workspace]
 members = ["core", "benchmarks"]
 

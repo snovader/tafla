@@ -166,6 +166,9 @@ jobs:
           if touches python/scripts/test-wheels.sh; then
             packages+=(python)
           fi
+          if touches python/gen/pyproject.toml python/scripts/test-gen-wheels.sh; then
+            packages+=(tafla-gen)
+          fi
           if touches go/go.mod; then
             packages+=(go)
           fi
@@ -590,6 +593,167 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: pypi-*
+          merge-multiple: true
+          path: dist
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+
+      # PyPI trusts this workflow as a publisher, pending one for the first
+      # release, so the job needs no token
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always dist/*
+
+  # tafla-gen's distribution on PyPI holds the generator's command, the binary
+  # of the crate in rust/gen, without any Python. crates-build checks the
+  # crate.
+
+  # Builds the source distribution, and a wheel from it, as pip builds one
+  # where no wheel fits, to check that it builds
+  pypi-gen-build:
+    name: PyPI (tafla-gen, build)
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: python/gen
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      # Without a cache, since the wheel builds from the source distribution,
+      # in a directory of uv's
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+          python-version: "3.14"
+
+      - name: Build the source distribution, and a wheel from it
+        run: uv build --out-dir "$RUNNER_TEMP/build"
+
+      - name: Test the wheel
+        run: ../scripts/test-gen-wheels.sh "$RUNNER_TEMP/build"
+
+      # PyPI rejects the wheel that the source distribution built on the
+      # runner, which isn't a manylinux wheel. pypi-gen-wheels builds those.
+      - name: Upload the source distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: tafla-gen-pypi-sdist
+          path: ${{ runner.temp }}/build/*.tar.gz
+          if-no-files-found: error
+
+  # Builds the wheel that holds the command for a platform, with the Rust
+  # workspace's lock file, and tests it. One wheel serves every Python, since
+  # the command links none. maturin-action builds Linux's in a manylinux or
+  # musllinux container, and the others on the runner.
+  pypi-gen-wheels:
+    name: PyPI (tafla-gen, wheel, ${{ matrix.name }})
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.packages), 'tafla-gen')
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      # Every platform's wheel builds, so that one failure shows all of them
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: auto
+          - name: Linux aarch64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: auto
+          - name: Linux x86_64, musl
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: Linux aarch64, musl
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+          - name: macOS arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          - name: macOS x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+        working-directory: python
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: false
+
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          maturin-version: v1.16.0
+          working-directory: python/gen
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          args: --release --locked --out dist
+
+      # musl's runs in Alpine
+      - name: Test the wheel
+        env:
+          MUSL: ${{ endsWith(matrix.target, '-musl') }}
+        run: |
+          if [[ "$MUSL" == true ]]; then
+            docker run --rm -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$PWD" \
+              ghcr.io/astral-sh/uv:0.13.7-alpine scripts/test-gen-wheels.sh gen/dist
+          else
+            scripts/test-gen-wheels.sh gen/dist
+          fi
+
+      - name: Upload the wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: tafla-gen-pypi-wheel-${{ matrix.target }}
+          path: python/gen/dist/*.whl
+          if-no-files-found: error
+
+  # Publishes the distributions that pypi-gen-build and pypi-gen-wheels built
+  # and tested, in a release of tafla-gen, beside crates-publish
+  pypi-gen-publish:
+    name: PyPI (tafla-gen, publish)
+    needs: [plan, pypi-gen-build, pypi-gen-wheels]
+    if: needs.plan.outputs.publish == 'true' && inputs.package == 'tafla-gen'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tafla-gen/${{ inputs.version }}/
+    permissions:
+      contents: read
+      # Trusted publishing
+      id-token: write
+    steps:
+      - name: Download the distributions
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tafla-gen-pypi-*
           merge-multiple: true
           path: dist
 
@@ -1512,7 +1676,7 @@ jobs:
   # push their tags themselves, since a tag publishes each.
   tag:
     name: Tag the release
-    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, crates-publish, maven-publish, nuget-publish, nuget-gen-publish]
+    needs: [plan, npm-publish, npm-gen-publish, pypi-publish, pypi-gen-publish, crates-publish, maven-publish, nuget-publish, nuget-gen-publish]
     # The other packages' publish jobs are skipped, so the job checks the
     # result of the released package's, and of each registry's for tafla-gen
     if: >-
@@ -1521,7 +1685,7 @@ jobs:
         (inputs.package == 'python' && needs.pypi-publish.result == 'success') ||
         (inputs.package == 'java' && needs.maven-publish.result == 'success') ||
         (inputs.package == 'rust' && needs.crates-publish.result == 'success') ||
-        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success' && needs.nuget-gen-publish.result == 'success') ||
+        (inputs.package == 'tafla-gen' && needs.crates-publish.result == 'success' && needs.npm-gen-publish.result == 'success' && needs.pypi-gen-publish.result == 'success' && needs.nuget-gen-publish.result == 'success') ||
         (inputs.package == 'csharp' && needs.nuget-publish.result == 'success')
       )
     runs-on: ubuntu-latest

@@ -35,6 +35,10 @@ first commits, for code built from its source before the release.
   the schemas that its caller reads, and the WebAssembly module's
   `tafla_command` and `tafla_generate` exports of it, so that a host of the
   module only reads schemas, writes files and prints.
+- `tafla-gen` on PyPI, which holds the command built for Linux, macOS and
+  Windows, so that `uvx tafla-gen` and `pipx run tafla-gen` run it without a
+  Rust toolchain. Its source distribution builds the command with cargo on
+  other platforms.
 - [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
   describes how a format's messages evolve: each version fixes its fields and
   keeps the same layout, and a new version appends fields to the previous
