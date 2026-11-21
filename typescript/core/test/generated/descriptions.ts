@@ -89,9 +89,7 @@ export function message(
     fields: FieldDescription[],
     version?: number
 ): TableDescription {
-    return version === undefined
-        ? { layout, fields }
-        : { layout, version, fields };
+    return version == null ? { layout, fields } : { layout, version, fields };
 }
 
 function jsonOf(value: number | bigint): JsonNumber {

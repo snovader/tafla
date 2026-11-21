@@ -30,7 +30,7 @@ export function writeSuite(suite: Suite): SuiteFiles {
         ...suite.invalid
     ]) {
         const bytes = valid.get(name);
-        if (bytes === undefined) {
+        if (bytes == null) {
             throw new Error(`There's no valid case ${name}`);
         }
 

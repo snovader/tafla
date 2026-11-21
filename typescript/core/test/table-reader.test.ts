@@ -188,7 +188,6 @@ describe('strings', () => {
             expected = decoder.decode(bytes);
         } catch {
             expect(read).toThrow(DecodeError);
-            // oxlint-disable-next-line typescript/no-unsafe-assignment -- Matchers are typed any
             expect(read).toThrow(expect.objectContaining({ cause: expect.any(TypeError) }));
             return;
         }

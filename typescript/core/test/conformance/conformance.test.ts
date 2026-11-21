@@ -29,7 +29,7 @@ async function readTables(): Promise<Map<string, Uint8Array>> {
 
 function validCaseNamed(name: string): ValidCase {
     const validCase = suite.valid.find(validCase => validCase.name === name);
-    if (validCase === undefined) {
+    if (validCase == null) {
         throw new Error(`There's no valid case ${name}`);
     }
 
@@ -38,7 +38,7 @@ function validCaseNamed(name: string): ValidCase {
 
 function bytesOf(file: string): Uint8Array {
     const bytes = tables.get(file);
-    if (bytes === undefined) {
+    if (bytes == null) {
         throw new Error(`Missing ${file}`);
     }
 

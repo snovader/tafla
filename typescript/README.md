@@ -10,6 +10,9 @@ WebAssembly module it runs.
 
 This is a Yarn project with its release in `.yarn/releases`, so `yarn` runs the
 pinned version from here. Run the commands below from this directory.
+Yarn installs a version of a package only a day after it's published, except
+of `@snovader/*` and `hypotes`, which `.yarnrc.yml` approves with
+`npmPreapprovedPackages`.
 
 ```sh
 yarn install
@@ -39,7 +42,12 @@ and
 [`@snovader/tsconfig`](https://github.com/snovader/tooling/tree/main/packages/tsconfig),
 which need Node 26 to load oxfmt's and oxlint's. `oxfmt.config.ts` adds the
 paths that oxfmt ignores and the name `tafla`, which sorts after the other
-packages. `oxlint.config.ts` adds the rules that tafla turns off. Files are
+packages. `oxlint.config.ts` turns off two rules, `unicorn/prefer-spread`
+and `unicorn/escape-case`, and those that the FlatBuffers codec of the
+benchmarks breaks, which is written in the shape that flatc generates. The
+shared base allows the idioms that `AGENTS.md` lists, such as `== null` and
+truthiness checks of nullable values, and reports a disable directive that
+suppresses nothing. Files are
 named in kebab-case, as the shared rule checks, and as tafla-gen names the
 modules that it generates. `tsconfig.base.json`,
 `tsconfig.node.json` and `tsconfig.isomorphic.json` extend the presets of

@@ -18,7 +18,7 @@ if (reader.getString(reader.rootOffset(0)) !== 'tafla') {
 const bundle = readFileSync(new URL(import.meta.resolve('tafla')), 'utf8');
 const wide = /[Ā-\u{10ffff}]/u.exec(bundle);
 
-if (wide !== null) {
+if (wide != null) {
     const codePoint = wide[0].codePointAt(0)!.toString(16).toUpperCase();
     throw new Error(
         `The bundle has U+${codePoint.padStart(4, '0')}, outside Latin-1, at ${wide.index}`
@@ -59,7 +59,7 @@ function inliningLimit(): number {
     });
     const limit = /--max-inlined-bytecode-size=(\d+)/.exec(options);
 
-    if (limit === null) {
+    if (limit == null) {
         throw new Error("V8 doesn't list --max-inlined-bytecode-size");
     }
 
@@ -82,7 +82,7 @@ function bytecodeLength(name: string): number {
     );
     const length = /^Bytecode length: (\d+)$/m.exec(output);
 
-    if (length === null) {
+    if (length == null) {
         throw new Error(`V8 compiled no function ${name} of the bundle`);
     }
 

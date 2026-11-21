@@ -28,7 +28,7 @@ async function removeBundle(): Promise<void> {
 async function runWithBundle(command: string[]): Promise<number> {
     const [file, ...args] = command;
 
-    if (file === undefined) {
+    if (file == null) {
         throw new Error('Expected a command to run with the bundle');
     }
 

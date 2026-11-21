@@ -793,7 +793,7 @@ function table(
     tableLayout: LayoutDescription = DEFAULT,
     version?: number
 ): TableDescription {
-    return version === undefined
+    return version == null
         ? { layout: tableLayout, fields }
         : { layout: tableLayout, version, fields };
 }
@@ -866,7 +866,7 @@ function nested(
     { from, table }: NestedTable,
     alignment?: Alignment
 ): TableField {
-    return alignment === undefined
+    return alignment == null
         ? { type: 'table', from, table }
         : { type: 'table', from, alignment, table };
 }

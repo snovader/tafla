@@ -53,7 +53,7 @@
     "prepack": "yarn build"
   },
   "devDependencies": {
-    "hypotes": "^0.1.0",
+    "hypotes": "^0.3.1",
     "typescript": "^7.0.2"
   }
 }

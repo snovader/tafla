@@ -78,7 +78,7 @@ function readTree(directory: string): Record<string, string> {
             files.push([relative(directory, path), readFileSync(path, 'utf8')]);
         }
     }
-    return Object.fromEntries(files.toSorted(([a], [b]) => (a < b ? -1 : 1)));
+    return Object.fromEntries(files.sort(([a], [b]) => (a < b ? -1 : 1)));
 }
 
 describe('tafla-gen', () => {
