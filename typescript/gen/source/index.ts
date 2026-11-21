@@ -1,5 +1,5 @@
 import { loadGenerator } from './generator.ts';
-import { Request, type Response } from './wasm-module.ts';
+import { Request } from './wasm-module.ts';
 
 /** A language that tafla-gen generates code for, by its name or abbreviation */
 export type Target =
@@ -77,15 +77,7 @@ export function compile(
             if (status !== 0) {
                 throw new CompileError(response.string());
             }
-            return readFiles(response);
+            return response.files();
         }
     );
-}
-
-/** A count of files and each file's path and contents */
-export function readFiles(response: Response): GeneratedFile[] {
-    return Array.from({ length: response.count() }, () => ({
-        path: response.string(),
-        contents: response.string()
-    }));
 }

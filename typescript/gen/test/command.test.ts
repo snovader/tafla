@@ -178,7 +178,7 @@ describe('tafla-gen', () => {
         ]);
 
         expect(output.status).toBe(1);
-        expect(output.stderr).toMatch(/^schemas\/missing\.tafla: .+\n$/);
+        expect(output.stderr).toBe('schemas/missing.tafla: ENOENT: no such file or directory\n');
         expect(Object.keys(readTree(out))).toStrictEqual(['shapes.rs']);
     });
 
@@ -192,7 +192,8 @@ describe('tafla-gen', () => {
         const output = taflaGen(directory, ['py', 'point.tafla', '--out', 'out']);
 
         expect(output.status).toBe(1);
-        expect(output.stderr).toMatch(/^out\/point\.py: .+\n$/);
+        // Without the path again, which Node's message ends with
+        expect(output.stderr).toMatch(/^out\/point\.py: [^'\n]+\n$/);
     });
 
     it("should reject a schema that isn't UTF-8, at its first such bytes", () => {

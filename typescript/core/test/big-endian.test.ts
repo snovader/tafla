@@ -12,6 +12,7 @@ import {
     writeTable,
     ELEMENT_SIZES
 } from './conformance/tables.ts';
+import { setAttempts, writeAttempts, SCALAR_WRITES } from './scalars.ts';
 
 // Runs tafla as if on a big-endian host. This host is little-endian, so the
 // arrays it writes must come out in reverse byte order per element, which is
@@ -75,6 +76,23 @@ it.prop([ARRAY_FIELDS])(
         );
 
         expect(values).toStrictEqual(field.value);
+    }
+);
+
+/** A scalar type's writes, and a value of any type for them */
+const SCALAR_WRITES_OF_VALUES = fc.oneof(
+    ...SCALAR_WRITES.map(writes => writes.values.map(value => ({ writes, value })))
+);
+
+it.prop([SCALAR_WRITES_OF_VALUES, fc.nat({ max: 8 }), SLICES])(
+    "should write scalars little-endian on a big-endian host, as DataView's setters write them, with the write functions and TableWriter",
+    ({ writes, value }, offset, slice) => {
+        const bytes = sliceOf(new Uint8Array(offset + writes.size), slice);
+        const written = writeAttempts(writes, bytes, offset, value);
+        const set = setAttempts(writes, value, slice.fill);
+
+        expect(written.actual).toStrictEqual(written.expected);
+        expect(set.actual).toStrictEqual(set.expected);
     }
 );
 
