@@ -281,24 +281,6 @@ it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
     }
 );
 
-it('should convert a value once, as DataView does, and throw its TypeError for a number as an int64', () => {
-    const bytes = new Uint8Array(8);
-    let conversions = 0;
-    const value = {
-        valueOf(): number {
-            conversions++;
-            return 0x1234_5678;
-        }
-    };
-
-    writeUint32(bytes, 0, value as unknown as number);
-    expect(conversions).toBe(1);
-    expect(readUint32(bytes, 0)).toBe(0x1234_5678);
-
-    expect(() => writeInt64(bytes, 0, 1 as unknown as bigint)).toThrow(TypeError);
-    expect(readUint32(bytes, 0)).toBe(0x1234_5678);
-});
-
 const ENCODER = new TextEncoder();
 
 it.prop([

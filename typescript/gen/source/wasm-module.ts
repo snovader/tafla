@@ -1,3 +1,5 @@
+import type { GeneratedFile } from './index.ts';
+
 /**
  * The exports of tafla-gen's WebAssembly module, which the "WebAssembly"
  * section of the generator's README describes: requests and responses of
@@ -103,6 +105,14 @@ export class Response {
     /** A count and that many strings */
     public strings(): string[] {
         return Array.from({ length: this.count() }, () => this.string());
+    }
+
+    /** A count of files and each file's path and contents */
+    public files(): GeneratedFile[] {
+        return Array.from({ length: this.count() }, () => ({
+            path: this.string(),
+            contents: this.string()
+        }));
     }
 }
 

@@ -37,7 +37,8 @@ const read = reader.getFloat32Array(reader.fieldOffset(table, 1));
 type, such as `readUint32()` and `writeFloat64()`, read and write records at
 fixed offsets, such as stream frames, without a header or offsets. The write
 functions write into a `Uint8Array` at an offset, and throw a `RangeError` for
-a value that doesn't lie within it, without writing any of it.
+a value that doesn't lie within it, before converting the value and without
+writing any of it.
 
 `TableSizer` and `TableWriter` write a table whose fields are known before
 it's written, as the code that tafla-gen generates writes its tables. The

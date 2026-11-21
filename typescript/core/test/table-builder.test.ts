@@ -1,6 +1,6 @@
 import { describe, expect, vi } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
-import { TableBuilder, TableLayout, TableReader, type TableItem } from 'tafla';
+import { TableBuilder, TableLayout, TableReader, TableSizer, type TableItem } from 'tafla';
 import { tables, MAX_VALUES } from './conformance/arbitraries.ts';
 import type { FieldDescription, TableDescription } from './conformance/description.ts';
 import { OFFSET_SIZES } from './conformance/format.ts';
@@ -88,6 +88,90 @@ describe('arrays whose length changes before finalizing', () => {
         // It's still unfinalized, so a field past its last is a RangeError
         // rather than a finalized table's TypeError
         expect(() => builder.setUint8(1)).toThrow(RangeError);
+    });
+});
+
+describe('scalars that fail when finalizing', () => {
+    // The builder writes its scalars through one path of the writer's, which
+    // must throw what each type's setter throws, in the same order: for a
+    // value of the wrong type, for a scalar that an array that grew pushed
+    // out of the table, and for both
+    const TYPES = [
+        'Int8',
+        'Uint8',
+        'Int16',
+        'Uint16',
+        'Int32',
+        'Uint32',
+        'Int64',
+        'Uint64',
+        'Float32',
+        'Float64'
+    ] as const;
+    type ScalarType = (typeof TYPES)[number];
+
+    const isInt64 = (type: ScalarType): boolean => type === 'Int64' || type === 'Uint64';
+
+    /** The class and message of the error that `write` throws */
+    function errorOf(write: () => unknown): string {
+        try {
+            write();
+        } catch (error) {
+            return error instanceof Error
+                ? `${error.constructor.name}: ${error.message}`
+                : String(error);
+        }
+        return 'none';
+    }
+
+    /**
+     * The errors of a TableBuilder and of a TableWriter that write a uint8[]
+     * of 3, which then has `elements` elements, and a `type` of `value`
+     */
+    function errorsOf(type: ScalarType, value: unknown, elements: number): [string, string] {
+        const values = [1, 2, 3];
+        const builder = new TableBuilder(2);
+        builder.setUint8Array(values);
+        (builder as unknown as Record<string, (value: unknown) => void>)[`set${type}`](value);
+
+        const sizer = new TableSizer(2);
+        sizer.addUint8Array(values.length);
+        (sizer as unknown as Record<string, () => void>)[`add${type}`]();
+        const writer = sizer.writer();
+
+        values.push(...Array.from({ length: elements - values.length }, () => 4));
+        writer.setUint8Array(0, values);
+        const writerError = errorOf(() =>
+            (writer as unknown as Record<string, (index: number, value: unknown) => void>)[
+                `set${type}`
+            ](1, value)
+        );
+
+        return [errorOf(() => builder.bytes()), writerError];
+    }
+
+    it.each(TYPES)('should throw the TypeError of set%s() for a value of the wrong type', type => {
+        const [builderError, writerError] = errorsOf(type, isInt64(type) ? 1 : 1n, 3);
+
+        expect(builderError).toMatch(/^TypeError: /);
+        expect(builderError).toBe(writerError);
+    });
+
+    it.each(TYPES)(
+        'should throw the RangeError of set%s() for a scalar that no longer fits',
+        type => {
+            const [builderError, writerError] = errorsOf(type, isInt64(type) ? 1n : 1, 4);
+
+            expect(builderError).toMatch(/^RangeError: The fields need/);
+            expect(builderError).toBe(writerError);
+        }
+    );
+
+    it.each(TYPES)('should throw what set%s() throws first for a value that is both', type => {
+        const [builderError, writerError] = errorsOf(type, isInt64(type) ? 1 : 1n, 4);
+
+        expect(builderError).not.toBe('none');
+        expect(builderError).toBe(writerError);
     });
 });
 
