@@ -76,6 +76,8 @@ locate() {
                 'python/gen/pyproject.toml|^version = "'
                 # The package Tafla.Gen, which packs tafla-gen for NuGet
                 'csharp/src/Tafla.Gen/Tafla.Gen.csproj|^        <Version>'
+                # The jar that runs the module, compiled to classes of the JVM
+                'java/gen/build.gradle.kts|^version = "'
             )
             ;;
         csharp)

@@ -46,6 +46,12 @@ jobs:
               - ".github/workflows/java.yml"
               - "conformance/**"
               - "java/**"
+              # The generator, whose WebAssembly module java/gen's jar runs,
+              # and the schemas and golden files that its tests generate
+              - "rust/Cargo.*"
+              - "rust/rust-toolchain.toml"
+              - "rust/gen/**"
+              - "schemas/**"
 
   build:
     name: Build (Java ${{ matrix.java_version }})
@@ -69,6 +75,16 @@ jobs:
         with:
           distribution: "microsoft"
           java-version: ${{ matrix.java_version }}
+
+      # java/gen's jar holds the generator's WebAssembly module, which its
+      # build compiles with cargo
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: wasm32-unknown-unknown
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspaces: rust -> target
+          cache-key: wasm
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
