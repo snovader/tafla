@@ -218,8 +218,7 @@ class CommandTest {
 
         String errors = Files.readString(DIAGNOSTICS.resolve("unknown_types.stderr"));
         assertEquals(1, output.status());
-        assertTrue(output.stderr().startsWith(errors + "\nout/point.py: "), output::stderr);
-        assertTrue(output.stderr().endsWith("\n"), output::stderr);
+        assertEquals(errors + "\nout/point.py: file already exists\n", output.stderr());
     }
 
     @Test

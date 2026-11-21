@@ -3,6 +3,7 @@ package io.github.snovader.tafla.gen;
 import io.github.snovader.tafla.gen.GeneratorModule.Operation;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -134,6 +135,10 @@ final class Command {
         }
         if (error instanceof AccessDeniedException) {
             return "access denied";
+        }
+        // A file where a directory should be, such as the one to write under
+        if (error instanceof FileAlreadyExistsException) {
+            return "file already exists";
         }
 
         String reason =
