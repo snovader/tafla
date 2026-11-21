@@ -107,34 +107,30 @@ repository's first commits, for code built from its source before the release.
     when the parent is, rather than copied into each table that nests it in
     turn.
 
-  In the comparison suite in Node 26, the builder wrote the record in
-  0.127 µs rather than 0.181, the document of 100 rows in 0.444 µs rather
-  than 0.589, or 0.623 µs rather than 0.758 from `number[]` columns, and the
-  vector of 100 nested tables, written in place, in 5.4 µs rather than
-  10.9, with half the bytes on V8's heap; in Node 27, in 0.68, 0.78, 0.83
-  and 0.53 times the time. The documents of 100,000 rows and the array of
-  100 structs took as long as before. A string of 2,000 ASCII characters
-  took 0.34 µs rather than 3.9, and one of 50,000 took 6.5 µs rather than
-  103, though it's written into 150 KB outside V8's heap, room for 3 bytes
-  for each character, which is then cut to its 50 KB.
+  With the package bundled, in Node 26 and 27, against the builder that wrote
+  through `TableWriter`: tables of 100 scalars of one type took 0.33–0.54
+  times as long to build, whether their integers were held as Smis or as
+  doubles, 100 short strings 0.40–0.45, 100 `Float64Array`s of 8 0.72–0.73,
+  a record of 6 fields 0.79–0.80, a document of 100 rows in 4 typed-array
+  columns 0.89–0.95, and a vector of 100 tables written in place 0.55–0.74. A
+  string of 2,000 ASCII characters took 0.39 µs rather than 4.1 in Node 26. A
+  long string is written into room for 3 bytes for each character, outside
+  V8's heap, which is then cut to the string's length.
 
-  Some shapes take longer, in Node 26 and 27 alike, since a table is written
-  into a buffer and then copied or kept, where it was recorded and written
-  once, and only one buffer is kept between builders:
-  - A vector of 100 nested tables from a builder per item took 1.4 times as
-    long, 21.3 µs rather than 14.8, and one from the bytes of each 1.1 to
-    1.2 times. Builders of 24 bytes, each nested in the next, took 1.6 to
-    2.0 times as long, and of a 2 KiB array each 1.2 to 1.3 times.
+  Some shapes take longer, since a table is written into a buffer and then
+  copied or kept, where it was recorded and written once, and only one buffer
+  is kept between builders:
+  - A vector of 100 nested tables from a builder per item took 1.2 to 1.4
+    times as long, and 32 builders, each nested in the next, 2.9 to 3.7 times.
   - A vector of 200 builders, all built before it, each of a `uint32` and a
-    `Float32Array` of 128, took 3.2 to 3.4 times as long, since each builder
+    `Float32Array` of 128, took 3.1 to 3.6 times as long, since each builder
     grows a buffer of its own.
-  - Two builders written at once took 1.4 times as long for the record,
-    eight 1.8 to 1.9 times, and one after a builder that was never written
-    2.0 times, since the second builder grows a buffer of its own.
+  - Two builders written at once took 1.2 times as long for a record, and
+    one after a builder that was never written 1.6 to 1.7 times, since the
+    second builder grows a buffer of its own.
   - Tables longer than 64 KiB, whose buffer isn't kept for the next builder:
-    130 columns of 500 bytes took 1.3 times as long, and a vector in place
-    of 1,000 tables of a `uint32` and a `Float32Array` of 128 1.3 times,
-    allocating 1.45 MB outside V8's heap rather than 0.53 MB.
+    130 columns of 500 bytes took 1.2 to 1.4 times as long, and a vector in
+    place of 1,000 tables of a `uint32` and a `Float32Array` of 128 the same.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in
