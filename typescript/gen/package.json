@@ -1,0 +1,59 @@
+{
+  "name": "@tafla/gen",
+  "version": "0.0.0",
+  "description": "tafla-gen: compiles tafla schemas into code that writes and reads tables in TypeScript, Python, Java, Rust, Go, C++, Swift and C#",
+  "keywords": [
+    "codegen",
+    "schema",
+    "serialization",
+    "tafla",
+    "wasm"
+  ],
+  "license": "MIT",
+  "author": "snovader",
+  "homepage": "https://github.com/snovader/tafla/tree/main/typescript/gen#readme",
+  "bugs": {
+    "url": "https://github.com/snovader/tafla/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/snovader/tafla.git",
+    "directory": "typescript/gen"
+  },
+  "type": "module",
+  "files": [
+    "dist",
+    "tafla_gen.wasm"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "tafla-gen": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "tafla-source": "./source/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && yarn build:wasm && tsc -p ./tsconfig.dist.json",
+    "build:wasm": "cd ../../rust && cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm && cp target/wasm32-unknown-unknown/wasm/tafla_gen.wasm ../typescript/gen/tafla_gen.wasm",
+    "prepack": "yarn build"
+  },
+  "devDependencies": {
+    "hypotes": "^0.1.0",
+    "typescript": "^7.0.2"
+  }
+}

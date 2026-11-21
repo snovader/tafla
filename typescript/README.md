@@ -2,7 +2,9 @@
 
 `core/` holds `tafla`, the runtime. Its tests also generate the
 repository's conformance suite. `benchmarks/` times it, and compares it with
-other libraries; its README describes how.
+other libraries; its README describes how. `gen/` holds `@tafla/gen`, the
+npm package of tafla-gen, the schema compiler in `rust/gen`, whose
+WebAssembly module it runs.
 
 ## Development
 
@@ -16,6 +18,11 @@ yarn lint:check
 yarn typecheck
 yarn test
 ```
+
+`yarn test:gen` builds `@tafla/gen` and runs its tests against the build,
+as its users run it. It builds the generator's module with cargo, so it needs
+Rust with the `wasm32-unknown-unknown` target, which the other commands
+don't: `yarn typecheck` checks the package's source without the module.
 
 `yarn format:write` and `yarn lint:write` fix what they can.
 `TAFLA_LARGE_BUFFER_TESTS=1 yarn test` also runs the tests that allocate

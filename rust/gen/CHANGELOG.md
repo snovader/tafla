@@ -1,7 +1,8 @@
 # Changelog
 
-The changes in each release of `tafla-gen` on crates.io, tafla's schema
-compiler. Each of tafla's packages has a version and a changelog of its own,
+The changes in each release of tafla-gen, tafla's schema compiler: the crate
+`tafla-gen` on crates.io, and `@tafla/gen` on npm, which runs its WebAssembly
+module. Each of tafla's packages has a version and a changelog of its own,
 as [RELEASING.md](https://github.com/snovader/tafla/blob/main/RELEASING.md)
 describes. When the code that tafla-gen generates for a language needs a
 newer release of that language's runtime, its entry names the release. The
@@ -21,6 +22,14 @@ first commits, for code built from its source before the release.
   JavaScript, Python, Java, Rust, Go, C++, Swift and C#, with lazy views of vectors and
   arrays of structs, views in place of arrays of scalars in Java, whose
   getters copy them, and a WebAssembly module of it for other hosts.
+- `@tafla/gen` on npm, which runs the command, as `npx @tafla/gen` or the
+  `tafla-gen` of a project that depends on it, and generates a schema's files
+  with `compile()`, through the WebAssembly module and without a Rust
+  toolchain.
+- The `cli` module, which parses the command's arguments and generates from
+  the schemas that its caller reads, and the WebAssembly module's
+  `tafla_command` and `tafla_generate` exports of it, so that a host of the
+  module only reads schemas, writes files and prints.
 - [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
   describes how a format's messages evolve: each version fixes its fields and
   keeps the same layout, and a new version appends fields to the previous
@@ -165,6 +174,9 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The command prints the error of a file that it can't write after the errors
+  of schemas that write the same file, rather than before them, as every
+  host of the `cli` module does.
 - The project is named tafla rather than buffy.
 - Generated code reads tables with the runtimes' `TableReader` rather than
   `ByteBuffer`, and names it `reader`. A declaration can't be named

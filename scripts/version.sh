@@ -69,6 +69,9 @@ locate() {
             locations=(
                 'rust/gen/Cargo.toml|^version = "'
                 'rust/Cargo.lock|^name = "tafla-gen"\nversion = "'
+                # The npm package that runs the generator's WebAssembly
+                # module, whose `--version` is the crate's
+                'typescript/gen/package.json|^  "version": "'
             )
             ;;
         csharp)
