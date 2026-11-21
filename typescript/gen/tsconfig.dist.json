@@ -1,0 +1,15 @@
+{
+    "extends": "../tsconfig.node.json",
+    "compilerOptions": {
+        // The types of WebAssembly, which @types/node leaves to this library
+        "lib": ["ESNext", "WebWorker"],
+        "composite": false,
+        "declaration": true,
+        "emitDeclarationOnly": false,
+        "noEmit": false,
+        "outDir": "./dist",
+        "rewriteRelativeImportExtensions": true,
+        "rootDir": "./source"
+    },
+    "include": ["./source/**/*"]
+}

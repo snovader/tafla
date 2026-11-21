@@ -4,7 +4,8 @@
   "type": "module",
   "workspaces": [
     "benchmarks",
-    "core"
+    "core",
+    "gen"
   ],
   "scripts": {
     "bench": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/fields/main.ts",
@@ -16,15 +17,16 @@
     "lint:write": "oxlint --fix",
     "package:check": "yarn workspace tafla build && node --no-strip-types --import @snovader/node-hooks/register core/test/dist.ts",
     "test": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle --test --test-isolation=none 'core/test/**/!(big-endian).test.ts' && node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source --import hypotes/register --test core/test/big-endian.test.ts",
+    "test:gen": "yarn workspace @tafla/gen build && node --no-strip-types --import @snovader/node-hooks/register --import hypotes/register --test 'gen/test/**/*.test.ts'",
     "test:watch": "node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source --import hypotes/register --test --watch 'core/test/**/*.test.ts'",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@snovader/node-hooks": "^0.1.1",
-    "@snovader/oxc-config": "^0.1.0",
+    "@snovader/oxc-config": "^0.3.0",
     "@snovader/tsconfig": "^0.1.0",
     "@types/node": "^26.6.6",
-    "hypotes": "^0.1.0",
+    "hypotes": "^0.3.1",
     "oxfmt": "^0.79.0",
     "oxlint": "^1.94.0",
     "oxlint-tsgolint": "^7.0.2007",

@@ -151,7 +151,7 @@ function reusedBytesGroup(
 ): Group {
     const variants = codecs.flatMap(({ name, document }) => {
         const { serializeInto } = document;
-        if (serializeInto === undefined) {
+        if (serializeInto == null) {
             return [];
         }
 
@@ -295,7 +295,7 @@ function checkRoundTrips(
             }
 
             const { serializeInto } = codec.document;
-            if (serializeInto !== undefined) {
+            if (serializeInto != null) {
                 // Longer bytes than the table, of other contents
                 const length = codec.document.serialize(document).length;
                 const bytes = new Uint8Array(length + 64).fill(0xff);

@@ -39,6 +39,7 @@ jobs:
       pull-requests: read
     outputs:
       csharp: ${{ steps.filter.outputs.csharp }}
+      gen: ${{ steps.filter.outputs.gen }}
     steps:
       # A pull request lists its files through the API, and a push compares
       # its commits, which needs the repository
@@ -57,6 +58,12 @@ jobs:
               - "csharp/**"
               # Sets the runtime's version, in its lock files too
               - "scripts/version.sh"
+            # tafla-gen, which the package Tafla.Gen packs
+            gen:
+              - "rust/Cargo.lock"
+              - "rust/Cargo.toml"
+              - "rust/gen/Cargo.toml"
+              - "rust/gen/src/**"
 
   formatting:
     name: Formatting
@@ -211,6 +218,63 @@ jobs:
           fi
           git checkout -- .
 
+  # The package Tafla.Gen, which the release of tafla-gen publishes to NuGet,
+  # packed with the command of the runner's host alone, which a project
+  # restores from a local feed, as a user's would, generates its schemas'
+  # code with as it builds, and runs. The release tests the package of every
+  # host's commands on every host.
+  gen-package:
+    name: Tafla.Gen on ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.csharp == 'true' || needs.changes.outputs.gen == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-latest
+          - name: macOS
+            runner: macos-latest
+          - name: Windows
+            runner: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: csharp
+    steps:
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-workspaces: rust -> target
+          cache-key: gen-package
+          # scripts/build-gen.sh sets the flags of the build
+          rustflags: ""
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build the host's tafla-gen
+        id: command
+        run: echo "host=$(scripts/build-gen.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Pack the packages
+        env:
+          HOST: ${{ steps.command.outputs.host }}
+        run: |
+          dotnet pack src/Tafla
+          dotnet pack src/Tafla.Gen -p:TaflaGenHosts="$HOST"
+
+      - name: Test the package
+        run: scripts/test-gen-package.sh
+
   benchmark:
     name: Benchmark
     needs: changes
@@ -363,7 +427,7 @@ jobs:
   # job passed, or was skipped because the change doesn't touch C#.
   checks:
     name: C# checks
-    needs: [changes, formatting, test, big-endian, package, benchmark, x86, arm, fuzz]
+    needs: [changes, formatting, test, big-endian, package, gen-package, benchmark, x86, arm, fuzz]
     # Runs after a failure too, since GitHub counts a skipped required check as
     # passed
     if: always()

@@ -72,7 +72,7 @@ export class TableLayout<Versioned extends boolean = boolean> {
         // An option that isn't read would leave its default in its place,
         // and readers of the intended layout would misread the table
         const [other] = Object.keys(others);
-        if (other !== undefined) {
+        if (other != null) {
             throw new TypeError(
                 `TableLayout.create() takes sized, versioned and offsetType, not ${other}`
             );

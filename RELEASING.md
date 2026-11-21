@@ -14,7 +14,7 @@ own.
 | `python`     | `tafla` on PyPI                                        | `python/core/pyproject.toml`    | `python/core/CHANGELOG.md`     |
 | `java`       | `io.github.snovader.tafla:tafla` on Maven Central      | `java/core/build.gradle.kts`    | `java/core/CHANGELOG.md`       |
 | `rust`       | `tafla` on crates.io                                   | `rust/core/Cargo.toml`          | `rust/core/CHANGELOG.md`       |
-| `tafla-gen`  | `tafla-gen` on crates.io                               | `rust/gen/Cargo.toml`           | `rust/gen/CHANGELOG.md`        |
+| `tafla-gen`  | `tafla-gen` on crates.io and PyPI, `@tafla/gen` on npm, `Tafla.Gen` on NuGet | `rust/gen/Cargo.toml` | `rust/gen/CHANGELOG.md` |
 | `go`         | `github.com/snovader/tafla/go` on the Go module proxy  | Its tag, `go/v<version>`        | `go/CHANGELOG.md`              |
 | `swift`      | `https://github.com/snovader/tafla.git` for SwiftPM    | Its tag, `<version>`            | `swift/CHANGELOG.md`           |
 | `csharp`     | `Tafla` on NuGet                                       | `csharp/src/Tafla/Tafla.csproj` | `csharp/CHANGELOG.md`          |
@@ -28,6 +28,20 @@ builds its artifacts, and publishes them, and then tags the commit
 `<version>` alone, such as `0.2.0`. Each registry has jobs of its own, and a
 job that fails can be run again. A version that a registry has published
 can't be published again.
+
+## tafla-gen's packages
+
+tafla-gen is one generator with one version and one changelog, which each
+registry's package of it carries: the crate `tafla-gen` on crates.io, which
+is its source, `@tafla/gen` on npm, which runs its WebAssembly module,
+`tafla-gen` on PyPI, whose wheels hold its command,
+`io.github.snovader.tafla:tafla-gen` on Maven Central, a jar that runs the
+module compiled to classes of the JVM, and `Tafla.Gen` on NuGet, which holds
+its command for each host.
+`scripts/version.sh tafla-gen` writes the version into each package's
+manifest, and a release of `tafla-gen` publishes them all, each in a job of
+its own, and tags the commit once every one of them has published. A fix to
+one package alone is still a release of them all.
 
 ## Versions that depend on each other
 
@@ -108,6 +122,26 @@ one. The release publishes:
 `python/scripts/test-wheels.sh` tests each wheel on its own, in each Python
 that it's for, and the job that publishes them runs once every one has passed.
 
+## tafla-gen's Python distributions
+
+PyPI's `tafla-gen`, in `python/gen`, holds the generator's command and no
+Python. The release publishes:
+
+- A wheel for each of the platforms of `tafla`'s native wheels, Linux as
+  manylinux and `musllinux_1_2`, which holds the command built with
+  `--locked` from the Rust workspace's lock file. It serves every Python,
+  since the command links none.
+- The source distribution, which holds the crate's sources, and from which
+  pip builds the command with cargo on any other platform. maturin leaves the
+  workspace's other members out of it, so cargo resolves it anew rather than
+  with `--locked`. The command has no dependencies, so it builds the same,
+  but cargo reads the index of crates.io for the tests' dependencies, which
+  it doesn't build.
+
+`python/scripts/test-gen-wheels.sh` tests each wheel on its own: its command
+prints the wheel's version, and generates the golden Python of the example
+schemas.
+
 ## The NuGet package
 
 NuGet's `Tafla` holds the C# runtime's assembly for .NET 10, its XML
@@ -119,6 +153,20 @@ release's commit on GitHub. The release builds them with
 the commit builds the same assembly wherever the same SDK builds it.
 `csharp/scripts/test-package.sh` tests the package as a project that uses it
 would, compiled just in time and with Native AOT.
+
+NuGet's `Tafla.Gen` is tafla-gen for .NET projects, which a release of
+tafla-gen publishes at tafla-gen's version, beside the crate:
+`scripts/version.sh tafla-gen` writes the version into
+`csharp/src/Tafla.Gen/Tafla.Gen.csproj` too. It holds no assembly, but the
+tafla-gen command of each host, Linux, macOS and Windows on x64 and Arm64, in
+`tools/<host>/`, and the MSBuild targets in `build/` that generate a
+project's schemas' code with the host's command when the project builds, as
+`csharp/src/Tafla.Gen/README.md`, which the package's page shows, describes.
+The release builds each command on a runner of its host, with
+`csharp/scripts/build-gen.sh`, packs them, and tests the package on every
+host with `csharp/scripts/test-gen-package.sh`, as a project that uses it
+would, before it publishes it. The commit is tagged once every registry
+has the version.
 
 ## Releasing a version
 
@@ -197,9 +245,9 @@ can hold their secrets and require an approval before a job runs.
   `tafla`. Then add a trusted publisher on the package's settings page, with
   the repository `snovader/tafla`, the workflow `release.yml` and the
   environment `npm`, and delete the secret.
-- **PyPI**: add a pending trusted publisher for the project `tafla`, with the
-  repository `snovader/tafla`, the workflow `release.yml` and the environment
-  `pypi`. No secret is needed.
+- **PyPI**: add a pending trusted publisher for each of the projects `tafla`
+  and `tafla-gen`, with the repository `snovader/tafla`, the workflow
+  `release.yml` and the environment `pypi`. No secret is needed.
 - **crates.io** also trusts a publisher only for a crate that exists. Publish
   the first release of each crate with a `CARGO_REGISTRY_TOKEN` secret, a
   token with the `publish-new` and `publish-update` scopes. Then add a trusted
@@ -215,7 +263,8 @@ can hold their secrets and require an approval before a job runs.
   key is on a key server such as `keys.openpgp.org`, and `SIGNING_PASSWORD` is
   its passphrase. The workflow publishes the deployment once the portal has
   validated it.
-- **NuGet**: sign in to nuget.org with the account that is to own `Tafla`,
+- **NuGet**: sign in to nuget.org with the account that is to own `Tafla`
+  and `Tafla.Gen`,
   and add a trusted publishing policy, from the account's Trusted Publishing
   page, with the repository owner `snovader`, the repository `tafla`, the
   workflow file `release.yml` and the environment `nuget`, which may push new

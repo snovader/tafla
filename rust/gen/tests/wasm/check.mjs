@@ -1,7 +1,10 @@
 // Checks the generator's WebAssembly module: it has no imports, so it runs
 // with an empty import object, and its `tafla_compile` export generates the
 // golden files of every example schema and renders the errors of every
-// invalid schema in tests/diagnostics, as the native library does.
+// invalid schema in tests/diagnostics, as the native library does. Its
+// `tafla_command` and `tafla_generate` exports run the command for a host
+// that reads the schemas and writes the files, as tests/cli.rs checks of the
+// native command.
 //
 // node gen/tests/wasm/check.mjs <tafla_gen.wasm>
 
@@ -73,57 +76,167 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 /**
- * Compiles through the module's exports: a request of length-prefixed
- * strings in memory from `tafla_alloc`, and a response that starts with its
- * own length and a status, which `tafla_free` frees.
+ * Calls one of the module's operations: a request in memory from
+ * `tafla_alloc`, and a response that starts with its own length and a
+ * status, which `tafla_free` frees once `read` has read it.
+ *
+ * @template Result
+ * @param {WebAssembly.Instance} instance
+ * @param {'tafla_compile' | 'tafla_command' | 'tafla_generate'} operation
+ * @param {Array<number | string | Uint8Array>} parts the request's `u32`
+ * counts, and its strings, of which bytes needn't be UTF-8
+ * @param {(status: number, response: { count: () => number, string: () => string }) => Result} read
+ * @returns {Result}
+ */
+function send(instance, operation, parts, read) {
+    const { memory, tafla_alloc, tafla_free } = instance.exports;
+    const encoded = parts.map(part =>
+        typeof part === 'string' ? encoder.encode(part) : part
+    );
+    const length = encoded.reduce(
+        (sum, part) => sum + 4 + (typeof part === 'number' ? 0 : part.length),
+        0
+    );
+
+    const request = tafla_alloc(length);
+    // Allocating may grow the memory, which detaches earlier views of it
+    let view = new DataView(memory.buffer);
+    let offset = request;
+    for (const part of encoded) {
+        if (typeof part === 'number') {
+            view.setUint32(offset, part, true);
+            offset += 4;
+        } else {
+            view.setUint32(offset, part.length, true);
+            new Uint8Array(memory.buffer, offset + 4, part.length).set(part);
+            offset += 4 + part.length;
+        }
+    }
+
+    const response = instance.exports[operation](request, length);
+    view = new DataView(memory.buffer);
+    const responseLength = view.getUint32(response, true);
+    const status = view.getUint32(response + 4, true);
+    offset = response + 8;
+    const count = () => {
+        const value = view.getUint32(offset, true);
+        offset += 4;
+        return value;
+    };
+    const string = () => {
+        const byteLength = count();
+        const bytes = new Uint8Array(memory.buffer, offset, byteLength);
+        offset += byteLength;
+        return decoder.decode(bytes);
+    };
+
+    try {
+        return read(status, { count, string });
+    } finally {
+        tafla_free(response, responseLength);
+    }
+}
+
+/**
+ * @param {{ count: () => number, string: () => string }} response
+ * @returns {Map<string, string>} a count of files, by their paths
+ */
+function readFiles(response) {
+    const files = new Map();
+    const count = response.count();
+    for (let i = 0; i < count; i++) {
+        const path = response.string();
+        files.set(path, response.string());
+    }
+    return files;
+}
+
+/**
+ * Compiles through `tafla_compile`, whose request is five strings
  *
  * @param {WebAssembly.Instance} instance
  * @param {string[]} strings
  * @returns {{ status: number, files?: Map<string, string>, errors?: string }}
  */
 function call(instance, strings) {
-    const { memory, tafla_alloc, tafla_compile, tafla_free } = instance.exports;
-    const encoded = strings.map(string => encoder.encode(string));
-    const length = encoded.reduce((sum, bytes) => sum + 4 + bytes.length, 0);
+    return send(instance, 'tafla_compile', strings, (status, response) =>
+        status === 0
+            ? { status, files: readFiles(response) }
+            : { status, errors: response.string() }
+    );
+}
 
-    const request = tafla_alloc(length);
-    // Allocating may grow the memory, which detaches earlier views of it
-    let view = new DataView(memory.buffer);
-    let offset = request;
-    for (const bytes of encoded) {
-        view.setUint32(offset, bytes.length, true);
-        new Uint8Array(memory.buffer, offset + 4, bytes.length).set(bytes);
-        offset += 4 + bytes.length;
-    }
-
-    const response = tafla_compile(request, length);
-    view = new DataView(memory.buffer);
-    const responseLength = view.getUint32(response, true);
-    const status = view.getUint32(response + 4, true);
-    offset = response + 8;
-    const readString = () => {
-        const byteLength = view.getUint32(offset, true);
-        const bytes = new Uint8Array(memory.buffer, offset + 4, byteLength);
-        offset += 4 + byteLength;
-        return decoder.decode(bytes);
+/**
+ * The response of a command that's over
+ *
+ * @param {{ count: () => number, string: () => string }} response
+ */
+function readOutput(response) {
+    return {
+        code: response.count(),
+        stdout: response.string(),
+        stderr: response.string()
     };
+}
 
-    try {
-        if (status !== 0) {
-            return { status, errors: readString() };
-        }
+/**
+ * Parses the command's arguments through `tafla_command`
+ *
+ * @param {WebAssembly.Instance} instance
+ * @param {string[]} commandArguments
+ */
+function command(instance, commandArguments) {
+    return send(
+        instance,
+        'tafla_command',
+        commandArguments,
+        (status, response) => {
+            if (status !== 0) {
+                return { status, ...readOutput(response) };
+            }
 
-        const count = view.getUint32(offset, true);
-        offset += 4;
-        const files = new Map();
-        for (let i = 0; i < count; i++) {
-            const path = readString();
-            files.set(path, readString());
+            const out = response.string();
+            const schemas = Array.from(
+                { length: response.count() },
+                response.string
+            );
+            return { status, out, schemas };
         }
-        return { status, files };
-    } finally {
-        tafla_free(response, responseLength);
+    );
+}
+
+/**
+ * Generates through `tafla_generate` from the schemas that a host read
+ *
+ * @param {WebAssembly.Instance} instance
+ * @param {string[]} commandArguments
+ * @param {Array<Uint8Array | string | { error: string }>} sources each
+ * schema's bytes or source, or why it can't be read
+ */
+function generate(instance, commandArguments, sources) {
+    const parts = [commandArguments.length, ...commandArguments];
+    for (const source of sources) {
+        if (typeof source === 'object' && 'error' in source) {
+            parts.push(1, source.error);
+        } else {
+            parts.push(0, source);
+        }
     }
+
+    return send(instance, 'tafla_generate', parts, (status, response) => {
+        if (status !== 0) {
+            return { status, ...readOutput(response) };
+        }
+
+        const fileSets = Array.from({ length: response.count() }, () => [
+            ...readFiles(response).keys()
+        ]);
+        const errors = Array.from(
+            { length: response.count() },
+            response.string
+        );
+        return { status, fileSets, errors };
+    });
 }
 
 /**
@@ -255,10 +368,159 @@ if (malformed.status !== 1 || malformed.errors !== 'malformed request\n') {
     fail(`a malformed request: ${JSON.stringify(malformed)}`);
 }
 
+/**
+ * Fails unless `actual` is `expected`, compared as JSON
+ *
+ * @param {string} what
+ * @param {unknown} actual
+ * @param {unknown} expected
+ */
+function expectEqual(what, actual, expected) {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        fail(`${what}: ${JSON.stringify(actual)}`);
+    }
+}
+
+const POINT = 'message Point { x: uint8; }\n';
+const USAGE =
+    'usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... ' +
+    '[--out <dir>] [--runtime <module>] [--package <package>]';
+
+// The directory to write under and the schemas to read, each once
+expectEqual(
+    'the schemas of a command',
+    command(instance, [
+        '--out',
+        'generated',
+        'py',
+        'a.tafla',
+        'b.tafla',
+        'a.tafla'
+    ]),
+    { status: 0, out: 'generated', schemas: ['a.tafla', 'b.tafla'] }
+);
+expectEqual('the default directory', command(instance, ['py', 'a.tafla']), {
+    status: 0,
+    out: '.',
+    schemas: ['a.tafla']
+});
+
+const version = command(instance, ['rust', 'point.tafla', '--version']);
+if (
+    version.status !== 1 ||
+    version.code !== 0 ||
+    !/^tafla-gen \d+\.\d+\.\d+\n$/.test(version.stdout) ||
+    version.stderr !== ''
+) {
+    fail(`the version: ${JSON.stringify(version)}`);
+}
+const help = command(instance, ['-h']);
+if (help.code !== 0 || !help.stdout.includes(`\n${USAGE}\n`)) {
+    fail(`the help: ${JSON.stringify(help)}`);
+}
+
+const usageError = {
+    status: 1,
+    code: 2,
+    stdout: '',
+    stderr: `error: no schema is given\n${USAGE}\nRun \`tafla-gen --help\` for more.\n`
+};
+expectEqual('wrong arguments', command(instance, ['rust']), usageError);
+// The same answer where a host should have stopped at the first
+expectEqual(
+    'generating from wrong arguments',
+    generate(instance, ['rust'], []),
+    usageError
+);
+
+// A schema's files, another's errors, one that can't be read, one that isn't
+// UTF-8 and two that write the same file, in the order of the command's
+// errors
+const generated = generate(
+    instance,
+    [
+        'py',
+        'pair.tafla',
+        'bad.tafla',
+        'missing.tafla',
+        'latin.tafla',
+        'a/point.tafla',
+        'b/point.tafla'
+    ],
+    [
+        'message Pair { a: uint8; }\n',
+        'message Point { x: flaot64; }\n',
+        { error: 'No such file' },
+        new Uint8Array([0x2f, 0x2f, 0x20, 0xe9, 0x0a]),
+        POINT,
+        encoder.encode(POINT)
+    ]
+);
+expectEqual('the files of a command', generated.fileSets, [['pair.py']]);
+expectEqual(
+    'the errors of a command',
+    generated.errors?.map(error => error.split('\n')[0]),
+    [
+        'error: unknown type `flaot64`',
+        'missing.tafla: No such file',
+        "error: the schema isn't UTF-8",
+        'a/point.tafla and b/point.tafla both write point.py'
+    ]
+);
+if (generated.errors?.some(error => !error.endsWith('\n'))) {
+    fail(`an error doesn't end its line: ${JSON.stringify(generated.errors)}`);
+}
+
+// A schema too few, a schema too many, and a source that's neither read nor
+// failed
+const malformedCommand = {
+    status: 1,
+    code: 2,
+    stdout: '',
+    stderr: 'malformed request\n'
+};
+for (const [what, sources] of [
+    ['too few schemas', []],
+    ['too many schemas', [POINT, POINT]]
+]) {
+    expectEqual(
+        what,
+        generate(instance, ['py', 'point.tafla'], sources),
+        malformedCommand
+    );
+}
+expectEqual(
+    'an unknown kind of source',
+    send(
+        instance,
+        'tafla_generate',
+        [2, 'py', 'point.tafla', 2, POINT],
+        (status, response) => ({
+            status,
+            ...readOutput(response)
+        })
+    ),
+    malformedCommand
+);
+// A count of arguments beyond the request
+expectEqual(
+    'a count beyond the request',
+    send(
+        instance,
+        'tafla_generate',
+        [0xffffffff, 'py'],
+        (status, response) => ({
+            status,
+            ...readOutput(response)
+        })
+    ),
+    malformedCommand
+);
+
 if (failures.length > 0) {
     console.error(failures.join('\n'));
     process.exit(1);
 }
 console.log(
-    `${wasm.length} bytes, no imports, ${compiles} compiles match the native output`
+    `${wasm.length} bytes, no imports, ${compiles} compiles match the native output, and the command runs`
 );

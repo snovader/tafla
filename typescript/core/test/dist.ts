@@ -16,7 +16,7 @@ if (reader.getString(reader.rootOffset(0)) !== 'tafla') {
 const bundle = readFileSync(new URL(import.meta.resolve('tafla')), 'utf8');
 const wide = /[Ā-\u{10ffff}]/u.exec(bundle);
 
-if (wide !== null) {
+if (wide != null) {
     const codePoint = wide[0].codePointAt(0)!.toString(16).toUpperCase();
     throw new Error(
         `The bundle has U+${codePoint.padStart(4, '0')}, outside Latin-1, at ${wide.index}`

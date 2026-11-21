@@ -47,6 +47,46 @@ intent, not a requirement to preserve every detail.
   constraints, algorithms, units, external behavior, or implementation tradeoffs.
   Document public contracts where callers need that information.
 
+## TypeScript idioms
+
+The shared lint configuration allows each of these, so that the code says
+what it means rather than what a rule asks for. The linter doesn't choose
+between them: the author does.
+
+- Check a nullable string, number or boolean by its truthiness, as
+  `if (value)`, rather than by `!== undefined` or `=== true`. Do so only
+  where '' and 0 are to be treated as missing too, or can't occur, as the
+  error of a file that tafla-gen's command couldn't write, which always
+  names the file. Otherwise compare: a table's version may be 0, and an
+  option of `TableLayout.create()` may be named ''.
+- Check for a missing value with `== null` or `!= null`, which match both
+  null and undefined. Compare strictly only where the two mean different
+  things, or where only one can occur and the code is measured, as below.
+- Write a default for a nullable value as `a ?? b`. Use `a || b` only where
+  '' or 0 is meant to be replaced too, and then say so.
+- Sort or reverse a copy that the function owns in place, with `.sort()` or
+  `.reverse()`. `toSorted()` and `toReversed()` are for an array that's
+  someone else's, or that is also read in its own order, as the test that
+  compares a vector's ends with themselves sorted.
+- Give a regular expression a `u` flag only where the pattern needs one: to
+  match by code point beyond the Basic Multilingual Plane, for `\p{…}`, or
+  for `\u{…}`, as the check of the bundle for characters outside Latin-1.
+- Index an array where the index is known to be in range, as
+  `fields[fields.length - 2]`. Use `.at()` where it may not be, and handle
+  the undefined.
+- In tests, give `vi.fn()` type arguments only when it has no
+  implementation to infer them from, and write asymmetric matchers, such as
+  `expect.objectContaining()`, in place, rather than through a variable
+  typed `unknown`.
+- Fix what the linter reports rather than suppressing it. Where the rewrite
+  that a rule asks for reads worse, keep the code, with a disable directive
+  that gives the reason. A directive that no longer suppresses anything is
+  itself an error.
+- These are choices of style, so they follow the rule for measured code:
+  change a comparison on a reader's or a builder's hot path, such as
+  `=== undefined` in `TableBuilder`, only with a benchmark that shows no
+  change. The bytecode that V8 inlines is counted in bytes there.
+
 ## Encapsulation and API design
 
 - Prefer private fields and method-style accessors, especially when access
@@ -208,9 +248,14 @@ intent, not a requirement to preserve every detail.
 - TypeScript's configurations extend the shared ones of `@snovader/tsconfig`
   and `@snovader/oxc-config`, and keep only what is tafla's own: the paths
   that the tools ignore, the name `tafla` that oxfmt sorts after other
-  packages, the rules that tafla turns off, each with its comment, and the
-  `tafla-source` condition. Change a shared setting in those packages,
-  rather than overriding it here.
+  packages, the `tafla-source` condition, and in `oxlint.config.ts`, the two
+  rules that tafla turns off, `unicorn/prefer-spread`, for `.slice()` of
+  typed arrays, and `unicorn/escape-case`, and the rules that the
+  FlatBuffers codec written in flatc's shape breaks. Each has its comment.
+  The shared base already allows the idioms above and turns off what tafla
+  used to turn off itself, such as `new Array(length)`, code units, and
+  awaits in loops, so don't repeat its rules here. Change a shared setting
+  in those packages, rather than overriding it here.
 
 ## Repository commands
 
@@ -218,3 +263,7 @@ intent, not a requirement to preserve every detail.
   language's toolchain. Run a language's checks from its directory; its README
   lists them, and `.github/workflows/<language>.yml` runs the same checks in CI.
 - A change to `conformance/` runs every language's tests.
+- Yarn installs a version of a package only a day after it's published.
+  `typescript/.yarnrc.yml` exempts `@snovader/*` and `hypotes`, the owner's
+  own packages, with `npmPreapprovedPackages`, so that a new shared
+  configuration or test runner installs on the day it's published.
