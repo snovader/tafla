@@ -193,43 +193,43 @@ export class TableSizer {
     // for one that isn't a non-negative integer
 
     addInt8Array(count: number): void {
-        this.#addArray(count, SIZEOF_8, SIZEOF_8);
+        this.#addArray(count, SIZEOF_8);
     }
 
     addUint8Array(count: number): void {
-        this.#addArray(count, SIZEOF_8, SIZEOF_8);
+        this.#addArray(count, SIZEOF_8);
     }
 
     addInt16Array(count: number): void {
-        this.#addArray(count, SIZEOF_16, SIZEOF_16);
+        this.#addArray(count, SIZEOF_16);
     }
 
     addUint16Array(count: number): void {
-        this.#addArray(count, SIZEOF_16, SIZEOF_16);
+        this.#addArray(count, SIZEOF_16);
     }
 
     addInt32Array(count: number): void {
-        this.#addArray(count, SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32);
     }
 
     addUint32Array(count: number): void {
-        this.#addArray(count, SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32);
     }
 
     addInt64Array(count: number): void {
-        this.#addArray(count, SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64);
     }
 
     addUint64Array(count: number): void {
-        this.#addArray(count, SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64);
     }
 
     addFloat32Array(count: number): void {
-        this.#addArray(count, SIZEOF_32, SIZEOF_32);
+        this.#addArray(count, SIZEOF_32);
     }
 
     addFloat64Array(count: number): void {
-        this.#addArray(count, SIZEOF_64, SIZEOF_64);
+        this.#addArray(count, SIZEOF_64);
     }
 
     /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
@@ -262,7 +262,11 @@ export class TableSizer {
     addStructArray(count: number, size: number, alignment: ElementSize): void {
         assertStructSize(size);
         assertAlignment(alignment);
-        this.#addArray(count, size, alignment);
+        assertCount(count);
+
+        const start = this.#position + this.#size;
+        this.#position =
+            start + padding(start - this.#table, alignment) + count * size;
     }
 
     /**
@@ -302,15 +306,15 @@ export class TableSizer {
     }
 
     /**
-     * Adds an array of `count` elements of `size` bytes, padded so that they
-     * are aligned after the count
+     * Adds an array of `count` scalars of `size` bytes, padded so that they
+     * are aligned to their size after the count
      */
-    #addArray(count: number, size: number, alignment: ElementSize): void {
+    #addArray(count: number, size: ElementSize): void {
         assertCount(count);
 
         const start = this.#position + this.#size;
         this.#position =
-            start + padding(start - this.#table, alignment) + count * size;
+            start + padding(start - this.#table, size) + count * size;
     }
 }
 
@@ -642,7 +646,7 @@ export class TableWriter {
 
     setInt8Array(index: number, values: ArrayLike<number> | Int8Array): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
+        const elements = this.#arrayElements(count, SIZEOF_8);
 
         setInt8Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_8);
@@ -650,7 +654,7 @@ export class TableWriter {
 
     setUint8Array(index: number, values: ArrayLike<number> | Uint8Array): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
+        const elements = this.#arrayElements(count, SIZEOF_8);
 
         setUint8Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_8);
@@ -658,7 +662,7 @@ export class TableWriter {
 
     setInt16Array(index: number, values: ArrayLike<number> | Int16Array): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
+        const elements = this.#arrayElements(count, SIZEOF_16);
 
         setInt16Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_16);
@@ -669,7 +673,7 @@ export class TableWriter {
         values: ArrayLike<number> | Uint16Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
+        const elements = this.#arrayElements(count, SIZEOF_16);
 
         setUint16Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_16);
@@ -677,7 +681,7 @@ export class TableWriter {
 
     setInt32Array(index: number, values: ArrayLike<number> | Int32Array): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32);
 
         setInt32Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
@@ -688,7 +692,7 @@ export class TableWriter {
         values: ArrayLike<number> | Uint32Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32);
 
         setUint32Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
@@ -699,7 +703,7 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigInt64Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64);
 
         setInt64Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
@@ -710,7 +714,7 @@ export class TableWriter {
         values: ArrayLike<bigint> | BigUint64Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64);
 
         setUint64Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
@@ -721,7 +725,7 @@ export class TableWriter {
         values: ArrayLike<number> | Float32Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
+        const elements = this.#arrayElements(count, SIZEOF_32);
 
         setFloat32Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
@@ -732,7 +736,7 @@ export class TableWriter {
         values: ArrayLike<number> | Float64Array
     ): void {
         const count = values.length;
-        const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
+        const elements = this.#arrayElements(count, SIZEOF_64);
 
         setFloat64Elements(this.#bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
@@ -778,7 +782,7 @@ export class TableWriter {
     ): void {
         const count = structCount(bytes.length, size);
         assertAlignment(alignment);
-        const elements = this.#arrayElements(count, size, alignment);
+        const elements = this.#alignedArrayElements(count, size, alignment);
 
         this.#bytes.set(bytes, elements);
         this.#endArray(index, count, elements, bytes.length);
@@ -902,7 +906,7 @@ export class TableWriter {
         assertCount(count);
         assertStructSize(size);
         assertAlignment(alignment);
-        const elements = this.#arrayElements(count, size, alignment);
+        const elements = this.#alignedArrayElements(count, size, alignment);
 
         this.#endArray(index, count, elements, count * size);
 
@@ -950,11 +954,26 @@ export class TableWriter {
     }
 
     /**
-     * Where an array's elements go, after the padding that aligns them and
-     * its count, once its count and its elements fit. It writes nothing, so
-     * that elements that throw leave the writer where it was.
+     * Where the elements of an array of scalars of `size` bytes go, which
+     * they are also aligned to, as {@link TableWriter.#alignedArrayElements}
+     * finds it for another alignment. Scalar arrays have their own, rather
+     * than call it, since a call level more changed what V8 inlines into
+     * `TableBuilder`'s writes.
      */
-    #arrayElements(
+    #arrayElements(count: number, size: ElementSize): number {
+        const start = this.#position + this.#size;
+        const elements = start + padding(start - this.#table, size);
+        assertFits(this.#bytes, elements + count * size);
+
+        return elements;
+    }
+
+    /**
+     * Where an array's elements go, after its count and the padding that
+     * aligns them, once its count and its elements fit. It writes nothing,
+     * so that elements that throw leave the writer where it was.
+     */
+    #alignedArrayElements(
         count: number,
         elementSize: number,
         alignment: ElementSize
