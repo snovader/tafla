@@ -50,10 +50,9 @@ function outcomeOf(write: () => Uint8Array): Uint8Array | string {
     }
 }
 
-// TableBuilder writes through a TableWriter too, so these compare the sizer's
-// count of each table, padding included, with the builder's, and the calls
-// that a sizer's writer takes with those that the builder makes. The bytes
-// themselves are the conformance suite's.
+// TableBuilder writes the same bytes in code of its own, so these compare
+// the sizer's count of each table, padding included, and its writer's bytes
+// with the builder's. The bytes themselves are the conformance suite's.
 
 it.prop([inPlaceTables()])(
     'should count each table as long as TableBuilder does, and write the same bytes',

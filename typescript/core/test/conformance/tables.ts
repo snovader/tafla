@@ -93,8 +93,8 @@ export function buildTable(table: TableDescription): TableBuilder {
 }
 
 /**
- * Builds a table as {@link buildTable} does, but records each table nested
- * from a builder that it writes in place with `setTableInPlace()`, and
+ * Builds a table as {@link buildTable} does, but writes each table nested
+ * from a builder that it can write in place with `setTableInPlace()`, and
  * each vector of them whose items hold as many fields with
  * `setVectorInPlace()`, rather than from their builders
  */
@@ -109,10 +109,10 @@ export function buildTableInPlace(table: TableDescription): TableBuilder {
 
 /**
  * Sets a field as {@link setField} does, on a builder of `offsetType`
- * offsets or a table that it records in place, and records the tables nested
+ * offsets or a table that it writes in place, and writes the tables nested
  * in it in place as {@link buildTableInPlace} does
  */
-function setFieldInPlace(
+export function setFieldInPlace(
     target: TableItem,
     field: FieldDescription,
     offsetType: OffsetType
@@ -120,7 +120,7 @@ function setFieldInPlace(
     if (
         field.type === 'table' &&
         field.alignment == null &&
-        recordsInPlace(field, offsetType)
+        writtenInPlace(field, offsetType)
     ) {
         const { fields } = field.table;
         target.setTableInPlace(fields.length, table => {
@@ -148,7 +148,7 @@ function setFieldInPlace(
  * Whether a nested table is written in place in a table of `offsetType`
  * offsets: from its builder, without a header and with those offsets
  */
-function recordsInPlace(
+function writtenInPlace(
     { from, table: { layout } }: NestedTable,
     offsetType: OffsetType
 ): boolean {
@@ -164,7 +164,7 @@ function recordsInPlace(
 function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
     return items.every(
         item =>
-            recordsInPlace(item, offsetType) &&
+            writtenInPlace(item, offsetType) &&
             item.table.fields.length === items[0].table.fields.length
     );
 }
@@ -176,7 +176,7 @@ export function createBuilder(table: TableDescription): TableBuilder {
 
 /**
  * Sets a field as its description sets it out, on a builder or a table that
- * one records in place
+ * one writes in place
  */
 export function setField(builder: TableItem, field: FieldDescription): void {
     switch (field.type) {
