@@ -466,9 +466,13 @@ export class TableReader {
         // A short ASCII string is read a byte at a time, within the range
         // that #arrayOffset() checked, and any other out of line. The loop
         // is a function of its own, and so is #decodeString(), so that this
-        // one takes 103 bytes of bytecode rather than 250. With the rest of
-        // it here, at 169 bytes, the comparison suite's record, which reads
-        // other fields too, took as long to read in Node 26 and 27.
+        // one takes 103 bytes of bytecode rather than 250. In Node 26 and
+        // 27, V8 inlines #getSize(), #arrayOffset() and the loop into it,
+        // and #decodeString() once a string has needed it: 316–323 of the
+        // 920 bytes that it inlines into a function. It leaves this one a
+        // call in a reader of other fields too, such as the comparison
+        // suite's record, which would pass the 920 bytes with it, as it did
+        // when the decoder's call was here.
         const ascii = decodeShortAscii(
             this.#bytes,
             position + this.#size,
