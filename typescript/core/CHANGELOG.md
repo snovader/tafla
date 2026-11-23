@@ -80,6 +80,25 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
+- Short strings with characters outside ASCII, and long strings, take less
+  time to read, write and count, with the same strings, bytes and errors as
+  before. `TableReader.getString()` reads up to 32 bytes of any valid UTF-8
+  a byte at a time, and leaves the rest, and what isn't valid, to the fatal
+  decoder: strings of 9 to 24 bytes took 0.49–0.73 times as long in Node 24,
+  26 and 27. `TableWriter.setString()`, `TableBuilder` and `writeUtf8()`
+  write up to 32 UTF-16 code units of any string a unit at a time, rather
+  than only ASCII: `writeUtf8()` took 0.34–0.45 times as long for 8
+  characters, and `TableBuilder` 0.48–0.82 for up to 32. `utf8Length()`,
+  and so `TableSizer.addString()` and `TableBuilder.setString()`, count a
+  string of more than 64 code units by encoding it into 4,096 bytes that
+  the module keeps, rather than a unit at a time: 1,024 characters of ASCII
+  took 54 ns rather than 1,205 to count in Node 27, and 0.14 times as long
+  to build a table of. Strings of ASCII of up to 32 characters, and the
+  comparison suite's record, took as long as before. `writeUtf8()` takes
+  3–6 ns longer for 33 to 64 characters of ASCII, and in Node 24, whose
+  `TextEncoder` is slower, a string of more than 64 characters outside
+  Latin-1 takes 1.4–1.6 times as long to count, and 1.09–1.22 to build a
+  table of, where Node 26 and 27 take 0.47–0.96.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in

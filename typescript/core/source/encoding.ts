@@ -14,6 +14,131 @@ export function decode(bytes: Uint8Array): string {
 
 /**
  * Reads the `length` bytes from `start` in `bytes`, which must lie within
+ * them, as a string when they're a short string of valid UTF-8, of up to
+ * {@link SHORT_STRING} bytes. Otherwise it returns `undefined`, for
+ * `decode()` to read them, or to throw for them.
+ *
+ * Through `TableReader.getString()`, which calls it for a string that isn't
+ * short ASCII, strings of 8 characters took 76 ns rather than 130 with a
+ * character of 2 bytes among them, and 115 ns rather than 200 with 3 bytes
+ * each, in Node 27: 0.49–0.73 times as long in Node 24, 26 and 27 for
+ * strings of 9 to 24 bytes.
+ */
+export function decodeShortUtf8(
+    bytes: Uint8Array,
+    start: number,
+    length: number
+): string | undefined {
+    if (length > SHORT_STRING) {
+        return undefined;
+    }
+
+    return decodeUtf8(bytes, start, length);
+}
+
+/**
+ * Reads the `length` bytes from `start` in `bytes` as a string, a byte at a
+ * time, when they're what a fatal decoder accepts. It returns `undefined`
+ * for anything else, so that the decoder decides, and throws: a sequence
+ * cut short by the end of the bytes, a byte that isn't the continuation
+ * byte it should be, an overlong sequence, a surrogate, and a code point
+ * past U+10FFFF.
+ *
+ * It's more bytecode than V8 inlines, so `decodeShortUtf8()` checks the
+ * length for it, where a long string then costs no call.
+ */
+function decodeUtf8(
+    bytes: Uint8Array,
+    start: number,
+    length: number
+): string | undefined {
+    // A UTF-16 code unit per byte at most
+    const codes = new Array<number>(length);
+    const end = start + length;
+    let units = 0;
+    let position = start;
+
+    while (position < end) {
+        const lead = bytes[position];
+
+        if (lead < 0x80) {
+            codes[units++] = lead;
+            position++;
+        } else if (lead < 0xe0) {
+            // 2 bytes hold U+0080 to U+07FF, so 0xC0 and 0xC1 are
+            // overlong, and below them are the continuation bytes
+            if (lead < 0xc2 || position + 1 >= end) {
+                return undefined;
+            }
+
+            const second = bytes[position + 1];
+            if ((second & 0xc0) !== 0x80) {
+                return undefined;
+            }
+
+            codes[units++] = ((lead & 0x1f) << 6) | (second & 0x3f);
+            position += 2;
+        } else if (lead < 0xf0) {
+            if (position + 2 >= end) {
+                return undefined;
+            }
+
+            const second = bytes[position + 1];
+            const third = bytes[position + 2];
+            if ((second & 0xc0) !== 0x80 || (third & 0xc0) !== 0x80) {
+                return undefined;
+            }
+
+            // 3 bytes hold U+0800 to U+FFFF, but for the surrogates
+            const unit =
+                ((lead & 0x0f) << 12) | ((second & 0x3f) << 6) | (third & 0x3f);
+            if (unit < 0x800 || (unit & 0xf800) === 0xd800) {
+                return undefined;
+            }
+
+            codes[units++] = unit;
+            position += 3;
+        } else {
+            if (lead > 0xf4 || position + 3 >= end) {
+                return undefined;
+            }
+
+            const second = bytes[position + 1];
+            const third = bytes[position + 2];
+            const fourth = bytes[position + 3];
+            if (
+                (second & 0xc0) !== 0x80 ||
+                (third & 0xc0) !== 0x80 ||
+                (fourth & 0xc0) !== 0x80
+            ) {
+                return undefined;
+            }
+
+            // 4 bytes hold U+10000 to U+10FFFF, as a surrogate pair
+            const point =
+                ((lead & 0x07) << 18) |
+                ((second & 0x3f) << 12) |
+                ((third & 0x3f) << 6) |
+                (fourth & 0x3f);
+            if (point < 0x10000 || point > 0x10ffff) {
+                return undefined;
+            }
+
+            codes[units] = 0xd800 | ((point - 0x10000) >> 10);
+            codes[units + 1] = 0xdc00 | (point & 0x3ff);
+            units += 2;
+            position += 4;
+        }
+    }
+
+    // A sequence of several bytes is fewer units than bytes
+    codes.length = units;
+
+    return String.fromCharCode.apply(null, codes);
+}
+
+/**
+ * Reads the `length` bytes from `start` in `bytes`, which must lie within
  * them, as a string when they're a short ASCII string, of up to
  * {@link SHORT_STRING} bytes below 0x80, which UTF-8 decodes to the same code
  * points. Otherwise it returns `undefined`, for `decode()` to read them.
@@ -87,27 +212,107 @@ export function encodeInto(
         }
     }
 
-    return encodeIntoWithEncoder(string, bytes, position);
+    return encodeIntoOutOfLine(string, bytes, position);
 }
 
 /**
- * `encodeInto()` with `TextEncoder.encodeInto()`, out of line, so that the
- * bytecode that V8 inlines with `encodeInto()` is the loop's
+ * `encodeInto()` of a string that isn't short ASCII with room for it.
+ *
+ * A short string, of up to {@link SHORT_STRING} UTF-16 code units, is
+ * written a unit or a surrogate pair at a time, as
+ * `TextEncoder.encodeInto()` encodes them, and any other with it. The loop
+ * doesn't check that each byte lies within `bytes`, since a typed array
+ * ignores a write past its end, and throws afterwards for a string that
+ * ended past them. The bytes then hold the start of the string, which may
+ * end with the first bytes of a character.
+ *
+ * It's one function, of more bytecode than V8 inlines, so that the bytecode
+ * that V8 inlines with `encodeInto()` is its loop over ASCII alone. With
+ * the loop in a function of 415 bytes, which V8 can inline, beside the
+ * encoder's, `writeUtf8()` took 1.21 times as long to write 8 characters of
+ * ASCII in Node 27.
+ *
+ * Through `writeUtf8()` in Node 27, strings of 8 characters took 28 ns
+ * rather than 66 with a character of 2 bytes among them, and 26 ns rather
+ * than 75 with 3 bytes each; `TableBuilder` wrote strings of up to 32 such
+ * characters in 0.48–0.82 times the time in Node 24, 26 and 27. A string of
+ * 33 to 64 characters of ASCII takes 3–6 ns longer than the 60–70 ns that
+ * it took with `encodeInto()` in a function small enough to inline.
  */
-function encodeIntoWithEncoder(
+function encodeIntoOutOfLine(
     string: string,
     bytes: Uint8Array,
     position: number
 ): number {
-    const { read, written } = encoder.encodeInto(
-        string,
-        bytes.subarray(position)
-    );
-    if (read !== string.length) {
-        return written + encodeRest(string, read, bytes, position, written);
+    const length = string.length;
+
+    if (length > SHORT_STRING) {
+        const { read, written } = encoder.encodeInto(
+            string,
+            bytes.subarray(position)
+        );
+        if (read !== length) {
+            return written + encodeRest(string, read, bytes, position, written);
+        }
+
+        return written;
     }
 
-    return written;
+    let end = position;
+    for (let i = 0; i < length; i++) {
+        let unit = string.charCodeAt(i);
+
+        if (unit < 0x80) {
+            bytes[end++] = unit;
+            continue;
+        }
+
+        if (unit < 0x800) {
+            bytes[end] = 0xc0 | (unit >> 6);
+            bytes[end + 1] = 0x80 | (unit & 0x3f);
+            end += 2;
+            continue;
+        }
+
+        if ((unit & 0xf800) === 0xd800) {
+            // NaN past the string's end, which is no low surrogate
+            const low = string.charCodeAt(i + 1);
+
+            if (unit < 0xdc00 && (low & 0xfc00) === 0xdc00) {
+                const point = 0x10000 + ((unit & 0x3ff) << 10) + (low & 0x3ff);
+                bytes[end] = 0xf0 | (point >> 18);
+                bytes[end + 1] = 0x80 | ((point >> 12) & 0x3f);
+                bytes[end + 2] = 0x80 | ((point >> 6) & 0x3f);
+                bytes[end + 3] = 0x80 | (point & 0x3f);
+                end += 4;
+                i++;
+                continue;
+            }
+
+            unit = 0xfffd;
+        }
+
+        bytes[end] = 0xe0 | (unit >> 12);
+        bytes[end + 1] = 0x80 | ((unit >> 6) & 0x3f);
+        bytes[end + 2] = 0x80 | (unit & 0x3f);
+        end += 3;
+    }
+
+    if (end > bytes.length) {
+        throw doesNotFit(string, bytes, position);
+    }
+
+    return end - position;
+}
+
+function doesNotFit(
+    string: string,
+    bytes: Uint8Array,
+    position: number
+): RangeError {
+    return new RangeError(
+        `A string of ${string.length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
+    );
 }
 
 /**
@@ -147,14 +352,13 @@ function encodeRest(
         }
     }
 
-    throw new RangeError(
-        `A string of ${string.length} UTF-16 code units doesn't fit in ${bytes.length - position} bytes`
-    );
+    throw doesNotFit(string, bytes, position);
 }
 
 /**
- * The longest string that `encodeInto()` writes, and `decodeShortAscii()`
- * reads, a byte at a time
+ * The longest string that `encodeInto()` writes, in UTF-16 code units, and
+ * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit or a byte
+ * at a time
  */
 const SHORT_STRING = 32;
 
@@ -163,15 +367,59 @@ const SHORT_STRING = 32;
  * surrogate takes the 3 bytes of U+FFFD, and a surrogate pair 4 bytes
  *
  * It counts from the first unit of 0x80 or more out of line, so that the
- * bytecode that V8 inlines into its callers is only the loop over ASCII.
+ * bytecode that V8 inlines into its callers is only the loop over ASCII, and
+ * a string of more than {@link COUNTED_STRING} units out of line too, by
+ * encoding it.
  */
 export function utf8Length(string: string): number {
     const length = string.length;
+
+    if (length > COUNTED_STRING) {
+        return utf8LengthByEncoding(string);
+    }
 
     for (let i = 0; i < length; i++) {
         if (string.charCodeAt(i) >= 0x80) {
             return utf8LengthFrom(string, i);
         }
+    }
+
+    return length;
+}
+
+/**
+ * The longest string whose UTF-8 length `utf8Length()` counts a UTF-16 code
+ * unit at a time
+ */
+const COUNTED_STRING = 64;
+
+/** The bytes that `utf8LengthByEncoding()` encodes a string into */
+const scratch = new Uint8Array(4096);
+
+/**
+ * `utf8Length()` of a long string, as the bytes that
+ * `TextEncoder.encodeInto()` writes of it into `scratch`, which it leaves
+ * to be overwritten. A string that doesn't fit is encoded part by part, each
+ * from where `encodeInto()` stopped, which is never within a surrogate
+ * pair, wherever https://github.com/nodejs/node/issues/65994 makes it stop.
+ *
+ * In Node 27, it counted 65 and 1,024 characters of ASCII in 39 and 54 ns,
+ * where the loop took 83 and 1,205 ns, at 1.2 ns a character, and 128
+ * characters of 3 bytes in 111 ns rather than 228. Of 64 characters, the
+ * loop took as long or less for every kind of string. In Node 24, whose
+ * `encodeInto()` takes 2–2.5 ns for each character outside Latin-1, it
+ * takes 1.4–1.6 times as long as the loop for strings of those, and as
+ * little as in Node 27 for ASCII.
+ */
+function utf8LengthByEncoding(string: string): number {
+    let { read, written } = encoder.encodeInto(string, scratch);
+    let length = written;
+
+    let rest = string;
+    while (read < rest.length) {
+        rest = rest.slice(read);
+        ({ read, written } = encoder.encodeInto(rest, scratch));
+        length += written;
     }
 
     return length;

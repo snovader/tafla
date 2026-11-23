@@ -331,6 +331,53 @@ it.each(Object.entries(SHORTFALL_STRINGS))(
     }
 );
 
+// Short strings are written a code unit at a time, and strings of more than
+// 64 units are counted by encoding them into 4,096 bytes at a time
+it.each([
+    [
+        'the first and last code points of 2, 3 and 4 bytes',
+        '\u0080\u07FF\u0800\uFFFF\u{10000}\u{10FFFF}'
+    ],
+    ['lone surrogates first, last, and in the wrong order', '\uDC00a\uDC00\uD800b\uD800'],
+    ['32 surrogates, as 16 pairs', '😀'.repeat(16)],
+    ['32 lone surrogates', '\uD800'.repeat(32)]
+])('should write a short string of %s as TextEncoder encodes it', (_, string) => {
+    for (const offset of [0, 3]) {
+        expectWrittenExactly(string, offset);
+    }
+    expect(utf8Length(string)).toBe(ENCODER.encode(string).length);
+});
+
+it.prop([
+    fc.string({
+        unit: fc.constantFrom('a', 'é', '€', '😀', '\uD800', '\uDC00'),
+        minLength: 65,
+        maxLength: 5000,
+        size: 'max'
+    })
+])('should count the UTF-8 length of a long string as TextEncoder encodes it', string => {
+    expect(utf8Length(string)).toBe(ENCODER.encode(string).length);
+});
+
+it.each([
+    ['ASCII', 'a'],
+    ['characters of 2 bytes', 'é'],
+    ['characters of 3 bytes', '€'],
+    ['surrogate pairs', '😀'],
+    ['lone surrogates', '\uD800']
+])('should count the UTF-8 length of strings of %s around 4,096 bytes', (_, unit) => {
+    const bytes = ENCODER.encode(unit).length;
+
+    for (const count of [
+        64, 65, 1023, 1024, 1025, 1365, 1366, 2047, 2048, 2049, 4095, 4096, 4097, 9000
+    ]) {
+        // With and without a byte before, which moves each character's bytes
+        for (const string of [unit.repeat(count), `a${unit.repeat(count)}`]) {
+            expect(utf8Length(string)).toBe(bytes * count + string.length - unit.length * count);
+        }
+    }
+});
+
 it.each([-1, 0.5, Number.NaN, 9])(
     'should throw RangeError for a string at an offset of %s',
     offset => {
