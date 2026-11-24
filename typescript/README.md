@@ -94,8 +94,8 @@ Node. Without it, as for the package's users, they resolve to the build in
 Tests and benchmarks import the package bundled, as it's published.
 `bundle.ts` bundles it into `core/.bundle`, which the `tafla-bundle`
 condition resolves, runs a command, and removes the bundle. `yarn test` runs
-the tests through it, all in one process, and `yarn bench` and
-`yarn bench:compare` run the benchmarks through it. The big-endian tests run
+the tests through it, all in one process, and `yarn bench`,
+`yarn bench:compare` and `yarn bench:strings` run the benchmarks through it. The big-endian tests run
 after the others, in a process of their own, of the source, since they
 emulate a big-endian host by mocking `source/constants.ts`, which the bundle
 has no module of. `vi.mock()` needs the preload `hypotes/register`, which

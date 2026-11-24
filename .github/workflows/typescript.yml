@@ -166,12 +166,15 @@ jobs:
       # Shared runners are too noisy for the numbers to mean much; these runs
       # check that the benchmarks work, that every getter and setter reads or
       # writes the values it should, and that every codec in the comparison
-      # reads back what it wrote
+      # and the strings comparison reads back what it wrote
       - name: Run benchmarks
         run: yarn bench --rounds 3 --sample-ms 0.2
 
       - name: Run comparison
         run: yarn bench:compare --rounds 3 --sample-ms 0.2
+
+      - name: Run strings comparison
+        run: yarn bench:strings --rounds 3 --sample-ms 0.2
 
   # The check that the main branch's ruleset requires. It passes when every job
   # passed, or was skipped because the change doesn't touch TypeScript.

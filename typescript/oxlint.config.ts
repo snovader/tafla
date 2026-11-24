@@ -14,7 +14,10 @@ export default defineConfig({
     overrides: [
         {
             // Written by hand in the shape that flatc generates
-            files: ['benchmarks/comparison/generated/flatbuffers.ts'],
+            files: [
+                'benchmarks/comparison/generated/flatbuffers.ts',
+                'benchmarks/strings/generated/flatbuffers.ts'
+            ],
             rules: {
                 'eslint/no-underscore-dangle': 'off',
                 'typescript/no-unnecessary-type-assertion': 'off',
