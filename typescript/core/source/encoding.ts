@@ -3,6 +3,22 @@ const encoder = new TextEncoder();
 // a leading U+FEFF, which is part of the string rather than a byte order mark
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
+/**
+ * The longest string that `encodeInto()` writes, in UTF-16 code units, and
+ * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit
+ * or a byte at a time
+ */
+const SHORT_STRING = 32;
+
+/**
+ * The longest string whose UTF-8 length `utf8Length()` counts a UTF-16 code
+ * unit at a time
+ */
+const COUNTED_STRING = 64;
+
+/** The bytes that `utf8LengthByEncoding()` encodes a string into */
+const scratch = new Uint8Array(4096);
+
 export function encode(string: string): Uint8Array {
     return encoder.encode(string);
 }
@@ -356,13 +372,6 @@ function encodeRest(
 }
 
 /**
- * The longest string that `encodeInto()` writes, in UTF-16 code units, and
- * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit
- * or a byte at a time
- */
-const SHORT_STRING = 32;
-
-/**
  * The byte length of `string` in UTF-8, as `encode()` writes it: a lone
  * surrogate takes the 3 bytes of U+FFFD, and a surrogate pair 4 bytes
  *
@@ -386,15 +395,6 @@ export function utf8Length(string: string): number {
 
     return length;
 }
-
-/**
- * The longest string whose UTF-8 length `utf8Length()` counts a UTF-16 code
- * unit at a time
- */
-const COUNTED_STRING = 64;
-
-/** The bytes that `utf8LengthByEncoding()` encodes a string into */
-const scratch = new Uint8Array(4096);
 
 /**
  * `utf8Length()` of a long string, as the bytes that
