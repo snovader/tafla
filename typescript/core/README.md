@@ -9,14 +9,14 @@ read checks that it stays within the bytes it was given.
 import { TableReader, TableBuilder, TableLayout } from 'tafla';
 
 // A format's header, shared by its writer and its readers
-const LAYOUT = TableLayout.create({ sized: true, versioned: true });
 const FORMAT_VERSION = 1;
+const LAYOUT = TableLayout.create({ sized: true, version: FORMAT_VERSION });
 
 const series = new TableBuilder(2);
 series.setUint32Array(timestamps); // a Uint32Array is copied as bytes
 series.setFloat32Array(values); // a number[] would be converted first
 
-const builder = new TableBuilder(3, LAYOUT, FORMAT_VERSION);
+const builder = new TableBuilder(3, LAYOUT);
 builder.setFloat64(59.3293);
 builder.setString('Europe/Stockholm');
 builder.setTable(series); // written straight into the table
@@ -86,10 +86,9 @@ change with it:
   item ends or an array's count and padding, and return the position in
   `target()`, the writer's bytes, where the caller writes the nested table,
   the vector's items or the structs.
-- `TableWriter.tableBytes()` and `versionedTableBytes()` return the bytes of
-  a message written whole, without a sizer and a writer, with its header
-  written, and check its header and length as the sizer and its `writer()`
-  check them. `utf8Length()` and `writeUtf8()` count and write a string after
+- `TableWriter.tableBytes()` returns the bytes of a message written whole,
+  without a sizer and a writer, with its header written, and checks its
+  header and length as the sizer and its `writer()` check them. `utf8Length()` and `writeUtf8()` count and write a string after
   its fields of fixed size.
 - `viewOf()` makes a `DataView` of a range of bytes, through which the
   generated code writes a run of 128 bytes or more of structs or nested
@@ -102,7 +101,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
-  then its version when it's `versioned`.
+  then the layout's `version` when it has one.
 - Header slots, offsets, counts, lengths and item ends are all of the
   layout's offset type, `offsetType`: `'uint8'`, `'uint16'` or `'uint32'`,
   whose offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes,
@@ -246,18 +245,18 @@ Validation is always on:
 Using the API wrongly throws other errors, whatever the bytes:
 
 - `TableLayout.create()` throws a `RangeError` for an offset type other than
-  `'uint8'`, `'uint16'` and `'uint32'`, and a `TypeError` for an option other
-  than `sized`, `versioned` and `offsetType`.
+  `'uint8'`, `'uint16'` and `'uint32'`, or a version that isn't an integer
+  that fits in it, and a `TypeError` for an option other than `sized`,
+  `version` and `offsetType`.
 - `TableBuilder` throws a `RangeError` for more or fewer fields than it was
-  created with, or a version that doesn't fit. A field that would make the
-  table too long for its offset type throws a `RangeError` from its setter
-  and isn't added. A version missing from or given for a layout, or a field
-  set after `finalize()`, throws a `TypeError`. `finalize()` and `bytes()`
+  created with. A field that would make the table too long for its offset
+  type throws a `RangeError` from its setter and isn't added. A field set
+  after `finalize()` throws a `TypeError`. `finalize()` and `bytes()`
   throw a `RangeError`, and leave the builder unfinalized, when arrays have
   changed length since they were set so that the fields no longer fit the
   table or fill it.
-- `TableSizer` throws as `TableBuilder`'s constructor does for its header and
-  version, and its `byteLength()` and `writer()` throw a `RangeError` for a
+- `TableSizer` throws as `TableBuilder`'s constructor does for its header,
+  and its `byteLength()` and `writer()` throw a `RangeError` for a
   table too long for its offset type, and `writer(bytes)` for a table longer
   than `bytes`, before writing any of them. A `TableWriter` throws a `RangeError`
   from `bytes()` when its fields didn't fill the bytes that its sizer
@@ -266,7 +265,7 @@ Using the API wrongly throws other errors, whatever the bytes:
   item end to be its own; hand-written tables use `TableBuilder`.
 - A struct size that isn't a positive integer, for an array of structs, and
   an alignment other than 1, 2, 4 or 8 throw a `RangeError`.
-- `getVersion()` throws a `TypeError` when the layout isn't versioned.
+- `getVersion()` throws a `TypeError` when the layout has no version.
 - `getVectorOffset()` throws a `RangeError` for an index outside the vector,
   once its count has been checked against the bytes, and
   `getVectorItemOffset()` for an index outside the count it's given.

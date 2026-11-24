@@ -35,9 +35,8 @@ repository's first commits, for code built from its source before the release.
   `reserveTableVector()` and `reserveStructArray()`, which write a field's
   offset, and a vector's count and item ends or an array's count, and return
   where in `target()`, the writer's bytes, the caller writes the table, the
-  items or the structs; `TableWriter.tableBytes()` and
-  `versionedTableBytes()`, the bytes of a message written without a sizer and
-  a writer, with its header, which check it as a sizer does; `utf8Length()`
+  items or the structs; `TableWriter.tableBytes()`, the bytes of a message
+  written without a sizer and a writer, with its header, which check it as a sizer does; `utf8Length()`
   and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
   `DataView` of a range of bytes, for a long run of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
@@ -51,6 +50,17 @@ repository's first commits, for code built from its source before the release.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout.create({ version: 1 })`,
+  rather than only whether the header has a slot for one, and the option
+  `versioned` is gone. `TableBuilder`, `TableSizer` and `TableWriter` take
+  the version from the layout rather than as an argument of their own,
+  `TableWriter.tableBytes()` writes it too, in place of
+  `versionedTableBytes()`, and `TableLayout` has no type parameter. A version
+  that doesn't fit the offset type throws from `TableLayout.create()`, so a
+  version missing from or given for a layout can no longer be written.
+  `withVersion()` returns a layout for another version of the same format,
+  and `version()` the layout's own. Readers read tables of any version, as
+  before.
 - The project is named tafla rather than buffy, and the package is `tafla`
   rather than `@buffy/core`.
 - The class that reads a table is `TableReader` rather than `ByteBuffer`.
@@ -140,7 +150,7 @@ repository's first commits, for code built from its source before the release.
   rather than 331 KB in Node 26, and by 183 KB rather than 330 KB in Node 27.
   The module is 56,203 bytes rather than 101,602, and 9,817 gzipped rather
   than 22,384.
-- `TableWriter.tableBytes()`, `versionedTableBytes()`, the write functions,
+- `TableWriter.tableBytes()`, the write functions,
   `writeUtf8()` and `utf8Length()` take less bytecode on their common paths,
   so that V8 inlines a serializer that tafla-gen generates whole: TurboFan
   inlines up to 920 bytes of bytecode into a function, and a record's

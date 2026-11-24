@@ -48,12 +48,19 @@ export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
     float64: 8
 };
 
-export function layoutOf({
-    sized,
-    versioned,
-    offsetType
-}: LayoutDescription): TableLayout {
-    return TableLayout.create({ sized, versioned, offsetType });
+/**
+ * The layout that a description sets out, with `version` when it's
+ * versioned. A reader reads tables of any version, so it needs none.
+ */
+export function layoutOf(
+    { sized, versioned, offsetType }: LayoutDescription,
+    version = 0
+): TableLayout {
+    return TableLayout.create({
+        sized,
+        version: versioned ? version : undefined,
+        offsetType
+    });
 }
 
 /** Builds a table as its description sets it out */
@@ -149,20 +156,7 @@ export function createBuilder({
     version,
     fields
 }: TableDescription): TableBuilder {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableBuilder(
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableBuilder(
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+    return new TableBuilder(fields.length, layoutOf(layout, version));
 }
 
 /**
@@ -475,42 +469,14 @@ function createSizer({
     version,
     fields
 }: TableDescription): TableSizer {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableSizer(
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableSizer(
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+    return new TableSizer(fields.length, layoutOf(layout, version));
 }
 
 function createWriter(
     { layout, version, fields }: TableDescription,
     bytes: Uint8Array
 ): TableWriter {
-    const { sized, offsetType } = layout;
-
-    if (layout.versioned) {
-        return new TableWriter(
-            bytes,
-            fields.length,
-            TableLayout.create({ sized, versioned: true, offsetType }),
-            version as number
-        );
-    }
-
-    return new TableWriter(
-        bytes,
-        fields.length,
-        TableLayout.create({ sized, offsetType })
-    );
+    return new TableWriter(bytes, fields.length, layoutOf(layout, version));
 }
 
 /** Writes the table's fields, and returns its bytes */

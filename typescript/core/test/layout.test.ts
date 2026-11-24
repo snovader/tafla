@@ -9,6 +9,7 @@ describe('TableLayout', () => {
         for (const layout of [TableLayout.DEFAULT, TableLayout.create()]) {
             expect(layout.sized()).toBe(false);
             expect(layout.versioned()).toBe(false);
+            expect(layout.version()).toBeUndefined();
             expect(layout.offsetType()).toBe('uint32');
             expect(layout.offsetSize()).toBe(4);
             expect(layout.headerSize()).toBe(0);
@@ -18,10 +19,12 @@ describe('TableLayout', () => {
     it.prop([LAYOUTS])(
         'should have a header slot of the offset size for the length and for the version',
         ({ sized, versioned, offsetType }) => {
-            const layout = TableLayout.create({ sized, versioned, offsetType });
+            const version = versioned ? 1 : undefined;
+            const layout = TableLayout.create({ sized, version, offsetType });
 
             expect(layout.sized()).toBe(sized);
             expect(layout.versioned()).toBe(versioned);
+            expect(layout.version()).toBe(version);
             expect(layout.offsetType()).toBe(offsetType);
             expect(layout.offsetSize()).toBe(OFFSET_SIZES[offsetType]);
             expect(layout.headerSize()).toBe(headerSizeOf({ sized, versioned, offsetType }));
@@ -63,14 +66,15 @@ describe('TableLayout', () => {
     it.each([
         ['the offset size', { offsetSize: 2 }, 'offsetSize'],
         ['the offset size beside the type', { offsetType: 'uint16', offsetSize: 2 }, 'offsetSize'],
-        ['a misspelled option', { versioned: true, Sized: true }, 'Sized'],
+        ['a misspelled option', { version: 1, Sized: true }, 'Sized'],
+        ['the option that version replaced', { versioned: true }, 'versioned'],
         ['an option set to undefined', { size: undefined }, 'size']
     ])('should reject %s as an option', (_, options, name) => {
         const create = (): TableLayout => TableLayout.create(options as TableLayoutOptions);
 
         expect(create).toThrow(TypeError);
         expect(create).toThrow(
-            new TypeError(`TableLayout.create() takes sized, versioned and offsetType, not ${name}`)
+            new TypeError(`TableLayout.create() takes sized, version and offsetType, not ${name}`)
         );
     });
 });
