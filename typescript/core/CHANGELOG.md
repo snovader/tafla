@@ -84,8 +84,8 @@ repository's first commits, for code built from its source before the release.
   time to read, write and count, with the same strings, bytes and errors as
   before. `TableReader.getString()` reads up to 32 bytes of any valid UTF-8
   a byte at a time, and leaves the rest, and what isn't valid, to the fatal
-  decoder: strings of 9 to 24 bytes took 0.49–0.73 times as long in Node 24,
-  26 and 27. `TableWriter.setString()`, `TableBuilder` and `writeUtf8()`
+  decoder: a table of 16 strings of 8 to 16 characters with such characters
+  took 0.32–0.48 times as long to read in Node 24, 26 and 27. `TableWriter.setString()`, `TableBuilder` and `writeUtf8()`
   write up to 32 UTF-16 code units of any string a unit at a time, rather
   than only ASCII: `writeUtf8()` took 0.34–0.45 times as long for 8
   characters, and `TableBuilder` 0.48–0.82 for up to 32. `utf8Length()`,
