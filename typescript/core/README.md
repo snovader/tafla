@@ -88,8 +88,9 @@ change with it:
   the vector's items or the structs.
 - `TableWriter.tableBytes()` returns the bytes of a message written whole,
   without a sizer and a writer, with its header written, and checks its
-  header and length as the sizer and its `writer()` check them. `utf8Length()` and `writeUtf8()` count and write a string after
-  its fields of fixed size.
+  header and length as the sizer and its `writer()` check them.
+  `utf8Length()` and `writeUtf8()` count and write a string after its fields
+  of fixed size.
 - `viewOf()` makes a `DataView` of a range of bytes, through which the
   generated code writes a run of 128 bytes or more of structs or nested
   tables, and writes shorter runs with the write functions, since a

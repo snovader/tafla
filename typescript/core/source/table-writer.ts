@@ -427,9 +427,9 @@ export class TableWriter {
     /**
      * Returns bytes for a table of `fields` fields in `layout`, `length`
      * bytes long, with its header written, the layout's version included
-     * when it has one: new bytes, which are zero, or the start of `bytes`, which needn't be. The caller
-     * writes every other byte, but for the zero bytes of new ones: each
-     * field's offset, and the field.
+     * when it has one: new bytes, which are zero, or the start of `bytes`,
+     * which needn't be. The caller writes every other byte, but for the zero
+     * bytes of new ones: each field's offset, and the field.
      *
      * It's for the code that tafla-gen generates, which writes a message of
      * fields whose sizes the schema fixes, and a string after them, at
@@ -1012,8 +1012,8 @@ function writeHeader(bytes: Uint8Array, layout: TableLayout): void {
 }
 
 /**
- * `TableWriter.tableBytes()`, which checks the
- * header and the length as a sizer and its `writer()` check them.
+ * `TableWriter.tableBytes()`, which checks the header and the length as a
+ * sizer and its `writer()` check them.
  *
  * A layout without header slots, as the code that tafla-gen generates for
  * most messages has, never calls `writeHeader()`, so V8 leaves it out of
@@ -1059,11 +1059,11 @@ function tableLengthError(length: number, layout: TableLayout): RangeError {
 
 /**
  * A writer of a table of `fields` fields into `bytes`, for `TableSizer` and
- * `TableBuilder`. Their constructors checked the fields
- * against the layout, and they checked the table's length as they counted
- * it, so the writer's constructor doesn't check them again. That saves about
- * 15 ns a table: in Node 27, `writer()` took 34 ns rather than 49 ns, and a
- * generated record's write 0.140 µs rather than 0.156 µs.
+ * `TableBuilder`. Their constructors checked the fields against the layout,
+ * and they checked the table's length as they counted it, so the writer's
+ * constructor doesn't check them again. That saves about 15 ns a table: in
+ * Node 27, `writer()` took 34 ns rather than 49 ns, and a generated record's
+ * write 0.140 µs rather than 0.156 µs.
  */
 export function newTableWriter(
     bytes: Uint8Array,

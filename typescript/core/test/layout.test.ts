@@ -1,6 +1,6 @@
 import { describe, expect } from 'hypotes';
 import { it } from 'hypotes/fast-check';
-import { TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
+import { TableBuilder, TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf, OFFSET_SIZES } from './conformance/format.ts';
 
@@ -60,6 +60,25 @@ describe('TableLayout', () => {
                 `An offset type must be a string such as 'uint16', not a value of type ${type}`
             )
         );
+    });
+
+    it('should take a null version, as JavaScript may give, as a missing one', () => {
+        const layout = TableLayout.create({ sized: true, version: null as unknown as undefined });
+
+        expect(layout.versioned()).toBe(false);
+        expect(layout.version()).toBeUndefined();
+        expect(layout.headerSize()).toBe(4);
+    });
+
+    it('should give a layout without a version the slot for one, from withVersion()', () => {
+        const layout = TableLayout.create({ sized: true, offsetType: 'uint16' });
+        const versioned = layout.withVersion(1);
+
+        expect(layout.versioned()).toBe(false);
+        expect(versioned.version()).toBe(1);
+        expect(versioned.headerSize()).toBe(layout.headerSize() + 2);
+        // The length, and then the version
+        expect(new TableBuilder(0, versioned).bytes()).toStrictEqual(new Uint8Array([4, 0, 1, 0]));
     });
 
     // An option that isn't read would leave its default in its place

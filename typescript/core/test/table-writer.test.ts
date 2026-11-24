@@ -24,7 +24,6 @@ import {
 import { OFFSET_SIZES } from './conformance/format.ts';
 import {
     buildTable,
-    layoutOf,
     nestedInPlace,
     readTable,
     structAlignment,
@@ -32,6 +31,7 @@ import {
     writeTableInto,
     writeTableReserving,
     writeTableThrough,
+    writtenLayoutOf,
     ELEMENT_SIZES
 } from './conformance/tables.ts';
 import { LONG_STRINGS, SHORTFALL_STRINGS } from './long-strings.ts';
@@ -911,13 +911,13 @@ describe('fields that generated code writes into the room reserved for them', ()
     const headerOf = ({ layout }: TableDescription): number =>
         (Number(layout.sized) + Number(layout.versioned)) * OFFSET_SIZES[layout.offsetType];
 
-    /** `tableBytes()` or `versionedTableBytes()` of the table's layout */
+    /** `tableBytes()` of the table's layout */
     const tableBytesOf = (
-        { layout, version, fields }: TableDescription,
+        table: TableDescription,
         length: number,
         bytes?: Uint8Array
     ): Uint8Array => {
-        return TableWriter.tableBytes(fields.length, layoutOf(layout, version), length, bytes);
+        return TableWriter.tableBytes(table.fields.length, writtenLayoutOf(table), length, bytes);
     };
 
     it.prop([inPlaceTables()])(

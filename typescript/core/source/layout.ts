@@ -85,21 +85,21 @@ export class TableLayout {
         }
 
         assertOffsetType(offsetType);
-        if (
-            version !== undefined &&
-            !fitsIn(version, OFFSET_SIZES[offsetType])
-        ) {
+        if (version != null && !fitsIn(version, OFFSET_SIZES[offsetType])) {
             throw new RangeError(
                 `Version ${version} doesn't fit in a ${offsetType} slot`
             );
         }
 
-        return new TableLayout(sized, version, offsetType);
+        // A null version, as JavaScript may give, is a missing one too. The
+        // layout holds undefined for both, which its writers compare with.
+        return new TableLayout(sized, version ?? undefined, offsetType);
     }
 
     /**
-     * The layout with `version` in place of its own, for another version of
-     * the same format
+     * The layout with `version` as its version, for another version of the
+     * same format. A layout without a version gains the slot for one, so
+     * its header is a slot longer.
      *
      * @throws {RangeError} If `version` isn't an integer that fits in the
      * offset type.

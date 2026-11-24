@@ -51,6 +51,7 @@ export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
 /**
  * The layout that a description sets out, with `version` when it's
  * versioned. A reader reads tables of any version, so it needs none.
+ * Writers take {@link writtenLayoutOf}, which requires the version.
  */
 export function layoutOf(
     { sized, versioned, offsetType }: LayoutDescription,
@@ -61,6 +62,24 @@ export function layoutOf(
         version: versioned ? version : undefined,
         offsetType
     });
+}
+
+/**
+ * The layout that a table's writers take, with the version that its
+ * description gives
+ *
+ * @throws {TypeError} If the layout is versioned and the description has
+ * no version, which would otherwise be written as 0.
+ */
+export function writtenLayoutOf({
+    layout,
+    version
+}: Pick<TableDescription, 'layout' | 'version'>): TableLayout {
+    if (layout.versioned && version == null) {
+        throw new TypeError('A versioned table needs a version');
+    }
+
+    return layoutOf(layout, version);
 }
 
 /** Builds a table as its description sets it out */
@@ -151,12 +170,8 @@ function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
 }
 
 /** Creates the builder of a table, with none of its fields set */
-export function createBuilder({
-    layout,
-    version,
-    fields
-}: TableDescription): TableBuilder {
-    return new TableBuilder(fields.length, layoutOf(layout, version));
+export function createBuilder(table: TableDescription): TableBuilder {
+    return new TableBuilder(table.fields.length, writtenLayoutOf(table));
 }
 
 /**
@@ -464,19 +479,12 @@ export function nestedInPlace(table: TableDescription): TableDescription {
     return { ...table, fields: table.fields.map(field) };
 }
 
-function createSizer({
-    layout,
-    version,
-    fields
-}: TableDescription): TableSizer {
-    return new TableSizer(fields.length, layoutOf(layout, version));
+function createSizer(table: TableDescription): TableSizer {
+    return new TableSizer(table.fields.length, writtenLayoutOf(table));
 }
 
-function createWriter(
-    { layout, version, fields }: TableDescription,
-    bytes: Uint8Array
-): TableWriter {
-    return new TableWriter(bytes, fields.length, layoutOf(layout, version));
+function createWriter(table: TableDescription, bytes: Uint8Array): TableWriter {
+    return new TableWriter(bytes, table.fields.length, writtenLayoutOf(table));
 }
 
 /** Writes the table's fields, and returns its bytes */

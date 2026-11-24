@@ -36,9 +36,10 @@ repository's first commits, for code built from its source before the release.
   offset, and a vector's count and item ends or an array's count, and return
   where in `target()`, the writer's bytes, the caller writes the table, the
   items or the structs; `TableWriter.tableBytes()`, the bytes of a message
-  written without a sizer and a writer, with its header, which check it as a sizer does; `utf8Length()`
-  and `writeUtf8()`, for a string after such fields; and `viewOf()`, a
-  `DataView` of a range of bytes, for a long run of structs or tables.
+  written without a sizer and a writer, with its header, which checks it as
+  a sizer does; `utf8Length()` and `writeUtf8()`, for a string after such
+  fields; and `viewOf()`, a `DataView` of a range of bytes, for a long run
+  of structs or tables.
 - `TableBuilder.setTableInPlace(fields, fill)` and
   `setVectorInPlace(count, fields, fill)`, which record a nested table, or
   each item of a vector, among the builder's own fields, through the
@@ -150,9 +151,8 @@ repository's first commits, for code built from its source before the release.
   rather than 331 KB in Node 26, and by 183 KB rather than 330 KB in Node 27.
   The module is 56,203 bytes rather than 101,602, and 9,817 gzipped rather
   than 22,384.
-- `TableWriter.tableBytes()`, the write functions,
-  `writeUtf8()` and `utf8Length()` take less bytecode on their common paths,
-  so that V8 inlines a serializer that tafla-gen generates whole: TurboFan
+- `TableWriter.tableBytes()`, the write functions, `writeUtf8()` and
+  `utf8Length()` take less bytecode on their common paths, so that V8 inlines a serializer that tafla-gen generates whole: TurboFan
   inlines up to 920 bytes of bytecode into a function, and a record's
   serializer and what it calls took about 2,100. Their checks are one
   condition each, which finds the error to throw out of line, a string's
