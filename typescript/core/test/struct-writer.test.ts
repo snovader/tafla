@@ -365,7 +365,7 @@ it.each(Object.entries(SHORTFALL_STRINGS))(
 );
 
 // Short strings are written a code unit at a time, and strings of more than
-// 64 units are counted by encoding them into 4,096 bytes at a time
+// 32 units are counted by encoding them into 4,096 bytes at a time
 it.each([
     [
         'the first and last code points of 2, 3 and 4 bytes',
@@ -379,6 +379,25 @@ it.each([
         expectWrittenExactly(string, offset);
     }
     expect(utf8Length(string)).toBe(ENCODER.encode(string).length);
+});
+
+// The ASCII of a string of up to 48 units is written a byte at a time, and
+// the rest after it a unit at a time when it's no more than 32 units
+it.each([
+    ['a character of 2 bytes', 'é'],
+    ['a surrogate pair', '😀'],
+    ['a lone surrogate', '\uD800'],
+    ['16 characters of 3 bytes', '€'.repeat(16)],
+    ['32 characters of 2 bytes', 'é'.repeat(32)],
+    ['33 characters of 2 bytes', 'é'.repeat(33)]
+])('should write ASCII followed by %s as TextEncoder encodes it', (_, rest) => {
+    for (const ascii of [0, 1, 15, 16, 17, 31, 32, 46, 47, 48]) {
+        const string = 'a'.repeat(ascii) + rest;
+
+        for (const offset of [0, 3]) {
+            expectWrittenExactly(string, offset);
+        }
+    }
 });
 
 it.prop([

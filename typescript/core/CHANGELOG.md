@@ -106,6 +106,17 @@ repository's first commits, for code built from its source before the release.
   string of up to 32 code units that doesn't fit in the bytes still throws its
   `RangeError`, with what fits of it written, which may now end with the first
   bytes of a character, where `TextEncoder` stopped before it.
+- A string of up to 48 UTF-16 code units that starts with ASCII is written a
+  byte at a time up to its first character outside ASCII, and from there a
+  unit at a time when no more than 32 units are left, rather than written
+  again from its start by the loop of up to 32 units or by `TextEncoder`.
+  `TableBuilder` and the code that tafla-gen generates wrote tables of 16
+  strings of 24 characters, the last of 2 bytes, in 0.70–0.73 times the time
+  in Node 24, 26 and 27, of 15 characters with one of 4 bytes in 0.86–0.90, of
+  8 with one of 2 bytes in 0.91–0.94, and of 40 characters of ASCII in
+  0.91–0.96. A short string that starts with a character outside ASCII takes
+  longer: tables of 16 strings of 8 to 48 characters of 3 bytes took 1.00–1.07
+  times as long, up to 11 ns a string.
 - `TableReader.getString()` reads a short string of 9 to 32 bytes into an
   array of its length that the module keeps, rather than a new one, which it
   also allocated for a string that it then left to another read at its first

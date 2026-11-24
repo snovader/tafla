@@ -4,11 +4,18 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /**
- * The longest string that `encodeInto()` writes and `utf8Length()` counts,
- * in UTF-16 code units, and that `decodeShortAscii()` and
- * `decodeShortUtf8()` read, in bytes, a unit or a byte at a time
+ * The most UTF-16 code units that `encodeInto()` writes after a string's
+ * ASCII, and that `utf8Length()` counts, and the most bytes that
+ * `decodeShortAscii()` and `decodeShortUtf8()` read, a unit or a byte at a
+ * time
  */
 const SHORT_STRING = 32;
+
+/**
+ * The longest string whose ASCII `encodeInto()` writes a byte at a time, in
+ * UTF-16 code units
+ */
+const ASCII_STRING = 48;
 
 /**
  * The longest ASCII string that `decodeShortUtf8()` reads from its bytes as
@@ -305,11 +312,15 @@ export function decodeShortAscii(
  * Writes `string` as UTF-8 at `position` in `bytes`, which must have room for
  * it, with lone surrogates replaced by U+FFFD, as `encode()` writes them.
  *
- * A short ASCII string is written a byte at a time, which took 6–60 ns for
- * up to 32 characters in Node 26, against 53–67 ns for `encodeInto()`, whose
- * `subarray()` also gives a small `Uint8Array` the `ArrayBuffer` that V8
- * otherwise leaves out. Past 32 it's `encodeInto()`, which took 55 ns for
- * 64 characters where the loop took 115 ns.
+ * The ASCII of a string of up to {@link ASCII_STRING} UTF-16 code units is
+ * written a byte at a time, which took 6–60 ns for up to 32 characters in
+ * Node 26, against 53–67 ns for `encodeInto()`, whose `subarray()` also
+ * gives a small `Uint8Array` the `ArrayBuffer` that V8 otherwise leaves out.
+ * The loop took about 51 ns for 40 characters and 80 ns for 64, where
+ * `encodeInto()` took 58–71 ns for either in Node 24, 26 and 27: with a limit
+ * of 48 rather than 32, tables of 16 strings of 40 characters of ASCII were
+ * written in 0.91–0.96 times the time, and with 64, tables of 16 strings of
+ * 64 characters in 1.16–1.33.
  *
  * @returns The number of bytes written.
  * @throws {RangeError} If `bytes` are too short for the string.
@@ -321,8 +332,8 @@ export function encodeInto(
 ): number {
     const length = string.length;
 
-    if (length <= SHORT_STRING && position + length <= bytes.length) {
-        let i = 0;
+    let i = 0;
+    if (length <= ASCII_STRING && position + length <= bytes.length) {
         while (i < length) {
             const unit = string.charCodeAt(i);
             if (unit >= 0x80) {
@@ -338,19 +349,29 @@ export function encodeInto(
         }
     }
 
-    return encodeIntoOutOfLine(string, bytes, position);
+    return encodeIntoOutOfLine(string, bytes, position, i);
 }
 
 /**
- * `encodeInto()` of a string that isn't short ASCII with room for it.
+ * `encodeInto()` of a string that isn't short ASCII with room for it, after
+ * the `ascii` units of ASCII at its start that `encodeInto()` wrote.
  *
- * A short string, of up to {@link SHORT_STRING} UTF-16 code units, is
- * written a unit or a surrogate pair at a time, as
- * `TextEncoder.encodeInto()` encodes them, and any other with it. The loop
- * doesn't check that each byte lies within `bytes`, since a typed array
- * ignores a write past its end, and throws afterwards for a string that
- * ended past them. The bytes then hold the start of the string, which may
- * end with the first bytes of a character.
+ * The rest of a string after them, of up to {@link SHORT_STRING} UTF-16 code
+ * units, is written a unit or a surrogate pair at a time, as
+ * `TextEncoder.encodeInto()` encodes them, and any other string with
+ * `TextEncoder.encodeInto()`, from its start. The loop doesn't check that
+ * each byte lies within `bytes`, since a typed array ignores a write past its
+ * end, and throws afterwards for a string that ended past them. The bytes
+ * then hold the start of the string, which may end with the first bytes of a
+ * character.
+ *
+ * Continuing after the ASCII, rather than writing the string again from its
+ * start, made tables of 16 strings of 24 characters, the last of 2 bytes,
+ * take 0.70–0.73 times as long to write in Node 24, 26 and 27, and of 8 with
+ * one of 2 bytes 0.91–0.94. The rest of a string of 33 to 48 units is written
+ * here only when it's no longer than {@link SHORT_STRING}: writing all of it
+ * made 16 strings of 48 characters of 3 bytes take 1.15–1.25 times as long in
+ * Node 26 and 27, whose `TextEncoder` writes them faster than the loop.
  *
  * It's one function, of more bytecode than V8 inlines, so that the bytecode
  * that V8 inlines with `encodeInto()` is its loop over ASCII alone. With
@@ -368,11 +389,12 @@ export function encodeInto(
 function encodeIntoOutOfLine(
     string: string,
     bytes: Uint8Array,
-    position: number
+    position: number,
+    ascii: number
 ): number {
     const length = string.length;
 
-    if (length > SHORT_STRING) {
+    if (length - ascii > SHORT_STRING) {
         const { read, written } = encoder.encodeInto(
             string,
             bytes.subarray(position)
@@ -384,8 +406,8 @@ function encodeIntoOutOfLine(
         return written;
     }
 
-    let end = position;
-    for (let i = 0; i < length; i++) {
+    let end = position + ascii;
+    for (let i = ascii; i < length; i++) {
         let unit = string.charCodeAt(i);
 
         if (unit < 0x80) {
