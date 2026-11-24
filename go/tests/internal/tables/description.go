@@ -271,14 +271,26 @@ func appendLE(bytes []byte, value uint64, size int) []byte {
 	return bytes
 }
 
-// TableLayout returns the runtime's layout of a description's.
+// TableLayout returns the runtime's layout of the table, with its version
+// when its layout is versioned.
+func (t Table) TableLayout() tafla.TableLayout {
+	layout := t.Layout.TableLayout()
+	if t.Layout.Versioned {
+		layout = layout.WithVersion(t.Version)
+	}
+
+	return layout
+}
+
+// TableLayout returns the runtime's layout of a description's, which reads
+// tables of any version: its own is zero when it's versioned.
 func (l Layout) TableLayout() tafla.TableLayout {
 	layout := tafla.TableLayout{}.WithOffsetType(l.OffsetType)
 	if l.Sized {
 		layout = layout.Sized()
 	}
 	if l.Versioned {
-		layout = layout.Versioned()
+		layout = layout.WithVersion(0)
 	}
 
 	return layout

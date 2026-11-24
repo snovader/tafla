@@ -22,15 +22,15 @@ go get github.com/snovader/tafla/go@latest
 import tafla "github.com/snovader/tafla/go"
 
 // A format's header, shared by its writer and its readers
-var layout = tafla.TableLayout{}.Sized().Versioned()
-
 const formatVersion = 1
+
+var layout = tafla.TableLayout{}.Sized().WithVersion(formatVersion)
 
 series, err := tafla.NewTableBuilder(2, tafla.TableLayout{})
 err = series.SetUint32Array([]uint32{0, 86_400}) // kept until the table is written
 err = series.SetFloat32Array([]float32{21.75, 18.5})
 
-builder, err := tafla.NewVersionedTableBuilder(3, layout, formatVersion)
+builder, err := tafla.NewTableBuilder(3, layout)
 err = builder.SetFloat64(59.3293)
 err = builder.SetString("Europe/Stockholm")
 err = builder.SetTable(series) // written straight into the table
@@ -66,7 +66,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `Sized()`,
-  and then its version when it's `Versioned()`.
+  and then the version that `WithVersion()` gave it.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, `tafla.Uint8`, `tafla.Uint16` or `tafla.Uint32`, whose offset
   size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -181,9 +181,8 @@ can cause, as Go's standard library panics for an index out of range:
 - a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
   struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
-- a negative number of fields or of a vector's items, `NewTableBuilder()`
-  of a versioned layout or `NewVersionedTableBuilder()` of one without a
-  version slot, and `Version()` of a layout without one,
+- a negative number of fields or of a vector's items, and a reader's
+  `Version()` of a layout without one,
 - a nil nested table, and
 - a `TableWriter` given other fields than its sizer counted, for a write past
   the table's bytes, rather than writing past them.

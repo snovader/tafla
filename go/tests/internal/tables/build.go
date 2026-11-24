@@ -7,12 +7,7 @@ import (
 // Builder starts a builder of the table's layout, version and number of
 // fields, with no field set.
 func (t Table) Builder() (*tafla.TableBuilder, error) {
-	layout := t.Layout.TableLayout()
-	if t.Layout.Versioned {
-		return tafla.NewVersionedTableBuilder(len(t.Fields), layout, t.Version)
-	}
-
-	return tafla.NewTableBuilder(len(t.Fields), layout)
+	return tafla.NewTableBuilder(len(t.Fields), t.TableLayout())
 }
 
 // Build builds the table, which keeps its values.

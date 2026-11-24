@@ -10,12 +10,7 @@ import (
 // Sizer starts a sizer of the table's layout, version and number of fields,
 // with no field added.
 func (t Table) Sizer() (tafla.TableSizer, error) {
-	layout := t.Layout.TableLayout()
-	if t.Layout.Versioned {
-		return tafla.NewVersionedTableSizer(len(t.Fields), layout, t.Version)
-	}
-
-	return tafla.NewTableSizer(len(t.Fields), layout)
+	return tafla.NewTableSizer(len(t.Fields), t.TableLayout())
 }
 
 // Write sizes and writes the table. The tables nested in it are written in

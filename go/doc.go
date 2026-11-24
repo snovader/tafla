@@ -23,7 +23,7 @@
 // and then the fields in the order they were set:
 //
 //   - The header holds the table's byte length when the layout is sized, and
-//     then its version when it's versioned.
+//     then the layout's version when it has one.
 //   - Header slots, offsets, counts and vector item ends are all of the
 //     layout's offset type, [Uint8], [Uint16] or [Uint32], whose offset size
 //     is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or 4 GiB.
@@ -65,7 +65,7 @@
 //
 // # For generated code
 //
-// [AppendTable], [AppendVersionedTable], [TableSizer.AddFields],
+// [AppendTable], [TableSizer.AddFields],
 // [TableSizer.AddTableBytes], [TableWriter.ReserveFields] and
 // [TableWriter.ReserveTableBytes] are for the code that tafla-gen generates,
 // which lays out the fields whose sizes the schema fixes itself,

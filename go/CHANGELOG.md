@@ -41,6 +41,15 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout{}.WithVersion(1)`,
+  rather than only whether the header has a slot for one, and `Versioned()`
+  is gone. `NewTableBuilder()`, `NewTableSizer()` and `AppendTable()` write
+  the layout's version, in place of `NewVersionedTableBuilder()`,
+  `NewVersionedTableSizer()` and `AppendVersionedTable()`, so a version
+  missing from or given for a layout can no longer be written, and those
+  panics are gone. They fail with VersionTooLarge for a version that doesn't
+  fit the layout's offset type, as before. `TableLayout.Version()` returns a
+  layout's version, and readers read tables of any version, as before.
 - The project is named tafla rather than buffy.
 - The type that reads a table is `TableReader` rather than `ByteBuffer`, and
   `NewTableReader()` creates it.
