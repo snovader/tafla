@@ -289,9 +289,11 @@ it.prop([
     fc.nat({ max: 40 }),
     SLICES
 ])(
-    'should write a string as UTF-8 at an offset within the bytes, returning its utf8Length(), and throw RangeError past them',
+    'should write a string as UTF-8 at an offset within the bytes, returning its utf8Length(), and throw RangeError past them, having written only what fits of it',
     (string, offset, length, slice) => {
         const bytes = sliceOf(new Uint8Array(length), slice);
+        // The whole buffer, so that a write around the slice shows
+        const around = new Uint8Array(bytes.buffer.slice(0));
         // TextEncoder replaces lone surrogates with U+FFFD, as tables hold them
         const encoded = ENCODER.encode(string);
         expect(utf8Length(string)).toBe(encoded.length);
@@ -301,7 +303,38 @@ it.prop([
             expect(bytes.subarray(offset, offset + encoded.length)).toStrictEqual(encoded);
         } else {
             expect(() => writeUtf8(bytes, offset, string)).toThrow(RangeError);
+            expectStartOf(bytes.subarray(offset), encoded);
         }
+
+        around.set(bytes, bytes.byteOffset);
+        expect(new Uint8Array(bytes.buffer)).toStrictEqual(around);
+    }
+);
+
+/**
+ * Expects `bytes`, which were zeros, to hold bytes from the start of
+ * `encoded` and zeros after them, as `writeUtf8()` leaves them when the
+ * string doesn't fit
+ */
+function expectStartOf(bytes: Uint8Array, encoded: Uint8Array): void {
+    let written = 0;
+    while (written < bytes.length && bytes[written] === encoded[written]) {
+        written++;
+    }
+
+    expect(bytes.subarray(written)).toStrictEqual(new Uint8Array(bytes.length - written));
+}
+
+it.each([
+    ['a character of 3 bytes', 'a€', [0x61, 0xe2, 0x82]],
+    ['a surrogate pair', 'a😀', [0x61, 0xf0, 0x9f, 0x98]]
+])(
+    'should write the first bytes of %s that ends past the bytes of a short string, and throw RangeError',
+    (_, string, start) => {
+        const bytes = new Uint8Array(start.length);
+
+        expect(() => writeUtf8(bytes, 0, string)).toThrow(RangeError);
+        expect(bytes).toStrictEqual(Uint8Array.from(start));
     }
 );
 

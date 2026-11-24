@@ -242,7 +242,8 @@ function write64OutOfRange(bytes: Uint8Array, offset: number): RangeError {
  * a message's fields of fixed size itself.
  *
  * @throws {RangeError} If the string doesn't lie within `bytes`, having
- * written what fits of it when it isn't a short ASCII string.
+ * written what fits of it, which may end with the first bytes of a
+ * character.
  */
 export function writeUtf8(
     bytes: Uint8Array,

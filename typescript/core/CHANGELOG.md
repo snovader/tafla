@@ -98,7 +98,10 @@ repository's first commits, for code built from its source before the release.
   3–6 ns longer for 33 to 64 characters of ASCII, and in Node 24, whose
   `TextEncoder` is slower, a string of more than 64 characters outside
   Latin-1 takes 1.4–1.6 times as long to count, and 1.09–1.22 to build a
-  table of, where Node 26 and 27 take 0.47–0.96.
+  table of, where Node 26 and 27 take 0.47–0.96. A string of up to 32 code
+  units that doesn't fit in the bytes still throws its `RangeError`, with
+  what fits of it written, which may now end with the first bytes of a
+  character, where `TextEncoder` stopped before it.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in

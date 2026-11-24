@@ -357,8 +357,8 @@ function encodeRest(
 
 /**
  * The longest string that `encodeInto()` writes, in UTF-16 code units, and
- * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit or a byte
- * at a time
+ * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit
+ * or a byte at a time
  */
 const SHORT_STRING = 32;
 
