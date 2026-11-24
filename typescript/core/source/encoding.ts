@@ -4,17 +4,18 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 /**
- * The longest string that `encodeInto()` writes, in UTF-16 code units, and
- * that `decodeShortAscii()` and `decodeShortUtf8()` read, in bytes, a unit
- * or a byte at a time
+ * The longest string that `encodeInto()` writes and `utf8Length()` counts,
+ * in UTF-16 code units, and that `decodeShortAscii()` and
+ * `decodeShortUtf8()` read, in bytes, a unit or a byte at a time
  */
 const SHORT_STRING = 32;
 
 /**
- * The longest string whose UTF-8 length `utf8Length()` counts a UTF-16 code
- * unit at a time
+ * The longest ASCII string that `decodeShortUtf8()` reads from its bytes as
+ * the arguments of one `String.fromCharCode()`, rather than
+ * `decodeShortAscii()` from an array of them
  */
-const COUNTED_STRING = 64;
+const TINY_STRING = 8;
 
 /** The bytes that `utf8LengthByEncoding()` encodes a string into */
 const scratch = new Uint8Array(4096);
@@ -35,10 +36,9 @@ export function decode(bytes: Uint8Array): string {
  * `decode()` to read them, or to throw for them.
  *
  * Through `TableReader.getString()`, which calls it for a string that isn't
- * short ASCII, strings of 8 characters took 76 ns rather than 130 with a
- * character of 2 bytes among them, and 115 ns rather than 200 with 3 bytes
- * each, in Node 27: 0.49–0.73 times as long in Node 24, 26 and 27 for
- * strings of 9 to 24 bytes.
+ * ASCII of 9 to {@link SHORT_STRING} bytes, tables of 16 strings of 8 to 16
+ * characters with characters of 2 to 4 bytes took 0.32–0.48 times as long
+ * to read as with `decode()`, in Node 24, 26 and 27.
  */
 export function decodeShortUtf8(
     bytes: Uint8Array,
@@ -49,7 +49,88 @@ export function decodeShortUtf8(
         return undefined;
     }
 
+    if (length <= TINY_STRING) {
+        const ascii = decodeTinyAscii(bytes, start, length);
+        if (ascii !== undefined) {
+            return ascii;
+        }
+    }
+
     return decodeUtf8(bytes, start, length);
+}
+
+/**
+ * Reads the `length` bytes from `start` in `bytes`, up to
+ * {@link TINY_STRING}, as a string when they're ASCII, from the arguments of
+ * one `String.fromCharCode()`, which takes less time than an array of them:
+ * `TableReader` read tables of 16 empty strings in 0.75–0.79 times the time
+ * of `decodeShortAscii()`'s array, and of 16 strings of 8 characters in
+ * 0.74–0.86, in Node 24, 26 and 27. It's more than the 460 bytes of bytecode
+ * that V8 inlines, so it stays a call from `decodeShortUtf8()`.
+ */
+function decodeTinyAscii(
+    bytes: Uint8Array,
+    start: number,
+    length: number
+): string | undefined {
+    let bits = 0;
+    for (let i = 0; i < length; i++) {
+        bits |= bytes[start + i];
+    }
+
+    if (bits >= 0x80) {
+        return undefined;
+    }
+
+    // Loaded once, rather than at each call, which made this function 535
+    // bytes of bytecode rather than 464
+    const fromCharCode = String.fromCharCode;
+    const b = bytes;
+    const s = start;
+    switch (length) {
+        case 0:
+            return '';
+        case 1:
+            return fromCharCode(b[s]);
+        case 2:
+            return fromCharCode(b[s], b[s + 1]);
+        case 3:
+            return fromCharCode(b[s], b[s + 1], b[s + 2]);
+        case 4:
+            return fromCharCode(b[s], b[s + 1], b[s + 2], b[s + 3]);
+        case 5:
+            return fromCharCode(b[s], b[s + 1], b[s + 2], b[s + 3], b[s + 4]);
+        case 6:
+            return fromCharCode(
+                b[s],
+                b[s + 1],
+                b[s + 2],
+                b[s + 3],
+                b[s + 4],
+                b[s + 5]
+            );
+        case 7:
+            return fromCharCode(
+                b[s],
+                b[s + 1],
+                b[s + 2],
+                b[s + 3],
+                b[s + 4],
+                b[s + 5],
+                b[s + 6]
+            );
+        default:
+            return fromCharCode(
+                b[s],
+                b[s + 1],
+                b[s + 2],
+                b[s + 3],
+                b[s + 4],
+                b[s + 5],
+                b[s + 6],
+                b[s + 7]
+            );
+    }
 }
 
 /**
@@ -154,9 +235,10 @@ function decodeUtf8(
 
 /**
  * Reads the `length` bytes from `start` in `bytes`, which must lie within
- * them, as a string when they're a short ASCII string, of up to
- * {@link SHORT_STRING} bytes below 0x80, which UTF-8 decodes to the same code
- * points. Otherwise it returns `undefined`, for `decode()` to read them.
+ * them, as a string when they're a short ASCII string, of more than
+ * {@link TINY_STRING} and up to {@link SHORT_STRING} bytes below 0x80, which
+ * UTF-8 decodes to the same code points. Otherwise it returns `undefined`,
+ * for `decodeShortUtf8()` or `decode()` to read them.
  *
  * Through `TableReader.getString()`, the loop read 8, 16 and 32 bytes of
  * ASCII in 30, 45 and 78 ns in Node 26, and in 28, 43 and 72 ns in Node 27,
@@ -173,7 +255,10 @@ export function decodeShortAscii(
     start: number,
     length: number
 ): string | undefined {
-    if (length > SHORT_STRING) {
+    // Above TINY_STRING and up to SHORT_STRING, in one unsigned comparison:
+    // with two, Node 26 read the comparison suite's record, whose string has
+    // 16 bytes, in 113–118 ns rather than 100–104 in 6 of 20 processes
+    if ((length - (TINY_STRING + 1)) >>> 0 > SHORT_STRING - (TINY_STRING + 1)) {
         return undefined;
     }
 
@@ -376,13 +461,13 @@ function encodeRest(
  *
  * It counts from the first unit of 0x80 or more out of line, so that the
  * bytecode that V8 inlines into its callers is only the loop over ASCII, and
- * a string of more than {@link COUNTED_STRING} units out of line too, by
+ * a string of more than {@link SHORT_STRING} units out of line too, by
  * encoding it.
  */
 export function utf8Length(string: string): number {
     const length = string.length;
 
-    if (length > COUNTED_STRING) {
+    if (length > SHORT_STRING) {
         return utf8LengthByEncoding(string);
     }
 
@@ -404,11 +489,14 @@ export function utf8Length(string: string): number {
  *
  * In Node 27, it counted 65 and 1,024 characters of ASCII in 39 and 54 ns,
  * where the loop took 83 and 1,205 ns, at 1.2 ns a character, and 128
- * characters of 3 bytes in 111 ns rather than 228. Of 64 characters, the
- * loop took as long or less for every kind of string. In Node 24, whose
+ * characters of 3 bytes in 111 ns rather than 228. Past 32 characters of
+ * ASCII it takes less time than the loop: with 32 as the limit rather than
+ * 64, tables of 16 strings of 40 and 64 characters took 0.86–0.93 and
+ * 0.69–0.77 times as long to write in Node 24, 26 and 27. In Node 24, whose
  * `encodeInto()` takes 2–2.5 ns for each character outside Latin-1, it
- * takes 1.4–1.6 times as long as the loop for strings of those, and as
- * little as in Node 27 for ASCII.
+ * takes 1.4–1.6 times as long as the loop for strings of those, such as
+ * 1.18 times as long to write 16 strings of 48 characters of 3 bytes, and
+ * as little as in Node 27 for ASCII.
  */
 function utf8LengthByEncoding(string: string): number {
     let { read, written } = encoder.encodeInto(string, scratch);

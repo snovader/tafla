@@ -80,28 +80,32 @@ repository's first commits, for code built from its source before the release.
   rather than 0.158 in Node 27, and the document of 100 rows in 0.222 µs
   rather than 0.261 in Node 26. A string of 32 bytes that ends in a character
   outside ASCII takes about 37 ns longer, and one that starts with one 8 ns.
-- Short strings with characters outside ASCII, and long strings, take less
-  time to read, write and count, with the same strings, bytes and errors as
-  before. `TableReader.getString()` reads up to 32 bytes of any valid UTF-8
-  a byte at a time, and leaves the rest, and what isn't valid, to the fatal
-  decoder: a table of 16 strings of 8 to 16 characters with such characters
-  took 0.32–0.48 times as long to read in Node 24, 26 and 27. `TableWriter.setString()`, `TableBuilder` and `writeUtf8()`
-  write up to 32 UTF-16 code units of any string a unit at a time, rather
-  than only ASCII: `writeUtf8()` took 0.34–0.45 times as long for 8
-  characters, and `TableBuilder` 0.48–0.82 for up to 32. `utf8Length()`,
-  and so `TableSizer.addString()` and `TableBuilder.setString()`, count a
-  string of more than 64 code units by encoding it into 4,096 bytes that
-  the module keeps, rather than a unit at a time: 1,024 characters of ASCII
-  took 54 ns rather than 1,205 to count in Node 27, and 0.14 times as long
-  to build a table of. Strings of ASCII of up to 32 characters, and the
-  comparison suite's record, took as long as before. `writeUtf8()` takes
-  3–6 ns longer for 33 to 64 characters of ASCII, and in Node 24, whose
-  `TextEncoder` is slower, a string of more than 64 characters outside
-  Latin-1 takes 1.4–1.6 times as long to count, and 1.09–1.22 to build a
-  table of, where Node 26 and 27 take 0.47–0.96. A string of up to 32 code
-  units that doesn't fit in the bytes still throws its `RangeError`, with
-  what fits of it written, which may now end with the first bytes of a
-  character, where `TextEncoder` stopped before it.
+- Short strings with characters outside ASCII, ASCII strings of up to 8 bytes,
+  and long strings take less time to read, write and count, with the same
+  strings, bytes and errors as before. `TableReader.getString()` reads up to
+  32 bytes of any valid UTF-8 a byte at a time, and up to 8 bytes of ASCII as
+  the arguments of one `String.fromCharCode()`, and leaves the rest, and what
+  isn't valid, to the fatal decoder: a table of 16 strings of 8 to 16
+  characters with characters outside ASCII took 0.32–0.48 times as long to
+  read in Node 24, 26 and 27, and one of 16 strings of 8 characters of ASCII
+  0.74–0.86. `TableWriter.setString()`, `TableBuilder` and `writeUtf8()` write
+  up to 32 UTF-16 code units of any string a unit at a time, rather than only
+  ASCII: `writeUtf8()` took 0.34–0.45 times as long for 8 characters, and
+  `TableBuilder` 0.48–0.82 for up to 32. `utf8Length()`, and so
+  `TableSizer.addString()` and `TableBuilder.setString()`, count a string of
+  more than 32 code units by encoding it into 4,096 bytes that the module
+  keeps, rather than a unit at a time: 1,024 characters of ASCII took 54 ns
+  rather than 1,205 to count in Node 27, and 0.14 times as long to build a
+  table of, and a table of 16 strings of 64 characters about 0.75 times as
+  long. Strings of ASCII of 9 to 32 characters, and the comparison suite's
+  record, took as long as before. `writeUtf8()` takes 3–6 ns longer for 33 to
+  64 characters of ASCII, and in Node 24, whose `TextEncoder` is slower, a
+  string of more than 32 characters outside Latin-1 takes longer to count: a
+  table of 16 strings of 48 characters of 3 bytes took 1.18 times as long to
+  build, and of longer ones 1.09–1.22, where Node 26 and 27 take 0.47–0.97. A
+  string of up to 32 code units that doesn't fit in the bytes still throws its
+  `RangeError`, with what fits of it written, which may now end with the first
+  bytes of a character, where `TextEncoder` stopped before it.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in

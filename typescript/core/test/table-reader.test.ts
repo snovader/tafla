@@ -202,8 +202,9 @@ describe('strings', () => {
         }
     );
 
-    // Either side of the longest string read a byte at a time, 32 bytes
-    it.each([0, 1, 31, 32, 33, 64])(
+    // Either side of the longest strings read from the arguments of one call,
+    // 8 bytes, and a byte at a time, 32 bytes
+    it.each([0, 1, 8, 9, 31, 32, 33, 64])(
         'should read %i bytes of ASCII, or with a character of 2 bytes first or last, as UTF-8',
         length => {
             const ascii = 'tafla-0123456789'.repeat(4).slice(0, length);
@@ -220,7 +221,7 @@ describe('strings', () => {
         }
     );
 
-    it.each([1, 31, 32, 33, 64])(
+    it.each([1, 8, 9, 31, 32, 33, 64])(
         'should throw DecodeError for %i bytes of ASCII but a lone continuation byte, first or last',
         length => {
             for (const index of [0, length - 1]) {
