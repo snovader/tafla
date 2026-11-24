@@ -22,7 +22,7 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@snovader/node-hooks": "^0.1.1",
+    "@snovader/node-hooks": "^0.2.0",
     "@snovader/oxc-config": "^0.3.0",
     "@snovader/tsconfig": "^0.1.0",
     "@types/node": "^26.6.6",

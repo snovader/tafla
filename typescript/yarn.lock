@@ -825,9 +825,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@snovader/node-hooks@npm:^0.1.1":
-  version: 0.1.1
-  resolution: "@snovader/node-hooks@npm:0.1.1"
+"@snovader/node-hooks@npm:^0.2.0":
+  version: 0.2.0
+  resolution: "@snovader/node-hooks@npm:0.2.0"
   dependencies:
     oxc-transform: "npm:^0.159.0"
   peerDependencies:
@@ -835,7 +835,7 @@ __metadata:
   peerDependenciesMeta:
     resolve-pkg-maps:
       optional: true
-  checksum: 10c0/d01256a1337ce36e07c84aca8724fe42205d96587a5528ca78558c426ca72b05b68007d1da1a95a2a0f24b9f10e7a099620617394e730f606ba2668c8c02d79d
+  checksum: 10c0/9c06912e58c4722580106066a93b85a0a4c296a3e85be290fbe4b921deceed2e2dbe2fd8c9cc8e674af504985a690424bc07132b51354238acf6fc58cd9014de
   languageName: node
   linkType: hard
 
@@ -1788,7 +1788,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "tafla-typescript@workspace:."
   dependencies:
-    "@snovader/node-hooks": "npm:^0.1.1"
+    "@snovader/node-hooks": "npm:^0.2.0"
     "@snovader/oxc-config": "npm:^0.3.0"
     "@snovader/tsconfig": "npm:^0.1.0"
     "@types/node": "npm:^26.6.6"
