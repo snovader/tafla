@@ -83,7 +83,8 @@ function decodeTinyAscii(
     }
 
     // Loaded once, rather than at each call, which made this function 535
-    // bytes of bytecode rather than 464
+    // bytes of bytecode rather than 470 in Node 26, and 530 rather than 465
+    // in Node 24 and 27
     const fromCharCode = String.fromCharCode;
     const b = bytes;
     const s = start;
