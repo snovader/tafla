@@ -508,8 +508,8 @@ describe('tables nested from their builders', () => {
                     })
                 );
                 // A short nested table is copied in, and a long one kept, so
-                // that the table is copied or cut from its buffer, or
-                // written from its segments
+                // that the table is copied out of its buffer, or written from
+                // its segments
                 const nestedLength = round === 1 ? 1000 : 100;
                 const nestedTable = tableOf([
                     { type: 'uint8[]', value: new Array<number>(nestedLength).fill(0xee) }

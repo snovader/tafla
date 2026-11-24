@@ -1431,12 +1431,15 @@ export class TableBuilder {
     /**
      * Writes the table into bytes of its exact length: the builder's bytes,
      * with the segments between them, and the length in a sized header. It
-     * then gives the builder's bytes back, unless a parent keeps them. A
-     * buffer of the builder's own, which is longer than
-     * {@link SHARED_BYTES}, becomes the table instead, when it holds no
-     * segments and no parent keeps it: cut to the table's length by
-     * `transfer()`, which took a quarter to a half of the time that copying
-     * a table of 64 KiB to 1 MiB out of it did.
+     * then gives the builder's bytes back, unless a parent keeps them.
+     *
+     * A table is copied out of a buffer of the builder's own, longer than
+     * {@link SHARED_BYTES}, too, rather than cut from it by `transfer()`.
+     * Detaching the buffer makes V8 check every typed array's buffer for the
+     * rest of the process: after one table of 1.2 MB, reading 1,000
+     * `float64` fields took 1.18–1.20 times as long in Node 26 and 27, and
+     * 2.2 times in Node 24, and 100 short strings 1.12–1.14. Copying it took
+     * as long as cutting it.
      *
      * @throws {RangeError} If fewer fields were set than the table holds, or
      * an array kept as a segment has changed its length.
@@ -1452,8 +1455,6 @@ export class TableBuilder {
         if (segments !== undefined && segments.length > 0) {
             table = new Uint8Array(length);
             writeRuns(table, 0, bytes, base, this.#end, segments);
-        } else if (bytes.length > SHARED_BYTES && !this.#kept) {
-            table = new Uint8Array(bytes.buffer.transfer(length));
         } else {
             table = bytes.slice(base, base + length);
         }
