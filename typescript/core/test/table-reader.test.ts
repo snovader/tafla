@@ -221,6 +221,57 @@ describe('strings', () => {
         }
     );
 
+    // Each length that's read as ASCII and up to the first that isn't,
+    // before a character of each width, an invalid sequence, and a
+    // surrogate, which UTF-8 can't hold
+    it('should read ASCII of 0 to 65 bytes followed by any character, or throw for invalid UTF-8, as the decoder does', () => {
+        const ascii = 'tafla-0123456789'.repeat(5);
+        const sequences = [
+            [0xc3, 0xa9],
+            [0xe2, 0x82, 0xac],
+            [0xf0, 0x9f, 0x98, 0x80],
+            [0xc3],
+            [0x80],
+            [0xe0, 0x9f, 0xbf],
+            [0xed, 0xa0, 0x80],
+            [0xed, 0xbf, 0xbf]
+        ];
+
+        for (let length = 0; length <= 65; length++) {
+            const prefix = encoder.encode(ascii.slice(0, length));
+
+            for (const sequence of sequences) {
+                for (const bytes of [
+                    Uint8Array.of(...prefix, ...sequence),
+                    Uint8Array.of(...prefix, ...sequence, 0x61)
+                ]) {
+                    expectDecoded(readString(bytes), bytes);
+                }
+            }
+        }
+    });
+
+    it.each([9, 16, 32])(
+        'should read strings of %i bytes one after another, with one that is not ASCII between them',
+        length => {
+            const strings = [
+                'a'.repeat(length),
+                `${'b'.repeat(length - 2)}é`,
+                'c'.repeat(length),
+                `${'d'.repeat(length - 1)}\u0001`
+            ];
+            const builder = new TableBuilder(strings.length);
+            for (const string of strings) {
+                builder.setString(string);
+            }
+
+            const reader = new TableReader(builder.bytes());
+            const read = strings.map((_, i) => reader.getString(reader.rootOffset(i)));
+
+            expect(read).toEqual(strings);
+        }
+    );
+
     it.each([1, 8, 9, 31, 32, 33, 64])(
         'should throw DecodeError for %i bytes of ASCII but a lone continuation byte, first or last',
         length => {

@@ -117,6 +117,16 @@ repository's first commits, for code built from its source before the release.
   0.91–0.96. A short string that starts with a character outside ASCII takes
   longer: tables of 16 strings of 8 to 48 characters of 3 bytes took 1.00–1.07
   times as long, up to 11 ns a string.
+- `TableReader.getString()` reads a short string of 9 to 32 bytes into an
+  array of its length that the module keeps, rather than a new one, which it
+  also allocated for a string that it then left to another read at its first
+  character outside ASCII. Tables of 16 strings of 16 and 32 characters of
+  ASCII took 0.84–0.96 times as long to read in Node 24, 26 and 27, of 8 to
+  16 characters with characters outside ASCII 0.86–0.94, and the comparison
+  suite's record 0.96–0.98. A string of more than 32 bytes is still read by
+  the decoder: reading ASCII of up to 40 or 48 bytes a byte at a time made
+  strings of 33 bytes that end in a character of 2 bytes take 1.14–1.20
+  times as long.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in

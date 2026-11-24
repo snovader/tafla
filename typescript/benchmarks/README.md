@@ -363,7 +363,10 @@ else, so that a call spends most of its time on their UTF-8:
 - 8 characters of ASCII, 8 with one of 2 bytes, and 8 of 3 bytes
 - 16 characters with two of 2 bytes, and 15 with one of 4 bytes, a
   surrogate pair
-- 32 characters of 3 bytes
+- 16 and 32 characters of ASCII, 31 with the last of 2 bytes, and 32 of 3
+  bytes
+- 33 characters of ASCII, and 33 with the last of 2 bytes, either side of the
+  longest strings that tafla reads without a `TextDecoder`
 - 64, 256 and 1,024 characters of ASCII, and 256 of 3 bytes
 - 16 empty strings, which time what a call takes without any: the table, its
   offsets and lengths, and the library's own work
