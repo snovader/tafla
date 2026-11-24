@@ -1,18 +1,20 @@
 //! The code generated from each comparison suite's schema of its workloads
 //! matches the files checked in under the suite, as `BENCHMARK_SCHEMAS` in
 //! `tests/common/mod.rs` lists them, and the suites' schemas are the same.
-//! `TAFLA_GEN_UPDATE=1` rewrites the files.
+//! So does the code generated from the schemas of the suites that only one
+//! language has, which `SINGLE_SUITE_SCHEMAS` lists. `TAFLA_GEN_UPDATE=1`
+//! rewrites the files.
 
 mod common;
 
-use common::{BENCHMARK_SCHEMAS, assert_no_differences, compare_tree};
+use common::{BENCHMARK_SCHEMAS, SINGLE_SUITE_SCHEMAS, assert_no_differences, compare_tree};
 use tafla_gen::{Target, compile};
 
 #[test]
 fn generated_code_matches_the_suites_files() {
     let mut differences = Vec::new();
 
-    for suite in &BENCHMARK_SCHEMAS {
+    for suite in BENCHMARK_SCHEMAS.iter().chain(&SINGLE_SUITE_SCHEMAS) {
         let Some(target) = Target::from_name(suite.target) else {
             continue; // A build without the target's feature
         };

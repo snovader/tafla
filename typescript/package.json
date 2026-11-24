@@ -10,6 +10,7 @@
   "scripts": {
     "bench": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/fields/main.ts",
     "bench:compare": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/comparison/main.ts",
+    "bench:strings": "node --no-strip-types --import @snovader/node-hooks/register bundle.ts node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-bundle benchmarks/strings/main.ts",
     "conformance:generate": "node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/conformance/generate.ts && node --no-strip-types --import @snovader/node-hooks/register --conditions=tafla-source core/test/generated/generate.ts",
     "format:check": "oxfmt --check",
     "format:write": "oxfmt",
