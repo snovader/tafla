@@ -1,8 +1,9 @@
 # Benchmarks
 
 `yarn bench` times `tafla`'s getters and setters of every element type
-on their own, and `yarn bench:compare` compares the package with other
-JavaScript libraries. Run both from `typescript/`.
+on their own, `yarn bench:compare` compares the package with other
+JavaScript libraries, and `yarn bench:strings` compares how they write and
+read strings. Run them from `typescript/`.
 
 ## Getters and setters
 
@@ -351,3 +352,67 @@ Bytes allocated on V8's heap per call:
 - Summing the array of structs through its view takes 1.33 µs against
   1.61 µs, 17% less, though it creates a `Triple` for each struct as the
   getter does. `readFloat32()` by hand takes 0.78 µs.
+
+## Strings
+
+`yarn bench:strings` compares how tafla and the comparison's libraries write
+and read strings, which the comparison's workloads hold one of, of 16 bytes
+of ASCII. Each table holds 16 distinct strings of one shape and nothing
+else, so that a call spends most of its time on their UTF-8:
+
+- 8 characters of ASCII, 8 with one of 2 bytes, and 8 of 3 bytes
+- 16 characters with two of 2 bytes, and 15 with one of 4 bytes, a
+  surrogate pair
+- 32 characters of 3 bytes
+- 64, 256 and 1,024 characters of ASCII, and 256 of 3 bytes
+- 16 empty strings, which time what a call takes without any: the table, its
+  offsets and lengths, and the library's own work
+
+The characters of 2 bytes are Latin-1 letters, which V8 stores in a byte, the
+characters of 3 bytes CJK ideographs, and those of 4 bytes emoji. Each string
+is flat, as a decoder returns it, rather than a concatenation.
+
+tafla has no vector of strings, so tafla writes a table of 16 string fields
+with a `TableBuilder` and reads it with `getString()`, and tafla-gen's code,
+generated from `strings/strings.tafla` into `strings/generated/tafla/`,
+counts it with a `TableSizer`, writes it with a `TableWriter`, and reads it
+with its getters. Both write the same bytes, which the suite checks. The
+other libraries write what they'd write for an array of strings: FlatBuffers
+a vector of strings, with code written by hand in the shape that flatc
+generates, protobufjs a repeated string, and msgpackr an array. Before
+timing, every codec must read back every string.
+
+benk times the groups as it times the comparison. In Node 27, the 16 empty
+strings took half to two thirds of the time of tafla's tables of 8
+characters of ASCII, and a twentieth to a fifth of the time of those of 64
+characters and more.
+
+```sh
+uptime
+yarn bench:strings --rounds 41
+```
+
+It takes the comparison's options.
+
+### Comparing two builds
+
+To compare two builds of the package, such as a branch and main, run each
+in processes of its own, alternating, and compare their rows. The other
+libraries' rows, whose code doesn't change, show the processes' noise.
+Leave out the heap bytes with `--no-heap`: in Node 24, 26 and 27, benk's
+samples of a group's heap bytes left V8's young generation smaller in some
+processes, depending on the build, and the next group's allocating
+variants, the other libraries' too, took up to 1.6 times as long. With the young generation's
+size fixed by `--min-semi-space-size=16 --max-semi-space-size=16`, or
+without the samples, they took as long as in the other processes.
+
+### Limitations
+
+- msgpackr packs into a buffer that its `Packr` reuses, and returns a view of
+  it, which a caller that keeps the bytes copies. The other libraries
+  allocate a buffer for each table. A copy took 25 ns for the 16 empty
+  strings and 560 ns for 256 characters of 3 bytes, in Node 27.
+- The suite uses msgpackr's plain JavaScript entry point, as the comparison
+  does, without its native string extractor.
+- tafla-gen creates its generated fields from the input array in each call,
+  as the protobufjs codec creates its message.

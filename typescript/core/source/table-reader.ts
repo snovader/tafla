@@ -5,7 +5,7 @@ import {
     SIZEOF_32,
     SIZEOF_64
 } from './constants.ts';
-import { decode, decodeShortAscii } from './encoding.ts';
+import { decode, decodeShortAscii, decodeShortUtf8 } from './encoding.ts';
 import { byteOrderSwapped } from './endianness.ts';
 import { outOfRange, DecodeError } from './errors.ts';
 import { TableLayout } from './layout.ts';
@@ -463,14 +463,17 @@ export class TableReader {
         const length = this.#getSize(position);
         const byteOffset = this.#arrayOffset(position, length);
 
-        // A short ASCII string is read a byte at a time, within the range
-        // that #arrayOffset() checked, and any other by the fatal decoder.
-        // The loop is a function of its own, so that this one takes 173
-        // bytes of bytecode rather than 250. In Node 26 and 27, V8 inlines
-        // neither into a reader of other fields too, such as the comparison
-        // suite's record, which still inlines its other reads. This one then
-        // inlines #arrayOffset() and the loop, where the record used to
-        // inline this, at 135 bytes, and call #arrayOffset().
+        // A short ASCII string of more than 8 bytes is read a byte at a
+        // time, within the range that #arrayOffset() checked, and any other
+        // out of line. The loop is a function of its own, and so is
+        // #decodeString(), so that this one takes 103 bytes of bytecode
+        // rather than 250. In Node 26 and 27, V8 inlines #getSize(),
+        // #arrayOffset() and the loop into it, and #decodeString() once a
+        // string has needed it: 316–323 of the 920 bytes that it inlines
+        // into a function. It leaves this one a call in a reader of other
+        // fields too, such as the comparison suite's record, which would
+        // pass the 920 bytes with it, as it did when the decoder's call was
+        // here.
         const ascii = decodeShortAscii(
             this.#bytes,
             position + this.#size,
@@ -478,6 +481,28 @@ export class TableReader {
         );
         if (ascii !== undefined) {
             return ascii;
+        }
+
+        return this.#decodeString(position, byteOffset, length);
+    }
+
+    /**
+     * `getString()` of a string that isn't short ASCII: a short one is still
+     * read a byte at a time, and any other by the fatal decoder, which also
+     * throws for a short one that isn't valid UTF-8
+     */
+    #decodeString(
+        position: number,
+        byteOffset: number,
+        length: number
+    ): string {
+        const short = decodeShortUtf8(
+            this.#bytes,
+            position + this.#size,
+            length
+        );
+        if (short !== undefined) {
+            return short;
         }
 
         const bytes = new Uint8Array(this.#view.buffer, byteOffset, length);

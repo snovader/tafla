@@ -381,7 +381,7 @@ jobs:
           cache-key: release
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
@@ -493,7 +493,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           working-directory: python
@@ -597,7 +597,7 @@ jobs:
           path: dist
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
 
@@ -633,7 +633,7 @@ jobs:
           cache: false
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
           python-version: "3.14"
@@ -702,7 +702,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
 
@@ -758,7 +758,7 @@ jobs:
           path: dist
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
 

@@ -202,8 +202,9 @@ describe('strings', () => {
         }
     );
 
-    // Either side of the longest string read a byte at a time, 32 bytes
-    it.each([0, 1, 31, 32, 33, 64])(
+    // Either side of the longest strings read from the arguments of one call,
+    // 8 bytes, and a byte at a time, 32 bytes
+    it.each([0, 1, 8, 9, 31, 32, 33, 64])(
         'should read %i bytes of ASCII, or with a character of 2 bytes first or last, as UTF-8',
         length => {
             const ascii = 'tafla-0123456789'.repeat(4).slice(0, length);
@@ -220,7 +221,7 @@ describe('strings', () => {
         }
     );
 
-    it.each([1, 31, 32, 33, 64])(
+    it.each([1, 8, 9, 31, 32, 33, 64])(
         'should throw DecodeError for %i bytes of ASCII but a lone continuation byte, first or last',
         length => {
             for (const index of [0, length - 1]) {
@@ -233,6 +234,41 @@ describe('strings', () => {
             }
         }
     );
+
+    // Short strings are decoded a byte at a time, which must accept what the
+    // fatal decoder accepts and nothing else
+    it.each([
+        [
+            'the first and last code points of 2, 3 and 4 bytes',
+            '\u0080\u07FF\u0800\uFFFF\u{10000}\u{10FFFF}'
+        ],
+        ['the code points either side of the surrogates', '\uD7FF\uE000'],
+        ['code points of every length between ASCII', 'aéb€c😀d']
+    ])('should read %s in a short string', (_, string) => {
+        expect(readString(encoder.encode(string))()).toBe(string);
+    });
+
+    it.each([
+        ['a lead byte of 2 bytes at the end', [0xc3]],
+        ['a lead byte of 3 bytes a byte short', [0xe2, 0x82]],
+        ['a lead byte of 4 bytes a byte short', [0xf0, 0x9f, 0x98]],
+        ['a lead byte followed by ASCII', [0xc3, 0x61]],
+        ['a third byte that is no continuation byte', [0xe2, 0x82, 0x61]],
+        ['a fourth byte that is no continuation byte', [0xf0, 0x9f, 0x98, 0xc0]],
+        ['an overlong sequence of 2 bytes', [0xc1, 0xbf]],
+        ['an overlong sequence of 3 bytes', [0xe0, 0x9f, 0xbf]],
+        ['an overlong sequence of 4 bytes', [0xf0, 0x8f, 0xbf, 0xbf]],
+        ['the first surrogate', [0xed, 0xa0, 0x80]],
+        ['the last surrogate', [0xed, 0xbf, 0xbf]],
+        ['the code point after U+10FFFF', [0xf4, 0x90, 0x80, 0x80]],
+        ['a lead byte of 0xF5', [0xf5, 0x80, 0x80, 0x80]],
+        ['a lead byte of 0xFF', [0xff]]
+    ])('should throw DecodeError for %s in a short string', (_, sequence) => {
+        for (const bytes of [sequence, [0x61, ...sequence], [...sequence, 0x61]]) {
+            expectDecoded(readString(Uint8Array.from(bytes)), Uint8Array.from(bytes));
+            expect(readString(Uint8Array.from(bytes))).toThrow(DecodeError);
+        }
+    });
 
     it('should keep a leading U+FEFF and NUL bytes', () => {
         for (const string of ['\uFEFFtafla', '\0', 'ta\0fla\0']) {

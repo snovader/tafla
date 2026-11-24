@@ -373,7 +373,7 @@ jobs:
       # Without uv's cache, which the job would save under the key of the
       # Python workflow's jobs
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
           python-version: "3.14"

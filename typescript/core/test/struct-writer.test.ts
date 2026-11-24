@@ -289,9 +289,11 @@ it.prop([
     fc.nat({ max: 40 }),
     SLICES
 ])(
-    'should write a string as UTF-8 at an offset within the bytes, returning its utf8Length(), and throw RangeError past them',
+    'should write a string as UTF-8 at an offset within the bytes, returning its utf8Length(), and throw RangeError past them, having written only what fits of it',
     (string, offset, length, slice) => {
         const bytes = sliceOf(new Uint8Array(length), slice);
+        // The whole buffer, so that a write around the slice shows
+        const around = new Uint8Array(bytes.buffer.slice(0));
         // TextEncoder replaces lone surrogates with U+FFFD, as tables hold them
         const encoded = ENCODER.encode(string);
         expect(utf8Length(string)).toBe(encoded.length);
@@ -301,7 +303,38 @@ it.prop([
             expect(bytes.subarray(offset, offset + encoded.length)).toStrictEqual(encoded);
         } else {
             expect(() => writeUtf8(bytes, offset, string)).toThrow(RangeError);
+            expectStartOf(bytes.subarray(offset), encoded);
         }
+
+        around.set(bytes, bytes.byteOffset);
+        expect(new Uint8Array(bytes.buffer)).toStrictEqual(around);
+    }
+);
+
+/**
+ * Expects `bytes`, which were zeros, to hold bytes from the start of
+ * `encoded` and zeros after them, as `writeUtf8()` leaves them when the
+ * string doesn't fit
+ */
+function expectStartOf(bytes: Uint8Array, encoded: Uint8Array): void {
+    let written = 0;
+    while (written < bytes.length && bytes[written] === encoded[written]) {
+        written++;
+    }
+
+    expect(bytes.subarray(written)).toStrictEqual(new Uint8Array(bytes.length - written));
+}
+
+it.each([
+    ['a character of 3 bytes', 'a€', [0x61, 0xe2, 0x82]],
+    ['a surrogate pair', 'a😀', [0x61, 0xf0, 0x9f, 0x98]]
+])(
+    'should write the first bytes of %s that ends past the bytes of a short string, and throw RangeError',
+    (_, string, start) => {
+        const bytes = new Uint8Array(start.length);
+
+        expect(() => writeUtf8(bytes, 0, string)).toThrow(RangeError);
+        expect(bytes).toStrictEqual(Uint8Array.from(start));
     }
 );
 
@@ -330,6 +363,53 @@ it.each(Object.entries(SHORTFALL_STRINGS))(
         expectWrittenExactly(string, 0);
     }
 );
+
+// Short strings are written a code unit at a time, and strings of more than
+// 64 units are counted by encoding them into 4,096 bytes at a time
+it.each([
+    [
+        'the first and last code points of 2, 3 and 4 bytes',
+        '\u0080\u07FF\u0800\uFFFF\u{10000}\u{10FFFF}'
+    ],
+    ['lone surrogates first, last, and in the wrong order', '\uDC00a\uDC00\uD800b\uD800'],
+    ['32 surrogates, as 16 pairs', '😀'.repeat(16)],
+    ['32 lone surrogates', '\uD800'.repeat(32)]
+])('should write a short string of %s as TextEncoder encodes it', (_, string) => {
+    for (const offset of [0, 3]) {
+        expectWrittenExactly(string, offset);
+    }
+    expect(utf8Length(string)).toBe(ENCODER.encode(string).length);
+});
+
+it.prop([
+    fc.string({
+        unit: fc.constantFrom('a', 'é', '€', '😀', '\uD800', '\uDC00'),
+        minLength: 65,
+        maxLength: 5000,
+        size: 'max'
+    })
+])('should count the UTF-8 length of a long string as TextEncoder encodes it', string => {
+    expect(utf8Length(string)).toBe(ENCODER.encode(string).length);
+});
+
+it.each([
+    ['ASCII', 'a'],
+    ['characters of 2 bytes', 'é'],
+    ['characters of 3 bytes', '€'],
+    ['surrogate pairs', '😀'],
+    ['lone surrogates', '\uD800']
+])('should count the UTF-8 length of strings of %s around 4,096 bytes', (_, unit) => {
+    const bytes = ENCODER.encode(unit).length;
+
+    for (const count of [
+        64, 65, 1023, 1024, 1025, 1365, 1366, 2047, 2048, 2049, 4095, 4096, 4097, 9000
+    ]) {
+        // With and without a byte before, which moves each character's bytes
+        for (const string of [unit.repeat(count), `a${unit.repeat(count)}`]) {
+            expect(utf8Length(string)).toBe(bytes * count + string.length - unit.length * count);
+        }
+    }
+});
 
 it.each([-1, 0.5, Number.NaN, 9])(
     'should throw RangeError for a string at an offset of %s',

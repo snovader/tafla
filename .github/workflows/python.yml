@@ -78,7 +78,7 @@ jobs:
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
@@ -147,7 +147,7 @@ jobs:
       # an empty cache under the key of the other jobs with Python 3.14, which
       # would then restore it rather than save their own
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: false
           python-version: "3.14"
@@ -181,7 +181,7 @@ jobs:
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: ${{ matrix.python_version }}
@@ -232,7 +232,7 @@ jobs:
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"
@@ -269,7 +269,7 @@ jobs:
           cache-workspaces: python/core/native -> target
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           save-cache: ${{ github.ref == 'refs/heads/main' }}
           python-version: "3.14"

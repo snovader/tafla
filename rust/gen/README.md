@@ -1012,7 +1012,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   directory is left of a schema or target that's gone.
 - `tests/benchmarks.rs`: the code generated from each language's comparison
   suite's `workloads.tafla` matches the files in the suite, and the suites'
-  copies of the schema are the same.
+  copies of the schema are the same. So does the code generated from the
+  schema of TypeScript's strings suite.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
   structs fail with an error on the WebAssembly module's stack, structs whose
@@ -1077,6 +1078,10 @@ where:
 | C++        | `cpp/benchmarks/workloads.tafla`, `cpp/benchmarks/generated/tafla/`                                                      |
 | C#         | `csharp/benchmarks/workloads.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/TaflaGen/`                            |
 | Swift      | `swift/benchmarks/workloads.tafla`, `swift/benchmarks/Sources/GeneratedTafla/`, a module                                 |
+
+TypeScript's suite of strings has a schema of its own, which
+`SINGLE_SUITE_SCHEMAS` lists: `typescript/benchmarks/strings/strings.tafla`,
+with its code in `typescript/benchmarks/strings/generated/tafla/`.
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

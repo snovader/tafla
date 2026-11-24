@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.13.8,<0.14"]
+requires = ["uv_build>=0.13.9,<0.14"]
 build-backend = "uv_build"
 
 [project]
@@ -24,4 +24,4 @@ tafla = { workspace = true }
 
 [dependency-groups]
 # protoc, which generates the protobuf messages; see README.md
-protoc = ["grpcio-tools>=1.85.1"]
+protoc = ["grpcio-tools>=1.85.3"]

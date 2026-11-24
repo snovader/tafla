@@ -357,9 +357,10 @@ type CheckedTableWriter = new (
  * that the sizer counted, throws a `RangeError` and leaves the writer where
  * it was, without writing any of the field: its offset, its count or length,
  * or its values. Only a string, whose UTF-8 length is known once it's
- * written, has then written what fits of it after the position. An array is
- * written as long as its `length` was when the setter read it, and one that
- * has grown by the time its elements are written throws the same way.
+ * written, has then written what fits of it after the position, which may
+ * end with the first bytes of a character. An array is written as long as
+ * its `length` was when the setter read it, and one that has grown by the
+ * time its elements are written throws the same way.
  *
  * Typed arrays of a field's element type are copied as bytes; any other
  * array-like, such as a `number[]` or a typed array of another type, is

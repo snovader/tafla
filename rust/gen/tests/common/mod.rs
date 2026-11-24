@@ -214,6 +214,15 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
     },
 ];
 
+/// The schemas of the suites that only one language has, such as the
+/// TypeScript suite of strings, each with its generated code beside it
+pub const SINGLE_SUITE_SCHEMAS: [BenchmarkSchema; 1] = [BenchmarkSchema {
+    target: "typescript",
+    schema: "typescript/benchmarks/strings/strings.tafla",
+    directory: "typescript/benchmarks/strings/generated/tafla",
+    package: None,
+}];
+
 impl BenchmarkSchema {
     pub fn source(&self) -> String {
         read(&Path::new(REPOSITORY).join(self.schema))
