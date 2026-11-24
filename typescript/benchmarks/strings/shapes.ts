@@ -43,7 +43,12 @@ export const SHAPES: Shape[] = [
         twoBytes
     ),
     shape('15 chars, one of 4 bytes', 15, 5, i => i === 7, fourBytes),
+    shape('16 chars of ASCII', 16, 17),
+    shape('31 chars, last of 2 bytes', 31, 18, i => i === 30, twoBytes),
+    shape('32 chars of ASCII', 32, 19),
     shape('32 chars of 3 bytes', 32, 6, every, threeBytes),
+    shape('33 chars of ASCII', 33, 11),
+    shape('33 chars, last of 2 bytes', 33, 12, i => i === 32, twoBytes),
     shape('64 chars of ASCII', 64, 7),
     shape('256 chars of ASCII', 256, 8),
     shape('256 chars of 3 bytes', 256, 9, every, threeBytes),

@@ -17,6 +17,16 @@ const SHORT_STRING = 32;
  */
 const TINY_STRING = 8;
 
+/**
+ * An array of each length up to {@link SHORT_STRING}, which
+ * `decodeShortAscii()` fills with a string's bytes for
+ * `String.fromCharCode()`, rather than an array of its own for each string
+ */
+const codesOfLength = Array.from(
+    { length: SHORT_STRING + 1 },
+    (_, length) => new Array<number>(length)
+);
+
 /** The bytes that `utf8LengthByEncoding()` encodes a string into */
 const scratch = new Uint8Array(4096);
 
@@ -243,13 +253,26 @@ function decodeUtf8(
  *
  * Through `TableReader.getString()`, the loop read 8, 16 and 32 bytes of
  * ASCII in 30, 45 and 78 ns in Node 26, and in 28, 43 and 72 ns in Node 27,
- * where `decode()` took 84–89 ns for any of them, and broke even at about 37
- * bytes in Node 26 and 41 in Node 27. A string with a byte of 0x80 or more
- * pays for the loop until that byte, and then for `decode()`: 8 ns more when
- * it's the first of 32 bytes, and 37 ns when it's the last. Adding each
- * character to a string took longer than `decode()` from 16 bytes, adding 4
- * at a time longer than this loop from 16, and `fromCharCode()` of a
- * `subarray()` longer than this loop at every length.
+ * where `decode()` took 84–89 ns for any of them, with a new array for each
+ * string. Filling the one of its length in `codesOfLength` instead, tables of
+ * 16 strings of 16 and 32 bytes of ASCII took 0.84–0.96 times as long to
+ * read in Node 24, 26 and 27, and of 8 to 16 characters with characters
+ * outside ASCII 0.86–0.94, since the loop no longer allocates an array for a
+ * string that it then leaves to `decodeShortUtf8()`.
+ *
+ * A string with a byte of 0x80 or more pays for the loop until that byte,
+ * and then for `decode()`: 8 ns more when it's the first of 32 bytes, and 37
+ * ns when it's the last. That's why the loop stops at 32 bytes, although it
+ * reads ASCII faster than `decode()` up to 44 to 48: with 40 as its limit,
+ * 16 strings of 33 and 40 bytes of ASCII took 0.73–0.79 and 0.86–0.96 times
+ * as long, but of 33 characters, the last of 2 bytes, 1.14–1.20, and with 48,
+ * 48 bytes of ASCII took 0.99–1.08. Adding each character to a string took
+ * longer than `decode()` from 16 bytes, adding 4 at a time longer than this
+ * loop from 16, and `fromCharCode()` of a `subarray()` longer than this loop
+ * at every length. In a loop of its own, adding the strings of 16
+ * arguments of `fromCharCode()` read 33 to 48 bytes in 0.6–0.8 times the
+ * time of `decode()`, but as a concatenation, which then took 0.86–1.15
+ * times as long to look up in a `Map` for 33 bytes, and 1.02–1.25 for 48.
  */
 export function decodeShortAscii(
     bytes: Uint8Array,
@@ -263,7 +286,9 @@ export function decodeShortAscii(
         return undefined;
     }
 
-    const codes = new Array<number>(length);
+    // Every one of its codes is written before fromCharCode() reads them, so
+    // that none is left from another string of the same length
+    const codes = codesOfLength[length];
     for (let i = 0; i < length; i++) {
         const byte = bytes[start + i];
         if (byte >= 0x80) {
