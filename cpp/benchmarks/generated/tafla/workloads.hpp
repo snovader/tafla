@@ -235,7 +235,7 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 1;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().sized().versioned();
+    static constexpr auto LAYOUT = ::tafla::TableLayout().sized().with_version(FORMAT_VERSION);
 
     /**
      * Reads a `Document` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in another format
@@ -665,7 +665,7 @@ inline Columns Document::columns() const {
 }
 
 inline ::tafla::Bytes DocumentFields::serialize() const {
-    ::tafla::TableSizer sizer_(4, Document::LAYOUT, Document::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(4, Document::LAYOUT);
     sizer_.add_float64();
     sizer_.add_float64();
     sizer_.add_string(name);
@@ -683,7 +683,7 @@ inline ::tafla::Bytes DocumentFields::serialize() const {
 }
 
 inline std::size_t DocumentFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(4, Document::LAYOUT, Document::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(4, Document::LAYOUT);
     sizer_.add_float64();
     sizer_.add_float64();
     sizer_.add_string(name);

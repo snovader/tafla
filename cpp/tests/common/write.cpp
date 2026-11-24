@@ -72,7 +72,7 @@ TableSizer sizer_of(const Table& table) {
     const auto fields = table.fields.size();
 
     if (table.layout.versioned) {
-        return {fields, layout.versioned(), table.version.value()};
+        return {fields, layout.with_version(table.version.value())};
     }
     return {fields, layout};
 }

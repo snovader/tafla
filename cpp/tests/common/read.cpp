@@ -270,7 +270,7 @@ template <class Function>
 auto with_reader(std::span<const std::uint8_t> bytes, const Layout& layout, Function function) {
     const auto unversioned = layout.unversioned();
     if (layout.versioned) {
-        return function(Reader<true>(TableReader(bytes, unversioned.versioned())));
+        return function(Reader<true>(TableReader(bytes, unversioned.with_version(0))));
     }
     return function(Reader<false>(TableReader(bytes, unversioned)));
 }
@@ -281,9 +281,9 @@ Table read_table(std::span<const std::uint8_t> bytes, const Table& table) {
     const auto unversioned = table.layout.unversioned();
 
     if (table.layout.versioned) {
-        const Reader<true> reader(TableReader(bytes, unversioned.versioned()));
+        const Reader<true> reader(TableReader(bytes, unversioned.with_version(0)));
         reader.check_size(table.layout);
-        const auto version = TableReader(bytes, unversioned.versioned()).version();
+        const auto version = TableReader(bytes, unversioned.with_version(0)).version();
         return {table.layout, version, reader.read_root_fields(table.fields)};
     }
 

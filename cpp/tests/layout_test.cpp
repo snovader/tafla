@@ -43,10 +43,27 @@ TEST(Layout, HeaderSize) {
     constexpr TableLayout layout;
     static_assert(layout.with_offset_type(OffsetType::uint8).header_size() == 0);
     static_assert(layout.sized().with_offset_type(OffsetType::uint8).header_size() == 1);
-    static_assert(layout.versioned().with_offset_type(OffsetType::uint16).header_size() == 2);
-    static_assert(layout.sized().versioned().with_offset_type(OffsetType::uint16).header_size() == 4);
-    static_assert(layout.sized().versioned().header_size() == 8);
-    static_assert(layout.sized().versioned().is_versioned());
+    static_assert(layout.with_version(0).with_offset_type(OffsetType::uint16).header_size() == 2);
+    static_assert(layout.sized().with_version(0).with_offset_type(OffsetType::uint16).header_size() == 4);
+    static_assert(layout.sized().with_version(0).header_size() == 8);
+    static_assert(layout.sized().with_version(0).is_versioned());
+}
+
+TEST(Layout, Version) {
+    constexpr auto first = TableLayout().sized().with_version(1);
+    constexpr auto second = first.with_version(2);
+    static_assert(second.version() == 2 && second.is_sized());
+    static_assert(first != second);
+
+    // A layout without a version is no longer for those that have one
+    static_assert(sizeof(TableLayout<false>) < sizeof(TableLayout<true>));
+    static_assert(sizeof(TableLayout<false>) == 2);
+
+    const auto bytes = TableBuilder(0, second).to_bytes();
+
+    // A reader reads a table of any version, whatever its layout's
+    EXPECT_EQ(TableReader(bytes, first).version(), 2U);
+    EXPECT_EQ(TableReader(bytes, second).version(), 2U);
 }
 
 TEST(Layout, Alignments) {
