@@ -155,9 +155,10 @@ repository's first commits, for code built from its source before the release.
   - Two builders written at once took 1.2 times as long for a record, and
     one after a builder that was never written 1.6 to 1.7 times, since the
     second builder grows a buffer of its own.
-  - Tables longer than 64 KiB, whose buffer isn't kept for the next builder:
-    130 columns of 500 bytes took 1.2 to 1.4 times as long, and a vector in
-    place of 1,000 tables of a `uint32` and a `Float32Array` of 128 the same.
+  - Tables longer than 64 KiB, whose buffer isn't kept for the next builder,
+    and which are copied out of it: 130 columns of 500 bytes took 1.35 to
+    1.55 times as long in Node 24, 26 and 27, and a vector in place of 1,000
+    tables of a `uint32` and a `Float32Array` of 128 1.4 to 1.55 times.
 - The package is one module, `dist/index.js`, which rolldown bundles, with
   the value of each constant, such as `SIZEOF_64`, written where it's used.
   V8 loads an imported binding from its module at every use, even in
