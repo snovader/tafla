@@ -16,7 +16,6 @@ import {
     assertAlignment,
     assertCount,
     headerLength,
-    maxLength,
     nestedHeaderLength,
     padding,
     TableLayout
@@ -279,14 +278,19 @@ export class TableBuilder {
 
         this.#layout = layout;
         this.#size = size;
-        this.#maxLength = maxLength(size);
+        // The layout's `maxLength()` and `headerSize()`, which
+        // `headerLength()` has called too, are worked out here instead:
+        // V8 counts the bytecode of each call that it inlines, and with
+        // them repeated a row of many short builders took 1.15–1.2 times
+        // as long in Node 26
+        this.#maxLength = 0xffff_ffff >>> (32 - 8 * size);
         this.#fields = fields;
 
         this.#take(header + fields * FIELD_ROOM);
 
         // The length, when the layout is sized, is written by bytes(), and
         // the offsets as the fields are set
-        const slots = layout.headerSize();
+        const slots = header - fields * size;
         const version = layout.version();
         if (version !== undefined) {
             this.#setUnsigned(slots - size, version);
@@ -1303,12 +1307,7 @@ export class TableBuilder {
      */
     #take(length: number): void {
         if (length > SHARED_BYTES) {
-            const bytes = new Uint8Array(length);
-
-            this.#bytes = bytes;
-            this.#view = new DataView(bytes.buffer);
-            this.#base = 0;
-            this.#capacity = length;
+            this.#takeOwn(length);
             return;
         }
 
@@ -1323,6 +1322,20 @@ export class TableBuilder {
         this.#capacity = room;
         top += room;
         live++;
+    }
+
+    /**
+     * Takes a buffer of the builder's own, of `length` bytes. It's apart
+     * from `#take()`, which the constructor calls, to keep the bytecode
+     * that V8 inlines with the constructor small.
+     */
+    #takeOwn(length: number): void {
+        const bytes = new Uint8Array(length);
+
+        this.#bytes = bytes;
+        this.#view = new DataView(bytes.buffer);
+        this.#base = 0;
+        this.#capacity = length;
     }
 
     #alignTo(alignment: ElementSize): void {
