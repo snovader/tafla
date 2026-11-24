@@ -11,8 +11,9 @@ use crate::workloads::{
     StructsShape, sum_column,
 };
 
-const DOCUMENT_LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const DOCUMENT_VERSION: u32 = 1;
+const DOCUMENT_LAYOUT: TableLayout<true> =
+    TableLayout::DEFAULT.sized().with_version(DOCUMENT_VERSION);
 
 const SAMPLE_SIZE: usize = 12;
 
@@ -67,7 +68,7 @@ impl Workload<DocumentShape> for Tafla {
     type Bytes = Vec<u8>;
 
     fn serialize(self, input: &Document<'_>) -> Result<Vec<u8>, Error> {
-        let mut document = TableBuilder::versioned(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)?;
+        let mut document = TableBuilder::new(4, DOCUMENT_LAYOUT)?;
         document.set_f64(input.x)?;
         document.set_f64(input.y)?;
         document.set_str(input.name.as_ref())?;

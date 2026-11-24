@@ -83,47 +83,32 @@ macro_rules! array_adders {
 
 impl TableSizer {
     /// Starts sizing a table of `fields` fields in `layout`, which its
-    /// readers must use too. Nested tables use [`TableLayout::DEFAULT`].
+    /// readers must use too, and whose version its writer writes in the
+    /// header when it has one. Nested tables use [`TableLayout::DEFAULT`].
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
-    /// layout's offset type, as `TableBuilder::new()` returns.
-    pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
-        let header = layout.header_length(fields)?;
-
-        Ok(Self::create(fields, header, layout, None))
-    }
-
-    /// Starts sizing a table of `fields` fields in `layout`, whose writer
-    /// writes `version` in its header
-    ///
-    /// # Errors
-    ///
-    /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is too long for the layout's offset type, as
-    /// `TableBuilder::versioned()` returns.
-    pub fn versioned(
+    /// [`BuildError::VersionTooLarge`] if the layout's version doesn't fit
+    /// in its offset type, or [`BuildError::HeaderTooLong`] if the header
+    /// alone is too long for it, as `TableBuilder::new()` returns.
+    pub fn new<const VERSIONED: bool>(
         fields: usize,
-        layout: TableLayout<true>,
-        version: u32,
+        layout: TableLayout<VERSIONED>,
     ) -> Result<Self, BuildError> {
-        layout.check_version(version)?;
+        layout.check_version()?;
         let header = layout.header_length(fields)?;
 
-        Ok(Self::create(fields, header, layout, Some(version)))
+        Ok(Self::create(fields, header, layout))
     }
 
     fn create<const VERSIONED: bool>(
         fields: usize,
         header: u32,
         layout: TableLayout<VERSIONED>,
-        version: Option<u32>,
     ) -> Self {
         Self {
             fields,
-            version,
+            version: layout.header_version(),
             sized: layout.is_sized(),
             offset_type: layout.offset_type(),
             position: u64::from(header),
@@ -472,7 +457,8 @@ impl TableWriter {
     }
 
     /// Returns new bytes for a table of `fields` fields in `layout`, of
-    /// `length` bytes, which the caller writes itself, at positions that it
+    /// `length` bytes, with the layout's version in its header when it has
+    /// one, which the caller writes itself, at positions that it
     /// works out, without a sizer and a writer: an empty `Vec` with the
     /// table's header and a capacity of exactly `length`, at least the
     /// header's slots and offsets, to which the caller appends every other
@@ -486,42 +472,20 @@ impl TableWriter {
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] as [`TableSizer::new()`] returns it, or
-    /// [`BuildError::TooLong`], naming the last field, if `length` is longer
+    /// [`BuildError::VersionTooLarge`] or [`BuildError::HeaderTooLong`] as
+    /// [`TableSizer::new()`] returns them, or [`BuildError::TooLong`], naming the last field, if `length` is longer
     /// than the layout's offset type addresses.
     #[inline]
-    pub fn table_bytes(
+    pub fn table_bytes<const VERSIONED: bool>(
         fields: usize,
-        layout: TableLayout,
+        layout: TableLayout<VERSIONED>,
         length: u64,
     ) -> Result<Vec<u8>, BuildError> {
+        layout.check_version()?;
         layout.header_length(fields)?;
 
         let (sized, offset_type) = (layout.is_sized(), layout.offset_type());
-        new_table_bytes(fields, length, sized, None, offset_type)
-    }
-
-    /// Returns new bytes for a table of `fields` fields in `layout`, of
-    /// `length` bytes, with `version` in its header, as
-    /// [`TableWriter::table_bytes()`] returns them
-    ///
-    /// # Errors
-    ///
-    /// [`BuildError::VersionTooLarge`] or [`BuildError::HeaderTooLong`] as
-    /// [`TableSizer::versioned()`] returns them, or [`BuildError::TooLong`]
-    /// as [`TableWriter::table_bytes()`] does.
-    #[inline]
-    pub fn versioned_table_bytes(
-        fields: usize,
-        layout: TableLayout<true>,
-        version: u32,
-        length: u64,
-    ) -> Result<Vec<u8>, BuildError> {
-        layout.check_version(version)?;
-        layout.header_length(fields)?;
-
-        let (sized, offset_type) = (layout.is_sized(), layout.offset_type());
-        new_table_bytes(fields, length, sized, Some(version), offset_type)
+        new_table_bytes(fields, length, sized, layout.header_version(), offset_type)
     }
 
     /// Returns the table's bytes.

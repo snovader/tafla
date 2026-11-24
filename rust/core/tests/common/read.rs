@@ -47,7 +47,7 @@ macro_rules! with_reader {
     ($bytes:expr, $layout:expr, $reader:ident => $expression:expr) => {{
         let layout = $layout.unversioned();
         if $layout.versioned {
-            let $reader = Reader(TableReader::new($bytes, layout.versioned()));
+            let $reader = Reader(TableReader::new($bytes, layout.with_version(0)));
             $expression
         } else {
             let $reader = Reader(TableReader::new($bytes, layout));
@@ -63,7 +63,7 @@ pub fn read_table(bytes: &[u8], table: &Table) -> Result<Table, ReadError> {
     let layout = table.layout.unversioned();
 
     let (version, fields) = if table.layout.versioned {
-        let reader = Reader(TableReader::new(bytes, layout.versioned()));
+        let reader = Reader(TableReader::new(bytes, layout.with_version(0)));
         reader.check_size(table.layout)?;
         (
             Some(reader.0.version()?),
@@ -251,7 +251,7 @@ impl<const V: bool> Reader<'_, V> {
     fn reads_in_place(&self, table: &Table) -> bool {
         let layout = &table.layout;
 
-        !layout.sized && !layout.versioned && layout.offset_type == self.0.layout().offset_type()
+        !layout.sized && !layout.versioned && layout.offset_type == self.0.offset_type()
     }
 
     /// Reads the fields of a table nested at `position`, from offsets counted

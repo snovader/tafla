@@ -102,7 +102,9 @@ impl<'a> Document<'a> {
     /// The version of the format, which the header carries and [`Self::new`] checks
     pub const FORMAT_VERSION: u32 = 1;
 
-    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
+    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
+        .sized()
+        .with_version(Self::FORMAT_VERSION);
 
     /// Reads a [`Document`] from `bytes`
     ///
@@ -186,7 +188,7 @@ impl DocumentFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(4, Document::LAYOUT, Document::FORMAT_VERSION)?;
+        let mut sizer = TableSizer::new(4, Document::LAYOUT)?;
         sizer.add_f64();
         sizer.add_f64();
         sizer.add_str(self.name);

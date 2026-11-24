@@ -188,6 +188,11 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The Rust that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `with_version(Self::FORMAT_VERSION)`,
+  rather than to `TableSizer::versioned()` and
+  `TableWriter::versioned_table_bytes()`, which the runtime no longer has.
+  It needs the runtime that takes the version so.
 - The command prints the error of a file that it can't write after the errors
   of schemas that write the same file, rather than before them, as every
   host of the `cli` module does.

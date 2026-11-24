@@ -10,8 +10,8 @@ given.
 use tafla::{TableReader, DecodeError, TableBuilder, TableLayout};
 
 // A format's header, shared by its writer and its readers
-const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
 const FORMAT_VERSION: u32 = 1;
+const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(FORMAT_VERSION);
 
 let timestamps = vec![0_u32, 86_400];
 let values = vec![21.75_f32, 18.5];
@@ -20,7 +20,7 @@ let mut series = TableBuilder::new(2, TableLayout::DEFAULT)?;
 series.set_u32_array(&timestamps)?; // borrowed until the table is written
 series.set_f32_array(values.clone())?; // or owned
 
-let mut builder = TableBuilder::versioned(3, LAYOUT, FORMAT_VERSION)?;
+let mut builder = TableBuilder::new(3, LAYOUT)?;
 builder.set_f64(59.3293)?;
 builder.set_str("Europe/Stockholm")?;
 builder.set_table(series)?; // written straight into the table
@@ -80,8 +80,7 @@ The generated code writes a table of fields whose sizes the schema fixes
 whole, at positions that it works out: a nested one from its bytes, which
 the sizer's `add_table_bytes()` adds and the writer's `copy_table()` copies,
 and a message of such fields, and a string after them, into the bytes that
-`TableWriter::table_bytes()` or `versioned_table_bytes()` returns with its
-header, without a sizer and a writer. Like Go's `AppendTable()`, these are
+`TableWriter::table_bytes()` returns with its header, without a sizer and a writer. Like Go's `AppendTable()`, these are
 for the generated code, outside the compatibility promise of the rest of
 the API, and may change with the generator.
 
@@ -91,7 +90,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
-  then its version when it's `versioned`.
+  then the version that `with_version()` gave it.
 - Header slots, offsets, counts and vector item ends are all of the
   layout's offset type, `OffsetType::Uint8`, `Uint16` or `Uint32`, whose
   offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -245,6 +244,6 @@ than panicking, since WebAssembly builds abort on panic:
   nesting a builder, return an error while fields are left to set. A version
   that doesn't fit, or a header too long for its offset type, is an error
   from the constructor.
-- The compiler requires a version exactly for a versioned layout, and offers
-  `TableReader::version()` only for one, through `TableLayout`'s `VERSIONED`
+- The compiler offers a layout's `version()` and `TableReader::version()`
+  only for a layout with a version, through `TableLayout`'s `VERSIONED`
   parameter.

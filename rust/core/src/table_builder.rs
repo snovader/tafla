@@ -98,36 +98,22 @@ macro_rules! array_setters {
 
 impl<'a> TableBuilder<'a> {
     /// Starts a table of `fields` fields in `layout`, which its readers must
-    /// use too. Nested tables use [`TableLayout::DEFAULT`].
+    /// use too, with the layout's version in its header when it has one.
+    /// Nested tables use [`TableLayout::DEFAULT`].
     ///
     /// # Errors
     ///
-    /// [`BuildError::HeaderTooLong`] if the header alone is too long for the
-    /// layout's offset type.
-    pub fn new(fields: usize, layout: TableLayout) -> Result<Self, BuildError> {
-        let header = layout.header_length(fields)?;
-
-        Ok(Self::create(fields, header, layout, None))
-    }
-
-    /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `TableReader::version()` before
-    /// reading any field.
-    ///
-    /// # Errors
-    ///
-    /// [`BuildError::VersionTooLarge`] if `version` doesn't fit in the
-    /// layout's offset type, or [`BuildError::HeaderTooLong`] if the header
-    /// alone is too long for the layout's offset type.
-    pub fn versioned(
+    /// [`BuildError::VersionTooLarge`] if the layout's version doesn't fit
+    /// in its offset type, or [`BuildError::HeaderTooLong`] if the header
+    /// alone is too long for it.
+    pub fn new<const VERSIONED: bool>(
         fields: usize,
-        layout: TableLayout<true>,
-        version: u32,
+        layout: TableLayout<VERSIONED>,
     ) -> Result<Self, BuildError> {
-        layout.check_version(version)?;
+        layout.check_version()?;
         let header = layout.header_length(fields)?;
 
-        Ok(Self::create(fields, header, layout, Some(version)))
+        Ok(Self::create(fields, header, layout))
     }
 
     /// A builder of a table of `fields` fields, whose header of `header`
@@ -137,8 +123,9 @@ impl<'a> TableBuilder<'a> {
         fields: usize,
         header: u32,
         layout: TableLayout<VERSIONED>,
-        version: Option<u32>,
     ) -> Self {
+        let version = layout.header_version();
+
         Self {
             values: Vec::with_capacity(fields.max(MIN_RECORDED)),
             // The header holds an offset of at least a byte per field

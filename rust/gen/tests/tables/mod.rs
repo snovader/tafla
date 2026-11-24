@@ -208,7 +208,7 @@ impl Header {
 /// too long for its offsets.
 pub fn build(header: Header, values: &[Value]) -> Result<Vec<u8>, BuildError> {
     let mut builder = match header.version {
-        Some(version) => TableBuilder::versioned(values.len(), header.layout.versioned(), version)?,
+        Some(version) => TableBuilder::new(values.len(), header.layout.with_version(version))?,
         None => TableBuilder::new(values.len(), header.layout)?,
     };
     set_all(&mut builder, values)?;

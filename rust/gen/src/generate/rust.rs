@@ -739,15 +739,7 @@ impl Generator<'_> {
         writer.open("pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {");
         let fields = text(integer(&definition.fields.len()));
         let layout_constant = text(format!("{name}::LAYOUT"));
-        let sizer = if layout.version.is_some() {
-            let version = text(format!("{name}::FORMAT_VERSION"));
-            call(
-                "TableSizer::versioned",
-                vec![fields, layout_constant, version],
-            )
-        } else {
-            call("TableSizer::new", vec![fields, layout_constant])
-        };
+        let sizer = call("TableSizer::new", vec![fields, layout_constant]);
         writer.statement(&STYLE, "let mut sizer = ", &sizer, "?;");
         self.sizes(writer, definition, generic, "&mut sizer");
         writer.blank();
@@ -1347,14 +1339,14 @@ fn serialize_whole(
         text(integer(&definition.fields.len())),
         text(format!("{name}::LAYOUT")),
     ];
-    let function = if layout.version.is_some() {
-        arguments.push(text(format!("{name}::FORMAT_VERSION")));
-        "TableWriter::versioned_table_bytes"
-    } else {
-        "TableWriter::table_bytes"
-    };
     arguments.push(text(length));
-    let_call(writer, "let mut bytes =", function, arguments, "?;");
+    let_call(
+        writer,
+        "let mut bytes =",
+        "TableWriter::table_bytes",
+        arguments,
+        "?;",
+    );
     writer.blank();
 
     // The positions in the bytes after the header
@@ -1538,7 +1530,7 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout, generics: &str) {
         calls.push(".sized()".to_owned());
     }
     if layout.version.is_some() {
-        calls.push(".versioned()".to_owned());
+        calls.push(".with_version(Self::FORMAT_VERSION)".to_owned());
     }
     match layout.offset_type {
         OffsetType::Uint8 => calls.push(".with_offset_type(OffsetType::Uint8)".to_owned()),
