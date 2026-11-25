@@ -441,7 +441,7 @@ impl<'a> Generator<'a> {
             article(name)
         )]));
         writer.open(format!("func ({name}) layout() tafla.TableLayout {{"));
-        writer.line(format!("return {}", layout_expression(layout)));
+        writer.line(format!("return {}", layout_expression(layout, name)));
         writer.close("}");
 
         self.getters(writer, definition, Some(layout));
@@ -924,20 +924,14 @@ impl<'a> Generator<'a> {
         ));
         let plan = self.plan(definition);
         if plan.whole {
-            self.append_whole(writer, definition, layout, &plan);
+            self.append_whole(writer, definition, &plan);
             writer.close("}");
             return;
         }
 
-        if layout.version.is_some() {
-            writer.line(format!(
-                "sizer, err := tafla.NewVersionedTableSizer({fields}, {name}{{}}.layout(), {name}FormatVersion)"
-            ));
-        } else {
-            writer.line(format!(
-                "sizer, err := tafla.NewTableSizer({fields}, {name}{{}}.layout())"
-            ));
-        }
+        writer.line(format!(
+            "sizer, err := tafla.NewTableSizer({fields}, {name}{{}}.layout())"
+        ));
         return_on_error(writer, "nil");
         self.sizes(writer, definition, "&sizer");
         writer.blank();
@@ -952,13 +946,7 @@ impl<'a> Generator<'a> {
     /// The body of `AppendBinary()` of a message whose fields are all of fixed
     /// size but a string after them, which it lays out in the bytes that the
     /// runtime appends and writes the header of
-    fn append_whole(
-        &self,
-        writer: &mut CodeWriter,
-        definition: &Definition,
-        layout: Layout,
-        plan: &Plan,
-    ) {
+    fn append_whole(&self, writer: &mut CodeWriter, definition: &Definition, plan: &Plan) {
         let name = &definition.name;
         let fields = definition.fields.len();
         let string = definition.fields.get(plan.fixed);
@@ -974,15 +962,9 @@ impl<'a> Generator<'a> {
             None => end.to_string(),
         };
         let table = if fields == 0 { "_" } else { "table" };
-        if layout.version.is_some() {
-            writer.line(format!(
-                "bytes, {table}, err := tafla.AppendVersionedTable(bytes, {fields}, {name}{{}}.layout(), {name}FormatVersion, {length})"
-            ));
-        } else {
-            writer.line(format!(
-                "bytes, {table}, err := tafla.AppendTable(bytes, {fields}, {name}{{}}.layout(), {length})"
-            ));
-        }
+        writer.line(format!(
+            "bytes, {table}, err := tafla.AppendTable(bytes, {fields}, {name}{{}}.layout(), {length})"
+        ));
         return_on_error(writer, "nil");
 
         if fields > 0 {
@@ -1805,14 +1787,17 @@ fn at(bytes: &str, offset: usize) -> String {
     }
 }
 
-/// The layout of a message, as an expression of the runtime's
-fn layout_expression(layout: Layout) -> String {
+/// The layout of message `name`, as an expression of the runtime's, whose
+/// version is the message's `FormatVersion` constant
+fn layout_expression(layout: Layout, name: &str) -> String {
     let mut expression = "tafla.TableLayout{}".to_owned();
     if layout.sized {
         expression.push_str(".Sized()");
     }
     if layout.version.is_some() {
-        expression.push_str(".Versioned()");
+        expression.push_str(".WithVersion(");
+        expression.push_str(name);
+        expression.push_str("FormatVersion)");
     }
     match layout.offset_type {
         OffsetType::Uint8 => expression.push_str(".WithOffsetType(tafla.Uint8)"),

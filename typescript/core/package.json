@@ -63,7 +63,7 @@
     "prepack": "yarn build"
   },
   "devDependencies": {
-    "fast-check": "^4.10.3",
+    "fast-check": "^4.11.0",
     "hypotes": "^0.3.1",
     "magic-string": "^1.4.5",
     "oxc-parser": "^0.159.0",

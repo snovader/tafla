@@ -53,35 +53,21 @@ type TableBuilder struct {
 	// The number of fields that the table holds
 	fields uint32
 	// The table's length so far, which is where the next field goes
-	length  uint32
-	version uint32
-	layout  TableLayout
+	length uint32
+	layout TableLayout
 	// The largest alignment that a field needs from the table's start, which
 	// a parent pads this table to when it nests it
 	alignment Alignment
 }
 
 // NewTableBuilder starts a table of fields fields in layout, which its
-// readers must use too. Nested tables use the default layout, the zero
-// [TableLayout]. It fails with HeaderTooLong if the header alone is too long
-// for the layout's offset type, and panics if the layout is versioned, which
-// [NewVersionedTableBuilder] builds, or fields is negative.
+// readers must use too, with the layout's version in its header when it has
+// one. Nested tables use the default layout, the zero [TableLayout]. It
+// fails with VersionTooLarge if the layout's version doesn't fit in its
+// offset type, or with HeaderTooLong if the header alone is too long for
+// it, and panics if fields is negative.
 func NewTableBuilder(fields int, layout TableLayout) (*TableBuilder, error) {
-	return newTableBuilder(fields, layout, false, 0)
-}
-
-// NewVersionedTableBuilder starts a table of fields fields in layout, with
-// version in its header. Readers can check it with [TableReader.Version]
-// before reading any field. It fails with VersionTooLarge if the version
-// doesn't fit in the layout's offset type, or with HeaderTooLong if the
-// header alone is too long for it, and panics if the layout isn't versioned
-// or fields is negative.
-func NewVersionedTableBuilder(fields int, layout TableLayout, version uint32) (*TableBuilder, error) {
-	return newTableBuilder(fields, layout, true, version)
-}
-
-func newTableBuilder(fields int, layout TableLayout, versioned bool, version uint32) (*TableBuilder, error) {
-	if err := layout.checkVersion(versioned, version); err != nil {
+	if err := layout.checkVersion(); err != nil {
 		return nil, err
 	}
 
@@ -95,7 +81,6 @@ func newTableBuilder(fields int, layout TableLayout, versioned bool, version uin
 	builder.end = fields
 	builder.fields = uint32(fields)
 	builder.length = header
-	builder.version = version
 	builder.layout = layout
 	builder.alignment = Align1
 
@@ -146,7 +131,7 @@ func (b *TableBuilder) Bytes() ([]byte, error) {
 
 	// The constructor checked the header and the version, and each setter
 	// the table's length, so the writer writes the fields as counted
-	writer := newTableWriter(nil, int(b.length), int(b.fields), b.layout, b.version)
+	writer := newTableWriter(nil, int(b.length), int(b.fields), b.layout)
 	if b.valuePerField() {
 		b.writeValues(&writer)
 	} else {
@@ -733,7 +718,7 @@ func (b *TableBuilder) writeNested(writer *TableWriter, offsetType OffsetType) {
 
 	start := writer.position
 	end := start + int(b.length)
-	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), int(b.fields), b.layout, b.version)
+	nested := newTableWriter(writer.bytes[start:start:end], int(b.length), int(b.fields), b.layout)
 	if b.valuePerField() {
 		b.writeValues(&nested)
 	} else {

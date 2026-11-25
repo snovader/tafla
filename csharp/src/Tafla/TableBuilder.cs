@@ -72,39 +72,24 @@ public sealed partial class TableBuilder
 
     /// <summary>
     /// Starts a table of <paramref name="fields"/> fields in <paramref name="layout"/>, which its
-    /// readers must use too. Nested tables use the default layout.
-    /// </summary>
-    /// <exception cref="BuildException">The header alone is too long for the layout's offset type.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
-    /// <exception cref="ArgumentException">
-    /// The layout is versioned, which the constructor that takes a version builds.
-    /// </exception>
-    public TableBuilder(int fields, TableLayout layout = default)
-        : this(fields, layout, versioned: false, version: 0) { }
-
-    /// <summary>
-    /// Starts a table of <paramref name="fields"/> fields in <paramref name="layout"/>, with
-    /// <paramref name="version"/> in its header, which readers can check with
-    /// <see cref="TableReader.GetVersion"/> before reading any field.
+    /// readers must use too, with the layout's version in its header when it has one, which readers
+    /// can check with <see cref="TableReader.GetVersion"/> before reading any field. Nested tables use
+    /// the default layout.
     /// </summary>
     /// <exception cref="BuildException">
-    /// The version doesn't fit in the layout's offset type, or the header alone is too long for it.
+    /// The layout's version doesn't fit in its offset type, or the header alone is too long for it.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
-    /// <exception cref="ArgumentException">The layout isn't versioned.</exception>
-    public TableBuilder(int fields, TableLayout layout, uint version)
-        : this(fields, layout, versioned: true, version) { }
-
-    private TableBuilder(int fields, TableLayout layout, bool versioned, uint version)
+    public TableBuilder(int fields, TableLayout layout = default)
     {
-        int header = TableLayout.HeaderLength(fields, layout, versioned, version);
+        int header = TableLayout.HeaderLength(fields, layout);
 
         _layout = layout;
         _length = header;
         _bytes = new byte[Math.Min((long)header + InitialCapacity, Array.MaxLength)];
         _table = new Counters(start: 0, offsets: layout.HeaderSize, fields, limit: layout.MaxLength);
 
-        if (versioned)
+        if (layout.Version is { } version)
         {
             WriteSlot(_bytes.AsSpan(layout.Sized ? layout.OffsetSize : 0), version);
         }
@@ -746,7 +731,7 @@ public sealed partial class TableBuilder
     /// <exception cref="BuildException">The offsets are too long for the offset type.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
     private int NestedOffsets(int fields) =>
-        TableLayout.HeaderLength(fields, new TableLayout { OffsetType = _layout.OffsetType }, false, 0);
+        TableLayout.HeaderLength(fields, new TableLayout { OffsetType = _layout.OffsetType });
 
     /// <summary>
     /// Counts the fields of a table of <paramref name="fields"/> fields recorded in place, from the

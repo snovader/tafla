@@ -56,30 +56,21 @@ public struct TableBuilder: Sendable {
     public var layout: TableLayout { header.layout }
 
     /// Starts a table of `fields` fields, which mustn't be negative, in
-    /// `layout`, which its readers must use too, with `version` in its
-    /// header. A versioned layout needs a version, and a layout without a
-    /// version slot takes none: anything else is a programming error, which
-    /// stops the program.
+    /// `layout`, which its readers must use too, with the layout's version
+    /// in its header when it has one.
     ///
     /// Throws ``BuildError/versionTooLarge(version:offsetType:)`` if the
-    /// version doesn't fit in the layout's offset type, or
+    /// layout's version doesn't fit in its offset type, or
     /// ``BuildError/headerTooLong(fields:offsetType:)`` if the header alone is
     /// too long for it.
-    public init(fields: Int, layout: TableLayout = .default, version: UInt32? = nil) throws(BuildError) {
+    public init(fields: Int, layout: TableLayout = .default) throws(BuildError) {
         precondition(fields >= 0, "A table can't hold \(fields) fields")
-        precondition(
-            layout.isVersioned == (version != nil),
-            layout.isVersioned ? "A versioned layout needs a version" : "The layout has no version slot"
-        )
 
-        if let version {
-            try layout.check(version: version)
-        }
+        try layout.checkVersion()
         let headerLength = try layout.headerLength(fields: fields)
 
         self.header = TableHeader(
             layout: layout,
-            version: version ?? 0,
             fieldCount: UInt32(fields),
             headerLength: headerLength,
             length: headerLength
@@ -478,7 +469,6 @@ public struct TableBuilder: Sendable {
 
         return TableHeader(
             layout: layout,
-            version: 0,
             fieldCount: UInt32(fields),
             headerLength: headerLength,
             length: headerLength

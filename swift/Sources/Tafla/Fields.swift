@@ -141,8 +141,6 @@ struct Fields: Sendable, RandomAccessCollection {
 struct TableHeader: Sendable {
     /// The layout that the table is written in
     let layout: TableLayout
-    /// The version in the header, or 0 when the layout has no version
-    let version: UInt32
     /// The number of fields that the table holds, which its header's length
     /// holds too, and fits in its offsets
     let fieldCount: UInt32

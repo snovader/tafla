@@ -140,7 +140,7 @@ func TestUint32FieldOffsetReadsTheOffsetsThatTheBufferReads(t *testing.T) {
 		}
 
 		for _, layout := range []tafla.TableLayout{
-			{}, tafla.TableLayout{}.Sized(), tafla.TableLayout{}.Versioned(), tafla.TableLayout{}.Sized().Versioned(),
+			{}, tafla.TableLayout{}.Sized(), tafla.TableLayout{}.WithVersion(0), tafla.TableLayout{}.Sized().WithVersion(0),
 		} {
 			root := tafla.NewTableReader(bytes, layout)
 			position, err := tafla.Uint32FieldOffset(bytes, 0, layout.HeaderSize()+4*index)
@@ -175,7 +175,7 @@ func TestFieldOffsetsFailAtTheirSlotInEveryOffsetType(t *testing.T) {
 			size := offsetType.Size()
 			nested := tafla.TableLayout{}.WithOffsetType(offsetType)
 
-			for _, layout := range []tafla.TableLayout{nested, nested.Sized(), nested.Versioned(), nested.Sized().Versioned()} {
+			for _, layout := range []tafla.TableLayout{nested, nested.Sized(), nested.WithVersion(0), nested.Sized().WithVersion(0)} {
 				slot := layout.HeaderSize() + index*size
 				offset, ok := slotAt(bytes, slot, offsetType)
 
@@ -322,7 +322,7 @@ func readsOf(bytes []byte, table tables.Table, position, index, size int) reads 
 	unversioned := layout
 	unversioned.Versioned = false
 	reader := tafla.NewTableReader(bytes, unversioned.TableLayout())
-	versioned := tafla.NewTableReader(bytes, unversioned.TableLayout().Versioned())
+	versioned := tafla.NewTableReader(bytes, unversioned.TableLayout().WithVersion(0))
 
 	read.table, read.tableErr = tables.ReadTable(bytes, table)
 	read.size, read.sizeErr = reader.Size()
@@ -523,8 +523,8 @@ func TestRejectsInvalidUTF8(t *testing.T) {
 }
 
 func TestDescribesAnUnsupportedVersion(t *testing.T) {
-	layout := tafla.TableLayout{}.Sized().Versioned()
-	builder := must(tafla.NewVersionedTableBuilder(1, layout, 2))
+	layout := tafla.TableLayout{}.Sized().WithVersion(2)
+	builder := must(tafla.NewTableBuilder(1, layout))
 	check(t, builder.SetUint8(42))
 	table := must(builder.Bytes())
 

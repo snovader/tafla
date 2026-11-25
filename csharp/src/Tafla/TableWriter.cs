@@ -69,7 +69,7 @@ public struct TableWriter
     /// bytes into the start of <paramref name="bytes"/>, which are at least that long, as the sizer
     /// checked them and the header
     /// </summary>
-    internal TableWriter(byte[] bytes, int length, int fields, TableLayout layout, uint version)
+    internal TableWriter(byte[] bytes, int length, int fields, TableLayout layout)
     {
         _bytes = bytes;
         _length = length;
@@ -78,14 +78,14 @@ public struct TableWriter
         _slots = _headerSize;
         _position = _headerSize + fields * layout.OffsetSize;
 
-        WriteHeader(bytes, length, layout, version);
+        WriteHeader(bytes, length, layout);
     }
 
     /// <summary>
     /// Returns new bytes for a table of <paramref name="fields"/> fields in <paramref name="layout"/>,
-    /// of <paramref name="length"/> bytes, with its header written, for the caller to write every other
-    /// byte itself, each field's offset and the field, at positions that it works out, without a sizer
-    /// and a writer.
+    /// of <paramref name="length"/> bytes, with its header written, the layout's version included when
+    /// it has one, for the caller to write every other byte itself, each field's offset and the field,
+    /// at positions that it works out, without a sizer and a writer.
     /// </summary>
     /// <remarks>
     /// It's for the code that tafla-gen generates, as Rust's <c>table_bytes()</c> and Go's
@@ -94,39 +94,17 @@ public struct TableWriter
     /// time that a sizer and a writer take.
     /// </remarks>
     /// <exception cref="BuildException">
-    /// The header alone is too long for the layout's offset type, as <see cref="TableSizer"/> rejects it,
-    /// or the table is, which names its last field, before anything is allocated.
+    /// The layout's version doesn't fit in its offset type or the header alone is too long for it, as
+    /// <see cref="TableSizer"/> rejects them, or the table is, which names its last field, before
+    /// anything is allocated.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="fields"/> is negative, or <paramref name="length"/> is shorter than the header
     /// and the offsets.
     /// </exception>
-    /// <exception cref="ArgumentException">
-    /// The layout is versioned, which the overload that takes a version writes.
-    /// </exception>
-    public static byte[] CreateTableBytes(int fields, TableLayout layout, long length) =>
-        CreateTableBytes(fields, layout, versioned: false, version: 0, length);
-
-    /// <summary>
-    /// Returns new bytes for a table of <paramref name="fields"/> fields in <paramref name="layout"/>,
-    /// of <paramref name="length"/> bytes, with <paramref name="version"/> in its header, as
-    /// <see cref="CreateTableBytes(int, TableLayout, long)"/> returns them.
-    /// </summary>
-    /// <exception cref="BuildException">
-    /// The version doesn't fit in the layout's offset type, or the table or its header alone is too
-    /// long for it, before anything is allocated.
-    /// </exception>
-    /// <exception cref="ArgumentOutOfRangeException">
-    /// <paramref name="fields"/> is negative, or <paramref name="length"/> is shorter than the header
-    /// and the offsets.
-    /// </exception>
-    /// <exception cref="ArgumentException">The layout isn't versioned.</exception>
-    public static byte[] CreateTableBytes(int fields, TableLayout layout, uint version, long length) =>
-        CreateTableBytes(fields, layout, versioned: true, version, length);
-
-    private static byte[] CreateTableBytes(int fields, TableLayout layout, bool versioned, uint version, long length)
+    public static byte[] CreateTableBytes(int fields, TableLayout layout, long length)
     {
-        var header = TableLayout.HeaderLength(fields, layout, versioned, version);
+        var header = TableLayout.HeaderLength(fields, layout);
         ArgumentOutOfRangeException.ThrowIfLessThan(length, header);
         if (length > layout.MaxLength)
         {
@@ -134,13 +112,13 @@ public struct TableWriter
         }
 
         var bytes = new byte[length];
-        WriteHeader(bytes, (int)length, layout, version);
+        WriteHeader(bytes, (int)length, layout);
 
         return bytes;
     }
 
     /// <summary>Writes the header of a table of <paramref name="length"/> bytes in <paramref name="layout"/>: its length when it's sized, and then its version when it's versioned</summary>
-    private static void WriteHeader(byte[] bytes, int length, TableLayout layout, uint version)
+    private static void WriteHeader(byte[] bytes, int length, TableLayout layout)
     {
         var slot = 0;
         if (layout.Sized)
@@ -149,7 +127,7 @@ public struct TableWriter
             slot += layout.OffsetSize;
         }
 
-        if (layout.Versioned)
+        if (layout.Version is { } version)
         {
             WriteSlot(bytes, slot, version, layout.OffsetType);
         }

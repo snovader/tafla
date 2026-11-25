@@ -522,13 +522,10 @@ impl Generator<'_> {
             ],
         );
         writer.open("public func serialize() throws(BuildError) -> [UInt8] {");
-        let mut arguments = vec![
+        let arguments = vec![
             text(format!("fields: {}", definition.fields.len())),
             text(format!("layout: {name}.layout")),
         ];
-        if layout.version.is_some() {
-            arguments.push(text(format!("version: {name}.formatVersion")));
-        }
         writer.statement(
             &STYLE,
             "var sizer = try ",
@@ -1016,14 +1013,14 @@ fn swift_doc(writer: &mut CodeWriter, lines: &[impl AsRef<str>]) {
 }
 
 /// The layout of a message, with the arguments that differ from
-/// `TableLayout`'s defaults
+/// `TableLayout`'s defaults, whose version is the type's `formatVersion`
 fn layout_expression(layout: Layout) -> String {
     let mut arguments = Vec::new();
     if layout.sized {
         arguments.push("sized: true");
     }
     if layout.version.is_some() {
-        arguments.push("versioned: true");
+        arguments.push("version: formatVersion");
     }
     match layout.offset_type {
         OffsetType::Uint8 => arguments.push("offsetType: .uint8"),
@@ -1122,7 +1119,7 @@ mod tests {
         );
         assert_eq!(
             layout_expression(layout(true, Some(1), OffsetType::Uint8)),
-            "TableLayout(sized: true, versioned: true, offsetType: .uint8)"
+            "TableLayout(sized: true, version: formatVersion, offsetType: .uint8)"
         );
     }
 }

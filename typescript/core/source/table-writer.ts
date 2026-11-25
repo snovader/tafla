@@ -47,7 +47,6 @@ import type { ElementSize, OffsetSize } from './types.ts';
  */
 export class TableSizer {
     readonly #layout: TableLayout;
-    readonly #version: number | undefined;
     readonly #fields: number;
     /** The offset size, the width of offsets, lengths and header slots */
     readonly #size: OffsetSize;
@@ -59,27 +58,16 @@ export class TableSizer {
     /**
      * @param fields - The number of fields that the table holds.
      * @param layout - The table's header and offset type, which its readers
-     * must use too.
-     * @param version - The version that the writer writes to the header,
-     * required when the layout is versioned.
-     * @throws {TypeError} If `version` is given for a layout without a version
-     * slot, or missing for one with it.
-     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * isn't an integer that fits in the layout's offset type, or the header
-     * alone is longer than the layout addresses.
+     * must use too, with the version that the writer writes to the header
+     * when it has one.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, or the
+     * header alone is longer than the layout addresses.
      */
-    constructor(fields: number, layout?: TableLayout<false>);
-    constructor(fields: number, layout: TableLayout<true>, version: number);
-    constructor(
-        fields: number,
-        layout: TableLayout = TableLayout.DEFAULT,
-        version?: number
-    ) {
+    constructor(fields: number, layout: TableLayout = TableLayout.DEFAULT) {
         this.#layout = layout;
-        this.#version = version;
         this.#fields = fields;
         this.#size = layout.offsetSize();
-        this.#position = headerLength(fields, layout, version);
+        this.#position = headerLength(fields, layout);
     }
 
     /**
@@ -122,8 +110,7 @@ export class TableSizer {
                 ? new Uint8Array(length)
                 : tableBytes(bytes, length),
             this.#fields,
-            this.#layout,
-            this.#version
+            this.#layout
         );
     }
 
@@ -370,7 +357,6 @@ type CheckedTableWriter = new (
     bytes: Uint8Array,
     fields: number,
     layout: TableLayout,
-    version: number | undefined,
     checked: typeof CHECKED
 ) => TableWriter;
 
@@ -439,18 +425,17 @@ export class TableWriter {
     }
 
     /**
-     * Returns bytes for a table of `fields` fields in `layout`, which has no
-     * version slot, `length` bytes long, with its header written: new bytes,
-     * which are zero, or the start of `bytes`, which needn't be. The caller
-     * writes every other byte, but for the zero bytes of new ones: each
-     * field's offset, and the field.
+     * Returns bytes for a table of `fields` fields in `layout`, `length`
+     * bytes long, with its header written, the layout's version included
+     * when it has one: new bytes, which are zero, or the start of `bytes`,
+     * which needn't be. The caller writes every other byte, but for the zero
+     * bytes of new ones: each field's offset, and the field.
      *
      * It's for the code that tafla-gen generates, which writes a message of
      * fields whose sizes the schema fixes, and a string after them, at
      * positions that it works out, without a sizer and a writer. It may
      * change with the generator.
      *
-     * @throws {TypeError} If the layout has a version slot.
      * @throws {RangeError} As `TableSizer`'s constructor and its `writer()`
      * throw: if `fields` isn't a non-negative integer, the header alone is
      * longer than the layout addresses, `length` is longer than it addresses,
@@ -458,30 +443,11 @@ export class TableWriter {
      */
     static tableBytes(
         fields: number,
-        layout: TableLayout<false>,
+        layout: TableLayout,
         length: number,
         bytes?: Uint8Array
     ): Uint8Array {
-        return newTableBytes(fields, layout, undefined, length, bytes);
-    }
-
-    /**
-     * Returns bytes for a table of `fields` fields in `layout`, `length` bytes
-     * long, with its header written, `version` included, as `tableBytes()`
-     * does for a layout without a version slot.
-     *
-     * @throws {TypeError} If the layout has no version slot.
-     * @throws {RangeError} As `tableBytes()` throws, and if `version` isn't an
-     * integer that fits in the layout's offset type.
-     */
-    static versionedTableBytes(
-        fields: number,
-        layout: TableLayout<true>,
-        version: number,
-        length: number,
-        bytes?: Uint8Array
-    ): Uint8Array {
-        return newTableBytes(fields, layout, version, length, bytes);
+        return newTableBytes(fields, layout, length, bytes);
     }
 
     /**
@@ -490,28 +456,18 @@ export class TableWriter {
      * needn't be zero: the writer writes every byte of the table, padding
      * included.
      *
-     * @throws {TypeError} If `version` is given for a layout without a version
-     * slot, or missing for one with it.
-     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * doesn't fit in the layout's offset type, or `bytes` are longer than the
-     * layout addresses.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, or
+     * `bytes` are longer than the layout addresses.
      */
-    constructor(bytes: Uint8Array, fields: number, layout?: TableLayout<false>);
-    constructor(
-        bytes: Uint8Array,
-        fields: number,
-        layout: TableLayout<true>,
-        version: number
-    );
+    constructor(bytes: Uint8Array, fields: number, layout?: TableLayout);
     constructor(
         bytes: Uint8Array,
         fields: number,
         layout: TableLayout = TableLayout.DEFAULT,
-        version?: number,
         checked?: typeof CHECKED
     ) {
         if (checked !== CHECKED) {
-            assertWritable(bytes, fields, layout, version);
+            assertWritable(bytes, fields, layout);
         }
 
         const size = layout.offsetSize();
@@ -522,7 +478,7 @@ export class TableWriter {
         this.#slots = headerSize;
         this.#position = headerSize + fields * size;
 
-        writeHeader(bytes, layout, version);
+        writeHeader(bytes, layout);
     }
 
     /**
@@ -1038,14 +994,11 @@ function setSlot(
 
 /**
  * Writes a table's header at the start of `bytes`: their length when the
- * layout is sized, and then `version` when it's versioned
+ * layout is sized, and then the layout's version when it has one
  */
-function writeHeader(
-    bytes: Uint8Array,
-    layout: TableLayout,
-    version: number | undefined
-): void {
+function writeHeader(bytes: Uint8Array, layout: TableLayout): void {
     const size = layout.offsetSize();
+    const version = layout.version();
 
     let slot = 0;
     if (layout.sized()) {
@@ -1059,8 +1012,8 @@ function writeHeader(
 }
 
 /**
- * `TableWriter.tableBytes()` and `versionedTableBytes()`, which check the
- * header and the length as a sizer and its `writer()` check them.
+ * `TableWriter.tableBytes()`, which checks the header and the length as a
+ * sizer and its `writer()` check them.
  *
  * A layout without header slots, as the code that tafla-gen generates for
  * most messages has, never calls `writeHeader()`, so V8 leaves it out of
@@ -1069,11 +1022,10 @@ function writeHeader(
 function newTableBytes(
     fields: number,
     layout: TableLayout,
-    version: number | undefined,
     length: number,
     bytes: Uint8Array | undefined
 ): Uint8Array {
-    headerLength(fields, layout, version);
+    headerLength(fields, layout);
     assertAddressable(length, layout);
 
     const table =
@@ -1081,7 +1033,7 @@ function newTableBytes(
             ? new Uint8Array(length)
             : tableBytes(bytes, length);
     if (layout.headerSize() !== 0) {
-        writeHeader(table, layout, version);
+        writeHeader(table, layout);
     }
 
     return table;
@@ -1107,23 +1059,21 @@ function tableLengthError(length: number, layout: TableLayout): RangeError {
 
 /**
  * A writer of a table of `fields` fields into `bytes`, for `TableSizer` and
- * `TableBuilder`. Their constructors checked the fields and the version
- * against the layout, and they checked the table's length as they counted
- * it, so the writer's constructor doesn't check them again. That saves about
- * 15 ns a table: in Node 27, `writer()` took 34 ns rather than 49 ns, and a
- * generated record's write 0.140 µs rather than 0.156 µs.
+ * `TableBuilder`. Their constructors checked the fields against the layout,
+ * and they checked the table's length as they counted it, so the writer's
+ * constructor doesn't check them again. That saves about 15 ns a table: in
+ * Node 27, `writer()` took 34 ns rather than 49 ns, and a generated record's
+ * write 0.140 µs rather than 0.156 µs.
  */
 export function newTableWriter(
     bytes: Uint8Array,
     fields: number,
-    layout: TableLayout,
-    version: number | undefined
+    layout: TableLayout
 ): TableWriter {
     return new (TableWriter as CheckedTableWriter)(
         bytes,
         fields,
         layout,
-        version,
         CHECKED
     );
 }
@@ -1152,10 +1102,9 @@ function tableBytes(bytes: Uint8Array, length: number): Uint8Array {
 function assertWritable(
     bytes: Uint8Array,
     fields: number,
-    layout: TableLayout,
-    version: number | undefined
+    layout: TableLayout
 ): void {
-    headerLength(fields, layout, version);
+    headerLength(fields, layout);
 
     if (!(bytes.length <= maxLength(layout.offsetSize()))) {
         throw new RangeError(

@@ -233,7 +233,7 @@ struct Draw: RandomNumberGenerator {
     /// A table of any header and one of `offsetTypes`, without shrinking
     mutating func table(of offsetTypes: [OffsetType]) -> Table {
         let layouts = { (draw: inout Draw) in
-            TableLayout(sized: draw.bool(), versioned: draw.bool(), offsetType: draw.element(of: offsetTypes))
+            TableLayout(sized: draw.bool(), version: draw.bool() ? 0 : nil, offsetType: draw.element(of: offsetTypes))
         }
 
         return table(layouts: layouts, depth: Tables.depth, small: false)
@@ -241,7 +241,7 @@ struct Draw: RandomNumberGenerator {
 
     /// A layout of any header and offset type
     mutating func layout() -> TableLayout {
-        TableLayout(sized: bool(), versioned: bool(), offsetType: offsetType())
+        TableLayout(sized: bool(), version: bool() ? 0 : nil, offsetType: offsetType())
     }
 
     /// A table of `layouts`, whose fields hold tables `depth` deep, and hold

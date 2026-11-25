@@ -614,7 +614,7 @@ impl Generator<'_> {
         writer.statement(
             &STYLE,
             &format!("{}#LAYOUT = ", self.static_readonly()),
-            &layout_expression(layout),
+            &layout_expression(layout, name),
             ";",
         );
         writer.blank();
@@ -736,18 +736,15 @@ impl Generator<'_> {
         }
 
         if let Some(whole) = self.whole_message(definition, layout) {
-            self.whole_message_writes(writer, definition, layout, &whole, output);
+            self.whole_message_writes(writer, definition, &whole, output);
             writer.close("}");
             return;
         }
 
-        let mut arguments = vec![
+        let arguments = vec![
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
         ];
-        if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FORMAT_VERSION")));
-        }
         writer.statement(
             &STYLE,
             "const sizer = ",
@@ -822,7 +819,6 @@ impl Generator<'_> {
         &self,
         writer: &mut CodeWriter,
         definition: &Definition,
-        layout: Layout,
         whole: &WholeMessage,
         output: Output,
     ) {
@@ -848,17 +844,16 @@ impl Generator<'_> {
             text(definition.fields.len().to_string()),
             text(format!("{name}.#LAYOUT")),
         ];
-        let make = if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FORMAT_VERSION")));
-            "TableWriter.versionedTableBytes"
-        } else {
-            "TableWriter.tableBytes"
-        };
         arguments.push(text(length));
         if let Output::Into = output {
             arguments.push(text("bytes"));
         }
-        writer.statement(&STYLE, "const table = ", &call(make, arguments), ";");
+        writer.statement(
+            &STYLE,
+            "const table = ",
+            &call("TableWriter.tableBytes", arguments),
+            ";",
+        );
         writer.blank();
 
         for (index, &position) in whole.positions.iter().enumerate() {
@@ -2568,13 +2563,15 @@ fn identifier(name: &str) -> String {
     }
 }
 
-fn layout_expression(layout: Layout) -> Expr {
+/// The layout of message `name`, whose version is the class's
+/// `FORMAT_VERSION`
+fn layout_expression(layout: Layout, name: &str) -> Expr {
     let mut entries = Vec::new();
     if layout.sized {
         entries.push(("sized".to_owned(), "true".to_owned()));
     }
     if layout.version.is_some() {
-        entries.push(("versioned".to_owned(), "true".to_owned()));
+        entries.push(("version".to_owned(), format!("{name}.FORMAT_VERSION")));
     }
     if layout.offset_type != OffsetType::Uint32 {
         entries.push((

@@ -118,7 +118,7 @@ func BenchmarkWriteDocument100000Generated(b *testing.B) {
 
 func BenchmarkWriteDocument100Builder(b *testing.B) {
 	fields := document(100)
-	layout := tafla.TableLayout{}.Sized().Versioned()
+	layout := tafla.TableLayout{}.Sized().WithVersion(1)
 	b.ResetTimer()
 	for range b.N {
 		columns, _ := tafla.NewTableBuilder(4, tafla.TableLayout{})
@@ -126,7 +126,7 @@ func BenchmarkWriteDocument100Builder(b *testing.B) {
 		_ = columns.SetUint32Array(fields.Columns.Keys)
 		_ = columns.SetFloat32Array(fields.Columns.A)
 		_ = columns.SetFloat32Array(fields.Columns.B)
-		builder, _ := tafla.NewVersionedTableBuilder(4, layout, 1)
+		builder, _ := tafla.NewTableBuilder(4, layout)
 		_ = builder.SetFloat64(fields.X)
 		_ = builder.SetFloat64(fields.Y)
 		_ = builder.SetString(fields.Name)

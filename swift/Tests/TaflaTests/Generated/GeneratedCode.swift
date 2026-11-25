@@ -126,7 +126,8 @@ func build(_ fields: Any, layout: TableLayout, version: UInt32?) throws(BuildErr
 /// fields, set
 func builder(of fields: Any, layout: TableLayout, version: UInt32? = nil) throws(BuildError) -> TableBuilder {
     let children = Mirror(reflecting: fields).children
-    var builder = try TableBuilder(fields: children.count, layout: layout, version: version)
+    var builder = try TableBuilder(
+        fields: children.count, layout: version.map { layout.withVersion($0) } ?? layout)
     for child in children {
         try builder.set(value: child.value)
     }

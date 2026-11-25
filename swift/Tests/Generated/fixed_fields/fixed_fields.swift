@@ -473,7 +473,7 @@ public struct Tagged: ~Escapable {
 
     /// The layout that a `Tagged` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint8) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -539,7 +539,7 @@ public struct TaggedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint8`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 3, layout: Tagged.layout, version: Tagged.formatVersion)
+        var sizer = try TableSizer(fields: 3, layout: Tagged.layout)
         sizer.addUInt32()
         sizer.addStruct(size: Vec2.size)
         sizer.addString(self.label)
@@ -628,7 +628,7 @@ public struct Pixel: ~Escapable {
 
     /// The layout that a `Pixel` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint16) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -686,7 +686,7 @@ public struct PixelFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint16`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 2, layout: Pixel.layout, version: Pixel.formatVersion)
+        var sizer = try TableSizer(fields: 2, layout: Pixel.layout)
         sizer.addStruct(size: Vec2.size)
         sizer.addUInt32()
 
@@ -776,7 +776,7 @@ public struct Box: ~Escapable {
 
     /// The layout that a `Box` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(versioned: true) }
+    public static var layout: TableLayout { TableLayout(version: formatVersion) }
 
     @usableFromInline
     let _reader: TableReader
@@ -849,7 +849,7 @@ public struct BoxFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 3, layout: Box.layout, version: Box.formatVersion)
+        var sizer = try TableSizer(fields: 3, layout: Box.layout)
         sizer.addStruct(size: Vec2.size)
         sizer.addStruct(size: Vec2.size)
         sizer.addTable(alignment: RangeFields.alignment)

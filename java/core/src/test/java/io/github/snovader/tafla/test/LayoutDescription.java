@@ -9,8 +9,15 @@ record LayoutDescription(boolean sized, boolean versioned, OffsetType offsetType
         return new LayoutDescription(false, false, offsetType);
     }
 
+    /** {@return the layout, which reads tables of any version: its own is zero when it's versioned} */
     TableLayout tableLayout() {
-        return TableLayout.builder().sized(sized).versioned(versioned).offsetType(offsetType).build();
+        return tableLayout(0);
+    }
+
+    /** {@return the layout, with {@code version} when it's versioned} */
+    TableLayout tableLayout(long version) {
+        var builder = TableLayout.builder().sized(sized).offsetType(offsetType);
+        return (versioned ? builder.version(version) : builder).build();
     }
 
     /** {@return the offset size: the width of offsets, header slots and length prefixes in bytes} */

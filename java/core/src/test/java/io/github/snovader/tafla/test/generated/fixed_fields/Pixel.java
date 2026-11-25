@@ -17,7 +17,7 @@ public final class Pixel {
 
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .offsetType(OffsetType.UINT16)
         .build();
 
@@ -47,7 +47,7 @@ public final class Pixel {
 
     /** Writes a {@code Pixel} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(2, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(2, LAYOUT);
         sizer.addStruct(Vec2.SIZE);
         sizer.addUint32();
 
@@ -70,7 +70,7 @@ public final class Pixel {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(2, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(2, LAYOUT);
         sizer.addStruct(Vec2.SIZE);
         sizer.addUint32();
 

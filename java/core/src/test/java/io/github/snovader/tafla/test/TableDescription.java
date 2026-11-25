@@ -1,5 +1,6 @@
 package io.github.snovader.tafla.test;
 
+import io.github.snovader.tafla.TableLayout;
 import java.util.*;
 
 /**
@@ -13,6 +14,20 @@ import java.util.*;
 record TableDescription(LayoutDescription layout, OptionalLong version, List<FieldDescription> fields) {
     TableDescription {
         fields = List.copyOf(fields);
+    }
+
+    /**
+     * {@return the layout that the table's writers take, with its version when it's versioned}
+     *
+     * @throws IllegalStateException if the layout is versioned and the description has no version,
+     *     which would otherwise be written as 0
+     */
+    TableLayout writtenLayout() {
+        if (layout.versioned() && version.isEmpty()) {
+            throw new IllegalStateException("A versioned table needs a version");
+        }
+
+        return layout.tableLayout(version.orElse(0));
     }
 
     /** {@return this table with {@code field} set after its fields} */

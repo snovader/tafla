@@ -7,7 +7,21 @@ extension Table {
     /// A builder of the table's layout, version and number of fields, with no
     /// field set
     func builder() throws(BuildError) -> TableBuilder {
-        try TableBuilder(fields: fields.count, layout: layout, version: version)
+        try TableBuilder(fields: fields.count, layout: writtenLayout)
+    }
+
+    /// The layout that the table is written in: its own, with its version
+    /// when it's versioned. Readers read tables of any version, so the
+    /// description's layout has version 0. A versioned table needs a
+    /// version, which would otherwise be written as 0, and a table without
+    /// a version slot takes none.
+    var writtenLayout: TableLayout {
+        precondition(
+            layout.isVersioned == (version != nil),
+            layout.isVersioned ? "A versioned table needs a version" : "The table has no version slot"
+        )
+
+        return version.map { layout.withVersion($0) } ?? layout
     }
 
     /// Builds the table, setting every field

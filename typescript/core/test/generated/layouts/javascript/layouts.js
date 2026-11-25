@@ -207,7 +207,7 @@ export class Uint8OffsetsVersioned {
     static FORMAT_VERSION = 255;
 
     static #LAYOUT = TableLayout.create({
-        versioned: true,
+        version: Uint8OffsetsVersioned.FORMAT_VERSION,
         offsetType: 'uint8'
     });
 
@@ -251,11 +251,7 @@ export class Uint8OffsetsVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsVersioned.#LAYOUT,
-            Uint8OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -282,11 +278,7 @@ export class Uint8OffsetsVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsVersioned.#LAYOUT,
-            Uint8OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -348,7 +340,7 @@ export class Uint8OffsetsSizedVersioned {
 
     static #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Uint8OffsetsSizedVersioned.FORMAT_VERSION,
         offsetType: 'uint8'
     });
 
@@ -395,11 +387,7 @@ export class Uint8OffsetsSizedVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.#LAYOUT,
-            Uint8OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -426,11 +414,7 @@ export class Uint8OffsetsSizedVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.#LAYOUT,
-            Uint8OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -687,7 +671,7 @@ export class Uint16OffsetsVersioned {
     static FORMAT_VERSION = 65535;
 
     static #LAYOUT = TableLayout.create({
-        versioned: true,
+        version: Uint16OffsetsVersioned.FORMAT_VERSION,
         offsetType: 'uint16'
     });
 
@@ -731,11 +715,7 @@ export class Uint16OffsetsVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsVersioned.#LAYOUT,
-            Uint16OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -762,11 +742,7 @@ export class Uint16OffsetsVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsVersioned.#LAYOUT,
-            Uint16OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -828,7 +804,7 @@ export class Uint16OffsetsSizedVersioned {
 
     static #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Uint16OffsetsSizedVersioned.FORMAT_VERSION,
         offsetType: 'uint16'
     });
 
@@ -875,11 +851,7 @@ export class Uint16OffsetsSizedVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.#LAYOUT,
-            Uint16OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -906,11 +878,7 @@ export class Uint16OffsetsSizedVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.#LAYOUT,
-            Uint16OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1166,7 +1134,9 @@ export class Uint32OffsetsVersioned {
      */
     static FORMAT_VERSION = 4294967295;
 
-    static #LAYOUT = TableLayout.create({ versioned: true });
+    static #LAYOUT = TableLayout.create({
+        version: Uint32OffsetsVersioned.FORMAT_VERSION
+    });
 
     /** @type {TableReader} */
     #reader;
@@ -1208,11 +1178,7 @@ export class Uint32OffsetsVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsVersioned.#LAYOUT,
-            Uint32OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1239,11 +1205,7 @@ export class Uint32OffsetsVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsVersioned.#LAYOUT,
-            Uint32OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1303,7 +1265,10 @@ export class Uint32OffsetsSizedVersioned {
      */
     static FORMAT_VERSION = 2;
 
-    static #LAYOUT = TableLayout.create({ sized: true, versioned: true });
+    static #LAYOUT = TableLayout.create({
+        sized: true,
+        version: Uint32OffsetsSizedVersioned.FORMAT_VERSION
+    });
 
     /** @type {TableReader} */
     #reader;
@@ -1348,11 +1313,7 @@ export class Uint32OffsetsSizedVersioned {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.#LAYOUT,
-            Uint32OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1379,11 +1340,7 @@ export class Uint32OffsetsSizedVersioned {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.#LAYOUT,
-            Uint32OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);

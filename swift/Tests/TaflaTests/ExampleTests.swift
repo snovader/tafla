@@ -8,7 +8,7 @@ import Testing
 @Suite("Example")
 struct ExampleTests {
     // A format's header, shared by its writer and its readers
-    let layout = TableLayout(sized: true, versioned: true)
+    let layout = TableLayout(sized: true, version: 1)
     let formatVersion: UInt32 = 1
 
     func write() throws -> [UInt8] {
@@ -16,7 +16,7 @@ struct ExampleTests {
         try series.setUInt32Array([0, 86_400])
         try series.setFloat32Array([21.75, 18.5])
 
-        var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+        var builder = try TableBuilder(fields: 3, layout: layout)
         try builder.setFloat64(59.3293)
         try builder.setString("Europe/Stockholm")
         try builder.setTable(.builder(series))  // written straight into the table
@@ -62,7 +62,7 @@ struct ExampleTests {
     // The example's table, with its nested table recorded in place, is the
     // same table
     @Test func recordsTheNestedTableInPlace() throws {
-        var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+        var builder = try TableBuilder(fields: 3, layout: layout)
         try builder.setFloat64(59.3293)
         try builder.setString("Europe/Stockholm")
         try builder.setTable(fields: 2) { series throws(BuildError) in

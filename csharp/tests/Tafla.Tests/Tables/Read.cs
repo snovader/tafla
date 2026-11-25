@@ -233,7 +233,7 @@ public static class Read
 
     /// <summary>Whether a nested table is read in place: it has no header, and its parent's offset type</summary>
     private static bool ReadsInPlace(TableReader reader, Table table) =>
-        table.Layout is { Sized: false, Versioned: false } && table.Layout.OffsetType == reader.Layout.OffsetType;
+        table.Layout is { Sized: false, Versioned: false } && table.Layout.OffsetType == reader.OffsetType;
 
     /// <summary>Reads the fields of a table nested at a position, from offsets counted from its start, within its parent's bytes</summary>
     private static Table InPlace(TableReader reader, int position, Table table)

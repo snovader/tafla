@@ -213,8 +213,8 @@ public class TableWriterTests
         Gen.Select(Strategy.Layouts, Gen.Int[0, 8], Gen.Int[0, 40], Gen.UInt).Check(sample =>
         {
             var (layout, fields, extra, anyVersion) = sample;
-            var tableLayout = layout.ToTableLayout();
-            var version = (uint)(anyVersion % (tableLayout.OffsetType.MaxValue + 1L));
+            var version = (uint)(anyVersion % (layout.OffsetType.MaxValue + 1L));
+            var tableLayout = layout.ToTableLayout(version);
             var rest = fields * tableLayout.OffsetSize + extra;
             var length = tableLayout.HeaderSize + rest;
             if (length > tableLayout.OffsetType.MaxValue)
@@ -223,14 +223,12 @@ public class TableWriterTests
             }
 
             // A writer of no fields writes the header alone, and its bytes are zero after it
-            var sizer = layout.Versioned ? new TableSizer(0, tableLayout, version) : new TableSizer(0, tableLayout);
+            var sizer = new TableSizer(0, tableLayout);
             sizer.AddTableBytes(1, rest);
             var writer = sizer.CreateWriter();
             writer.ReserveTableBytes(rest);
 
-            var bytes = layout.Versioned
-                ? TableWriter.CreateTableBytes(fields, tableLayout, version, length)
-                : TableWriter.CreateTableBytes(fields, tableLayout, length);
+            var bytes = TableWriter.CreateTableBytes(fields, tableLayout, length);
 
             Assert.Equal(writer.Bytes, bytes);
         });
@@ -245,11 +243,9 @@ public class TableWriterTests
         Assert.Equal((BuildErrorKind.TooLong, 1, 256L, OffsetType.UInt8), (tooLong.Kind, tooLong.Index, tooLong.Length, tooLong.OffsetType));
         Assert.Equal(BuildErrorKind.TooLong, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(1, default, long.MaxValue)).Kind);
 
-        var versioned = new TableLayout { Versioned = true, OffsetType = OffsetType.UInt8 };
-        Assert.Equal(BuildErrorKind.VersionTooLarge, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(1, versioned, 256, 8)).Kind);
+        var versioned = new TableLayout { Version = 256, OffsetType = OffsetType.UInt8 };
+        Assert.Equal(BuildErrorKind.VersionTooLarge, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(1, versioned, 8)).Kind);
         Assert.Equal(BuildErrorKind.HeaderTooLong, Assert.Throws<BuildException>(() => TableWriter.CreateTableBytes(256, uint8, 256)).Kind);
-        Assert.Throws<ArgumentException>(() => TableWriter.CreateTableBytes(1, versioned, 8));
-        Assert.Throws<ArgumentException>(() => TableWriter.CreateTableBytes(1, uint8, 0, 8));
         Assert.Throws<ArgumentOutOfRangeException>(() => TableWriter.CreateTableBytes(2, uint8, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => TableWriter.CreateTableBytes(-1, uint8, 8));
     }
@@ -349,20 +345,17 @@ public class TableWriterTests
     [Fact]
     public void HeadersVersionsAndFieldCountsAreCheckedAsTableBuilderChecksThem()
     {
-        var versioned = new TableLayout { Versioned = true, OffsetType = OffsetType.UInt8 };
-        var uint8 = new TableLayout { OffsetType = OffsetType.UInt8 };
+        var versioned = new TableLayout { Version = 1, OffsetType = OffsetType.UInt8 };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new TableSizer(-1));
-        Assert.Throws<ArgumentException>(() => new TableSizer(1, versioned));
-        Assert.Throws<ArgumentException>(() => new TableSizer(1, uint8, 1));
 
-        var version = Assert.Throws<BuildException>(() => new TableSizer(1, versioned, 256));
+        var version = Assert.Throws<BuildException>(() => new TableSizer(1, versioned with { Version = 256 }));
         Assert.Equal((BuildErrorKind.VersionTooLarge, 256u), (version.Kind, version.Version));
-        Assert.Equal(255, new TableSizer(254, versioned, 255).GetByteLength());
+        Assert.Equal(255, new TableSizer(254, versioned with { Version = 255 }).GetByteLength());
 
-        var header = Assert.Throws<BuildException>(() => new TableSizer(255, versioned, 1));
+        var header = Assert.Throws<BuildException>(() => new TableSizer(255, versioned));
         Assert.Equal((BuildErrorKind.HeaderTooLong, 255), (header.Kind, header.Fields));
-        Assert.Equal(BuildErrorKind.HeaderTooLong, Assert.Throws<BuildException>(() => new TableBuilder(255, versioned, 1)).Kind);
+        Assert.Equal(BuildErrorKind.HeaderTooLong, Assert.Throws<BuildException>(() => new TableBuilder(255, versioned)).Kind);
     }
 
     [Fact]
@@ -596,8 +589,8 @@ public class TableWriterTests
     [Fact]
     public void AVersionedTableHoldsItsLengthAndVersionInItsHeader()
     {
-        var layout = new TableLayout { Sized = true, Versioned = true, OffsetType = OffsetType.UInt16 };
-        var sizer = new TableSizer(1, layout, 7);
+        var layout = new TableLayout { Sized = true, Version = 7, OffsetType = OffsetType.UInt16 };
+        var sizer = new TableSizer(1, layout);
         sizer.AddInt64();
 
         var writer = sizer.CreateWriter();
