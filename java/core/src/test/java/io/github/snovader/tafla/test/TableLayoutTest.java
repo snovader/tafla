@@ -42,7 +42,11 @@ public class TableLayoutTest {
         assertTrue(second.sized());
         assertEquals(OffsetType.UINT16, second.offsetType());
         assertEquals(OptionalLong.of(1), first.version());
-        assertEquals(OptionalLong.of(7), TableLayout.DEFAULT.withVersion(7).version());
+
+        // A layout without a version gains the slot for one
+        var versioned = TableLayout.DEFAULT.withVersion(7);
+        assertEquals(OptionalLong.of(7), versioned.version());
+        assertEquals(TableLayout.DEFAULT.headerSize() + OffsetType.UINT32.size(), versioned.headerSize());
     }
 
     @Example

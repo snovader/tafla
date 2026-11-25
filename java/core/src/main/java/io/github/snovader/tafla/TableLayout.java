@@ -70,8 +70,8 @@ public final class TableLayout {
     }
 
     /**
-     * {@return the layout with {@code version} in place of its own}, for another version of the
-     * same format
+     * {@return the layout with {@code version} as its version}, for another version of the same
+     * format. A layout without a version gains the slot for one, so its header is a slot longer.
      *
      * @throws IllegalArgumentException if the version doesn't fit in the offset type
      */

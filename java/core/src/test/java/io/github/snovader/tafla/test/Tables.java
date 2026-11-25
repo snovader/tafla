@@ -26,7 +26,7 @@ final class Tables {
     /** {@return a builder of the table's layout and version, with none of its fields set yet} */
     static TableBuilder createBuilder(TableDescription table) {
         var fields = table.fields().size();
-        return new TableBuilder(fields, table.layout().tableLayout(table.version().orElse(0)));
+        return new TableBuilder(fields, table.writtenLayout());
     }
 
     /** Sets the field on the builder with the setter of its type, building a nested table first */
@@ -96,7 +96,7 @@ final class Tables {
     /** {@return a sizer of the table's layout and version, with all its fields added} */
     static TableSizer size(TableDescription table) {
         var fields = table.fields().size();
-        var sizer = new TableSizer(fields, table.layout().tableLayout(table.version().orElse(0)));
+        var sizer = new TableSizer(fields, table.writtenLayout());
         for (var field : table.fields()) {
             addField(sizer, field);
         }
