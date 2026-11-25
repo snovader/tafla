@@ -69,7 +69,7 @@ const BYTES = 10;
 const TABLE = 11;
 
 /**
- * The slots of a segment in `#segments`: the position in the buffer that its
+ * The slots of a segment in `_segments`: the position in the buffer that its
  * bytes go before, their length, its kind, its values and their count
  */
 const SEGMENT_SLOTS = 5;
@@ -162,55 +162,55 @@ export class TableBuilder {
      * The table once written: its bytes, and then the reader of them that
      * `finalize()` returns
      */
-    #written: Uint8Array | TableReader | undefined;
+    declare private _written: Uint8Array | TableReader | undefined;
 
-    readonly #layout: TableLayout;
+    declare private readonly _layout: TableLayout;
     /** The offset size, the width of offsets, lengths and header slots */
-    readonly #size: OffsetSize;
+    declare private readonly _size: OffsetSize;
     /** The longest table that the layout's offsets and lengths address */
-    readonly #maxLength: number;
+    declare private readonly _maxLength: number;
 
     /** The arena whose buffer the builder takes its bytes of */
-    readonly #arena: ArenaMemory;
+    declare private readonly _arena: ArenaMemory;
     /** The buffer that holds the builder's bytes: the arena's, or its own */
-    #bytes: Uint8Array<ArrayBuffer> = EMPTY;
-    #view: DataView = EMPTY_VIEW;
+    private _bytes: Uint8Array<ArrayBuffer> = EMPTY;
+    private _view: DataView = EMPTY_VIEW;
     /**
      * Where the builder's bytes start in the buffer, which every position
      * below counts from, so that they stay valid when the bytes move
      */
-    #base = 0;
+    private _base = 0;
     /** The builder's bytes in the buffer, written or not */
-    #capacity = 0;
+    private _capacity = 0;
     /** The bytes of the buffer written so far */
-    #end = 0;
+    private _end = 0;
     /**
      * The bytes of the segments so far, by which the table's positions after
      * them are ahead of the buffer's
      */
-    #shift = 0;
+    private _shift = 0;
     /** The segments, {@link SEGMENT_SLOTS} slots each, once there are any */
-    #segments: unknown[] | undefined;
+    private _segments: unknown[] | undefined = undefined;
     /** Whether a parent keeps the builder's bytes as a segment */
-    #kept = false;
+    private _kept = false;
 
     // What the builder counts of the table whose fields it's writing: its
     // own, or, while a `fill` runs, those of the table that it writes in
     // place, until it restores its own
-    #fields: number;
+    declare private _fields: number;
     /** The number of fields set so far */
-    #count = 0;
+    private _count = 0;
     /** The table's start, in the table, which its offsets count from */
-    #table = 0;
+    private _table = 0;
     /** The position of the table's first offset in the buffer */
-    #slots: number;
+    declare private _slots: number;
     /**
      * The largest alignment that a field needs from the table's start, which
      * a parent pads this table to when it nests it
      */
-    #alignment: ElementSize = SIZEOF_8;
+    private _alignment: ElementSize = SIZEOF_8;
     /** The number of tables being written in place, one in another */
-    #nesting = 0;
+    private _nesting = 0;
 
     /**
      * @param arena - The arena whose buffer the table is written in:
@@ -231,16 +231,16 @@ export class TableBuilder {
         const size = layout.offsetSize();
         const header = headerLength(fields, layout);
 
-        this.#layout = layout;
-        this.#size = size;
+        this._layout = layout;
+        this._size = size;
         // The layout's `maxLength()` and `headerSize()`, which
         // `headerLength()` has called too, are worked out here instead:
         // V8 counts the bytecode of each call that it inlines, and with
         // them repeated a row of many short builders took 1.15–1.2 times
         // as long in Node 26
-        this.#maxLength = 0xffff_ffff >>> (32 - 8 * size);
-        this.#fields = fields;
-        this.#arena = memoryOf(arena);
+        this._maxLength = 0xffff_ffff >>> (32 - 8 * size);
+        this._fields = fields;
+        this._arena = memoryOf(arena);
 
         this.#take(header + fields * FIELD_ROOM);
 
@@ -252,8 +252,8 @@ export class TableBuilder {
             this.#setUnsigned(slots - size, version);
         }
 
-        this.#slots = slots;
-        this.#end = header;
+        this._slots = slots;
+        this._end = header;
     }
 
     /**
@@ -264,13 +264,13 @@ export class TableBuilder {
      * an array kept until now has changed its length.
      */
     finalize(): TableReader {
-        const written = this.#written ?? this.#write();
+        const written = this._written ?? this.#write();
         if (written instanceof TableReader) {
             return written;
         }
 
-        const reader = new TableReader(written, this.#layout);
-        this.#written = reader;
+        const reader = new TableReader(written, this._layout);
+        this._written = reader;
 
         return reader;
     }
@@ -283,7 +283,7 @@ export class TableBuilder {
      * an array kept until now has changed its length.
      */
     bytes(): Uint8Array {
-        const written = this.#written ?? this.#write();
+        const written = this._written ?? this.#write();
         return written instanceof TableReader ? written.bytes() : written;
     }
 
@@ -295,7 +295,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_8);
         const at = this.#reserve(SIZEOF_8);
 
-        this.#view.setInt8(this.#base + at, value);
+        this._view.setInt8(this._base + at, value);
 
         this.#endScalar(index, at, SIZEOF_8);
     }
@@ -304,7 +304,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_8);
         const at = this.#reserve(SIZEOF_8);
 
-        this.#view.setUint8(this.#base + at, value);
+        this._view.setUint8(this._base + at, value);
 
         this.#endScalar(index, at, SIZEOF_8);
     }
@@ -313,7 +313,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_16);
         const at = this.#reserve(SIZEOF_16);
 
-        this.#view.setInt16(this.#base + at, value, true);
+        this._view.setInt16(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_16);
     }
@@ -322,7 +322,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_16);
         const at = this.#reserve(SIZEOF_16);
 
-        this.#view.setUint16(this.#base + at, value, true);
+        this._view.setUint16(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_16);
     }
@@ -331,7 +331,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_32);
         const at = this.#reserve(SIZEOF_32);
 
-        this.#view.setInt32(this.#base + at, value, true);
+        this._view.setInt32(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_32);
     }
@@ -340,7 +340,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_32);
         const at = this.#reserve(SIZEOF_32);
 
-        this.#view.setUint32(this.#base + at, value, true);
+        this._view.setUint32(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_32);
     }
@@ -349,7 +349,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_64);
         const at = this.#reserve(SIZEOF_64);
 
-        this.#view.setBigInt64(this.#base + at, value, true);
+        this._view.setBigInt64(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_64);
     }
@@ -358,7 +358,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_64);
         const at = this.#reserve(SIZEOF_64);
 
-        this.#view.setBigUint64(this.#base + at, value, true);
+        this._view.setBigUint64(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_64);
     }
@@ -367,7 +367,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_32);
         const at = this.#reserve(SIZEOF_32);
 
-        this.#view.setFloat32(this.#base + at, value, true);
+        this._view.setFloat32(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_32);
     }
@@ -376,7 +376,7 @@ export class TableBuilder {
         const index = this.#check(0, SIZEOF_64);
         const at = this.#reserve(SIZEOF_64);
 
-        this.#view.setFloat64(this.#base + at, value, true);
+        this._view.setFloat64(this._base + at, value, true);
 
         this.#endScalar(index, at, SIZEOF_64);
     }
@@ -405,7 +405,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_8, SIZEOF_8);
-        setInt8Elements(this.#bytes, this.#base + elements, values, count);
+        setInt8Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_8, SIZEOF_8);
     }
 
@@ -428,7 +428,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_8, SIZEOF_8);
-        setUint8Elements(this.#bytes, this.#base + elements, values, count);
+        setUint8Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_8, SIZEOF_8);
     }
 
@@ -451,7 +451,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_16, SIZEOF_16);
-        setInt16Elements(this.#bytes, this.#base + elements, values, count);
+        setInt16Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_16, SIZEOF_16);
     }
 
@@ -474,7 +474,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_16, SIZEOF_16);
-        setUint16Elements(this.#bytes, this.#base + elements, values, count);
+        setUint16Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_16, SIZEOF_16);
     }
 
@@ -497,7 +497,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
-        setInt32Elements(this.#bytes, this.#base + elements, values, count);
+        setInt32Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -520,7 +520,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
-        setUint32Elements(this.#bytes, this.#base + elements, values, count);
+        setUint32Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -543,7 +543,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
-        setInt64Elements(this.#bytes, this.#base + elements, values, count);
+        setInt64Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -566,7 +566,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
-        setUint64Elements(this.#bytes, this.#base + elements, values, count);
+        setUint64Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -589,7 +589,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_32, SIZEOF_32);
-        setFloat32Elements(this.#bytes, this.#base + elements, values, count);
+        setFloat32Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_32, SIZEOF_32);
     }
 
@@ -612,7 +612,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, count * SIZEOF_64, SIZEOF_64);
-        setFloat64Elements(this.#bytes, this.#base + elements, values, count);
+        setFloat64Elements(this._bytes, this._base + elements, values, count);
         this.#endArray(count, elements, count * SIZEOF_64, SIZEOF_64);
     }
 
@@ -625,29 +625,29 @@ export class TableBuilder {
     setString(string: string): void {
         const index = this.#checkRoom();
         const units = string.length;
-        const at = this.#end;
-        const start = at + this.#size;
-        const before = at + this.#shift - this.#table + this.#size;
+        const at = this._end;
+        const start = at + this._size;
+        const before = at + this._shift - this._table + this._size;
 
         // With room for its longest UTF-8, 3 bytes for each UTF-16 code
         // unit, a string needs no count, which took 10-14 times as long as
         // encoding a long one. Only a string whose longest UTF-8 would be too
         // long for the table is counted, so that it fails only if it is.
         let room = 3 * units;
-        if (!(before + room <= this.#maxLength)) {
+        if (!(before + room <= this._maxLength)) {
             room = utf8Length(string);
             this.#checkLength(index, before + room);
         }
 
-        if (start + room > this.#capacity) {
+        if (start + room > this._capacity) {
             this.#grow(start + room);
         }
 
-        const length = encodeInto(string, this.#bytes, this.#base + start);
+        const length = encodeInto(string, this._bytes, this._base + start);
         this.#setOffset(index, at);
         this.#setUnsigned(at, length);
-        this.#end = start + length;
-        this.#count = index + 1;
+        this._end = start + length;
+        this._count = index + 1;
     }
 
     /**
@@ -657,11 +657,11 @@ export class TableBuilder {
     setStruct(bytes: Uint8Array): void {
         const byteLength = bytes.length;
         const index = this.#check(0, byteLength);
-        const at = this.#end;
+        const at = this._end;
 
         this.#setOffset(index, at);
         this.#appendBytes(bytes, byteLength);
-        this.#count = index + 1;
+        this._count = index + 1;
     }
 
     /**
@@ -688,7 +688,7 @@ export class TableBuilder {
         }
 
         const elements = this.#startArray(count, byteLength, alignment);
-        copyBytes(bytes, 0, byteLength, this.#bytes, this.#base + elements);
+        copyBytes(bytes, 0, byteLength, this._bytes, this._base + elements);
         this.#endArray(count, elements, byteLength, alignment);
     }
 
@@ -717,21 +717,22 @@ export class TableBuilder {
     setTable(
         table: TableBuilder | Uint8Array,
         alignment: ElementSize = table instanceof TableBuilder
-            ? table.#alignment
+            ? // oxlint-disable-next-line eslint/no-underscore-dangle -- another builder's own field, which the rule allows only after `this`
+              table._alignment
             : SIZEOF_32
     ): void {
         assertAlignment(alignment);
 
         const byteLength = TableBuilder.#lengthOf(table);
-        const end = this.#end;
-        const pad = padding(end + this.#shift - this.#table, alignment);
+        const end = this._end;
+        const pad = padding(end + this._shift - this._table, alignment);
         const index = this.#check(pad, byteLength);
 
         const at = end + pad;
         this.#pad(at);
         this.#setOffset(index, at);
         this.#append(table);
-        this.#count = index + 1;
+        this._count = index + 1;
         this.#alignTo(alignment);
     }
 
@@ -745,7 +746,7 @@ export class TableBuilder {
      * @throws {RangeError} If a builder has fields left to set.
      */
     setVector(vector: ReadonlyArray<TableBuilder | Uint8Array>): void {
-        const size = this.#size;
+        const size = this._size;
         const count = vector.length;
 
         let byteLength = size + count * size;
@@ -755,21 +756,21 @@ export class TableBuilder {
 
         const index = this.#check(0, byteLength);
         const at = this.#reserve(size + count * size);
-        const position = at + this.#shift;
+        const position = at + this._shift;
 
         this.#setOffset(index, at);
         this.#setUnsigned(at, count);
-        this.#end = at + size + count * size;
+        this._end = at + size + count * size;
 
         for (let i = 0; i < count; i++) {
             this.#append(vector[i]);
             this.#setUnsigned(
                 at + (i + 1) * size,
-                this.#end + this.#shift - position
+                this._end + this._shift - position
             );
         }
 
-        this.#count = index + 1;
+        this._count = index + 1;
     }
 
     /**
@@ -790,18 +791,18 @@ export class TableBuilder {
      */
     setTableInPlace(fields: number, fill: (table: TableItem) => void): void {
         this.#checkRoom();
-        const header = nestedHeaderLength(fields, this.#layout);
+        const header = nestedHeaderLength(fields, this._layout);
 
         // Where the table starts, unpadded, and what to restore after it
-        const parentFields = this.#fields;
-        const index = this.#count;
-        const parentTable = this.#table;
-        const slots = this.#slots;
-        const alignment = this.#alignment;
-        const nesting = this.#nesting;
-        const at = this.#end;
-        const shift = this.#shift;
-        const segments = this.#segments?.length ?? 0;
+        const parentFields = this._fields;
+        const index = this._count;
+        const parentTable = this._table;
+        const slots = this._slots;
+        const alignment = this._alignment;
+        const nesting = this._nesting;
+        const at = this._end;
+        const shift = this._shift;
+        const segments = this._segments?.length ?? 0;
         const start = at + shift;
 
         this.#startTable(fields, header);
@@ -810,23 +811,23 @@ export class TableBuilder {
             this.#assertSet();
         } catch (error) {
             this.#restore(parentFields, index, parentTable, slots, alignment);
-            this.#nesting = nesting;
+            this._nesting = nesting;
             this.#truncate(at, shift, segments);
             throw error;
         }
 
-        const length = this.#end + this.#shift - start;
-        const tableAlignment = this.#alignment;
+        const length = this._end + this._shift - start;
+        const tableAlignment = this._alignment;
         this.#restore(parentFields, index, parentTable, slots, alignment);
-        this.#nesting = nesting;
+        this._nesting = nesting;
 
         // Its alignment is known once its fields are set, so it's padded
         // from the parent's start then, as a nested builder is
         const pad = padding(start - parentTable, tableAlignment);
         const total = start - parentTable + pad + length;
-        if (!(total <= this.#maxLength)) {
+        if (!(total <= this._maxLength)) {
             this.#truncate(at, shift, segments);
-            throw tooLong(index, total, this.#layout.offsetType());
+            throw tooLong(index, total, this._layout.offsetType());
         }
 
         if (pad !== 0) {
@@ -834,10 +835,10 @@ export class TableBuilder {
         }
 
         this.#setUnsigned(
-            slots + index * this.#size,
+            slots + index * this._size,
             start + pad - parentTable
         );
-        this.#count = index + 1;
+        this._count = index + 1;
         this.#alignTo(tableAlignment);
     }
 
@@ -863,59 +864,59 @@ export class TableBuilder {
 
         // The count, the items' ends and their offsets, which fail before
         // any item is written, rather than after a `fill` for each
-        const size = this.#size;
-        const header = nestedHeaderLength(fields, this.#layout);
-        const index = this.#count;
-        const at = this.#end;
-        const shift = this.#shift;
-        const parentTable = this.#table;
+        const size = this._size;
+        const header = nestedHeaderLength(fields, this._layout);
+        const index = this._count;
+        const at = this._end;
+        const shift = this._shift;
+        const parentTable = this._table;
         const position = at + shift;
         const headers =
             position - parentTable + size + count * size + count * header;
-        if (!(headers <= this.#maxLength)) {
-            throw tooLong(index, headers, this.#layout.offsetType());
+        if (!(headers <= this._maxLength)) {
+            throw tooLong(index, headers, this._layout.offsetType());
         }
 
-        const parentFields = this.#fields;
-        const slots = this.#slots;
-        const alignment = this.#alignment;
-        const nesting = this.#nesting;
-        const segments = this.#segments?.length ?? 0;
+        const parentFields = this._fields;
+        const slots = this._slots;
+        const alignment = this._alignment;
+        const nesting = this._nesting;
+        const segments = this._segments?.length ?? 0;
 
         const ends = at + size;
         this.#reserve(size + count * size);
         this.#setUnsigned(at, count);
-        this.#end = ends + count * size;
+        this._end = ends + count * size;
 
         try {
             for (let item = 0; item < count; item++) {
                 this.#startTable(fields, header);
                 fill(this, item);
                 this.#assertSet();
-                this.#nesting = nesting;
+                this._nesting = nesting;
 
                 this.#setUnsigned(
                     ends + item * size,
-                    this.#end + this.#shift - position
+                    this._end + this._shift - position
                 );
             }
         } catch (error) {
             this.#restore(parentFields, index, parentTable, slots, alignment);
-            this.#nesting = nesting;
+            this._nesting = nesting;
             this.#truncate(at, shift, segments);
             throw error;
         }
 
         this.#restore(parentFields, index, parentTable, slots, alignment);
 
-        const length = this.#end + this.#shift - parentTable;
-        if (!(length <= this.#maxLength)) {
+        const length = this._end + this._shift - parentTable;
+        if (!(length <= this._maxLength)) {
             this.#truncate(at, shift, segments);
-            throw tooLong(index, length, this.#layout.offsetType());
+            throw tooLong(index, length, this._layout.offsetType());
         }
 
         this.#setUnsigned(slots + index * size, position - parentTable);
-        this.#count = index + 1;
+        this._count = index + 1;
     }
 
     /**
@@ -926,13 +927,13 @@ export class TableBuilder {
     #startTable(fields: number, header: number): void {
         const at = this.#reserve(header);
 
-        this.#fields = fields;
-        this.#count = 0;
-        this.#table = at + this.#shift;
-        this.#slots = at;
-        this.#alignment = SIZEOF_8;
-        this.#end = at + header;
-        this.#nesting++;
+        this._fields = fields;
+        this._count = 0;
+        this._table = at + this._shift;
+        this._slots = at;
+        this._alignment = SIZEOF_8;
+        this._end = at + header;
+        this._nesting++;
     }
 
     /**
@@ -947,11 +948,11 @@ export class TableBuilder {
         slots: number,
         alignment: ElementSize
     ): void {
-        this.#fields = fields;
-        this.#count = count;
-        this.#table = table;
-        this.#slots = slots;
-        this.#alignment = alignment;
+        this._fields = fields;
+        this._count = count;
+        this._table = table;
+        this._slots = slots;
+        this._alignment = alignment;
     }
 
     /**
@@ -960,11 +961,11 @@ export class TableBuilder {
      * which releases their values
      */
     #truncate(end: number, shift: number, segments: number): void {
-        this.#end = end;
-        this.#shift = shift;
+        this._end = end;
+        this._shift = shift;
 
-        if (this.#segments !== undefined) {
-            this.#segments.length = segments;
+        if (this._segments !== undefined) {
+            this._segments.length = segments;
         }
     }
 
@@ -975,14 +976,14 @@ export class TableBuilder {
      */
     #moveTable(at: number, segments: number, pad: number): void {
         const end = this.#reserve(pad);
-        const bytes = this.#bytes;
-        const base = this.#base;
+        const bytes = this._bytes;
+        const base = this._base;
 
         bytes.copyWithin(base + at + pad, base + at, base + end);
         bytes.fill(0, base + at, base + at + pad);
-        this.#end = end + pad;
+        this._end = end + pad;
 
-        const list = this.#segments;
+        const list = this._segments;
         if (list !== undefined) {
             for (
                 let slot = segments;
@@ -1010,12 +1011,12 @@ export class TableBuilder {
         alignment: ElementSize
     ): number {
         assertCount(count);
-        const start = this.#end + this.#size;
-        const pad = padding(start + this.#shift - this.#table, alignment);
-        this.#check(pad, this.#size + byteLength);
+        const start = this._end + this._size;
+        const pad = padding(start + this._shift - this._table, alignment);
+        this.#check(pad, this._size + byteLength);
 
         const elements = start + pad;
-        if (elements + byteLength > this.#capacity) {
+        if (elements + byteLength > this._capacity) {
             this.#grow(elements + byteLength);
         }
 
@@ -1032,13 +1033,13 @@ export class TableBuilder {
         byteLength: number,
         alignment: ElementSize
     ): void {
-        const at = elements - this.#size;
+        const at = elements - this._size;
 
         this.#pad(at);
-        this.#setOffset(this.#count, at);
+        this.#setOffset(this._count, at);
         this.#setUnsigned(at, count);
-        this.#end = elements + byteLength;
-        this.#count++;
+        this._end = elements + byteLength;
+        this._count++;
         this.#alignTo(alignment);
     }
 
@@ -1054,9 +1055,9 @@ export class TableBuilder {
         alignment: ElementSize
     ): void {
         assertCount(count);
-        const end = this.#end;
-        const size = this.#size;
-        const pad = padding(end + size + this.#shift - this.#table, alignment);
+        const end = this._end;
+        const size = this._size;
+        const pad = padding(end + size + this._shift - this._table, alignment);
         const index = this.#check(pad, size + byteLength);
 
         const at = end + pad;
@@ -1064,9 +1065,9 @@ export class TableBuilder {
         this.#pad(at);
         this.#setOffset(index, at);
         this.#setUnsigned(at, count);
-        this.#end = at + size;
+        this._end = at + size;
         this.#pushSegment(kind, values, count, byteLength);
-        this.#count = index + 1;
+        this._count = index + 1;
         this.#alignTo(alignment);
     }
 
@@ -1077,10 +1078,10 @@ export class TableBuilder {
         count: number,
         byteLength: number
     ): void {
-        this.#segments ??= [];
+        this._segments ??= [];
 
-        this.#segments.push(this.#end, byteLength, kind, values, count);
-        this.#shift += byteLength;
+        this._segments.push(this._end, byteLength, kind, values, count);
+        this._shift += byteLength;
     }
 
     /**
@@ -1094,8 +1095,8 @@ export class TableBuilder {
         }
 
         const at = this.#reserve(byteLength);
-        copyBytes(bytes, 0, byteLength, this.#bytes, this.#base + at);
-        this.#end = at + byteLength;
+        copyBytes(bytes, 0, byteLength, this._bytes, this._base + at);
+        this._end = at + byteLength;
     }
 
     /**
@@ -1112,27 +1113,28 @@ export class TableBuilder {
             return;
         }
 
-        if (table.#written !== undefined) {
+        /* oxlint-disable eslint/no-underscore-dangle -- another builder's own fields, which the rule allows only after `this` */
+        if (table._written !== undefined) {
             const bytes = table.bytes();
             this.#appendBytes(bytes, bytes.length);
             return;
         }
 
-        const length = table.#end;
-        const tableLength = length + table.#shift;
-        if (table.#layout.sized()) {
-            setSlot(table.#bytes, table.#base, table.#size, tableLength);
+        const length = table._end;
+        const tableLength = length + table._shift;
+        if (table._layout.sized()) {
+            setSlot(table._bytes, table._base, table._size, tableLength);
         }
 
         if (tableLength >= KEPT_TABLE_BYTES) {
             const nested: NestedTable = {
-                bytes: table.#bytes,
-                base: table.#base,
+                bytes: table._bytes,
+                base: table._base,
                 end: length,
-                segments: table.#segments
+                segments: table._segments
             };
 
-            table.#kept = true;
+            table._kept = true;
             this.#pushSegment(TABLE, nested, 0, tableLength);
             return;
         }
@@ -1140,56 +1142,57 @@ export class TableBuilder {
         const at = this.#reserve(length);
         if (length <= SHORT_COPY) {
             copyWords(
-                table.#view,
-                table.#base,
-                this.#view,
-                this.#base + at,
+                table._view,
+                table._base,
+                this._view,
+                this._base + at,
                 length
             );
         } else {
             copyBytes(
-                table.#bytes,
-                table.#base,
-                table.#base + length,
-                this.#bytes,
-                this.#base + at
+                table._bytes,
+                table._base,
+                table._base + length,
+                this._bytes,
+                this._base + at
             );
         }
-        this.#end = at + length;
+        /* oxlint-enable eslint/no-underscore-dangle */
+        this._end = at + length;
     }
 
     /** Writes zero padding from the end of the buffer to `at` */
     #pad(at: number): void {
-        const end = this.#end;
+        const end = this._end;
         if (at === end) {
             return;
         }
 
-        if (at > this.#capacity) {
+        if (at > this._capacity) {
             this.#grow(at);
         }
 
         // The buffer's bytes may have been written before, by another
         // builder, a table that failed, or as room for a string
-        const bytes = this.#bytes;
-        const base = this.#base;
+        const bytes = this._bytes;
+        const base = this._base;
         for (let i = end; i < at; i++) {
             bytes[base + i] = 0;
         }
-        this.#end = at;
+        this._end = at;
     }
 
     #endScalar(index: number, at: number, byteLength: number): void {
         this.#setOffset(index, at);
-        this.#end = at + byteLength;
-        this.#count = index + 1;
+        this._end = at + byteLength;
+        this._count = index + 1;
     }
 
     /** Writes the offset of field `index`, which starts at `at` in the buffer */
     #setOffset(index: number, at: number): void {
         this.#setUnsigned(
-            this.#slots + index * this.#size,
-            at + this.#shift - this.#table
+            this._slots + index * this._size,
+            at + this._shift - this._table
         );
     }
 
@@ -1200,11 +1203,11 @@ export class TableBuilder {
      * to need one.
      */
     #setUnsigned(at: number, value: number): void {
-        const view = this.#view;
-        const position = this.#base + at;
-        if (this.#size === SIZEOF_32) {
+        const view = this._view;
+        const position = this._base + at;
+        if (this._size === SIZEOF_32) {
             view.setUint32(position, value, true);
-        } else if (this.#size === SIZEOF_16) {
+        } else if (this._size === SIZEOF_16) {
             view.setUint16(position, value, true);
         } else {
             view.setUint8(position, value);
@@ -1216,8 +1219,8 @@ export class TableBuilder {
      * returns where they go
      */
     #reserve(byteLength: number): number {
-        const end = this.#end;
-        if (end + byteLength > this.#capacity) {
+        const end = this._end;
+        if (end + byteLength > this._capacity) {
             this.#grow(end + byteLength);
         }
 
@@ -1231,23 +1234,23 @@ export class TableBuilder {
      * them, or else bytes that it moves to.
      */
     #grow(length: number): void {
-        const arena = this.#arena;
+        const arena = this._arena;
         const max = arena.max;
-        const doubled = Math.max(length, 2 * this.#capacity);
+        const doubled = Math.max(length, 2 * this._capacity);
         const capacity = length <= max ? Math.min(doubled, max) : doubled;
-        const bytes = this.#bytes;
-        const base = this.#base;
+        const bytes = this._bytes;
+        const base = this._base;
 
         if (bytes === arena.bytes) {
             if (
-                (base + this.#capacity === arena.top || arena.live === 1) &&
+                (base + this._capacity === arena.top || arena.live === 1) &&
                 base + capacity <= bytes.length
             ) {
                 // To a multiple of 8, as the arena's buffer's length is, so
                 // that the next builder's bytes are aligned
                 const top = (base + capacity + 7) & ~7;
                 arena.top = top;
-                this.#capacity = top - base;
+                this._capacity = top - base;
                 return;
             }
 
@@ -1255,7 +1258,7 @@ export class TableBuilder {
         }
 
         this.#take(capacity);
-        copyBytes(bytes, base, base + this.#end, this.#bytes, this.#base);
+        copyBytes(bytes, base, base + this._end, this._bytes, this._base);
     }
 
     /**
@@ -1264,7 +1267,7 @@ export class TableBuilder {
      * own when they're more than the arena keeps
      */
     #take(length: number): void {
-        const arena = this.#arena;
+        const arena = this._arena;
         if (length > arena.max) {
             this.#takeOwn(length);
             return;
@@ -1276,10 +1279,10 @@ export class TableBuilder {
         }
 
         const top = arena.top;
-        this.#bytes = arena.bytes;
-        this.#view = arena.view;
-        this.#base = top;
-        this.#capacity = room;
+        this._bytes = arena.bytes;
+        this._view = arena.view;
+        this._base = top;
+        this._capacity = room;
         arena.top = top + room;
         arena.live++;
     }
@@ -1292,15 +1295,15 @@ export class TableBuilder {
     #takeOwn(length: number): void {
         const bytes = new Uint8Array(length);
 
-        this.#bytes = bytes;
-        this.#view = new DataView(bytes.buffer);
-        this.#base = 0;
-        this.#capacity = length;
+        this._bytes = bytes;
+        this._view = new DataView(bytes.buffer);
+        this._base = 0;
+        this._capacity = length;
     }
 
     #alignTo(alignment: ElementSize): void {
-        if (alignment > this.#alignment) {
-            this.#alignment = alignment;
+        if (alignment > this._alignment) {
+            this._alignment = alignment;
         }
     }
 
@@ -1316,10 +1319,12 @@ export class TableBuilder {
         }
 
         table.#assertComplete();
-        const written = table.#written;
+        /* oxlint-disable eslint/no-underscore-dangle -- another builder's own fields, which the rule allows only after `this` */
+        const written = table._written;
         if (written === undefined) {
-            return table.#end + table.#shift;
+            return table._end + table._shift;
         }
+        /* oxlint-enable eslint/no-underscore-dangle */
 
         return written instanceof TableReader
             ? written.bytes().length
@@ -1332,7 +1337,7 @@ export class TableBuilder {
      * @throws {RangeError} If the table has fields left to set.
      */
     #assertComplete(): void {
-        if (this.#nesting !== 0) {
+        if (this._nesting !== 0) {
             throw new TypeError(
                 "A table can't be finalized or nested while a table is recorded in place in it"
             );
@@ -1343,9 +1348,9 @@ export class TableBuilder {
 
     /** @throws {RangeError} If the table being counted has fields left to set. */
     #assertSet(): void {
-        if (this.#count !== this.#fields) {
+        if (this._count !== this._fields) {
             throw new RangeError(
-                `Only ${this.#count} of the table's ${this.#fields} fields were set`
+                `Only ${this._count} of the table's ${this._fields} fields were set`
             );
         }
     }
@@ -1357,13 +1362,13 @@ export class TableBuilder {
      * @throws {RangeError} If the table already holds all its fields.
      */
     #checkRoom(): number {
-        if (this.#written !== undefined) {
+        if (this._written !== undefined) {
             throw new TypeError('The table was already finalized');
         }
 
-        const index = this.#count;
-        if (index === this.#fields) {
-            throw tooManyFields(this.#fields);
+        const index = this._count;
+        if (index === this._fields) {
+            throw tooManyFields(this._fields);
         }
 
         return index;
@@ -1376,8 +1381,8 @@ export class TableBuilder {
      * @throws {RangeError} If it doesn't.
      */
     #checkLength(index: number, length: number): void {
-        if (!(length <= this.#maxLength)) {
-            throw tooLong(index, length, this.#layout.offsetType());
+        if (!(length <= this._maxLength)) {
+            throw tooLong(index, length, this._layout.offsetType());
         }
     }
 
@@ -1395,7 +1400,7 @@ export class TableBuilder {
         const index = this.#checkRoom();
         this.#checkLength(
             index,
-            this.#end + this.#shift - this.#table + padding + byteLength
+            this._end + this._shift - this._table + padding + byteLength
         );
 
         return index;
@@ -1420,38 +1425,38 @@ export class TableBuilder {
     #write(): Uint8Array {
         this.#assertComplete();
 
-        const length = this.#end + this.#shift;
-        const segments = this.#segments;
+        const length = this._end + this._shift;
+        const segments = this._segments;
         let table: Uint8Array;
-        const bytes = this.#bytes;
-        const base = this.#base;
+        const bytes = this._bytes;
+        const base = this._base;
         if (segments !== undefined && segments.length > 0) {
             table = new Uint8Array(length);
-            writeRuns(table, 0, bytes, base, this.#end, segments);
+            writeRuns(table, 0, bytes, base, this._end, segments);
         } else {
             table = bytes.slice(base, base + length);
         }
 
-        if (this.#layout.sized()) {
-            setSlot(table, 0, this.#size, length);
+        if (this._layout.sized()) {
+            setSlot(table, 0, this._size, length);
         }
 
         // Release the builder's bytes, unless a parent keeps them, and the
         // values, which may be large arrays
-        const arena = this.#arena;
-        if (bytes === arena.bytes && !this.#kept) {
+        const arena = this._arena;
+        if (bytes === arena.bytes && !this._kept) {
             const live = arena.live - 1;
             arena.live = live;
             if (live === 0) {
                 arena.top = 0;
-            } else if (base + this.#capacity === arena.top) {
+            } else if (base + this._capacity === arena.top) {
                 arena.top = base;
             }
         }
-        this.#bytes = EMPTY;
-        this.#view = EMPTY_VIEW;
-        this.#segments = undefined;
-        this.#written = table;
+        this._bytes = EMPTY;
+        this._view = EMPTY_VIEW;
+        this._segments = undefined;
+        this._written = table;
 
         return table;
     }

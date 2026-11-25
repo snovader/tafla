@@ -66,9 +66,9 @@ export class ArenaMemory {
     /** The builders that hold bytes of the buffer, and aren't written */
     live = 0;
     /** The first buffer's length, a multiple of 8 */
-    readonly first: number;
+    declare readonly first: number;
     /** The longest buffer that's kept, a multiple of 8 */
-    readonly max: number;
+    declare readonly max: number;
 
     constructor(first: number, max: number) {
         this.first = first;
@@ -122,13 +122,14 @@ let access: (arena: TableArena) => ArenaMemory;
  */
 export class TableArena {
     static {
-        access = arena => arena.#memory;
+        // oxlint-disable-next-line eslint/no-underscore-dangle -- an arena's own field, which the rule allows only after `this`
+        access = arena => arena._memory;
     }
 
     /** The arena of builders that aren't given one of their caller's own */
     static readonly DEFAULT: TableArena = new TableArena();
 
-    readonly #memory: ArenaMemory;
+    declare private readonly _memory: ArenaMemory;
 
     /**
      * @throws {RangeError} If `initialBytes` or `maxRetainedBytes` isn't a
@@ -155,7 +156,7 @@ export class TableArena {
         // Multiples of 8, so that every builder's bytes start at one, and
         // no more than the caller's limit
         const retained = max - (max % 8);
-        this.#memory = new ArenaMemory(
+        this._memory = new ArenaMemory(
             Math.min(first + (-first & 7), retained),
             retained
         );
@@ -166,7 +167,7 @@ export class TableArena {
      * takes bytes of it, and after `release()`.
      */
     retainedBytes(): number {
-        return this.#memory.bytes.length;
+        return this._memory.bytes.length;
     }
 
     /**
@@ -176,7 +177,7 @@ export class TableArena {
      * have.
      */
     release(): void {
-        this.#memory.release();
+        this._memory.release();
     }
 }
 
