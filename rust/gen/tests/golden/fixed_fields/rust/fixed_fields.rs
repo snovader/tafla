@@ -525,7 +525,7 @@ impl<'a> Tagged<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint8);
 
     /// Reads a [`Tagged`] from `bytes`
@@ -603,12 +603,7 @@ impl TaggedFields<'_> {
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     #[allow(clippy::cast_possible_truncation)]
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut bytes = TableWriter::versioned_table_bytes(
-            3,
-            Tagged::LAYOUT,
-            Tagged::FORMAT_VERSION,
-            18 + self.label.len() as u64,
-        )?;
+        let mut bytes = TableWriter::table_bytes(3, Tagged::LAYOUT, 18 + self.label.len() as u64)?;
 
         let mut fixed = [0; 16];
         fixed[0] = 5_u8;
@@ -708,7 +703,7 @@ impl<'a> Pixel<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint16);
 
     /// Reads a [`Pixel`] from `bytes`
@@ -775,8 +770,7 @@ impl PixelFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut bytes =
-            TableWriter::versioned_table_bytes(2, Pixel::LAYOUT, Pixel::FORMAT_VERSION, 20)?;
+        let mut bytes = TableWriter::table_bytes(2, Pixel::LAYOUT, 20)?;
 
         let mut fixed = [0; 16];
         fixed[0..2].copy_from_slice(&8_u16.to_le_bytes());
@@ -872,7 +866,7 @@ impl<'a> Box<'a> {
     /// The version of the format, which the header carries and [`Self::new`] checks
     pub const FORMAT_VERSION: u32 = 1;
 
-    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.versioned();
+    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.with_version(Self::FORMAT_VERSION);
 
     /// Reads a [`Box`] from `bytes`
     ///
@@ -950,8 +944,7 @@ impl BoxFields {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut bytes =
-            TableWriter::versioned_table_bytes(3, Box::LAYOUT, Box::FORMAT_VERSION, 48)?;
+        let mut bytes = TableWriter::table_bytes(3, Box::LAYOUT, 48)?;
 
         let mut fixed = [0; 44];
         fixed[0..4].copy_from_slice(&16_u32.to_le_bytes());

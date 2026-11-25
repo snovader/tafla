@@ -16,7 +16,7 @@ impl Table {
 
         if self.layout.versioned {
             let version = self.version.expect("A versioned table has a version");
-            TableBuilder::versioned(fields, layout.versioned(), version)
+            TableBuilder::new(fields, layout.with_version(version))
         } else {
             TableBuilder::new(fields, layout)
         }

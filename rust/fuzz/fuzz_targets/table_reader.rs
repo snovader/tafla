@@ -36,10 +36,10 @@ fuzz_target!(|bytes: &[u8]| {
     for offset_type in OFFSET_TYPES {
         let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
 
-        check_header(&TableReader::new(bytes, layout));
-        check_header(&TableReader::new(bytes, layout.sized()));
-        check_version(&TableReader::new(bytes, layout.versioned()));
-        check_version(&TableReader::new(bytes, layout.sized().versioned()));
+        check_header(bytes, layout);
+        check_header(bytes, layout.sized());
+        check_version(bytes, layout.with_version(0));
+        check_version(bytes, layout.sized().with_version(0));
 
         let reader = TableReader::new(bytes, layout);
         for position in positions(bytes.len()) {
@@ -54,9 +54,8 @@ fn positions(len: usize) -> impl Iterator<Item = usize> {
 }
 
 /// Reads the table's size and its root fields' offsets
-fn check_header<const V: bool>(reader: &TableReader<'_, V>) {
-    let bytes = reader.bytes();
-    let layout = reader.layout();
+fn check_header<const V: bool>(bytes: &[u8], layout: TableLayout<V>) {
+    let reader = TableReader::new(bytes, layout);
     let width = layout.offset_size();
 
     let size = reader.size();
@@ -75,9 +74,8 @@ fn check_header<const V: bool>(reader: &TableReader<'_, V>) {
     }
 }
 
-fn check_version(reader: &TableReader<'_, true>) {
-    let bytes = reader.bytes();
-    let layout = reader.layout();
+fn check_version(bytes: &[u8], layout: TableLayout<true>) {
+    let reader = TableReader::new(bytes, layout);
     let position = if layout.is_sized() {
         layout.offset_size()
     } else {
@@ -87,13 +85,13 @@ fn check_version(reader: &TableReader<'_, true>) {
         .map(|version| u32::try_from(version).expect("A slot holds at most 4 bytes"));
 
     check_result(bytes, reader.version(), expected);
-    check_header(reader);
+    check_header(bytes, layout);
 }
 
 /// Reads every type at `position`
 fn check_position(reader: &TableReader<'_>, position: usize) {
     let bytes = reader.bytes();
-    let offset_type = reader.layout().offset_type();
+    let offset_type = reader.offset_type();
 
     check_scalars(reader, position);
     check_arrays(reader, position);
@@ -150,7 +148,7 @@ fn check_scalars(reader: &TableReader<'_>, position: usize) {
 macro_rules! check_array {
     ($reader:expr, $position:expr, $($getter:ident -> $type:ty),*) => {$({
         let bytes = $reader.bytes();
-        let offset_type = $reader.layout().offset_type();
+        let offset_type = $reader.offset_type();
         let expected = array(bytes, offset_type, $position, size_of::<$type>());
 
         match $reader.$getter($position) {
@@ -238,7 +236,7 @@ fn check_view<T: Element + Debug, const N: usize>(
 /// index and in place
 fn check_vector(reader: &TableReader<'_>, position: usize) {
     let bytes = reader.bytes();
-    let offset_type = reader.layout().offset_type();
+    let offset_type = reader.offset_type();
     let width = offset_type.size() as u128;
 
     // A count, and an end for each item after it, within the bytes

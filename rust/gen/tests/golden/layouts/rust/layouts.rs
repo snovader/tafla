@@ -157,7 +157,7 @@ impl<'a> Uint8OffsetsVersioned<'a> {
     pub const FORMAT_VERSION: u32 = 255;
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint8);
 
     /// Reads a [`Uint8OffsetsVersioned`] from `bytes`
@@ -232,11 +232,7 @@ impl Uint8OffsetsVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint8OffsetsVersioned::LAYOUT,
-            Uint8OffsetsVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint8OffsetsVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());
@@ -262,7 +258,7 @@ impl<'a> Uint8OffsetsSizedVersioned<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint8);
 
     /// Reads a [`Uint8OffsetsSizedVersioned`] from `bytes`
@@ -337,11 +333,7 @@ impl Uint8OffsetsSizedVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint8`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint8OffsetsSizedVersioned::LAYOUT,
-            Uint8OffsetsSizedVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint8OffsetsSizedVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());
@@ -510,7 +502,7 @@ impl<'a> Uint16OffsetsVersioned<'a> {
     pub const FORMAT_VERSION: u32 = 65_535;
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint16);
 
     /// Reads a [`Uint16OffsetsVersioned`] from `bytes`
@@ -585,11 +577,7 @@ impl Uint16OffsetsVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint16OffsetsVersioned::LAYOUT,
-            Uint16OffsetsVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint16OffsetsVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());
@@ -615,7 +603,7 @@ impl<'a> Uint16OffsetsSizedVersioned<'a> {
 
     const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
         .sized()
-        .versioned()
+        .with_version(Self::FORMAT_VERSION)
         .with_offset_type(OffsetType::Uint16);
 
     /// Reads a [`Uint16OffsetsSizedVersioned`] from `bytes`
@@ -690,11 +678,7 @@ impl Uint16OffsetsSizedVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint16`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint16OffsetsSizedVersioned::LAYOUT,
-            Uint16OffsetsSizedVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint16OffsetsSizedVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());
@@ -860,7 +844,7 @@ impl<'a> Uint32OffsetsVersioned<'a> {
     /// The version of the format, which the header carries and [`Self::new`] checks
     pub const FORMAT_VERSION: u32 = 4_294_967_295;
 
-    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.versioned();
+    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.with_version(Self::FORMAT_VERSION);
 
     /// Reads a [`Uint32OffsetsVersioned`] from `bytes`
     ///
@@ -934,11 +918,7 @@ impl Uint32OffsetsVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint32OffsetsVersioned::LAYOUT,
-            Uint32OffsetsVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint32OffsetsVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());
@@ -962,7 +942,9 @@ impl<'a> Uint32OffsetsSizedVersioned<'a> {
     /// The version of the format, which the header carries and [`Self::new`] checks
     pub const FORMAT_VERSION: u32 = 2;
 
-    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
+    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT
+        .sized()
+        .with_version(Self::FORMAT_VERSION);
 
     /// Reads a [`Uint32OffsetsSizedVersioned`] from `bytes`
     ///
@@ -1036,11 +1018,7 @@ impl Uint32OffsetsSizedVersionedFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::versioned(
-            3,
-            Uint32OffsetsSizedVersioned::LAYOUT,
-            Uint32OffsetsSizedVersioned::FORMAT_VERSION,
-        )?;
+        let mut sizer = TableSizer::new(3, Uint32OffsetsSizedVersioned::LAYOUT)?;
         sizer.add_u32();
         sizer.add_str(self.name);
         sizer.add_u16_array(self.values.len());

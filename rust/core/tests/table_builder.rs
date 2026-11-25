@@ -471,13 +471,27 @@ fn test_reject_table_of_32_bit_offsets_past_4_gib_before_writing() {
 }
 
 #[test]
+fn test_write_the_layouts_version() {
+    const FIRST: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(1);
+    const SECOND: TableLayout<true> = FIRST.with_version(2);
+
+    assert_eq!(SECOND.version(), 2);
+    assert!(SECOND.is_sized());
+    assert!(SECOND.is_versioned());
+
+    let bytes = TableBuilder::new(0, SECOND).unwrap().to_bytes().unwrap();
+
+    // A reader reads a table of any version, whatever its layout's
+    assert_eq!(TableReader::new(&bytes, FIRST).version(), Ok(2));
+    assert_eq!(TableReader::new(&bytes, SECOND).version(), Ok(2));
+}
+
+#[test]
 fn test_reject_version_too_large_for_slot() {
     for (offset_type, version) in [(OffsetType::Uint8, 0x100), (OffsetType::Uint16, 0x1_0000)] {
-        let layout = TableLayout::DEFAULT
-            .with_offset_type(offset_type)
-            .versioned();
+        let layout = TableLayout::DEFAULT.with_offset_type(offset_type);
 
-        let error = TableBuilder::versioned(1, layout, version).unwrap_err();
+        let error = TableBuilder::new(1, layout.with_version(version)).unwrap_err();
         assert_eq!(
             error,
             BuildError::VersionTooLarge {
@@ -489,7 +503,7 @@ fn test_reject_version_too_large_for_slot() {
             error.to_string(),
             format!("Version {version} doesn't fit in a {offset_type} slot")
         );
-        assert!(TableBuilder::versioned(1, layout, version - 1).is_ok());
+        assert!(TableBuilder::new(1, layout.with_version(version - 1)).is_ok());
     }
 }
 

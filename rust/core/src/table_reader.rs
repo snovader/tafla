@@ -17,7 +17,11 @@ use crate::{ArrayView, DecodeError, Element, OffsetType, TableLayout, Vector};
 #[derive(Clone, Copy, Debug)]
 pub struct TableReader<'a, const VERSIONED: bool = false> {
     bytes: &'a [u8],
-    layout: TableLayout<VERSIONED>,
+    // What the reader takes from its layout. It reads tables of any version,
+    // so it doesn't keep the layout's: holding the whole layout, 4 bytes
+    // longer, made a record's read take 1.2 times as long.
+    sized: bool,
+    offset_type: OffsetType,
 }
 
 macro_rules! scalar_getters {
@@ -50,15 +54,31 @@ macro_rules! array_getters {
 
 impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     pub const fn new(bytes: &'a [u8], layout: TableLayout<VERSIONED>) -> Self {
-        Self { bytes, layout }
+        Self {
+            bytes,
+            sized: layout.is_sized(),
+            offset_type: layout.offset_type(),
+        }
     }
 
     pub const fn bytes(&self) -> &'a [u8] {
         self.bytes
     }
 
-    pub const fn layout(&self) -> TableLayout<VERSIONED> {
-        self.layout
+    /// Whether the layout that the reader was given is sized
+    pub const fn is_sized(&self) -> bool {
+        self.sized
+    }
+
+    /// The offset type of the layout that the reader was given
+    pub const fn offset_type(&self) -> OffsetType {
+        self.offset_type
+    }
+
+    /// The byte length of the header slots before the field offsets
+    const fn header_size(&self) -> usize {
+        let slots = if self.sized { 1 } else { 0 } + if VERSIONED { 1 } else { 0 };
+        slots * self.offset_type.size()
     }
 
     /// Returns the table's byte length from its header when the layout is
@@ -69,7 +89,7 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     /// [`DecodeError::OutOfRange`] if the header doesn't lie within the
     /// bytes.
     pub fn size(&self) -> Result<usize, DecodeError> {
-        if self.layout.is_sized() {
+        if self.sized {
             self.get_size(0)
         } else {
             Ok(self.bytes.len())
@@ -85,7 +105,7 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     pub fn root_offset(&self, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
-            .saturating_add(self.layout.header_size());
+            .saturating_add(self.header_size());
 
         self.get_size(slot)
     }
@@ -207,10 +227,6 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
         ))
     }
 
-    const fn offset_type(&self) -> OffsetType {
-        self.layout.offset_type()
-    }
-
     #[inline]
     fn get<T: Element>(&self, position: usize) -> Result<T, DecodeError> {
         self.bytes
@@ -278,7 +294,7 @@ impl TableReader<'_, true> {
     /// [`DecodeError::OutOfRange`] if the header doesn't lie within the
     /// bytes.
     pub fn version(&self) -> Result<u32, DecodeError> {
-        let position = if self.layout.is_sized() {
+        let position = if self.sized {
             self.offset_type().size()
         } else {
             0

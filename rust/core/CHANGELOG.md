@@ -41,6 +41,19 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout::DEFAULT.with_version(1)`,
+  rather than only whether the header has a slot for one, and `versioned()`
+  is gone. `TableBuilder::new()`, `TableSizer::new()` and
+  `TableWriter::table_bytes()` take a layout with or without a version and
+  write the one it has, in place of `TableBuilder::versioned()`,
+  `TableSizer::versioned()` and `TableWriter::versioned_table_bytes()`. They
+  return `BuildError::VersionTooLarge` for a version that doesn't fit the
+  layout's offset type, as before. The layout's type parameter still says
+  whether it has a version, so `TableLayout::version()` and
+  `TableReader::version()` exist only where there is one, and readers read
+  tables of any version, as before. A reader keeps what it reads with, not
+  the layout, so `TableReader::is_sized()` and `offset_type()` replace its
+  `layout()`.
 - The project is named tafla rather than buffy.
 - The type that reads a table is `TableReader` rather than `ByteBuffer`.
 - A layout's offset width is its offset type, `uint8`, `uint16` or `uint32`,

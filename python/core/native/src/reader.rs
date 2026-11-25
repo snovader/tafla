@@ -404,7 +404,7 @@ impl TableReader {
         };
 
         if let Some(version) = version {
-            let layout = shape.core().versioned();
+            let layout = shape.core().with_version(0);
             let Ok(found) = tafla::TableReader::new(reader.bytes_slice(), layout).version() else {
                 return Ok(None);
             };
@@ -431,7 +431,7 @@ impl TableReader {
         if !self.shape.versioned {
             return Err(PyTypeError::new_err("The table has no version"));
         }
-        tafla::TableReader::new(self.bytes_slice(), self.shape.core().versioned())
+        tafla::TableReader::new(self.bytes_slice(), self.shape.core().with_version(0))
             .version()
             .map_err(|error| core_error(py, &error))
     }

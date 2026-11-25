@@ -198,7 +198,7 @@ impl Reads {
         }
 
         let reader = TableReader::new(bytes, layout.unversioned());
-        let versioned = TableReader::new(bytes, layout.unversioned().versioned());
+        let versioned = TableReader::new(bytes, layout.unversioned().with_version(0));
 
         Self {
             table: read_table(bytes, table),
@@ -401,8 +401,8 @@ fn test_reject_invalid_utf8() {
 
 #[test]
 fn test_describe_unsupported_version() {
-    let layout = TableLayout::DEFAULT.sized().versioned();
-    let mut builder = TableBuilder::versioned(1, layout, 2).unwrap();
+    let layout = TableLayout::DEFAULT.sized().with_version(2);
+    let mut builder = TableBuilder::new(1, layout).unwrap();
     builder.set_u8(42).unwrap();
     let bytes = builder.to_bytes().unwrap();
 

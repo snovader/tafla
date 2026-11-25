@@ -105,7 +105,7 @@ fn test_every_kind_of_field() {
 
 #[test]
 fn test_versioned_document_with_nested_tables() {
-    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().versioned();
+    const LAYOUT: TableLayout<true> = TableLayout::DEFAULT.sized().with_version(3);
 
     let mut columns = TableBuilder::new(3, TableLayout::DEFAULT).unwrap();
     columns.set_i64(-631_152_000).unwrap();
@@ -116,7 +116,7 @@ fn test_versioned_document_with_nested_tables() {
     item.set_f32(0.5).unwrap();
     item.set_u16_array(&[7, 8, 9]).unwrap();
 
-    let mut document = TableBuilder::versioned(5, LAYOUT, 3).unwrap();
+    let mut document = TableBuilder::new(5, LAYOUT).unwrap();
     document.set_f64(59.3293).unwrap();
     document.set_str("Europe/Stockholm").unwrap();
     document.set_table(columns).unwrap();
@@ -196,7 +196,7 @@ fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
     let layout = TableLayout::DEFAULT
         .sized()
         .with_offset_type(OffsetType::Uint16)
-        .versioned();
+        .with_version(513);
     let narrow_layout = TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8);
 
     let mut narrow = TableBuilder::new(1, narrow_layout).unwrap();
@@ -204,7 +204,7 @@ fn test_uint16_offsets_with_vector_items_of_other_offset_types() {
     let mut wide = TableBuilder::new(1, TableLayout::DEFAULT).unwrap();
     wide.set_f64_array(&[1.25]).unwrap();
 
-    let mut medium = TableBuilder::versioned(2, layout, 513).unwrap();
+    let mut medium = TableBuilder::new(2, layout).unwrap();
     medium.set_f32_array(&[1.0, 2.0]).unwrap();
     medium.set_vector([narrow, wide]).unwrap();
 
