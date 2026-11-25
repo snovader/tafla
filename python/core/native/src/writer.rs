@@ -1404,10 +1404,8 @@ impl TableWriter {
     /// message's, in the layout that it was created with, from their
     /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
     /// end with one, and returns its bytes, in one call. They're the bytes
-    /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-    /// ``bytes()`` write, and it raises as they do, in their order: the
-    /// constructor's error for a ``version`` that the layout can't hold comes
-    /// before the error of a value.
+    /// that ``TableWriter(fields, layout)``, ``set_fields()`` and ``bytes()``
+    /// write, and it raises as they do.
     ///
     /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
     /// doesn't.
