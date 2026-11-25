@@ -127,7 +127,8 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 255;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().versioned().with_offset_type(::tafla::OffsetType::uint8);
+    static constexpr auto LAYOUT =
+        ::tafla::TableLayout().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint8);
 
     /**
      * Reads a `Uint8OffsetsVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in
@@ -182,7 +183,7 @@ public:
 
     /** The layout of the table, which its writer writes and its reader reads */
     static constexpr auto LAYOUT =
-        ::tafla::TableLayout().sized().versioned().with_offset_type(::tafla::OffsetType::uint8);
+        ::tafla::TableLayout().sized().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint8);
 
     /**
      * Reads a `Uint8OffsetsSizedVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in
@@ -320,7 +321,8 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 65535;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().versioned().with_offset_type(::tafla::OffsetType::uint16);
+    static constexpr auto LAYOUT =
+        ::tafla::TableLayout().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint16);
 
     /**
      * Reads a `Uint16OffsetsVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in
@@ -375,7 +377,7 @@ public:
 
     /** The layout of the table, which its writer writes and its reader reads */
     static constexpr auto LAYOUT =
-        ::tafla::TableLayout().sized().versioned().with_offset_type(::tafla::OffsetType::uint16);
+        ::tafla::TableLayout().sized().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint16);
 
     /**
      * Reads a `Uint16OffsetsSizedVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're
@@ -513,7 +515,7 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 4294967295;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().versioned();
+    static constexpr auto LAYOUT = ::tafla::TableLayout().with_version(FORMAT_VERSION);
 
     /**
      * Reads a `Uint32OffsetsVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in
@@ -567,7 +569,7 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 2;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().sized().versioned();
+    static constexpr auto LAYOUT = ::tafla::TableLayout().sized().with_version(FORMAT_VERSION);
 
     /**
      * Reads a `Uint32OffsetsSizedVersioned` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're
@@ -736,7 +738,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint8OffsetsVersioned::values() const {
 }
 
 inline ::tafla::Bytes Uint8OffsetsVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint8OffsetsVersioned::LAYOUT, Uint8OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -750,7 +752,7 @@ inline ::tafla::Bytes Uint8OffsetsVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint8OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint8OffsetsVersioned::LAYOUT, Uint8OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -793,7 +795,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint8OffsetsSizedVersioned::values() co
 }
 
 inline ::tafla::Bytes Uint8OffsetsSizedVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint8OffsetsSizedVersioned::LAYOUT, Uint8OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -807,7 +809,7 @@ inline ::tafla::Bytes Uint8OffsetsSizedVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint8OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint8OffsetsSizedVersioned::LAYOUT, Uint8OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint8OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -942,7 +944,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint16OffsetsVersioned::values() const 
 }
 
 inline ::tafla::Bytes Uint16OffsetsVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint16OffsetsVersioned::LAYOUT, Uint16OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -956,7 +958,7 @@ inline ::tafla::Bytes Uint16OffsetsVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint16OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint16OffsetsVersioned::LAYOUT, Uint16OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -999,7 +1001,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint16OffsetsSizedVersioned::values() c
 }
 
 inline ::tafla::Bytes Uint16OffsetsSizedVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint16OffsetsSizedVersioned::LAYOUT, Uint16OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -1013,7 +1015,7 @@ inline ::tafla::Bytes Uint16OffsetsSizedVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint16OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint16OffsetsSizedVersioned::LAYOUT, Uint16OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint16OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -1148,7 +1150,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint32OffsetsVersioned::values() const 
 }
 
 inline ::tafla::Bytes Uint32OffsetsVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint32OffsetsVersioned::LAYOUT, Uint32OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -1162,7 +1164,7 @@ inline ::tafla::Bytes Uint32OffsetsVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint32OffsetsVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint32OffsetsVersioned::LAYOUT, Uint32OffsetsVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -1205,7 +1207,7 @@ inline ::tafla::ArrayView<std::uint16_t> Uint32OffsetsSizedVersioned::values() c
 }
 
 inline ::tafla::Bytes Uint32OffsetsSizedVersionedFields::serialize() const {
-    ::tafla::TableSizer sizer_(3, Uint32OffsetsSizedVersioned::LAYOUT, Uint32OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());
@@ -1219,7 +1221,7 @@ inline ::tafla::Bytes Uint32OffsetsSizedVersionedFields::serialize() const {
 }
 
 inline std::size_t Uint32OffsetsSizedVersionedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(3, Uint32OffsetsSizedVersioned::LAYOUT, Uint32OffsetsSizedVersioned::FORMAT_VERSION);
+    ::tafla::TableSizer sizer_(3, Uint32OffsetsSizedVersioned::LAYOUT);
     sizer_.add_uint32();
     sizer_.add_string(name);
     sizer_.add_uint16_array(values.size());

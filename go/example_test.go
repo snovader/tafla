@@ -8,9 +8,9 @@ import (
 )
 
 // A format's header, shared by its writer and its readers
-var layout = tafla.TableLayout{}.Sized().Versioned()
-
 const formatVersion = 1
+
+var layout = tafla.TableLayout{}.Sized().WithVersion(formatVersion)
 
 func Example() {
 	timestamps := []uint32{0, 86_400}
@@ -23,7 +23,7 @@ func Example() {
 	_ = series.SetUint32Array(timestamps) // kept until the table is written
 	_ = series.SetFloat32Array(values)
 
-	builder, err := tafla.NewVersionedTableBuilder(3, layout, formatVersion)
+	builder, err := tafla.NewTableBuilder(3, layout)
 	if err != nil {
 		panic(err)
 	}

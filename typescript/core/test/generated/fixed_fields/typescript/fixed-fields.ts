@@ -787,7 +787,7 @@ export class Tagged {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Tagged.FORMAT_VERSION,
         offsetType: 'uint8'
     });
 
@@ -818,10 +818,9 @@ export class Tagged {
     /** Writes a `Tagged` with every field */
     static serialize(fields: TaggedFields): Uint8Array {
         const string2 = fields.label;
-        const table = TableWriter.versionedTableBytes(
+        const table = TableWriter.tableBytes(
             3,
             Tagged.#LAYOUT,
-            Tagged.FORMAT_VERSION,
             18 + utf8Length(string2)
         );
 
@@ -849,10 +848,9 @@ export class Tagged {
      */
     static serializeInto(fields: TaggedFields, bytes: Uint8Array): Uint8Array {
         const string2 = fields.label;
-        const table = TableWriter.versionedTableBytes(
+        const table = TableWriter.tableBytes(
             3,
             Tagged.#LAYOUT,
-            Tagged.FORMAT_VERSION,
             18 + utf8Length(string2),
             bytes
         );
@@ -998,7 +996,7 @@ export class Pixel {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Pixel.FORMAT_VERSION,
         offsetType: 'uint16'
     });
 
@@ -1028,12 +1026,7 @@ export class Pixel {
 
     /** Writes a `Pixel` with every field */
     static serialize(fields: PixelFields): Uint8Array {
-        const table = TableWriter.versionedTableBytes(
-            2,
-            Pixel.#LAYOUT,
-            Pixel.FORMAT_VERSION,
-            20
-        );
+        const table = TableWriter.tableBytes(2, Pixel.#LAYOUT, 20);
 
         table[4] = 8;
         table[6] = 16;
@@ -1055,13 +1048,7 @@ export class Pixel {
      * any of them is written.
      */
     static serializeInto(fields: PixelFields, bytes: Uint8Array): Uint8Array {
-        const table = TableWriter.versionedTableBytes(
-            2,
-            Pixel.#LAYOUT,
-            Pixel.FORMAT_VERSION,
-            20,
-            bytes
-        );
+        const table = TableWriter.tableBytes(2, Pixel.#LAYOUT, 20, bytes);
 
         table[4] = 8;
         table[5] = 0;
@@ -1192,7 +1179,9 @@ export class Box {
      */
     static readonly FORMAT_VERSION = 1;
 
-    static readonly #LAYOUT = TableLayout.create({ versioned: true });
+    static readonly #LAYOUT = TableLayout.create({
+        version: Box.FORMAT_VERSION
+    });
 
     readonly #reader: TableReader;
 
@@ -1220,12 +1209,7 @@ export class Box {
 
     /** Writes a `Box` with every field */
     static serialize(fields: BoxFields): Uint8Array {
-        const table = TableWriter.versionedTableBytes(
-            3,
-            Box.#LAYOUT,
-            Box.FORMAT_VERSION,
-            48
-        );
+        const table = TableWriter.tableBytes(3, Box.#LAYOUT, 48);
 
         table[4] = 16;
         table[8] = 24;
@@ -1249,13 +1233,7 @@ export class Box {
      * any of them is written.
      */
     static serializeInto(fields: BoxFields, bytes: Uint8Array): Uint8Array {
-        const table = TableWriter.versionedTableBytes(
-            3,
-            Box.#LAYOUT,
-            Box.FORMAT_VERSION,
-            48,
-            bytes
-        );
+        const table = TableWriter.tableBytes(3, Box.#LAYOUT, 48, bytes);
 
         table[4] = 16;
         table[5] = 0;

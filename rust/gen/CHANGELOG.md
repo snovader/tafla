@@ -188,6 +188,27 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The TypeScript and JavaScript that tafla-gen generates for a versioned
+  message gives the version to the message's `TableLayout`, as
+  `TableLayout.create({ version: Document.FORMAT_VERSION })`, rather than to
+  each sizer and to `TableWriter.versionedTableBytes()`, which the runtime
+  no longer has. It needs the runtime that takes the version so.
+- The Go that tafla-gen generates for a versioned message gives the version
+  to the message's layout, as `WithVersion(DocumentFormatVersion)`, rather
+  than to `NewVersionedTableSizer()` and `AppendVersionedTable()`, which the
+  runtime no longer has. It needs the runtime that takes the version so.
+- The Java that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `.version(FORMAT_VERSION)`, rather
+  than to each `TableSizer`, which no longer takes one. It needs the runtime
+  that takes the version so.
+- The C++ that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `with_version(FORMAT_VERSION)`, rather
+  than to its `TableSizer`, which no longer takes one. It needs the runtime
+  that takes the version so.
+- The C# that tafla-gen generates for a versioned message gives the version
+  to the message's layout, as `Version = FormatVersion`, rather than to each
+  `TableSizer` and to `TableWriter.CreateTableBytes()`, which no longer take
+  one. It needs the runtime that takes the version so.
 - The Swift that tafla-gen generates for a versioned message gives the
   version to the message's layout, as `version: formatVersion`, rather than
   to each `TableSizer`, which no longer takes one. It needs the runtime that

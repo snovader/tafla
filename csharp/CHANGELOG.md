@@ -23,6 +23,13 @@ The first release.
   bytes. `TableReader` and `Vector` are `ref struct`s over a
   `ReadOnlySpan<byte>` of any memory, such as an array's, a slice's, or stack
   or native memory, so that no read converts the bytes to a span.
+- A layout holds its table's version, `new TableLayout { Version = 1 }`, which
+  `TableBuilder`, `TableSizer` and `TableWriter.CreateTableBytes()` write to
+  the header, and throw a `BuildException` for when it doesn't fit the
+  layout's offset type. `layout with { Version = 2 }` is the layout of
+  another version of the same format, and `Versioned` says whether a layout
+  has one. A `TableReader` reads tables of any version, whatever its
+  layout's, and has the `Sized` and `OffsetType` that it reads with.
 - The package, which is trimmable and compatible with Native AOT, with its
   symbols in a `.snupkg`, whose Source Link finds the sources of its commit
   on GitHub.

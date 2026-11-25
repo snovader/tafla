@@ -295,7 +295,10 @@ export class Document {
      */
     static FORMAT_VERSION = 1;
 
-    static #LAYOUT = TableLayout.create({ sized: true, versioned: true });
+    static #LAYOUT = TableLayout.create({
+        sized: true,
+        version: Document.FORMAT_VERSION
+    });
 
     /** @type {TableReader} */
     #reader;
@@ -334,11 +337,7 @@ export class Document {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(
-            4,
-            Document.#LAYOUT,
-            Document.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(4, Document.#LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name);
@@ -369,11 +368,7 @@ export class Document {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(
-            4,
-            Document.#LAYOUT,
-            Document.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(4, Document.#LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name);

@@ -422,7 +422,7 @@ public readonly ref struct Tagged
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 3;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Versioned = true, OffsetType = global::Tafla.OffsetType.UInt8 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -468,12 +468,7 @@ public readonly record struct TaggedFields
     public byte[] Serialize()
     {
         var length = global::Tafla.TableSizer.Utf8Length(Label);
-        var table = global::Tafla.TableWriter.CreateTableBytes(
-            3,
-            Tagged.TableLayout,
-            Tagged.FormatVersion,
-            18 + length
-        );
+        var table = global::Tafla.TableWriter.CreateTableBytes(3, Tagged.TableLayout, 18 + length);
         global::System.Span<byte> bytes = table;
 
         bytes[2] = 5;
@@ -498,7 +493,7 @@ public readonly record struct TaggedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(3, Tagged.TableLayout, Tagged.FormatVersion);
+        var sizer = new global::Tafla.TableSizer(3, Tagged.TableLayout);
         sizer.AddUInt32();
         sizer.AddStruct(size: 8);
         sizer.AddString(Label);
@@ -592,7 +587,7 @@ public readonly ref struct Pixel
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 2;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Versioned = true, OffsetType = global::Tafla.OffsetType.UInt16 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -632,7 +627,7 @@ public readonly record struct PixelFields
     /// <summary>Writes a <see cref="Pixel"/> with every field into new bytes of its length.</summary>
     public byte[] Serialize()
     {
-        var table = global::Tafla.TableWriter.CreateTableBytes(2, Pixel.TableLayout, Pixel.FormatVersion, 20);
+        var table = global::Tafla.TableWriter.CreateTableBytes(2, Pixel.TableLayout, 20);
         global::System.Span<byte> bytes = table;
 
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes[4..], 8);
@@ -653,7 +648,7 @@ public readonly record struct PixelFields
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(2, Pixel.TableLayout, Pixel.FormatVersion);
+        var sizer = new global::Tafla.TableSizer(2, Pixel.TableLayout);
         sizer.AddStruct(size: 8);
         sizer.AddUInt32();
 
@@ -742,7 +737,7 @@ public readonly ref struct Box
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Versioned = true };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Version = FormatVersion };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -786,7 +781,7 @@ public readonly record struct BoxFields
     /// <summary>Writes a <see cref="Box"/> with every field into new bytes of its length.</summary>
     public byte[] Serialize()
     {
-        var table = global::Tafla.TableWriter.CreateTableBytes(3, Box.TableLayout, Box.FormatVersion, 48);
+        var table = global::Tafla.TableWriter.CreateTableBytes(3, Box.TableLayout, 48);
         global::System.Span<byte> bytes = table;
 
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 16);
@@ -809,7 +804,7 @@ public readonly record struct BoxFields
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(3, Box.TableLayout, Box.FormatVersion);
+        var sizer = new global::Tafla.TableSizer(3, Box.TableLayout);
         sizer.AddStruct(size: 8);
         sizer.AddStruct(size: 8);
         sizer.AddTable(alignment: 1);

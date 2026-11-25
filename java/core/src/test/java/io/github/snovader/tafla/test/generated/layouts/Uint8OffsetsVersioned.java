@@ -13,7 +13,7 @@ public final class Uint8OffsetsVersioned {
     public static final long FORMAT_VERSION = 255;
 
     private static final TableLayout LAYOUT = TableLayout.builder()
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .offsetType(OffsetType.UINT8)
         .build();
 
@@ -43,7 +43,7 @@ public final class Uint8OffsetsVersioned {
 
     /** Writes a {@code Uint8OffsetsVersioned} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);
@@ -68,7 +68,7 @@ public final class Uint8OffsetsVersioned {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);

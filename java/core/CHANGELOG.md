@@ -53,6 +53,15 @@ repository's first commits, for code built from its source before the release.
 
 ### Changed
 
+- A layout holds its table's version, `TableLayout.builder().version(1)`,
+  rather than only whether the header has a slot for one, and the builder's
+  `versioned()` is gone. `TableBuilder` and `TableSizer` take the version
+  from the layout rather than as a constructor argument, so a version
+  missing from or given for a layout can no longer be written. A version
+  that doesn't fit the offset type throws from the layout's `build()` and
+  `withVersion()`, once, rather than from each builder. `withVersion()`
+  returns a layout for another version of the same format, and `version()`
+  the layout's own. Readers read tables of any version, as before.
 - The project is named tafla rather than buffy.
 - The class that reads a table is `TableReader` rather than `ByteBuffer`,
   which shared its name with `java.nio.ByteBuffer`.

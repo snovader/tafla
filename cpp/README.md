@@ -11,14 +11,14 @@ throws a `tafla::DecodeError` otherwise.
 #include <tafla/tafla.hpp>
 
 // A format's header, shared by its writer and its readers
-constexpr auto layout = tafla::TableLayout().sized().versioned();
 constexpr std::uint32_t format_version = 1;
+constexpr auto layout = tafla::TableLayout().sized().with_version(format_version);
 
 tafla::TableBuilder series(2, tafla::TableLayout());
 series.set_uint32_array(timestamps);  // a std::span, which the builder views
 series.set_float32_array(std::move(values));  // a std::vector, which it owns
 
-tafla::TableBuilder builder(3, layout, format_version);
+tafla::TableBuilder builder(3, layout);
 builder.set_float64(59.3293);
 builder.set_string("Europe/Stockholm");
 builder.set_table(std::move(series));  // written straight into the table
@@ -65,10 +65,10 @@ type, offset size, vector, builder and decode error.
   second a core. `kind()` and the accessors of each error describe what
   failed, as the other runtimes' errors do.
 - **`TableLayout<true>` is a versioned layout**, as Rust's `TableLayout<true>`
-  is, so that a versioned table's builder requires a version and
-  `TableReader::version()` compiles only where the header has one. A layout is
-  a `constexpr` value, and a `TableReader` made with a constant layout reads
-  its offsets without branching on their type.
+  is, so that the layout's `version()` and `TableReader::version()` compile
+  only where the header has one, and a layout without a version takes no
+  bytes for one. A layout is a `constexpr` value, and a `TableReader` made
+  with a constant layout reads its offsets without branching on their type.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
   which must outlive them. A setter that takes a `std::span` or a
