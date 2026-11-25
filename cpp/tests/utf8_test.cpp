@@ -70,31 +70,57 @@ bool well_formed(std::span<const std::uint8_t> bytes) {
     return true;
 }
 
-/// Whether `bytes` are valid UTF-8 at `offset` from the start of an
-/// allocation that ends where they do, after `offset` bytes that aren't
+/// What each check of UTF-8 finds of `bytes` at `offset` from the start of
+/// an allocation that ends where they do, after `offset` bytes that aren't
 /// UTF-8, so that a read past their end is reported by AddressSanitizer at
 /// every offset, and a read before their start is reported at offset 0 and
-/// reads bytes that aren't UTF-8 at the others
-bool valid_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
+/// reads bytes that aren't UTF-8 at the others.
+///
+/// The checks are `valid_utf8()`, which reads use, and, from the string's
+/// start, each check that it hands a string to from its first byte that
+/// isn't ASCII, so that each is tested on any host, whichever it takes there:
+/// the check of characters one by one, and on AArch64 the check of blocks of
+/// 16 bytes, of strings of 16 bytes or more.
+std::vector<bool> checks_at(const std::vector<std::uint8_t>& bytes, std::size_t offset) {
     // Not zeroed, since every byte is written below. Zeroed, the bytes made
     // GCC 15's -Wrestrict see the copy as overlapping on 32-bit x86 and s390x
     const auto buffer = std::make_unique_for_overwrite<std::uint8_t[]>(offset + bytes.size());
     std::fill_n(buffer.get(), offset, std::uint8_t{0xff});
     std::ranges::copy(bytes, buffer.get() + offset);
 
-    return detail::valid_utf8(buffer.get() + offset, bytes.size());
+    const auto* start = buffer.get() + offset;
+    std::vector<bool> checks{detail::valid_utf8(start, bytes.size()),
+                             detail::valid_utf8_characters_from(start, 0, bytes.size())};
+#if defined(TAFLA_UTF8_NEON)
+    if (bytes.size() >= detail::kUtf8BlockLength) {
+        checks.push_back(detail::valid_utf8_blocks_from(start, 0, bytes.size()));
+    }
+#endif
+    return checks;
 }
 
-/// Whether `bytes` validate as the table matches them at every address modulo
-/// the 8 bytes that ASCII is checked in at a time
+/// Whether every check finds `bytes` valid as the table matches them, at every
+/// address modulo the 8 bytes that ASCII is checked in at a time
 bool validates_as_table(const std::vector<std::uint8_t>& bytes) {
     const bool expected = well_formed(bytes);
     for (std::size_t offset = 0; offset < 8; ++offset) {
-        if (valid_at(bytes, offset) != expected) {
-            return false;
+        for (const bool valid : checks_at(bytes, offset)) {
+            if (valid != expected) {
+                return false;
+            }
         }
     }
     return true;
+}
+
+/// UTF-8 of `count` characters, `pattern`'s repeated
+std::vector<std::uint8_t> repeated(const std::vector<std::vector<std::uint8_t>>& pattern, std::size_t count) {
+    std::vector<std::uint8_t> bytes;
+    for (std::size_t index = 0; index < count; ++index) {
+        const auto& character = pattern[index % pattern.size()];
+        bytes.insert(bytes.end(), character.begin(), character.end());
+    }
+    return bytes;
 }
 
 /// Strings of `bytes`, of every length to six words as likely as any other,
@@ -202,6 +228,48 @@ TEST(Utf8, FindsAByteThatIsNotAsciiAtAnyPositionOfAnyLength) {
     }
 }
 
+/// Characters of 2, 3 and 4 bytes, alone and mixed with ASCII, are checked
+/// a character at a time, or in blocks of 16 bytes with the 3 before each,
+/// the last of which is moved to the start of a block and followed by zeros,
+/// so a byte that isn't well-formed is found at any position of a string of
+/// any length to five blocks, among characters of any width, and so is a
+/// character cut short at its end
+TEST(Utf8, FindsAnIllFormedByteAtAnyPositionAmongCharactersOfEveryWidth) {
+    const std::vector<std::uint8_t> a{'a'};
+    const std::vector<std::uint8_t> two{0xc3, 0xa5};
+    const std::vector<std::uint8_t> three{0xe4, 0xb8, 0x80};
+    const std::vector<std::uint8_t> four{0xf0, 0x9f, 0x98, 0x80};
+    const std::vector<std::vector<std::vector<std::uint8_t>>> patterns{
+        {two}, {three}, {four}, {a, two, three, four}, {four, a, a, three, two, a},
+    };
+    // The limits of each byte of a sequence, and bytes that are never UTF-8
+    const std::array<std::uint8_t, 12> bytes{0x00, 0x7f, 0x80, 0x8f, 0x9f, 0xbf, 0xc1, 0xc2, 0xe0, 0xed, 0xf4, 0xff};
+
+    for (const auto& pattern : patterns) {
+        for (std::size_t count = 1; count <= 40; ++count) {
+            const auto valid = repeated(pattern, count);
+            if (valid.size() > 80) {
+                break;
+            }
+            EXPECT_TRUE(well_formed(valid));
+            EXPECT_TRUE(validates_as_table(valid)) << ::testing::PrintToString(valid);
+
+            for (std::size_t length = 0; length < valid.size(); ++length) {
+                const std::vector<std::uint8_t> cut(valid.begin(), valid.begin() + static_cast<std::ptrdiff_t>(length));
+                EXPECT_TRUE(validates_as_table(cut)) << ::testing::PrintToString(cut);
+            }
+
+            for (std::size_t position = 0; position < valid.size(); ++position) {
+                for (const std::uint8_t byte : bytes) {
+                    auto changed = valid;
+                    changed[position] = byte;
+                    EXPECT_TRUE(validates_as_table(changed)) << ::testing::PrintToString(changed);
+                }
+            }
+        }
+    }
+}
+
 RC_GTEST_PROP(Utf8, ValidatesAsciiAsTheTableDoes, ()) {
     const auto bytes = *ascii();
     RC_ASSERT(well_formed(bytes));
@@ -213,6 +281,27 @@ RC_GTEST_PROP(Utf8, ValidatesAnyUtf8AsTheTableDoes, ()) {
     const std::vector<std::uint8_t> bytes(string.begin(), string.end());
     RC_ASSERT(well_formed(bytes));
     RC_ASSERT(validates_as_table(bytes));
+}
+
+RC_GTEST_PROP(Utf8, ValidatesAnyUtf8WithOneArbitraryByteAnywhereAsTheTableDoes, ()) {
+    const auto string = *rc::gen::nonEmpty(strategy::strings(48));
+    const std::vector<std::uint8_t> bytes(string.begin(), string.end());
+    const auto byte = *rc::gen::arbitrary<std::uint8_t>();
+
+    for (std::size_t position = 0; position < bytes.size(); ++position) {
+        auto changed = bytes;
+        changed[position] = byte;
+        RC_ASSERT(validates_as_table(changed));
+    }
+}
+
+RC_GTEST_PROP(Utf8, ValidatesAnyUtf8CutShortAsTheTableDoes, ()) {
+    const auto string = *strategy::strings(48);
+    const std::vector<std::uint8_t> bytes(string.begin(), string.end());
+
+    for (std::size_t length = 0; length < bytes.size(); ++length) {
+        RC_ASSERT(validates_as_table({bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(length)}));
+    }
 }
 
 RC_GTEST_PROP(Utf8, ValidatesArbitraryBytesAsTheTableDoes, ()) {

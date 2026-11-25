@@ -87,21 +87,39 @@ TAFLA_ALWAYS_INLINE std::size_t first_high_byte_of_words(const std::uint8_t* byt
     return first_high_byte(first, second, 8);
 }
 
+/// The position of the first byte from `index` that isn't ASCII, or of one
+/// of the last 7 bytes or fewer, before which every byte is ASCII. ASCII is
+/// skipped a word at a time, and after a word of it 32 bytes at a time while
+/// a block of four words is ASCII, so that a short run of ASCII between other
+/// characters costs a word's test and a long one a test of each 32 bytes. The
+/// high bits of the word that holds a byte that isn't ASCII locate it, rather
+/// than steps to it a byte at a time.
+TAFLA_ALWAYS_INLINE std::size_t skip_ascii(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
+    while (length - index >= 8) {
+        const std::uint64_t word = word_at(bytes + index);
+        if (!ascii(word)) {
+            return index + first_high_byte(word);
+        }
+        index += 8;
+
+        while (length - index >= 32 && ascii_block(bytes + index)) {
+            index += 32;
+        }
+    }
+    return index;
+}
+
 /// Whether the bytes from `index` to `length` are UTF-8, as `valid_utf8()`
 /// defines it, where those before `index` are ASCII, checked character by
 /// character
-inline bool valid_utf8_from(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
+inline bool valid_utf8_characters_from(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
     const auto continues = [](std::uint8_t byte) { return (byte & 0xc0) == 0x80; };
 
     while (index < length) {
         const std::uint8_t lead = bytes[index];
 
         if (lead < 0x80) {
-            // ASCII again, eight bytes at a time
-            ++index;
-            while (length - index >= 8 && ascii_word(bytes + index)) {
-                index += 8;
-            }
+            index = skip_ascii(bytes, index + 1, length);
             continue;
         }
 
@@ -148,6 +166,12 @@ inline bool valid_utf8_from(const std::uint8_t* bytes, std::size_t index, std::s
     }
 
     return true;
+}
+
+/// Whether the bytes from `index` to `length` are UTF-8, where those before
+/// `index` are ASCII
+inline bool valid_utf8_from(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
+    return valid_utf8_characters_from(bytes, index, length);
 }
 
 /// Whether `bytes` are UTF-8 as Unicode's table 3-7 defines it: no
