@@ -136,6 +136,25 @@ impl Target {
         Self::TARGETS.iter().map(|(names, _)| names[0])
     }
 
+    /// Whether the target generates optional fields and fields added since a
+    /// version, which only TypeScript's and JavaScript's do so far
+    pub const fn generates_missing_fields(self) -> bool {
+        match self {
+            #[cfg(feature = "typescript")]
+            Self::TypeScript | Self::JavaScript => true,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        }
+    }
+
+    /// The target's full name, as the command takes it
+    pub fn name(self) -> &'static str {
+        Self::TARGETS
+            .iter()
+            .find(|&&(_, target)| target == self)
+            .map_or("", |(names, _)| names[0])
+    }
+
     /// The names of each target that this build generates: its full name,
     /// and then its abbreviation if it has one
     pub fn names_and_abbreviations() -> impl Iterator<Item = &'static [&'static str]> {

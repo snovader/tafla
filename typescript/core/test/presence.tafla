@@ -1,0 +1,67 @@
+// Optional fields, and fields that later versions of a message and later
+// revisions of a table append, which only the TypeScript and JavaScript
+// targets generate so far. The messages and tables named `V1` are the first
+// version or revision of the others, whose bytes the tests read with them.
+
+/// A record in its second version, which reads the first too
+message Record (sized, version: 2, since: 1) {
+    id: uint32;
+    name: string?;
+    values: [float64]?;
+    origin: Point?;
+    flag: bool?;
+    entries: [Entry]?;
+    /// Added by version 2
+    label: string (since: 2);
+    extent: Extent? (since: 2);
+}
+
+/// The first version of a record
+message RecordV1 (sized, version: 1) {
+    id: uint32;
+    name: string?;
+    values: [float64]?;
+    origin: PointV1?;
+    flag: bool?;
+    entries: [EntryV1]?;
+}
+
+/// A point whose second revision appends `z`
+table Point {
+    x: float64;
+    y: float64;
+    z: float64 (since: 2);
+}
+
+table PointV1 {
+    x: float64;
+    y: float64;
+}
+
+/// An item of a record, with an optional note, whose second revision
+/// appends `weight`
+table Entry {
+    key: uint16;
+    note: string?;
+    weight: float32 (since: 2);
+}
+
+table EntryV1 {
+    key: uint16;
+    note: string?;
+}
+
+struct Extent {
+    width: float32;
+    height: float32;
+}
+
+/// A message without a version, whose second revision appends `count`
+message Sample {
+    key: uint32;
+    count: uint16 (since: 2);
+}
+
+message SampleV1 {
+    key: uint32;
+}

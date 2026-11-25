@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { describe, expect, it as example } from 'hypotes';
+import { describe, it as example, expect } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
 import { DecodeError, TableBuilder } from 'tafla';
 import {

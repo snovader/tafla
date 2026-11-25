@@ -5,7 +5,7 @@
 //! declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 //! attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 //! attribute   = NAME (":" (INTEGER | NAME))?
-//! field       = doc* NAME ":" type ";"
+//! field       = doc* NAME ":" type "?"? attributes? ";"
 //! type        = NAME | "[" NAME "]"
 //! ```
 
@@ -63,6 +63,9 @@ pub struct FieldDeclaration {
     pub docs: Vec<String>,
     pub type_name: Name,
     pub is_array: bool,
+    /// The `?` after the type of a field that may be absent
+    pub optional: Option<Span>,
+    pub attributes: Vec<Attribute>,
 }
 
 pub fn parse(source: &str) -> Result<Vec<Declaration>, Diagnostic> {
@@ -177,6 +180,13 @@ impl Parser<'_> {
         if is_array {
             self.expect(TokenKind::RightBracket, "`]`")?;
         }
+
+        let optional = (self.peek().kind == TokenKind::Question).then(|| self.advance().span);
+        let attributes = if self.peek().kind == TokenKind::LeftParenthesis {
+            self.attributes()?
+        } else {
+            Vec::new()
+        };
         self.expect(TokenKind::Semicolon, "`;`")?;
 
         Ok(FieldDeclaration {
@@ -184,6 +194,8 @@ impl Parser<'_> {
             docs,
             type_name,
             is_array,
+            optional,
+            attributes,
         })
     }
 

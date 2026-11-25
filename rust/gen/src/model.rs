@@ -3,6 +3,8 @@
 //! structs nest in place at most 64 deep, so the generators and the methods
 //! here can follow them by recursion.
 
+use crate::diagnostic::Span;
+
 #[derive(Debug)]
 pub struct Schema {
     /// In declaration order, which the generators keep, except that C++ and
@@ -14,6 +16,10 @@ pub struct Schema {
     /// The alignment of each message and table, by its index, and 1 for each
     /// struct, whose layout has its alignment
     table_alignments: Vec<u8>,
+    /// Where the schema first declares a field optional or added since a
+    /// version, if it does, for the error of a target that doesn't generate
+    /// such fields
+    presence: Option<Span>,
 }
 
 #[derive(Debug)]
@@ -49,7 +55,19 @@ pub struct StructLayout {
 pub struct Layout {
     pub sized: bool,
     pub version: Option<u32>,
+    /// The first version that the message's reader reads, which its `since`
+    /// attribute names, when it reads more versions than its own
+    pub since: Option<u32>,
     pub offset_type: OffsetType,
+}
+
+impl Layout {
+    /// The versions that the message's reader reads, from the first to its
+    /// own, when it has a version
+    pub fn versions(&self) -> Option<(u32, u32)> {
+        self.version
+            .map(|version| (self.since.unwrap_or(version), version))
+    }
 }
 
 /// The offset type of a message, which its `offset_type` attribute names
@@ -97,6 +115,21 @@ pub struct Field {
     pub name: String,
     pub docs: Vec<String>,
     pub field_type: FieldType,
+    /// Whether a writer may leave the field out, with an offset of 0, which
+    /// its reader checks for
+    pub optional: bool,
+    /// The version of its message, or the revision of its table, that added
+    /// the field: a reader finds it missing from a table written before
+    pub since: Option<u32>,
+}
+
+impl Field {
+    /// Whether the field's getter returns the target's missing value for a
+    /// table that doesn't hold it: an optional field left out, or a field
+    /// that a later version or revision added
+    pub const fn may_be_missing(&self) -> bool {
+        self.optional || self.since.is_some()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,7 +227,7 @@ impl Schema {
     /// positions in `definitions`. It finds what the generators ask of each
     /// definition once, so that generating code takes time in proportion to
     /// the schema.
-    pub fn new(definitions: Vec<Definition>) -> Self {
+    pub fn new(definitions: Vec<Definition>, presence: Option<Span>) -> Self {
         let mut items = vec![false; definitions.len()];
         for field in definitions.iter().flat_map(|definition| &definition.fields) {
             if let FieldType::Vector(item) | FieldType::StructArray(item) = field.field_type {
@@ -217,7 +250,14 @@ impl Schema {
             definitions,
             items,
             table_alignments,
+            presence,
         }
+    }
+
+    /// Where the schema first declares a field optional or added since a
+    /// version, if it does
+    pub const fn presence(&self) -> Option<Span> {
+        self.presence
     }
 
     pub fn definition(&self, index: usize) -> &Definition {
@@ -288,6 +328,12 @@ fn alignment_within(definitions: &[Definition], index: usize, alignments: &mut [
 }
 
 impl Definition {
+    /// Whether any field may be missing from a table, so that the table's
+    /// length and what its reader reads depend on which fields it holds
+    pub fn has_missing_fields(&self) -> bool {
+        self.fields.iter().any(Field::may_be_missing)
+    }
+
     pub const fn layout(&self) -> Option<Layout> {
         match self.kind {
             Kind::Message(layout) => Some(layout),

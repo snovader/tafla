@@ -1,0 +1,95 @@
+error: a struct's fields can't be optional
+ --> optional_and_since.tafla:2:19
+  |
+2 |     first: float32?;
+  |                   ^ a struct holds each of its scalars at a fixed offset
+
+error: a struct's fields have no attributes
+ --> optional_and_since.tafla:3:22
+  |
+3 |     second: float32 (since: 2);
+  |                      ^^^^^
+
+error: `since` needs a `version`
+ --> optional_and_since.tafla:6:29
+  |
+6 | message Unversioned (since: 1) {
+  |                             ^ it's the first version that the message's reader reads, such as `version: 2, since: 1`
+
+error: `since: 3` is after the message's version, 2
+  --> optional_and_since.tafla:10:35
+   |
+10 | message Ahead (version: 2, since: 3) {
+   |                                   ^ it's the first version that the message's reader reads
+
+error: `since: 1` isn't after the first version that `Versions` reads, 1
+  --> optional_and_since.tafla:16:26
+   |
+16 |     early: uint8 (since: 1);
+   |                          ^ every version that the message reads has the field
+
+error: `since: 4` is after the version of `Versions`, 3
+  --> optional_and_since.tafla:17:25
+   |
+17 |     late: uint8 (since: 4);
+   |                         ^ a field is added by the message's version or one before it
+
+error: `since: 2` comes after a field added since 3
+  --> optional_and_since.tafla:19:25
+   |
+19 |     back: uint8 (since: 2);
+   |                         ^ a version appends its fields to those of the versions before it
+
+error: `after` comes after a field added since 3
+  --> optional_and_since.tafla:20:5
+   |
+20 |     after: uint8;
+   |     ^^^^^ a version only appends fields, so every field after one with `since` has a `since` too
+
+error: `since: 2` isn't after the first version that `Single` reads, 2
+  --> optional_and_since.tafla:25:22
+   |
+25 |     y: uint8 (since: 2);
+   |                      ^ name the first version with the message's `since`, such as `version: 2, since: 1`
+
+error: the first field can't be optional in a table with fields added `since` a revision
+  --> optional_and_since.tafla:29:17
+   |
+29 |     first: uint8?;
+   |                 ^ a reader finds which fields such a table holds from its first field's offset
+
+error: `since: 1` isn't a later revision of `Revised`
+  --> optional_and_since.tafla:30:27
+   |
+30 |     second: uint8 (since: 1);
+   |                           ^ a table without a version counts its revisions from 1, so the fields that it adds are `since: 2` or later
+
+error: `since` takes an integer
+  --> optional_and_since.tafla:31:26
+   |
+31 |     third: uint8 (since: two);
+   |                          ^^^ such as `since: 2`
+
+error: `since` needs a value
+  --> optional_and_since.tafla:32:20
+   |
+32 |     fourth: uint8 (since);
+   |                    ^^^^^ such as `since: 2`
+
+error: unknown attribute `added`
+  --> optional_and_since.tafla:33:19
+   |
+33 |     fifth: uint8 (added: 3);
+   |                   ^^^^^ a field's only attribute is `since`, such as `since: 2`
+
+error: `since` is given twice
+  --> optional_and_since.tafla:34:36
+   |
+34 |     sixth: uint8 (since: 3, since: 4);
+   |                                    ^
+
+error: the first field can't be added `since` a later version
+  --> optional_and_since.tafla:38:19
+   |
+38 |     first: uint8 (since: 2);
+   |                   ^^^^^ every version or revision of a table holds its first field

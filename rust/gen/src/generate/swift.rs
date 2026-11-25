@@ -1111,6 +1111,7 @@ mod tests {
         let layout = |sized, version, offset_type| Layout {
             sized,
             version,
+            since: None,
             offset_type,
         };
         assert_eq!(
