@@ -85,6 +85,11 @@ jobs:
               - "swift/benchmarks/Sources/GeneratedTafla/**"
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
+              # The strings suites' schemas and generated code
+              - "java/benchmarks/src/main/tafla/strings.tafla"
+              - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/**"
+              - "typescript/benchmarks/strings/strings.tafla"
+              - "typescript/benchmarks/strings/generated/tafla/**"
             # The runtime and what its tests read, which the jobs that test only
             # the runtime, under Miri and on a 32-bit target, run for
             runtime:

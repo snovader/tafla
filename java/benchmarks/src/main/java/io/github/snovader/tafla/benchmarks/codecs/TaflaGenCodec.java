@@ -1,6 +1,7 @@
 package io.github.snovader.tafla.benchmarks.codecs;
 
 import io.github.snovader.tafla.benchmarks.*;
+import io.github.snovader.tafla.benchmarks.generated.strings.Strings;
 import io.github.snovader.tafla.benchmarks.generated.tafla.Columns;
 import io.github.snovader.tafla.benchmarks.generated.tafla.Document;
 import io.github.snovader.tafla.benchmarks.generated.tafla.Item;
@@ -13,11 +14,13 @@ import io.github.snovader.tafla.benchmarks.generated.tafla.Triples;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
- * The code that tafla-gen generates from {@code src/main/tafla/workloads.tafla}, which writes each
- * message's table in one call with a {@code TableSizer} and a {@code TableWriter}, rather than
- * nesting {@code TableBuilder}s, and reads it with the generated getters.
+ * The code that tafla-gen generates from {@code src/main/tafla/workloads.tafla}, and from
+ * {@code src/main/tafla/strings.tafla} for the strings suite's table, which writes each message's
+ * table in one call with a {@code TableSizer} and a {@code TableWriter}, rather than nesting
+ * {@code TableBuilder}s, and reads it with the generated getters.
  *
  * <p>The generated code writes from records of each table's fields and of the structs, which
  * {@code serialize()} creates from the workloads' inputs in each call, as the protobuf codec
@@ -32,7 +35,15 @@ public final class TaflaGenCodec {
     private TaflaGenCodec() {}
 
     public static Codec create() {
-        return new Codec("tafla-gen", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
+        return new Codec(
+            "tafla-gen",
+            new Records(),
+            new Documents(),
+            new Lists(),
+            new Structs(),
+            new Samples(),
+            new StringTables()
+        );
     }
 
     private static final class Records implements Workload<RecordInput> {
@@ -160,6 +171,58 @@ public final class TaflaGenCodec {
             var sample = Sample.read(bytes, 0);
 
             return new SampleInput(sample.key(), sample.a(), sample.b());
+        }
+    }
+
+    /**
+     * The table of 16 string fields, written and read by the code that tafla-gen generates from
+     * {@code src/main/tafla/strings.tafla}
+     */
+    private static final class StringTables implements Workload<List<String>> {
+        @Override
+        public byte[] serialize(List<String> s) {
+            return Strings.serialize(new Strings.Fields(
+                s.get(0),
+                s.get(1),
+                s.get(2),
+                s.get(3),
+                s.get(4),
+                s.get(5),
+                s.get(6),
+                s.get(7),
+                s.get(8),
+                s.get(9),
+                s.get(10),
+                s.get(11),
+                s.get(12),
+                s.get(13),
+                s.get(14),
+                s.get(15)
+            ));
+        }
+
+        @Override
+        public List<String> deserialize(byte[] bytes) {
+            var table = new Strings(bytes);
+
+            return Arrays.asList(
+                table.s0(),
+                table.s1(),
+                table.s2(),
+                table.s3(),
+                table.s4(),
+                table.s5(),
+                table.s6(),
+                table.s7(),
+                table.s8(),
+                table.s9(),
+                table.s10(),
+                table.s11(),
+                table.s12(),
+                table.s13(),
+                table.s14(),
+                table.s15()
+            );
         }
     }
 }
