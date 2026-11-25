@@ -153,20 +153,19 @@ func (s *TableSizer) AppendWriter(dst []byte) (TableWriter, error) {
 // AppendTable appends a table of fields fields in layout, of length bytes,
 // to dst, into its capacity when it has room and into new bytes otherwise,
 // as append does, and writes its header, with the layout's version when it
-// has one. It returns dst with the table
-// appended, and the table's bytes, header included, which the caller writes
-// every other byte of, since they aren't zeroed in bytes that it reuses: each
-// field's offset and the field.
+// has one. It returns dst with the table appended, and the table's bytes,
+// header included, which the caller writes every other byte of, since they
+// aren't zeroed in bytes that it reuses: each field's offset and the field.
 //
 // It's for the code that tafla-gen generates, outside the compatibility
 // promise of the rest of the API: it may change in any release, with the
 // generator. The generator lays out a table this way, without a [TableSizer]
 // and a [TableWriter], for a message of fields whose sizes the schema fixes
-// and a string after them. Only such a table's last field can make it too long, so AppendTable fails with TooLong,
-// naming its last field, if length is past what the layout's offset type
-// addresses. It fails with VersionTooLarge or HeaderTooLong and panics as
-// [NewTableSizer] does,
-// and panics if length is shorter than the header.
+// and a string after them. Only such a table's last field can make it too
+// long, so AppendTable fails with TooLong, naming its last field, if length
+// is past what the layout's offset type addresses. It fails with
+// VersionTooLarge or HeaderTooLong and panics as [NewTableSizer] does, and
+// panics if length is shorter than the header.
 func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (whole, table []byte, err error) {
 	if layout.version > layout.offsetType.MaxValue() || uint64(fields) > layout.maxFields() {
 		return nil, nil, layout.sizerFailure(fields)
