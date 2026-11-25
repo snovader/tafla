@@ -231,8 +231,8 @@ Each API throws its own error, with typed throws, so a caller catches a
 A precondition stops the program only for a mistake of the code that calls the
 runtime, which no bytes can cause, as `Array` stops it for an index out of
 range: an index past an `ArrayView`'s or a `Vector`'s count, or negative; a
-negative field index or struct size; `version` of a layout without one;
-and a negative number of fields, or of a vector's items recorded in place.
+negative field index or struct size; `version` of a layout without one; and a
+negative number of fields, or of a vector's items recorded in place.
 
 ## Writing without a builder
 

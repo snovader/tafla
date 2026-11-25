@@ -144,6 +144,11 @@ struct TableBuilderTests {
         #expect(TableLayout.default.version == nil)
         #expect(!TableLayout.default.isVersioned)
 
+        // A layout without a version gains the slot for one
+        let versioned = TableLayout.default.withVersion(7)
+        #expect(versioned.version == 7)
+        #expect(versioned.headerSize == TableLayout.default.headerSize + 4)
+
         let bytes = try TableBuilder(fields: 0, layout: second).bytes()
 
         // A reader reads a table of any version, whatever its layout's

@@ -29,6 +29,12 @@ The first release.
   a reader built with it, such as
   `TableReader(vector.itemInPlace(at: index))`, reads with a constant offset
   type in the code that its getters are inlined into.
+- A layout holds its table's version, `TableLayout(sized: true, version: 1)`,
+  which `TableBuilder` and `TableSizer` write to the header, and throw
+  `BuildError.versionTooLarge` for when it doesn't fit the layout's offset
+  type. `withVersion(_:)` returns the layout of another version of the same
+  format, and `isVersioned` says whether a layout has one. A `TableReader`
+  reads tables of any version, whatever its layout's.
 - Bounds-checked reads, which throw a `DecodeError` on malformed input, with
   typed throws, and builders that throw a `BuildError` for a table that they
   can't write.

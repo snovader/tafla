@@ -125,8 +125,9 @@ public struct TableLayout: Sendable, Hashable {
     @inlinable
     public var isVersioned: Bool { version != nil }
 
-    /// The layout with `version` in place of its own, for another version of
-    /// the same format
+    /// The layout with `version` as its version, for another version of the
+    /// same format. A layout without a version gains the slot for one, so
+    /// its header is a slot longer.
     @inlinable
     public func withVersion(_ version: UInt32) -> TableLayout {
         TableLayout(sized: isSized, version: version, offsetType: offsetType)

@@ -12,9 +12,16 @@ extension Table {
 
     /// The layout that the table is written in: its own, with its version
     /// when it's versioned. Readers read tables of any version, so the
-    /// description's layout has version 0.
+    /// description's layout has version 0. A versioned table needs a
+    /// version, which would otherwise be written as 0, and a table without
+    /// a version slot takes none.
     var writtenLayout: TableLayout {
-        version.map { layout.withVersion($0) } ?? layout
+        precondition(
+            layout.isVersioned == (version != nil),
+            layout.isVersioned ? "A versioned table needs a version" : "The table has no version slot"
+        )
+
+        return version.map { layout.withVersion($0) } ?? layout
     }
 
     /// Builds the table, setting every field
