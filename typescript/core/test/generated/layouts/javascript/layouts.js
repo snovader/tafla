@@ -6,12 +6,9 @@ import { DecodeError, TableLayout, TableReader, TableSizer } from 'tafla';
 export class Uint8Offsets {
     static #LAYOUT = TableLayout.create({ offsetType: 'uint8' });
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint8Offsets.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint8Offsets.#LAYOUT);
     }
 
     /**
@@ -63,17 +60,17 @@ export class Uint8Offsets {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -84,9 +81,9 @@ export class Uint8Offsets {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -104,12 +101,9 @@ export class Uint8Offsets {
 export class Uint8OffsetsSized {
     static #LAYOUT = TableLayout.create({ sized: true, offsetType: 'uint8' });
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint8OffsetsSized.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint8OffsetsSized.#LAYOUT);
     }
 
     /**
@@ -161,17 +155,17 @@ export class Uint8OffsetsSized {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -182,9 +176,9 @@ export class Uint8OffsetsSized {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -211,17 +205,14 @@ export class Uint8OffsetsVersioned {
         offsetType: 'uint8'
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint8OffsetsVersioned.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint8OffsetsVersioned.#LAYOUT);
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint8OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint8OffsetsVersioned.FORMAT_VERSION} of Uint8OffsetsVersioned, got ${version}`
@@ -293,17 +284,17 @@ export class Uint8OffsetsVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -314,9 +305,9 @@ export class Uint8OffsetsVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -344,20 +335,17 @@ export class Uint8OffsetsSizedVersioned {
         offsetType: 'uint8'
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(
+        this._reader = new TableReader(
             bytes,
             Uint8OffsetsSizedVersioned.#LAYOUT
         );
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint8OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint8OffsetsSizedVersioned.FORMAT_VERSION} of Uint8OffsetsSizedVersioned, got ${version}`
@@ -429,17 +417,17 @@ export class Uint8OffsetsSizedVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -450,9 +438,9 @@ export class Uint8OffsetsSizedVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -470,12 +458,9 @@ export class Uint8OffsetsSizedVersioned {
 export class Uint16Offsets {
     static #LAYOUT = TableLayout.create({ offsetType: 'uint16' });
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint16Offsets.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint16Offsets.#LAYOUT);
     }
 
     /**
@@ -527,17 +512,17 @@ export class Uint16Offsets {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -548,9 +533,9 @@ export class Uint16Offsets {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -568,12 +553,9 @@ export class Uint16Offsets {
 export class Uint16OffsetsSized {
     static #LAYOUT = TableLayout.create({ sized: true, offsetType: 'uint16' });
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint16OffsetsSized.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint16OffsetsSized.#LAYOUT);
     }
 
     /**
@@ -625,17 +607,17 @@ export class Uint16OffsetsSized {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -646,9 +628,9 @@ export class Uint16OffsetsSized {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -675,17 +657,14 @@ export class Uint16OffsetsVersioned {
         offsetType: 'uint16'
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint16OffsetsVersioned.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint16OffsetsVersioned.#LAYOUT);
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint16OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint16OffsetsVersioned.FORMAT_VERSION} of Uint16OffsetsVersioned, got ${version}`
@@ -757,17 +736,17 @@ export class Uint16OffsetsVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -778,9 +757,9 @@ export class Uint16OffsetsVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -808,20 +787,17 @@ export class Uint16OffsetsSizedVersioned {
         offsetType: 'uint16'
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(
+        this._reader = new TableReader(
             bytes,
             Uint16OffsetsSizedVersioned.#LAYOUT
         );
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint16OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint16OffsetsSizedVersioned.FORMAT_VERSION} of Uint16OffsetsSizedVersioned, got ${version}`
@@ -893,17 +869,17 @@ export class Uint16OffsetsSizedVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -914,9 +890,9 @@ export class Uint16OffsetsSizedVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -934,12 +910,9 @@ export class Uint16OffsetsSizedVersioned {
 export class Uint32Offsets {
     static #LAYOUT = TableLayout.DEFAULT;
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint32Offsets.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint32Offsets.#LAYOUT);
     }
 
     /**
@@ -991,17 +964,17 @@ export class Uint32Offsets {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -1012,9 +985,9 @@ export class Uint32Offsets {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -1032,12 +1005,9 @@ export class Uint32Offsets {
 export class Uint32OffsetsSized {
     static #LAYOUT = TableLayout.create({ sized: true });
 
-    /** @type {TableReader} */
-    #reader;
-
     /** @param {Uint8Array} bytes */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint32OffsetsSized.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint32OffsetsSized.#LAYOUT);
     }
 
     /**
@@ -1089,17 +1059,17 @@ export class Uint32OffsetsSized {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -1110,9 +1080,9 @@ export class Uint32OffsetsSized {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -1138,17 +1108,14 @@ export class Uint32OffsetsVersioned {
         version: Uint32OffsetsVersioned.FORMAT_VERSION
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(bytes, Uint32OffsetsVersioned.#LAYOUT);
+        this._reader = new TableReader(bytes, Uint32OffsetsVersioned.#LAYOUT);
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint32OffsetsVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint32OffsetsVersioned.FORMAT_VERSION} of Uint32OffsetsVersioned, got ${version}`
@@ -1220,17 +1187,17 @@ export class Uint32OffsetsVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -1241,9 +1208,9 @@ export class Uint32OffsetsVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }
@@ -1270,20 +1237,17 @@ export class Uint32OffsetsSizedVersioned {
         version: Uint32OffsetsSizedVersioned.FORMAT_VERSION
     });
 
-    /** @type {TableReader} */
-    #reader;
-
     /**
      * @param {Uint8Array} bytes
      * @throws {DecodeError} If `bytes` are in another format version.
      */
     constructor(bytes) {
-        this.#reader = new TableReader(
+        this._reader = new TableReader(
             bytes,
             Uint32OffsetsSizedVersioned.#LAYOUT
         );
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Uint32OffsetsSizedVersioned.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Uint32OffsetsSizedVersioned.FORMAT_VERSION} of Uint32OffsetsSizedVersioned, got ${version}`
@@ -1355,17 +1319,17 @@ export class Uint32OffsetsSizedVersioned {
 
     /** @returns {number} */
     id() {
-        return this.#reader.getUint32(this.#reader.rootOffset(0));
+        return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
     /** @returns {string} */
     name() {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     /** @returns {Uint16Array} */
     values() {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(2));
+        return this._reader.getUint16Array(this._reader.rootOffset(2));
     }
 
     /**
@@ -1376,9 +1340,9 @@ export class Uint32OffsetsSizedVersioned {
      */
     fields() {
         return {
-            id: this.#reader.getUint32(this.#reader.rootOffset(0)),
-            name: this.#reader.getString(this.#reader.rootOffset(1)),
-            values: this.#reader.getUint16Array(this.#reader.rootOffset(2))
+            id: this._reader.getUint32(this._reader.rootOffset(0)),
+            name: this._reader.getString(this._reader.rootOffset(1)),
+            values: this._reader.getUint16Array(this._reader.rootOffset(2))
         };
     }
 }

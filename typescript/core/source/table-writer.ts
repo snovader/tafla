@@ -46,14 +46,14 @@ import type { ElementSize, OffsetSize } from './types.ts';
  * order writes each where the sizer counted it.
  */
 export class TableSizer {
-    readonly #layout: TableLayout;
-    readonly #fields: number;
+    declare private readonly _layout: TableLayout;
+    declare private readonly _fields: number;
     /** The offset size, the width of offsets, lengths and header slots */
-    readonly #size: OffsetSize;
+    declare private readonly _size: OffsetSize;
     /** The table's length so far, which is where the next field goes */
-    #position: number;
+    declare private _position: number;
     /** The start of the table being sized, which arrays are aligned from */
-    #table = 0;
+    private _table = 0;
 
     /**
      * @param fields - The number of fields that the table holds.
@@ -64,10 +64,10 @@ export class TableSizer {
      * header alone is longer than the layout addresses.
      */
     constructor(fields: number, layout: TableLayout = TableLayout.DEFAULT) {
-        this.#layout = layout;
-        this.#fields = fields;
-        this.#size = layout.offsetSize();
-        this.#position = headerLength(fields, layout);
+        this._layout = layout;
+        this._fields = fields;
+        this._size = layout.offsetSize();
+        this._position = headerLength(fields, layout);
     }
 
     /**
@@ -77,8 +77,8 @@ export class TableSizer {
      * longer than 255 bytes, 64 KiB or 4 GiB.
      */
     byteLength(): number {
-        const length = this.#position;
-        assertAddressable(length, this.#layout);
+        const length = this._position;
+        assertAddressable(length, this._layout);
 
         return length;
     }
@@ -109,8 +109,8 @@ export class TableSizer {
             bytes === undefined
                 ? new Uint8Array(length)
                 : tableBytes(bytes, length),
-            this.#fields,
-            this.#layout
+            this._fields,
+            this._layout
         );
     }
 
@@ -124,56 +124,56 @@ export class TableSizer {
     startTable(fields: number): number {
         assertCount(fields);
 
-        const parent = this.#table;
-        this.#table = this.#position;
-        this.#position += fields * this.#size;
+        const parent = this._table;
+        this._table = this._position;
+        this._position += fields * this._size;
 
         return parent;
     }
 
     /** Ends the fields of the table that `startTable()` started */
     endTable(parent: number): void {
-        this.#table = parent;
+        this._table = parent;
     }
 
     addInt8(): void {
-        this.#position += SIZEOF_8;
+        this._position += SIZEOF_8;
     }
 
     addUint8(): void {
-        this.#position += SIZEOF_8;
+        this._position += SIZEOF_8;
     }
 
     addInt16(): void {
-        this.#position += SIZEOF_16;
+        this._position += SIZEOF_16;
     }
 
     addUint16(): void {
-        this.#position += SIZEOF_16;
+        this._position += SIZEOF_16;
     }
 
     addInt32(): void {
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     addUint32(): void {
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     addInt64(): void {
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     addUint64(): void {
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     addFloat32(): void {
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     addFloat64(): void {
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     // The array adders take the count of the elements, and throw a RangeError
@@ -221,7 +221,7 @@ export class TableSizer {
 
     /** Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD */
     addString(string: string): void {
-        this.#position += this.#size + utf8Length(string);
+        this._position += this._size + utf8Length(string);
     }
 
     /**
@@ -236,7 +236,7 @@ export class TableSizer {
             );
         }
 
-        this.#position += size;
+        this._position += size;
     }
 
     /**
@@ -260,7 +260,7 @@ export class TableSizer {
      */
     addTable(alignment: ElementSize): void {
         assertAlignment(alignment);
-        this.#position += padding(this.#position - this.#table, alignment);
+        this._position += padding(this._position - this._table, alignment);
     }
 
     /**
@@ -271,7 +271,7 @@ export class TableSizer {
      */
     addVector(count: number): void {
         assertCount(count);
-        this.#position += (count + 1) * this.#size;
+        this._position += (count + 1) * this._size;
     }
 
     /**
@@ -285,7 +285,7 @@ export class TableSizer {
      * table's length, and may change with it.
      */
     addTableBytes(count: number, byteLength: number): void {
-        this.#position += count * byteLength;
+        this._position += count * byteLength;
     }
 
     /**
@@ -295,9 +295,9 @@ export class TableSizer {
     #addArray(count: number, size: number, alignment: ElementSize): void {
         assertCount(count);
 
-        const start = this.#position + this.#size;
-        this.#position =
-            start + padding(start - this.#table, alignment) + count * size;
+        const start = this._position + this._size;
+        this._position =
+            start + padding(start - this._table, alignment) + count * size;
     }
 }
 
@@ -408,16 +408,16 @@ export class TableWriter {
     // took 140 ns of the 290 ns that writing a Point of 60 bytes took, and
     // writing it as bytes took 140 ns in all. A vector of 100 tables of
     // scalars took 5-15% longer, which arrays of structs write faster anyway.
-    readonly #bytes: Uint8Array;
+    declare private readonly _bytes: Uint8Array;
     /** The offset size, the width of offsets, lengths and header slots */
-    readonly #size: OffsetSize;
-    readonly #headerSize: number;
+    declare private readonly _size: OffsetSize;
+    declare private readonly _headerSize: number;
     /** Where the next field goes */
-    #position: number;
+    declare private _position: number;
     /** The start of the table being written, which its offsets count from */
-    #table = 0;
+    private _table = 0;
     /** The position of that table's first offset, after the root's header */
-    #slots: number;
+    declare private _slots: number;
 
     static {
         copyTable = (writer, table) => writer.#copyTable(table);
@@ -472,11 +472,11 @@ export class TableWriter {
 
         const size = layout.offsetSize();
         const headerSize = layout.headerSize();
-        this.#bytes = bytes;
-        this.#size = size;
-        this.#headerSize = headerSize;
-        this.#slots = headerSize;
-        this.#position = headerSize + fields * size;
+        this._bytes = bytes;
+        this._size = size;
+        this._headerSize = headerSize;
+        this._slots = headerSize;
+        this._position = headerSize + fields * size;
 
         writeHeader(bytes, layout);
     }
@@ -488,13 +488,13 @@ export class TableWriter {
      * differ from those that the sizer counted.
      */
     bytes(): Uint8Array {
-        if (this.#position !== this.#bytes.length) {
+        if (this._position !== this._bytes.length) {
             throw new RangeError(
-                `The fields wrote ${this.#position} of the table's ${this.#bytes.length} bytes`
+                `The fields wrote ${this._position} of the table's ${this._bytes.length} bytes`
             );
         }
 
-        return this.#bytes;
+        return this._bytes;
     }
 
     /**
@@ -507,19 +507,19 @@ export class TableWriter {
     startTable(fields: number): number {
         assertCount(fields);
 
-        const parent = this.#table;
-        this.#table = this.#position;
-        this.#slots = this.#position;
-        this.#position += fields * this.#size;
+        const parent = this._table;
+        this._table = this._position;
+        this._slots = this._position;
+        this._position += fields * this._size;
 
         return parent;
     }
 
     /** Ends the fields of the table that `startTable()` started */
     endTable(parent: number): void {
-        this.#table = parent;
+        this._table = parent;
         // Only the root starts at 0, and only its offsets follow a header
-        this.#slots = parent === 0 ? this.#headerSize : parent;
+        this._slots = parent === 0 ? this._headerSize : parent;
     }
 
     // A scalar's room is checked, and its value converted and stored, before
@@ -528,80 +528,80 @@ export class TableWriter {
     // converted.
 
     setInt8(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_8);
-        storeInt8(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_8);
+        storeInt8(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_8;
+        this._position += SIZEOF_8;
     }
 
     setUint8(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_8);
-        storeInt8(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_8);
+        storeInt8(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_8;
+        this._position += SIZEOF_8;
     }
 
     setInt16(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_16);
-        storeInt16(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_16);
+        storeInt16(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_16;
+        this._position += SIZEOF_16;
     }
 
     setUint16(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_16);
-        storeInt16(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_16);
+        storeInt16(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_16;
+        this._position += SIZEOF_16;
     }
 
     setInt32(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_32);
-        storeInt32(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_32);
+        storeInt32(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     setUint32(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_32);
-        storeInt32(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_32);
+        storeInt32(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     setInt64(index: number, value: bigint): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_64);
-        storeInt64(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_64);
+        storeInt64(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     setUint64(index: number, value: bigint): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_64);
-        storeInt64(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_64);
+        storeInt64(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     setFloat32(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_32);
-        storeFloat32(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_32);
+        storeFloat32(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_32;
+        this._position += SIZEOF_32;
     }
 
     setFloat64(index: number, value: number): void {
-        assertFits(this.#bytes, this.#position + SIZEOF_64);
-        storeFloat64(this.#bytes, this.#position, value);
+        assertFits(this._bytes, this._position + SIZEOF_64);
+        storeFloat64(this._bytes, this._position, value);
         this.#setOffset(index);
-        this.#position += SIZEOF_64;
+        this._position += SIZEOF_64;
     }
 
     setInt8Array(index: number, values: ArrayLike<number> | Int8Array): void {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
 
-        setInt8Elements(this.#bytes, elements, values, count);
+        setInt8Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_8);
     }
 
@@ -609,7 +609,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_8, SIZEOF_8);
 
-        setUint8Elements(this.#bytes, elements, values, count);
+        setUint8Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_8);
     }
 
@@ -617,7 +617,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
 
-        setInt16Elements(this.#bytes, elements, values, count);
+        setInt16Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_16);
     }
 
@@ -628,7 +628,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_16, SIZEOF_16);
 
-        setUint16Elements(this.#bytes, elements, values, count);
+        setUint16Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_16);
     }
 
@@ -636,7 +636,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setInt32Elements(this.#bytes, elements, values, count);
+        setInt32Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
@@ -647,7 +647,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setUint32Elements(this.#bytes, elements, values, count);
+        setUint32Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
@@ -658,7 +658,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setInt64Elements(this.#bytes, elements, values, count);
+        setInt64Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
@@ -669,7 +669,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setUint64Elements(this.#bytes, elements, values, count);
+        setUint64Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
@@ -680,7 +680,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_32, SIZEOF_32);
 
-        setFloat32Elements(this.#bytes, elements, values, count);
+        setFloat32Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_32);
     }
 
@@ -691,7 +691,7 @@ export class TableWriter {
         const count = values.length;
         const elements = this.#arrayElements(count, SIZEOF_64, SIZEOF_64);
 
-        setFloat64Elements(this.#bytes, elements, values, count);
+        setFloat64Elements(this._bytes, elements, values, count);
         this.#endArray(index, count, elements, count * SIZEOF_64);
     }
 
@@ -699,12 +699,12 @@ export class TableWriter {
     setString(index: number, string: string): void {
         // Its UTF-8 length is known once it's written, so a string that
         // doesn't fit throws before its offset and length are written
-        const start = this.#position + this.#size;
-        assertFits(this.#bytes, start);
-        const length = encodeInto(string, this.#bytes, start);
+        const start = this._position + this._size;
+        assertFits(this._bytes, start);
+        const length = encodeInto(string, this._bytes, start);
         this.#setOffset(index);
-        this.#setLength(this.#position, length);
-        this.#position = start + length;
+        this.#setLength(this._position, length);
+        this._position = start + length;
     }
 
     /**
@@ -712,11 +712,11 @@ export class TableWriter {
      * after another, without padding
      */
     setStruct(index: number, bytes: Uint8Array): void {
-        assertFits(this.#bytes, this.#position + bytes.length);
+        assertFits(this._bytes, this._position + bytes.length);
         this.#setOffset(index);
 
-        this.#bytes.set(bytes, this.#position);
-        this.#position += bytes.length;
+        this._bytes.set(bytes, this._position);
+        this._position += bytes.length;
     }
 
     /**
@@ -737,7 +737,7 @@ export class TableWriter {
         assertAlignment(alignment);
         const elements = this.#arrayElements(count, size, alignment);
 
-        this.#bytes.set(bytes, elements);
+        this._bytes.set(bytes, elements);
         this.#endArray(index, count, elements, bytes.length);
     }
 
@@ -750,7 +750,7 @@ export class TableWriter {
      */
     setTable(index: number, alignment: ElementSize): void {
         assertAlignment(alignment);
-        this.#pad(padding(this.#position - this.#table, alignment));
+        this.#pad(padding(this._position - this._table, alignment));
         this.#setOffset(index);
     }
 
@@ -764,12 +764,12 @@ export class TableWriter {
      */
     setVector(index: number, count: number): number {
         assertCount(count);
-        assertFits(this.#bytes, this.#position + (count + 1) * this.#size);
+        assertFits(this._bytes, this._position + (count + 1) * this._size);
         this.#setOffset(index);
 
-        const vector = this.#position;
+        const vector = this._position;
         this.#setLength(vector, count);
-        this.#position += (count + 1) * this.#size;
+        this._position += (count + 1) * this._size;
 
         return vector;
     }
@@ -777,8 +777,8 @@ export class TableWriter {
     /** Writes the end of item `item` of the vector, which was just written */
     setItemEnd(vector: number, item: number): void {
         this.#setLength(
-            vector + (item + 1) * this.#size,
-            this.#position - vector
+            vector + (item + 1) * this._size,
+            this._position - vector
         );
     }
 
@@ -797,9 +797,9 @@ export class TableWriter {
      * @throws {RangeError} If the table doesn't fit, without moving.
      */
     reserveTableBytes(byteLength: number): number {
-        const start = this.#position;
-        assertFits(this.#bytes, start + byteLength);
-        this.#position = start + byteLength;
+        const start = this._position;
+        assertFits(this._bytes, start + byteLength);
+        this._position = start + byteLength;
 
         return start;
     }
@@ -821,10 +821,10 @@ export class TableWriter {
         byteLength: number
     ): number {
         assertCount(count);
-        const size = this.#size;
-        const vector = this.#position;
+        const size = this._size;
+        const vector = this._position;
         const items = vector + (count + 1) * size;
-        assertFits(this.#bytes, items + count * byteLength);
+        assertFits(this._bytes, items + count * byteLength);
         this.#setOffset(index);
 
         this.#setLength(vector, count);
@@ -833,7 +833,7 @@ export class TableWriter {
             end += byteLength;
             this.#setLength(vector + item * size, end);
         }
-        this.#position = items + count * byteLength;
+        this._position = items + count * byteLength;
 
         return items;
     }
@@ -872,7 +872,7 @@ export class TableWriter {
      * the start of those that `TableSizer.writer(bytes)` took
      */
     target(): Uint8Array {
-        return this.#bytes;
+        return this._bytes;
     }
 
     /** {@link reserveScalar}, which reaches the writer's fields */
@@ -882,28 +882,30 @@ export class TableWriter {
         index: number,
         size: ElementSize
     ): number {
-        const bytes = writer.#bytes;
-        const position = writer.#position;
+        /* oxlint-disable eslint/no-underscore-dangle -- another writer's own field, which the rule allows only after `this` */
+        const bytes = writer._bytes;
+        const position = writer._position;
         assertFits(bytes, position + size);
 
-        const offsetSize = writer.#size;
+        const offsetSize = writer._size;
         setSlot(
             bytes,
-            writer.#slots + index * offsetSize,
+            writer._slots + index * offsetSize,
             offsetSize,
-            position - writer.#table
+            position - writer._table
         );
-        writer.#position = position + size;
+        writer._position = position + size;
+        /* oxlint-enable eslint/no-underscore-dangle */
 
         return position;
     }
 
     /** {@link copyTable}'s write, which only this class's fields can reach */
     #copyTable(table: Uint8Array): void {
-        assertFits(this.#bytes, this.#position + table.length);
+        assertFits(this._bytes, this._position + table.length);
 
-        this.#bytes.set(table, this.#position);
-        this.#position += table.length;
+        this._bytes.set(table, this._position);
+        this._position += table.length;
     }
 
     /**
@@ -916,9 +918,9 @@ export class TableWriter {
         elementSize: number,
         alignment: ElementSize
     ): number {
-        const start = this.#position + this.#size;
-        const elements = start + padding(start - this.#table, alignment);
-        assertFits(this.#bytes, elements + count * elementSize);
+        const start = this._position + this._size;
+        const elements = start + padding(start - this._table, alignment);
+        assertFits(this._bytes, elements + count * elementSize);
 
         return elements;
     }
@@ -933,10 +935,10 @@ export class TableWriter {
         elements: number,
         byteLength: number
     ): void {
-        this.#pad(elements - this.#size - this.#position);
+        this.#pad(elements - this._size - this._position);
         this.#setOffset(index);
-        this.#setLength(this.#position, count);
-        this.#position = elements + byteLength;
+        this.#setLength(this._position, count);
+        this._position = elements + byteLength;
     }
 
     /**
@@ -953,21 +955,21 @@ export class TableWriter {
             return;
         }
 
-        const position = this.#position;
-        this.#bytes.fill(0, position, position + length);
-        this.#position = position + length;
+        const position = this._position;
+        this._bytes.fill(0, position, position + length);
+        this._position = position + length;
     }
 
     #setOffset(index: number): void {
         this.#setLength(
-            this.#slots + index * this.#size,
-            this.#position - this.#table
+            this._slots + index * this._size,
+            this._position - this._table
         );
     }
 
     /** Writes an offset, length or count at `position`, as `setSlot()` does */
     #setLength(position: number, value: number): void {
-        setSlot(this.#bytes, position, this.#size, value);
+        setSlot(this._bytes, position, this._size, value);
     }
 }
 

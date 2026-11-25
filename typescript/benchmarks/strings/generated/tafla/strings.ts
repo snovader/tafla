@@ -6,10 +6,10 @@ import { TableLayout, TableReader, TableSizer } from 'tafla';
 export class Strings {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Strings.#LAYOUT);
+        this._reader = new TableReader(bytes, Strings.#LAYOUT);
     }
 
     /** Writes a `Strings` with every field */
@@ -104,67 +104,67 @@ export class Strings {
     }
 
     s0(): string {
-        return this.#reader.getString(this.#reader.rootOffset(0));
+        return this._reader.getString(this._reader.rootOffset(0));
     }
 
     s1(): string {
-        return this.#reader.getString(this.#reader.rootOffset(1));
+        return this._reader.getString(this._reader.rootOffset(1));
     }
 
     s2(): string {
-        return this.#reader.getString(this.#reader.rootOffset(2));
+        return this._reader.getString(this._reader.rootOffset(2));
     }
 
     s3(): string {
-        return this.#reader.getString(this.#reader.rootOffset(3));
+        return this._reader.getString(this._reader.rootOffset(3));
     }
 
     s4(): string {
-        return this.#reader.getString(this.#reader.rootOffset(4));
+        return this._reader.getString(this._reader.rootOffset(4));
     }
 
     s5(): string {
-        return this.#reader.getString(this.#reader.rootOffset(5));
+        return this._reader.getString(this._reader.rootOffset(5));
     }
 
     s6(): string {
-        return this.#reader.getString(this.#reader.rootOffset(6));
+        return this._reader.getString(this._reader.rootOffset(6));
     }
 
     s7(): string {
-        return this.#reader.getString(this.#reader.rootOffset(7));
+        return this._reader.getString(this._reader.rootOffset(7));
     }
 
     s8(): string {
-        return this.#reader.getString(this.#reader.rootOffset(8));
+        return this._reader.getString(this._reader.rootOffset(8));
     }
 
     s9(): string {
-        return this.#reader.getString(this.#reader.rootOffset(9));
+        return this._reader.getString(this._reader.rootOffset(9));
     }
 
     s10(): string {
-        return this.#reader.getString(this.#reader.rootOffset(10));
+        return this._reader.getString(this._reader.rootOffset(10));
     }
 
     s11(): string {
-        return this.#reader.getString(this.#reader.rootOffset(11));
+        return this._reader.getString(this._reader.rootOffset(11));
     }
 
     s12(): string {
-        return this.#reader.getString(this.#reader.rootOffset(12));
+        return this._reader.getString(this._reader.rootOffset(12));
     }
 
     s13(): string {
-        return this.#reader.getString(this.#reader.rootOffset(13));
+        return this._reader.getString(this._reader.rootOffset(13));
     }
 
     s14(): string {
-        return this.#reader.getString(this.#reader.rootOffset(14));
+        return this._reader.getString(this._reader.rootOffset(14));
     }
 
     s15(): string {
-        return this.#reader.getString(this.#reader.rootOffset(15));
+        return this._reader.getString(this._reader.rootOffset(15));
     }
 
     /**
@@ -173,22 +173,22 @@ export class Strings {
      */
     fields(): StringsFields {
         return {
-            s0: this.#reader.getString(this.#reader.rootOffset(0)),
-            s1: this.#reader.getString(this.#reader.rootOffset(1)),
-            s2: this.#reader.getString(this.#reader.rootOffset(2)),
-            s3: this.#reader.getString(this.#reader.rootOffset(3)),
-            s4: this.#reader.getString(this.#reader.rootOffset(4)),
-            s5: this.#reader.getString(this.#reader.rootOffset(5)),
-            s6: this.#reader.getString(this.#reader.rootOffset(6)),
-            s7: this.#reader.getString(this.#reader.rootOffset(7)),
-            s8: this.#reader.getString(this.#reader.rootOffset(8)),
-            s9: this.#reader.getString(this.#reader.rootOffset(9)),
-            s10: this.#reader.getString(this.#reader.rootOffset(10)),
-            s11: this.#reader.getString(this.#reader.rootOffset(11)),
-            s12: this.#reader.getString(this.#reader.rootOffset(12)),
-            s13: this.#reader.getString(this.#reader.rootOffset(13)),
-            s14: this.#reader.getString(this.#reader.rootOffset(14)),
-            s15: this.#reader.getString(this.#reader.rootOffset(15))
+            s0: this._reader.getString(this._reader.rootOffset(0)),
+            s1: this._reader.getString(this._reader.rootOffset(1)),
+            s2: this._reader.getString(this._reader.rootOffset(2)),
+            s3: this._reader.getString(this._reader.rootOffset(3)),
+            s4: this._reader.getString(this._reader.rootOffset(4)),
+            s5: this._reader.getString(this._reader.rootOffset(5)),
+            s6: this._reader.getString(this._reader.rootOffset(6)),
+            s7: this._reader.getString(this._reader.rootOffset(7)),
+            s8: this._reader.getString(this._reader.rootOffset(8)),
+            s9: this._reader.getString(this._reader.rootOffset(9)),
+            s10: this._reader.getString(this._reader.rootOffset(10)),
+            s11: this._reader.getString(this._reader.rootOffset(11)),
+            s12: this._reader.getString(this._reader.rootOffset(12)),
+            s13: this._reader.getString(this._reader.rootOffset(13)),
+            s14: this._reader.getString(this._reader.rootOffset(14)),
+            s15: this._reader.getString(this._reader.rootOffset(15))
         };
     }
 }

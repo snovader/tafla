@@ -60,7 +60,7 @@ fn typescript_renames_object_members_and_then() {
             "    toString_(): number {",
             "    then_(): number {",
             "    constructor_: number;",
-            "    readonly #writer: number;",
+            "    declare private readonly _writer: number;",
             "    serialize(): number {",
             "    new(): number {",
             "    static versionOf(bytes: Uint8Array): number {",
@@ -78,7 +78,6 @@ fn javascript_renames_object_members_and_then() {
             "    toString_() {",
             "    then_() {",
             " * @property {number} constructor_",
-            "    #writer;",
             "    serialize() {",
         ],
     );

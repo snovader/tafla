@@ -30,36 +30,36 @@ import type { OffsetSize } from './types.ts';
  * of its table, or with `TableSizer` and `TableWriter`.
  */
 export class TableReader {
-    readonly #bytes: Uint8Array;
-    readonly #view: DataView;
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _view: DataView;
 
-    readonly #sized: boolean;
-    readonly #versioned: boolean;
+    declare private readonly _sized: boolean;
+    declare private readonly _versioned: boolean;
     /** The offset size, the width of offsets, lengths and header slots */
-    readonly #size: OffsetSize;
+    declare private readonly _size: OffsetSize;
     /** The byte length of the header slots before the root's field offsets */
-    readonly #headerSize: number;
+    declare private readonly _headerSize: number;
 
     constructor(bytes: Uint8Array, layout: TableLayout = TableLayout.DEFAULT) {
-        this.#bytes = bytes;
-        this.#view = new DataView(
+        this._bytes = bytes;
+        this._view = new DataView(
             bytes.buffer,
             bytes.byteOffset,
             bytes.byteLength
         );
 
-        this.#sized = layout.sized();
-        this.#versioned = layout.versioned();
-        this.#size = layout.offsetSize();
-        this.#headerSize = layout.headerSize();
+        this._sized = layout.sized();
+        this._versioned = layout.versioned();
+        this._size = layout.offsetSize();
+        this._headerSize = layout.headerSize();
     }
 
     bytes(): Uint8Array {
-        return this.#bytes;
+        return this._bytes;
     }
 
     getSize(): number {
-        return this.#sized ? this.#getSize(0) : this.#bytes.length;
+        return this._sized ? this.#getSize(0) : this._bytes.length;
     }
 
     /**
@@ -69,16 +69,16 @@ export class TableReader {
      * @throws {TypeError} If the reader's layout isn't versioned.
      */
     getVersion(): number {
-        if (!this.#versioned) {
+        if (!this._versioned) {
             throw new TypeError('The table has no version');
         }
 
-        return this.#getSize(this.#sized ? this.#size : 0);
+        return this.#getSize(this._sized ? this._size : 0);
     }
 
     /** Returns the position of field `index` of the root table */
     rootOffset(index: number): number {
-        return this.#getSize(this.#headerSize + index * this.#size);
+        return this.#getSize(this._headerSize + index * this._size);
     }
 
     /**
@@ -92,8 +92,8 @@ export class TableReader {
         // Reads the offset as #getSize() does, without a call of its own,
         // which leaves more of V8's inlining budget to the getters that call
         // it: see getVectorItemOffset()
-        const size = this.#size;
-        const view = this.#view;
+        const size = this._size;
+        const view = this._view;
         const position = tablePosition + index * size;
         try {
             return (
@@ -103,7 +103,7 @@ export class TableReader {
                     : readNarrowSize(view, position, size))
             );
         } catch {
-            throw readError(position, size, this.#bytes);
+            throw readError(position, size, this._bytes);
         }
     }
 
@@ -115,81 +115,81 @@ export class TableReader {
 
     getInt8(position: number): number {
         try {
-            return this.#view.getInt8(position);
+            return this._view.getInt8(position);
         } catch {
-            throw readError(position, SIZEOF_8, this.#bytes);
+            throw readError(position, SIZEOF_8, this._bytes);
         }
     }
 
     getUint8(position: number): number {
         try {
-            return this.#view.getUint8(position);
+            return this._view.getUint8(position);
         } catch {
-            throw readError(position, SIZEOF_8, this.#bytes);
+            throw readError(position, SIZEOF_8, this._bytes);
         }
     }
 
     getInt16(position: number): number {
         try {
-            return this.#view.getInt16(position, true);
+            return this._view.getInt16(position, true);
         } catch {
-            throw readError(position, SIZEOF_16, this.#bytes);
+            throw readError(position, SIZEOF_16, this._bytes);
         }
     }
 
     getUint16(position: number): number {
         try {
-            return this.#view.getUint16(position, true);
+            return this._view.getUint16(position, true);
         } catch {
-            throw readError(position, SIZEOF_16, this.#bytes);
+            throw readError(position, SIZEOF_16, this._bytes);
         }
     }
 
     getInt32(position: number): number {
         try {
-            return this.#view.getInt32(position, true);
+            return this._view.getInt32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, SIZEOF_32, this._bytes);
         }
     }
 
     getUint32(position: number): number {
         try {
-            return this.#view.getUint32(position, true);
+            return this._view.getUint32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, SIZEOF_32, this._bytes);
         }
     }
 
     getInt64(position: number): bigint {
         try {
-            return this.#view.getBigInt64(position, true);
+            return this._view.getBigInt64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, SIZEOF_64, this._bytes);
         }
     }
 
     getUint64(position: number): bigint {
         try {
-            return this.#view.getBigUint64(position, true);
+            return this._view.getBigUint64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, SIZEOF_64, this._bytes);
         }
     }
 
     getFloat32(position: number): number {
         try {
-            return this.#view.getFloat32(position, true);
+            return this._view.getFloat32(position, true);
         } catch {
-            throw readError(position, SIZEOF_32, this.#bytes);
+            throw readError(position, SIZEOF_32, this._bytes);
         }
     }
 
     getFloat64(position: number): number {
         try {
-            return this.#view.getFloat64(position, true);
+            return this._view.getFloat64(position, true);
         } catch {
-            throw readError(position, SIZEOF_64, this.#bytes);
+            throw readError(position, SIZEOF_64, this._bytes);
         }
     }
 
@@ -205,7 +205,7 @@ export class TableReader {
         const length = this.#getSize(position);
         const byteOffset = this.#arrayOffset(position, length);
 
-        return new Int8Array(this.#view.buffer, byteOffset, length);
+        return new Int8Array(this._view.buffer, byteOffset, length);
     }
 
     /**
@@ -215,7 +215,7 @@ export class TableReader {
         const length = this.#getSize(position);
         const byteOffset = this.#arrayOffset(position, length);
 
-        return new Uint8Array(this.#view.buffer, byteOffset, length);
+        return new Uint8Array(this._view.buffer, byteOffset, length);
     }
 
     /**
@@ -231,14 +231,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Int16Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_16 === 0
-            ? new Int16Array(this.#view.buffer, byteOffset, length)
+            ? new Int16Array(this._view.buffer, byteOffset, length)
             : new Int16Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -255,14 +255,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Uint16Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_16 === 0
-            ? new Uint16Array(this.#view.buffer, byteOffset, length)
+            ? new Uint16Array(this._view.buffer, byteOffset, length)
             : new Uint16Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -279,14 +279,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Int32Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_32 === 0
-            ? new Int32Array(this.#view.buffer, byteOffset, length)
+            ? new Int32Array(this._view.buffer, byteOffset, length)
             : new Int32Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -303,14 +303,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Uint32Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_32 === 0
-            ? new Uint32Array(this.#view.buffer, byteOffset, length)
+            ? new Uint32Array(this._view.buffer, byteOffset, length)
             : new Uint32Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -327,14 +327,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 BigInt64Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_64 === 0
-            ? new BigInt64Array(this.#view.buffer, byteOffset, length)
+            ? new BigInt64Array(this._view.buffer, byteOffset, length)
             : new BigInt64Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -351,14 +351,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 BigUint64Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_64 === 0
-            ? new BigUint64Array(this.#view.buffer, byteOffset, length)
+            ? new BigUint64Array(this._view.buffer, byteOffset, length)
             : new BigUint64Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -375,14 +375,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Float32Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_32 === 0
-            ? new Float32Array(this.#view.buffer, byteOffset, length)
+            ? new Float32Array(this._view.buffer, byteOffset, length)
             : new Float32Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -399,14 +399,14 @@ export class TableReader {
         if (!IS_LITTLE_ENDIAN) {
             return byteOrderSwapped(
                 Float64Array,
-                this.#view.buffer,
+                this._view.buffer,
                 byteOffset,
                 length
             );
         }
 
         return byteOffset % SIZEOF_64 === 0
-            ? new Float64Array(this.#view.buffer, byteOffset, length)
+            ? new Float64Array(this._view.buffer, byteOffset, length)
             : new Float64Array(this.#copy(byteOffset, byteLength));
     }
 
@@ -417,13 +417,13 @@ export class TableReader {
      * @returns The byte offset of the elements in the backing buffer.
      */
     #arrayOffset(position: number, byteLength: number): number {
-        this.#assertRange(position + this.#size, byteLength);
-        return this.#view.byteOffset + position + this.#size;
+        this.#assertRange(position + this._size, byteLength);
+        return this._view.byteOffset + position + this._size;
     }
 
     /** A typed array can't start at an unaligned offset, so copy its bytes */
     #copy(byteOffset: number, byteLength: number): ArrayBufferLike {
-        return this.#view.buffer.slice(byteOffset, byteOffset + byteLength);
+        return this._view.buffer.slice(byteOffset, byteOffset + byteLength);
     }
 
     /**
@@ -438,7 +438,7 @@ export class TableReader {
             throw outOfRange(position, size, 0);
         }
 
-        return this.#bytes.subarray(position, position + size);
+        return this._bytes.subarray(position, position + size);
     }
 
     /**
@@ -452,10 +452,10 @@ export class TableReader {
         assertStructSize(size);
 
         const count = this.#getSize(position);
-        const start = position + this.#size;
+        const start = position + this._size;
         this.#assertRange(start, count * size);
 
-        return this.#bytes.subarray(start, start + count * size);
+        return this._bytes.subarray(start, start + count * size);
     }
 
     /** @throws {DecodeError} If the string isn't valid UTF-8. */
@@ -475,8 +475,8 @@ export class TableReader {
         // pass the 920 bytes with it, as it did when the decoder's call was
         // here.
         const ascii = decodeShortAscii(
-            this.#bytes,
-            position + this.#size,
+            this._bytes,
+            position + this._size,
             length
         );
         if (ascii !== undefined) {
@@ -497,15 +497,15 @@ export class TableReader {
         length: number
     ): string {
         const short = decodeShortUtf8(
-            this.#bytes,
-            position + this.#size,
+            this._bytes,
+            position + this._size,
             length
         );
         if (short !== undefined) {
             return short;
         }
 
-        const bytes = new Uint8Array(this.#view.buffer, byteOffset, length);
+        const bytes = new Uint8Array(this._view.buffer, byteOffset, length);
         try {
             return decode(bytes);
         } catch (error) {
@@ -528,8 +528,8 @@ export class TableReader {
         // Reads the count as #getSize() does, and checks its ends with one
         // comparison rather than #assertRange(), so that V8 inlines it with
         // the item reads: see getVectorItemOffset()
-        const size = this.#size;
-        const view = this.#view;
+        const size = this._size;
+        const view = this._view;
         let count: number;
         try {
             count =
@@ -537,11 +537,11 @@ export class TableReader {
                     ? view.getUint32(position, true)
                     : readNarrowSize(view, position, size);
         } catch {
-            throw readError(position, size, this.#bytes);
+            throw readError(position, size, this._bytes);
         }
 
-        if (!(position + (count + 1) * size <= this.#bytes.length)) {
-            throw readError(position + size, count * size, this.#bytes);
+        if (!(position + (count + 1) * size <= this._bytes.length)) {
+            throw readError(position + size, count * size, this._bytes);
         }
 
         return count;
@@ -601,8 +601,8 @@ export class TableReader {
         // rootOffset() and fieldOffset() find it, its count and the ends are
         // integers, so the item lies within the bytes when it ends there.
         if (index >>> 0 === index && index < count) {
-            const size = this.#size;
-            const view = this.#view;
+            const size = this._size;
+            const view = this._view;
             const startPosition = position + index * size;
             const endPosition = startPosition + size;
             try {
@@ -617,7 +617,7 @@ export class TableReader {
                         ? view.getUint32(endPosition, true)
                         : readNarrowSize(view, endPosition, size);
 
-                if (start <= end && position + end <= this.#bytes.length) {
+                if (start <= end && position + end <= this._bytes.length) {
                     return position + start;
                 }
             } catch {
@@ -647,9 +647,9 @@ export class TableReader {
         // Uint32Array, where push() and a Float64Array measured slower
         const offsets = new Array<number>(count);
 
-        let start = (count + 1) * this.#size;
+        let start = (count + 1) * this._size;
         for (let i = 0; i < count; i++) {
-            const end = this.#getSize(position + (i + 1) * this.#size);
+            const end = this.#getSize(position + (i + 1) * this._size);
             offsets[i] = this.#itemOffset(position, start, end);
             start = end;
         }
@@ -661,11 +661,11 @@ export class TableReader {
         const count = this.getVectorLength(position);
         const vector = new Array<Uint8Array>(count);
 
-        let start = (count + 1) * this.#size;
+        let start = (count + 1) * this._size;
         for (let i = 0; i < count; i++) {
-            const end = this.#getSize(position + (i + 1) * this.#size);
+            const end = this.#getSize(position + (i + 1) * this._size);
             const offset = this.#itemOffset(position, start, end);
-            vector[i] = this.#bytes.subarray(offset, offset + end - start);
+            vector[i] = this._bytes.subarray(offset, offset + end - start);
             start = end;
         }
 
@@ -682,8 +682,8 @@ export class TableReader {
      * @returns The item's position.
      */
     #itemOffset(position: number, start: number, end: number): number {
-        if (start > end || position + end > this.#bytes.length) {
-            throw itemRangeError(position, start, end, this.#bytes.length);
+        if (start > end || position + end > this._bytes.length) {
+            throw itemRangeError(position, start, end, this._bytes.length);
         }
 
         return position + start;
@@ -703,11 +703,11 @@ export class TableReader {
 
         const start =
             index === 0
-                ? (count + 1) * this.#size
-                : this.#getSize(position + index * this.#size);
-        const end = this.#getSize(position + (index + 1) * this.#size);
+                ? (count + 1) * this._size
+                : this.#getSize(position + index * this._size);
+        const end = this.#getSize(position + (index + 1) * this._size);
 
-        return itemRangeError(position, start, end, this.#bytes.length);
+        return itemRangeError(position, start, end, this._bytes.length);
     }
 
     #assertRange(position: number, byteLength: number): void {
@@ -737,7 +737,7 @@ export class TableReader {
      * with the Uint8Array's.
      */
     #byteLength(): number {
-        return this.#bytes.length;
+        return this._bytes.length;
     }
 
     /**
@@ -746,7 +746,7 @@ export class TableReader {
      */
     #lost(): boolean {
         try {
-            void this.#view.byteLength;
+            void this._view.byteLength;
             return false;
         } catch {
             return true;
@@ -768,14 +768,14 @@ export class TableReader {
      * as this reads.
      */
     #getSize(position: number): number {
-        const size = this.#size;
-        const view = this.#view;
+        const size = this._size;
+        const view = this._view;
         try {
             return size === SIZEOF_32
                 ? view.getUint32(position, true)
                 : readNarrowSize(view, position, size);
         } catch {
-            throw readError(position, size, this.#bytes);
+            throw readError(position, size, this._bytes);
         }
     }
 }

@@ -51,6 +51,12 @@ repository's first commits, for code built from its source before the release.
 
 ### Changed
 
+- The classes hold their fields as TypeScript's `private` fields, named with
+  a `_`, rather than as `#` fields, which V8 holds as mutable and of any
+  type, since they're defined before the constructor assigns them. Reads of
+  nested tables, strings and typed arrays, and writes of scalars, take 4 to
+  17% less time in Node 24, 26 and 27. The declarations still mark the
+  fields private, but JavaScript can reach them: they aren't part of the API.
 - A layout holds its table's version, `TableLayout.create({ version: 1 })`,
   rather than only whether the header has a slot for one, and the option
   `versioned` is gone. `TableBuilder`, `TableSizer` and `TableWriter` take

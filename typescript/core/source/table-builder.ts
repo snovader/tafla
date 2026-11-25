@@ -103,29 +103,29 @@ export class TableBuilder {
      * The table once written: its bytes, and then the reader of them that
      * `finalize()` returns
      */
-    #written: Uint8Array | TableReader | undefined;
+    declare private _written: Uint8Array | TableReader | undefined;
 
-    readonly #layout: TableLayout;
+    declare private readonly _layout: TableLayout;
     /** The offset size, the width of offsets, lengths and header slots */
-    readonly #size: OffsetSize;
+    declare private readonly _size: OffsetSize;
     /** The longest table that the layout's offsets and lengths address */
-    readonly #maxLength: number;
+    declare private readonly _maxLength: number;
 
     // What the builder counts of the table whose fields it's recording: its
     // own, or, while a `fill` runs, those of the table that it records in
     // place, until it restores its own
-    #fields: number;
+    declare private _fields: number;
     /** The number of fields set so far */
-    #count = 0;
+    private _count = 0;
     /** The table's length so far, which is where the next field goes */
-    #offset: number;
+    declare private _offset: number;
     /**
      * The largest alignment that a field needs from the table's start, which
      * a parent pads this table to when it nests it
      */
-    #alignment: ElementSize = SIZEOF_8;
+    private _alignment: ElementSize = SIZEOF_8;
     /** The number of tables being recorded in place, one in another */
-    #nesting = 0;
+    private _nesting = 0;
 
     // A record of three slots per field, in one plain array sized up front
     // for the table's own fields: its kind, the alignment that it's padded
@@ -138,9 +138,9 @@ export class TableBuilder {
     // long to allocate, and an array per slot made setting a small table's
     // fields take twice as long. The slots are literals, since named
     // constants made building a small table 5-9% slower in d8.
-    #records: unknown[];
+    declare private _records: unknown[];
     /** The number of slots recorded, where the next record goes */
-    #recorded = 0;
+    private _recorded = 0;
     /**
      * The slots that the records have room for, at least: those recorded,
      * and three for each field that the tables being recorded have left to
@@ -148,7 +148,7 @@ export class TableBuilder {
      * the array: once one did, V8 slowed every builder's stores, and a small
      * table took a third longer to build.
      */
-    #reserved: number;
+    declare private _reserved: number;
 
     /**
      * @param fields - The number of fields that the table will hold.
@@ -160,14 +160,14 @@ export class TableBuilder {
     constructor(fields: number, layout: TableLayout = TableLayout.DEFAULT) {
         const size = layout.offsetSize();
 
-        this.#layout = layout;
-        this.#size = size;
-        this.#maxLength = maxLength(size);
-        this.#fields = fields;
-        this.#offset = headerLength(fields, layout);
+        this._layout = layout;
+        this._size = size;
+        this._maxLength = maxLength(size);
+        this._fields = fields;
+        this._offset = headerLength(fields, layout);
 
-        this.#records = new Array(fields * 3);
-        this.#reserved = fields * 3;
+        this._records = new Array(fields * 3);
+        this._reserved = fields * 3;
     }
 
     /**
@@ -178,13 +178,13 @@ export class TableBuilder {
      * the fields no longer fit the table or fill it.
      */
     finalize(): TableReader {
-        const written = this.#written ?? this.#write();
+        const written = this._written ?? this.#write();
         if (written instanceof TableReader) {
             return written;
         }
 
-        const reader = new TableReader(written, this.#layout);
-        this.#written = reader;
+        const reader = new TableReader(written, this._layout);
+        this._written = reader;
 
         return reader;
     }
@@ -197,7 +197,7 @@ export class TableBuilder {
      * the fields no longer fit the table or fill it.
      */
     bytes(): Uint8Array {
-        const written = this.#written ?? this.#write();
+        const written = this._written ?? this.#write();
         return written instanceof TableReader ? written.bytes() : written;
     }
 
@@ -379,7 +379,7 @@ export class TableBuilder {
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
     setString(string: string): void {
         // The writer encodes it in place, so only its length is counted here
-        this.#addField(STRING, string, this.#size + utf8Length(string), 0, 0);
+        this.#addField(STRING, string, this._size + utf8Length(string), 0, 0);
     }
 
     /**
@@ -410,8 +410,8 @@ export class TableBuilder {
         this.#addField(
             STRUCT_ARRAY,
             [bytes, size],
-            this.#size + bytes.length,
-            padding(this.#offset + this.#size, alignment),
+            this._size + bytes.length,
+            padding(this._offset + this._size, alignment),
             alignment
         );
         this.#alignTo(alignment);
@@ -441,7 +441,8 @@ export class TableBuilder {
     setTable(
         table: TableBuilder | Uint8Array,
         alignment: ElementSize = table instanceof TableBuilder
-            ? table.#alignment
+            ? // oxlint-disable-next-line eslint/no-underscore-dangle -- another builder's own field, which the rule allows only after `this`
+              table._alignment
             : SIZEOF_32
     ): void {
         assertAlignment(alignment);
@@ -450,7 +451,7 @@ export class TableBuilder {
             TABLE,
             table,
             TableBuilder.#lengthOf(table),
-            padding(this.#offset, alignment),
+            padding(this._offset, alignment),
             alignment
         );
         this.#alignTo(alignment);
@@ -469,7 +470,7 @@ export class TableBuilder {
      * @throws {RangeError} If a builder has fields left to set.
      */
     setVector(vector: ReadonlyArray<TableBuilder | Uint8Array>): void {
-        let byteLength = this.#size + vector.length * this.#size;
+        let byteLength = this._size + vector.length * this._size;
         for (let i = 0; i < vector.length; i++) {
             byteLength += TableBuilder.#lengthOf(vector[i]);
         }
@@ -520,14 +521,14 @@ export class TableBuilder {
     /** `setTableInPlace()` */
     #recordTable(fields: number, fill: (table: TableItem) => void): void {
         this.#assertRoom();
-        const header = nestedHeaderLength(fields, this.#layout);
+        const header = nestedHeaderLength(fields, this._layout);
 
-        const parentFields = this.#fields;
-        const count = this.#count;
-        const offset = this.#offset;
-        const alignment = this.#alignment;
-        const record = this.#recorded;
-        const reserved = this.#reserved;
+        const parentFields = this._fields;
+        const count = this._count;
+        const offset = this._offset;
+        const alignment = this._alignment;
+        const record = this._recorded;
+        const reserved = this._reserved;
 
         this.#startInPlace(TABLE_IN_PLACE, 0, fields);
         try {
@@ -540,20 +541,20 @@ export class TableBuilder {
             throw error;
         }
 
-        const length = this.#offset;
-        const tableAlignment = this.#alignment;
+        const length = this._offset;
+        const tableAlignment = this._alignment;
         this.#restore(parentFields, count, offset, alignment);
 
         // Padded from this table's length, as a nested builder is
         const total = offset + padding(offset, tableAlignment) + length;
-        if (!(total <= this.#maxLength)) {
+        if (!(total <= this._maxLength)) {
             this.#truncate(record, reserved);
-            throw tooLong(count, total, this.#layout.offsetType());
+            throw tooLong(count, total, this._layout.offsetType());
         }
 
-        this.#records[record + 1] = tableAlignment;
-        this.#offset = total;
-        this.#count = count + 1;
+        this._records[record + 1] = tableAlignment;
+        this._offset = total;
+        this._count = count + 1;
         this.#alignTo(tableAlignment);
     }
 
@@ -568,27 +569,27 @@ export class TableBuilder {
 
         // The count, the items' ends and their offsets, which fail before
         // any item is recorded, rather than after a `fill` for each
-        const header = nestedHeaderLength(fields, this.#layout);
-        const index = this.#count;
-        const offset = this.#offset;
-        const start = offset + this.#size + count * this.#size;
+        const header = nestedHeaderLength(fields, this._layout);
+        const index = this._count;
+        const offset = this._offset;
+        const start = offset + this._size + count * this._size;
         const headers = start + count * header;
-        if (!(headers <= this.#maxLength)) {
-            throw tooLong(index, headers, this.#layout.offsetType());
+        if (!(headers <= this._maxLength)) {
+            throw tooLong(index, headers, this._layout.offsetType());
         }
 
-        const parentFields = this.#fields;
-        const alignment = this.#alignment;
-        const record = this.#recorded;
-        const reserved = this.#reserved;
+        const parentFields = this._fields;
+        const alignment = this._alignment;
+        const record = this._recorded;
+        const reserved = this._reserved;
 
         // Room for the fewest records that the items record, one for each
         // of their fields, which is all of them unless they nest tables of
         // their own. Their offsets fit in the table, so there are at most a
         // few slots for each of its bytes.
         const fewest = reserved + count * fields * 3;
-        if (fewest > this.#records.length) {
-            this.#records.length = fewest;
+        if (fewest > this._records.length) {
+            this._records.length = fewest;
         }
 
         let length = start;
@@ -599,7 +600,7 @@ export class TableBuilder {
                 fill(this, item);
                 this.#assertSet();
 
-                length += this.#offset;
+                length += this._offset;
             }
         } catch (error) {
             this.#restore(parentFields, index, offset, alignment);
@@ -608,13 +609,13 @@ export class TableBuilder {
         }
 
         this.#restore(parentFields, index, offset, alignment);
-        if (!(length <= this.#maxLength)) {
+        if (!(length <= this._maxLength)) {
             this.#truncate(record, reserved);
-            throw tooLong(index, length, this.#layout.offsetType());
+            throw tooLong(index, length, this._layout.offsetType());
         }
 
-        this.#offset = length;
-        this.#count = index + 1;
+        this._offset = length;
+        this._count = index + 1;
     }
 
     /**
@@ -623,14 +624,14 @@ export class TableBuilder {
      * their fields rather than this table's
      */
     #startInPlace(kind: number, alignment: number, value: number): void {
-        const records = this.#records;
-        const record = this.#recorded;
+        const records = this._records;
+        const record = this._recorded;
         records[record] = kind;
         records[record + 1] = alignment;
         records[record + 2] = value;
 
-        this.#recorded = record + 3;
-        this.#nesting++;
+        this._recorded = record + 3;
+        this._nesting++;
     }
 
     /**
@@ -638,16 +639,16 @@ export class TableBuilder {
      * whose header of `header` bytes holds only their offsets
      */
     #startTable(fields: number, header: number): void {
-        const reserved = this.#reserved + fields * 3;
-        if (reserved > this.#records.length) {
+        const reserved = this._reserved + fields * 3;
+        if (reserved > this._records.length) {
             this.#grow(reserved);
         }
-        this.#reserved = reserved;
+        this._reserved = reserved;
 
-        this.#fields = fields;
-        this.#count = 0;
-        this.#offset = header;
-        this.#alignment = SIZEOF_8;
+        this._fields = fields;
+        this._count = 0;
+        this._offset = header;
+        this._alignment = SIZEOF_8;
     }
 
     /**
@@ -660,11 +661,11 @@ export class TableBuilder {
         offset: number,
         alignment: ElementSize
     ): void {
-        this.#fields = fields;
-        this.#count = count;
-        this.#offset = offset;
-        this.#alignment = alignment;
-        this.#nesting--;
+        this._fields = fields;
+        this._count = count;
+        this._offset = offset;
+        this._alignment = alignment;
+        this._nesting--;
     }
 
     /**
@@ -675,7 +676,7 @@ export class TableBuilder {
      * @throws {RangeError} If `slots` is longer than an array can be.
      */
     #grow(slots: number): void {
-        const records = this.#records;
+        const records = this._records;
         records.length = Math.max(
             slots,
             Math.min(2 * records.length, MAX_ARRAY_LENGTH)
@@ -688,9 +689,9 @@ export class TableBuilder {
      * releases their values, which may be large arrays
      */
     #truncate(recorded: number, reserved: number): void {
-        this.#records.fill(undefined, recorded, this.#recorded);
-        this.#recorded = recorded;
-        this.#reserved = reserved;
+        this._records.fill(undefined, recorded, this._recorded);
+        this._recorded = recorded;
+        this._reserved = reserved;
     }
 
     /** Pads the array so that its elements, after the length, are aligned */
@@ -703,16 +704,16 @@ export class TableBuilder {
         this.#addField(
             kind,
             values,
-            this.#size + byteLength,
-            padding(this.#offset + this.#size, alignment),
+            this._size + byteLength,
+            padding(this._offset + this._size, alignment),
             alignment
         );
         this.#alignTo(alignment);
     }
 
     #alignTo(alignment: ElementSize): void {
-        if (alignment > this.#alignment) {
-            this.#alignment = alignment;
+        if (alignment > this._alignment) {
+            this._alignment = alignment;
         }
     }
 
@@ -728,7 +729,8 @@ export class TableBuilder {
         }
 
         table.#assertComplete();
-        return table.#offset;
+        // oxlint-disable-next-line eslint/no-underscore-dangle -- another builder's own field, which the rule allows only after `this`
+        return table._offset;
     }
 
     /**
@@ -737,7 +739,7 @@ export class TableBuilder {
      * @throws {RangeError} If the table has fields left to set.
      */
     #assertComplete(): void {
-        if (this.#nesting !== 0) {
+        if (this._nesting !== 0) {
             throw new TypeError(
                 "A table can't be finalized or nested while a table is recorded in place in it"
             );
@@ -748,9 +750,9 @@ export class TableBuilder {
 
     /** @throws {RangeError} If the table being counted has fields left to set. */
     #assertSet(): void {
-        if (this.#count !== this.#fields) {
+        if (this._count !== this._fields) {
             throw new RangeError(
-                `Only ${this.#count} of the table's ${this.#fields} fields were set`
+                `Only ${this._count} of the table's ${this._fields} fields were set`
             );
         }
     }
@@ -763,12 +765,12 @@ export class TableBuilder {
      * @throws {TypeError} If the table is already written.
      */
     #assertRoom(): void {
-        if (this.#written !== undefined) {
+        if (this._written !== undefined) {
             throw new TypeError('The table was already finalized');
         }
 
-        if (this.#count === this.#fields) {
-            throw tooManyFields(this.#fields);
+        if (this._count === this._fields) {
+            throw tooManyFields(this._fields);
         }
     }
 
@@ -790,29 +792,29 @@ export class TableBuilder {
         padding: number,
         alignment: ElementSize | 0
     ): void {
-        if (this.#written !== undefined) {
+        if (this._written !== undefined) {
             throw new TypeError('The table was already finalized');
         }
 
-        const index = this.#count;
-        if (index === this.#fields) {
-            throw tooManyFields(this.#fields);
+        const index = this._count;
+        if (index === this._fields) {
+            throw tooManyFields(this._fields);
         }
 
-        const length = this.#offset + padding + byteLength;
-        if (!(length <= this.#maxLength)) {
-            throw tooLong(index, length, this.#layout.offsetType());
+        const length = this._offset + padding + byteLength;
+        if (!(length <= this._maxLength)) {
+            throw tooLong(index, length, this._layout.offsetType());
         }
 
-        const records = this.#records;
-        const record = this.#recorded;
+        const records = this._records;
+        const record = this._recorded;
         records[record] = kind;
         records[record + 1] = alignment;
         records[record + 2] = value;
 
-        this.#recorded = record + 3;
-        this.#offset = length;
-        this.#count = index + 1;
+        this._recorded = record + 3;
+        this._offset = length;
+        this._count = index + 1;
     }
 
     /**
@@ -825,16 +827,16 @@ export class TableBuilder {
         this.#assertComplete();
 
         const writer = newTableWriter(
-            new Uint8Array(this.#offset),
-            this.#fields,
-            this.#layout
+            new Uint8Array(this._offset),
+            this._fields,
+            this._layout
         );
-        this.#writeFields(writer, 0, this.#fields);
+        this.#writeFields(writer, 0, this._fields);
         const bytes = writer.bytes();
 
         // Release the values, which may be large arrays
-        this.#records = [];
-        this.#written = bytes;
+        this._records = [];
+        this._written = bytes;
 
         return bytes;
     }
@@ -845,7 +847,7 @@ export class TableBuilder {
      * their records, and those of the tables recorded in place in them, end
      */
     #writeFields(writer: TableWriter, start: number, fields: number): number {
-        const records = this.#records;
+        const records = this._records;
         let record = start;
 
         for (let index = 0; index < fields; index++) {
@@ -954,19 +956,21 @@ export class TableBuilder {
      * doesn't. Those tables, and bytes, are copied.
      */
     #writeTable(writer: TableWriter, table: TableBuilder | Uint8Array): void {
+        /* oxlint-disable eslint/no-underscore-dangle -- another builder's own field, which the rule allows only after `this` */
         if (!(table instanceof TableBuilder)) {
             copyTable(writer, table);
         } else if (
-            table.#written === undefined &&
-            table.#size === this.#size &&
-            table.#layout.headerSize() === 0
+            table._written === undefined &&
+            table._size === this._size &&
+            table._layout.headerSize() === 0
         ) {
-            const parent = writer.startTable(table.#fields);
-            table.#writeFields(writer, 0, table.#fields);
+            const parent = writer.startTable(table._fields);
+            table.#writeFields(writer, 0, table._fields);
             writer.endTable(parent);
         } else {
             copyTable(writer, table.bytes());
         }
+        /* oxlint-enable eslint/no-underscore-dangle */
     }
 }
 

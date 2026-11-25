@@ -22,10 +22,10 @@ import {
 export class Point {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Point.#LAYOUT);
+        this._reader = new TableReader(bytes, Point.#LAYOUT);
     }
 
     /** Writes a `Point` with every field */
@@ -103,19 +103,19 @@ export class Point {
     }
 
     x(): number {
-        return this.#reader.getFloat64(this.#reader.rootOffset(0));
+        return this._reader.getFloat64(this._reader.rootOffset(0));
     }
 
     y(): number {
-        return this.#reader.getFloat64(this.#reader.rootOffset(1));
+        return this._reader.getFloat64(this._reader.rootOffset(1));
     }
 
     id(): bigint {
-        return this.#reader.getInt64(this.#reader.rootOffset(2));
+        return this._reader.getInt64(this._reader.rootOffset(2));
     }
 
     name(): string {
-        return this.#reader.getString(this.#reader.rootOffset(3));
+        return this._reader.getString(this._reader.rootOffset(3));
     }
 
     /**
@@ -124,10 +124,10 @@ export class Point {
      */
     fields(): PointFields {
         return {
-            x: this.#reader.getFloat64(this.#reader.rootOffset(0)),
-            y: this.#reader.getFloat64(this.#reader.rootOffset(1)),
-            id: this.#reader.getInt64(this.#reader.rootOffset(2)),
-            name: this.#reader.getString(this.#reader.rootOffset(3))
+            x: this._reader.getFloat64(this._reader.rootOffset(0)),
+            y: this._reader.getFloat64(this._reader.rootOffset(1)),
+            id: this._reader.getInt64(this._reader.rootOffset(2)),
+            name: this._reader.getString(this._reader.rootOffset(3))
         };
     }
 }
@@ -148,13 +148,13 @@ export class Columns {
      */
     static readonly ALIGNMENT = 4;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -198,26 +198,26 @@ export class Columns {
 
     /** The value that `keys` count from */
     base(): bigint {
-        return this.#reader.getInt64(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getInt64(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     keys(): Uint32Array {
-        return this.#reader.getUint32Array(
-            this.#reader.fieldOffset(this.#position, 1)
+        return this._reader.getUint32Array(
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
     a(): Float32Array {
-        return this.#reader.getFloat32Array(
-            this.#reader.fieldOffset(this.#position, 2)
+        return this._reader.getFloat32Array(
+            this._reader.fieldOffset(this._position, 2)
         );
     }
 
     b(): Float32Array {
-        return this.#reader.getFloat32Array(
-            this.#reader.fieldOffset(this.#position, 3)
+        return this._reader.getFloat32Array(
+            this._reader.fieldOffset(this._position, 3)
         );
     }
 
@@ -226,7 +226,7 @@ export class Columns {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): ColumnsFields {
-        return Columns.read(this.#reader, this.#position);
+        return Columns.read(this._reader, this._position);
     }
 }
 
@@ -255,13 +255,13 @@ export class Document {
         version: Document.FORMAT_VERSION
     });
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     /** @throws {DecodeError} If `bytes` are in another format version. */
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Document.#LAYOUT);
+        this._reader = new TableReader(bytes, Document.#LAYOUT);
 
-        const version = this.#reader.getVersion();
+        const version = this._reader.getVersion();
         if (version !== Document.FORMAT_VERSION) {
             throw new DecodeError(
                 `Expected format version ${Document.FORMAT_VERSION} of Document, got ${version}`
@@ -330,19 +330,19 @@ export class Document {
     }
 
     x(): number {
-        return this.#reader.getFloat64(this.#reader.rootOffset(0));
+        return this._reader.getFloat64(this._reader.rootOffset(0));
     }
 
     y(): number {
-        return this.#reader.getFloat64(this.#reader.rootOffset(1));
+        return this._reader.getFloat64(this._reader.rootOffset(1));
     }
 
     name(): string {
-        return this.#reader.getString(this.#reader.rootOffset(2));
+        return this._reader.getString(this._reader.rootOffset(2));
     }
 
     columns(): Columns {
-        return new Columns(this.#reader, this.#reader.rootOffset(3));
+        return new Columns(this._reader, this._reader.rootOffset(3));
     }
 
     /**
@@ -351,10 +351,10 @@ export class Document {
      */
     fields(): DocumentFields {
         return {
-            x: this.#reader.getFloat64(this.#reader.rootOffset(0)),
-            y: this.#reader.getFloat64(this.#reader.rootOffset(1)),
-            name: this.#reader.getString(this.#reader.rootOffset(2)),
-            columns: Columns.read(this.#reader, this.#reader.rootOffset(3))
+            x: this._reader.getFloat64(this._reader.rootOffset(0)),
+            y: this._reader.getFloat64(this._reader.rootOffset(1)),
+            name: this._reader.getString(this._reader.rootOffset(2)),
+            columns: Columns.read(this._reader, this._reader.rootOffset(3))
         };
     }
 }
@@ -381,13 +381,13 @@ export class Pair {
      */
     static readonly SIZE = 16;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -459,14 +459,14 @@ export class Pair {
     }
 
     first(): number {
-        return this.#reader.getFloat32(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getFloat32(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     second(): number {
-        return this.#reader.getFloat32(
-            this.#reader.fieldOffset(this.#position, 1)
+        return this._reader.getFloat32(
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
@@ -475,7 +475,7 @@ export class Pair {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): PairFields {
-        return Pair.read(this.#reader, this.#position);
+        return Pair.read(this._reader, this._position);
     }
 }
 
@@ -498,13 +498,13 @@ export class Item {
      */
     static readonly SIZE = 28;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -605,15 +605,15 @@ export class Item {
     }
 
     value(): number {
-        return this.#reader.getFloat32(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getFloat32(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     pair(): Pair {
         return new Pair(
-            this.#reader,
-            this.#reader.fieldOffset(this.#position, 1)
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
@@ -622,7 +622,7 @@ export class Item {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): ItemFields {
-        return Item.read(this.#reader, this.#position);
+        return Item.read(this._reader, this._position);
     }
 }
 
@@ -634,9 +634,9 @@ export interface ItemFields {
 
 /** A vector of `Item`s, which reads each item when it's asked for */
 export class ItemVector {
-    readonly #reader: TableReader;
-    readonly #position: number;
-    readonly #length: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
+    declare private readonly _length: number;
 
     /**
      * Views the vector at `position`, as its parent's getter finds it
@@ -645,14 +645,14 @@ export class ItemVector {
      * outside the bytes.
      */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
-        this.#length = reader.getVectorLength(position);
+        this._reader = reader;
+        this._position = position;
+        this._length = reader.getVectorLength(position);
     }
 
     /** The number of items */
     length(): number {
-        return this.#length;
+        return this._length;
     }
 
     /**
@@ -663,10 +663,10 @@ export class ItemVector {
      */
     get(index: number): Item {
         return new Item(
-            this.#reader,
-            this.#reader.getVectorItemOffset(
-                this.#position,
-                this.#length,
+            this._reader,
+            this._reader.getVectorItemOffset(
+                this._position,
+                this._length,
                 index
             )
         );
@@ -678,11 +678,11 @@ export class ItemVector {
      * @throws {DecodeError} If an item lies outside the bytes.
      */
     fields(): ItemFields[] {
-        const offsets = this.#reader.getVectorOffsets(this.#position);
+        const offsets = this._reader.getVectorOffsets(this._position);
         const items = new Array<ItemFields>(offsets.length);
 
         for (let i = 0; i < offsets.length; i++) {
-            items[i] = Item.read(this.#reader, offsets[i]);
+            items[i] = Item.read(this._reader, offsets[i]);
         }
 
         return items;
@@ -693,10 +693,10 @@ export class ItemVector {
 export class ItemList {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, ItemList.#LAYOUT);
+        this._reader = new TableReader(bytes, ItemList.#LAYOUT);
     }
 
     /** Writes an `ItemList` with every field */
@@ -746,7 +746,7 @@ export class ItemList {
     }
 
     items(): ItemVector {
-        return new ItemVector(this.#reader, this.#reader.rootOffset(0));
+        return new ItemVector(this._reader, this._reader.rootOffset(0));
     }
 
     /**
@@ -756,8 +756,8 @@ export class ItemList {
     fields(): ItemListFields {
         return {
             items: new ItemVector(
-                this.#reader,
-                this.#reader.rootOffset(0)
+                this._reader,
+                this._reader.rootOffset(0)
             ).fields()
         };
     }
@@ -776,9 +776,9 @@ export class Sample {
     /** The alignment of an array of `Sample`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    readonly #key: number;
-    readonly #a: number;
-    readonly #b: number;
+    declare private readonly _key: number;
+    declare private readonly _a: number;
+    declare private readonly _b: number;
 
     /**
      * Reads a `Sample` at `offset` in `bytes`, eagerly, so that it
@@ -787,9 +787,9 @@ export class Sample {
      * @throws {DecodeError} If `bytes` end before the `Sample` does.
      */
     constructor(bytes: Uint8Array, offset = 0) {
-        this.#key = readUint32(bytes, offset);
-        this.#a = readFloat32(bytes, offset + 4);
-        this.#b = readFloat32(bytes, offset + 8);
+        this._key = readUint32(bytes, offset);
+        this._a = readFloat32(bytes, offset + 4);
+        this._b = readFloat32(bytes, offset + 8);
     }
 
     /**
@@ -848,15 +848,15 @@ export class Sample {
     }
 
     key(): number {
-        return this.#key;
+        return this._key;
     }
 
     a(): number {
-        return this.#a;
+        return this._a;
     }
 
     b(): number {
-        return this.#b;
+        return this._b;
     }
 }
 

@@ -93,6 +93,14 @@ between them: the author does.
   performs computation, validation, caching, or other logic. Use `readonly` where
   the field should not be reassigned. This preference can evolve when language
   features offer a compelling improvement.
+- In the TypeScript runtime, declare a class's fields as
+  `declare private readonly _name`, or `private _name = value` where a field
+  starts with a constant, and assign them in the constructor. V8 defines a
+  `#name` field, and any field declared without `declare`, as `undefined`
+  before the constructor assigns it, and then holds it as mutable and of any
+  type, which made reads up to 17% slower. Private methods stay `#name()`.
+  tafla-gen generates the same fields. Code that isn't measured, such as
+  `@tafla/gen` and the tests, keeps `#name` fields.
 - Make construction and conversion intentional, using named factories or
   conversion methods where they clarify semantics.
 - Make call sites understandable. Use options objects for related configuration

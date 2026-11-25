@@ -33,10 +33,10 @@ import {
 export class Scalars {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Scalars.#LAYOUT);
+        this._reader = new TableReader(bytes, Scalars.#LAYOUT);
     }
 
     /** Writes a `Scalars` with every field */
@@ -144,47 +144,47 @@ export class Scalars {
     }
 
     int8(): number {
-        return this.#reader.getInt8(this.#reader.rootOffset(0));
+        return this._reader.getInt8(this._reader.rootOffset(0));
     }
 
     uint8(): number {
-        return this.#reader.getUint8(this.#reader.rootOffset(1));
+        return this._reader.getUint8(this._reader.rootOffset(1));
     }
 
     int16(): number {
-        return this.#reader.getInt16(this.#reader.rootOffset(2));
+        return this._reader.getInt16(this._reader.rootOffset(2));
     }
 
     uint16(): number {
-        return this.#reader.getUint16(this.#reader.rootOffset(3));
+        return this._reader.getUint16(this._reader.rootOffset(3));
     }
 
     int32(): number {
-        return this.#reader.getInt32(this.#reader.rootOffset(4));
+        return this._reader.getInt32(this._reader.rootOffset(4));
     }
 
     uint32(): number {
-        return this.#reader.getUint32(this.#reader.rootOffset(5));
+        return this._reader.getUint32(this._reader.rootOffset(5));
     }
 
     int64(): bigint {
-        return this.#reader.getInt64(this.#reader.rootOffset(6));
+        return this._reader.getInt64(this._reader.rootOffset(6));
     }
 
     uint64(): bigint {
-        return this.#reader.getUint64(this.#reader.rootOffset(7));
+        return this._reader.getUint64(this._reader.rootOffset(7));
     }
 
     float32(): number {
-        return this.#reader.getFloat32(this.#reader.rootOffset(8));
+        return this._reader.getFloat32(this._reader.rootOffset(8));
     }
 
     float64(): number {
-        return this.#reader.getFloat64(this.#reader.rootOffset(9));
+        return this._reader.getFloat64(this._reader.rootOffset(9));
     }
 
     bool(): boolean {
-        return this.#reader.getUint8(this.#reader.rootOffset(10)) !== 0;
+        return this._reader.getUint8(this._reader.rootOffset(10)) !== 0;
     }
 
     /**
@@ -193,17 +193,17 @@ export class Scalars {
      */
     fields(): ScalarsFields {
         return {
-            int8: this.#reader.getInt8(this.#reader.rootOffset(0)),
-            uint8: this.#reader.getUint8(this.#reader.rootOffset(1)),
-            int16: this.#reader.getInt16(this.#reader.rootOffset(2)),
-            uint16: this.#reader.getUint16(this.#reader.rootOffset(3)),
-            int32: this.#reader.getInt32(this.#reader.rootOffset(4)),
-            uint32: this.#reader.getUint32(this.#reader.rootOffset(5)),
-            int64: this.#reader.getInt64(this.#reader.rootOffset(6)),
-            uint64: this.#reader.getUint64(this.#reader.rootOffset(7)),
-            float32: this.#reader.getFloat32(this.#reader.rootOffset(8)),
-            float64: this.#reader.getFloat64(this.#reader.rootOffset(9)),
-            bool: this.#reader.getUint8(this.#reader.rootOffset(10)) !== 0
+            int8: this._reader.getInt8(this._reader.rootOffset(0)),
+            uint8: this._reader.getUint8(this._reader.rootOffset(1)),
+            int16: this._reader.getInt16(this._reader.rootOffset(2)),
+            uint16: this._reader.getUint16(this._reader.rootOffset(3)),
+            int32: this._reader.getInt32(this._reader.rootOffset(4)),
+            uint32: this._reader.getUint32(this._reader.rootOffset(5)),
+            int64: this._reader.getInt64(this._reader.rootOffset(6)),
+            uint64: this._reader.getUint64(this._reader.rootOffset(7)),
+            float32: this._reader.getFloat32(this._reader.rootOffset(8)),
+            float64: this._reader.getFloat64(this._reader.rootOffset(9)),
+            bool: this._reader.getUint8(this._reader.rootOffset(10)) !== 0
         };
     }
 }
@@ -227,10 +227,10 @@ export interface ScalarsFields {
 export class Arrays {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Arrays.#LAYOUT);
+        this._reader = new TableReader(bytes, Arrays.#LAYOUT);
     }
 
     /** Writes an `Arrays` with every field */
@@ -301,43 +301,43 @@ export class Arrays {
     }
 
     int8(): Int8Array {
-        return this.#reader.getInt8Array(this.#reader.rootOffset(0));
+        return this._reader.getInt8Array(this._reader.rootOffset(0));
     }
 
     uint8(): Uint8Array {
-        return this.#reader.getUint8Array(this.#reader.rootOffset(1));
+        return this._reader.getUint8Array(this._reader.rootOffset(1));
     }
 
     int16(): Int16Array {
-        return this.#reader.getInt16Array(this.#reader.rootOffset(2));
+        return this._reader.getInt16Array(this._reader.rootOffset(2));
     }
 
     uint16(): Uint16Array {
-        return this.#reader.getUint16Array(this.#reader.rootOffset(3));
+        return this._reader.getUint16Array(this._reader.rootOffset(3));
     }
 
     int32(): Int32Array {
-        return this.#reader.getInt32Array(this.#reader.rootOffset(4));
+        return this._reader.getInt32Array(this._reader.rootOffset(4));
     }
 
     uint32(): Uint32Array {
-        return this.#reader.getUint32Array(this.#reader.rootOffset(5));
+        return this._reader.getUint32Array(this._reader.rootOffset(5));
     }
 
     int64(): BigInt64Array {
-        return this.#reader.getInt64Array(this.#reader.rootOffset(6));
+        return this._reader.getInt64Array(this._reader.rootOffset(6));
     }
 
     uint64(): BigUint64Array {
-        return this.#reader.getUint64Array(this.#reader.rootOffset(7));
+        return this._reader.getUint64Array(this._reader.rootOffset(7));
     }
 
     float32(): Float32Array {
-        return this.#reader.getFloat32Array(this.#reader.rootOffset(8));
+        return this._reader.getFloat32Array(this._reader.rootOffset(8));
     }
 
     float64(): Float64Array {
-        return this.#reader.getFloat64Array(this.#reader.rootOffset(9));
+        return this._reader.getFloat64Array(this._reader.rootOffset(9));
     }
 
     /**
@@ -346,16 +346,16 @@ export class Arrays {
      */
     fields(): ArraysFields {
         return {
-            int8: this.#reader.getInt8Array(this.#reader.rootOffset(0)),
-            uint8: this.#reader.getUint8Array(this.#reader.rootOffset(1)),
-            int16: this.#reader.getInt16Array(this.#reader.rootOffset(2)),
-            uint16: this.#reader.getUint16Array(this.#reader.rootOffset(3)),
-            int32: this.#reader.getInt32Array(this.#reader.rootOffset(4)),
-            uint32: this.#reader.getUint32Array(this.#reader.rootOffset(5)),
-            int64: this.#reader.getInt64Array(this.#reader.rootOffset(6)),
-            uint64: this.#reader.getUint64Array(this.#reader.rootOffset(7)),
-            float32: this.#reader.getFloat32Array(this.#reader.rootOffset(8)),
-            float64: this.#reader.getFloat64Array(this.#reader.rootOffset(9))
+            int8: this._reader.getInt8Array(this._reader.rootOffset(0)),
+            uint8: this._reader.getUint8Array(this._reader.rootOffset(1)),
+            int16: this._reader.getInt16Array(this._reader.rootOffset(2)),
+            uint16: this._reader.getUint16Array(this._reader.rootOffset(3)),
+            int32: this._reader.getInt32Array(this._reader.rootOffset(4)),
+            uint32: this._reader.getUint32Array(this._reader.rootOffset(5)),
+            int64: this._reader.getInt64Array(this._reader.rootOffset(6)),
+            uint64: this._reader.getUint64Array(this._reader.rootOffset(7)),
+            float32: this._reader.getFloat32Array(this._reader.rootOffset(8)),
+            float64: this._reader.getFloat64Array(this._reader.rootOffset(9))
         };
     }
 }
@@ -381,13 +381,13 @@ export class Inner {
      */
     static readonly ALIGNMENT = 8;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -424,14 +424,14 @@ export class Inner {
     }
 
     name(): string {
-        return this.#reader.getString(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getString(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     values(): Float64Array {
-        return this.#reader.getFloat64Array(
-            this.#reader.fieldOffset(this.#position, 1)
+        return this._reader.getFloat64Array(
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
@@ -440,7 +440,7 @@ export class Inner {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): InnerFields {
-        return Inner.read(this.#reader, this.#position);
+        return Inner.read(this._reader, this._position);
     }
 }
 
@@ -457,13 +457,13 @@ export class Outer {
      */
     static readonly ALIGNMENT = 8;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -502,15 +502,15 @@ export class Outer {
     }
 
     count(): number {
-        return this.#reader.getUint32(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getUint32(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     inner(): Inner {
         return new Inner(
-            this.#reader,
-            this.#reader.fieldOffset(this.#position, 1)
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
@@ -519,7 +519,7 @@ export class Outer {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): OuterFields {
-        return Outer.read(this.#reader, this.#position);
+        return Outer.read(this._reader, this._position);
     }
 }
 
@@ -531,9 +531,9 @@ export interface OuterFields {
 
 /** A vector of `Tree`s, which reads each item when it's asked for */
 export class TreeVector {
-    readonly #reader: TableReader;
-    readonly #position: number;
-    readonly #length: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
+    declare private readonly _length: number;
 
     /**
      * Views the vector at `position`, as its parent's getter finds it
@@ -542,14 +542,14 @@ export class TreeVector {
      * outside the bytes.
      */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
-        this.#length = reader.getVectorLength(position);
+        this._reader = reader;
+        this._position = position;
+        this._length = reader.getVectorLength(position);
     }
 
     /** The number of items */
     length(): number {
-        return this.#length;
+        return this._length;
     }
 
     /**
@@ -560,10 +560,10 @@ export class TreeVector {
      */
     get(index: number): Tree {
         return new Tree(
-            this.#reader,
-            this.#reader.getVectorItemOffset(
-                this.#position,
-                this.#length,
+            this._reader,
+            this._reader.getVectorItemOffset(
+                this._position,
+                this._length,
                 index
             )
         );
@@ -581,13 +581,13 @@ export class Tree {
      */
     static readonly ALIGNMENT = 1;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -620,15 +620,15 @@ export class Tree {
     }
 
     value(): number {
-        return this.#reader.getInt32(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getInt32(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     children(): TreeVector {
         return new TreeVector(
-            this.#reader,
-            this.#reader.fieldOffset(this.#position, 1)
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 }
@@ -643,10 +643,10 @@ export interface TreeFields {
 export class Nested {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Nested.#LAYOUT);
+        this._reader = new TableReader(bytes, Nested.#LAYOUT);
     }
 
     /** Writes a `Nested` with every field */
@@ -708,17 +708,17 @@ export class Nested {
 
     /** A string beside the tables */
     label(): string {
-        return this.#reader.getString(this.#reader.rootOffset(0));
+        return this._reader.getString(this._reader.rootOffset(0));
     }
 
     /** The first of three levels of tables */
     outer(): Outer {
-        return new Outer(this.#reader, this.#reader.rootOffset(1));
+        return new Outer(this._reader, this._reader.rootOffset(1));
     }
 
     /** A vector of tables that hold vectors of themselves */
     trees(): TreeVector {
-        return new TreeVector(this.#reader, this.#reader.rootOffset(2));
+        return new TreeVector(this._reader, this._reader.rootOffset(2));
     }
 }
 
@@ -740,13 +740,13 @@ export class Keywords {
      */
     static readonly ALIGNMENT = 1;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -795,38 +795,38 @@ export class Keywords {
     }
 
     class(): number {
-        return this.#reader.getUint8(
-            this.#reader.fieldOffset(this.#position, 0)
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     default(): number {
-        return this.#reader.getUint8(
-            this.#reader.fieldOffset(this.#position, 1)
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
     in(): number {
-        return this.#reader.getUint8(
-            this.#reader.fieldOffset(this.#position, 2)
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 2)
         );
     }
 
     match(): number {
-        return this.#reader.getUint8(
-            this.#reader.fieldOffset(this.#position, 3)
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 3)
         );
     }
 
     self(): number {
-        return this.#reader.getUint8(
-            this.#reader.fieldOffset(this.#position, 4)
+        return this._reader.getUint8(
+            this._reader.fieldOffset(this._position, 4)
         );
     }
 
     type(): string {
-        return this.#reader.getString(
-            this.#reader.fieldOffset(this.#position, 5)
+        return this._reader.getString(
+            this._reader.fieldOffset(this._position, 5)
         );
     }
 
@@ -835,7 +835,7 @@ export class Keywords {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): KeywordsFields {
-        return Keywords.read(this.#reader, this.#position);
+        return Keywords.read(this._reader, this._position);
     }
 }
 
@@ -853,10 +853,10 @@ export interface KeywordsFields {
 export class Reserved {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Reserved.#LAYOUT);
+        this._reader = new TableReader(bytes, Reserved.#LAYOUT);
     }
 
     /** Writes a `Reserved` with every field */
@@ -898,7 +898,7 @@ export class Reserved {
     }
 
     keywords(): Keywords {
-        return new Keywords(this.#reader, this.#reader.rootOffset(0));
+        return new Keywords(this._reader, this._reader.rootOffset(0));
     }
 
     /**
@@ -907,7 +907,7 @@ export class Reserved {
      */
     fields(): ReservedFields {
         return {
-            keywords: Keywords.read(this.#reader, this.#reader.rootOffset(0))
+            keywords: Keywords.read(this._reader, this._reader.rootOffset(0))
         };
     }
 }
@@ -928,17 +928,17 @@ export class Packed {
     /** The alignment of an array of `Packed`: its largest scalar's size */
     static readonly ALIGNMENT = 8;
 
-    readonly #int8: number;
-    readonly #uint8: number;
-    readonly #int16: number;
-    readonly #uint16: number;
-    readonly #int32: number;
-    readonly #uint32: number;
-    readonly #int64: bigint;
-    readonly #uint64: bigint;
-    readonly #float32: number;
-    readonly #float64: number;
-    readonly #bool: boolean;
+    declare private readonly _int8: number;
+    declare private readonly _uint8: number;
+    declare private readonly _int16: number;
+    declare private readonly _uint16: number;
+    declare private readonly _int32: number;
+    declare private readonly _uint32: number;
+    declare private readonly _int64: bigint;
+    declare private readonly _uint64: bigint;
+    declare private readonly _float32: number;
+    declare private readonly _float64: number;
+    declare private readonly _bool: boolean;
 
     /**
      * Reads a `Packed` at `offset` in `bytes`, eagerly, so that it
@@ -947,17 +947,17 @@ export class Packed {
      * @throws {DecodeError} If `bytes` end before the `Packed` does.
      */
     constructor(bytes: Uint8Array, offset = 0) {
-        this.#int8 = readInt8(bytes, offset);
-        this.#uint8 = readUint8(bytes, offset + 1);
-        this.#int16 = readInt16(bytes, offset + 2);
-        this.#uint16 = readUint16(bytes, offset + 4);
-        this.#int32 = readInt32(bytes, offset + 6);
-        this.#uint32 = readUint32(bytes, offset + 10);
-        this.#int64 = readInt64(bytes, offset + 14);
-        this.#uint64 = readUint64(bytes, offset + 22);
-        this.#float32 = readFloat32(bytes, offset + 30);
-        this.#float64 = readFloat64(bytes, offset + 34);
-        this.#bool = readUint8(bytes, offset + 42) !== 0;
+        this._int8 = readInt8(bytes, offset);
+        this._uint8 = readUint8(bytes, offset + 1);
+        this._int16 = readInt16(bytes, offset + 2);
+        this._uint16 = readUint16(bytes, offset + 4);
+        this._int32 = readInt32(bytes, offset + 6);
+        this._uint32 = readUint32(bytes, offset + 10);
+        this._int64 = readInt64(bytes, offset + 14);
+        this._uint64 = readUint64(bytes, offset + 22);
+        this._float32 = readFloat32(bytes, offset + 30);
+        this._float64 = readFloat64(bytes, offset + 34);
+        this._bool = readUint8(bytes, offset + 42) !== 0;
     }
 
     /**
@@ -1040,47 +1040,47 @@ export class Packed {
     }
 
     int8(): number {
-        return this.#int8;
+        return this._int8;
     }
 
     uint8(): number {
-        return this.#uint8;
+        return this._uint8;
     }
 
     int16(): number {
-        return this.#int16;
+        return this._int16;
     }
 
     uint16(): number {
-        return this.#uint16;
+        return this._uint16;
     }
 
     int32(): number {
-        return this.#int32;
+        return this._int32;
     }
 
     uint32(): number {
-        return this.#uint32;
+        return this._uint32;
     }
 
     int64(): bigint {
-        return this.#int64;
+        return this._int64;
     }
 
     uint64(): bigint {
-        return this.#uint64;
+        return this._uint64;
     }
 
     float32(): number {
-        return this.#float32;
+        return this._float32;
     }
 
     float64(): number {
-        return this.#float64;
+        return this._float64;
     }
 
     bool(): boolean {
-        return this.#bool;
+        return this._bool;
     }
 }
 
@@ -1118,9 +1118,9 @@ export class Documented {
     /** The alignment of an array of `Documented`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    readonly #one: number;
-    readonly #two: number;
-    readonly #undocumented: number;
+    declare private readonly _one: number;
+    declare private readonly _two: number;
+    declare private readonly _undocumented: number;
 
     /**
      * Reads a `Documented` at `offset` in `bytes`, eagerly, so that it
@@ -1129,9 +1129,9 @@ export class Documented {
      * @throws {DecodeError} If `bytes` end before the `Documented` does.
      */
     constructor(bytes: Uint8Array, offset = 0) {
-        this.#one = readUint8(bytes, offset);
-        this.#two = readUint16(bytes, offset + 1);
-        this.#undocumented = readUint32(bytes, offset + 3);
+        this._one = readUint8(bytes, offset);
+        this._two = readUint16(bytes, offset + 1);
+        this._undocumented = readUint32(bytes, offset + 3);
     }
 
     /**
@@ -1240,7 +1240,7 @@ export class Documented {
 
     /** A field's documentation, of one line */
     one(): number {
-        return this.#one;
+        return this._one;
     }
 
     /**
@@ -1248,11 +1248,11 @@ export class Documented {
      * of two lines
      */
     two(): number {
-        return this.#two;
+        return this._two;
     }
 
     undocumented(): number {
-        return this.#undocumented;
+        return this._undocumented;
     }
 }
 
@@ -1275,8 +1275,8 @@ export interface DocumentedFields {
  * reading within the array's bytes.
  */
 export class DocumentedArray {
-    readonly #bytes: Uint8Array;
-    readonly #length: number;
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _length: number;
 
     /**
      * Views the array at `position`, as its parent's getter finds it
@@ -1284,13 +1284,13 @@ export class DocumentedArray {
      * @throws {DecodeError} If the array lies outside the bytes.
      */
     constructor(reader: TableReader, position: number) {
-        this.#bytes = reader.getStructArray(position, Documented.SIZE);
-        this.#length = this.#bytes.length / Documented.SIZE;
+        this._bytes = reader.getStructArray(position, Documented.SIZE);
+        this._length = this._bytes.length / Documented.SIZE;
     }
 
     /** The number of structs */
     length(): number {
-        return this.#length;
+        return this._length;
     }
 
     /**
@@ -1299,7 +1299,7 @@ export class DocumentedArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Documented {
-        return new Documented(this.#bytes, index * 7);
+        return new Documented(this._bytes, index * 7);
     }
 
     /**
@@ -1310,7 +1310,7 @@ export class DocumentedArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     one(index: number): number {
-        return readUint8(this.#bytes, index * 7);
+        return readUint8(this._bytes, index * 7);
     }
 
     /**
@@ -1322,7 +1322,7 @@ export class DocumentedArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     two(index: number): number {
-        return readUint16(this.#bytes, index * 7 + 1);
+        return readUint16(this._bytes, index * 7 + 1);
     }
 
     /**
@@ -1331,13 +1331,13 @@ export class DocumentedArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     undocumented(index: number): number {
-        return readUint32(this.#bytes, index * 7 + 3);
+        return readUint32(this._bytes, index * 7 + 3);
     }
 
     /** Reads the `DocumentedFields` of every item, from the first to the last */
     fields(): DocumentedFields[] {
-        const bytes = this.#bytes;
-        const items = new Array<DocumentedFields>(this.#length);
+        const bytes = this._bytes;
+        const items = new Array<DocumentedFields>(this._length);
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 7;
@@ -1359,8 +1359,8 @@ export class Point {
     /** The alignment of an array of `Point`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    readonly #x: number;
-    readonly #y: number;
+    declare private readonly _x: number;
+    declare private readonly _y: number;
 
     /**
      * Reads a `Point` at `offset` in `bytes`, eagerly, so that it
@@ -1369,8 +1369,8 @@ export class Point {
      * @throws {DecodeError} If `bytes` end before the `Point` does.
      */
     constructor(bytes: Uint8Array, offset = 0) {
-        this.#x = readFloat32(bytes, offset);
-        this.#y = readFloat32(bytes, offset + 4);
+        this._x = readFloat32(bytes, offset);
+        this._y = readFloat32(bytes, offset + 4);
     }
 
     /**
@@ -1470,11 +1470,11 @@ export class Point {
     }
 
     x(): number {
-        return this.#x;
+        return this._x;
     }
 
     y(): number {
-        return this.#y;
+        return this._y;
     }
 }
 
@@ -1492,8 +1492,8 @@ export class Segment {
     /** The alignment of an array of `Segment`: its largest scalar's size */
     static readonly ALIGNMENT = 4;
 
-    readonly #start: Point;
-    readonly #end: Point;
+    declare private readonly _start: Point;
+    declare private readonly _end: Point;
 
     /**
      * Reads a `Segment` at `offset` in `bytes`, eagerly, so that it
@@ -1502,8 +1502,8 @@ export class Segment {
      * @throws {DecodeError} If `bytes` end before the `Segment` does.
      */
     constructor(bytes: Uint8Array, offset = 0) {
-        this.#start = new Point(bytes, offset);
-        this.#end = new Point(bytes, offset + 8);
+        this._start = new Point(bytes, offset);
+        this._end = new Point(bytes, offset + 8);
     }
 
     /**
@@ -1603,11 +1603,11 @@ export class Segment {
     }
 
     start(): Point {
-        return this.#start;
+        return this._start;
     }
 
     end(): Point {
-        return this.#end;
+        return this._end;
     }
 }
 
@@ -1624,8 +1624,8 @@ export interface SegmentFields {
  * reading within the array's bytes.
  */
 export class SegmentArray {
-    readonly #bytes: Uint8Array;
-    readonly #length: number;
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _length: number;
 
     /**
      * Views the array at `position`, as its parent's getter finds it
@@ -1633,13 +1633,13 @@ export class SegmentArray {
      * @throws {DecodeError} If the array lies outside the bytes.
      */
     constructor(reader: TableReader, position: number) {
-        this.#bytes = reader.getStructArray(position, Segment.SIZE);
-        this.#length = this.#bytes.length / Segment.SIZE;
+        this._bytes = reader.getStructArray(position, Segment.SIZE);
+        this._length = this._bytes.length / Segment.SIZE;
     }
 
     /** The number of structs */
     length(): number {
-        return this.#length;
+        return this._length;
     }
 
     /**
@@ -1648,7 +1648,7 @@ export class SegmentArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Segment {
-        return new Segment(this.#bytes, index * 16);
+        return new Segment(this._bytes, index * 16);
     }
 
     /**
@@ -1657,7 +1657,7 @@ export class SegmentArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     start(index: number): Point {
-        return new Point(this.#bytes, index * 16);
+        return new Point(this._bytes, index * 16);
     }
 
     /**
@@ -1666,13 +1666,13 @@ export class SegmentArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     end(index: number): Point {
-        return new Point(this.#bytes, index * 16 + 8);
+        return new Point(this._bytes, index * 16 + 8);
     }
 
     /** Reads the `SegmentFields` of every item, from the first to the last */
     fields(): SegmentFields[] {
-        const bytes = this.#bytes;
-        const items = new Array<SegmentFields>(this.#length);
+        const bytes = this._bytes;
+        const items = new Array<SegmentFields>(this._length);
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 16;
@@ -1693,8 +1693,8 @@ export class SegmentArray {
  * reading within the array's bytes.
  */
 export class PointArray {
-    readonly #bytes: Uint8Array;
-    readonly #length: number;
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _length: number;
 
     /**
      * Views the array at `position`, as its parent's getter finds it
@@ -1702,13 +1702,13 @@ export class PointArray {
      * @throws {DecodeError} If the array lies outside the bytes.
      */
     constructor(reader: TableReader, position: number) {
-        this.#bytes = reader.getStructArray(position, Point.SIZE);
-        this.#length = this.#bytes.length / Point.SIZE;
+        this._bytes = reader.getStructArray(position, Point.SIZE);
+        this._length = this._bytes.length / Point.SIZE;
     }
 
     /** The number of structs */
     length(): number {
-        return this.#length;
+        return this._length;
     }
 
     /**
@@ -1717,7 +1717,7 @@ export class PointArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     get(index: number): Point {
-        return new Point(this.#bytes, index * 8);
+        return new Point(this._bytes, index * 8);
     }
 
     /**
@@ -1726,7 +1726,7 @@ export class PointArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     x(index: number): number {
-        return readFloat32(this.#bytes, index * 8);
+        return readFloat32(this._bytes, index * 8);
     }
 
     /**
@@ -1735,13 +1735,13 @@ export class PointArray {
      * @throws {DecodeError} If the array has no struct `index`.
      */
     y(index: number): number {
-        return readFloat32(this.#bytes, index * 8 + 4);
+        return readFloat32(this._bytes, index * 8 + 4);
     }
 
     /** Reads the `PointFields` of every item, from the first to the last */
     fields(): PointFields[] {
-        const bytes = this.#bytes;
-        const items = new Array<PointFields>(this.#length);
+        const bytes = this._bytes;
+        const items = new Array<PointFields>(this._length);
 
         for (let i = 0; i < items.length; i++) {
             const offset = i * 8;
@@ -1762,13 +1762,13 @@ export class Path {
      */
     static readonly ALIGNMENT = 4;
 
-    readonly #reader: TableReader;
-    readonly #position: number;
+    declare private readonly _reader: TableReader;
+    declare private readonly _position: number;
 
     /** Reads the table at `position`, as its parent's getter finds it */
     constructor(reader: TableReader, position: number) {
-        this.#reader = reader;
-        this.#position = position;
+        this._reader = reader;
+        this._position = position;
     }
 
     /**
@@ -1815,15 +1815,15 @@ export class Path {
 
     start(): Point {
         return new Point(
-            this.#reader.bytes(),
-            this.#reader.fieldOffset(this.#position, 0)
+            this._reader.bytes(),
+            this._reader.fieldOffset(this._position, 0)
         );
     }
 
     points(): PointArray {
         return new PointArray(
-            this.#reader,
-            this.#reader.fieldOffset(this.#position, 1)
+            this._reader,
+            this._reader.fieldOffset(this._position, 1)
         );
     }
 
@@ -1832,7 +1832,7 @@ export class Path {
      * tables and the items of vectors and arrays of structs included
      */
     fields(): PathFields {
-        return Path.read(this.#reader, this.#position);
+        return Path.read(this._reader, this._position);
     }
 }
 
@@ -1849,10 +1849,10 @@ export interface PathFields {
 export class Structs {
     static readonly #LAYOUT = TableLayout.DEFAULT;
 
-    readonly #reader: TableReader;
+    declare private readonly _reader: TableReader;
 
     constructor(bytes: Uint8Array) {
-        this.#reader = new TableReader(bytes, Structs.#LAYOUT);
+        this._reader = new TableReader(bytes, Structs.#LAYOUT);
     }
 
     /** Writes a `Structs` with every field */
@@ -1948,26 +1948,26 @@ export class Structs {
 
     /** A struct of every scalar type */
     packed(): Packed {
-        return new Packed(this.#reader.bytes(), this.#reader.rootOffset(0));
+        return new Packed(this._reader.bytes(), this._reader.rootOffset(0));
     }
 
     /** An array of structs of 7 bytes, aligned to 4 */
     documented(): DocumentedArray {
-        return new DocumentedArray(this.#reader, this.#reader.rootOffset(1));
+        return new DocumentedArray(this._reader, this._reader.rootOffset(1));
     }
 
     /** A struct of structs */
     segment(): Segment {
-        return new Segment(this.#reader.bytes(), this.#reader.rootOffset(2));
+        return new Segment(this._reader.bytes(), this._reader.rootOffset(2));
     }
 
     segments(): SegmentArray {
-        return new SegmentArray(this.#reader, this.#reader.rootOffset(3));
+        return new SegmentArray(this._reader, this._reader.rootOffset(3));
     }
 
     /** A table nested in the message, which holds structs too */
     path(): Path {
-        return new Path(this.#reader, this.#reader.rootOffset(4));
+        return new Path(this._reader, this._reader.rootOffset(4));
     }
 
     /**
@@ -1977,22 +1977,22 @@ export class Structs {
     fields(): StructsFields {
         return {
             packed: Packed.read(
-                this.#reader.bytes(),
-                this.#reader.rootOffset(0)
+                this._reader.bytes(),
+                this._reader.rootOffset(0)
             ),
             documented: new DocumentedArray(
-                this.#reader,
-                this.#reader.rootOffset(1)
+                this._reader,
+                this._reader.rootOffset(1)
             ).fields(),
             segment: Segment.read(
-                this.#reader.bytes(),
-                this.#reader.rootOffset(2)
+                this._reader.bytes(),
+                this._reader.rootOffset(2)
             ),
             segments: new SegmentArray(
-                this.#reader,
-                this.#reader.rootOffset(3)
+                this._reader,
+                this._reader.rootOffset(3)
             ).fields(),
-            path: Path.read(this.#reader, this.#reader.rootOffset(4))
+            path: Path.read(this._reader, this._reader.rootOffset(4))
         };
     }
 }

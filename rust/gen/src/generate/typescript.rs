@@ -632,7 +632,7 @@ impl Generator<'_> {
         ));
         writer.statement(
             &STYLE,
-            "this.#reader = ",
+            "this._reader = ",
             &call(
                 "new TableReader",
                 vec![text("bytes"), text(format!("{name}.#LAYOUT"))],
@@ -641,7 +641,7 @@ impl Generator<'_> {
         );
         if layout.version.is_some() {
             writer.blank();
-            writer.line("const version = this.#reader.getVersion();");
+            writer.line("const version = this._reader.getVersion();");
             writer.open(format!("if (version !== {name}.FORMAT_VERSION) {{"));
             let message = format!(
                 "`Expected format version ${{{name}.FORMAT_VERSION}} of {name}, got ${{version}}`"
@@ -1000,8 +1000,8 @@ impl Generator<'_> {
             self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#reader = reader;");
-        writer.line("this.#position = position;");
+        writer.line("this._reader = reader;");
+        writer.line("this._position = position;");
         writer.close("}");
         writer.blank();
 
@@ -1043,7 +1043,7 @@ impl Generator<'_> {
         if matches!(definition.kind, Kind::Message(_)) {
             return_object(writer, &self.table_reads(definition, TableAt::Root));
         } else {
-            writer.line(format!("return {name}.read(this.#reader, this.#position);"));
+            writer.line(format!("return {name}.read(this._reader, this._position);"));
         }
         writer.close("}");
     }
@@ -1083,7 +1083,7 @@ impl Generator<'_> {
     /// nested table, vector or array of structs whole
     fn table_reads<'d>(&self, definition: &'d Definition, at: TableAt) -> Vec<Read<'d>> {
         let reader = match at {
-            TableAt::Root => "this.#reader",
+            TableAt::Root => "this._reader",
             TableAt::Position => "reader",
         };
 
@@ -1569,7 +1569,7 @@ impl Generator<'_> {
             ..
         } in self.struct_reads(definition, StructRead::Reader, "bytes", "offset")
         {
-            let target = format!("this.#{} = ", identifier(&field.name));
+            let target = format!("this._{} = ", identifier(&field.name));
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => assign_bool(writer, &target, &read, ";"),
                 _ => writer.statement(&STYLE, &target, &read, ";"),
@@ -1758,7 +1758,7 @@ impl Generator<'_> {
                 "{field_name}(){} {{",
                 self.annotation(&value_type(field.field_type, self.schema))
             ));
-            writer.line(format!("return this.#{field_name};"));
+            writer.line(format!("return this._{field_name};"));
             writer.close("}");
         }
         writer.close("}");
@@ -1840,9 +1840,9 @@ impl Generator<'_> {
             self.annotation("TableReader"),
             self.annotation("number")
         ));
-        writer.line("this.#reader = reader;");
-        writer.line("this.#position = position;");
-        writer.line("this.#length = reader.getVectorLength(position);");
+        writer.line("this._reader = reader;");
+        writer.line("this._position = position;");
+        writer.line("this._length = reader.getVectorLength(position);");
         writer.close("}");
         writer.blank();
 
@@ -1867,13 +1867,13 @@ impl Generator<'_> {
         // The count that the constructor checked, rather than reading and
         // checking it for each item, as getVectorOffset() would
         let offset = call(
-            "this.#reader.getVectorItemOffset",
-            vec![text("this.#position"), text("this.#length"), text("index")],
+            "this._reader.getVectorItemOffset",
+            vec![text("this._position"), text("this._length"), text("index")],
         );
         writer.statement(
             &STYLE,
             "return ",
-            &call(format!("new {table}"), vec![text("this.#reader"), offset]),
+            &call(format!("new {table}"), vec![text("this._reader"), offset]),
             ";",
         );
         writer.close("}");
@@ -1895,8 +1895,8 @@ impl Generator<'_> {
             &STYLE,
             "const offsets = ",
             &call(
-                "this.#reader.getVectorOffsets",
-                vec![text("this.#position")],
+                "this._reader.getVectorOffsets",
+                vec![text("this._position")],
             ),
             ";",
         );
@@ -1913,7 +1913,7 @@ impl Generator<'_> {
             "items[i] = ",
             &call(
                 format!("{table}.read"),
-                vec![text("this.#reader"), text("offsets[i]")],
+                vec![text("this._reader"), text("offsets[i]")],
             ),
             ";",
         );
@@ -1991,7 +1991,7 @@ impl Generator<'_> {
         ));
         writer.statement(
             &STYLE,
-            "this.#bytes = ",
+            "this._bytes = ",
             &call(
                 "reader.getStructArray",
                 vec![text("position"), text(format!("{structure}.SIZE"))],
@@ -1999,7 +1999,7 @@ impl Generator<'_> {
             ";",
         );
         writer.line(format!(
-            "this.#length = this.#bytes.length / {structure}.SIZE;"
+            "this._length = this._bytes.length / {structure}.SIZE;"
         ));
         writer.close("}");
         writer.blank();
@@ -2026,13 +2026,13 @@ impl Generator<'_> {
             "return ",
             &call(
                 format!("new {structure}"),
-                vec![text("this.#bytes"), text(&offset)],
+                vec![text("this._bytes"), text(&offset)],
             ),
             ";",
         );
         writer.close("}");
 
-        let reads = self.struct_reads(definition, StructRead::Reader, "this.#bytes", &offset);
+        let reads = self.struct_reads(definition, StructRead::Reader, "this._bytes", &offset);
         for Read {
             field,
             expression: read,
@@ -2067,12 +2067,12 @@ impl Generator<'_> {
 
         self.view_fields(writer, structure, &[]);
         // The struct's reads in the loop, from the bytes in a local, rather
-        // than its read() of this.#bytes, which took a quarter longer
-        writer.line("const bytes = this.#bytes;");
+        // than its read() of this._bytes, which took a quarter longer
+        writer.line("const bytes = this._bytes;");
         writer.statement(
             &STYLE,
             "const items = ",
-            &self.new_array(structure, "this.#length"),
+            &self.new_array(structure, "this._length"),
             ";",
         );
         writer.blank();
@@ -2093,7 +2093,7 @@ impl Generator<'_> {
     fn view_length(&self, writer: &mut CodeWriter, summary: &str) {
         self.getter_doc(writer, &[summary.to_owned()], "number");
         writer.open(format!("length(){} {{", self.annotation("number")));
-        writer.line("return this.#length;");
+        writer.line("return this._length;");
         writer.close("}");
     }
 
@@ -2293,11 +2293,11 @@ impl Generator<'_> {
     fn getters(&self, writer: &mut CodeWriter, definition: &Definition, root: bool) {
         for (index, field) in definition.fields.iter().enumerate() {
             let offset = if root {
-                call("this.#reader.rootOffset", vec![text(index.to_string())])
+                call("this._reader.rootOffset", vec![text(index.to_string())])
             } else {
                 call(
-                    "this.#reader.fieldOffset",
-                    vec![text("this.#position"), text(index.to_string())],
+                    "this._reader.fieldOffset",
+                    vec![text("this._position"), text(index.to_string())],
                 )
             };
             let return_type = value_type(field.field_type, self.schema);
@@ -2313,7 +2313,7 @@ impl Generator<'_> {
             match field.field_type {
                 FieldType::Scalar(scalar) => {
                     let get = call(
-                        format!("this.#reader.get{}", scalar_method(scalar)),
+                        format!("this._reader.get{}", scalar_method(scalar)),
                         vec![offset],
                     );
                     if scalar == Scalar::Bool {
@@ -2324,7 +2324,7 @@ impl Generator<'_> {
                 }
                 FieldType::Array(scalar) => {
                     let get = call(
-                        format!("this.#reader.get{}Array", scalar_method(scalar)),
+                        format!("this._reader.get{}Array", scalar_method(scalar)),
                         vec![offset],
                     );
                     writer.statement(&STYLE, "return ", &get, ";");
@@ -2333,7 +2333,7 @@ impl Generator<'_> {
                     writer.statement(
                         &STYLE,
                         "return ",
-                        &call("this.#reader.getString", vec![offset]),
+                        &call("this._reader.getString", vec![offset]),
                         ";",
                     );
                 }
@@ -2341,20 +2341,20 @@ impl Generator<'_> {
                     let structure = &self.schema.definition(index).name;
                     let read = call(
                         format!("new {structure}"),
-                        vec![text("this.#reader.bytes()"), offset],
+                        vec![text("this._reader.bytes()"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
-                    let read = call(format!("new {table}"), vec![text("this.#reader"), offset]);
+                    let read = call(format!("new {table}"), vec![text("this._reader"), offset]);
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
                 FieldType::StructArray(_) | FieldType::Vector(_) => {
                     // A view, which reads each item when it's asked for
                     let read = call(
                         format!("new {return_type}"),
-                        vec![text("this.#reader"), offset],
+                        vec![text("this._reader"), offset],
                     );
                     writer.statement(&STYLE, "return ", &read, ";");
                 }
@@ -2457,12 +2457,16 @@ impl Generator<'_> {
         writer.lines(&doc_comment(&lines));
     }
 
+    /// Declares a field that the constructor assigns, without defining it.
+    /// A `#name` field, or any field that the class defines, is first
+    /// `undefined` and then assigned, so V8 holds it as mutable and of any
+    /// type, and reads through it took up to 17% longer. TypeScript's
+    /// `private declare` emits nothing, and JavaScript declares nothing: its
+    /// types, which its doc comments give, follow from the constructor's
+    /// assignment.
     fn private_field(&self, writer: &mut CodeWriter, name: &str, field_type: &str) {
         if self.typed {
-            writer.line(format!("readonly #{name}: {field_type};"));
-        } else {
-            writer.line(format!("/** @type {{{field_type}}} */"));
-            writer.line(format!("#{name};"));
+            writer.line(format!("declare private readonly _{name}: {field_type};"));
         }
     }
 
