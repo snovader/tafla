@@ -100,6 +100,7 @@ var messages = []message{
 	versioned[shapes.Document, shapes.DocumentFields](
 		"shapes.Document", tafla.Uint32, true, 1, shapes.NewDocument, shapes.DocumentVersionOf),
 	unversioned[shapes.ItemList, shapes.ItemListFields]("shapes.ItemList", tafla.Uint32, false, shapes.NewItemList),
+	unversioned[shapes.Task, shapes.TaskFields]("shapes.Task", tafla.Uint32, false, shapes.NewTask),
 
 	unversioned[layouts.Uint8Offsets, layouts.Uint8OffsetsFields](
 		"layouts.Uint8Offsets", tafla.Uint8, false, layouts.NewUint8Offsets),
@@ -137,6 +138,7 @@ var messages = []message{
 	unversioned[alltypes.Nested, alltypes.NestedFields]("all_types.Nested", tafla.Uint32, false, alltypes.NewNested),
 	unversioned[alltypes.Reserved, alltypes.ReservedFields]("all_types.Reserved", tafla.Uint32, false, alltypes.NewReserved),
 	unversioned[alltypes.Structs, alltypes.StructsFields]("all_types.Structs", tafla.Uint32, false, alltypes.NewStructs),
+	unversioned[alltypes.Enums, alltypes.EnumsFields]("all_types.Enums", tafla.Uint32, false, alltypes.NewEnums),
 
 	// Fixed fields, which the generated code lays out itself. Overflow, which
 	// is always too long, has a test of its own.
@@ -163,10 +165,13 @@ var structs = []struct {
 	read reflect.Value
 }{
 	{"shapes.Sample", reflect.TypeFor[shapes.Sample](), 12, reflect.ValueOf(shapes.ReadSample)},
+	{"shapes.Step", reflect.TypeFor[shapes.Step](), 7, reflect.ValueOf(shapes.ReadStep)},
 	{"all_types.Segment", reflect.TypeFor[alltypes.Segment](), 16, reflect.ValueOf(alltypes.ReadSegment)},
 	{"all_types.Point", reflect.TypeFor[alltypes.Point](), 8, reflect.ValueOf(alltypes.ReadPoint)},
 	{"all_types.Packed", reflect.TypeFor[alltypes.Packed](), 43, reflect.ValueOf(alltypes.ReadPacked)},
 	{"all_types.Documented", reflect.TypeFor[alltypes.Documented](), 7, reflect.ValueOf(alltypes.ReadDocumented)},
+	{"all_types.Mark", reflect.TypeFor[alltypes.Mark](), 24, reflect.ValueOf(alltypes.ReadMark)},
+	{"all_types.Turn", reflect.TypeFor[alltypes.Turn](), 9, reflect.ValueOf(alltypes.ReadTurn)},
 	{"fixed_fields.Vec2", reflect.TypeFor[fixedfields.Vec2](), 8, reflect.ValueOf(fixedfields.ReadVec2)},
 	{"fixed_fields.Quad", reflect.TypeFor[fixedfields.Quad](), 64, reflect.ValueOf(fixedfields.ReadQuad)},
 	{"fixed_fields.Block", reflect.TypeFor[fixedfields.Block](), 256, reflect.ValueOf(fixedfields.ReadBlock)},

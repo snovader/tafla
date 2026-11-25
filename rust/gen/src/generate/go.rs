@@ -6,6 +6,11 @@
 //! offsets, which implement `encoding`'s binary marshaling interfaces. An
 //! array of a struct whose Go struct lies in memory as its bytes do is read
 //! in place too, where the bytes are aligned to it on a little-endian host.
+//! An enum is a defined type of its integer type, which holds any integer of
+//! that type, with a constant of the type for each of its values, named
+//! `<Enum><Value>`. A field of an enum is read and written as the enum's
+//! type, by a conversion that compiles to nothing, and an array of enums as
+//! an array of their integer type.
 //!
 //! Each schema generates a package of its own, in one file named after the
 //! package, so that a schema's file name can't make the file a test or
@@ -25,16 +30,17 @@
 //! Everything that a schema names is exported, in `PascalCase`, beside the
 //! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
 //! and `<Message>FormatVersion`, and of structs, `Read<Struct>`, which the
-//! checker keeps declarations from taking. The generated code's own helpers
-//! are unexported methods, and each struct's `read<Struct>()`, which can't
-//! clash with them.
+//! checker keeps declarations from taking, as it keeps the constant of an
+//! enum's value from taking any name of the package. The generated code's
+//! own helpers are unexported methods, and each struct's `read<Struct>()`,
+//! which can't clash with them.
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::CodeWriter;
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
 
@@ -133,6 +139,10 @@ pub fn generate(
     writer.blank();
     writer.line(format!("package {package}"));
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        enumeration_type(&mut writer, enumeration);
+    }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
         match definition.kind {
@@ -467,7 +477,7 @@ impl<'a> Generator<'a> {
 
         for (index, field) in definition.fields.iter().enumerate() {
             let getter = exported(&field.name);
-            let value_type = self.value_type(field.field_type);
+            let value_type = self.value_type(field);
 
             writer.blank();
             writer.lines(&go_doc(&getter_docs(&getter, field)));
@@ -478,16 +488,23 @@ impl<'a> Generator<'a> {
             if reads_with_reader(&offset, field.field_type) {
                 writer.line(reader_line(layout));
             }
-            find_field(writer, &offset, &zero_value(&value_type));
+            find_field(writer, &offset, &zero_value(field.field_type, &value_type));
 
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => {
                     writer.line("value, err := reader.GetUint8(position)");
                     writer.line("return value != 0, err");
                 }
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!("return reader.Get{}(position)", method(scalar)));
-                }
+                FieldType::Scalar(scalar) => match self.enumeration(field) {
+                    Some(enumeration) => {
+                        writer.line(format!(
+                            "value, err := reader.Get{}(position)",
+                            method(scalar)
+                        ));
+                        writer.line(format!("return {}(value), err", enumeration.name));
+                    }
+                    None => writer.line(format!("return reader.Get{}(position)", method(scalar))),
+                },
                 FieldType::Array(scalar) => {
                     writer.line(format!(
                         "return reader.Get{}Array(position)",
@@ -540,11 +557,11 @@ impl<'a> Generator<'a> {
                 (
                     field.docs.as_slice(),
                     exported(&field.name),
-                    self.input_type(field.field_type),
+                    self.input_type(field),
                 )
             })
             .collect();
-        struct_fields(writer, &fields);
+        aligned_members(writer, &fields);
         writer.close("}");
 
         writer.blank();
@@ -679,10 +696,12 @@ impl<'a> Generator<'a> {
 
             match field.field_type {
                 FieldType::Scalar(scalar) => {
+                    let enumeration = self.enumeration(field);
                     if read {
-                        writer.line(format!("{member} = {}", read_scalar(scalar, offset)));
+                        let value = read_scalar(scalar, enumeration, offset);
+                        writer.line(format!("{member} = {value}"));
                     } else {
-                        put_scalar(writer, scalar, &member, "bytes", offset);
+                        put_scalar(writer, scalar, enumeration, &member, "bytes", offset);
                     }
                     offset += usize::from(scalar.size());
                 }
@@ -786,7 +805,16 @@ impl<'a> Generator<'a> {
             }
             FieldType::Scalar(scalar) => {
                 let read = format!("reader.Get{}(position)", method(scalar));
-                assign_read(writer, &member, &read, zero);
+                match self.enumeration(field) {
+                    // The getter returns the enum's integer type, which a
+                    // local holds until it's converted
+                    Some(enumeration) => {
+                        let local = format!("enum{index}");
+                        declare_read(writer, &local, &read, zero);
+                        writer.line(format!("{member} = {}({local})", enumeration.name));
+                    }
+                    None => assign_read(writer, &member, &read, zero),
+                }
             }
             FieldType::Array(Scalar::Uint8) => {
                 assign_read(writer, &member, "reader.GetUint8Array(position)", zero);
@@ -870,11 +898,11 @@ impl<'a> Generator<'a> {
                 (
                     field.docs.as_slice(),
                     exported(&field.name),
-                    self.input_type(field.field_type),
+                    self.input_type(field),
                 )
             })
             .collect();
-        struct_fields(writer, &fields);
+        aligned_members(writer, &fields);
         writer.close("}");
 
         match definition.kind {
@@ -1058,7 +1086,10 @@ impl<'a> Generator<'a> {
         for (field, &position) in fields.iter().zip(&positions) {
             let member = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
-                FieldType::Scalar(scalar) => put_scalar(writer, scalar, &member, bytes, position),
+                FieldType::Scalar(scalar) => {
+                    let enumeration = self.enumeration(field);
+                    put_scalar(writer, scalar, enumeration, &member, bytes, position);
+                }
                 FieldType::Struct(_) | FieldType::Table(_) => {
                     writer.line(format!("{member}.put({})", at(bytes, position)));
                 }
@@ -1195,6 +1226,12 @@ impl<'a> Generator<'a> {
                     writer.line(format!("writer.SetUint8({index}, boolean)"));
                 }
                 FieldType::Scalar(scalar) => {
+                    // The setter takes an enum as its integer type
+                    let value = if field.enumeration.is_some() {
+                        format!("{}({value})", scalar_type(scalar))
+                    } else {
+                        value
+                    };
                     writer.line(format!("writer.Set{}({index}, {value})", method(scalar)));
                 }
                 FieldType::Array(scalar) => {
@@ -1258,9 +1295,26 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn value_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+    /// The enum of a scalar field or of an array's elements, if it has one
+    fn enumeration(&self, field: &Field) -> Option<&'a Enum> {
+        field
+            .enumeration
+            .map(|index| self.schema.enumeration(index))
+    }
+
+    /// The Go type of a scalar field: its enum, or the scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> &'a str {
+        match self.enumeration(field) {
+            Some(enumeration) => &enumeration.name,
+            None => scalar_type(scalar),
+        }
+    }
+
+    /// The type that a field's getter returns. An array of enums is a view
+    /// of their integer type, as it lies in the bytes.
+    fn value_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("tafla.ArrayView[{}]", scalar_type(scalar)),
             FieldType::String => "string".to_owned(),
@@ -1272,9 +1326,11 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn input_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+    /// The type of a field in the struct that writes it. An array of enums
+    /// is a slice of their integer type, which is written in bulk.
+    fn input_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("[]{}", scalar_type(scalar)),
             FieldType::String => "string".to_owned(),
@@ -1523,31 +1579,69 @@ fn wrap(text: &str) -> Vec<String> {
     lines
 }
 
-/// The fields of a struct, each after its documentation, which isn't
-/// reformatted, and aligned as gofmt aligns them: the types of consecutive
-/// fields start in one column, and a comment between two fields starts
-/// another run of them
-fn struct_fields(writer: &mut CodeWriter, fields: &[(&[String], String, String)]) {
+/// The fields of a struct or the constants of a block, each a name and what
+/// follows it, a field's type or a constant's type and value, after its
+/// documentation, which isn't reformatted, and aligned as gofmt aligns them:
+/// what follows the names of consecutive members starts in one column, and a
+/// comment between two members starts another run of them
+fn aligned_members(writer: &mut CodeWriter, members: &[(&[String], String, String)]) {
     let mut start = 0;
-    while start < fields.len() {
+    while start < members.len() {
         let mut end = start + 1;
-        while end < fields.len() && fields[end].0.is_empty() {
+        while end < members.len() && members[end].0.is_empty() {
             end += 1;
         }
-        let width = fields[start..end]
+        let width = members[start..end]
             .iter()
             .map(|(_, name, _)| name.len())
             .max()
             .unwrap_or(0);
 
-        for (docs, name, field_type) in &fields[start..end] {
+        for (docs, name, rest) in &members[start..end] {
             for line in *docs {
                 writer.line(format!("// {line}").trim_end());
             }
-            writer.line(format!("{name:width$} {field_type}"));
+            writer.line(format!("{name:width$} {rest}"));
         }
         start = end;
     }
+}
+
+/// An enum: a defined type of its integer type, so that a field of it holds
+/// any integer of that type, and a block of typed constants, one for each
+/// value that the schema names, `<Enum><Value>`, which no keyword of Go's
+/// can be. Each value is the schema's integer as it's written, since Go's
+/// constants hold every integer from an int64's least to a uint64's greatest.
+fn enumeration_type(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = scalar_type(enumeration.underlying);
+
+    writer.blank();
+    writer.lines(&go_doc(&enumeration.docs));
+    writer.line(format!("type {name} {underlying}"));
+
+    // Every constant has the enum's type, so their values align as their
+    // types do
+    let constants: Vec<(&[String], String, String)> = enumeration
+        .values
+        .iter()
+        .map(|value| {
+            (
+                value.docs.as_slice(),
+                format!("{name}{}", pascal_case(&value.name)),
+                format!("{name} = {}", value.value),
+            )
+        })
+        .collect();
+
+    writer.blank();
+    writer.lines(&prose(&[
+        format!("The values of [{name}] that the schema names. A field of it holds any"),
+        format!("{underlying}, whether it's one of them or not."),
+    ]));
+    writer.open("const (");
+    aligned_members(writer, &constants);
+    writer.close(")");
 }
 
 /// The view of a vector of a table, which reads each item when it's asked
@@ -1713,14 +1807,24 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition, lies_in_p
     writer.close("}");
 }
 
-/// The expression that reads a scalar at `offset` in `bytes`
-fn read_scalar(scalar: Scalar, offset: usize) -> String {
+/// The expression that reads a scalar at `offset` in `bytes`, as its
+/// `enumeration` when it has one, which the unsigned integer that holds its
+/// bits converts to as it converts to a signed integer
+fn read_scalar(scalar: Scalar, enumeration: Option<&Enum>, offset: usize) -> String {
     let at = if offset == 0 {
         "bytes".to_owned()
     } else {
         format!("bytes[{offset}:]")
     };
     let bits = |size: u8| format!("binary.LittleEndian.Uint{}({at})", 8 * size);
+
+    if let Some(enumeration) = enumeration {
+        let unsigned = match scalar.size() {
+            1 => format!("bytes[{offset}]"),
+            size => bits(size),
+        };
+        return format!("{}({unsigned})", enumeration.name);
+    }
 
     match scalar {
         Scalar::Bool => format!("bytes[{offset}] != 0"),
@@ -1735,8 +1839,17 @@ fn read_scalar(scalar: Scalar, offset: usize) -> String {
     }
 }
 
-/// The lines that write the scalar `member` at `offset` in the slice `bytes`
-fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, bytes: &str, offset: usize) {
+/// The lines that write the scalar `member` at `offset` in the slice `bytes`.
+/// A member of an `enumeration` is of the enum's type, which converts to the
+/// unsigned integer that holds its bits, as a signed integer does.
+fn put_scalar(
+    writer: &mut CodeWriter,
+    scalar: Scalar,
+    enumeration: Option<&Enum>,
+    member: &str,
+    bytes: &str,
+    offset: usize,
+) {
     let at = at(bytes, offset);
     let put =
         |size: u8, value: String| format!("binary.LittleEndian.PutUint{}({at}, {value})", 8 * size);
@@ -1748,14 +1861,21 @@ fn put_scalar(writer: &mut CodeWriter, scalar: Scalar, member: &str, bytes: &str
             writer.line(format!("{bytes}[{offset}] = 1"));
             writer.close("}");
         }
-        Scalar::Int8 => writer.line(format!("{bytes}[{offset}] = byte({member})")),
-        Scalar::Uint8 => writer.line(format!("{bytes}[{offset}] = {member}")),
-        Scalar::Int16 | Scalar::Int32 | Scalar::Int64 => {
+        Scalar::Uint8 if enumeration.is_none() => {
+            writer.line(format!("{bytes}[{offset}] = {member}"));
+        }
+        Scalar::Int8 | Scalar::Uint8 => writer.line(format!("{bytes}[{offset}] = byte({member})")),
+        Scalar::Uint16 | Scalar::Uint32 | Scalar::Uint64 if enumeration.is_none() => {
+            writer.line(put(scalar.size(), member.to_owned()));
+        }
+        Scalar::Int16
+        | Scalar::Uint16
+        | Scalar::Int32
+        | Scalar::Uint32
+        | Scalar::Int64
+        | Scalar::Uint64 => {
             let size = scalar.size();
             writer.line(put(size, format!("uint{}({member})", 8 * size)));
-        }
-        Scalar::Uint16 | Scalar::Uint32 | Scalar::Uint64 => {
-            writer.line(put(scalar.size(), member.to_owned()));
         }
         Scalar::Float32 => writer.line(put(4, format!("math.Float32bits({member})"))),
         Scalar::Float64 => writer.line(put(8, format!("math.Float64bits({member})"))),
@@ -1807,14 +1927,19 @@ fn layout_expression(layout: Layout, name: &str) -> String {
     expression
 }
 
-/// The zero value of a getter's type, which it returns with an error
-fn zero_value(value_type: &str) -> String {
-    match value_type {
-        "bool" => "false".to_owned(),
-        "string" => "\"\"".to_owned(),
-        _ if value_type.starts_with("[]") => "nil".to_owned(),
-        _ if Scalar::from_name(value_type).is_some() => "0".to_owned(),
-        _ => format!("{value_type}{{}}"),
+/// The zero value of the type that a field's getter returns, `value_type`,
+/// which it returns with an error. An enum's is its integer type's.
+fn zero_value(field_type: FieldType, value_type: &str) -> String {
+    match field_type {
+        FieldType::Scalar(Scalar::Bool) => "false".to_owned(),
+        FieldType::Scalar(_) => "0".to_owned(),
+        FieldType::String => "\"\"".to_owned(),
+        FieldType::Array(Scalar::Uint8) => "nil".to_owned(),
+        FieldType::Array(_)
+        | FieldType::Struct(_)
+        | FieldType::StructArray(_)
+        | FieldType::Table(_)
+        | FieldType::Vector(_) => format!("{value_type}{{}}"),
     }
 }
 

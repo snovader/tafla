@@ -10,6 +10,29 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
+// How soon to do a task
+type Priority int8
+
+// The values of [Priority] that the schema names. A field of it holds any int8,
+// whether it's one of them or not.
+const (
+	PriorityLow    Priority = -1
+	PriorityNormal Priority = 0
+	PriorityHigh   Priority = 1
+)
+
+// What has become of a task
+type State uint16
+
+// The values of [State] that the schema names. A field of it holds any uint16,
+// whether it's one of them or not.
+const (
+	StateWaiting State = 0
+	StateRunning State = 1
+	StateDone    State = 2
+	StateFailed  State = 1000
+)
+
 // A small table of two coordinates, an identifier and a name
 type Point struct {
 	bytes []byte
@@ -781,13 +804,14 @@ func (Task) layout() tafla.TableLayout {
 
 // Priority fails with a [*tafla.DecodeError] if the field lies outside the
 // bytes.
-func (t Task) Priority() (int8, error) {
+func (t Task) Priority() (Priority, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetInt8(position)
+	value, err := reader.GetInt8(position)
+	return Priority(value), err
 }
 
 // The states that the task has been in, the oldest first
@@ -839,9 +863,11 @@ func (t Task) Fields() (TaskFields, error) {
 	if err != nil {
 		return TaskFields{}, err
 	}
-	if fields.Priority, err = reader.GetInt8(position); err != nil {
+	enum0, err := reader.GetInt8(position)
+	if err != nil {
 		return TaskFields{}, err
 	}
+	fields.Priority = Priority(enum0)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 4); err != nil {
 		return TaskFields{}, err
@@ -873,7 +899,7 @@ func (t Task) Fields() (TaskFields, error) {
 
 // TaskFields are the fields of a [Task], to write.
 type TaskFields struct {
-	Priority int8
+	Priority Priority
 	// The states that the task has been in, the oldest first
 	History []uint16
 	Step    Step
@@ -903,7 +929,7 @@ func (f TaskFields) AppendBinary(bytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	writer.SetInt8(0, f.Priority)
+	writer.SetInt8(0, int8(f.Priority))
 	writer.SetUint16Array(1, f.History)
 	f.Step.put(writer.ReserveStruct(2, 7))
 	writer.SetString(3, f.Name)
@@ -913,8 +939,8 @@ func (f TaskFields) AppendBinary(bytes []byte) ([]byte, error) {
 
 // A state and how long the task has been in it
 type Step struct {
-	State    uint16
-	Priority int8
+	State    State
+	Priority Priority
 	Seconds  uint32
 }
 
@@ -964,8 +990,8 @@ func ReadStep(bytes []byte) (Step, error) {
 func readStep(bytes []byte) Step {
 	_ = bytes[6]
 	var s Step
-	s.State = binary.LittleEndian.Uint16(bytes)
-	s.Priority = int8(bytes[2])
+	s.State = State(binary.LittleEndian.Uint16(bytes))
+	s.Priority = Priority(bytes[2])
 	s.Seconds = binary.LittleEndian.Uint32(bytes[3:])
 	return s
 }
@@ -974,7 +1000,7 @@ func readStep(bytes []byte) Step {
 // least its 7 bytes
 func (s *Step) put(bytes []byte) {
 	_ = bytes[6]
-	binary.LittleEndian.PutUint16(bytes, s.State)
+	binary.LittleEndian.PutUint16(bytes, uint16(s.State))
 	bytes[2] = byte(s.Priority)
 	binary.LittleEndian.PutUint32(bytes[3:], s.Seconds)
 }

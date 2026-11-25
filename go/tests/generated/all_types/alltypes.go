@@ -10,6 +10,117 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
+// How much of something there is.
+//
+// A field of it holds any `uint8`, whether it has a name here or not.
+type Level uint8
+
+// The values of [Level] that the schema names. A field of it holds any uint8,
+// whether it's one of them or not.
+const (
+	// The least
+	LevelLow    Level = 0
+	LevelMedium Level = 1
+	// The most, in documentation
+	// of two lines
+	LevelHigh Level = 2
+)
+
+// An enum of `int8`, with a negative value
+type Direction int8
+
+// The values of [Direction] that the schema names. A field of it holds any
+// int8, whether it's one of them or not.
+const (
+	DirectionBackward Direction = -1
+	DirectionNone     Direction = 0
+	DirectionForward  Direction = 1
+	// The least `int8`
+	DirectionFurthestBack Direction = -128
+)
+
+// An enum of `uint16`, whose values aren't in order
+type Unit uint16
+
+// The values of [Unit] that the schema names. A field of it holds any uint16,
+// whether it's one of them or not.
+const (
+	UnitLast  Unit = 65535
+	UnitFirst Unit = 0
+	UnitV2    Unit = 2
+)
+
+type Change int16
+
+// The values of [Change] that the schema names. A field of it holds any int16,
+// whether it's one of them or not.
+const (
+	ChangeLeast    Change = -32768
+	ChangeGreatest Change = 32767
+)
+
+type Status uint32
+
+// The values of [Status] that the schema names. A field of it holds any uint32,
+// whether it's one of them or not.
+const (
+	StatusOk       Status = 0
+	StatusNotFound Status = 404
+	StatusGreatest Status = 4294967295
+)
+
+type Sign int32
+
+// The values of [Sign] that the schema names. A field of it holds any int32,
+// whether it's one of them or not.
+const (
+	SignLeast    Sign = -2147483648
+	SignGreatest Sign = 2147483647
+)
+
+// An enum of `uint64`, with a value that a float64 can't hold exactly
+type Mask uint64
+
+// The values of [Mask] that the schema names. A field of it holds any uint64,
+// whether it's one of them or not.
+const (
+	MaskNone          Mask = 0
+	MaskOne           Mask = 1
+	MaskBeyondFloat64 Mask = 9007199254740993
+	MaskAll           Mask = 18446744073709551615
+)
+
+type Extent int64
+
+// The values of [Extent] that the schema names. A field of it holds any int64,
+// whether it's one of them or not.
+const (
+	ExtentLeast    Extent = -9223372036854775808
+	ExtentZero     Extent = 0
+	ExtentGreatest Extent = 9223372036854775807
+)
+
+// Values named after keywords and literals of the target languages
+type Word uint8
+
+// The values of [Word] that the schema names. A field of it holds any uint8,
+// whether it's one of them or not.
+const (
+	WordClass   Word = 0
+	WordDefault Word = 1
+	WordIn      Word = 2
+	WordMatch   Word = 3
+	WordSelf    Word = 4
+	WordType    Word = 5
+	WordTrue    Word = 6
+	WordNull    Word = 7
+	WordNone    Word = 8
+	WordInit    Word = 9
+	WordNew     Word = 10
+	WordName    Word = 11
+	WordValue   Word = 12
+)
+
 // A field of every scalar type, and a bool
 type Scalars struct {
 	bytes []byte
@@ -1930,13 +2041,14 @@ func (Enums) layout() tafla.TableLayout {
 // An enum of one byte
 //
 // It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Level() (uint8, error) {
+func (t Enums) Level() (Level, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint8(position)
+	value, err := reader.GetUint8(position)
+	return Level(value), err
 }
 
 // An array of enums, which is an array of their integer type
@@ -1953,13 +2065,14 @@ func (t Enums) Levels() ([]byte, error) {
 
 // Direction fails with a [*tafla.DecodeError] if the field lies outside the
 // bytes.
-func (t Enums) Direction() (int8, error) {
+func (t Enums) Direction() (Direction, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetInt8(position)
+	value, err := reader.GetInt8(position)
+	return Direction(value), err
 }
 
 // Directions fails with a [*tafla.DecodeError] if the field lies outside the
@@ -1974,13 +2087,14 @@ func (t Enums) Directions() (tafla.ArrayView[int8], error) {
 }
 
 // Unit fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Unit() (uint16, error) {
+func (t Enums) Unit() (Unit, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 16)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint16(position)
+	value, err := reader.GetUint16(position)
+	return Unit(value), err
 }
 
 // Units fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1994,13 +2108,14 @@ func (t Enums) Units() (tafla.ArrayView[uint16], error) {
 }
 
 // Change fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Change() (int16, error) {
+func (t Enums) Change() (Change, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 24)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetInt16(position)
+	value, err := reader.GetInt16(position)
+	return Change(value), err
 }
 
 // Changes fails with a [*tafla.DecodeError] if the field lies outside the
@@ -2015,13 +2130,14 @@ func (t Enums) Changes() (tafla.ArrayView[int16], error) {
 }
 
 // Status fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Status() (uint32, error) {
+func (t Enums) Status() (Status, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 32)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint32(position)
+	value, err := reader.GetUint32(position)
+	return Status(value), err
 }
 
 // Statuses fails with a [*tafla.DecodeError] if the field lies outside the
@@ -2036,13 +2152,14 @@ func (t Enums) Statuses() (tafla.ArrayView[uint32], error) {
 }
 
 // Sign fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Sign() (int32, error) {
+func (t Enums) Sign() (Sign, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 40)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetInt32(position)
+	value, err := reader.GetInt32(position)
+	return Sign(value), err
 }
 
 // Signs fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -2056,13 +2173,14 @@ func (t Enums) Signs() (tafla.ArrayView[int32], error) {
 }
 
 // Mask fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Mask() (uint64, error) {
+func (t Enums) Mask() (Mask, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 48)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint64(position)
+	value, err := reader.GetUint64(position)
+	return Mask(value), err
 }
 
 // Masks fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -2076,13 +2194,14 @@ func (t Enums) Masks() (tafla.ArrayView[uint64], error) {
 }
 
 // Extent fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Extent() (int64, error) {
+func (t Enums) Extent() (Extent, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 56)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetInt64(position)
+	value, err := reader.GetInt64(position)
+	return Extent(value), err
 }
 
 // Extents fails with a [*tafla.DecodeError] if the field lies outside the
@@ -2099,13 +2218,14 @@ func (t Enums) Extents() (tafla.ArrayView[int64], error) {
 // An enum whose values are keywords
 //
 // It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Enums) Word() (uint8, error) {
+func (t Enums) Word() (Word, error) {
 	reader := tafla.NewTableReader(t.bytes, t.layout())
 	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 64)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint8(position)
+	value, err := reader.GetUint8(position)
+	return Word(value), err
 }
 
 // A struct of enums
@@ -2166,9 +2286,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Level, err = reader.GetUint8(position); err != nil {
+	enum0, err := reader.GetUint8(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Level = Level(enum0)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 4); err != nil {
 		return EnumsFields{}, err
@@ -2180,9 +2302,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 8); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Direction, err = reader.GetInt8(position); err != nil {
+	enum2, err := reader.GetInt8(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Direction = Direction(enum2)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 12); err != nil {
 		return EnumsFields{}, err
@@ -2196,9 +2320,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 16); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Unit, err = reader.GetUint16(position); err != nil {
+	enum4, err := reader.GetUint16(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Unit = Unit(enum4)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 20); err != nil {
 		return EnumsFields{}, err
@@ -2212,9 +2338,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 24); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Change, err = reader.GetInt16(position); err != nil {
+	enum6, err := reader.GetInt16(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Change = Change(enum6)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 28); err != nil {
 		return EnumsFields{}, err
@@ -2228,9 +2356,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 32); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Status, err = reader.GetUint32(position); err != nil {
+	enum8, err := reader.GetUint32(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Status = Status(enum8)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 36); err != nil {
 		return EnumsFields{}, err
@@ -2244,9 +2374,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 40); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Sign, err = reader.GetInt32(position); err != nil {
+	enum10, err := reader.GetInt32(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Sign = Sign(enum10)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 44); err != nil {
 		return EnumsFields{}, err
@@ -2260,9 +2392,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 48); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Mask, err = reader.GetUint64(position); err != nil {
+	enum12, err := reader.GetUint64(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Mask = Mask(enum12)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 52); err != nil {
 		return EnumsFields{}, err
@@ -2276,9 +2410,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 56); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Extent, err = reader.GetInt64(position); err != nil {
+	enum14, err := reader.GetInt64(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Extent = Extent(enum14)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 60); err != nil {
 		return EnumsFields{}, err
@@ -2292,9 +2428,11 @@ func (t Enums) Fields() (EnumsFields, error) {
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 64); err != nil {
 		return EnumsFields{}, err
 	}
-	if fields.Word, err = reader.GetUint8(position); err != nil {
+	enum16, err := reader.GetUint8(position)
+	if err != nil {
 		return EnumsFields{}, err
 	}
+	fields.Word = Word(enum16)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 68); err != nil {
 		return EnumsFields{}, err
@@ -2339,25 +2477,25 @@ func (t Enums) Fields() (EnumsFields, error) {
 // EnumsFields are the fields of an [Enums], to write.
 type EnumsFields struct {
 	// An enum of one byte
-	Level uint8
+	Level Level
 	// An array of enums, which is an array of their integer type
 	Levels     []byte
-	Direction  int8
+	Direction  Direction
 	Directions []int8
-	Unit       uint16
+	Unit       Unit
 	Units      []uint16
-	Change     int16
+	Change     Change
 	Changes    []int16
-	Status     uint32
+	Status     Status
 	Statuses   []uint32
-	Sign       int32
+	Sign       Sign
 	Signs      []int32
-	Mask       uint64
+	Mask       Mask
 	Masks      []uint64
-	Extent     int64
+	Extent     Extent
 	Extents    []int64
 	// An enum whose values are keywords
-	Word uint8
+	Word Word
 	// A struct of enums
 	Mark  Mark
 	Marks []Mark
@@ -2407,23 +2545,23 @@ func (f EnumsFields) AppendBinary(bytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	writer.SetUint8(0, f.Level)
+	writer.SetUint8(0, uint8(f.Level))
 	writer.SetUint8Array(1, f.Levels)
-	writer.SetInt8(2, f.Direction)
+	writer.SetInt8(2, int8(f.Direction))
 	writer.SetInt8Array(3, f.Directions)
-	writer.SetUint16(4, f.Unit)
+	writer.SetUint16(4, uint16(f.Unit))
 	writer.SetUint16Array(5, f.Units)
-	writer.SetInt16(6, f.Change)
+	writer.SetInt16(6, int16(f.Change))
 	writer.SetInt16Array(7, f.Changes)
-	writer.SetUint32(8, f.Status)
+	writer.SetUint32(8, uint32(f.Status))
 	writer.SetUint32Array(9, f.Statuses)
-	writer.SetInt32(10, f.Sign)
+	writer.SetInt32(10, int32(f.Sign))
 	writer.SetInt32Array(11, f.Signs)
-	writer.SetUint64(12, f.Mask)
+	writer.SetUint64(12, uint64(f.Mask))
 	writer.SetUint64Array(13, f.Masks)
-	writer.SetInt64(14, f.Extent)
+	writer.SetInt64(14, int64(f.Extent))
 	writer.SetInt64Array(15, f.Extents)
-	writer.SetUint8(16, f.Word)
+	writer.SetUint8(16, uint8(f.Word))
 	f.Mark.put(writer.ReserveStruct(17, 24))
 	structs := writer.ReserveStructArray(18, len(f.Marks), 24, tafla.Align8)
 	for item := range f.Marks {
@@ -2445,13 +2583,14 @@ type Step struct {
 }
 
 // Level fails with a [*tafla.DecodeError] if the field lies outside the bytes.
-func (t Step) Level() (uint8, error) {
+func (t Step) Level() (Level, error) {
 	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
 	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
 	if err != nil {
 		return 0, err
 	}
-	return reader.GetUint8(position)
+	value, err := reader.GetUint8(position)
+	return Level(value), err
 }
 
 // Mark fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -2491,9 +2630,11 @@ func (t Step) Fields() (StepFields, error) {
 	if err != nil {
 		return StepFields{}, err
 	}
-	if fields.Level, err = reader.GetUint8(position); err != nil {
+	enum0, err := reader.GetUint8(position)
+	if err != nil {
 		return StepFields{}, err
 	}
+	fields.Level = Level(enum0)
 
 	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4); err != nil {
 		return StepFields{}, err
@@ -2516,7 +2657,7 @@ func (t Step) Fields() (StepFields, error) {
 
 // StepFields are the fields of a [Step], to write.
 type StepFields struct {
-	Level uint8
+	Level Level
 	Mark  Mark
 	Name  string
 }
@@ -2538,7 +2679,7 @@ func (f *StepFields) write(writer *tafla.TableWriter) {
 	_ = fixed[36]
 	binary.LittleEndian.PutUint32(fixed, 12)
 	binary.LittleEndian.PutUint32(fixed[4:], 13)
-	fixed[12] = f.Level
+	fixed[12] = byte(f.Level)
 	f.Mark.put(fixed[13:])
 	writer.SetString(2, f.Name)
 	writer.EndTable(parent)
@@ -2577,10 +2718,10 @@ func (v StepVector) All() iter.Seq2[Step, error] {
 // A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
 // that holds an enum
 type Mark struct {
-	Level  uint8
-	Change int16
+	Level  Level
+	Change Change
 	Weight float32
-	Extent int64
+	Extent Extent
 	Turn   Turn
 }
 
@@ -2630,10 +2771,10 @@ func ReadMark(bytes []byte) (Mark, error) {
 func readMark(bytes []byte) Mark {
 	_ = bytes[23]
 	var s Mark
-	s.Level = bytes[0]
-	s.Change = int16(binary.LittleEndian.Uint16(bytes[1:]))
+	s.Level = Level(bytes[0])
+	s.Change = Change(binary.LittleEndian.Uint16(bytes[1:]))
 	s.Weight = math.Float32frombits(binary.LittleEndian.Uint32(bytes[3:]))
-	s.Extent = int64(binary.LittleEndian.Uint64(bytes[7:]))
+	s.Extent = Extent(binary.LittleEndian.Uint64(bytes[7:]))
 	s.Turn = readTurn(bytes[15:])
 	return s
 }
@@ -2642,7 +2783,7 @@ func readMark(bytes []byte) Mark {
 // least its 24 bytes
 func (s *Mark) put(bytes []byte) {
 	_ = bytes[23]
-	bytes[0] = s.Level
+	bytes[0] = byte(s.Level)
 	binary.LittleEndian.PutUint16(bytes[1:], uint16(s.Change))
 	binary.LittleEndian.PutUint32(bytes[3:], math.Float32bits(s.Weight))
 	binary.LittleEndian.PutUint64(bytes[7:], uint64(s.Extent))
@@ -2703,8 +2844,8 @@ func (v MarkArray) Slice() []Mark {
 }
 
 type Turn struct {
-	Direction int8
-	Mask      uint64
+	Direction Direction
+	Mask      Mask
 }
 
 // MarshalBinary returns the 9 bytes of a [Turn]: its scalars, little-endian,
@@ -2753,8 +2894,8 @@ func ReadTurn(bytes []byte) (Turn, error) {
 func readTurn(bytes []byte) Turn {
 	_ = bytes[8]
 	var s Turn
-	s.Direction = int8(bytes[0])
-	s.Mask = binary.LittleEndian.Uint64(bytes[1:])
+	s.Direction = Direction(bytes[0])
+	s.Mask = Mask(binary.LittleEndian.Uint64(bytes[1:]))
 	return s
 }
 
@@ -2763,5 +2904,5 @@ func readTurn(bytes []byte) Turn {
 func (s *Turn) put(bytes []byte) {
 	_ = bytes[8]
 	bytes[0] = byte(s.Direction)
-	binary.LittleEndian.PutUint64(bytes[1:], s.Mask)
+	binary.LittleEndian.PutUint64(bytes[1:], uint64(s.Mask))
 }
