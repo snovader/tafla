@@ -188,6 +188,11 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The TypeScript and JavaScript that tafla-gen generates for a versioned
+  message gives the version to the message's `TableLayout`, as
+  `TableLayout.create({ version: Document.FORMAT_VERSION })`, rather than to
+  each sizer and to `TableWriter.versionedTableBytes()`, which the runtime
+  no longer has. It needs the runtime that takes the version so.
 - The command prints the error of a file that it can't write after the errors
   of schemas that write the same file, rather than before them, as every
   host of the `cli` module does.
