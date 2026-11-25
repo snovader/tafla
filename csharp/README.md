@@ -16,14 +16,14 @@ ahead-of-time compilation, whose analyzers its build runs.
 using Tafla;
 
 // A format's header, shared by its writer and its readers
-static readonly TableLayout Layout = new() { Sized = true, Versioned = true };
+static readonly TableLayout Layout = new() { Sized = true, Version = FormatVersion };
 const uint FormatVersion = 1;
 
 var series = new TableBuilder(2);
 series.SetUInt32Array([0, 86_400]); // copied when it's set
 series.SetFloat32Array([21.75f, 18.5f]);
 
-var builder = new TableBuilder(3, Layout, FormatVersion);
+var builder = new TableBuilder(3, Layout);
 builder.SetFloat64(59.3293);
 builder.SetString("Europe/Stockholm");
 builder.SetTable(series); // copied into the table, aligned for its arrays
@@ -66,7 +66,7 @@ All values are little-endian. A table is its header, one offset per field
 and then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `Sized`, and
-  then its version when it's `Versioned`.
+  then the layout's `Version` when it has one.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, `OffsetType.UInt8`, `UInt16` or `UInt32`, whose offset size is
   1, 2 or 4 bytes. It limits the table to 255 bytes, 65,535 bytes, or for
@@ -141,7 +141,7 @@ it in place too. The bytes are those that nesting builders of the same fields
 writes, so the example's table can be written so:
 
 ```csharp
-var builder = new TableBuilder(3, Layout, FormatVersion);
+var builder = new TableBuilder(3, Layout);
 builder.SetFloat64(59.3293);
 builder.SetString("Europe/Stockholm");
 builder.SetTable(2, static series =>
@@ -195,7 +195,7 @@ caller reuses, which it leaves as they were after the table. The bytes are
 those that a `TableBuilder` of the same fields writes:
 
 ```csharp
-var sizer = new TableSizer(3, Layout, FormatVersion);
+var sizer = new TableSizer(3, Layout);
 sizer.AddFloat64();
 sizer.AddString("Europe/Stockholm");
 sizer.AddTable(4); // aligned for its arrays of 4-byte elements
@@ -322,7 +322,7 @@ throw the argument exceptions of .NET's own APIs:
 | `GetVersion()`                                  | `InvalidOperationException` for a layout without a version                                |
 | `Vector.Get()`, `Vector.GetInPlace()`           | `ArgumentOutOfRangeException` for an index that isn't an item's                           |
 | `TableLayout.OffsetType`                        | `ArgumentOutOfRangeException` for a value that isn't an offset type                       |
-| `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields, and `ArgumentException` for a versioned layout without a version, or a version without one |
+| `new TableBuilder()`                            | `ArgumentOutOfRangeException` for a negative number of fields |
 | `SetTable()`, `SetStructArray()`                | `ArgumentOutOfRangeException` for an alignment other than 1, 2, 4 or 8, or a struct size below 1 |
 | `SetString()`, `SetTable()`, `NestedTable`      | `ArgumentNullException` for a null string, builder or array                               |
 | `SetTable()` and `SetVector()` with a `fill`    | `ArgumentOutOfRangeException` for a negative number of fields or count, `ArgumentNullException` for a null `fill`, and while `fill` runs, `ToArray()` and nesting the builder throw `InvalidOperationException` |

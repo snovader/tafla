@@ -138,18 +138,17 @@ internal static class TableReaderTarget
         var reader = copy.Length == 0 && layout == TableLayout.Default ? default : new TableReader(copy, layout);
         var bytes = reader.Bytes;
 
-        Check.That(reader.Layout == layout && bytes.Length == copy.Length);
+        Check.That(reader.Sized == sized && reader.OffsetType == offsetType && bytes.Length == copy.Length);
         Check.That(copy.Length == 0 || Unsafe.AreSame(ref MemoryMarshal.GetReference(bytes), ref copy[0]));
 
-        CheckHeader(bytes, reader, index);
-        CheckVersion(bytes, new TableReader(reader.Bytes, layout with { Versioned = true }), index);
+        CheckHeader(bytes, reader, layout, index);
+        CheckVersion(bytes, layout with { Version = 0 }, index);
         CheckPosition(bytes, reader, position, index, structSize);
     }
 
     /// <summary>Reads the table's size and the offsets of its root fields 0, 1 and <paramref name="index"/></summary>
-    private static void CheckHeader(ReadOnlySpan<byte> bytes, TableReader reader, int index)
+    private static void CheckHeader(ReadOnlySpan<byte> bytes, TableReader reader, TableLayout layout, int index)
     {
-        var layout = reader.Layout;
         var size = layout.Sized ? SlotAt(bytes, 0, layout.OffsetType) : new Expected<long>(bytes.Length, 0, 0);
         CheckValue(bytes, reader, static reader => (long)reader.GetSize(), size);
 
@@ -160,13 +159,13 @@ internal static class TableReaderTarget
         }
     }
 
-    private static void CheckVersion(ReadOnlySpan<byte> bytes, TableReader reader, int index)
+    private static void CheckVersion(ReadOnlySpan<byte> bytes, TableLayout layout, int index)
     {
-        var layout = reader.Layout;
+        var reader = new TableReader(bytes, layout);
         var version = SlotAt(bytes, layout.Sized ? layout.OffsetSize : 0, layout.OffsetType);
 
         CheckValue(bytes, reader, static reader => (long)reader.GetVersion(), version);
-        CheckHeader(bytes, reader, index);
+        CheckHeader(bytes, reader, layout, index);
     }
 
     /// <summary>
@@ -175,7 +174,7 @@ internal static class TableReaderTarget
     /// </summary>
     private static void CheckPosition(ReadOnlySpan<byte> bytes, TableReader reader, int position, int index, int structSize)
     {
-        var offsetType = reader.Layout.OffsetType;
+        var offsetType = reader.OffsetType;
 
         CheckScalars(bytes, reader, position);
         CheckArrays(bytes, reader, position);
@@ -220,7 +219,7 @@ internal static class TableReaderTarget
 
     private static void CheckArrays(ReadOnlySpan<byte> bytes, TableReader reader, int position)
     {
-        CheckView(bytes, reader, reader => reader.GetUInt8Array(position), ArrayAt(bytes, reader.Layout.OffsetType, position, sizeof(byte)));
+        CheckView(bytes, reader, reader => reader.GetUInt8Array(position), ArrayAt(bytes, reader.OffsetType, position, sizeof(byte)));
         CheckArray(bytes, reader, position, reader => reader.GetInt8Array(position));
         CheckArray(bytes, reader, position, reader => reader.GetInt16Array(position));
         CheckArray(bytes, reader, position, reader => reader.GetUInt16Array(position));
@@ -242,7 +241,7 @@ internal static class TableReaderTarget
         where T : unmanaged
     {
         var size = Unsafe.SizeOf<T>();
-        var expected = ArrayAt(bytes, reader.Layout.OffsetType, position, size);
+        var expected = ArrayAt(bytes, reader.OffsetType, position, size);
 
         var start = Allocated();
         ReadOnlySpan<T> array;
@@ -306,7 +305,7 @@ internal static class TableReaderTarget
     /// </summary>
     private static void CheckString(ReadOnlySpan<byte> bytes, TableReader reader, int position)
     {
-        var expected = ArrayAt(bytes, reader.Layout.OffsetType, position, sizeof(byte));
+        var expected = ArrayAt(bytes, reader.OffsetType, position, sizeof(byte));
         var utf8 = expected.Value is { } range ? bytes.Slice(range.Start, range.Length) : default;
         var valid = expected.Value is not null && Utf8.IsValid(utf8);
 
@@ -336,7 +335,7 @@ internal static class TableReaderTarget
     /// <summary>Reads the vector at <paramref name="position"/> and the first and last of its items</summary>
     private static void CheckVector(ReadOnlySpan<byte> bytes, TableReader reader, int position)
     {
-        var offsetType = reader.Layout.OffsetType;
+        var offsetType = reader.OffsetType;
 
         // A count, and an end for each item after it, within the bytes
         var expected = SlotAt(bytes, position, offsetType);

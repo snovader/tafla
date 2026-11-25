@@ -16,7 +16,7 @@ public readonly ref struct Members
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Versioned = true };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Version = FormatVersion };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -104,7 +104,7 @@ public readonly record struct MembersFields
     /// <summary>Writes a <see cref="Members"/> with every field into new bytes of its length.</summary>
     public byte[] Serialize()
     {
-        var table = global::Tafla.TableWriter.CreateTableBytes(14, Members.TableLayout, Members.FormatVersion, 92);
+        var table = global::Tafla.TableWriter.CreateTableBytes(14, Members.TableLayout, 92);
         global::System.Span<byte> bytes = table;
 
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 60);
@@ -149,7 +149,7 @@ public readonly record struct MembersFields
     /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(14, Members.TableLayout, Members.FormatVersion);
+        var sizer = new global::Tafla.TableSizer(14, Members.TableLayout);
         sizer.AddUInt8();
         sizer.AddUInt8();
         sizer.AddUInt8();

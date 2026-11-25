@@ -42,7 +42,7 @@ public readonly ref struct TableReader
     private const int MaxStringLength = 0x3fff_ffdf;
 
     private readonly ReadOnlySpan<byte> _bytes;
-    private readonly TableLayout _layout;
+    private readonly Header _layout;
 
     /// <summary>
     /// Creates a reader of the table in <paramref name="bytes"/>, in <paramref name="layout"/>. An array,
@@ -51,14 +51,17 @@ public readonly ref struct TableReader
     public TableReader(ReadOnlySpan<byte> bytes, TableLayout layout = default)
     {
         _bytes = bytes;
-        _layout = layout;
+        _layout = new Header(layout.Sized, layout.Versioned, layout.OffsetType);
     }
 
     /// <summary>The bytes that the reader reads.</summary>
     public ReadOnlySpan<byte> Bytes => _bytes;
 
-    /// <summary>The layout that the reader reads the table in.</summary>
-    public TableLayout Layout => _layout;
+    /// <summary>Whether the layout that the reader was given is sized.</summary>
+    public bool Sized => _layout.Sized;
+
+    /// <summary>The offset type of the layout that the reader was given.</summary>
+    public OffsetType OffsetType => _layout.OffsetType;
 
     /// <summary>
     /// Returns the table's byte length from its header when the layout is sized, and otherwise the
@@ -383,5 +386,23 @@ public readonly ref struct TableReader
         }
 
         return (int)offset;
+    }
+
+    /// <summary>
+    /// What the reader takes from its layout. It reads tables of any version, so it doesn't keep the
+    /// layout's: holding the whole layout, which is longer for it, made generated code take 1.10-1.12
+    /// times as long to read a vector of nested tables.
+    /// </summary>
+    private readonly struct Header(bool sized, bool versioned, OffsetType offsetType)
+    {
+        public bool Sized { get; } = sized;
+
+        public bool Versioned { get; } = versioned;
+
+        public OffsetType OffsetType { get; } = offsetType;
+
+        public int OffsetSize => OffsetType.Size;
+
+        public int HeaderSize => ((Sized ? 1 : 0) + (Versioned ? 1 : 0)) * OffsetSize;
     }
 }

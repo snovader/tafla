@@ -18,9 +18,10 @@ namespace Tafla.Benchmarks.Codecs;
 internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, IStructsCodec, ISampleCodec
 {
     /// <summary>The document's header: its length and version</summary>
-    public static readonly TableLayout DocumentLayout = new() { Sized = true, Versioned = true };
-
     public const uint DocumentVersion = 1;
+
+    /// <summary>The document's header: its length and version</summary>
+    public static readonly TableLayout DocumentLayout = new() { Sized = true, Version = DocumentVersion };
 
     /// <summary>An item as a struct: its three float32s, aligned to 4 in an array</summary>
     public const int TripleSize = 3 * sizeof(float);
@@ -60,7 +61,7 @@ internal readonly struct TaflaCodec : IRecordCodec, IDocumentCodec, IListCodec, 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public byte[] SerializeDocument(Document document)
     {
-        var builder = new TableBuilder(4, DocumentLayout, DocumentVersion);
+        var builder = new TableBuilder(4, DocumentLayout);
         builder.SetFloat64(document.X);
         builder.SetFloat64(document.Y);
         builder.SetString(document.Name);

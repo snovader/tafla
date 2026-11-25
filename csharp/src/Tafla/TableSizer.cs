@@ -46,7 +46,6 @@ public struct TableSizer
 {
     private readonly TableLayout _layout;
     private readonly int _fields;
-    private readonly uint _version;
 
     /// <summary>The table's length so far, which is where the next field goes</summary>
     private long _position;
@@ -55,36 +54,19 @@ public struct TableSizer
     private long _table;
 
     /// <summary>
-    /// Sizes a table of <paramref name="fields"/> fields in <paramref name="layout"/>, with the checks
-    /// of <see cref="TableBuilder(int, TableLayout)"/>.
-    /// </summary>
-    /// <exception cref="BuildException">The header alone is too long for the layout's offset type.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
-    /// <exception cref="ArgumentException">
-    /// The layout is versioned, which the constructor that takes a version sizes.
-    /// </exception>
-    public TableSizer(int fields, TableLayout layout = default)
-        : this(fields, layout, versioned: false, version: 0) { }
-
-    /// <summary>
-    /// Sizes a table of <paramref name="fields"/> fields in <paramref name="layout"/>, whose writer
-    /// writes <paramref name="version"/> in its header, with the checks of
-    /// <see cref="TableBuilder(int, TableLayout, uint)"/>.
+    /// Sizes a table of <paramref name="fields"/> fields in <paramref name="layout"/>, whose version
+    /// its writer writes in the header when it has one, with the checks of
+    /// <see cref="TableBuilder(int, TableLayout)"/>.
     /// </summary>
     /// <exception cref="BuildException">
-    /// The version doesn't fit in the layout's offset type, or the header alone is too long for it.
+    /// The layout's version doesn't fit in its offset type, or the header alone is too long for it.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
-    /// <exception cref="ArgumentException">The layout isn't versioned.</exception>
-    public TableSizer(int fields, TableLayout layout, uint version)
-        : this(fields, layout, versioned: true, version) { }
-
-    private TableSizer(int fields, TableLayout layout, bool versioned, uint version)
+    public TableSizer(int fields, TableLayout layout = default)
     {
-        _position = TableLayout.HeaderLength(fields, layout, versioned, version);
+        _position = TableLayout.HeaderLength(fields, layout);
         _layout = layout;
         _fields = fields;
-        _version = version;
     }
 
     /// <summary>The layout that the table is sized in.</summary>
@@ -114,7 +96,7 @@ public struct TableSizer
     public readonly TableWriter CreateWriter()
     {
         var length = GetByteLength();
-        return new TableWriter(new byte[length], length, _fields, _layout, _version);
+        return new TableWriter(new byte[length], length, _fields, _layout);
     }
 
     /// <summary>
@@ -150,7 +132,7 @@ public struct TableSizer
             );
         }
 
-        return new TableWriter(bytes, length, _fields, _layout, _version);
+        return new TableWriter(bytes, length, _fields, _layout);
     }
 
     /// <summary>
