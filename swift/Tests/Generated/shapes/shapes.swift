@@ -2,6 +2,53 @@
 
 import Tafla
 
+/// How soon to do a task
+@frozen
+public struct Priority: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int8
+
+    /// The value of `rawValue`, which needn't be one that `Priority` names, since a field of it holds any `Int8`
+    @inlinable
+    public init(rawValue: Int8) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var low: Self { Self(rawValue: -1) }
+
+    @inlinable
+    public static var normal: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var high: Self { Self(rawValue: 1) }
+}
+
+/// What has become of a task
+@frozen
+public struct State: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt16
+
+    /// The value of `rawValue`, which needn't be one that `State` names, since a field of it holds any `UInt16`
+    @inlinable
+    public init(rawValue: UInt16) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var waiting: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var running: Self { Self(rawValue: 1) }
+
+    @inlinable
+    public static var done: Self { Self(rawValue: 2) }
+
+    @inlinable
+    public static var failed: Self { Self(rawValue: 1000) }
+}
+
 /// A small table of two coordinates, an identifier and a name
 @frozen
 public struct Point: ~Escapable {
@@ -572,8 +619,8 @@ public struct Task: ~Escapable {
 
     /// Throws a `DecodeError` if the field lies outside the bytes.
     @inlinable
-    public var priority: Int8 {
-        get throws(DecodeError) { try _reader.int8(at: _reader.rootOffset(0)) }
+    public var priority: Priority {
+        get throws(DecodeError) { try Priority(rawValue: _reader.int8(at: _reader.rootOffset(0))) }
     }
 
     /// The states that the task has been in, the oldest first
@@ -603,13 +650,13 @@ public struct Task: ~Escapable {
 
 /// The fields of a `Task`, to write
 public struct TaskFields: Hashable, Sendable {
-    public var priority: Int8
+    public var priority: Priority
     /// The states that the task has been in, the oldest first
     public var history: [UInt16]
     public var step: Step
     public var name: String
 
-    public init(priority: Int8, history: [UInt16], step: Step, name: String) {
+    public init(priority: Priority, history: [UInt16], step: Step, name: String) {
         self.priority = priority
         self.history = history
         self.step = step
@@ -627,7 +674,7 @@ public struct TaskFields: Hashable, Sendable {
         sizer.addString(self.name)
 
         return try sizer.bytes { writer in
-            writer.setInt8(0, self.priority)
+            writer.setInt8(0, self.priority.rawValue)
             writer.setUInt16Array(1, self.history)
             writer.setStruct(2)
             self.step.write(to: &writer)
@@ -644,11 +691,11 @@ public struct Step: Hashable, Sendable {
     /// The alignment of an array of `Step`s: its largest scalar's size
     public static let alignment: Alignment = .four
 
-    public var state: UInt16
-    public var priority: Int8
+    public var state: State
+    public var priority: Priority
     public var seconds: UInt32
 
-    public init(state: UInt16, priority: Int8, seconds: UInt32) {
+    public init(state: State, priority: Priority, seconds: UInt32) {
         self.state = state
         self.priority = priority
         self.seconds = seconds
@@ -665,8 +712,8 @@ public struct Step: Hashable, Sendable {
     /// Reads a `Step` at `offset` in `bytes`, which hold its scalars there
     @inlinable
     init(_ bytes: RawSpan, at offset: Int) {
-        self.state = UInt16(littleEndianBytes: bytes, at: offset)
-        self.priority = Int8(littleEndianBytes: bytes, at: offset + 2)
+        self.state = State(rawValue: UInt16(littleEndianBytes: bytes, at: offset))
+        self.priority = Priority(rawValue: Int8(littleEndianBytes: bytes, at: offset + 2))
         self.seconds = UInt32(littleEndianBytes: bytes, at: offset + 3)
     }
 
@@ -690,16 +737,16 @@ public struct Step: Hashable, Sendable {
 
     /// Appends the scalars to `bytes`, little-endian
     func append(to bytes: inout [UInt8]) {
-        withUnsafeBytes(of: self.state.littleEndian) { bytes.append(contentsOf: $0) }
-        bytes.append(UInt8(bitPattern: self.priority))
+        withUnsafeBytes(of: self.state.rawValue.littleEndian) { bytes.append(contentsOf: $0) }
+        bytes.append(UInt8(bitPattern: self.priority.rawValue))
         withUnsafeBytes(of: self.seconds.littleEndian) { bytes.append(contentsOf: $0) }
     }
 
     /// Writes the scalars where `writer` is, little-endian, after the `setStruct(_:)` or the
     /// `setStructArray(_:count:alignment:)` of the field that holds them
     public func write(to writer: inout TableWriter) {
-        writer.writeScalar(self.state)
-        writer.writeScalar(self.priority)
+        writer.writeScalar(self.state.rawValue)
+        writer.writeScalar(self.priority.rawValue)
         writer.writeScalar(self.seconds)
     }
 }

@@ -152,6 +152,7 @@ const SWIFT: &[&str] = &[
     "Int32",
     "Int64",
     "Int8",
+    "RawRepresentable",
     "RawSpan",
     "Self",
     "Sendable",
