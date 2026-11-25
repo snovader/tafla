@@ -38,11 +38,15 @@ public sealed record Layout(bool Sized, bool Versioned, OffsetType OffsetType)
     /// <summary>A layout without header slots, which tables nested with SetTable have.</summary>
     public static Layout Headerless(OffsetType offsetType) => new(false, false, offsetType);
 
-    public TableLayout ToTableLayout() =>
+    /// <summary>
+    /// The runtime's layout, with <paramref name="version"/> when it's versioned. A reader reads
+    /// tables of any version, so it needs none.
+    /// </summary>
+    public TableLayout ToTableLayout(uint version = 0) =>
         new()
         {
             Sized = Sized,
-            Versioned = Versioned,
+            Version = Versioned ? version : null,
             OffsetType = OffsetType,
         };
 }

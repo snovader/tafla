@@ -4,7 +4,7 @@ namespace Tafla.Tests;
 public class ExampleTests
 {
     // A format's header, shared by its writer and its readers
-    private static readonly TableLayout Layout = new() { Sized = true, Versioned = true };
+    private static readonly TableLayout Layout = new() { Sized = true, Version = FormatVersion };
 
     private const uint FormatVersion = 1;
 
@@ -15,7 +15,7 @@ public class ExampleTests
         series.SetUInt32Array([0, 86_400]); // copied when it's set
         series.SetFloat32Array([21.75f, 18.5f]);
 
-        var builder = new TableBuilder(3, Layout, FormatVersion);
+        var builder = new TableBuilder(3, Layout);
         builder.SetFloat64(59.3293);
         builder.SetString("Europe/Stockholm");
         builder.SetTable(series); // copied into the table, aligned for its arrays
@@ -42,7 +42,7 @@ public class ExampleTests
     [Fact]
     public void RecordsNestedTablesInPlaceAsTheReadmeShows()
     {
-        var builder = new TableBuilder(3, Layout, FormatVersion);
+        var builder = new TableBuilder(3, Layout);
         builder.SetFloat64(59.3293);
         builder.SetString("Europe/Stockholm");
         builder.SetTable(2, static series =>
@@ -78,7 +78,7 @@ public class ExampleTests
     /// <summary>Writes the example's table with a sizer and a writer, as the README shows.</summary>
     private static byte[] Written()
     {
-        var sizer = new TableSizer(3, Layout, FormatVersion);
+        var sizer = new TableSizer(3, Layout);
         sizer.AddFloat64();
         sizer.AddString("Europe/Stockholm");
         sizer.AddTable(4); // aligned for its arrays of 4-byte elements

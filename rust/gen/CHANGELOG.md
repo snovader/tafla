@@ -205,6 +205,10 @@ first commits, for code built from its source before the release.
   version to the message's layout, as `with_version(FORMAT_VERSION)`, rather
   than to its `TableSizer`, which no longer takes one. It needs the runtime
   that takes the version so.
+- The C# that tafla-gen generates for a versioned message gives the version
+  to the message's layout, as `Version = FormatVersion`, rather than to each
+  `TableSizer` and to `TableWriter.CreateTableBytes()`, which no longer take
+  one. It needs the runtime that takes the version so.
 - The command prints the error of a file that it can't write after the errors
   of schemas that write the same file, rather than before them, as every
   host of the `cli` module does.

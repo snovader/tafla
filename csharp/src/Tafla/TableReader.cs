@@ -42,23 +42,41 @@ public readonly ref struct TableReader
     private const int MaxStringLength = 0x3fff_ffdf;
 
     private readonly ReadOnlySpan<byte> _bytes;
-    private readonly TableLayout _layout;
+    private readonly Header _layout;
+
+    /// <summary>
+    /// Creates a reader of the table in <paramref name="bytes"/>, in the default layout, the layout of
+    /// nested tables. An array, an <see cref="ArraySegment{T}"/> or a <see cref="Span{T}"/> converts to
+    /// the span implicitly.
+    /// </summary>
+    // A constructor of its own, rather than a default argument of the other: copying the default
+    // layout's header compiles to nothing, but its IL still counts against the inlining budget of each
+    // method that inlines it, and reading the last of 100 nested tables took 1.07 times as long, as
+    // the budget ran out a call sooner.
+    public TableReader(ReadOnlySpan<byte> bytes)
+    {
+        _bytes = bytes;
+        _layout = default;
+    }
 
     /// <summary>
     /// Creates a reader of the table in <paramref name="bytes"/>, in <paramref name="layout"/>. An array,
     /// an <see cref="ArraySegment{T}"/> or a <see cref="Span{T}"/> converts to the span implicitly.
     /// </summary>
-    public TableReader(ReadOnlySpan<byte> bytes, TableLayout layout = default)
+    public TableReader(ReadOnlySpan<byte> bytes, TableLayout layout)
     {
         _bytes = bytes;
-        _layout = layout;
+        _layout = new Header(layout.Sized, layout.Versioned, layout.OffsetType);
     }
 
     /// <summary>The bytes that the reader reads.</summary>
     public ReadOnlySpan<byte> Bytes => _bytes;
 
-    /// <summary>The layout that the reader reads the table in.</summary>
-    public TableLayout Layout => _layout;
+    /// <summary>Whether the layout that the reader was given is sized.</summary>
+    public bool Sized => _layout.Sized;
+
+    /// <summary>The offset type of the layout that the reader was given.</summary>
+    public OffsetType OffsetType => _layout.OffsetType;
 
     /// <summary>
     /// Returns the table's byte length from its header when the layout is sized, and otherwise the
@@ -383,5 +401,23 @@ public readonly ref struct TableReader
         }
 
         return (int)offset;
+    }
+
+    /// <summary>
+    /// What the reader takes from its layout. It reads tables of any version, so it doesn't keep the
+    /// layout's: holding the whole layout, which is longer for it, made generated code take 1.10-1.12
+    /// times as long to read a vector of nested tables.
+    /// </summary>
+    private readonly struct Header(bool sized, bool versioned, OffsetType offsetType)
+    {
+        public bool Sized { get; } = sized;
+
+        public bool Versioned { get; } = versioned;
+
+        public OffsetType OffsetType { get; } = offsetType;
+
+        public int OffsetSize => OffsetType.Size;
+
+        public int HeaderSize => ((Sized ? 1 : 0) + (Versioned ? 1 : 0)) * OffsetSize;
     }
 }

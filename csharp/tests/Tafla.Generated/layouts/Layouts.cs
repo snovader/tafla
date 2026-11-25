@@ -155,7 +155,7 @@ public readonly ref struct Uint8OffsetsVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 255;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Versioned = true, OffsetType = global::Tafla.OffsetType.UInt8 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -200,11 +200,7 @@ public readonly record struct Uint8OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint8OffsetsVersioned.TableLayout,
-            Uint8OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint8OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -228,11 +224,7 @@ public readonly record struct Uint8OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint8OffsetsVersioned.TableLayout,
-            Uint8OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint8OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -252,7 +244,7 @@ public readonly ref struct Uint8OffsetsSizedVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 0;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Versioned = true, OffsetType = global::Tafla.OffsetType.UInt8 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt8 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -297,11 +289,7 @@ public readonly record struct Uint8OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.TableLayout,
-            Uint8OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint8OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -325,11 +313,7 @@ public readonly record struct Uint8OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint8, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.TableLayout,
-            Uint8OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint8OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -491,7 +475,7 @@ public readonly ref struct Uint16OffsetsVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 65535;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Versioned = true, OffsetType = global::Tafla.OffsetType.UInt16 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -536,11 +520,7 @@ public readonly record struct Uint16OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint16OffsetsVersioned.TableLayout,
-            Uint16OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint16OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -564,11 +544,7 @@ public readonly record struct Uint16OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint16OffsetsVersioned.TableLayout,
-            Uint16OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint16OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -588,7 +564,7 @@ public readonly ref struct Uint16OffsetsSizedVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 1;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Versioned = true, OffsetType = global::Tafla.OffsetType.UInt16 };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Version = FormatVersion, OffsetType = global::Tafla.OffsetType.UInt16 };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -633,11 +609,7 @@ public readonly record struct Uint16OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.TableLayout,
-            Uint16OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint16OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -661,11 +633,7 @@ public readonly record struct Uint16OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint16, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.TableLayout,
-            Uint16OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint16OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -827,7 +795,7 @@ public readonly ref struct Uint32OffsetsVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 4294967295;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Versioned = true };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Version = FormatVersion };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -872,11 +840,7 @@ public readonly record struct Uint32OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint32OffsetsVersioned.TableLayout,
-            Uint32OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint32OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -900,11 +864,7 @@ public readonly record struct Uint32OffsetsVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint32OffsetsVersioned.TableLayout,
-            Uint32OffsetsVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint32OffsetsVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -924,7 +884,7 @@ public readonly ref struct Uint32OffsetsSizedVersioned
     /// <summary>The version of the format, which the header carries and the constructor checks.</summary>
     public const uint FormatVersion = 2;
 
-    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Versioned = true };
+    internal static readonly global::Tafla.TableLayout TableLayout = new() { Sized = true, Version = FormatVersion };
 
     private readonly global::Tafla.TableReader _reader;
 
@@ -969,11 +929,7 @@ public readonly record struct Uint32OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.TableLayout,
-            Uint32OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint32OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
@@ -997,11 +953,7 @@ public readonly record struct Uint32OffsetsSizedVersionedFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.TableLayout,
-            Uint32OffsetsSizedVersioned.FormatVersion
-        );
+        var sizer = new global::Tafla.TableSizer(3, Uint32OffsetsSizedVersioned.TableLayout);
         sizer.AddUInt32();
         sizer.AddString(Name);
         sizer.AddUInt16Array(Values.Length);
