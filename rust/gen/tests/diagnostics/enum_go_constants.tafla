@@ -42,3 +42,28 @@ message Point (version: 1) {
 struct Sample {
     key: uint32;
 }
+
+/// `EdgeListFields` writes an `EdgeList` in Go, `EdgeItemVector` views a
+/// vector of `EdgeItem`, and `EdgeSampleArray` an array of `EdgeSample`
+enum Edge: uint8 {
+    list_fields = 0;
+    item_vector = 1;
+    sample_array = 2;
+    /// Go declares no `EdgeSampleFields`, since a struct is written from
+    /// itself, nor an `EdgeItemArray`, since no array holds a table
+    sample_fields = 3;
+    item_array = 4;
+}
+
+message EdgeList {
+    items: [EdgeItem];
+    samples: [EdgeSample];
+}
+
+table EdgeItem {
+    length: float32;
+}
+
+struct EdgeSample {
+    key: uint32;
+}

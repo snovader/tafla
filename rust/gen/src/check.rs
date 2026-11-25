@@ -649,11 +649,40 @@ fn go_functions(definition: &Definition) -> Vec<(String, &'static str)> {
     }
 }
 
+/// The types that the code generated for Go declares beside the definitions,
+/// each with the name of the definition that it's declared for:
+/// `<Table>Fields`, which writes a message or a table, and the view of the
+/// items of a vector or of an array of structs, `<Table>Vector` or
+/// `<Struct>Array`
+fn go_types(definitions: &[Definition]) -> Vec<(String, &str)> {
+    let fields = definitions
+        .iter()
+        .filter(|definition| !definition.is_struct())
+        .map(|definition| (format!("{}Fields", definition.name), &definition.name));
+    let views = definitions
+        .iter()
+        .flat_map(|definition| &definition.fields)
+        .filter_map(|field| match field.field_type {
+            FieldType::Vector(index) => Some(("Vector", index)),
+            FieldType::StructArray(index) => Some(("Array", index)),
+            _ => None,
+        })
+        .map(|(suffix, index)| {
+            let item = &definitions[index].name;
+            (format!("{item}{suffix}"), item)
+        });
+
+    fields
+        .chain(views)
+        .map(|(name, definition)| (name, definition.as_str()))
+        .collect()
+}
+
 /// Checks that no value of an enum takes a name of Go's package, where the
 /// code generated for Go declares each value as the constant
 /// `<Enum><Value>`, such as `ColorDarkRed` for `dark_red` of `Color`: a
-/// declaration's, a function's or constant's that Go declares beside a
-/// message or struct, or another value's, as `b_c` of `A` and `c` of `AB`
+/// declaration's, a function's, constant's or type's that Go declares beside
+/// a definition, or another value's, as `b_c` of `A` and `c` of `AB`
 fn check_go_constants(
     definitions: &[Definition],
     enums: &[EnumDeclaration],
@@ -664,13 +693,12 @@ fn check_go_constants(
     let mut declared: HashMap<String, String> = definitions
         .iter()
         .flat_map(|definition| {
-            go_functions(definition).into_iter().map(|(function, _)| {
-                (
-                    function,
-                    format!("of the code generated for `{}`", definition.name),
-                )
-            })
+            go_functions(definition)
+                .into_iter()
+                .map(|(function, _)| (function, definition.name.as_str()))
         })
+        .chain(go_types(definitions))
+        .map(|(name, definition)| (name, format!("of the code generated for `{definition}`")))
         .collect();
 
     for declaration in enums {

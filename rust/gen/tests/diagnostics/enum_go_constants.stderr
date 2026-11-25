@@ -27,3 +27,21 @@ error: `c` of `AB` clashes with `ABC` of the enum `A`
    |
 35 |     c = 0;
    |     ^ the code generated for Go declares `ABC` as `c` of `AB`
+
+error: `list_fields` of `Edge` clashes with `EdgeListFields` of the code generated for `EdgeList`
+  --> enum_go_constants.tafla:49:5
+   |
+49 |     list_fields = 0;
+   |     ^^^^^^^^^^^ the code generated for Go declares `EdgeListFields` as `list_fields` of `Edge`
+
+error: `item_vector` of `Edge` clashes with `EdgeItemVector` of the code generated for `EdgeItem`
+  --> enum_go_constants.tafla:50:5
+   |
+50 |     item_vector = 1;
+   |     ^^^^^^^^^^^ the code generated for Go declares `EdgeItemVector` as `item_vector` of `Edge`
+
+error: `sample_array` of `Edge` clashes with `EdgeSampleArray` of the code generated for `EdgeSample`
+  --> enum_go_constants.tafla:51:5
+   |
+51 |     sample_array = 2;
+   |     ^^^^^^^^^^^^ the code generated for Go declares `EdgeSampleArray` as `sample_array` of `Edge`
