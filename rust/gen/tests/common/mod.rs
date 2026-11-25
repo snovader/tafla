@@ -232,6 +232,15 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 2] = [
     },
 ];
 
+/// The schema of the TypeScript suite of optional fields and versions,
+/// which only the TypeScript and JavaScript targets generate so far
+pub const PRESENCE_SCHEMAS: [BenchmarkSchema; 1] = [BenchmarkSchema {
+    target: "typescript",
+    schema: "typescript/benchmarks/presence/presence.tafla",
+    directory: "typescript/benchmarks/presence/generated/tafla",
+    package: None,
+}];
+
 impl BenchmarkSchema {
     pub fn source(&self) -> String {
         read(&Path::new(REPOSITORY).join(self.schema))
