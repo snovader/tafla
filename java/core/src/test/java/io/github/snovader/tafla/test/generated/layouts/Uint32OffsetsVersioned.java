@@ -12,7 +12,7 @@ public final class Uint32OffsetsVersioned {
     public static final long FORMAT_VERSION = 4294967295L;
 
     private static final TableLayout LAYOUT = TableLayout.builder()
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .build();
 
     private final TableReader reader;
@@ -41,7 +41,7 @@ public final class Uint32OffsetsVersioned {
 
     /** Writes a {@code Uint32OffsetsVersioned} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);
@@ -66,7 +66,7 @@ public final class Uint32OffsetsVersioned {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name());
         sizer.addUint16Array(fields.values().length);

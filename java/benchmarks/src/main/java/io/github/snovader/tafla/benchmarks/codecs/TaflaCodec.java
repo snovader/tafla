@@ -17,8 +17,11 @@ import java.util.*;
  * code writes each struct straight into the table, with {@link TableWriter#setStructs}.
  */
 public final class TaflaCodec {
-    private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder().sized(true).versioned(true).build();
     private static final int DOCUMENT_VERSION = 1;
+    private static final TableLayout DOCUMENT_LAYOUT = TableLayout.builder()
+        .sized(true)
+        .version(DOCUMENT_VERSION)
+        .build();
 
     /** The fixed-size record: a uint32 and two float32s */
     private static final int SAMPLE_SIZE = Integer.BYTES + 2 * Float.BYTES;
@@ -67,7 +70,7 @@ public final class TaflaCodec {
     private static final class Documents implements DocumentWorkload {
         @Override
         public byte[] serialize(DocumentInput input) {
-            var document = new TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION);
+            var document = new TableBuilder(4, DOCUMENT_LAYOUT);
             document.setFloat64(input.x());
             document.setFloat64(input.y());
             document.setString(input.name());

@@ -106,7 +106,6 @@ export class TableBuilder {
     #written: Uint8Array | TableReader | undefined;
 
     readonly #layout: TableLayout;
-    readonly #version: number | undefined;
     /** The offset size, the width of offsets, lengths and header slots */
     readonly #size: OffsetSize;
     /** The longest table that the layout's offsets and lengths address */
@@ -154,31 +153,18 @@ export class TableBuilder {
     /**
      * @param fields - The number of fields that the table will hold.
      * @param layout - The table's header and offset type, which its readers
-     * must use too.
-     * @param version - The version to write to the header, required when the
-     * layout is versioned. Readers can check it with `TableReader.getVersion()`
-     * before reading any field.
-     * @throws {TypeError} If `version` is given for a layout without a version
-     * slot, or missing for one with it.
-     * @throws {RangeError} If `fields` isn't a non-negative integer, `version`
-     * isn't an integer that fits in the layout's offset type, or the header
-     * alone is longer than the layout addresses.
+     * must use too, with the version to write to the header when it has one.
+     * @throws {RangeError} If `fields` isn't a non-negative integer, or the
+     * header alone is longer than the layout addresses.
      */
-    constructor(fields: number, layout?: TableLayout<false>);
-    constructor(fields: number, layout: TableLayout<true>, version: number);
-    constructor(
-        fields: number,
-        layout: TableLayout = TableLayout.DEFAULT,
-        version?: number
-    ) {
+    constructor(fields: number, layout: TableLayout = TableLayout.DEFAULT) {
         const size = layout.offsetSize();
 
         this.#layout = layout;
-        this.#version = version;
         this.#size = size;
         this.#maxLength = maxLength(size);
         this.#fields = fields;
-        this.#offset = headerLength(fields, layout, version);
+        this.#offset = headerLength(fields, layout);
 
         this.#records = new Array(fields * 3);
         this.#reserved = fields * 3;
@@ -841,8 +827,7 @@ export class TableBuilder {
         const writer = newTableWriter(
             new Uint8Array(this.#offset),
             this.#fields,
-            this.#layout,
-            this.#version
+            this.#layout
         );
         this.#writeFields(writer, 0, this.#fields);
         const bytes = writer.bytes();

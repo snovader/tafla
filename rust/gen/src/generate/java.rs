@@ -411,7 +411,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         article(name)
     )]));
     writer.open("public static byte[] serialize(Fields fields) {");
-    serialize_body(writer, schema, definition, layout, Output::NewBytes);
+    serialize_body(writer, schema, definition, Output::NewBytes);
     writer.close("}");
     writer.blank();
 
@@ -433,12 +433,12 @@ fn message(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, la
         "    them is written".to_owned(),
     ]));
     writer.open("public static int serializeInto(Fields fields, byte[] bytes) {");
-    serialize_body(writer, schema, definition, layout, Output::GivenBytes);
+    serialize_body(writer, schema, definition, Output::GivenBytes);
     writer.close("}");
 
     if let Some(structure) = struct_fill(schema, definition) {
         writer.blank();
-        serialize_structs(writer, name, &structure.name, layout);
+        serialize_structs(writer, name, &structure.name);
     }
 
     getters(writer, schema, definition, true);
@@ -467,7 +467,7 @@ fn struct_fill<'a>(schema: &'a Schema, definition: &Definition) -> Option<&'a De
 /// writes each struct straight into the table with the struct's static
 /// `write()`, from whatever the caller holds, rather than from records of the
 /// structs in an array
-fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layout: Layout) {
+fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str) {
     writer.lines(&javadoc(&[
         format!(
             "Writes {} of `count` structs, each of which `fill` writes straight into",
@@ -487,10 +487,7 @@ fn serialize_structs(writer: &mut CodeWriter, name: &str, structure: &str, layou
         "@throws IllegalArgumentException if `count` is negative".to_owned(),
     ]));
     writer.open("public static byte[] serialize(int count, TableWriter.StructFill fill) {");
-    let mut arguments = vec![text("1"), text("LAYOUT")];
-    if layout.version.is_some() {
-        arguments.push(text("FORMAT_VERSION"));
-    }
+    let arguments = vec![text("1"), text("LAYOUT")];
     writer.statement(
         &STYLE,
         "var sizer = ",
@@ -526,13 +523,9 @@ fn serialize_body(
     writer: &mut CodeWriter,
     schema: &Schema,
     definition: &Definition,
-    layout: Layout,
     output: Output,
 ) {
-    let mut arguments = vec![text(definition.fields.len().to_string()), text("LAYOUT")];
-    if layout.version.is_some() {
-        arguments.push(text("FORMAT_VERSION"));
-    }
+    let arguments = vec![text(definition.fields.len().to_string()), text("LAYOUT")];
     writer.statement(
         &STYLE,
         "var sizer = ",
@@ -560,7 +553,7 @@ fn layout_constant(writer: &mut CodeWriter, layout: Layout) {
         options.push(".sized(true)".to_owned());
     }
     if layout.version.is_some() {
-        options.push(".versioned(true)".to_owned());
+        options.push(".version(FORMAT_VERSION)".to_owned());
     }
     if layout.offset_type != OffsetType::Uint32 {
         options.push(format!(

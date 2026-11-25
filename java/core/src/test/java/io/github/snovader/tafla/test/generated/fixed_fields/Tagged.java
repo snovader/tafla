@@ -17,7 +17,7 @@ public final class Tagged {
 
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .offsetType(OffsetType.UINT8)
         .build();
 
@@ -47,7 +47,7 @@ public final class Tagged {
 
     /** Writes a {@code Tagged} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addStruct(Vec2.SIZE);
         sizer.addString(fields.label());
@@ -72,7 +72,7 @@ public final class Tagged {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addUint32();
         sizer.addStruct(Vec2.SIZE);
         sizer.addString(fields.label());
