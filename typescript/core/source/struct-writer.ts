@@ -13,14 +13,14 @@ import { SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64 } from './constants.ts';
  * nothing, as `DataView`'s setters throw.
  */
 export class StructWriter {
-    readonly #bytes: Uint8Array;
-    readonly #view: DataView;
+    declare private readonly _bytes: Uint8Array;
+    declare private readonly _view: DataView;
 
-    #position = 0;
+    private _position = 0;
 
     constructor(bytes: Uint8Array) {
-        this.#bytes = bytes;
-        this.#view = new DataView(
+        this._bytes = bytes;
+        this._view = new DataView(
             bytes.buffer,
             bytes.byteOffset,
             bytes.byteLength
@@ -29,61 +29,61 @@ export class StructWriter {
 
     /** Rewinds to the start, discarding a struct that wasn't finished */
     reset(): void {
-        this.#position = 0;
+        this._position = 0;
     }
 
     bytes(): Uint8Array {
-        this.#position = 0;
-        return this.#bytes.slice();
+        this._position = 0;
+        return this._bytes.slice();
     }
 
     setInt8(value: number): void {
-        this.#view.setInt8(this.#position, value);
-        this.#position += SIZEOF_8;
+        this._view.setInt8(this._position, value);
+        this._position += SIZEOF_8;
     }
 
     setUint8(value: number): void {
-        this.#view.setUint8(this.#position, value);
-        this.#position += SIZEOF_8;
+        this._view.setUint8(this._position, value);
+        this._position += SIZEOF_8;
     }
 
     setInt16(value: number): void {
-        this.#view.setInt16(this.#position, value, true);
-        this.#position += SIZEOF_16;
+        this._view.setInt16(this._position, value, true);
+        this._position += SIZEOF_16;
     }
 
     setUint16(value: number): void {
-        this.#view.setUint16(this.#position, value, true);
-        this.#position += SIZEOF_16;
+        this._view.setUint16(this._position, value, true);
+        this._position += SIZEOF_16;
     }
 
     setInt32(value: number): void {
-        this.#view.setInt32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this._view.setInt32(this._position, value, true);
+        this._position += SIZEOF_32;
     }
 
     setUint32(value: number): void {
-        this.#view.setUint32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this._view.setUint32(this._position, value, true);
+        this._position += SIZEOF_32;
     }
 
     setInt64(value: bigint): void {
-        this.#view.setBigInt64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this._view.setBigInt64(this._position, value, true);
+        this._position += SIZEOF_64;
     }
 
     setUint64(value: bigint): void {
-        this.#view.setBigUint64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this._view.setBigUint64(this._position, value, true);
+        this._position += SIZEOF_64;
     }
 
     setFloat32(value: number): void {
-        this.#view.setFloat32(this.#position, value, true);
-        this.#position += SIZEOF_32;
+        this._view.setFloat32(this._position, value, true);
+        this._position += SIZEOF_32;
     }
 
     setFloat64(value: number): void {
-        this.#view.setFloat64(this.#position, value, true);
-        this.#position += SIZEOF_64;
+        this._view.setFloat64(this._position, value, true);
+        this._position += SIZEOF_64;
     }
 }

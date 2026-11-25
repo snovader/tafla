@@ -9,7 +9,11 @@ export default defineConfig({
         // `.slice()`, which copies a typed array
         'unicorn/prefer-spread': 'off',
         // Escapes of code units in lower case, as JSON writes them
-        'unicorn/escape-case': 'off'
+        'unicorn/escape-case': 'off',
+        // A class's own fields are `declare private _name`, since V8 holds
+        // a `#name` field, which is defined before it's assigned, as mutable
+        // and of any type
+        'eslint/no-underscore-dangle': ['error', { allowAfterThis: true }]
     },
     overrides: [
         {

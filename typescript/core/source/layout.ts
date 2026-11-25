@@ -43,24 +43,24 @@ export class TableLayout {
     /** No header slots, and offsets and lengths of the offset type `uint32` */
     static readonly DEFAULT = new TableLayout(false, undefined, 'uint32');
 
-    readonly #sized: boolean;
-    readonly #version: number | undefined;
-    readonly #offsetType: OffsetType;
-    readonly #offsetSize: OffsetSize;
-    readonly #headerSize: number;
+    declare private readonly _sized: boolean;
+    declare private readonly _version: number | undefined;
+    declare private readonly _offsetType: OffsetType;
+    declare private readonly _offsetSize: OffsetSize;
+    declare private readonly _headerSize: number;
 
     private constructor(
         sized: boolean,
         version: number | undefined,
         offsetType: OffsetType
     ) {
-        this.#sized = sized;
-        this.#version = version;
-        this.#offsetType = offsetType;
-        this.#offsetSize = OFFSET_SIZES[offsetType];
-        this.#headerSize =
+        this._sized = sized;
+        this._version = version;
+        this._offsetType = offsetType;
+        this._offsetSize = OFFSET_SIZES[offsetType];
+        this._headerSize =
             ((sized ? 1 : 0) + (version === undefined ? 0 : 1)) *
-            this.#offsetSize;
+            this._offsetSize;
     }
 
     /**
@@ -106,38 +106,38 @@ export class TableLayout {
      */
     withVersion(version: number): TableLayout {
         return TableLayout.create({
-            sized: this.#sized,
+            sized: this._sized,
             version,
-            offsetType: this.#offsetType
+            offsetType: this._offsetType
         });
     }
 
     sized(): boolean {
-        return this.#sized;
+        return this._sized;
     }
 
     /** Whether the header has a slot for a version */
     versioned(): boolean {
-        return this.#version !== undefined;
+        return this._version !== undefined;
     }
 
     /** The version that writers write to the header, when it has a slot */
     version(): number | undefined {
-        return this.#version;
+        return this._version;
     }
 
     offsetType(): OffsetType {
-        return this.#offsetType;
+        return this._offsetType;
     }
 
     /** The offset size, the width in bytes of the offset type: 1, 2 or 4 */
     offsetSize(): OffsetSize {
-        return this.#offsetSize;
+        return this._offsetSize;
     }
 
     /** The byte length of the header slots before the field offsets */
     headerSize(): number {
-        return this.#headerSize;
+        return this._headerSize;
     }
 }
 
