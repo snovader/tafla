@@ -12,8 +12,8 @@ from tafla_benchmarks.workloads import (
     SampleInput,
 )
 
-DOCUMENT_LAYOUT = TableLayout(sized=True, versioned=True)
 DOCUMENT_VERSION = 1
+DOCUMENT_LAYOUT = TableLayout(sized=True, version=DOCUMENT_VERSION)
 
 SAMPLE_SIZE = 3 * SIZEOF_32
 # The fixed-size record's fields, a uint32 and two float32s, which
@@ -49,7 +49,7 @@ def deserialize_record(data: Buffer) -> RecordInput:
 def serialize_document(input: DocumentInput) -> memoryview:
     """Arrays of the columns' element types are copied as bytes, and lists are
     converted as ``array()`` converts them"""
-    document = TableBuilder(4, DOCUMENT_LAYOUT, DOCUMENT_VERSION)
+    document = TableBuilder(4, DOCUMENT_LAYOUT)
     document.set_float64(input.x)
     document.set_float64(input.y)
     document.set_string(input.name)

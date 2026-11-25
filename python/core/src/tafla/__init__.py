@@ -10,14 +10,14 @@ writes its tables, without recording them first as ``TableBuilder`` does.
 
 A format's header, shared by its writer and its readers:
 
->>> LAYOUT = TableLayout(sized=True, versioned=True)
 >>> FORMAT_VERSION = 1
+>>> LAYOUT = TableLayout(sized=True, version=FORMAT_VERSION)
 
 >>> series = TableBuilder(2)
 >>> series.set_uint32_array(array("I", [0, 86400]))  # copied as bytes
 >>> series.set_float32_array([21.75, 18.5])  # a list is converted first
 
->>> builder = TableBuilder(3, LAYOUT, FORMAT_VERSION)
+>>> builder = TableBuilder(3, LAYOUT)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
 >>> builder.set_table(series)  # written straight into the table
@@ -73,7 +73,7 @@ All values are little-endian. A table is its header, one offset per field and
 then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is ``sized``, and
-  then its version when it's ``versioned``.
+  then the layout's ``version`` when it has one.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, ``offset_type``: ``uint8``, ``uint16`` or ``uint32``, whose
   offset size is 1, 2 or 4 bytes. It limits the table to 255 bytes, 64 KiB or
@@ -233,14 +233,15 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``TypeError`` where it's taken as bytes: by ``TableReader()``, whose reads
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
+- ``TableLayout`` raises ``ValueError`` for a version that doesn't fit in its
+  offset type, and ``TypeError`` for one that isn't an integer.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
-  created with, a version that doesn't fit, or arrays, structs or tables given
-  as buffers whose lengths changed before ``finalize()`` so that the table's
-  did, which leaves it unfinalized. A field that would make the table too long
-  for its ``offset_type`` raises ``ValueError`` from its setter and isn't
-  added. A value that its field's type can't hold raises as Conversions lists.
-  A version missing from or given for a layout, or a field set after
-  ``finalize()``, raises ``TypeError``.
+  created with, or arrays, structs or tables given as buffers whose lengths
+  changed before ``finalize()`` so that the table's did, which leaves it
+  unfinalized. A field that would make the table too long for its
+  ``offset_type`` raises ``ValueError`` from its setter and isn't added. A
+  value that its field's type can't hold raises as Conversions lists. A field
+  set after ``finalize()`` raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't
@@ -253,7 +254,7 @@ Using the API wrongly raises other errors, whatever the bytes:
   aren't a whole number of structs from ``set_struct_array()``.
 - ``get_vector_offset()`` raises ``IndexError`` for an item outside the
   vector.
-- ``get_version()`` raises ``TypeError`` when the layout isn't versioned.
+- ``get_version()`` raises ``TypeError`` when the layout has no version.
 
 TableWriter's contract
 ----------------------

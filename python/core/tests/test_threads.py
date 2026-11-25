@@ -45,8 +45,8 @@ def run_together(work: Callable[[], object]) -> list[BaseException]:
 
 
 def shared_reader() -> TableReader:
-    layout = TableLayout(sized=True, versioned=True)
-    builder = TableBuilder(3, layout, 1)
+    layout = TableLayout(sized=True, version=1)
+    builder = TableBuilder(3, layout)
     builder.set_float64(59.3293)
     builder.set_string("Europe/Stockholm")
     builder.set_float32_array(array("f", range(1000)))

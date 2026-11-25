@@ -12,7 +12,7 @@ use pyo3::{IntoPyObjectExt, ffi};
 
 use crate::fixed_fields::{Description, FixedFields, Format, Plan};
 use crate::layout::{Layout, Shape, shape_of};
-use crate::python::{Int, objects, small, utf8, with_buffer, with_bytes};
+use crate::python::{Int, objects, utf8, with_buffer, with_bytes};
 use crate::values::{self, Kind};
 use crate::{elements, little_endian_host};
 
@@ -332,7 +332,7 @@ pub struct TableWriter {
 }
 
 impl TableWriter {
-    fn create(shape: Shape, length: usize, version: Option<&Int<'_>>) -> PyResult<Self> {
+    fn create(shape: Shape, length: usize) -> PyResult<Self> {
         let mut writer = Self {
             data: Bytes::zeroed(length)?,
             shape,
@@ -340,12 +340,15 @@ impl TableWriter {
             slots: Mark::at(shape.header_size()),
         };
 
-        if let Some(version) = version {
+        if let Some(version) = shape.version {
             let slot = Int::from(if shape.sized { shape.size() } else { 0 });
+            let version = Int::from(version as usize);
             // Only a negative number of fields leaves no room for it, and
             // struct raises its error
-            if writer.pack_slot(&slot, version).is_err() {
-                return Err(Python::attach(|py| writer.struct_error(py, &slot, version)));
+            if writer.pack_slot(&slot, &version).is_err() {
+                return Err(Python::attach(|py| {
+                    writer.struct_error(py, &slot, &version)
+                }));
             }
         }
 
@@ -1033,33 +1036,21 @@ impl TableWriter {
 
 /// The bytes of a message of only the fields of `fixed`, in the layout of
 /// `shape`, packed into new bytes at once, or `None` when a value doesn't
-/// fit, the version isn't as the layout needs or the message is longer than
-/// it addresses, for the writer's calls to raise for
+/// fit or the message is longer than it addresses, for the writer's calls to
+/// raise for
 fn pack_message<'py>(
     fixed: &FixedFields,
     shape: Shape,
     values: &Bound<'py, PyTuple>,
     string: Option<&Bound<'py, PyString>>,
-    version: Option<&Bound<'py, PyAny>>,
 ) -> PyResult<Option<Bound<'py, PyBytes>>> {
     let py = values.py();
     let size = shape.size();
     let plan = fixed.plan(size)?;
-    if values.len() != plan.values.len() || !plan.fits || shape.versioned != version.is_some() {
+    if values.len() != plan.values.len() || !plan.fits {
         return Ok(None);
     }
-    // Any version but an int that fits is the writer's to raise for
-    let version = match version {
-        None => None,
-        Some(version) => match small(version)
-            .ok()
-            .flatten()
-            .and_then(|version| usize::try_from(version).ok())
-        {
-            Some(version) if version <= shape.max_length() => Some(version),
-            _ => return Ok(None),
-        },
-    };
+    let version = shape.version.map(|version| version as usize);
     let encoded = match (plan.string_length, string) {
         (Some(_), Some(string)) => match utf8(string) {
             Ok(encoded) => encoded,
@@ -1186,28 +1177,9 @@ fn alignment(alignment: &Bound<'_, PyAny>) -> PyResult<usize> {
 }
 
 /// The byte length of the header of a table of `fields` fields in `shape`,
-/// whose writer puts `version` in the header, as the pure-Python runtime's
-/// `header_length()` checks it
-fn header_length(shape: Shape, fields: &Int<'_>, version: Option<&Int<'_>>) -> PyResult<usize> {
+/// as the pure-Python runtime's `header_length()` checks it
+fn header_length(shape: Shape, fields: &Int<'_>) -> PyResult<usize> {
     let name = shape.offset_type.name();
-    if shape.versioned != version.is_some() {
-        return Err(pyo3::exceptions::PyTypeError::new_err(if shape.versioned {
-            "A versioned layout needs a version"
-        } else {
-            "The layout has no version slot"
-        }));
-    }
-
-    if let Some(version) = version
-        && version
-            .index()
-            .is_none_or(|version| version > shape.max_length())
-    {
-        return Err(PyValueError::new_err(format!(
-            "Version {} doesn't fit in a {name} slot",
-            version.display()?
-        )));
-    }
 
     let length = fields.mul(shape.size())?.add(shape.header_size())?;
     if Int::from(shape.max_length()).lt(length.clone())? {
@@ -1288,46 +1260,33 @@ array_setters!(
 #[pymethods]
 impl TableWriter {
     /// ``fields`` is the number of fields of the table, and ``layout`` its
-    /// header and offset type, which its readers must use too. ``version`` is
-    /// written to the header, and required when the layout is versioned.
+    /// header and offset type, which its readers must use too, with the
+    /// version to write to the header when it has one.
     ///
-    /// Raises ``TypeError`` if ``version`` is given for a layout without a
-    /// version slot, or missing for one with it. Raises ``ValueError`` if
-    /// ``version`` doesn't fit in the layout's offset type, or the header alone
-    /// is longer than the layout addresses.
+    /// Raises ``ValueError`` if the header alone is longer than the layout
+    /// addresses.
     #[new]
-    #[pyo3(signature = (fields, layout = None, version = None))]
-    fn new(
-        fields: &Bound<'_, PyAny>,
-        layout: Option<Layout>,
-        version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (fields, layout = None))]
+    fn new(fields: &Bound<'_, PyAny>, layout: Option<Layout>) -> PyResult<Self> {
         let shape = shape_of(layout.as_ref());
-        let version = version.map(Int::new).transpose()?;
-        let length = header_length(shape, &Int::new(fields)?, version.as_ref())?;
+        let length = header_length(shape, &Int::new(fields)?)?;
 
-        Self::create(shape, length, version.as_ref())
+        Self::create(shape, length)
     }
 
     /// Returns a writer as the constructor does, for arguments that
     /// ``TableBuilder``'s constructor checked already, without checking them
     /// again.
     #[classmethod]
-    #[pyo3(signature = (fields, layout, version))]
-    fn _checked(
-        _cls: &Bound<'_, PyType>,
-        fields: usize,
-        layout: Layout,
-        version: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (fields, layout))]
+    fn _checked(_cls: &Bound<'_, PyType>, fields: usize, layout: Layout) -> PyResult<Self> {
         let shape = layout.shape();
         let length = fields
             .checked_mul(shape.size())
             .and_then(|slots| slots.checked_add(shape.header_size()))
             .ok_or_else(memory_error)?;
-        let version = version.map(Int::new).transpose()?;
 
-        Self::create(shape, length, version.as_ref())
+        Self::create(shape, length)
     }
 
     /// Returns a view of the table's bytes, without copying them. While
@@ -1445,36 +1404,32 @@ impl TableWriter {
     /// message's, in the layout that it was created with, from their
     /// ``values`` as ``set_fields()`` takes them, and ``string`` when they
     /// end with one, and returns its bytes, in one call. They're the bytes
-    /// that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-    /// ``bytes()`` write, and it raises as they do, in their order: the
-    /// constructor's error for a ``version`` that the layout can't hold comes
-    /// before the error of a value.
+    /// that ``TableWriter(fields, layout)``, ``set_fields()`` and ``bytes()``
+    /// write, and it raises as they do.
     ///
     /// Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
     /// doesn't.
     ///
     /// Generated code calls it to write a message of only such fields.
     #[staticmethod]
-    #[pyo3(signature = (fields, values, string = None, version = None))]
+    #[pyo3(signature = (fields, values, string = None))]
     fn write_fields<'py>(
         fields: &Bound<'py, FixedFields>,
         values: &Bound<'py, PyAny>,
         string: Option<&Bound<'py, PyString>>,
-        version: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyBytes>> {
         let py = fields.py();
         let fixed = fields.get();
         let shape = fixed.shape()?;
         let tuple = Self::fixed_values(values)?;
-        if let Some(bytes) = pack_message(fixed, shape, &tuple, string, version)? {
+        if let Some(bytes) = pack_message(fixed, shape, &tuple, string)? {
             return Ok(bytes);
         }
 
         // The writer's calls, which raise for what doesn't fit
-        let version = version.map(Int::new).transpose()?;
         let fields_count = Int::from(fixed.description().fields);
-        let length = header_length(shape, &fields_count, version.as_ref())?;
-        let writer = Bound::new(py, Self::create(shape, length, version.as_ref())?)?;
+        let length = header_length(shape, &fields_count)?;
+        let writer = Bound::new(py, Self::create(shape, length)?)?;
         writer.borrow_mut().set_fields(fields, &tuple, string)?;
         let view = Self::bytes(&writer)?;
         unsafe {

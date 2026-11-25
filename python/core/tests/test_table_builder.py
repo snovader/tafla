@@ -2,7 +2,7 @@ import unittest
 from array import array
 from collections.abc import Buffer, Callable
 from struct import pack
-from typing import Any, cast, override
+from typing import Any, override
 
 from hypothesis import given
 from hypothesis.strategies import integers, one_of
@@ -376,19 +376,28 @@ class TestVersions(unittest.TestCase):
 
         for offset_type, version in cases:
             with self.subTest(offset_type=offset_type, version=version):
-                layout = TableLayout(versioned=True, offset_type=offset_type)
+                layout = TableLayout(version=0, offset_type=offset_type)
                 message = f"Version {version} doesn't fit in a {offset_type} slot"
 
                 with self.assertRaises(ValueError) as raised:
-                    TableBuilder(1, layout, version)
+                    TableLayout(version=version, offset_type=offset_type)
+                self.assertEqual(str(raised.exception), message)
+                with self.assertRaises(ValueError) as raised:
+                    layout.with_version(version)
                 self.assertEqual(str(raised.exception), message)
 
-    def test_rejects_a_version_missing_from_or_given_for_a_layout(self) -> None:
-        with self.assertRaisesRegex(TypeError, "needs a version"):
-            TableBuilder(1, cast(Any, TableLayout(versioned=True)))
+    def test_reads_a_tables_version_whatever_the_version_of_the_readers_layout(
+        self,
+    ) -> None:
+        first = TableLayout(sized=True, version=1)
+        second = first.with_version(2)
 
-        with self.assertRaisesRegex(TypeError, "has no version slot"):
-            TableBuilder(1, cast(Any, TableLayout()), 1)
+        table = TableBuilder(0, second).bytes()
+
+        self.assertEqual(second.version(), 2)
+        self.assertTrue(second.sized())
+        self.assertEqual(TableReader(table, first).get_version(), 2)
+        self.assertEqual(TableReader(table, second).get_version(), 2)
 
     def test_rejects_reading_the_version_of_an_unversioned_table(self) -> None:
         layout = TableLayout(sized=True)

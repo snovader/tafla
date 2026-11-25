@@ -12,12 +12,12 @@ as `TableBuilder` does.
 >>> from array import array
 >>> from tafla import TableReader, TableBuilder, TableLayout
 
->>> LAYOUT = TableLayout(sized=True, versioned=True)  # shared by writers and readers
+>>> LAYOUT = TableLayout(sized=True, version=1)  # shared by writers and readers
 >>> series = TableBuilder(2)
 >>> series.set_uint32_array(array("I", [0, 86400]))  # copied as bytes
 >>> series.set_float32_array([21.75, 18.5])  # a list is converted first
 
->>> builder = TableBuilder(3, LAYOUT, 1)
+>>> builder = TableBuilder(3, LAYOUT)
 >>> builder.set_float64(59.3293)
 >>> builder.set_string("Europe/Stockholm")
 >>> builder.set_table(series)  # written straight into the table

@@ -152,16 +152,16 @@ class FixedFields:
 
 # What TableWriter.write_fields() and TableReader.read_fields() read of a
 # message's layout: its offset size, the Struct of its header's slots, the
-# length's and then the version's, and whether it has each
-type Header = tuple[OffsetSize, Struct, bool, bool]
+# length's and then the version's, whether it has a length, and its version
+type Header = tuple[OffsetSize, Struct, bool, int | None]
 
 
 def _header(layout: TableLayout) -> Header:
     size = layout.offset_size()
-    sized, versioned = layout.sized(), layout.versioned()
-    slots = Struct("<" + _OFFSET_CODES[size] * (sized + versioned))
+    sized, version = layout.sized(), layout.version()
+    slots = Struct("<" + _OFFSET_CODES[size] * (sized + (version is not None)))
 
-    return size, slots, sized, versioned
+    return size, slots, sized, version
 
 
 def _packer(struct: Struct, arguments: list[int | None]) -> Packer:

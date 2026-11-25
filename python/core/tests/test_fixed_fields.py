@@ -3,7 +3,7 @@ import unittest
 from collections.abc import Callable, Iterator, Sequence
 from functools import partial
 from struct import error as StructError, pack
-from typing import Any, Literal, overload, override
+from typing import Any, overload, override
 
 from hypothesis import assume, given
 from hypothesis.strategies import binary, integers, sampled_from
@@ -160,14 +160,9 @@ def write_packed(table: Description) -> memoryview[int]:
     ``set_fields()`` after the constructor or ``start_table()``"""
     fields = table["fields"]
     sized, offset_type = table["layout"]["sized"], table["layout"]["offsetType"]
-    layout: TableLayout
-    if table["layout"]["versioned"]:
-        versioned = TableLayout(sized=sized, versioned=True, offset_type=offset_type)
-        writer = TableWriter(len(fields), versioned, table["version"])
-        layout = versioned
-    else:
-        layout = TableLayout(sized=sized, offset_type=offset_type)
-        writer = TableWriter(len(fields), layout)
+    version = table["version"] if table["layout"]["versioned"] else None
+    layout = TableLayout(sized=sized, version=version, offset_type=offset_type)
+    writer = TableWriter(len(fields), layout)
 
     count = packed_count(table)
     if count > 0:
@@ -362,11 +357,11 @@ class TestMessages(unittest.TestCase):
                 "fields": [scalar(*invalid), *fixed["fields"]],
             }
             fixed = invalid_first
-        layout = layout_of(fixed["layout"])
+        version: int | None = fixed["version"] if fixed["layout"]["versioned"] else None
+        layout = layout_of(fixed["layout"], version or 0)
         fields = fixed_fields(fixed, len(fixed["fields"]), layout)
-        version: int | None = fixed["version"] if layout.versioned() else None
 
-        written = outcome(partial(write_message, fixed, fields, version))
+        written = outcome(partial(write_message, fixed, fields))
         self.assertEqual(written, outcome(partial(write_packed, fixed)))
         if not isinstance(written, bytes):
             return
@@ -394,7 +389,7 @@ class TestMessages(unittest.TestCase):
     ) -> None:
         pair = nested([scalar("float32", 0.0), scalar("float32", 0.0)])
         table = {"fields": [scalar("uint16", 0), pair, scalar("string", "")]}
-        layout = TableLayout(sized=True, versioned=True, offset_type=offset_type)
+        layout = TableLayout(sized=True, version=0, offset_type=offset_type)
         fields = fixed_fields(table, 3, layout)
         reader = TableReader(data, layout)
 
@@ -426,37 +421,16 @@ class TestMessages(unittest.TestCase):
             TableReader.read_fields(data, fields, 1)
         with self.assertRaises(TypeError):
             TableReader.read_fields(memoryview(data * 2)[::2], fields)
-        # The writer's constructor raises for a version that the layout has no
-        # slot for, or needs
-        with self.assertRaises(TypeError):
-            TableWriter.write_fields(fields, (1, 2), version=1)
-        versioned = FixedFields(1, "h", layout=TableLayout(versioned=True))
-        with self.assertRaises(TypeError):
-            TableWriter.write_fields(versioned, (1,))
-        with self.assertRaises(ValueError):
-            TableWriter.write_fields(versioned, (1,), version=2**32)
 
-    def test_raises_for_a_version_that_does_not_fit_before_a_value(self) -> None:
-        """Regression: the pure-Python ``write_fields()`` converted the values
-        before the version was checked, so a value whose conversion raised an
-        error of its own hid the constructor's error for the version"""
-        layout = TableLayout(versioned=True, offset_type="uint8")
+    def test_raises_a_values_own_error_as_set_fields_does(self) -> None:
+        layout = TableLayout(version=255, offset_type="uint8")
         fields = FixedFields(1, "b", layout=layout)
         values = (Unconvertible(),)
 
-        for version in [256, -1]:
-            with self.subTest(version=version):
-                with self.assertRaisesRegex(ValueError, "^Version .* doesn't fit"):
-                    TableWriter(1, layout, version)
-                with self.assertRaisesRegex(ValueError, "^Version .* doesn't fit"):
-                    TableWriter.write_fields(fields, values, version=version)
-
-        # And the value's own error for a version that fits, as set_fields()
-        # raises it
         with self.assertRaisesRegex(KeyError, "no index"):
-            TableWriter(1, layout, 255).set_fields(fields, values)
+            TableWriter(1, layout).set_fields(fields, values)
         with self.assertRaisesRegex(KeyError, "no index"):
-            TableWriter.write_fields(fields, values, version=255)
+            TableWriter.write_fields(fields, values)
 
 
 class Unconvertible:
@@ -467,9 +441,7 @@ class Unconvertible:
         raise KeyError("no index")
 
 
-def write_message(
-    table: Description, fields: FixedFields, version: int | None
-) -> bytes:
+def write_message(table: Description, fields: FixedFields) -> bytes:
     """Writes a message of only fixed fields, as ``set_fields()`` takes them,
     with ``write_fields()``"""
     values: list[Any] = []
@@ -477,7 +449,7 @@ def write_message(
     string = leading[-1]["value"] if leading[-1]["type"] == "string" else ""
     push_values([field for field in leading if field["type"] != "string"], values)
 
-    return TableWriter.write_fields(fields, tuple(values), string, version)
+    return TableWriter.write_fields(fields, tuple(values), string)
 
 
 def read_message(
@@ -671,7 +643,7 @@ def item_values(table: Description) -> tuple[Any, ...]:
 
 
 def write_vector_tables(
-    layout: TableLayout[Literal[False]],
+    layout: TableLayout,
     fields: FixedFields,
     items: list[tuple[Any, ...]],
 ) -> memoryview[int]:
@@ -681,7 +653,7 @@ def write_vector_tables(
 
 
 def write_each_item(
-    layout: TableLayout[Literal[False]],
+    layout: TableLayout,
     fields: FixedFields,
     items: list[tuple[Any, ...]],
     has_string: bool,

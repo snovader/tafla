@@ -113,7 +113,7 @@ class Document:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True)
+    _LAYOUT: Final = TableLayout(sized=True, version=FORMAT_VERSION)
     _FIXED_FIELDS: Final = FixedFields(4, "d", "d", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -140,7 +140,7 @@ class Document:
     @classmethod
     def serialize(cls, **fields: Unpack[DocumentFields]) -> memoryview:
         """Writes a ``Document`` with every field"""
-        writer = TableWriter(4, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(4, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["x"], fields["y"]), fields["name"])
         writer.set_table(3, Columns.ALIGNMENT)
         Columns.write(writer, fields["columns"])

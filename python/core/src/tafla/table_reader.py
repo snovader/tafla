@@ -386,8 +386,8 @@ class TableReader:
         header = fields._header
         if header is None:
             raise TypeError("A nested table's fields have no layout to read")
-        size, _, sized, versioned = header
-        if version is not None and not versioned:
+        size, _, sized, layout_version = header
+        if version is not None and layout_version is None:
             raise TypeError("The table has no version")
 
         struct, start, check, expected, values, string = fields._readers[size]

@@ -394,7 +394,7 @@ impl TableReader {
         let held = hold(data)?;
         let fixed = fields.get();
         let shape = fixed.shape()?;
-        if version.is_some() && !shape.versioned {
+        if version.is_some() && !shape.versioned() {
             return Err(PyTypeError::new_err("The table has no version"));
         }
         let reader = Self {
@@ -428,7 +428,7 @@ impl TableReader {
     ///
     /// Raises ``TypeError`` if the reader's layout isn't versioned.
     fn get_version(&self, py: Python<'_>) -> PyResult<u32> {
-        if !self.shape.versioned {
+        if !self.shape.versioned() {
             return Err(PyTypeError::new_err("The table has no version"));
         }
         tafla::TableReader::new(self.bytes_slice(), self.shape.core().with_version(0))

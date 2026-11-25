@@ -259,7 +259,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         );
         writer.blank();
     }
-    writer.line(format!("_LAYOUT: Final = {}", layout_expression(layout)));
+    writer.statement(&STYLE, "_LAYOUT: Final = ", &layout_expression(layout), "");
     let fixed = fixed_fields(schema, index);
     if fixed > 0 {
         let description = fixed_description(schema, definition, fixed, Some("_LAYOUT"));
@@ -306,10 +306,10 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         writer.blank();
     }
 
-    serialize(writer, schema, definition, layout, fixed);
+    serialize(writer, schema, definition, fixed);
     if has_serialize_values(schema, index) {
         writer.blank();
-        serialize_values(writer, schema, index, layout);
+        serialize_values(writer, schema, index);
     }
 
     getters(writer, schema, definition, true);
@@ -435,13 +435,7 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
 
 /// A message's `serialize()`, which writes it from its fields, the first
 /// `fixed` of them with its `FixedFields`
-fn serialize(
-    writer: &mut CodeWriter,
-    schema: &Schema,
-    definition: &Definition,
-    layout: Layout,
-    fixed: usize,
-) {
+fn serialize(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, fixed: usize) {
     let name = &definition.name;
     // A message of only fixed fields is written whole in one call, into
     // bytes of its own
@@ -470,10 +464,7 @@ fn serialize(
                 article(name)
             )],
         );
-        let mut arguments = fixed_arguments(schema, definition, fixed, "cls");
-        if layout.version.is_some() {
-            arguments.push(text("version=cls.FORMAT_VERSION"));
-        }
+        let arguments = fixed_arguments(schema, definition, fixed, "cls");
         let write = call("TableWriter.write_fields", arguments);
         writer.statement(&STYLE, "return ", &write, "");
         writer.dedent();
@@ -483,13 +474,10 @@ fn serialize(
         writer,
         &[format!("Writes {} with every field", article(name))],
     );
-    let mut arguments = vec![
+    let arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
     ];
-    if layout.version.is_some() {
-        arguments.push(text("cls.FORMAT_VERSION"));
-    }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
     if fixed > 0 {
         set_fixed_fields(
@@ -2488,7 +2476,7 @@ fn return_converted(
 /// in their order, as positional arguments, as `field_values()` returns them,
 /// but a vector's as its items' values, as its view's `field_values()` returns
 /// them
-fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
+fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     let definition = schema.definition(index);
     let name = &definition.name;
     let names: Vec<String> = definition
@@ -2530,22 +2518,16 @@ fn serialize_values(writer: &mut CodeWriter, schema: &Schema, index: usize, layo
     }
     docstring(writer, &docs);
     if whole {
-        let mut arguments = fixed_value_arguments(definition, &names, fixed);
-        if layout.version.is_some() {
-            arguments.push(text("version=cls.FORMAT_VERSION"));
-        }
+        let arguments = fixed_value_arguments(definition, &names, fixed);
         let write = call("TableWriter.write_fields", arguments);
         writer.statement(&STYLE, "return ", &write, "");
         writer.dedent();
         return;
     }
-    let mut arguments = vec![
+    let arguments = vec![
         text(definition.fields.len().to_string()),
         text("cls._LAYOUT"),
     ];
-    if layout.version.is_some() {
-        arguments.push(text("cls.FORMAT_VERSION"));
-    }
     writer.statement(&STYLE, "writer = ", &call("TableWriter", arguments), "");
 
     // The leading fields of fixed size in one call, a string's as an argument
@@ -3020,22 +3002,26 @@ fn docstring(writer: &mut CodeWriter, docs: &[String]) {
     }
 }
 
-fn layout_expression(layout: Layout) -> String {
+/// The layout of a message, whose version is the class's `FORMAT_VERSION`
+fn layout_expression(layout: Layout) -> Expr {
     let mut arguments = Vec::new();
     if layout.sized {
-        arguments.push("sized=True".to_owned());
+        arguments.push(text("sized=True"));
     }
     if layout.version.is_some() {
-        arguments.push("versioned=True".to_owned());
+        arguments.push(text("version=FORMAT_VERSION"));
     }
     if layout.offset_type != OffsetType::Uint32 {
-        arguments.push(format!("offset_type=\"{}\"", layout.offset_type.name()));
+        arguments.push(text(format!(
+            "offset_type=\"{}\"",
+            layout.offset_type.name()
+        )));
     }
 
     if arguments.is_empty() {
-        "TableLayout.DEFAULT".to_owned()
+        text("TableLayout.DEFAULT")
     } else {
-        format!("TableLayout({})", arguments.join(", "))
+        call("TableLayout", arguments)
     }
 }
 

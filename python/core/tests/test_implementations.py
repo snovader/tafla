@@ -325,6 +325,18 @@ def value_count(description: tuple[int, list[Any], bool]) -> int:
     return sum(value_count(each) if isinstance(each, tuple) else 1 for each in formats)
 
 
+def layout_from(
+    implementation: Any, arguments: dict[str, Any], version: int | None = None
+) -> Any:
+    """A layout of ``arguments``, an implementation's, with ``version`` when
+    it's versioned, or version 0 without one, as a reader's layout has"""
+    return implementation.TableLayout(
+        sized=arguments["sized"],
+        version=(0 if version is None else version) if arguments["versioned"] else None,
+        offset_type=arguments["offset_type"],
+    )
+
+
 def layout_arguments() -> SearchStrategy[dict[str, Any]]:
     return builds(
         dict,
@@ -376,11 +388,11 @@ class TestImplementations(unittest.TestCase):
         arguments = {"sized": True, "versioned": True, "offset_type": "uint16"}
         tables = []
         for table_layout in [
-            self.native.TableLayout(**arguments),
-            PURE.TableLayout(**arguments),
+            layout_from(self.native, arguments, 3),
+            layout_from(PURE, arguments, 3),
         ]:
             fields = self.native.FixedFields(2, "h", layout=table_layout)
-            writer = self.native.TableWriter(2, table_layout, 3)
+            writer = self.native.TableWriter(2, table_layout)
             writer.set_fields(fields, (-2,))
             writer.set_string(1, "a")
             data = bytes(writer.bytes())
@@ -413,7 +425,7 @@ class TestImplementations(unittest.TestCase):
             (
                 implementation,
                 implementation.TableReader(
-                    content, implementation.TableLayout(**arguments)
+                    content, layout_from(implementation, arguments)
                 ),
             )
             for implementation in (PURE, self.native)
@@ -699,9 +711,8 @@ class TestImplementations(unittest.TestCase):
         one_of(none(), integers(0, 2**16), integers(-1, 1), INTEGERS),
         tuples(integers(0, 2**16), integers(0, 255)),
     )
-    # Regressions: for a version that doesn't fit and a value whose conversion
-    # raises an error of its own, the pure-Python write_fields() raised the
-    # value's error, where the native one raises the constructor's
+    # A version that doesn't fit raises from the layout in both, before a
+    # value whose conversion raises an error of its own
     @example(
         arguments={"sized": False, "versioned": True, "offset_type": "uint8"},
         description=(1, ["b"], False),
@@ -792,9 +803,9 @@ def _write_message(
 ) -> object:
     """Writes a message with ``write_fields()``, with fields of a layout of
     ``arguments``"""
-    layout = implementation.TableLayout(**arguments)
+    layout = layout_from(implementation, arguments, version)
     fields = fixed_fields_of(implementation, description, layout)
-    data = implementation.TableWriter.write_fields(fields, values, string, version)
+    data = implementation.TableWriter.write_fields(fields, values, string)
     # Bytes, which the writer's bytes() would be a view of
     assert type(data) is bytes
     return Written(data)
@@ -807,7 +818,7 @@ def _read_message(
     data: bytes,
     version: int | None,
 ) -> object:
-    layout = implementation.TableLayout(**arguments)
+    layout = layout_from(implementation, arguments)
     fields = fixed_fields_of(implementation, description, layout)
     return implementation.TableReader.read_fields(data, fields, version)
 
@@ -893,11 +904,8 @@ def create_writer(
     version: int | None,
 ) -> None:
     """Appends a writer, unless creating it raises"""
-    table_layout = implementation.TableLayout(**arguments)
-    if version is None:
-        writer = implementation.TableWriter(fields, table_layout)
-    else:
-        writer = implementation.TableWriter(fields, table_layout, version)
+    table_layout = layout_from(implementation, arguments, version)
+    writer = implementation.TableWriter(fields, table_layout)
     writers.append((implementation, writer))
 
 
@@ -911,18 +919,15 @@ class FixedTable:
     nested: bool
 
     def fields(self, implementation: Implementation) -> Any:
-        table_layout = implementation.TableLayout(**self.arguments)
+        table_layout = layout_from(implementation, self.arguments, 1)
         root_layout = None if self.nested else table_layout
         return fixed_fields_of(implementation, self.description, root_layout)
 
     def write(
         self, implementation: Implementation, values: tuple[Any, ...], string: str
     ) -> Written:
-        table_layout = implementation.TableLayout(**self.arguments)
-        version = [1] if self.arguments["versioned"] else []
-        writer = implementation.TableWriter(
-            self.description[0] + 1, table_layout, *version
-        )
+        table_layout = layout_from(implementation, self.arguments, 1)
+        writer = implementation.TableWriter(self.description[0] + 1, table_layout)
         fields = self.fields(implementation)
         if self.nested:
             writer.set_table(self.description[0], 1)
@@ -932,7 +937,7 @@ class FixedTable:
         return Written(bytes(writer.bytes()))
 
     def read(self, implementation: Implementation, data: bytes) -> object:
-        table_layout = implementation.TableLayout(**self.arguments)
+        table_layout = layout_from(implementation, self.arguments)
         reader = implementation.TableReader(data, table_layout)
         position = reader.root_offset(self.description[0]) if self.nested else 0
         return reader.get_fields(position, self.fields(implementation))
