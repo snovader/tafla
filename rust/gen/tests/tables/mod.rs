@@ -1,7 +1,8 @@
 //! What the tests of the generated Rust share: the values of a table's fields,
 //! which the tests read back with the generated getters and build the same
-//! table from by hand with `TableBuilder`, and arbitrary values, placements
-//! and corruptions of tables.
+//! table from by hand with `TableBuilder`, arbitrary values, placements
+//! and corruptions of tables, and the check that tafla-gen decodes a table
+//! as JSON that encodes back into its bytes.
 
 // Each test crate uses a part of these
 #![allow(dead_code)]
@@ -12,6 +13,7 @@ use proptest::arbitrary::Arbitrary;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tafla::{Alignment, ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
+use tafla_gen::{DecodeOptions, Root};
 
 /// The cases of each property: enough to draw every kind of edge value
 /// several times, while `cargo test` stays fast
@@ -507,4 +509,30 @@ impl Overwrite {
 /// lengths often lie within them
 pub fn arbitrary_bytes() -> impl Strategy<Value = Vec<u8>> {
     vec(prop_oneof![3 => 0..16_u8, 1 => any::<u8>()], 0..=64)
+}
+
+/// Checks that tafla-gen decodes the table of the message or struct `name`
+/// in `bytes`, which a conforming writer wrote, as JSON that encodes back
+/// into the same bytes, and that decoding those bytes again reads the same
+/// JSON, with strings in UTF-8 and in ASCII
+pub fn check_json_round_trip(schema: &str, name: &str, bytes: &[u8]) -> Result<(), TestCaseError> {
+    let schema = tafla_gen::parse(schema).expect("an example schema is valid");
+    let root = Root::find(&schema, name).expect("the name is a message or a struct");
+
+    for ascii in [false, true] {
+        let options = DecodeOptions {
+            ascii,
+            ..DecodeOptions::default()
+        };
+        let json = root
+            .decode(bytes, &options)
+            .map_err(|error| TestCaseError::fail(format!("{name}: {error}")))?;
+        prop_assert!(!ascii || json.is_ascii(), "{}", json);
+
+        let encoded = root.encode(&json);
+        prop_assert_eq!(encoded.as_deref(), Ok(bytes), "{}: {}", name, json);
+        prop_assert_eq!(root.decode(bytes, &options), Ok(json));
+    }
+
+    Ok(())
 }

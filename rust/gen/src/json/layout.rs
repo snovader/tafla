@@ -20,10 +20,15 @@ pub struct Part {
 /// The most bytes of a part that a line shows
 const SHOWN_BYTES: usize = 8;
 
+/// The most bytes of padding that writers write, before an array of 8-byte
+/// elements whose count is a byte
+const MAX_PADDING: usize = 7;
+
 /// The layout of `bytes`, from the parts read of them: a line of each part
 /// in the order of their positions, and of each run of bytes that no part
-/// read, as padding when they're zeros and unread otherwise. Parts that
-/// overlap, as corrupted offsets lead to, are each shown.
+/// read: padding when it's at most 7 zeros before a part, as writers pad,
+/// and unread otherwise. Parts that overlap, as corrupted offsets lead to,
+/// are each shown.
 pub fn render(mut parts: Vec<Part>, bytes: &[u8]) -> String {
     parts.sort_by_key(|part| part.start);
 
@@ -31,13 +36,19 @@ pub fn render(mut parts: Vec<Part>, bytes: &[u8]) -> String {
     let mut covered = 0;
     for part in parts {
         if part.start > covered && covered < bytes.len() {
-            lines.push(gap(covered, part.start.min(bytes.len()), bytes));
+            let before_part = part.start <= bytes.len();
+            lines.push(gap(
+                covered,
+                part.start.min(bytes.len()),
+                bytes,
+                before_part,
+            ));
         }
         covered = covered.max(part.start.saturating_add(part.length));
         lines.push(part);
     }
     if bytes.len() > covered {
-        lines.push(gap(covered, bytes.len(), bytes));
+        lines.push(gap(covered, bytes.len(), bytes, false));
     }
 
     let digits = bytes.len().max(1).to_string().len().max("position".len());
@@ -68,9 +79,11 @@ pub fn render(mut parts: Vec<Part>, bytes: &[u8]) -> String {
     text
 }
 
-/// A run of bytes that no part read
-fn gap(start: usize, end: usize, bytes: &[u8]) -> Part {
-    let is_padding = bytes[start..end].iter().all(|&byte| byte == 0);
+/// A run of bytes that no part read, which is `before_part` or at the end
+fn gap(start: usize, end: usize, bytes: &[u8], before_part: bool) -> Part {
+    let is_padding = before_part
+        && end - start <= MAX_PADDING
+        && bytes[start..end].iter().all(|&byte| byte == 0);
 
     Part {
         start,
@@ -123,23 +136,38 @@ mod tests {
         assert_eq!(
             layout,
             "\
-position    length  bytes                     field   value
-       0         4  04 00 00 00               values  offset 4
-       4         4  00 00 00 00               values  count 9
-       8         9  01 02 03 04 05 06 07 08 … values  9 uint8s
-      17         1  07                                unread
+position    length  bytes                      field   value
+       0         4  04 00 00 00                values  offset 4
+       4         4  00 00 00 00                values  count 9
+       8         9  01 02 03 04 05 06 07 08 …  values  9 uint8s
+      17         1  07                                 unread
 "
         );
     }
 
     #[test]
     fn shows_padding_and_parts_past_the_bytes() {
-        let bytes = [9, 0, 0];
-        let parts = vec![part(0, 1, "x", "offset 9"), part(9, 4, "x", "past")];
+        let bytes = [9, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let parts = vec![
+            part(0, 1, "x", "offset 9"),
+            part(3, 1, "x", "uint8 1"),
+            part(12, 1, "x", "uint8 0"),
+            part(20, 4, "x", "past"),
+        ];
 
         let layout = render(parts, &bytes);
 
-        assert!(layout.contains("\n       1         2  00 00"), "{layout}");
-        assert!(layout.ends_with("       9         4                            x      past\n"));
+        let lines: Vec<&str> = layout.lines().collect();
+        assert_eq!(
+            lines[2..],
+            [
+                "       1         2  00 00                             padding",
+                "       3         1  01                         x      uint8 1",
+                "       4         8  00 00 00 00 00 00 00 00           unread",
+                "      12         1  00                         x      uint8 0",
+                "      13         4  00 00 00 00                       unread",
+                "      20         4                             x      past",
+            ]
+        );
     }
 }

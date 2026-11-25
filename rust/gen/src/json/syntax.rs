@@ -7,7 +7,7 @@
 
 use std::fmt::Write;
 
-use crate::lexer::garbles_text;
+use crate::lexer::{BYTE_ORDER_MARK, garbles_text};
 use crate::{Diagnostic, Span};
 
 /// A token of a JSON text. A number is its span of the text, which its
@@ -55,11 +55,15 @@ pub struct Tokens<'a> {
 }
 
 impl<'a> Tokens<'a> {
-    pub const fn new(source: &'a str) -> Self {
-        Self {
-            source,
-            position: 0,
-        }
+    /// The tokens of a text, after a byte-order mark that it may start
+    /// with, as JSON's parsers may skip it, and as a schema's is skipped
+    pub fn new(source: &'a str) -> Self {
+        let position = if source.starts_with(BYTE_ORDER_MARK) {
+            BYTE_ORDER_MARK.len_utf8()
+        } else {
+            0
+        };
+        Self { source, position }
     }
 
     /// The text of a span, such as a number's
@@ -540,6 +544,12 @@ mod tests {
             assert!(error.span.start <= error.span.end && error.span.end <= source.len());
             assert!(error.render("table.json", source).starts_with("error: "));
         }
+    }
+
+    #[test]
+    fn skips_a_leading_byte_order_mark_only() {
+        assert_eq!(tokens("\u{feff}1").unwrap(), [Token::Number]);
+        assert!(tokens("1 \u{feff}").is_err());
     }
 
     #[test]

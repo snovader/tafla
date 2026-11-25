@@ -4,7 +4,8 @@
 //! write a message whose fixed fields alone, or with a string after them,
 //! are too long for its offset type, as `TableBuilder` fails. The generated
 //! code writes these messages and nested tables whole, as the Go and C++
-//! code does, whose tests run the same schema.
+//! code does, whose tests run the same schema. tafla-gen decodes every table
+//! that it writes as JSON, which encodes back into the same bytes.
 
 // The schema's structs aren't in arrays, so their arrays' helpers go unused
 #[allow(dead_code)]
@@ -19,7 +20,9 @@ use fixed_fields::{
 };
 use proptest::collection::vec;
 use proptest::prelude::*;
-use tables::{CASES, Value, arrays, build, float32s, integers, strings, strings_up_to};
+use tables::{
+    CASES, Value, arrays, build, check_json_round_trip, float32s, integers, strings, strings_up_to,
+};
 use tafla::{BuildError, DecodeError, OffsetType, TableLayout};
 
 // The headers of the messages, from their attributes in the schema
@@ -30,6 +33,8 @@ const PIXEL: tables::Header = tables::Header::versioned(uint16().sized(), 2);
 const STRIP: tables::Header = tables::Header::new(uint16());
 const BOX: tables::Header = tables::Header::versioned(TableLayout::DEFAULT, 1);
 const DEFAULT: tables::Header = tables::Header::new(TableLayout::DEFAULT);
+
+const SCHEMA: &str = include_str!("../../../schemas/fixed_fields.tafla");
 
 const fn uint8() -> TableLayout {
     TableLayout::DEFAULT.with_offset_type(OffsetType::Uint8)
@@ -291,6 +296,7 @@ proptest! {
         let fields = TinyFields { id, kind };
 
         prop_assert_eq!(fields.serialize(), build(TINY, &[Value::U16(id), Value::U8(kind)]));
+        check_json_round_trip(SCHEMA, "Tiny", &fields.serialize()?)?;
     }
 
     /// Labels of up to 320 bytes, of which 237 fit after the fixed fields
@@ -305,6 +311,9 @@ proptest! {
         let values = [Value::U32(id), describe_vec2(position), Value::string(&label)];
 
         prop_assert_eq!(fields.serialize(), build(TAGGED, &values));
+        if let Ok(bytes) = fields.serialize() {
+            check_json_round_trip(SCHEMA, "Tagged", &bytes)?;
+        }
     }
 
     #[test]
@@ -317,10 +326,12 @@ proptest! {
         let pixel = PixelFields { position, color };
         let values = [describe_vec2(position), Value::U32(color)];
         prop_assert_eq!(pixel.serialize(), build(PIXEL, &values));
+        check_json_round_trip(SCHEMA, "Pixel", &pixel.serialize()?)?;
 
         let values = [describe_vec2(position), describe_vec2(max), Value::Table(describe_range(&range))];
         let written = BoxFields { min: position, max, range };
         prop_assert_eq!(written.serialize(), build(BOX, &values));
+        check_json_round_trip(SCHEMA, "Box", &written.serialize()?)?;
     }
 
     #[test]
@@ -334,10 +345,16 @@ proptest! {
         let header = HeaderFields { kind, length, values: &bytes };
         let described = [Value::U8(kind), Value::U16(length), Value::U8Array(bytes.clone())];
         prop_assert_eq!(header.serialize(), build(HEADER, &described));
+        if let Ok(written) = header.serialize() {
+            check_json_round_trip(SCHEMA, "Header", &written)?;
+        }
 
         let strip = StripFields { id: u32::from(length), origin, values: &values };
         let described = [Value::U32(u32::from(length)), describe_vec2(origin), Value::U16Array(values.clone())];
         prop_assert_eq!(strip.serialize(), build(STRIP, &described));
+        if let Ok(written) = strip.serialize() {
+            check_json_round_trip(SCHEMA, "Strip", &written)?;
+        }
     }
 
     #[test]
@@ -359,6 +376,7 @@ proptest! {
             Value::string(&name),
         ];
         prop_assert_eq!(track.serialize(), build(DEFAULT, &values));
+        check_json_round_trip(SCHEMA, "Track", &track.serialize()?)?;
 
         let values = [
             Value::string(&name),
@@ -368,6 +386,7 @@ proptest! {
         ];
         let span = SpanFields { name: &name, range, frame, ranges: &items };
         prop_assert_eq!(span.serialize(), build(DEFAULT, &values));
+        check_json_round_trip(SCHEMA, "Span", &span.serialize()?)?;
     }
 
     #[test]
@@ -375,5 +394,6 @@ proptest! {
         let label = LabelFields { text: &text };
 
         prop_assert_eq!(label.serialize(), build(DEFAULT, &[Value::string(&text)]));
+        check_json_round_trip(SCHEMA, "Label", &label.serialize()?)?;
     }
 }
