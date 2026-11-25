@@ -1,0 +1,273 @@
+{
+  "description_version": 1,
+  "schemas": [
+    {
+      "path": "schemas/shapes.tafla",
+      "definitions": [
+        {
+          "kind": "message",
+          "name": "Point",
+          "docs": ["A small table of two coordinates, an identifier and a name"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "x",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 16,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "y",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 24,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "int64"},
+              "offset": 32,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 3,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 40,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Document",
+          "docs": ["A document, whose header holds its length and version, with a nested", "table of columns of the same length"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": true, "version": 1, "header_size": 8},
+          "alignment": 4,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "x",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 24,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "y",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 32,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 40,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 3,
+              "name": "columns",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Columns"},
+              "offset": null,
+              "size": null,
+              "alignment": 4
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "name": "Columns",
+          "docs": ["Columns with a value per key"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 4,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "base",
+              "docs": ["The value that `keys` count from"],
+              "type": {"kind": "scalar", "scalar": "int64"},
+              "offset": 16,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "keys",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint32"},
+              "offset": 24,
+              "size": null,
+              "alignment": 4
+            },
+            {
+              "index": 2,
+              "name": "a",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "float32"},
+              "offset": null,
+              "size": null,
+              "alignment": 4
+            },
+            {
+              "index": 3,
+              "name": "b",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "float32"},
+              "offset": null,
+              "size": null,
+              "alignment": 4
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "ItemList",
+          "docs": ["A list of items, each a table of its own"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "items",
+              "docs": [],
+              "type": {"kind": "vector", "definition": "Item"},
+              "offset": 4,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "name": "Item",
+          "docs": [],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": 28,
+          "fields": [
+            {
+              "index": 0,
+              "name": "value",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 8,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "pair",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Pair"},
+              "offset": 12,
+              "size": 16,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "name": "Pair",
+          "docs": ["Two values of an item"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": 16,
+          "fields": [
+            {
+              "index": 0,
+              "name": "first",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 8,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "second",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 12,
+              "size": 4,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Sample",
+          "docs": ["A fixed-size sample, such as a stream sends one per frame"],
+          "size": 12,
+          "alignment": 4,
+          "fields": [
+            {
+              "index": 0,
+              "name": "key",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 0,
+              "size": 4
+            },
+            {
+              "index": 1,
+              "name": "a",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 4,
+              "size": 4
+            },
+            {
+              "index": 2,
+              "name": "b",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 8,
+              "size": 4
+            }
+          ],
+          "scalars": [
+            {
+              "path": ["key"],
+              "scalar": "uint32",
+              "offset": 0
+            },
+            {
+              "path": ["a"],
+              "scalar": "float32",
+              "offset": 4
+            },
+            {
+              "path": ["b"],
+              "scalar": "float32",
+              "offset": 8
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

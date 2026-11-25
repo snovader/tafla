@@ -1,0 +1,3 @@
+message Record (version: 7) {
+    key: uint64;
+}

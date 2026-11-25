@@ -1,0 +1,4 @@
+message Narrow (offset_type: uint16) { value: uint32; }
+message Sized (sized, version: 1) { value: uint32; }
+message Versioned (version: 1) { value: uint32; }
+message Plain { value: uint32; }

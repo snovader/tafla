@@ -1,0 +1,23 @@
+error: `Narrow` changes its offset type from `uint16` to `uint32`
+ --> layouts.tafla:2:30
+  |
+2 | message Narrow (offset_type: uint32) { value: uint32; }
+  |                              ^^^^^^ its header, offsets and counts change their width
+
+error: `Sized` loses the length in its header
+ --> layouts.tafla:4:9
+  |
+4 | message Sized (version: 1) { value: uint32; }
+  |         ^^^^^ the version and every offset move by a slot
+
+error: `Versioned` loses the version in its header
+ --> layouts.tafla:6:9
+  |
+6 | message Versioned { value: uint32; }
+  |         ^^^^^^^^^ every offset moves by a slot
+
+error: `Plain` gains the length in its header
+ --> layouts.tafla:8:16
+  |
+8 | message Plain (sized) { value: uint32; }
+  |                ^^^^^ the version and every offset move by a slot

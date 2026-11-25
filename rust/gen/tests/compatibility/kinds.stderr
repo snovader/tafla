@@ -1,0 +1,21 @@
+error: `Shape` changes, and has no version
+ --> kinds.tafla:1:9
+  |
+1 | message Shape {
+  |         ^^^^^ `Point` changes, which `point` holds, and only the version tells its old tables from its new ones
+
+error: `Point` was a table, and is a struct
+ --> kinds.tafla:7:8
+  |
+7 | struct Point {
+  |        ^^^^^ a table's bytes don't read as a struct
+
+error: `Extent` was a struct, and is a table
+  --> kinds.tafla:13:7
+   |
+13 | table Extent {
+   |       ^^^^^^ a struct's bytes don't read as a table
+
+note: `Removed` isn't declared in kinds.tafla, so nothing is compared with it
+
+note: `Renamed` isn't declared in kinds.tafla, so nothing is compared with it

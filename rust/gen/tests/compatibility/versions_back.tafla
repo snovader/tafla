@@ -1,0 +1,5 @@
+/// A version that tables written before already hold for other fields
+message Record (version: 6) {
+    key: uint64;
+    value: uint64;
+}

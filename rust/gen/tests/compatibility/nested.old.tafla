@@ -1,0 +1,30 @@
+message Document (version: 1) {
+    columns: Columns;
+    rows: [Row];
+}
+
+message Index {
+    columns: Columns;
+}
+
+table Columns {
+    keys: [uint32];
+}
+
+table Row {
+    value: float64;
+}
+
+table Loose {
+    value: float64;
+}
+
+/// A tree, whose nodes hold their children
+message Tree (version: 1) {
+    root: Node;
+}
+
+table Node {
+    value: int32;
+    children: [Node];
+}

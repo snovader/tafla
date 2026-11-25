@@ -1,0 +1,29 @@
+/// Read on its own, as the frames of a stream
+struct Sample {
+    time: uint64;
+    value: float32;
+}
+
+struct Vec2 {
+    x: float32;
+    y: float32;
+}
+
+struct Segment {
+    start: Vec2;
+    end: Vec2;
+}
+
+struct Pair {
+    first: int16;
+    second: int16;
+}
+
+message Path (version: 1) {
+    segments: [Segment];
+    last: Vec2;
+}
+
+message Pairs (version: 1) {
+    pair: Pair;
+}

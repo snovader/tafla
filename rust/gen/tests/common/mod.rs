@@ -423,3 +423,75 @@ fn write(path: &Path, contents: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, contents).unwrap();
 }
+
+/// Checks that the table of the description's definition `name`, at `start`
+/// in `bytes`, holds each field's offset where the description gives it, and
+/// so do the tables nested in it and the items of its vectors, which are
+/// read in place with its offset type. Fails with the first difference.
+pub fn check_described_offsets(
+    definitions: &[serde_json::Value],
+    name: &str,
+    bytes: &[u8],
+    start: usize,
+) -> Result<(), String> {
+    let definition = described(definitions, name);
+    let layout = &definition["layout"];
+    let width = as_usize(&layout["offset_size"]);
+    let header = as_usize(&layout["header_size"]);
+    let read = |position: usize| -> Result<usize, String> {
+        let slot = bytes
+            .get(position..position + width)
+            .ok_or_else(|| format!("{name}: no slot at {position}"))?;
+        Ok(slot
+            .iter()
+            .rev()
+            .fold(0, |value, &byte| (value << 8) | usize::from(byte)))
+    };
+
+    for (index, field) in fields_of(definition).iter().enumerate() {
+        let offset = read(start + header + index * width)?;
+        if let Some(described) = field["offset"].as_u64() {
+            let field_name = field["name"].as_str().unwrap();
+            if described != offset as u64 {
+                return Err(format!(
+                    "{name}.{field_name} is at {offset}, and described at {described}"
+                ));
+            }
+        }
+
+        let field_type = &field["type"];
+        let nested = field_type["definition"].as_str();
+        match field_type["kind"].as_str().unwrap() {
+            "table" => {
+                check_described_offsets(definitions, nested.unwrap(), bytes, start + offset)?;
+            }
+            "vector" => {
+                let vector = start + offset;
+                let count = read(vector)?;
+                let mut item = vector + width * (1 + count);
+                for index in 0..count {
+                    check_described_offsets(definitions, nested.unwrap(), bytes, item)?;
+                    item = vector + read(vector + width * (1 + index))?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// The description of the definition `name`
+pub fn described<'a>(definitions: &'a [serde_json::Value], name: &str) -> &'a serde_json::Value {
+    definitions
+        .iter()
+        .find(|definition| definition["name"] == name)
+        .unwrap_or_else(|| panic!("no description of {name}"))
+}
+
+pub fn fields_of(definition: &serde_json::Value) -> &[serde_json::Value] {
+    definition["fields"].as_array().unwrap()
+}
+
+pub fn as_usize(value: &serde_json::Value) -> usize {
+    usize::try_from(value.as_u64().unwrap()).unwrap()
+}

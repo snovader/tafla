@@ -1,0 +1,37 @@
+/// Its columns and rows gain a field each, and it keeps its version
+message Document (version: 1) {
+    columns: Columns;
+    rows: [Row];
+}
+
+/// Its columns gain a field, and it has no version
+message Index {
+    columns: Columns;
+}
+
+table Columns {
+    keys: [uint32];
+    values: [float32];
+}
+
+table Row {
+    value: float64;
+    weight: float64;
+}
+
+/// A table that no message holds, with nothing to tell its versions apart
+table Loose {
+    value: float64;
+    weight: float64;
+}
+
+/// Its nodes gain a field, and it changes its version
+message Tree (version: 2) {
+    root: Node;
+}
+
+table Node {
+    value: int32;
+    children: [Node];
+    label: string;
+}

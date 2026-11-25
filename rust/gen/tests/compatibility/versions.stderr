@@ -1,0 +1,17 @@
+note: no message reads version 3 of `Event` any more
+  --> versions.tafla:13:25
+   |
+13 | message Event (version: 4) {
+   |                         ^ to read the tables written before, declare their fields beside it, such as in `EventV3`
+
+error: `Frame` changes, and has no version
+  --> versions.tafla:19:9
+   |
+19 | message Frame {
+   |         ^^^^^ `checksum` is appended, and only the version tells the old tables from the new ones
+
+error: `Record` changes, and keeps version 7
+  --> versions.tafla:25:26
+   |
+25 | message Record (version: 7) {
+   |                          ^ `value` is appended, and only the version tells the old tables from the new ones

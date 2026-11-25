@@ -1,0 +1,11 @@
+note: `Record` goes from version 7 back to 6
+ --> versions_back.tafla:2:26
+  |
+2 | message Record (version: 6) {
+  |                          ^ a version that older tables hold would stand for two sets of fields
+
+note: no message reads version 7 of `Record` any more
+ --> versions_back.tafla:2:26
+  |
+2 | message Record (version: 6) {
+  |                          ^ to read the tables written before, declare their fields beside it, such as in `RecordV7`

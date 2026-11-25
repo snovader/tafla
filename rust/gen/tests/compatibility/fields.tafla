@@ -1,0 +1,19 @@
+/// A narrower float, a renamed string, an array of another element and a
+/// field removed, all in version 2
+message Point (version: 2) {
+    x: float32;
+    y: float64;
+    label: string;
+    tags: [int8];
+}
+
+/// Fields swapped, so each takes the other's index
+message Pair (version: 2) {
+    second: int64;
+    first: int32;
+}
+
+/// A `uint8` reads a byte that isn't 0 or 1 as another value than `bool`
+message Flag (version: 2) {
+    on: uint8;
+}

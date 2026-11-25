@@ -1,0 +1,35 @@
+/// It grows, and no message's version tells its old bytes from its new
+struct Sample {
+    time: uint64;
+    value: float32;
+    flags: uint8;
+}
+
+/// It grows at its end, which moves the end of each segment
+struct Vec2 {
+    x: float32;
+    y: float32;
+    z: float32;
+}
+
+struct Segment {
+    start: Vec2;
+    end: Vec2;
+}
+
+/// Renamed fields, of the same scalars
+struct Pair {
+    low: int16;
+    high: int16;
+}
+
+/// An array of segments, which grow, and a struct at its end, which grows
+/// too, in version 2
+message Path (version: 2) {
+    segments: [Segment];
+    last: Vec2;
+}
+
+message Pairs (version: 1) {
+    pair: Pair;
+}

@@ -1,0 +1,21 @@
+message Shape {
+    point: Point;
+    extent: Extent;
+}
+
+/// A table that's now a struct, whose bytes are its scalars alone
+struct Point {
+    x: float64;
+    y: float64;
+}
+
+/// A struct that's now a table, whose bytes start with offsets
+table Extent {
+    width: float64;
+    height: float64;
+}
+
+/// `Renamed` under its new name, which isn't compared with it
+message Named {
+    value: uint8;
+}

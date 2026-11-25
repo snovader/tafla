@@ -1,0 +1,28 @@
+/// Version 1, which `Document` read before, kept beside it, so that the
+/// tables written before are still read
+message DocumentV1 (sized, version: 1) {
+    title: string;
+}
+
+message Document (sized, version: 2) {
+    title: string;
+    body: string;
+}
+
+/// A field appended, in version 4, without a message to read version 3
+message Event (version: 4) {
+    kind: uint8;
+    time: uint64;
+}
+
+/// A field appended to a message without a version
+message Frame {
+    length: uint32;
+    checksum: uint32;
+}
+
+/// A field appended in the same version
+message Record (version: 7) {
+    key: uint64;
+    value: uint64;
+}
