@@ -234,13 +234,14 @@ Using the API wrongly raises other errors, whatever the bytes:
   return views of the bytes rather than of a copy, and as a struct, or a table
   or vector item, by a builder's setter. Array setters convert it instead.
 - ``TableLayout`` raises ``ValueError`` for a version that doesn't fit in its
-  offset type.
+  offset type, and ``TypeError`` for one that isn't an integer.
 - ``TableBuilder`` raises ``ValueError`` for more or fewer fields than it was
-  created with, or arrays, structs or tables given as buffers whose lengths changed before ``finalize()`` so that the table's
-  did, which leaves it unfinalized. A field that would make the table too long
-  for its ``offset_type`` raises ``ValueError`` from its setter and isn't
-  added. A value that its field's type can't hold raises as Conversions lists.
-  A field set after ``finalize()`` raises ``TypeError``.
+  created with, or arrays, structs or tables given as buffers whose lengths
+  changed before ``finalize()`` so that the table's did, which leaves it
+  unfinalized. A field that would make the table too long for its
+  ``offset_type`` raises ``ValueError`` from its setter and isn't added. A
+  value that its field's type can't hold raises as Conversions lists. A field
+  set after ``finalize()`` raises ``TypeError``.
 - ``TableWriter`` raises the errors of ``TableBuilder`` for the same values,
   but from the setter that writes them, and ``ValueError`` for a table too
   long for its ``offset_type`` from the setter whose offset or count doesn't

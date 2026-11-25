@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from functools import partial
+from operator import index
 from typing import ClassVar, override
 
 from .types import ElementSize, OffsetSize, OffsetType
@@ -52,7 +53,8 @@ class TableLayout:
     makes them.
 
     Raises ``ValueError`` if ``offset_type`` isn't ``"uint8"``, ``"uint16"`` or
-    ``"uint32"``, or ``version`` doesn't fit in it.
+    ``"uint32"``, or ``version`` doesn't fit in it, and ``TypeError`` if
+    ``version`` isn't an integer.
     """
 
     __slots__ = [
@@ -81,8 +83,14 @@ class TableLayout:
         if offset_size is None:
             raise ValueError(f"{offset_type!r} isn't an offset type")
 
-        if version is not None and not 0 <= version <= MAX_LENGTHS[offset_size]:
-            raise ValueError(f"Version {version} doesn't fit in a {offset_type} slot")
+        if version is not None:
+            # An int, or an object with __index__(), as the native class and
+            # struct take one: a float would pass the comparison
+            version = index(version)
+            if not 0 <= version <= MAX_LENGTHS[offset_size]:
+                raise ValueError(
+                    f"Version {version} doesn't fit in a {offset_type} slot"
+                )
 
         self.__sized = sized
         self.__version = version
@@ -122,13 +130,16 @@ class TableLayout:
         return self.__version
 
     def with_version(self, version: int) -> TableLayout:
-        """Returns the layout with ``version`` in place of its own, for another
-        version of the same format.
+        """Returns the layout with ``version`` as its version, for another
+        version of the same format. A layout without a version gains the slot
+        for one, so its header is a slot longer.
 
-        Raises ``ValueError`` if ``version`` doesn't fit in the offset type.
+        Raises ``TypeError`` if ``version`` isn't an integer, and ``ValueError``
+        if it doesn't fit in the offset type.
         """
+        # None, which the constructor takes for no version, isn't a version
         return TableLayout(
-            sized=self.__sized, version=version, offset_type=self.__offset_type
+            sized=self.__sized, version=index(version), offset_type=self.__offset_type
         )
 
     def offset_type(self) -> OffsetType:

@@ -73,7 +73,8 @@ impl Shape {
 /// makes them.
 ///
 /// Raises ``ValueError`` if ``offset_type`` isn't ``"uint8"``, ``"uint16"`` or
-/// ``"uint32"``, or ``version`` doesn't fit in it.
+/// ``"uint32"``, or ``version`` doesn't fit in it, and ``TypeError`` if
+/// ``version`` isn't an integer.
 #[pyclass(frozen, module = "tafla._native", name = "TableLayout")]
 pub struct TableLayout {
     shape: Shape,
@@ -249,10 +250,12 @@ impl TableLayout {
         self.shape.version
     }
 
-    /// Returns the layout with ``version`` in place of its own, for another
-    /// version of the same format.
+    /// Returns the layout with ``version`` as its version, for another
+    /// version of the same format. A layout without a version gains the slot
+    /// for one, so its header is a slot longer.
     ///
-    /// Raises ``ValueError`` if ``version`` doesn't fit in the offset type.
+    /// Raises ``TypeError`` if ``version`` isn't an integer, and ``ValueError``
+    /// if it doesn't fit in the offset type.
     fn with_version(&self, version: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self {
             shape: Shape {

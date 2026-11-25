@@ -50,6 +50,45 @@ class TestTableLayout(unittest.TestCase):
                 self.assertEqual(layout.versioned(), versioned)
                 self.assertEqual(layout.version(), version)
 
+    def test_takes_a_version_as_an_integer_and_rejects_anything_else(self) -> None:
+        """An int or an object with ``__index__()``, as the native class and
+        the pure-Python one both take it, where a float would compare as one
+        that fits."""
+
+        class Seven:
+            def __index__(self) -> int:
+                return 7
+
+        for version, expected in [(True, 1), (Seven(), 7)]:
+            with self.subTest(version=version):
+                given = cast(Any, version)
+
+                self.assertEqual(TableLayout(version=given).version(), expected)
+                self.assertEqual(
+                    TableLayout(version=0).with_version(given).version(), expected
+                )
+
+        for version in [1.5, "1", b"\x01"]:
+            with self.subTest(version=version):
+                given = cast(Any, version)
+
+                with self.assertRaises(TypeError):
+                    TableLayout(version=given)
+                with self.assertRaises(TypeError):
+                    TableLayout(version=0).with_version(given)
+
+    def test_gives_a_layout_without_a_version_the_slot_for_one(self) -> None:
+        layout = TableLayout(sized=True, offset_type="uint16")
+        versioned = layout.with_version(1)
+
+        self.assertFalse(layout.versioned())
+        self.assertEqual(versioned.version(), 1)
+        self.assertEqual(versioned.header_size(), layout.header_size() + 2)
+
+        # None is the constructor's for no version, and isn't a version
+        with self.assertRaises(TypeError):
+            versioned.with_version(cast(Any, None))
+
     def test_rejects_anything_but_an_offset_type(self) -> None:
         """Signed types, other widths, offset sizes in bytes and values that
         aren't strings, unhashable ones included"""
