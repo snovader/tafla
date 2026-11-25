@@ -997,6 +997,9 @@ fn sizes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields.{}()", identifier(&field.name));
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => {
+                unreachable!("compile() rejects arrays of strings for this target")
+            }
             FieldType::Scalar(scalar) => (format!("add{}", method_name(scalar)), vec![]),
             FieldType::Array(scalar) => (
                 format!("add{}Array", method_name(scalar)),
@@ -1051,6 +1054,9 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields.{}()", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
+            FieldType::StringVector => {
+                unreachable!("compile() rejects arrays of strings for this target")
+            }
             FieldType::Scalar(Scalar::Bool) => (
                 "setUint8".to_owned(),
                 vec![position, text(format!("(short) ({value} ? 1 : 0)"))],
@@ -1145,6 +1151,9 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name)
         ));
         match field.field_type {
+            FieldType::StringVector => {
+                unreachable!("compile() rejects arrays of strings for this target")
+            }
             FieldType::Scalar(Scalar::Bool) => {
                 writer.line(format!("return reader.getUint8({offset}) != 0;"));
             }
@@ -1356,6 +1365,9 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => {
+            unreachable!("compile() rejects arrays of strings for this target")
+        }
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),

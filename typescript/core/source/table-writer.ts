@@ -278,7 +278,7 @@ export class TableSizer {
      * Adds a vector of strings: its count, the end of each string, and each
      * string as UTF-8, with lone surrogates replaced by U+FFFD
      */
-    addStringVector(strings: ArrayLike<string>): void {
+    addStringVector(strings: readonly string[]): void {
         const count = strings.length;
 
         let length = (count + 1) * this._size;
@@ -806,7 +806,7 @@ export class TableWriter {
      * doesn't fit throws before its offset and count are written, and has
      * then written the strings that fit, and their ends, after the position.
      */
-    setStringVector(index: number, strings: ArrayLike<string>): void {
+    setStringVector(index: number, strings: readonly string[]): void {
         const count = strings.length;
         const size = this._size;
         const bytes = this._bytes;

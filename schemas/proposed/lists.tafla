@@ -1,0 +1,34 @@
+// The example schema of the proposed arrays of strings and of bools, which
+// only the TypeScript and JavaScript targets generate so far. It lies apart
+// from the example schemas that every target generates.
+
+/// A record with tags and flags, alone, in a nested table and in the items
+/// of a vector
+message Tagged {
+    id: uint32;
+    /// The record's tags, a vector of strings
+    tags: [string];
+    /// Whether each feature is on
+    flags: [bool];
+    names: Names;
+    entries: [Entry];
+}
+
+/// A nested table whose only field is a vector of strings
+table Names {
+    values: [string];
+}
+
+/// An item of a vector, which holds strings and bools of its own
+table Entry {
+    key: string;
+    aliases: [string];
+    enabled: [bool];
+}
+
+/// Strings and bools in a message of `uint16` offsets
+message Labels (offset_type: uint16) {
+    labels: [string];
+    bits: [bool];
+    count: uint8;
+}

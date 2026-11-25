@@ -136,8 +136,14 @@ pub struct Field {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldType {
     Scalar(Scalar),
+    /// An array of a scalar. An array of bools is a `uint8` array of 0 and
+    /// 1 on the wire, which only TypeScript and JavaScript generate so far.
     Array(Scalar),
     String,
+    /// A vector of strings: a count, the end of each string, and the
+    /// strings' UTF-8. It's proposed for the format, and only TypeScript and
+    /// JavaScript generate it so far.
+    StringVector,
     /// A struct, in place, by its index in [`Schema::definitions`]
     Struct(usize),
     /// An array of structs, by the structs' index in [`Schema::definitions`]
@@ -353,6 +359,7 @@ fn alignment_within(definitions: &[Definition], index: usize, alignments: &mut [
             FieldType::Table(nested) => alignment_within(definitions, nested, alignments),
             FieldType::Scalar(_)
             | FieldType::String
+            | FieldType::StringVector
             | FieldType::Struct(_)
             | FieldType::Vector(_) => 1,
         };

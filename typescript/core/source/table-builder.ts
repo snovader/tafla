@@ -389,8 +389,11 @@ export class TableBuilder {
      * string without reading the others. It takes no more bytes for each
      * string than the end of it, where a vector of tables of one string
      * takes each table's offset and the string's count too.
+     *
+     * It takes an array, rather than any array-like, since a string is an
+     * array-like of strings too, of one character each.
      */
-    setStringVector(strings: ArrayLike<string>): void {
+    setStringVector(strings: readonly string[]): void {
         // The writer encodes them in place, so only their lengths are
         // counted here
         const count = strings.length;
@@ -1057,7 +1060,7 @@ function writeField(
             break;
 
         case STRING_VECTOR:
-            writer.setStringVector(index, value as ArrayLike<string>);
+            writer.setStringVector(index, value as readonly string[]);
             break;
 
         case STRUCT:

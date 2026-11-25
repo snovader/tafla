@@ -82,14 +82,6 @@ describe('a vector of strings', () => {
         expect(view.toArray()).toStrictEqual(['a�', '�b', '🌍']);
     });
 
-    it('should take any array-like of strings', () => {
-        const strings = { length: 2, 0: 'one', 1: 'two' };
-        const builder = new TableBuilder(1);
-        builder.setStringVector(strings);
-
-        expect(viewOf(builder.bytes()).toArray()).toStrictEqual(['one', 'two']);
-    });
-
     it('should read strings longer than the short strings that are read a byte at a time', () => {
         const strings = ['a'.repeat(33), 'é'.repeat(40), '東'.repeat(300), 'b'.repeat(4096)];
 

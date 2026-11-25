@@ -131,6 +131,26 @@ impl Target {
             .map(|&(_, target)| target)
     }
 
+    /// The target's full name
+    pub fn name(self) -> &'static str {
+        Self::TARGETS
+            .iter()
+            .find(|&&(_, target)| target == self)
+            .map_or("", |(names, _)| names[0])
+    }
+
+    /// Whether the target generates arrays of strings and of bools. Only
+    /// TypeScript and JavaScript do, while the vector of strings is proposed
+    /// for the format.
+    pub const fn generates_lists(self) -> bool {
+        match self {
+            #[cfg(feature = "typescript")]
+            Self::TypeScript | Self::JavaScript => true,
+            #[allow(unreachable_patterns)]
+            _ => false,
+        }
+    }
+
     /// The full names of the targets that this build generates
     pub fn names() -> impl Iterator<Item = &'static str> {
         Self::TARGETS.iter().map(|(names, _)| names[0])

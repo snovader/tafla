@@ -61,6 +61,8 @@ Each field is `name: type;`, of one of these types:
 | `bool`                                                                   | A bool, in one byte       |
 | `[int8]` … `[float64]`                                                   | An array of a scalar type |
 | `string`                                                                 | A UTF-8 string            |
+| `[string]`                                                               | A vector of strings, proposed |
+| `[bool]`                                                                 | An array of bools, proposed |
 | A struct's name                                                          | A struct, in place        |
 | `[` a struct's name `]`                                                  | An array of structs       |
 | A table's name                                                           | A nested table            |
@@ -72,8 +74,22 @@ A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
 TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 `Bool` in Swift, and the generated code reads and writes it with the runtime's
-`uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
-and 1 holds bools in the meantime.
+`uint8` getters and setters. It's a scalar, in structs too.
+
+`[string]` and `[bool]` are proposed, and only the `typescript` and
+`javascript` targets generate them so far; every other target rejects a
+schema that has them, with an error at each. A `[string]` is a vector of
+strings, which `SPEC.md`'s draft adds to the format: a count, the end of
+each string and the strings' UTF-8. The generated getter returns the
+runtime's `StringVector`, whose `get(i)` reads one string from its ends and
+`toArray()` every string, and `fields()` reads a `string[]`. A `[bool]`
+changes nothing in the format: it's a `[uint8]` of 0 and 1 on the wire,
+whose generated getter returns the bytes in place, a `Uint8Array` that's true
+where a byte isn't 0, and whose `fields()` reads a `boolean[]`. Both are
+written from arrays, `readonly string[]` and `readonly boolean[]`, rather
+than any array-like, since a string is an array-like of its characters.
+`schemas/proposed/lists.tafla` is their example, which lies apart from the
+example schemas that every target generates.
 
 An enum gives its integer type after its name, and an integer to each of
 its values:
@@ -190,8 +206,7 @@ or read its tables, or a target couldn't generate its code:
   readers read a nested table's offsets as of its message's offset type, and
   tables have `uint32` offsets.
 - Structs hold scalars and structs only, and a struct can't contain itself,
-  even within another struct. Arrays of strings and of bools aren't
-  supported.
+  even within another struct.
 - A definition's fields fit in a Java constructor, which takes at most 254
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
@@ -1097,6 +1112,11 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   suite's `workloads.tafla` matches the files in the suite, and the suites'
   copies of the schema are the same. So do the code generated from each
   strings suite's `strings.tafla` and the copies of that schema.
+- `tests/proposed.rs`: the code generated from the schemas of what's
+  proposed for tafla, which `PROPOSED_SCHEMAS` lists, matches the files
+  beside their tests, and every target that doesn't generate it rejects each
+  `[string]` and `[bool]` of them, as `tests/proposed/lists.rust.stderr`
+  shows for `rust`.
 - `tests/diagnostics.rs`: each invalid schema in `tests/diagnostics/` fails
   with the errors in the `.stderr` file beside it, chains of 10,000 tables or
   structs fail with an error on the WebAssembly module's stack, structs whose
@@ -1169,6 +1189,15 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+
+The schemas of the proposed arrays of strings and of bools, which only the
+`typescript` and `javascript` targets generate, have golden files of those
+targets only, and `PROPOSED_SCHEMAS` lists where:
+
+| Schema                                             | Generated code, from the root of the repository                                                          |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `schemas/proposed/lists.tafla`                     | `typescript/core/test/proposed/lists/typescript/`, `typescript/core/test/proposed/lists/javascript/`     |
+| `typescript/benchmarks/strings/lists/lists.tafla`  | `typescript/benchmarks/strings/lists/generated/`                                                         |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

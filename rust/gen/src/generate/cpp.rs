@@ -636,6 +636,9 @@ impl Generator<'_> {
             writer.line(reader);
             writer.line(format!("const auto position = {offset};"));
             let read = match field.field_type {
+                FieldType::StringVector => {
+                    unreachable!("compile() rejects arrays of strings for this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
                 FieldType::Scalar(scalar) => {
                     self.as_enum(field, format!("reader.get_{}(position)", scalar.name()))
@@ -1298,6 +1301,9 @@ impl Generator<'_> {
             let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    unreachable!("compile() rejects arrays of strings for this target")
+                }
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer_.add_{}();", scalar.stored().name()));
                 }
@@ -1355,6 +1361,9 @@ impl Generator<'_> {
             let generic = self.generic_field(index, position, in_generic);
             let value = identifier(&field.name);
             match field.field_type {
+                FieldType::StringVector => {
+                    unreachable!("compile() rejects arrays of strings for this target")
+                }
                 FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                     "writer_.set_uint8({position}, static_cast<std::uint8_t>({value}));"
                 )),
@@ -1439,6 +1448,9 @@ impl Generator<'_> {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
 
         match field.field_type {
+            FieldType::StringVector => {
+                unreachable!("compile() rejects arrays of strings for this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "std::span<const std::uint8_t>".to_owned(),
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
@@ -1464,6 +1476,9 @@ impl Generator<'_> {
         };
 
         match field.field_type {
+            FieldType::StringVector => {
+                unreachable!("compile() rejects arrays of strings for this target")
+            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("std::span<const {}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),

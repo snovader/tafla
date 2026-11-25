@@ -25,6 +25,7 @@ const TYPESCRIPT: &[&str] = &[
     "Int8Array",
     "Number",
     "RangeError",
+    "StringVector",
     "StructWriter",
     "TableLayout",
     "TableReader",

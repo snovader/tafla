@@ -1,0 +1,41 @@
+error: the rust target doesn't generate arrays of strings yet
+  --> schemas/proposed/lists.tafla:10:12
+   |
+10 |     tags: [string];
+   |            ^^^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of bools yet
+  --> schemas/proposed/lists.tafla:12:13
+   |
+12 |     flags: [bool];
+   |             ^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of strings yet
+  --> schemas/proposed/lists.tafla:19:14
+   |
+19 |     values: [string];
+   |              ^^^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of strings yet
+  --> schemas/proposed/lists.tafla:25:15
+   |
+25 |     aliases: [string];
+   |               ^^^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of bools yet
+  --> schemas/proposed/lists.tafla:26:15
+   |
+26 |     enabled: [bool];
+   |               ^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of strings yet
+  --> schemas/proposed/lists.tafla:31:14
+   |
+31 |     labels: [string];
+   |              ^^^^^^ only the typescript and javascript targets generate them
+
+error: the rust target doesn't generate arrays of bools yet
+  --> schemas/proposed/lists.tafla:32:12
+   |
+32 |     bits: [bool];
+   |            ^^^^ only the typescript and javascript targets generate them

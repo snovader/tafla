@@ -232,6 +232,49 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 2] = [
     },
 ];
 
+/// A schema of what's proposed for tafla, which only some targets generate
+/// so far, and every other target rejects
+pub struct ProposedSchema {
+    /// Relative to the repository, which generated files name
+    pub schema: &'static str,
+    /// Each target that generates it, and the directory, relative to the
+    /// repository, that holds its generated code and nothing else
+    pub goldens: &'static [(&'static str, &'static str)],
+}
+
+/// The schemas of the proposed arrays of strings and of bools, which only
+/// the TypeScript and JavaScript targets generate so far. They lie apart
+/// from the example schemas and the suites' schemas, which every target
+/// generates.
+pub const PROPOSED_SCHEMAS: [ProposedSchema; 2] = [
+    ProposedSchema {
+        schema: "schemas/proposed/lists.tafla",
+        goldens: &[
+            (
+                "typescript",
+                "typescript/core/test/proposed/lists/typescript",
+            ),
+            (
+                "javascript",
+                "typescript/core/test/proposed/lists/javascript",
+            ),
+        ],
+    },
+    ProposedSchema {
+        schema: "typescript/benchmarks/strings/lists/lists.tafla",
+        goldens: &[(
+            "typescript",
+            "typescript/benchmarks/strings/lists/generated",
+        )],
+    },
+];
+
+impl ProposedSchema {
+    pub fn source(&self) -> String {
+        read(&Path::new(REPOSITORY).join(self.schema))
+    }
+}
+
 impl BenchmarkSchema {
     pub fn source(&self) -> String {
         read(&Path::new(REPOSITORY).join(self.schema))

@@ -948,13 +948,6 @@ fn resolve_definition(
     let name = &field.type_name;
 
     if let Some(scalar) = Scalar::from_name(&name.text) {
-        if scalar == Scalar::Bool && field.is_array {
-            errors.push(
-                Diagnostic::new("arrays of bools aren't supported", name.span)
-                    .with_help("use `[uint8]` of 0 and 1"),
-            );
-            return None;
-        }
         return Some(if field.is_array {
             FieldType::Array(scalar)
         } else {
@@ -963,14 +956,11 @@ fn resolve_definition(
     }
 
     if name.text == "string" {
-        if field.is_array {
-            errors.push(Diagnostic::new(
-                "arrays of strings aren't supported",
-                name.span,
-            ));
-            return None;
-        }
-        return Some(FieldType::String);
+        return Some(if field.is_array {
+            FieldType::StringVector
+        } else {
+            FieldType::String
+        });
     }
 
     let Some(&index) = names.definitions.get(name.text.as_str()) else {
@@ -1000,6 +990,37 @@ fn resolve_definition(
             FieldType::Struct(index)
         }),
     }
+}
+
+/// The errors of a checked schema's arrays of strings and of bools, for a
+/// target that doesn't generate them yet, named `target`. They're accepted
+/// by the checker, since the TypeScript and JavaScript targets generate them,
+/// but the vector of strings is proposed for the format, and the other
+/// targets' runtimes don't read it.
+pub fn check_lists(declarations: &[Declaration], target: &str) -> Vec<Diagnostic> {
+    let mut errors = Vec::new();
+    let arrays = declarations
+        .iter()
+        .flat_map(|declaration| &declaration.fields)
+        .filter(|field| field.is_array);
+
+    for field in arrays {
+        let name = &field.type_name;
+        let kind = match name.text.as_str() {
+            "string" => "arrays of strings",
+            "bool" => "arrays of bools",
+            _ => continue,
+        };
+        errors.push(
+            Diagnostic::new(
+                format!("the {target} target doesn't generate {kind} yet"),
+                name.span,
+            )
+            .with_help("only the typescript and javascript targets generate them"),
+        );
+    }
+
+    errors
 }
 
 /// The most edits that a misspelled type is suggested across

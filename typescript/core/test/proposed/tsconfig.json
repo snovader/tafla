@@ -1,0 +1,16 @@
+{
+    "extends": "../../../tsconfig.node.json",
+    "compilerOptions": {
+        "outDir": "../../../.cache/typescript/core/test/proposed",
+        // The generated JavaScript is checked through its JSDoc types, as
+        // the code of a project that uses it would be
+        "allowJs": true,
+        "checkJs": true
+    },
+    "include": ["."],
+    "references": [
+        { "path": "../.." },
+        { "path": "../conformance" },
+        { "path": "../generated" }
+    ]
+}
