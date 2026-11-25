@@ -13,6 +13,7 @@
 
 #include "../codec.hpp"
 #include "messages.pb.h"
+#include "strings.pb.h"
 
 namespace tafla::benchmarks {
 
@@ -27,6 +28,11 @@ namespace tafla::benchmarks {
 /// bytes, and returns it in a `Kept` with the message. It moves its strings.
 /// protobuf has no structs, so the array of them is a repeated message of the
 /// three floats.
+///
+/// The strings suite's 16 strings are a repeated string, which proto3 checks
+/// is UTF-8 as it writes the message and as it parses it, copying each string
+/// into a `std::string` of its own. Reading moves those strings out of the
+/// message.
 struct Protobuf {
     static constexpr std::string_view name = "protobuf";
 
@@ -136,6 +142,28 @@ struct Protobuf {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const auto message = parse<tafla_proto::Sample>(bytes);
         return {message.key(), message.a(), message.b()};
+    }
+
+    [[nodiscard]] std::string serialize(StringsShape, const Strings& input) const {
+        tafla_proto::Strings message;
+        message.mutable_items()->Reserve(static_cast<int>(kStrings));
+        for (const auto& string : input) {
+            message.add_items(string.view());
+        }
+        return message.SerializeAsString();
+    }
+
+    [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {
+        auto message = parse<tafla_proto::Strings>(bytes);
+        if (message.items_size() != static_cast<int>(kStrings)) {
+            throw CodecError("The protobuf message doesn't hold 16 strings");
+        }
+
+        Strings strings;
+        for (std::size_t index = 0; index < kStrings; ++index) {
+            strings[index] = Text::owned(std::move(*message.mutable_items(static_cast<int>(index))));
+        }
+        return strings;
     }
 
     /// The values of a repeated field, in place

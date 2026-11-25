@@ -26,6 +26,10 @@ namespace tafla::benchmarks {
 /// `store_le()` and read with `TableReader`'s getters, and an array of structs
 /// with `store_le()` and `load_le()`, as tafla-gen's code writes and reads an
 /// array of them.
+///
+/// tafla has no vector of strings, so the strings suite's 16 strings are a
+/// table of 16 string fields, written with `set_string()` and read with
+/// `get_string()`, which checks that each is UTF-8 and views it.
 struct Tafla {
     static constexpr std::string_view name = "tafla";
 
@@ -146,6 +150,24 @@ struct Tafla {
     [[nodiscard]] Sample deserialize(SampleShape, std::span<const std::uint8_t> bytes) const {
         const TableReader reader(bytes, TableLayout());
         return {reader.get_uint32(0), reader.get_float32(4), reader.get_float32(8)};
+    }
+
+    [[nodiscard]] Bytes serialize(StringsShape, const Strings& input) const {
+        TableBuilder builder(kStrings, TableLayout());
+        for (const auto& string : input) {
+            builder.set_string(string.view());
+        }
+        return builder.to_bytes();
+    }
+
+    [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {
+        const TableReader reader(bytes, TableLayout());
+
+        Strings strings;
+        for (std::size_t index = 0; index < kStrings; ++index) {
+            strings[index] = Text::borrowed(reader.get_string(reader.root_offset(index)));
+        }
+        return strings;
     }
 
     /// Reads a document's header, which must carry the version it's written in

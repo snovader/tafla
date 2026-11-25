@@ -28,6 +28,10 @@ namespace tafla::benchmarks {
 /// Structs have a fixed shape, so an array of them packs each struct, and the
 /// table that holds them, as an array of its fields in order, without their
 /// names, as rmp-serde's `to_vec()` does.
+///
+/// The strings suite's 16 strings pack as an array, as msgpackr packs one,
+/// and unpack as references to the bytes, whose UTF-8 msgpack-cxx never
+/// checks.
 struct Msgpack {
     static constexpr std::string_view name = "msgpack";
 
@@ -222,6 +226,30 @@ struct Msgpack {
             }
         }
         return sample;
+    }
+
+    [[nodiscard]] msgpack::sbuffer serialize(StringsShape, const Strings& input) const {
+        msgpack::sbuffer buffer;
+        Packer packer(buffer);
+        packer.pack_array(static_cast<std::uint32_t>(kStrings));
+        for (const auto& string : input) {
+            packer.pack(string.view());
+        }
+        return buffer;
+    }
+
+    [[nodiscard]] Strings deserialize(StringsShape, std::span<const std::uint8_t> bytes) const {
+        const auto handle = unpack(bytes);
+        const auto items = array_of(handle.get());
+        if (items.size() != kStrings) {
+            throw CodecError("The msgpack array doesn't hold 16 strings");
+        }
+
+        Strings strings;
+        for (std::size_t index = 0; index < kStrings; ++index) {
+            strings[index] = Text::borrowed(items[index].as<std::string_view>());
+        }
+        return strings;
     }
 
     /// Packs a column as an array, element by element
