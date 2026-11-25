@@ -6,7 +6,7 @@ from typing import Any, cast, override
 from hypothesis import assume, given
 from hypothesis.strategies import booleans, integers, one_of, sampled_from
 
-from tafla import FixedFields, TableBuilder, TableLayout, TableWriter
+from tafla import FixedFields, TableBuilder, TableLayout, TableReader, TableWriter
 from tests.byte_order import big_endian_host
 from tests.descriptions import tables
 from tests.tables import (
@@ -267,21 +267,20 @@ class TestTableLength(unittest.TestCase):
 
 
 class TestVersions(unittest.TestCase):
-    def test_rejects_the_versions_that_table_builder_rejects(self) -> None:
-        versioned = TableLayout(versioned=True, offset_type="uint8")
-        cases: list[tuple[TableLayout, int | None, type[Exception]]] = [
-            (TableLayout.DEFAULT, 1, TypeError),
-            (versioned, None, TypeError),
-            (versioned, 256, ValueError),
-            (versioned, -1, ValueError),
+    def test_writes_the_layouts_version_as_table_builder_does(self) -> None:
+        cases: list[tuple[OffsetType, int]] = [
+            ("uint8", 0),
+            ("uint8", 255),
+            ("uint16", 65_535),
         ]
+        for offset_type, version in cases:
+            with self.subTest(offset_type=offset_type, version=version):
+                layout = TableLayout(version=version, offset_type=offset_type)
 
-        for layout, version, error in cases:
-            with self.subTest(layout=layout, version=version):
-                with self.assertRaises(error):
-                    TableBuilder(0, cast(Any, layout), cast(Any, version))
-                with self.assertRaises(error):
-                    TableWriter(0, cast(Any, layout), cast(Any, version))
+                written = bytes(TableWriter(0, layout).bytes())
+
+                self.assertEqual(written, bytes(TableBuilder(0, layout).bytes()))
+                self.assertEqual(TableReader(written, layout).get_version(), version)
 
 
 class Unconvertible:

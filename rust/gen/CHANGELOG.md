@@ -188,6 +188,10 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The Python that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `version=FORMAT_VERSION`, rather than
+  to each `TableWriter` and to `TableWriter.write_fields()`, which no longer
+  take one. It needs the runtime that takes the version so.
 - The Rust that tafla-gen generates for a versioned message gives the
   version to the message's layout, as `with_version(Self::FORMAT_VERSION)`,
   rather than to `TableSizer::versioned()` and

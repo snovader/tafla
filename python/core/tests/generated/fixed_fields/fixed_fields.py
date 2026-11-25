@@ -1040,7 +1040,9 @@ class Tagged:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint8")
+    _LAYOUT: Final = TableLayout(
+        sized=True, version=FORMAT_VERSION, offset_type="uint8"
+    )
     _FIXED_FIELDS: Final = FixedFields(3, "I", "8s", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -1071,7 +1073,6 @@ class Tagged:
             cls._FIXED_FIELDS,
             (fields["id"], fields["position"].serialize()),
             fields["label"],
-            version=cls.FORMAT_VERSION,
         )
 
     def id(self) -> int:
@@ -1257,7 +1258,9 @@ class Pixel:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint16")
+    _LAYOUT: Final = TableLayout(
+        sized=True, version=FORMAT_VERSION, offset_type="uint16"
+    )
     _FIXED_FIELDS: Final = FixedFields(2, "8s", "I", layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -1285,9 +1288,7 @@ class Pixel:
     def serialize(cls, **fields: Unpack[PixelFields]) -> bytes:
         """Writes a ``Pixel`` with every field, in one call, into bytes of its own"""
         return TableWriter.write_fields(
-            cls._FIXED_FIELDS,
-            (fields["position"].serialize(), fields["color"]),
-            version=cls.FORMAT_VERSION,
+            cls._FIXED_FIELDS, (fields["position"].serialize(), fields["color"])
         )
 
     def position(self) -> Vec2:
@@ -1462,7 +1463,7 @@ class Box:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True)
+    _LAYOUT: Final = TableLayout(version=FORMAT_VERSION)
     _FIXED_FIELDS: Final = FixedFields(
         3, "8s", "8s", FixedFields(2, "I", "I"), layout=_LAYOUT
     )
@@ -1499,7 +1500,6 @@ class Box:
                 fields["range"]["start"],
                 fields["range"]["end"],
             ),
-            version=cls.FORMAT_VERSION,
         )
 
     def min(self) -> Vec2:

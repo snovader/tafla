@@ -222,7 +222,7 @@ class Uint8OffsetsVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint8")
+    _LAYOUT: Final = TableLayout(version=FORMAT_VERSION, offset_type="uint8")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -249,7 +249,7 @@ class Uint8OffsetsVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Uint8OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint8OffsetsVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -262,7 +262,7 @@ class Uint8OffsetsVersioned:
         """Writes a ``Uint8OffsetsVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 
@@ -352,7 +352,9 @@ class Uint8OffsetsSizedVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint8")
+    _LAYOUT: Final = TableLayout(
+        sized=True, version=FORMAT_VERSION, offset_type="uint8"
+    )
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -381,7 +383,7 @@ class Uint8OffsetsSizedVersioned:
         cls, **fields: Unpack[Uint8OffsetsSizedVersionedFields]
     ) -> memoryview:
         """Writes a ``Uint8OffsetsSizedVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -394,7 +396,7 @@ class Uint8OffsetsSizedVersioned:
         """Writes a ``Uint8OffsetsSizedVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 
@@ -690,7 +692,7 @@ class Uint16OffsetsVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True, offset_type="uint16")
+    _LAYOUT: Final = TableLayout(version=FORMAT_VERSION, offset_type="uint16")
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -717,7 +719,7 @@ class Uint16OffsetsVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Uint16OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint16OffsetsVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -730,7 +732,7 @@ class Uint16OffsetsVersioned:
         """Writes a ``Uint16OffsetsVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 
@@ -820,7 +822,9 @@ class Uint16OffsetsSizedVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True, offset_type="uint16")
+    _LAYOUT: Final = TableLayout(
+        sized=True, version=FORMAT_VERSION, offset_type="uint16"
+    )
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -849,7 +853,7 @@ class Uint16OffsetsSizedVersioned:
         cls, **fields: Unpack[Uint16OffsetsSizedVersionedFields]
     ) -> memoryview:
         """Writes a ``Uint16OffsetsSizedVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -862,7 +866,7 @@ class Uint16OffsetsSizedVersioned:
         """Writes a ``Uint16OffsetsSizedVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 
@@ -1158,7 +1162,7 @@ class Uint32OffsetsVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(versioned=True)
+    _LAYOUT: Final = TableLayout(version=FORMAT_VERSION)
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -1185,7 +1189,7 @@ class Uint32OffsetsVersioned:
     @classmethod
     def serialize(cls, **fields: Unpack[Uint32OffsetsVersionedFields]) -> memoryview:
         """Writes a ``Uint32OffsetsVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -1198,7 +1202,7 @@ class Uint32OffsetsVersioned:
         """Writes a ``Uint32OffsetsVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 
@@ -1288,7 +1292,7 @@ class Uint32OffsetsSizedVersioned:
     checks
     """
 
-    _LAYOUT: Final = TableLayout(sized=True, versioned=True)
+    _LAYOUT: Final = TableLayout(sized=True, version=FORMAT_VERSION)
     _FIXED_FIELDS: Final = FixedFields(3, "I", string=True, layout=_LAYOUT)
 
     def __init__(self, data: Buffer) -> None:
@@ -1317,7 +1321,7 @@ class Uint32OffsetsSizedVersioned:
         cls, **fields: Unpack[Uint32OffsetsSizedVersionedFields]
     ) -> memoryview:
         """Writes a ``Uint32OffsetsSizedVersioned`` with every field"""
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (fields["id"],), fields["name"])
         writer.set_uint16_array(2, fields["values"])
 
@@ -1330,7 +1334,7 @@ class Uint32OffsetsSizedVersioned:
         """Writes a ``Uint32OffsetsSizedVersioned`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(3, cls._LAYOUT, cls.FORMAT_VERSION)
+        writer = TableWriter(3, cls._LAYOUT)
         writer.set_fields(cls._FIXED_FIELDS, (id,), name)
         writer.set_uint16_array(2, values)
 

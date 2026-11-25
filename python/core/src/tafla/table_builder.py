@@ -1,5 +1,5 @@
 from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
-from typing import Any, Literal, overload
+from typing import Any
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
 from .elements import as_elements, byte_view, struct_count
@@ -64,7 +64,6 @@ class TableBuilder:
         "__offset",
         "__records",
         "__size",
-        "__version",
         "__written",
     ]
 
@@ -81,43 +80,24 @@ class TableBuilder:
     # values.
     __records: list[_Record]
 
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[False]] = TableLayout.DEFAULT
-    ) -> None: ...
-
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[True]], version: int
-    ) -> None: ...
-
-    def __init__(
-        self,
-        fields: int,
-        layout: TableLayout = TableLayout.DEFAULT,
-        version: int | None = None,
-    ) -> None:
+    def __init__(self, fields: int, layout: TableLayout = TableLayout.DEFAULT) -> None:
         """``fields`` is the number of fields that the table will hold, and
-        ``layout`` its header and offset type, which its readers must use too.
-        ``version`` is written to the header, and required when the layout is
-        versioned. Readers can check it with ``TableReader.get_version()``
-        before reading any field.
+        ``layout`` its header and offset type, which its readers must use too,
+        with the version to write to the header when it has one. Readers can
+        check it with ``TableReader.get_version()`` before reading any field.
 
-        Raises ``TypeError`` if ``version`` is given for a layout without a
-        version slot, or missing for one with it. Raises ``ValueError`` if
-        ``version`` doesn't fit in the layout's offset type, or the header
-        alone is longer than the layout addresses.
+        Raises ``ValueError`` if the header alone is longer than the layout
+        addresses.
         """
         size = layout.offset_size()
 
         self.__written = None
         self.__layout = layout
-        self.__version = version
         self.__size = size
         self.__fields = fields
         self.__max_length = MAX_LENGTHS[size]
         # The table's length so far, which is where the next field goes
-        self.__offset = header_length(fields, layout, version)
+        self.__offset = header_length(fields, layout)
         # The largest alignment that a field needs from the table's start,
         # which a parent pads this table to when it nests it
         self.__alignment = SIZEOF_8
@@ -614,7 +594,7 @@ class TableBuilder:
         """
         self.__assert_complete()
 
-        writer = _checked_writer(self.__fields, self.__layout, self.__version)
+        writer = _checked_writer(self.__fields, self.__layout)
         self.__write_fields(writer, self.__records)
         data = writer.bytes()
 

@@ -1,7 +1,7 @@
 import builtins
 from collections.abc import Buffer, Iterable, Iterator, Sequence
 from struct import error as StructError
-from typing import Any, Literal, Self, cast, overload
+from typing import Any, Self, cast
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
@@ -108,33 +108,16 @@ class TableWriter:
 
     __size: OffsetSize
 
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[False]] = TableLayout.DEFAULT
-    ) -> None: ...
-
-    @overload
-    def __init__(
-        self, fields: int, layout: TableLayout[Literal[True]], version: int
-    ) -> None: ...
-
-    def __init__(
-        self,
-        fields: int,
-        layout: TableLayout = TableLayout.DEFAULT,
-        version: int | None = None,
-    ) -> None:
+    def __init__(self, fields: int, layout: TableLayout = TableLayout.DEFAULT) -> None:
         """``fields`` is the number of fields of the table, and ``layout`` its
-        header and offset type, which its readers must use too. ``version`` is
-        written to the header, and required when the layout is versioned.
+        header and offset type, which its readers must use too, with the
+        version to write to the header when it has one.
 
-        Raises ``TypeError`` if ``version`` is given for a layout without a
-        version slot, or missing for one with it. Raises ``ValueError`` if
-        ``version`` doesn't fit in the layout's offset type, or the header alone
-        is longer than the layout addresses.
+        Raises ``ValueError`` if the header alone is longer than the layout
+        addresses.
         """
         size = layout.offset_size()
-        data = bytearray(header_length(fields, layout, version))
+        data = bytearray(header_length(fields, layout))
 
         # The offset size, the width of offsets, lengths and header slots
         self.__size = size
@@ -148,11 +131,12 @@ class TableWriter:
         self.__table = 0
         self.__slots = self.__header_size
 
+        version = layout.version()
         if version is not None:
             self.__length.pack_into(data, size if self.__sized else 0, version)
 
     @classmethod
-    def _checked(cls, fields: int, layout: TableLayout, version: int | None) -> Self:
+    def _checked(cls, fields: int, layout: TableLayout) -> Self:
         """Returns a writer as the constructor does, for arguments that
         ``TableBuilder``'s constructor checked already, without checking them
         again."""
@@ -175,6 +159,7 @@ class TableWriter:
         writer.__table = 0
         writer.__slots = header_size
 
+        version = layout.version()
         if version is not None:
             writer.__length.pack_into(data, size if sized else 0, version)
 
@@ -185,16 +170,13 @@ class TableWriter:
         fields: FixedFields,
         values: tuple[Any, ...],
         string: str = "",
-        version: int | None = None,
     ) -> builtins.bytes:
         """Writes a table of only the fields that ``fields`` describes, a
         message's, in the layout that it was created with, from their
         ``values`` as ``set_fields()`` takes them, and ``string`` when they
         end with one, and returns its bytes, in one call. They're the bytes
-        that ``TableWriter(fields, layout, version)``, ``set_fields()`` and
-        ``bytes()`` write, and it raises as they do, in their order: the
-        constructor's error for a ``version`` that the layout can't hold comes
-        before the error of a value.
+        that ``TableWriter(fields, layout)``, ``set_fields()`` and ``bytes()``
+        write, and it raises as they do.
 
         Raises ``TypeError`` if ``fields`` has no layout, as a nested table's
         doesn't.
@@ -204,41 +186,30 @@ class TableWriter:
         if header is None:
             raise TypeError("A nested table's fields have no layout to write")
 
-        size, slots, sized, versioned = header
+        size, slots, sized, version = header
         # Packed in one call, then the string's bytes, after the header,
-        # unless a value doesn't fit or the version isn't as the layout needs,
-        # which the writer's calls raise for
-        if versioned == (version is not None):
-            try:
-                if fields._string:
-                    encoded = string.encode()
-                    packed = fields._packers[size](*values, len(encoded))
-                else:
-                    encoded = b""
-                    packed = fields._packers[size](*values)
+        # unless a value doesn't fit, which the writer's calls raise for
+        try:
+            if fields._string:
+                encoded = string.encode()
+                packed = fields._packers[size](*values, len(encoded))
+            else:
+                encoded = b""
+                packed = fields._packers[size](*values)
 
-                length = slots.size + len(packed) + len(encoded)
-                if length <= MAX_LENGTHS[size]:
-                    if sized and versioned:
-                        packed = slots.pack(length, version) + packed
-                    elif sized:
-                        packed = slots.pack(length) + packed
-                    elif versioned:
-                        packed = slots.pack(version) + packed
-                    return packed + encoded if encoded else packed
-            except _FIELD_ERRORS:
-                pass
-            except Exception:
-                # A value's own error, such as its __index__()'s, unless the
-                # version doesn't fit, which the constructor raises for first
-                if version is None or 0 <= version <= MAX_LENGTHS[size]:
-                    raise
+            length = slots.size + len(packed) + len(encoded)
+            if length <= MAX_LENGTHS[size]:
+                if sized and version is not None:
+                    packed = slots.pack(length, version) + packed
+                elif sized:
+                    packed = slots.pack(length) + packed
+                elif version is not None:
+                    packed = slots.pack(version) + packed
+                return packed + encoded if encoded else packed
+        except _FIELD_ERRORS:
+            pass
 
-        layout = cast(Any, fields._layout)
-        if version is None:
-            writer = TableWriter(fields._fields, layout)
-        else:
-            writer = TableWriter(fields._fields, layout, version)
+        writer = TableWriter(fields._fields, cast(Any, fields._layout))
         writer.set_fields(fields, values, string)
         return builtins.bytes(writer.bytes())
 

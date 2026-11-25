@@ -41,11 +41,14 @@ class TestTableLayout(unittest.TestCase):
 
         for sized, versioned, offset_type, header_size in cases:
             with self.subTest(sized=sized, versioned=versioned, type=offset_type):
+                version = 1 if versioned else None
                 layout = TableLayout(
-                    sized=sized, versioned=versioned, offset_type=offset_type
+                    sized=sized, version=version, offset_type=offset_type
                 )
 
                 self.assertEqual(layout.header_size(), header_size)
+                self.assertEqual(layout.versioned(), versioned)
+                self.assertEqual(layout.version(), version)
 
     def test_rejects_anything_but_an_offset_type(self) -> None:
         """Signed types, other widths, offset sizes in bytes and values that
@@ -78,7 +81,7 @@ class TestTableLayout(unittest.TestCase):
 
         self.assertEqual(
             repr(layout),
-            "TableLayout(sized=True, versioned=False, offset_type='uint16')",
+            "TableLayout(sized=True, version=None, offset_type='uint16')",
         )
 
     def test_pickles_and_copies_as_a_layout_of_the_same_header_and_offset_type(
@@ -86,7 +89,7 @@ class TestTableLayout(unittest.TestCase):
     ) -> None:
         layouts = [
             TableLayout.DEFAULT,
-            TableLayout(sized=True, versioned=True, offset_type="uint16"),
+            TableLayout(sized=True, version=7, offset_type="uint16"),
         ]
         for layout in layouts:
             copies = [

@@ -107,10 +107,12 @@ def offset_size_of(offset_type: OffsetType) -> int:
     return ELEMENT_SIZES[offset_type]
 
 
-def layout_of(layout: Description) -> TableLayout:
+def layout_of(layout: Description, version: int = 0) -> TableLayout:
+    """The layout that a description sets out, with ``version`` when it's
+    versioned. A reader reads tables of any version, so it needs none."""
     return TableLayout(
         sized=layout["sized"],
-        versioned=layout["versioned"],
+        version=version if layout["versioned"] else None,
         offset_type=layout["offsetType"],
     )
 
@@ -135,11 +137,7 @@ def create_builder(table: Description) -> TableBuilder:
     fields = len(table["fields"])
 
     if layout["versioned"]:
-        return TableBuilder(
-            fields,
-            TableLayout(sized=sized, versioned=True, offset_type=offset_type),
-            table["version"],
-        )
+        return TableBuilder(fields, layout_of(layout, table["version"]))
 
     return TableBuilder(fields, TableLayout(sized=sized, offset_type=offset_type))
 
@@ -292,11 +290,7 @@ def write_table(
     fields = len(table["fields"])
 
     if layout["versioned"]:
-        writer = TableWriter(
-            fields,
-            TableLayout(sized=sized, versioned=True, offset_type=offset_type),
-            table["version"],
-        )
+        writer = TableWriter(fields, layout_of(layout, table["version"]))
     else:
         writer = TableWriter(fields, TableLayout(sized=sized, offset_type=offset_type))
 
