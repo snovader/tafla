@@ -28,6 +28,12 @@ repository's first commits, for code built from its source before the release.
   checks the count once.
 - `TableSizer.writer(bytes)`, which writes a table into the start of the
   caller's bytes rather than new ones.
+- A proposed vector of strings: `TableBuilder.setStringVector()`,
+  `TableSizer.addStringVector()` and `TableWriter.setStringVector()` write one
+  from an array of strings, `TableReader.getStringVector()` reads every
+  string, `TableReader.getStringVectorItem()` one from its ends, and
+  `StringVector` views one. Its cases lie in `conformance/proposed/` until
+  every implementation reads it.
 - API for the code that tafla-gen generates, which lays out the fields whose
   sizes the schema fixes itself, and may change with it:
   `TableSizer.addTableBytes()`, which adds a nested table or a vector's items

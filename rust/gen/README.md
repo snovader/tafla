@@ -54,21 +54,21 @@ A schema declares messages, tables, structs and enums, in any order:
 
 Each field is `name: type;`, of one of these types:
 
-| Type                                                                     | Field                     |
-| ------------------------------------------------------------------------ | ------------------------- |
-| `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64` | An integer                |
-| `float32`, `float64`                                                     | A float                   |
-| `bool`                                                                   | A bool, in one byte       |
-| `[int8]` … `[float64]`                                                   | An array of a scalar type |
-| `string`                                                                 | A UTF-8 string            |
+| Type                                                                     | Field                         |
+| ------------------------------------------------------------------------ | ----------------------------- |
+| `int8`, `uint8`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64` | An integer                    |
+| `float32`, `float64`                                                     | A float                       |
+| `bool`                                                                   | A bool, in one byte           |
+| `[int8]` … `[float64]`                                                   | An array of a scalar type     |
+| `string`                                                                 | A UTF-8 string                |
 | `[string]`                                                               | A vector of strings, proposed |
-| `[bool]`                                                                 | An array of bools, proposed |
-| A struct's name                                                          | A struct, in place        |
-| `[` a struct's name `]`                                                  | An array of structs       |
-| A table's name                                                           | A nested table            |
-| `[` a table's name `]`                                                   | A vector of tables        |
-| An enum's name                                                           | An integer of the enum    |
-| `[` an enum's name `]`                                                   | An array of the enum      |
+| `[bool]`                                                                 | An array of bools, proposed   |
+| A struct's name                                                          | A struct, in place            |
+| `[` a struct's name `]`                                                  | An array of structs           |
+| A table's name                                                           | A nested table                |
+| `[` a table's name `]`                                                   | A vector of tables            |
+| An enum's name                                                           | An integer of the enum        |
+| `[` an enum's name `]`                                                   | An array of the enum          |
 
 A `bool` is written as 0 or 1 and read as true when its byte isn't 0, as the
 format describes it, so that any byte reads as a value. It's `boolean` in
@@ -1194,10 +1194,10 @@ The schemas of the proposed arrays of strings and of bools, which only the
 `typescript` and `javascript` targets generate, have golden files of those
 targets only, and `PROPOSED_SCHEMAS` lists where:
 
-| Schema                                             | Generated code, from the root of the repository                                                          |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `schemas/proposed/lists.tafla`                     | `typescript/core/test/proposed/lists/typescript/`, `typescript/core/test/proposed/lists/javascript/`     |
-| `typescript/benchmarks/strings/lists/lists.tafla`  | `typescript/benchmarks/strings/lists/generated/`                                                         |
+| Schema                                            | Generated code, from the root of the repository                                                      |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `schemas/proposed/lists.tafla`                    | `typescript/core/test/proposed/lists/typescript/`, `typescript/core/test/proposed/lists/javascript/` |
+| `typescript/benchmarks/strings/lists/lists.tafla` | `typescript/benchmarks/strings/lists/generated/`                                                     |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and

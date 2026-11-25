@@ -44,6 +44,10 @@ first commits, for code built from its source before the release.
   Windows, so that `uvx tafla-gen` and `pipx run tafla-gen` run it without a
   Rust toolchain. Its source distribution builds the command with cargo on
   other platforms.
+- `[string]`, a proposed vector of strings, and `[bool]`, an array of bools
+  stored as a `[uint8]` of 0 and 1, which the `typescript` and `javascript`
+  targets generate. Every other target rejects a schema that has them, with
+  an error at each, until its runtime reads the vector of strings.
 - [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
   describes how a format's messages evolve: each version fixes its fields and
   keeps the same layout, and a new version appends fields to the previous

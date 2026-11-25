@@ -30,6 +30,11 @@ Each language's CI runs its test when this directory changes.
 - `generated/`: the tables that the code generated from the example schema
   `schemas/shapes.tafla` writes in every language, which
   [`generated/README.md`](generated/README.md) describes
+- `proposed/`: the cases of what's proposed for the format, vectors of
+  strings and arrays of bools, as `cases.json` and the three directories of
+  tables above. Only the TypeScript test reads them, until every
+  implementation does and they join the suite, which
+  [Proposed cases](#proposed-cases) describes.
 
 The TypeScript runtime's `test/conformance` writes them:
 
@@ -107,6 +112,8 @@ Each field has a `type`:
 | `struct[]`                                            | `fields`: the scalars' types, and `items`: each struct's values        | `setStructArray()`             |
 | `table`                                               | `from` and `table`, a nested table, and `alignment` when one is passed | `setTable()`                   |
 | `vector`                                              | `items`: `{ "from", "table" }` for each item                           | `setVector()`                  |
+| `bool[]`, proposed                                    | `value`: an array of `true` and `false`                                | `setUint8Array()`, of 1 and 0  |
+| `string[]`, proposed                                  | `value`: an array of strings                                           | `setStringVector()`            |
 
 - A bool is the uint8 1 or 0, since the runtimes have no getters or setters
   of bools; the code that tafla-gen generates writes and reads them so. Its
@@ -184,6 +191,34 @@ decode error: `DecodeError` in TypeScript, Python, Rust, C++ and Swift,
 checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
 with `"kind": "overwrite"`. Readers read the file rather than apply it.
+
+## Proposed cases
+
+`proposed/cases.json` describes tables of the proposed vectors of strings and
+arrays of bools, as `cases.json` describes the suite's, in a file of its own,
+so that the implementations that don't read them yet read the suite as it
+was. Their fields are of the types `string[]` and `bool[]`, which the table
+of field types lists:
+
+- A `string[]` is read with `getStringVector()`, and each of its strings is
+  also found from its ends alone, with `getStringVectorItem()`, and compared
+  with the string that reading every string finds, as a vector's items are.
+- A `bool[]` is the uint8 array of its bools' bytes, 1 and 0, and each byte
+  reads as true when it isn't 0.
+
+| What                                                       | Cases                                                                                               |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Vectors of strings, empty, of empty strings, of one to four bytes a character, in nested tables and vector items, unpadded | `string-vectors`                                          |
+| Ends of 128 and more in `uint8` offsets, in a table of 255 bytes | `string-vector-offset-type-uint8-full`                                                        |
+| `uint16` ends after size and version slots                 | `string-vector-offset-type-uint16`                                                                  |
+| Arrays of bools, empty, unpadded, and bytes other than 0 and 1 | `bool-arrays`, `bool-array-nonzero`                                                             |
+| Truncated ends and strings                                 | `truncated-string-vector-ends`, `truncated-string-vector`                                           |
+| Counts and ends past the end, and a count of 2^32 - 1      | `string-vector-count-past-end`, `string-vector-count-max`, `string-vector-end-past-end`, `string-vector-end-max`, `bool-array-length-past-end` |
+| A string that ends before it starts                        | `string-vector-item-ends-before-start`                                                              |
+| An end that splits a character, and invalid UTF-8          | `string-vector-end-splits-character`, `string-vector-invalid-utf8-continuation`, `string-vector-invalid-utf8-overlong`, `string-vector-invalid-utf8-surrogate` |
+
+When the format takes them, their cases move into `cases.json`, and every
+implementation's test reads them as it reads the others.
 
 ## Tests
 
