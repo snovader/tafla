@@ -105,10 +105,6 @@ repository's first commits, for code built from its source before the release.
   slots alone are longer than the offset type addresses, as the constructor
   does for the root's header, rather than `MemoryError` or `OverflowError`
   from allocating them, which differed by the count and the implementation.
-- `TableWriter.write_fields()` raises the constructor's error for a version
-  that the layout can't hold before the error of a value, as the calls that
-  it replaces do. The pure-Python one raised a value's own error first, such
-  as its `__index__()`'s, where the native one raised the version's.
 - A scalar setter of an integer field raises `ValueError` for a value whose
   `__index__()` raises an error that `struct` raises itself, `OverflowError`,
   `IndexError` or `struct.error`, in both implementations, and so do
