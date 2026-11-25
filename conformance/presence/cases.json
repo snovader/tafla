@@ -1,0 +1,267 @@
+{
+    "valid": [
+        {
+            "name": "absent-fields",
+            "description": "A scalar, an array and a string, with an absent field after each, whose offset is 0 and which takes no bytes",
+            "file": "valid/absent-fields.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "uint8", "value": 1 },
+                    { "type": "absent" },
+                    { "type": "int32[]", "value": [1, -2] },
+                    { "type": "absent" },
+                    { "type": "string", "value": "a" },
+                    { "type": "absent" }
+                ]
+            }
+        },
+        {
+            "name": "absent-every-field",
+            "description": "Three absent fields: the table is its offsets, which are 0",
+            "file": "valid/absent-every-field.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "absent" },
+                    { "type": "absent" },
+                    { "type": "absent" }
+                ]
+            }
+        },
+        {
+            "name": "absent-first-field",
+            "description": "An absent field before a float64, so that the first value is that of the second field",
+            "file": "valid/absent-first-field.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "absent" },
+                    { "type": "float64", "value": 1.5 }
+                ]
+            }
+        },
+        {
+            "name": "absent-nested",
+            "description": "A nested table with absent fields, an absent field where a table could be, and a vector whose items have absent fields, the last of them every field",
+            "file": "valid/absent-nested.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    {
+                        "type": "table",
+                        "from": "builder",
+                        "table": {
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                            "fields": [
+                                { "type": "absent" },
+                                { "type": "uint16", "value": 7 },
+                                { "type": "absent" }
+                            ]
+                        }
+                    },
+                    { "type": "absent" },
+                    {
+                        "type": "vector",
+                        "items": [
+                            {
+                                "from": "builder",
+                                "table": {
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                                    "fields": [
+                                        { "type": "uint8", "value": 1 },
+                                        { "type": "absent" }
+                                    ]
+                                }
+                            },
+                            {
+                                "from": "builder",
+                                "table": {
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                                    "fields": [
+                                        { "type": "absent" },
+                                        { "type": "absent" }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        {
+            "name": "absent-nested-last",
+            "description": "A nested table of two absent fields at the end of its parent",
+            "file": "valid/absent-nested-last.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "uint8", "value": 1 },
+                    {
+                        "type": "table",
+                        "from": "builder",
+                        "table": {
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                            "fields": [
+                                { "type": "absent" },
+                                { "type": "absent" }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "absent-uint8-sized-versioned",
+            "description": "Absent fields around a string in a table of uint8 offsets with a length and a version",
+            "file": "valid/absent-uint8-sized-versioned.bin",
+            "table": {
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint8" },
+                "version": 3,
+                "fields": [
+                    { "type": "absent" },
+                    { "type": "string", "value": "a" },
+                    { "type": "absent" }
+                ]
+            }
+        },
+        {
+            "name": "absent-uint16",
+            "description": "Absent fields around an aligned array in a table of uint16 offsets",
+            "file": "valid/absent-uint16.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint16" },
+                "fields": [
+                    { "type": "absent" },
+                    { "type": "float64[]", "value": [0.5] },
+                    { "type": "absent" }
+                ]
+            }
+        },
+        {
+            "name": "missing-fields",
+            "description": "A table of two fields, read by a reader that knows two more: their offsets would end after the first value starts, at 8",
+            "file": "valid/missing-fields.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "uint32", "value": 1 },
+                    { "type": "string", "value": "a" }
+                ],
+                "missing": 2
+            }
+        },
+        {
+            "name": "missing-fields-after-padding",
+            "description": "A table whose first value is an aligned array after 4 bytes of padding, read by a reader that knows two more fields: the first of their offsets lies in the padding and reads as 0, and the second would end after the first value starts",
+            "file": "valid/missing-fields-after-padding.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "float64[]", "value": [1.5] },
+                    { "type": "uint8", "value": 2 }
+                ],
+                "missing": 2
+            }
+        },
+        {
+            "name": "missing-fields-nested",
+            "description": "A nested table and a vector item, each read by a reader that knows more fields than it holds, in a table that such a reader reads too",
+            "file": "valid/missing-fields-nested.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    {
+                        "type": "table",
+                        "from": "builder",
+                        "table": {
+                            "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                            "fields": [
+                                { "type": "uint8", "value": 1 }
+                            ],
+                            "missing": 1
+                        }
+                    },
+                    {
+                        "type": "vector",
+                        "items": [
+                            {
+                                "from": "builder",
+                                "table": {
+                                    "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                                    "fields": [
+                                        { "type": "uint16", "value": 2 }
+                                    ],
+                                    "missing": 2
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "missing": 1
+            }
+        },
+        {
+            "name": "missing-fields-after-absent",
+            "description": "A table whose last two fields are absent, read by a reader that knows one more",
+            "file": "valid/missing-fields-after-absent.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "uint8", "value": 1 },
+                    { "type": "absent" },
+                    { "type": "absent" }
+                ],
+                "missing": 1
+            }
+        },
+        {
+            "name": "missing-fields-uint16-sized-versioned",
+            "description": "A table of uint16 offsets with a length and a version, read by a reader that knows three more fields",
+            "file": "valid/missing-fields-uint16-sized-versioned.bin",
+            "table": {
+                "layout": { "sized": true, "versioned": true, "offsetType": "uint16" },
+                "version": 1,
+                "fields": [
+                    { "type": "int8", "value": -1 }
+                ],
+                "missing": 3
+            }
+        }
+    ],
+    "equivalent": [],
+    "invalid": [
+        {
+            "name": "absent-first-offset-truncated",
+            "description": "The table of absent-first-field ends within its first offset, so that the field reads as neither absent nor present",
+            "file": "invalid/absent-first-offset-truncated.bin",
+            "case": "absent-first-field",
+            "corruption": { "kind": "truncate", "length": 2 },
+            "field": 0
+        },
+        {
+            "name": "absent-offset-truncated",
+            "description": "The table of absent-every-field ends within its second offset",
+            "file": "invalid/absent-offset-truncated.bin",
+            "case": "absent-every-field",
+            "corruption": { "kind": "truncate", "length": 6 },
+            "field": 1
+        },
+        {
+            "name": "absent-nested-offset-truncated",
+            "description": "The nested table of absent-nested-last ends within its second offset",
+            "file": "invalid/absent-nested-offset-truncated.bin",
+            "case": "absent-nested-last",
+            "corruption": { "kind": "truncate", "length": 15 },
+            "field": 1
+        },
+        {
+            "name": "present-after-absent-offset-past-end",
+            "description": "The offset of the string of absent-fields, after two absent fields, points past the end",
+            "file": "invalid/present-after-absent-offset-past-end.bin",
+            "case": "absent-fields",
+            "corruption": { "kind": "overwrite", "at": 16, "bytes": [255, 255, 255, 255] },
+            "field": 4
+        }
+    ]
+}

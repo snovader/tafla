@@ -59,6 +59,8 @@ const STRUCT_ARRAY = 24;
 const TABLE_IN_PLACE = 25;
 /** A vector recorded in place, whose items' fields' records follow its own */
 const VECTOR_IN_PLACE = 26;
+/** A field left out, which takes an offset of 0 and no bytes */
+const ABSENT = 27;
 
 /** The size of a scalar of each kind, INT8 to FLOAT64 */
 const SIZES: readonly ElementSize[] = [1, 1, 2, 2, 4, 4, 8, 8, 4, 8];
@@ -380,6 +382,17 @@ export class TableBuilder {
     setString(string: string): void {
         // The writer encodes it in place, so only its length is counted here
         this.#addField(STRING, string, this._size + utf8Length(string), 0, 0);
+    }
+
+    /**
+     * Sets the next field as absent: an offset of 0 and no value. A reader
+     * finds it by comparing the field's offset, from
+     * `TableReader.rootOffset()`, with 0, or one from `fieldOffset()` with
+     * the nested table's position, before it reads the field, so only a
+     * format whose readers make that check for the field can leave it out.
+     */
+    setAbsent(): void {
+        this.#addField(ABSENT, undefined, 0, 0, 0);
     }
 
     /**
@@ -1045,6 +1058,10 @@ function writeField(
             writer.setStructArray(index, bytes, size, alignment);
             break;
         }
+
+        case ABSENT:
+            writer.setAbsent(index);
+            break;
     }
 }
 
