@@ -6,17 +6,17 @@ fields back by offset, with arrays as views of the bytes where it can. Every
 read checks that it stays within the bytes it was given.
 
 ```ts
-import { TableReader, TableBuilder, TableLayout } from 'tafla';
+import { TableArena, TableBuilder, TableLayout, TableReader } from 'tafla';
 
 // A format's header, shared by its writer and its readers
 const FORMAT_VERSION = 1;
 const LAYOUT = TableLayout.create({ sized: true, version: FORMAT_VERSION });
 
-const series = new TableBuilder(2);
+const series = new TableBuilder(TableArena.DEFAULT, 2);
 series.setUint32Array(timestamps); // a Uint32Array is copied as bytes
 series.setFloat32Array(values); // a number[] would be converted first
 
-const builder = new TableBuilder(3, LAYOUT);
+const builder = new TableBuilder(TableArena.DEFAULT, 3, LAYOUT);
 builder.setFloat64(59.3293);
 builder.setString('Europe/Stockholm');
 builder.setTable(series); // copied into the table
@@ -46,10 +46,26 @@ sizer counts the table's length from its fields, and its writer writes the
 same fields, in the same order, into bytes of that length. `TableBuilder`
 writes each field into a buffer as the field is set, and then copies the
 table out of it into bytes of its length, and the two write the same bytes.
-Every builder writes in one buffer, each in bytes of its own, which the
-package keeps between builders: 4 KiB at first, and up to 1 MiB once a table
-needed that much. A longer table is written in a buffer of its own. A
-builder that's never written keeps the buffer that it wrote in alive.
+
+A builder writes in the buffer of the `TableArena` that it's given, in bytes
+of its own, which it gives back when its table is written. The arena keeps
+the buffer between builders: 4 KiB at first, and up to 1 MiB once a table
+needed that much. A longer table is written in a buffer of its own, which
+isn't kept. `TableArena.DEFAULT` is the arena for a program that doesn't
+need one of its own; one that knows its tables sets both lengths:
+
+```ts
+// Room for tables of 256 KiB from the first, and tables of up to 8 MiB
+// written in a buffer that's kept
+const arena = new TableArena({ initialBytes: 256 * 1024, maxRetainedBytes: 8 * 1024 * 1024 });
+
+const builder = new TableBuilder(arena, 3, LAYOUT);
+```
+
+`arena.retainedBytes()` is the length of the buffer that the arena holds,
+and `arena.release()` drops it, as after a burst of long tables. A builder
+that's never written keeps the buffer that it wrote in alive. An arena
+belongs to the thread that created it.
 
 The sizer's `writer()` writes into new bytes, and `writer(bytes)` into the
 start of `bytes`, such as bytes that a program reuses for each table it

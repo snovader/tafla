@@ -1,6 +1,7 @@
 export { TableReader } from './table-reader.ts';
 export { DecodeError } from './errors.ts';
 export { TableLayout, type TableLayoutOptions } from './layout.ts';
+export { TableArena, type TableArenaOptions } from './table-arena.ts';
 export { TableBuilder, type TableItem } from './table-builder.ts';
 export { TableSizer, TableWriter } from './table-writer.ts';
 export { StructWriter } from './struct-writer.ts';

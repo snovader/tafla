@@ -3,7 +3,7 @@ import type { Packr as TypedPackr } from 'msgpackr';
 // The plain JavaScript entry point, as the comparison suite uses it
 import { Packr as UntypedPackr } from 'msgpackr/pack';
 import protobuf from 'protobufjs';
-import { TableBuilder, TableReader } from 'tafla';
+import { TableArena, TableBuilder, TableReader } from 'tafla';
 import { Strings as FlatStrings } from './generated/flatbuffers.ts';
 import { Strings } from './generated/tafla/strings.ts';
 import { COUNT } from './shapes.ts';
@@ -23,7 +23,7 @@ export interface Codec {
 export const tafla: Codec = {
     name: 'tafla',
     serialize(strings) {
-        const builder = new TableBuilder(COUNT);
+        const builder = new TableBuilder(TableArena.DEFAULT, COUNT);
         for (let i = 0; i < COUNT; i++) {
             builder.setString(strings[i]);
         }

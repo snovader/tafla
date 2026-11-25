@@ -150,11 +150,16 @@ repository's first commits, for code built from its source before the release.
 - `TableBuilder` writes each field, and its offset, into a buffer when it's
   set, rather than recording it and writing every field through a
   `TableWriter` in `bytes()` and `finalize()`, which now copy the table out
-  of the buffer into bytes of its length. Every builder writes in one
-  buffer, each in bytes of its own, which it gives back when its table is
-  written. The package keeps the buffer between builders: 4 KiB at first,
-  and up to 1 MiB once a table needed that much. A longer table is written in
-  a buffer of its own. The builder writes the same bytes as before, and its
+  of the buffer into bytes of its length. The buffer is that of a
+  `TableArena`, the builder's new first argument, as in
+  `new TableBuilder(TableArena.DEFAULT, 3, layout)`: every builder of an
+  arena writes in its buffer, each in bytes of its own, which it gives back
+  when its table is written. The arena keeps the buffer between builders:
+  4 KiB at first, and up to 1 MiB once a table needed that much. A longer
+  table is written in a buffer of its own. `new TableArena({ initialBytes,
+  maxRetainedBytes })` sets both lengths for a program that knows its
+  tables, `retainedBytes()` is the length of the buffer that an arena
+  holds, and `release()` drops it. The builder writes the same bytes as before, and its
   setters throw the same errors and leave it as it was when they throw.
   Arrays, arrays of structs, structs and tables given as bytes of 1 KiB or
   more are kept until the table is written and copied into it once; shorter

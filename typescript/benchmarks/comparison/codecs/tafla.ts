@@ -3,6 +3,7 @@ import {
     readUint32,
     SIZEOF_32,
     StructWriter,
+    TableArena,
     TableBuilder,
     TableLayout,
     TableReader,
@@ -28,7 +29,7 @@ export const tafla: Codec = {
     name: 'tafla',
     record: {
         serialize(input) {
-            const builder = new TableBuilder(4);
+            const builder = new TableBuilder(TableArena.DEFAULT, 4);
             builder.setFloat64(input.x);
             builder.setFloat64(input.y);
             builder.setInt64(input.id);
@@ -49,7 +50,11 @@ export const tafla: Codec = {
     },
     document: {
         serialize(input) {
-            const document = new TableBuilder(4, DOCUMENT_LAYOUT);
+            const document = new TableBuilder(
+                TableArena.DEFAULT,
+                4,
+                DOCUMENT_LAYOUT
+            );
             document.setFloat64(input.x);
             document.setFloat64(input.y);
             document.setString(input.name);
@@ -92,7 +97,7 @@ export const tafla: Codec = {
     },
     list: {
         serialize({ items }) {
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
             builder.setVectorInPlace(items.length, 2, (item, index) => {
                 setItem(item, items[index]);
             });
@@ -131,7 +136,7 @@ export const tafla: Codec = {
                 writer.setFloat32(second);
             }
 
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
             builder.setStructArray(structs, ITEM_SIZE, ITEM_ALIGNMENT);
 
             return builder.bytes();

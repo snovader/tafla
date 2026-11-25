@@ -20,11 +20,10 @@ import {
     padding,
     TableLayout
 } from './layout.ts';
+import { memoryOf, type ArenaMemory, type TableArena } from './table-arena.ts';
 import { TableReader } from './table-reader.ts';
 import { setSlot, structCount } from './table-writer.ts';
 import type { ElementSize, OffsetSize, OffsetType } from './types.ts';
-/** The shared buffer's length at first */
-const FIRST_SHARED = 4096;
 /**
  * The bytes that a builder takes at first for each field, besides its
  * header, so that a table of short fields seldom grows. A setter that
@@ -34,22 +33,6 @@ const FIRST_SHARED = 4096;
  * 1.3 times as long after such a record was built.
  */
 const FIELD_ROOM = 16;
-/**
- * The longest shared buffer, which is kept between builders once a table
- * needed it. A builder that needs more writes in a buffer of its own, which
- * isn't kept. With 64 KiB, tables past it grew a buffer of their own in
- * every build: 130 columns of 500 bytes took 1.35–1.45 times as long as
- * from the builder that recorded its fields, and 0.94–0.95 with 1 MiB.
- */
-const SHARED_BYTES = 1024 * 1024;
-/**
- * The length that a shared buffer is doubled to when it's replaced because
- * it's full, rather than for a table that needs more. Nested builders keep
- * their bytes, so a program that nests many fills it again and again.
- * Replacing it with one of 4 KiB each time took 1.07–1.46 times as long for
- * vectors and chains of nested builders.
- */
-const DOUBLED_BYTES = 64 * 1024;
 /**
  * The shortest run of bytes, of an array, an array of structs, a struct or a
  * table nested as bytes, that's kept as a segment, which `bytes()` writes
@@ -68,44 +51,6 @@ const SEGMENT_BYTES = 1024;
  * in the next, and from 64 bytes the same.
  */
 const KEPT_TABLE_BYTES = 128;
-
-/**
- * The buffer that builders write their tables in, with its view: each takes
- * the bytes after the last one's, and `bytes()` copies its table out of
- * them, so no table holds the buffer. Builders write every byte of their
- * tables, padding included, so what the buffer held before isn't read.
- *
- * It's kept between builders. A `Uint8Array` of more than 64 bytes is
- * allocated outside V8's heap, in about 150 ns, so a buffer for each builder
- * made a document of 100 rows take 1.2 times as long as recording its fields
- * did. One buffer that only one builder at a time could hold, as this
- * builder first had, made every other builder that was being written
- * allocate its own: a record took 1.2 times as long from two builders
- * written at once as it did when its fields were recorded, and 32 builders,
- * each nested in the next, 3 times as long.
- *
- * A builder's bytes are its own until it's written: it gives them back
- * then, and when it moves to more. A nested builder keeps its bytes, since
- * it can still be written or nested again, so the buffer is replaced when
- * it's full while builders hold bytes of it, and the old one lives as long
- * as they do.
- */
-let shared: Uint8Array<ArrayBuffer> = new Uint8Array(0);
-let sharedView = new DataView(shared.buffer);
-/** Where the shared buffer's bytes that no builder holds start */
-let top = 0;
-/** The builders that hold bytes of the shared buffer, and aren't written */
-let live = 0;
-
-/** Replaces the shared buffer with one of at least `length` bytes */
-function replaceShared(length: number): void {
-    const doubled = Math.min(2 * shared.length, DOUBLED_BYTES);
-
-    shared = new Uint8Array(Math.max(length, doubled, FIRST_SHARED));
-    sharedView = new DataView(shared.buffer);
-    top = 0;
-    live = 0;
-}
 
 // The kinds of segment, which bytes() switches on to write each
 const INT8_ARRAY = 0;
@@ -182,13 +127,13 @@ const EMPTY_VIEW = new DataView(EMPTY.buffer);
  * are read back by index with `TableReader.rootOffset()`, or
  * `TableReader.fieldOffset()` for a table nested in another.
  *
- * Setting a field writes it, and its offset, into the builder's bytes of a
- * buffer that every builder shares, each with bytes of its own.
- * `finalize()` and `bytes()` then copy the table out of them, into bytes of
- * exactly its length, and give the builder's back, so that building tables
- * allocates little more than their bytes. The buffer is kept between
- * builders, at up to 1 MiB once a table needed that much; a longer table is
- * written in a buffer of its own.
+ * Setting a field writes it, and its offset, into the builder's bytes of
+ * its arena's buffer, which the builders of an arena share, each with bytes
+ * of its own. `finalize()` and `bytes()` then copy the table out of them,
+ * into bytes of exactly its length, and give the builder's back, so that
+ * building tables allocates little more than their bytes. The arena keeps
+ * the buffer between builders, at up to its `maxRetainedBytes` once a table
+ * needed that much; a longer table is written in a buffer of its own.
  * Runs of 1 KiB or more, of arrays, arrays of structs, structs and tables
  * given as bytes, are kept until then instead, and written once, straight
  * into the table's bytes, so they must not change until it's written: an
@@ -225,7 +170,9 @@ export class TableBuilder {
     /** The longest table that the layout's offsets and lengths address */
     readonly #maxLength: number;
 
-    /** The buffer that holds the builder's bytes: the shared one, or its own */
+    /** The arena whose buffer the builder takes its bytes of */
+    readonly #arena: ArenaMemory;
+    /** The buffer that holds the builder's bytes: the arena's, or its own */
     #bytes: Uint8Array<ArrayBuffer> = EMPTY;
     #view: DataView = EMPTY_VIEW;
     /**
@@ -266,13 +213,21 @@ export class TableBuilder {
     #nesting = 0;
 
     /**
+     * @param arena - The arena whose buffer the table is written in:
+     * `TableArena.DEFAULT`, or one of the caller's own. Builders of
+     * different arenas can be nested in each other.
      * @param fields - The number of fields that the table will hold.
      * @param layout - The table's header and offset type, which its readers
      * must use too, with the version to write to the header when it has one.
      * @throws {RangeError} If `fields` isn't a non-negative integer, or the
      * header alone is longer than the layout addresses.
+     * @throws {TypeError} If `arena` isn't a `TableArena`.
      */
-    constructor(fields: number, layout: TableLayout = TableLayout.DEFAULT) {
+    constructor(
+        arena: TableArena,
+        fields: number,
+        layout: TableLayout = TableLayout.DEFAULT
+    ) {
         const size = layout.offsetSize();
         const header = headerLength(fields, layout);
 
@@ -285,6 +240,7 @@ export class TableBuilder {
         // as long in Node 26
         this.#maxLength = 0xffff_ffff >>> (32 - 8 * size);
         this.#fields = fields;
+        this.#arena = memoryOf(arena);
 
         this.#take(header + fields * FIELD_ROOM);
 
@@ -1270,30 +1226,32 @@ export class TableBuilder {
 
     /**
      * Gives the builder room for at least `length` bytes, at least doubling
-     * it, up to {@link SHARED_BYTES} unless `length` is longer: more of the
-     * shared buffer where its bytes are, when no builder holds bytes after
+     * it, up to what the arena keeps unless `length` is longer: more of the
+     * arena's buffer where its bytes are, when no builder holds bytes after
      * them, or else bytes that it moves to.
      */
     #grow(length: number): void {
+        const arena = this.#arena;
+        const max = arena.max;
         const doubled = Math.max(length, 2 * this.#capacity);
-        const capacity =
-            length <= SHARED_BYTES ? Math.min(doubled, SHARED_BYTES) : doubled;
+        const capacity = length <= max ? Math.min(doubled, max) : doubled;
         const bytes = this.#bytes;
         const base = this.#base;
 
-        if (bytes === shared) {
+        if (bytes === arena.bytes) {
             if (
-                (base + this.#capacity === top || live === 1) &&
+                (base + this.#capacity === arena.top || arena.live === 1) &&
                 base + capacity <= bytes.length
             ) {
-                // To a multiple of 8, as the shared buffer's length is, so
+                // To a multiple of 8, as the arena's buffer's length is, so
                 // that the next builder's bytes are aligned
-                top = (base + capacity + 7) & ~7;
+                const top = (base + capacity + 7) & ~7;
+                arena.top = top;
                 this.#capacity = top - base;
                 return;
             }
 
-            live--;
+            arena.live--;
         }
 
         this.#take(capacity);
@@ -1301,27 +1259,29 @@ export class TableBuilder {
     }
 
     /**
-     * Takes `length` bytes for the builder: the shared buffer's next, in a
-     * new one when it hasn't that many, or a buffer of the builder's own
-     * when they're more than {@link SHARED_BYTES}
+     * Takes `length` bytes for the builder: the next of its arena's buffer,
+     * in a new one when it hasn't that many, or a buffer of the builder's
+     * own when they're more than the arena keeps
      */
     #take(length: number): void {
-        if (length > SHARED_BYTES) {
+        const arena = this.#arena;
+        if (length > arena.max) {
             this.#takeOwn(length);
             return;
         }
 
         const room = (length + 7) & ~7;
-        if (top + room > shared.length) {
-            replaceShared(room);
+        if (arena.top + room > arena.bytes.length) {
+            arena.replace(room);
         }
 
-        this.#bytes = shared;
-        this.#view = sharedView;
+        const top = arena.top;
+        this.#bytes = arena.bytes;
+        this.#view = arena.view;
         this.#base = top;
         this.#capacity = room;
-        top += room;
-        live++;
+        arena.top = top + room;
+        arena.live++;
     }
 
     /**
@@ -1447,7 +1407,7 @@ export class TableBuilder {
      * then gives the builder's bytes back, unless a parent keeps them.
      *
      * A table is copied out of a buffer of the builder's own, longer than
-     * {@link SHARED_BYTES}, too, rather than cut from it by `transfer()`.
+     * its arena keeps, too, rather than cut from it by `transfer()`.
      * Detaching the buffer makes V8 check every typed array's buffer for the
      * rest of the process: after one table of 1.2 MB, reading 1,000
      * `float64` fields took 1.18–1.20 times as long in Node 26 and 27, and
@@ -1478,12 +1438,14 @@ export class TableBuilder {
 
         // Release the builder's bytes, unless a parent keeps them, and the
         // values, which may be large arrays
-        if (bytes === shared && !this.#kept) {
-            live--;
+        const arena = this.#arena;
+        if (bytes === arena.bytes && !this.#kept) {
+            const live = arena.live - 1;
+            arena.live = live;
             if (live === 0) {
-                top = 0;
-            } else if (base + this.#capacity === top) {
-                top = base;
+                arena.top = 0;
+            } else if (base + this.#capacity === arena.top) {
+                arena.top = base;
             }
         }
         this.#bytes = EMPTY;

@@ -1,6 +1,12 @@
 import { describe, expect } from 'hypotes';
 import { it } from 'hypotes/fast-check';
-import { TableBuilder, TableLayout, type OffsetType, type TableLayoutOptions } from 'tafla';
+import {
+    TableArena,
+    TableBuilder,
+    TableLayout,
+    type OffsetType,
+    type TableLayoutOptions
+} from 'tafla';
 import { LAYOUTS } from './conformance/arbitraries.ts';
 import { headerSizeOf, OFFSET_SIZES } from './conformance/format.ts';
 
@@ -78,7 +84,9 @@ describe('TableLayout', () => {
         expect(versioned.version()).toBe(1);
         expect(versioned.headerSize()).toBe(layout.headerSize() + 2);
         // The length, and then the version
-        expect(new TableBuilder(0, versioned).bytes()).toStrictEqual(new Uint8Array([4, 0, 1, 0]));
+        expect(new TableBuilder(TableArena.DEFAULT, 0, versioned).bytes()).toStrictEqual(
+            new Uint8Array([4, 0, 1, 0])
+        );
     });
 
     // An option that isn't read would leave its default in its place

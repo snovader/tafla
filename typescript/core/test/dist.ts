@@ -1,9 +1,9 @@
 // Imports the build as a dependent package would, without the source
 // condition, and reads back a table it wrote. `yarn package:check` runs it.
 import { readFileSync } from 'node:fs';
-import { TableBuilder, TableReader } from 'tafla';
+import { TableArena, TableBuilder, TableReader } from 'tafla';
 
-const builder = new TableBuilder(1);
+const builder = new TableBuilder(TableArena.DEFAULT, 1);
 builder.setString('tafla');
 const reader = new TableReader(builder.bytes());
 

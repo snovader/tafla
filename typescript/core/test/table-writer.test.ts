@@ -1,6 +1,6 @@
 import { describe, expect } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
-import { TableBuilder, TableLayout, TableReader, TableSizer, TableWriter } from 'tafla';
+import { TableArena, TableBuilder, TableLayout, TableReader, TableSizer, TableWriter } from 'tafla';
 import { growing } from './array-likes.ts';
 import {
     fitsItsLayout,
@@ -277,7 +277,7 @@ describe('versions', () => {
             const size = layout.offsetSize();
 
             const tables = [
-                new TableBuilder(0, layout).bytes(),
+                new TableBuilder(TableArena.DEFAULT, 0, layout).bytes(),
                 new TableSizer(0, layout).writer().bytes(),
                 new TableWriter(new Uint8Array(size), 0, layout).bytes(),
                 TableWriter.tableBytes(0, layout, size)
@@ -294,10 +294,10 @@ describe('versions', () => {
         const count = new RangeError('A count must be a non-negative integer, not -1');
         const header = new RangeError("A header of 300 fields doesn't fit in uint8 offsets");
 
-        expect(() => new TableBuilder(-1, layout)).toThrow(count);
+        expect(() => new TableBuilder(TableArena.DEFAULT, -1, layout)).toThrow(count);
         expect(() => new TableSizer(-1, layout)).toThrow(count);
         expect(() => TableWriter.tableBytes(-1, layout, 1)).toThrow(count);
-        expect(() => new TableBuilder(300, layout)).toThrow(header);
+        expect(() => new TableBuilder(TableArena.DEFAULT, 300, layout)).toThrow(header);
         expect(() => new TableSizer(300, layout)).toThrow(header);
         expect(() => TableWriter.tableBytes(300, layout, 1)).toThrow(header);
     });
@@ -313,7 +313,7 @@ describe('counts and sizes', () => {
         fields => {
             const error = new RangeError(`A count must be a non-negative integer, not ${fields}`);
 
-            expect(() => new TableBuilder(fields)).toThrow(error);
+            expect(() => new TableBuilder(TableArena.DEFAULT, fields)).toThrow(error);
             expect(() => new TableSizer(fields)).toThrow(error);
             expect(() => new TableWriter(new Uint8Array(0), fields)).toThrow(error);
         }
@@ -336,7 +336,7 @@ describe('counts and sizes', () => {
             writer.setUint16Array(0, [7]);
             writer.setVector(1, 0);
 
-            const builder = new TableBuilder(2);
+            const builder = new TableBuilder(TableArena.DEFAULT, 2);
             builder.setUint16Array([7]);
             builder.setVector([]);
             expect(writer.bytes()).toStrictEqual(builder.bytes());
@@ -372,7 +372,7 @@ describe('counts and sizes', () => {
         writer.setStruct(0, new Uint8Array(0));
         writer.setUint8(1, 7);
 
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setStruct(new Uint8Array(0));
         builder.setUint8(7);
         expect(writer.bytes()).toStrictEqual(builder.bytes());
@@ -406,7 +406,7 @@ const ALIGNED_KINDS: readonly FieldKind[] = [
             writer.setTable(index, 8);
             writer.endTable(writer.startTable(0));
         },
-        build: builder => builder.setTable(new TableBuilder(0), 8)
+        build: builder => builder.setTable(new TableBuilder(TableArena.DEFAULT, 0), 8)
     }
 ];
 
@@ -427,7 +427,7 @@ function writeAround(kind: FieldKind, before: (writer: TableWriter) => void): Ui
     kind.set(writer, 1);
     writer.setUint8(2, 8);
 
-    const builder = new TableBuilder(3);
+    const builder = new TableBuilder(TableArena.DEFAULT, 3);
     builder.setUint8(9);
     kind.build(builder);
     builder.setUint8(8);
@@ -447,8 +447,12 @@ describe('alignments', () => {
 
             expect(() => new TableSizer(1).addTable(invalid)).toThrow(error);
             expect(() => new TableSizer(1).addStructArray(1, 4, invalid)).toThrow(error);
-            expect(() => new TableBuilder(1).setTable(new Uint8Array(0), invalid)).toThrow(error);
-            expect(() => new TableBuilder(1).setStructArray(STRUCT, 4, invalid)).toThrow(error);
+            expect(() =>
+                new TableBuilder(TableArena.DEFAULT, 1).setTable(new Uint8Array(0), invalid)
+            ).toThrow(error);
+            expect(() =>
+                new TableBuilder(TableArena.DEFAULT, 1).setStructArray(STRUCT, 4, invalid)
+            ).toThrow(error);
         }
     );
 
@@ -622,7 +626,7 @@ describe('fields that differ from those sized', () => {
         writer.setUint16Array(0, [7]);
         writer.setUint8(1, 8);
 
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setUint16Array([7]);
         builder.setUint8(8);
         expect(writer.bytes()).toStrictEqual(builder.bytes());
@@ -785,7 +789,7 @@ describe("conversions, as the README's table states them", () => {
         const writer = sizer.writer();
         set(writer);
 
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         build(builder);
         expect(writer.bytes()).toStrictEqual(builder.bytes());
 
@@ -882,7 +886,7 @@ describe("conversions, as the README's table states them", () => {
         };
 
         const builder = (set: (builder: TableBuilder) => void): TableBuilder => {
-            const built = new TableBuilder(1);
+            const built = new TableBuilder(TableArena.DEFAULT, 1);
             set(built);
             return built;
         };

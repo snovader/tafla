@@ -10,6 +10,7 @@ import {
     readUint32,
     readUint64,
     StructWriter,
+    TableArena,
     TableBuilder,
     TableLayout,
     TableReader,
@@ -82,9 +83,15 @@ export function writtenLayoutOf({
     return layoutOf(layout, version);
 }
 
-/** Builds a table as its description sets it out */
-export function buildTable(table: TableDescription): TableBuilder {
-    const builder = createBuilder(table);
+/**
+ * Builds a table as its description sets it out, in `arena`'s buffer. The
+ * builders nested in it write in the default arena's.
+ */
+export function buildTable(
+    table: TableDescription,
+    arena: TableArena = TableArena.DEFAULT
+): TableBuilder {
+    const builder = createBuilder(table, arena);
     for (const field of table.fields) {
         setField(builder, field);
     }
@@ -170,8 +177,11 @@ function itemsInPlace(items: NestedTable[], offsetType: OffsetType): boolean {
 }
 
 /** Creates the builder of a table, with none of its fields set */
-export function createBuilder(table: TableDescription): TableBuilder {
-    return new TableBuilder(table.fields.length, writtenLayoutOf(table));
+export function createBuilder(
+    table: TableDescription,
+    arena: TableArena = TableArena.DEFAULT
+): TableBuilder {
+    return new TableBuilder(arena, table.fields.length, writtenLayoutOf(table));
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'hypotes';
-import { DecodeError, TableBuilder, TableReader } from 'tafla';
+import { DecodeError, TableArena, TableBuilder, TableReader } from 'tafla';
 
 describe('DecodeError', () => {
     it('should be a RangeError named DecodeError', () => {
@@ -75,7 +75,7 @@ describe('DecodeError', () => {
 
 /** A table with a field of each kind that has a getter */
 const TABLE = (() => {
-    const builder = new TableBuilder(6);
+    const builder = new TableBuilder(TableArena.DEFAULT, 6);
     builder.setUint32(7);
     builder.setFloat64Array([1.5, 2.5]);
     builder.setString('🦀');

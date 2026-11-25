@@ -1,6 +1,6 @@
 import { describe, expect, vi } from 'hypotes';
 import { fc, it } from 'hypotes/fast-check';
-import { TableBuilder, TableLayout, TableReader, type TableItem } from 'tafla';
+import { TableArena, TableBuilder, TableLayout, TableReader, type TableItem } from 'tafla';
 import {
     fitsItsLayout,
     tables,
@@ -62,14 +62,14 @@ function withFields([table, fields]: [TableDescription, FieldDescription[]]): Ta
 }
 
 it('should reject a field beyond the number the table holds', () => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder.setUint8(1);
 
     expect(() => builder.setUint8(2)).toThrow(new RangeError("Can't add field 2 to a table of 1"));
 });
 
 it.prop([fc.nat({ max: 4 })])('should reject finalizing before every field is set', set => {
-    const builder = new TableBuilder(set + 1);
+    const builder = new TableBuilder(TableArena.DEFAULT, set + 1);
     for (let i = 0; i < set; i++) {
         builder.setFloat64(i);
     }
@@ -80,14 +80,14 @@ it.prop([fc.nat({ max: 4 })])('should reject finalizing before every field is se
 });
 
 it('should reject setting a field after finalizing', () => {
-    const builder = new TableBuilder(0);
+    const builder = new TableBuilder(TableArena.DEFAULT, 0);
     builder.finalize();
 
     expect(() => builder.setInt8(1)).toThrow(TypeError);
 });
 
 it('should finalize once and return the same reader', () => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
     builder.setString('once');
 
     expect(builder.finalize()).toBe(builder.finalize());
@@ -95,7 +95,7 @@ it('should finalize once and return the same reader', () => {
 });
 
 it('should throw TypeError from the setter of a number for an int64, and leave the builder as it was', () => {
-    const builder = new TableBuilder(1);
+    const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
     expect(() => builder.setInt64(1 as unknown as bigint)).toThrow(TypeError);
     builder.setInt64(1n);
@@ -106,7 +106,7 @@ describe('strings', () => {
     it.each(Object.entries(SHORTFALL_STRINGS))(
         'should write a %s string that encodeInto() stops short of in bytes of its length',
         (_, string) => {
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
             builder.setString(string);
 
             const buffer = builder.finalize();
@@ -119,10 +119,10 @@ describe('strings', () => {
         // uint16 offsets, so it's counted, and the builder's bytes grow to
         // the string's end, after those that another builder holds.
         // encodeInto() stops a unit short of it.
-        const taken = new TableBuilder(0);
+        const taken = new TableBuilder(TableArena.DEFAULT, 0);
         const string = 'a'.repeat(22_104) + SHORTFALL_STRINGS['well-formed'];
         const layout = TableLayout.create({ offsetType: 'uint16' });
-        const builder = new TableBuilder(1, layout);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1, layout);
         builder.setString(string);
         taken.bytes();
 
@@ -161,7 +161,7 @@ describe('values of 1 KiB or more', () => {
     it('should copy a shorter array when it is set, and write a longer one as it is when the table is written', () => {
         const short = new Float32Array([1, 2]);
         const long = new Float32Array(256).fill(1);
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setFloat32Array(short);
         builder.setFloat32Array(long);
         short[0] = 3;
@@ -176,7 +176,7 @@ describe('values of 1 KiB or more', () => {
 
     it('should write a struct as it is when the table is written', () => {
         const struct = Uint8Array.from({ length: 1500 }, (_, i) => i);
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setStruct(struct);
         builder.setUint8(7);
         struct[0] = 99;
@@ -193,7 +193,7 @@ describe('values of 1 KiB or more', () => {
         'should throw RangeError for an array that %s, and write it once it is restored',
         (_, length) => {
             const values = new Array<number>(256).fill(1);
-            const builder = new TableBuilder(2);
+            const builder = new TableBuilder(TableArena.DEFAULT, 2);
             builder.setFloat64Array(values);
             builder.setUint8(7);
 
@@ -218,7 +218,7 @@ describe('values of 1 KiB or more', () => {
 
     it('should throw RangeError for a typed array whose buffer was transferred, and stay unfinalized', () => {
         const values = new Float64Array(256);
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setFloat64Array(values);
         builder.setUint8(7);
 
@@ -236,11 +236,11 @@ describe('values of 1 KiB or more', () => {
     it("should copy a nested builder's table when it is nested, with its arrays of 1 KiB or more as they are when its parent is written", () => {
         const short = new Float32Array([1, 2]);
         const long = new Float32Array(256).fill(1);
-        const nested = new TableBuilder(2);
+        const nested = new TableBuilder(TableArena.DEFAULT, 2);
         nested.setFloat32Array(short);
         nested.setFloat32Array(long);
 
-        const parent = new TableBuilder(1);
+        const parent = new TableBuilder(TableArena.DEFAULT, 1);
         parent.setTable(nested);
         short[0] = 3;
         long[0] = 3;
@@ -262,7 +262,7 @@ describe('arrays of structs', () => {
     ])(
         'should reject %s bytes of %s-byte structs, and leave the builder as it was',
         (bytes, size, message) => {
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
             expect(() => builder.setStructArray(bytes, size, 1)).toThrow(new RangeError(message));
             builder.setStructArray(new Uint8Array([1, 2, 3, 4]), 2, 2);
@@ -273,7 +273,7 @@ describe('arrays of structs', () => {
     );
 
     it('should count structs, and pad so that they start at a multiple of their alignment', () => {
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         builder.setUint8(7);
         builder.setStructArray(new Uint8Array(16), 8, 8);
 
@@ -297,8 +297,8 @@ describe('tables longer than the offsets address', () => {
                 const layout = TableLayout.create({ sized, offsetType });
                 const fields = Math.floor(max / offsetSize) - (sized ? 1 : 0);
 
-                expect(() => new TableBuilder(fields, layout)).not.toThrow();
-                expect(() => new TableBuilder(fields + 1, layout)).toThrow(
+                expect(() => new TableBuilder(TableArena.DEFAULT, fields, layout)).not.toThrow();
+                expect(() => new TableBuilder(TableArena.DEFAULT, fields + 1, layout)).toThrow(
                     `A header of ${fields + 1} fields doesn't fit in ${offsetType} offsets`
                 );
             }
@@ -308,7 +308,7 @@ describe('tables longer than the offsets address', () => {
     it('should reject a table of uint32 offsets past 4 GiB before allocating it', () => {
         // An array-like stands in for a 4 GiB array, whose elements aren't read.
         // The table would hold its offset, its length and 2^32 elements.
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         expect(() => builder.setInt8Array({ length: MAX_VALUES.uint32 + 1 })).toThrow(
             new RangeError('Field 1 makes the table 4294967304 bytes, too long for uint32 offsets')
         );
@@ -324,7 +324,7 @@ describe('tables longer than the offsets address', () => {
 it.each([1.5, -1, Number.NaN, 2000.5])(
     'should reject an array-like of length %s, and leave the builder as it was',
     length => {
-        const builder = new TableBuilder(3);
+        const builder = new TableBuilder(TableArena.DEFAULT, 3);
         builder.setUint8(1);
 
         expect(() => builder.setInt8Array({ length })).toThrow(
@@ -377,10 +377,10 @@ describe('tables nested from their builders', () => {
     );
 
     it('should reject a builder with fields left to set, and leave the table as it was', () => {
-        const nested = new TableBuilder(2);
+        const nested = new TableBuilder(TableArena.DEFAULT, 2);
         nested.setUint8(1);
 
-        const parent = new TableBuilder(2);
+        const parent = new TableBuilder(TableArena.DEFAULT, 2);
         expect(() => parent.setTable(nested)).toThrow("Only 1 of the table's 2 fields were set");
         expect(() => parent.setVector([new Uint8Array(1), nested])).toThrow(RangeError);
 
@@ -395,18 +395,18 @@ describe('tables nested from their builders', () => {
     });
 
     it('should write a builder nested several times, or finalized itself, the same each time', () => {
-        const nested = new TableBuilder(2);
+        const nested = new TableBuilder(TableArena.DEFAULT, 2);
         nested.setFloat64Array([1, 2]);
         nested.setString('nested');
 
         // Written straight into the parent, and then copied once finalized
-        const first = new TableBuilder(2);
+        const first = new TableBuilder(TableArena.DEFAULT, 2);
         first.setTable(nested);
         first.setVector([nested, nested]);
         const written = first.bytes();
 
         const own = nested.bytes();
-        const second = new TableBuilder(2);
+        const second = new TableBuilder(TableArena.DEFAULT, 2);
         second.setTable(nested);
         second.setVector([nested, nested]);
 
@@ -438,8 +438,8 @@ describe('tables nested from their builders', () => {
     it("should write a nested builder's table as it was set after the builder is finalized and others are built", () => {
         // A string of 1 KiB or more, in a nested builder that the parent
         // keeps rather than copies
-        const parent = new TableBuilder(1);
-        const nested = new TableBuilder(2);
+        const parent = new TableBuilder(TableArena.DEFAULT, 1);
+        const nested = new TableBuilder(TableArena.DEFAULT, 2);
         nested.setString('n'.repeat(1500));
         nested.setUint8(1);
         leaveFilledBuffer();
@@ -447,16 +447,16 @@ describe('tables nested from their builders', () => {
 
         // A builder holds bytes while the nested builder is finalized, and
         // each builder after it writes other bytes into those it takes
-        const holder = new TableBuilder(0);
+        const holder = new TableBuilder(TableArena.DEFAULT, 0);
         const own = nested.bytes();
         for (let i = 0; i < 3; i++) {
-            const other = new TableBuilder(1);
+            const other = new TableBuilder(TableArena.DEFAULT, 1);
             other.setString('x'.repeat(1200));
             other.bytes();
         }
         holder.bytes();
 
-        const expected = new TableBuilder(1);
+        const expected = new TableBuilder(TableArena.DEFAULT, 1);
         expected.setTable(own, 1);
         expect(parent.bytes()).toStrictEqual(expected.bytes());
     });
@@ -471,11 +471,11 @@ describe('tables nested from their builders', () => {
             { type: 'string', value: 'nested' }
         ]);
         const nested = buildTable(nestedTable);
-        const parent = new TableBuilder(2);
+        const parent = new TableBuilder(TableArena.DEFAULT, 2);
         parent.setTable(nested);
 
         // A builder made after the nesting, while the parent still writes
-        const other = new TableBuilder(1);
+        const other = new TableBuilder(TableArena.DEFAULT, 1);
         other.setUint8Array(new Uint8Array(1000).fill(0xee));
         parent.setString('parent'.repeat(100));
 
@@ -516,7 +516,7 @@ describe('tables nested from their builders', () => {
                 ]);
 
                 // The nested builder is made once its parent has grown
-                const builder = new TableBuilder(columns.length + 1);
+                const builder = new TableBuilder(TableArena.DEFAULT, columns.length + 1);
                 for (const column of columns) {
                     setField(builder, column);
                 }
@@ -551,7 +551,7 @@ describe('tables nested from their builders', () => {
                 }))
             );
             const nested = buildTable(nestedTable);
-            const parent = new TableBuilder(2);
+            const parent = new TableBuilder(TableArena.DEFAULT, 2);
             parent.setTable(nested);
             parent.setString('parent');
 
@@ -599,18 +599,18 @@ describe('tables written in place', () => {
 
     function itemsFromBuilders(): Uint8Array {
         const items = VALUES.map(value => {
-            const pair = new TableBuilder(2);
+            const pair = new TableBuilder(TableArena.DEFAULT, 2);
             pair.setFloat32(value + 1);
             pair.setFloat32(value + 2);
 
-            const item = new TableBuilder(2);
+            const item = new TableBuilder(TableArena.DEFAULT, 2);
             item.setFloat32(value);
             item.setTable(pair);
 
             return item;
         });
 
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         builder.setVector(items);
 
         return builder.bytes();
@@ -619,7 +619,7 @@ describe('tables written in place', () => {
     const EXPECTED = itemsFromBuilders();
 
     it("should pass on what fill throws, and leave the builder without the vector's items", () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         const thrown = new Error("The caller's");
 
         expect(() =>
@@ -637,7 +637,7 @@ describe('tables written in place', () => {
     });
 
     it('should reject an item with fields left to set, and leave the builder as it was', () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
         expect(() =>
             builder.setVectorInPlace(3, 2, (item, index) => {
@@ -653,7 +653,7 @@ describe('tables written in place', () => {
     });
 
     it('should reject a table with fields left to set within an item, and leave the builder as it was', () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
         expect(() =>
             builder.setVectorInPlace(3, 2, item => {
@@ -667,7 +667,7 @@ describe('tables written in place', () => {
     });
 
     it('should reject a field beyond the number a table written in place holds', () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
 
         expect(() =>
             builder.setTableInPlace(1, table => {
@@ -684,7 +684,7 @@ describe('tables written in place', () => {
     it("should reject a vector whose count, item ends and items' offsets make the table too long before recording any item", () => {
         const layout = TableLayout.create({ offsetType: 'uint8' });
         const fill = vi.fn<(item: TableItem, index: number) => void>();
-        const builder = new TableBuilder(1, layout);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1, layout);
 
         // The table's offset and the vector's count and 254 ends
         expect(() => builder.setVectorInPlace(254, 0, fill)).toThrow(
@@ -716,9 +716,9 @@ describe('tables written in place', () => {
             builder.setFloat64Array([1]);
         };
 
-        const builder = new TableBuilder(2);
+        const builder = new TableBuilder(TableArena.DEFAULT, 2);
         set(builder, true);
-        const expected = new TableBuilder(2);
+        const expected = new TableBuilder(TableArena.DEFAULT, 2);
         set(expected, false);
         expect(builder.bytes()).toStrictEqual(expected.bytes());
     });
@@ -731,13 +731,13 @@ describe('tables written in place', () => {
             const long = new Uint8Array(room - 2 * OFFSET_SIZES[offsetType]);
             const fill = (table: TableItem): void => table.setUint8Array(long);
 
-            const builder = new TableBuilder(2, layout);
+            const builder = new TableBuilder(TableArena.DEFAULT, 2, layout);
             builder.setUint8(1);
             expect(() => builder.setTableInPlace(1, fill)).toThrow(RangeError);
             expect(() => builder.setVectorInPlace(1, 1, fill)).toThrow(RangeError);
             builder.setUint8(2);
 
-            const expected = new TableBuilder(2, layout);
+            const expected = new TableBuilder(TableArena.DEFAULT, 2, layout);
             expected.setUint8(1);
             expected.setUint8(2);
             expect(builder.bytes()).toStrictEqual(expected.bytes());
@@ -745,7 +745,7 @@ describe('tables written in place', () => {
     );
 
     it('should reject finalizing or nesting a builder while it writes a table in place', () => {
-        const builder = new TableBuilder(1);
+        const builder = new TableBuilder(TableArena.DEFAULT, 1);
         const message =
             "A table can't be finalized or nested while a table is recorded in place in it";
 
@@ -753,7 +753,9 @@ describe('tables written in place', () => {
             new TypeError(message)
         );
         expect(() =>
-            builder.setTableInPlace(0, () => new TableBuilder(1).setTable(builder))
+            builder.setTableInPlace(0, () =>
+                new TableBuilder(TableArena.DEFAULT, 1).setTable(builder)
+            )
         ).toThrow(new TypeError(message));
 
         builder.setTableInPlace(0, () => {});
@@ -788,7 +790,7 @@ function outcomeOf(build: () => Uint8Array): unknown {
  * nested with `setTable()` at an alignment of 8 and twice in a vector
  */
 function parentOf(nested: () => TableBuilder | Uint8Array, length: number): Uint8Array {
-    const parent = new TableBuilder(3);
+    const parent = new TableBuilder(TableArena.DEFAULT, 3);
     parent.setUint8Array(new Uint8Array(length));
     parent.setTable(nested(), 8);
     parent.setVector([nested(), nested()]);
@@ -849,7 +851,7 @@ function expectNestedAsBytes(table: TableDescription, length: number): void {
 /** A table of the default layout that holds `fields` */
 /** Writes a table of 60 KB of 0xff, which leaves those bytes in the buffer that the next builders write in */
 function leaveFilledBuffer(): void {
-    const filled = new TableBuilder(60);
+    const filled = new TableBuilder(TableArena.DEFAULT, 60);
     for (let i = 0; i < 60; i++) {
         filled.setUint8Array(new Uint8Array(1000).fill(0xff));
     }
@@ -1176,20 +1178,20 @@ describe('builders written at the same time', () => {
         // The nested builder's table is 128 bytes or longer, so the parent
         // keeps its bytes where they are, the last taken, rather than
         // copying them
-        const parent = new TableBuilder(1);
-        const nested = new TableBuilder(2);
+        const parent = new TableBuilder(TableArena.DEFAULT, 1);
+        const nested = new TableBuilder(TableArena.DEFAULT, 2);
         nested.setString('n'.repeat(1500));
         nested.setUint8(1);
         parent.setTable(nested);
 
         const own = nested.bytes();
         for (let i = 0; i < 3; i++) {
-            const other = new TableBuilder(1);
+            const other = new TableBuilder(TableArena.DEFAULT, 1);
             other.setString('x'.repeat(1200));
             other.bytes();
         }
 
-        const expected = new TableBuilder(1);
+        const expected = new TableBuilder(TableArena.DEFAULT, 1);
         expected.setTable(own, 1);
         expect(parent.bytes()).toStrictEqual(expected.bytes());
     });
@@ -1201,7 +1203,7 @@ describe('builders written at the same time', () => {
         const strings = Array.from({ length: 60 }, (_, index) =>
             String.fromCodePoint(97 + (index % 26)).repeat(1500 + index)
         );
-        const builders = strings.map(() => new TableBuilder(3));
+        const builders = strings.map(() => new TableBuilder(TableArena.DEFAULT, 3));
 
         for (const [index, builder] of builders.entries()) {
             builder.setUint32(index);
@@ -1234,18 +1236,18 @@ describe('builders written at the same time', () => {
     });
 
     it('should write a table in place in a builder that moves while the table is filled', () => {
-        const parent = new TableBuilder(3);
+        const parent = new TableBuilder(TableArena.DEFAULT, 3);
         parent.setUint8(1);
 
         // Holds the bytes after the parent's, so that the parent moves once
         // it outgrows its own
-        const other = new TableBuilder(1);
+        const other = new TableBuilder(TableArena.DEFAULT, 1);
         const made: TableBuilder[] = [];
 
         parent.setTableInPlace(3, table => {
             table.setUint8(2);
 
-            const another = new TableBuilder(1);
+            const another = new TableBuilder(TableArena.DEFAULT, 1);
             another.setString('x'.repeat(300));
             made.push(another);
 
@@ -1288,11 +1290,11 @@ describe('builders written at the same time', () => {
         // Leaves a builder of a string of `length` characters unwritten, and
         // writes a table of as many bytes
         const makeBuilders = (length: number): void => {
-            const builder = new TableBuilder(1);
+            const builder = new TableBuilder(TableArena.DEFAULT, 1);
             builder.setString('o'.repeat(length));
             left.push([builder, length]);
 
-            const other = new TableBuilder(1);
+            const other = new TableBuilder(TableArena.DEFAULT, 1);
             other.setUint8Array(new Uint8Array(length).fill(length));
             written.push([other.bytes(), length]);
         };
@@ -1304,7 +1306,7 @@ describe('builders written at the same time', () => {
                 }
             }) as unknown as number;
 
-        const builder = new TableBuilder(5);
+        const builder = new TableBuilder(TableArena.DEFAULT, 5);
         builder.setInt32(numberThatMakes(7, 100));
         builder.setFloat64(numberThatMakes(1.5, 3000));
         builder.setFloat64Array({
