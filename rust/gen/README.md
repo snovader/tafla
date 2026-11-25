@@ -70,14 +70,22 @@ TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 `uint8` getters and setters. It's a scalar, in structs too, but has no arrays: a `[uint8]` of 0
 and 1 holds bools in the meantime.
 
-Every field is required, and is read by its index, so its position is part of
-the format: a message that changes its fields needs another version, which
-should only append fields to the previous version's, as the format's
+A field is read by its index, so its position is part of the format. A
+field is required unless its type ends with `?`, as `name: string?`: an
+optional field, which a writer may leave out, with the offset 0, as the
+format's
+[absent fields](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+describe, and whose getter returns the language's missing value for it.
+A message that changes its fields appends them in a later version, each
+with the version that added it, as `label: string (since: 2)`, and a table
+in a later revision, from 2, as the format's
 [evolution](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
-describes. A versioned message's reader rejects every other version, so an
-application that reads several versions declares a message for each, reads
-the version first with any of them, and then constructs the message of that
-version, as [versions](#versions) shows.
+describes: the getter of such a field returns the missing value for a table
+written before. A message's reader reads the versions from its `since`
+attribute to its own, and rejects every other, as [versions](#versions)
+shows. Only the TypeScript and JavaScript targets generate optional fields
+and fields added `since` a version so far; every other target fails on a
+schema that declares one, at the first, rather than read it as required.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
@@ -99,7 +107,7 @@ schema      = declaration*
 declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 attribute   = NAME (":" (INTEGER | NAME))?
-field       = doc* NAME ":" type ";"
+field       = doc* NAME ":" type "?"? attributes? ";"
 type        = NAME | "[" NAME "]"
 ```
 
@@ -130,8 +138,19 @@ or read its tables, or a target couldn't generate its code:
   underscores, so `a_1` and `a1` are both `a1`.
 - Messages, tables and structs hold at least one field.
 - Only messages have attributes, each at most once.
-- A message's attributes are `sized`, `version: INTEGER` and
-  `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
+- A message's attributes are `sized`, `version: INTEGER`, `since: INTEGER`
+  and `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
+  `since` is the first version that the reader reads, and needs a `version`
+  no earlier than it.
+- A field's only attribute is `since: INTEGER`, the version of its message
+  that added it, after the message's `since` and up to its `version`, or the
+  revision of a table or a message without a version, from 2. Every field
+  after one with `since` has one too, no earlier, so that versions only
+  append fields, and the first field has none. A struct's fields have no
+  attributes and aren't optional, since a struct holds each scalar at a
+  fixed offset. In a table with fields added `since` a revision, and no
+  version, the first field isn't optional either, since a reader finds which
+  fields the table holds from its first field's offset.
 - A version fits in the message's offset type: 255 for `uint8`, 65,535 for
   `uint16` and 4,294,967,295 for `uint32`.
 - Messages can't be nested; declare a table to nest it.
@@ -279,6 +298,14 @@ arrays of
 them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
+
+A table with an optional field isn't of fixed size, since its writer may
+leave the field out, so it's written field by field, through the sizer and
+the writer, and so is a message or table that nests it, rather than whole at
+constant positions. A field added `since` a version leaves a table of fixed
+size, since writers write every field. In TypeScript and JavaScript, a table
+with either kind of field has no `fields()` or static `read()` yet, and
+neither has a table or a view that holds it.
 
 | Target     | Files                                    | Messages and tables                                                      | Structs                                              |
 | ---------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
@@ -792,11 +819,33 @@ bytes don't hold the header:
 | Swift                  | `Document.version(of: bytes)`, a `UInt32` that throws        |
 | C#                     | `Document.VersionOf(bytes)`, a `uint`                        |
 
-An application that reads two versions of a document, declared with the same
-header as `message DocumentV1 (sized, version: 1)` and
-`message Document (sized, version: 2)`, so that their versions lie in the
-same slot, dispatches on the version without constructing a reader of the
-wrong fields:
+A message with a `since` attribute reads every version from it to its own:
+its `FIRST_VERSION` is the first, its constructor rejects a version before it
+or after `FORMAT_VERSION`, and the getter of a field that a later version
+added returns the missing value for a table of an earlier version, from the
+version that the constructor read. So one message reads both versions of a
+document, without a message for each:
+
+```text
+message Document (sized, version: 2, since: 1) {
+    x: float64;
+    y: float64;
+    name: string;
+    /// Added by version 2
+    label: string (since: 2);
+}
+```
+
+```ts
+const document = new Document(bytes); // reads version 1 or 2
+document.label(); // undefined in version 1
+```
+
+An application whose versions differ in other ways than appended fields,
+declared with the same header as `message DocumentV1 (sized, version: 1)`
+and `message Document (sized, version: 2)`, so that their versions lie in
+the same slot, dispatches on the version without constructing a reader of
+the wrong fields:
 
 ```ts
 switch (Document.versionOf(bytes)) {
@@ -808,6 +857,11 @@ switch (Document.versionOf(bytes)) {
         throw new Error('Unknown document version');
 }
 ```
+
+A table that a field or a vector nests has no version, so a later revision
+of it appends fields with `since: 2` and later, and its reader finds them
+missing from the offset of its first field, which every revision holds. A
+message without a version does the same.
 
 ## Command
 
