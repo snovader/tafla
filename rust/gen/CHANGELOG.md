@@ -188,6 +188,10 @@ first commits, for code built from its source before the release.
 
 ### Changed
 
+- The Swift that tafla-gen generates for a versioned message gives the
+  version to the message's layout, as `version: formatVersion`, rather than
+  to each `TableSizer`, which no longer takes one. It needs the runtime that
+  takes the version so.
 - The command prints the error of a file that it can't write after the errors
   of schemas that write the same file, rather than before them, as every
   host of the `cli` module does.

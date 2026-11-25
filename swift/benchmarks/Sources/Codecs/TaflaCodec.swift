@@ -10,7 +10,7 @@ public struct TaflaCodec: SuiteCodec {
     public typealias Bytes = [UInt8]
 
     /// The document's header: its length and version
-    static let documentLayout = TableLayout(sized: true, versioned: true)
+    static let documentLayout = TableLayout(sized: true, version: documentVersion)
     static let documentVersion: UInt32 = 1
 
     /// The size of a struct of an item's three float32s
@@ -42,7 +42,7 @@ public struct TaflaCodec: SuiteCodec {
     }
 
     public func serializeDocument(_ document: Document) throws -> [UInt8] {
-        var builder = try TableBuilder(fields: 4, layout: Self.documentLayout, version: Self.documentVersion)
+        var builder = try TableBuilder(fields: 4, layout: Self.documentLayout)
         try builder.setFloat64(document.x)
         try builder.setFloat64(document.y)
         try builder.setString(document.name)

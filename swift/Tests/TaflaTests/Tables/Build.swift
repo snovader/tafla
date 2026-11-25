@@ -7,7 +7,14 @@ extension Table {
     /// A builder of the table's layout, version and number of fields, with no
     /// field set
     func builder() throws(BuildError) -> TableBuilder {
-        try TableBuilder(fields: fields.count, layout: layout, version: version)
+        try TableBuilder(fields: fields.count, layout: writtenLayout)
+    }
+
+    /// The layout that the table is written in: its own, with its version
+    /// when it's versioned. Readers read tables of any version, so the
+    /// description's layout has version 0.
+    var writtenLayout: TableLayout {
+        version.map { layout.withVersion($0) } ?? layout
     }
 
     /// Builds the table, setting every field

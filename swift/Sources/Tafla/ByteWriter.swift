@@ -181,7 +181,7 @@ extension TableHeader {
         if layout.isSized {
             writer.writeSlot(length, at: header, offsetType: offsetType)
         }
-        if layout.isVersioned {
+        if let version = layout.version {
             writer.writeSlot(version, at: header + (layout.isSized ? width : 0), offsetType: offsetType)
         }
 

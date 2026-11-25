@@ -184,7 +184,7 @@ struct DecodeErrorTests {
 
             // The size in a sized header, and the version after it
             let sized = TableReader(
-                bytes.extracting(4..<7), layout: TableLayout(sized: true, versioned: true, offsetType: .uint16))
+                bytes.extracting(4..<7), layout: TableLayout(sized: true, version: 0, offsetType: .uint16))
             #expect(try sized.size == 0x1ff)
             #expect(throws: DecodeError.outOfRange(position: 2, byteLength: 2, available: 3)) {
                 _ = try sized.version
@@ -326,7 +326,7 @@ func checkReadError(sourceLocation: SourceLocation = #_sourceLocation, _ read: (
 /// The layouts of every header of an offset type
 func layouts(of offsetType: OffsetType) -> [TableLayout] {
     [(false, false), (true, false), (false, true), (true, true)].map { sized, versioned in
-        TableLayout(sized: sized, versioned: versioned, offsetType: offsetType)
+        TableLayout(sized: sized, version: versioned ? 0 : nil, offsetType: offsetType)
     }
 }
 

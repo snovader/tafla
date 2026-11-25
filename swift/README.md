@@ -31,14 +31,14 @@ import Foundation
 import Tafla
 
 // A format's header, shared by its writer and its readers
-let layout = TableLayout(sized: true, versioned: true)
 let formatVersion: UInt32 = 1
+let layout = TableLayout(sized: true, version: formatVersion)
 
 var series = try TableBuilder(fields: 2)
 try series.setUInt32Array([0, 86_400])
 try series.setFloat32Array([21.75, 18.5])
 
-var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+var builder = try TableBuilder(fields: 3, layout: layout)
 try builder.setFloat64(59.3293)
 try builder.setString("Europe/Stockholm")
 try builder.setTable(.builder(series))  // written straight into the table
@@ -68,7 +68,7 @@ All values are little-endian. A table is its header, one offset per field and
 then the fields in the order they were set:
 
 - The header holds the table's byte length when the layout is `sized`, and
-  then its version when it's `versioned`.
+  then the layout's `version` when it has one.
 - Header slots, offsets, counts and vector item ends are all of the layout's
   offset type, `.uint8`, `.uint16` or `.uint32`, whose offset size is 1, 2 or
   4 bytes. It limits the table to 255 bytes, 64 KiB or 4 GiB.
@@ -164,7 +164,7 @@ place too. The bytes are those that nesting builders of the same fields
 writes, so the example's table can be written so:
 
 ```swift
-var builder = try TableBuilder(fields: 3, layout: layout, version: formatVersion)
+var builder = try TableBuilder(fields: 3, layout: layout)
 try builder.setFloat64(59.3293)
 try builder.setString("Europe/Stockholm")
 try builder.setTable(fields: 2) { series throws(BuildError) in
@@ -231,9 +231,8 @@ Each API throws its own error, with typed throws, so a caller catches a
 A precondition stops the program only for a mistake of the code that calls the
 runtime, which no bytes can cause, as `Array` stops it for an index out of
 range: an index past an `ArrayView`'s or a `Vector`'s count, or negative; a
-negative field index or struct size; `version` of a layout without one; a
-negative number of fields, or of a vector's items recorded in place; and a
-versioned layout without a version, or a version for a layout without one.
+negative field index or struct size; `version` of a layout without one;
+and a negative number of fields, or of a vector's items recorded in place.
 
 ## Writing without a builder
 
