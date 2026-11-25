@@ -4,6 +4,8 @@ mod check;
 pub mod cli;
 mod diagnostic;
 mod generate;
+#[cfg(feature = "json")]
+mod json;
 mod lexer;
 mod model;
 mod naming;
@@ -13,6 +15,10 @@ mod wasm;
 
 pub use diagnostic::{Diagnostic, Span};
 pub use generate::{GeneratedFile, InvalidJavaPackage, JavaPackage, Options, Target};
+#[cfg(feature = "json")]
+pub use json::{
+    ByteLayout, DecodeError, DecodeOptions, MAX_DEPTH, MAX_READ_FACTOR, NotARoot, Root,
+};
 pub use model::Schema;
 
 /// Parses and checks a schema.
