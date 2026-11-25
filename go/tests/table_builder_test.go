@@ -637,24 +637,36 @@ func TestRejectsAVersionTooLargeForItsSlot(t *testing.T) {
 	}{{tafla.Uint8, 0x100}, {tafla.Uint16, 0x1_0000}}
 
 	for _, c := range cases {
-		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType).Versioned()
+		layout := tafla.TableLayout{}.WithOffsetType(c.offsetType)
 
-		_, err := tafla.NewVersionedTableBuilder(1, layout, c.version)
+		_, err := tafla.NewTableBuilder(1, layout.WithVersion(c.version))
 		expectError(t, err, &tafla.BuildError{Kind: tafla.VersionTooLarge, Version: c.version, OffsetType: c.offsetType})
 		expectMessage(t, err, fmt.Sprintf("tafla: version %d doesn't fit in a %v slot", c.version, c.offsetType))
-		if _, err := tafla.NewVersionedTableBuilder(1, layout, c.version-1); err != nil {
+		if _, err := tafla.NewTableBuilder(1, layout.WithVersion(c.version-1)); err != nil {
 			t.Error(err)
 		}
 	}
 }
 
-func TestPanicsForAVersionThatTheLayoutDoesntHave(t *testing.T) {
-	expectPanic(t, "a versioned layout without a version", func() {
-		_, _ = tafla.NewTableBuilder(1, tafla.TableLayout{}.Versioned())
-	})
-	expectPanic(t, "a version without a slot", func() {
-		_, _ = tafla.NewVersionedTableBuilder(1, tafla.TableLayout{}, 1)
-	})
+func TestWritesTheLayoutsVersion(t *testing.T) {
+	first := tafla.TableLayout{}.Sized().WithVersion(1)
+	second := first.WithVersion(2)
+
+	if version, ok := second.Version(); version != 2 || !ok || !second.IsSized() {
+		t.Errorf("version %d, %v", version, ok)
+	}
+	if version, ok := (tafla.TableLayout{}).Version(); version != 0 || ok {
+		t.Errorf("version %d, %v", version, ok)
+	}
+
+	bytes := must(must(tafla.NewTableBuilder(0, second)).Bytes())
+
+	// A reader reads a table of any version, whatever its layout's
+	for _, layout := range []tafla.TableLayout{first, second} {
+		if version := must(tafla.NewTableReader(bytes, layout).Version()); version != 2 {
+			t.Errorf("read version %d", version)
+		}
+	}
 }
 
 func TestRejectsAnIncompleteNestedBuilder(t *testing.T) {

@@ -52,7 +52,6 @@ type TableSizer struct {
 	failure      BuildErrorKind
 	failedIndex  int
 	failedLength uint64
-	version      uint32
 	layout       TableLayout
 }
 
@@ -63,25 +62,13 @@ type SizerParent struct {
 }
 
 // NewTableSizer starts sizing a table of fields fields in layout, which its
-// readers must use too. Nested tables use the default layout. It fails with
-// HeaderTooLong, as [NewTableBuilder] does, and panics, as it does, if the
-// layout is versioned or fields is negative.
+// readers must use too, and whose version its writer writes in the header
+// when it has one. Nested tables use the default layout. It fails with
+// VersionTooLarge or HeaderTooLong, as [NewTableBuilder] does, and panics,
+// as it does, if fields is negative.
 func NewTableSizer(fields int, layout TableLayout) (TableSizer, error) {
-	return newTableSizer(fields, layout, false, 0)
-}
-
-// NewVersionedTableSizer starts sizing a table of fields fields in layout,
-// whose writer writes version in its header. It fails with VersionTooLarge
-// or HeaderTooLong, as [NewVersionedTableBuilder] does, and panics, as it
-// does, if the layout isn't versioned or fields is negative.
-func NewVersionedTableSizer(fields int, layout TableLayout, version uint32) (TableSizer, error) {
-	return newTableSizer(fields, layout, true, version)
-}
-
-func newTableSizer(fields int, layout TableLayout, versioned bool, version uint32) (TableSizer, error) {
-	if layout.versioned != versioned || version > layout.offsetType.MaxValue() ||
-		uint64(fields) > layout.maxFields() {
-		return TableSizer{}, layout.sizerFailure(fields, versioned, version)
+	if layout.version > layout.offsetType.MaxValue() || uint64(fields) > layout.maxFields() {
+		return TableSizer{}, layout.sizerFailure(fields)
 	}
 
 	// Built in place, rather than built and then copied. The header's length
@@ -91,16 +78,14 @@ func newTableSizer(fields int, layout TableLayout, versioned bool, version uint3
 		position:  uint64(layout.HeaderSize()) + uint64(fields)*uint64(layout.offsetType.Size()),
 		fields:    fields,
 		maxLength: layout.maxLength(),
-		version:   version,
 		layout:    layout,
 	}, nil
 }
 
-// sizerFailure panics for a layout that's versioned other than the
-// constructor or a negative number of fields, and returns the error of a
-// version or header that doesn't fit
-func (l TableLayout) sizerFailure(fields int, versioned bool, version uint32) error {
-	if err := l.checkVersion(versioned, version); err != nil {
+// sizerFailure panics for a negative number of fields, and returns the
+// error of a version or header that doesn't fit
+func (l TableLayout) sizerFailure(fields int) error {
+	if err := l.checkVersion(); err != nil {
 		return err
 	}
 	_, err := l.headerLength(fields)
@@ -162,45 +147,28 @@ func (s *TableSizer) AppendWriter(dst []byte) (TableWriter, error) {
 		return TableWriter{}, err
 	}
 
-	return newTableWriter(dst, length, s.fields, s.layout, s.version), nil
+	return newTableWriter(dst, length, s.fields, s.layout), nil
 }
 
 // AppendTable appends a table of fields fields in layout, of length bytes,
 // to dst, into its capacity when it has room and into new bytes otherwise,
-// as append does, and writes its header. It returns dst with the table
-// appended, and the table's bytes, header included, which the caller writes
-// every other byte of, since they aren't zeroed in bytes that it reuses: each
-// field's offset and the field.
+// as append does, and writes its header, with the layout's version when it
+// has one. It returns dst with the table appended, and the table's bytes,
+// header included, which the caller writes every other byte of, since they
+// aren't zeroed in bytes that it reuses: each field's offset and the field.
 //
 // It's for the code that tafla-gen generates, outside the compatibility
 // promise of the rest of the API: it may change in any release, with the
 // generator. The generator lays out a table this way, without a [TableSizer]
 // and a [TableWriter], for a message of fields whose sizes the schema fixes
-// and a string after them. Only such a table's last field can make it too long, so AppendTable fails with TooLong,
-// naming its last field, if length is past what the layout's offset type
-// addresses. It fails with HeaderTooLong and panics as [NewTableSizer] does,
-// and panics if length is shorter than the header.
-func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (whole, table []byte, err error) {
-	return appendTable(dst, fields, layout, false, 0, length)
-}
-
-// AppendVersionedTable appends a table of fields fields in layout, of length
-// bytes, to dst, as [AppendTable] does, with version in its header. It fails
-// with VersionTooLarge or HeaderTooLong and panics as
-// [NewVersionedTableSizer] does, fails with TooLong as AppendTable does, and
+// and a string after them. Only such a table's last field can make it too
+// long, so AppendTable fails with TooLong, naming its last field, if length
+// is past what the layout's offset type addresses. It fails with
+// VersionTooLarge or HeaderTooLong and panics as [NewTableSizer] does, and
 // panics if length is shorter than the header.
-//
-// It's for the code that tafla-gen generates, outside the compatibility
-// promise of the rest of the API: it may change in any release, with the
-// generator.
-func AppendVersionedTable(dst []byte, fields int, layout TableLayout, version uint32, length uint64) (whole, table []byte, err error) {
-	return appendTable(dst, fields, layout, true, version, length)
-}
-
-func appendTable(dst []byte, fields int, layout TableLayout, versioned bool, version uint32, length uint64) (whole, table []byte, err error) {
-	if layout.versioned != versioned || version > layout.offsetType.MaxValue() ||
-		uint64(fields) > layout.maxFields() {
-		return nil, nil, layout.sizerFailure(fields, versioned, version)
+func AppendTable(dst []byte, fields int, layout TableLayout, length uint64) (whole, table []byte, err error) {
+	if layout.version > layout.offsetType.MaxValue() || uint64(fields) > layout.maxFields() {
+		return nil, nil, layout.sizerFailure(fields)
 	}
 	// The header fits, so its length doesn't overflow
 	if length < uint64(layout.HeaderSize())+uint64(fields)*uint64(layout.offsetType.Size()) {
@@ -212,7 +180,7 @@ func appendTable(dst []byte, fields int, layout TableLayout, versioned bool, ver
 
 	whole, table = appendBytes(dst, int(length))
 	if layout.sized || layout.versioned {
-		putHeader(table, layout, version)
+		putHeader(table, layout)
 	}
 
 	return whole, table, nil
@@ -505,10 +473,10 @@ type VectorPosition struct {
 // dst, into length bytes that it appends, which the sizer or TableBuilder
 // checked are at least the header and at most what the offset type
 // addresses
-func newTableWriter(dst []byte, length, fields int, layout TableLayout, version uint32) TableWriter {
+func newTableWriter(dst []byte, length, fields int, layout TableLayout) TableWriter {
 	whole, table := appendBytes(dst, length)
 	if layout.sized || layout.versioned {
-		putHeader(table, layout, version)
+		putHeader(table, layout)
 	}
 
 	// Built in place, rather than built and then copied
@@ -542,14 +510,14 @@ func appendBytes(dst []byte, length int) (whole, appended []byte) {
 }
 
 // putHeader writes the header slots of table in layout: its length, when
-// it's sized, and then version, when it's versioned
-func putHeader(table []byte, layout TableLayout, version uint32) {
+// it's sized, and then the layout's version, when it has one
+func putHeader(table []byte, layout TableLayout) {
 	width := layout.offsetType.Size()
 	if layout.sized {
 		putSlot(table, 0, width, uint32(len(table)))
 	}
 	if layout.versioned {
-		putSlot(table, layout.HeaderSize()-width, width, version)
+		putSlot(table, layout.HeaderSize()-width, width, layout.version)
 	}
 }
 

@@ -64,8 +64,8 @@ func FuzzTableReader(f *testing.F) {
 
 			checkHeader(t, tafla.NewTableReader(bytes, layout))
 			checkHeader(t, tafla.NewTableReader(bytes, layout.Sized()))
-			checkVersion(t, tafla.NewTableReader(bytes, layout.Versioned()))
-			checkVersion(t, tafla.NewTableReader(bytes, layout.Sized().Versioned()))
+			checkVersion(t, tafla.NewTableReader(bytes, layout.WithVersion(0)))
+			checkVersion(t, tafla.NewTableReader(bytes, layout.Sized().WithVersion(0)))
 
 			reader := tafla.NewTableReader(bytes, layout)
 			for position := range len(bytes) + 9 {
