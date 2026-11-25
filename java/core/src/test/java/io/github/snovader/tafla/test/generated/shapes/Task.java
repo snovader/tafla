@@ -59,11 +59,16 @@ public final class Task {
         return writer.byteLength();
     }
 
+    /** A value of {@link Priority}, named or not */
     public byte priority() {
         return reader.getInt8(reader.rootOffset(0));
     }
 
-    /** The states that the task has been in, the oldest first */
+    /**
+     * The states that the task has been in, the oldest first
+     *
+     * Values of {@link State}, named or not
+     */
     public int[] history() {
         return reader.getUint16Array(reader.rootOffset(1));
     }

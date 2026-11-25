@@ -2,7 +2,8 @@
 //! and tables read fields lazily from their bytes and are written from
 //! records of their fields, which a `TableSizer` counts and a `TableWriter`
 //! then writes, nested tables in place. Structs are records, read and
-//! written in place with `VarHandle`s.
+//! written in place with `VarHandle`s. Enums are classes of constants, of
+//! the primitive type that their fields read as.
 
 use std::fmt::Write;
 
@@ -11,7 +12,9 @@ use super::prose::article;
 use super::writer::{CodeWriter, Style, call, doc_comment, escape_outside_code_spans, text};
 use super::{GeneratedFile, JavaPackage, Options};
 use crate::check::{MAX_JAVA_PARAMETER_SLOTS, java_parameter_slots};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+};
 use crate::naming::camel_case;
 
 /// The runtime's package, unless [`Options::runtime`] names another
@@ -60,18 +63,28 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         .as_ref()
         .map_or(PACKAGE, JavaPackage::as_str);
 
+    // A file's writer, after its header and package
+    let start = || {
+        let mut writer = CodeWriter::new(STYLE.indent);
+        writer.line(&header);
+        writer.line(format!("package {package};"));
+        writer.blank();
+        writer
+    };
     let file = |name: &str, contents: String| GeneratedFile {
         path: format!("{}/{name}.java", package.replace('.', "/")),
         contents,
     };
 
     let mut files = Vec::new();
-    for (index, definition) in schema.definitions.iter().enumerate() {
-        let mut writer = CodeWriter::new(STYLE.indent);
-        writer.line(&header);
-        writer.line(format!("package {package};"));
-        writer.blank();
+    for enumeration in &schema.enums {
+        let mut writer = start();
+        enum_class(&mut writer, enumeration);
+        files.push(file(&enumeration.name, writer.finish()));
+    }
 
+    for (index, definition) in schema.definitions.iter().enumerate() {
+        let mut writer = start();
         match definition.kind {
             Kind::Message(layout) => {
                 imports(&mut writer, runtime, schema, definition, Some(layout));
@@ -95,11 +108,7 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
         files.push(file(&definition.name, writer.finish()));
 
         if schema.is_item(index) {
-            let mut writer = CodeWriter::new(STYLE.indent);
-            writer.line(&header);
-            writer.line(format!("package {package};"));
-            writer.blank();
-
+            let mut writer = start();
             let view = if definition.is_struct() {
                 struct_array_view(&mut writer, runtime, definition)
             } else {
@@ -110,6 +119,66 @@ pub fn generate(schema: &Schema, header: &str, options: &Options) -> Vec<Generat
     }
 
     files
+}
+
+/// An enum: a class of a constant of each value, by its name in
+/// `UPPER_SNAKE_CASE`, which no keyword is, of the primitive type that the
+/// getters of its fields return and its writers take. A field holds any value
+/// of its integer type, which it reads without a lookup, and compares with
+/// the constants as they are, which a `switch` takes as its labels.
+fn enum_class(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = enumeration.underlying;
+    let constant_type = scalar_type(underlying);
+
+    let mut docs = schema_docs(&enumeration.docs);
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.extend([
+        format!(
+            "Constants of the values that `{name}` names. A field of it is {}, which",
+            article(constant_type)
+        ),
+        format!("holds any `{}`, named or not.", underlying.name()),
+    ]);
+
+    writer.lines(&javadoc(&docs));
+    writer.open(format!("public final class {name} {{"));
+    for value in &enumeration.values {
+        let (literal, docs) = enum_value(value);
+        writer.lines(&javadoc(&docs));
+        writer.line(format!(
+            "public static final {constant_type} {} = {literal};",
+            value.name.to_ascii_uppercase()
+        ));
+    }
+    writer.blank();
+    writer.line(format!("private {name}() {{}}"));
+    writer.close("}");
+}
+
+/// A value of an enum as a Java literal, with an `L` where it doesn't fit an
+/// `int`, as `FORMAT_VERSION` has, and its documentation. A `uint64` beyond a
+/// `long`'s greatest is the `long` with its bits, as the getters return it,
+/// which the documentation says.
+fn enum_value(value: &EnumValue) -> (String, Vec<String>) {
+    let bits = i64::try_from(value.value).unwrap_or_else(|_| {
+        u64::try_from(value.value)
+            .expect("the checker keeps a value within int64 and uint64")
+            .cast_signed()
+    });
+    let suffix = if i32::try_from(bits).is_ok() { "" } else { "L" };
+
+    let mut docs = schema_docs(&value.docs);
+    if i128::from(bits) != value.value {
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(format!("`{}`, as a `long` with the same bits", value.value));
+    }
+
+    (format!("{bits}{suffix}"), docs)
 }
 
 /// The view of a vector of a table, a lazy `List` whose `get()` reads an
@@ -1069,7 +1138,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         };
 
         writer.blank();
-        writer.lines(&javadoc(&getter_docs(field)));
+        writer.lines(&javadoc(&getter_docs(field, schema)));
         writer.open(format!(
             "public {} {}() {{",
             value_type(field.field_type, schema),
@@ -1121,11 +1190,23 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
     }
 }
 
-/// A getter's Javadoc: the field's documentation, and for a vector or an
-/// array of structs, that the getter returns a view whose items are read, and
-/// fail, when they're asked for
-fn getter_docs(field: &Field) -> Vec<String> {
+/// A getter's Javadoc: the field's documentation, and for a field of an enum
+/// or an array of them, the enum, which the type that it returns doesn't
+/// name, and for a vector or an array of structs, that the getter returns a
+/// view whose items are read, and fail, when they're asked for
+fn getter_docs(field: &Field, schema: &Schema) -> Vec<String> {
     let mut docs = schema_docs(&field.docs);
+    if let Some(index) = field.enumeration {
+        let name = &schema.enumeration(index).name;
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push(match field.field_type {
+            FieldType::Array(_) => format!("Values of {{@link {name}}}, named or not"),
+            _ => format!("A value of {{@link {name}}}, named or not"),
+        });
+    }
+
     let items = match field.field_type {
         FieldType::Vector(_) => "the items' ends",
         FieldType::StructArray(_) => "the structs",

@@ -142,12 +142,20 @@ public final class Enums {
         return writer.byteLength();
     }
 
-    /** An enum of one byte */
+    /**
+     * An enum of one byte
+     *
+     * A value of {@link Level}, named or not
+     */
     public short level() {
         return reader.getUint8(reader.rootOffset(0));
     }
 
-    /** An array of enums, which is an array of their integer type */
+    /**
+     * An array of enums, which is an array of their integer type
+     *
+     * Values of {@link Level}, named or not
+     */
     public short[] levels() {
         return reader.getUint8Array(reader.rootOffset(1));
     }
@@ -162,10 +170,12 @@ public final class Enums {
         return reader.getUint8ArrayView(reader.rootOffset(1));
     }
 
+    /** A value of {@link Direction}, named or not */
     public byte direction() {
         return reader.getInt8(reader.rootOffset(2));
     }
 
+    /** Values of {@link Direction}, named or not */
     public byte[] directions() {
         return reader.getInt8Array(reader.rootOffset(3));
     }
@@ -175,10 +185,12 @@ public final class Enums {
         return reader.getInt8ArrayView(reader.rootOffset(3));
     }
 
+    /** A value of {@link Unit}, named or not */
     public int unit() {
         return reader.getUint16(reader.rootOffset(4));
     }
 
+    /** Values of {@link Unit}, named or not */
     public int[] units() {
         return reader.getUint16Array(reader.rootOffset(5));
     }
@@ -191,10 +203,12 @@ public final class Enums {
         return reader.getUint16ArrayView(reader.rootOffset(5));
     }
 
+    /** A value of {@link Change}, named or not */
     public short change() {
         return reader.getInt16(reader.rootOffset(6));
     }
 
+    /** Values of {@link Change}, named or not */
     public short[] changes() {
         return reader.getInt16Array(reader.rootOffset(7));
     }
@@ -204,10 +218,12 @@ public final class Enums {
         return reader.getInt16ArrayView(reader.rootOffset(7));
     }
 
+    /** A value of {@link Status}, named or not */
     public long status() {
         return reader.getUint32(reader.rootOffset(8));
     }
 
+    /** Values of {@link Status}, named or not */
     public long[] statuses() {
         return reader.getUint32Array(reader.rootOffset(9));
     }
@@ -220,10 +236,12 @@ public final class Enums {
         return reader.getUint32ArrayView(reader.rootOffset(9));
     }
 
+    /** A value of {@link Sign}, named or not */
     public int sign() {
         return reader.getInt32(reader.rootOffset(10));
     }
 
+    /** Values of {@link Sign}, named or not */
     public int[] signs() {
         return reader.getInt32Array(reader.rootOffset(11));
     }
@@ -233,10 +251,12 @@ public final class Enums {
         return reader.getInt32ArrayView(reader.rootOffset(11));
     }
 
+    /** A value of {@link Mask}, named or not */
     public long mask() {
         return reader.getUint64(reader.rootOffset(12));
     }
 
+    /** Values of {@link Mask}, named or not */
     public long[] masks() {
         return reader.getUint64Array(reader.rootOffset(13));
     }
@@ -249,10 +269,12 @@ public final class Enums {
         return reader.getUint64ArrayView(reader.rootOffset(13));
     }
 
+    /** A value of {@link Extent}, named or not */
     public long extent() {
         return reader.getInt64(reader.rootOffset(14));
     }
 
+    /** Values of {@link Extent}, named or not */
     public long[] extents() {
         return reader.getInt64Array(reader.rootOffset(15));
     }
@@ -262,7 +284,11 @@ public final class Enums {
         return reader.getInt64ArrayView(reader.rootOffset(15));
     }
 
-    /** An enum whose values are keywords */
+    /**
+     * An enum whose values are keywords
+     *
+     * A value of {@link Word}, named or not
+     */
     public short word() {
         return reader.getUint8(reader.rootOffset(16));
     }

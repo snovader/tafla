@@ -48,6 +48,10 @@ final class ShapesTables {
         return new Pair.Fields(pair.first(), pair.second());
     }
 
+    static Task.Fields readTask(Task task) {
+        return new Task.Fields(task.priority(), task.history(), task.step(), task.name());
+    }
+
     // The tables that the generated code writes, in the conformance suite's model
 
     static TableDescription describePoint(Point.Fields point) {
@@ -89,6 +93,19 @@ final class ShapesTables {
     /** {@return the fields of a {@code Sample} in the order of their offsets} */
     static List<ScalarField> describeSample(Sample sample) {
         return List.of(uint32(sample.key()), float32(sample.a()), float32(sample.b()));
+    }
+
+    /** {@return the table of a {@code Task}, whose enums are the integer types that store them} */
+    static TableDescription describeTask(Task.Fields task) {
+        var step = task.step();
+
+        return message(
+            DEFAULT_LAYOUT,
+            int8(task.priority()),
+            uint16Array(task.history()),
+            struct(List.of(uint16(step.state()), int8(step.priority()), uint32(step.seconds()))),
+            string(task.name())
+        );
     }
 
     // Arbitrary values of the fields

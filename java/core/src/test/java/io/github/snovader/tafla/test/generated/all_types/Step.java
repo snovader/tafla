@@ -45,6 +45,7 @@ public final class Step {
         writer.endTable(parent);
     }
 
+    /** A value of {@link Level}, named or not */
     public short level() {
         return reader.getUint8(reader.fieldOffset(position, 0));
     }
