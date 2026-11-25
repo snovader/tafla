@@ -66,10 +66,9 @@ type, offset size, vector, builder and decode error.
   failed, as the other runtimes' errors do.
 - **`TableLayout<true>` is a versioned layout**, as Rust's `TableLayout<true>`
   is, so that the layout's `version()` and `TableReader::version()` compile
-  only where the header has one, and a layout without a version is no
-  longer for it. A layout is
-  a `constexpr` value, and a `TableReader` made with a constant layout reads
-  its offsets without branching on their type.
+  only where the header has one, and a layout without a version takes no
+  bytes for one. A layout is a `constexpr` value, and a `TableReader` made
+  with a constant layout reads its offsets without branching on their type.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
   `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
   which must outlive them. A setter that takes a `std::span` or a

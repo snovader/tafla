@@ -7,6 +7,14 @@
 #include <cstdint>
 #include <string_view>
 
+// An empty member that takes no bytes. MSVC's ABI ignores the standard
+// attribute, and Clang follows it there, so both take MSVC's own.
+#if defined(_MSC_VER)
+#define TAFLA_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define TAFLA_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 namespace tafla {
 
 /// A table's offset type, which limits how long the table can be.
@@ -115,7 +123,8 @@ class TableLayout;
 namespace detail {
 
 /// The version that a layout holds: none when it isn't versioned, so that
-/// such a layout, and a reader that keeps it, is no longer for it
+/// such a layout, and a reader that keeps it, takes no more bytes than one
+/// that never held a version
 template <bool Versioned>
 struct LayoutVersion {
     friend constexpr bool operator==(LayoutVersion, LayoutVersion) noexcept = default;
@@ -201,7 +210,7 @@ private:
 
     bool sized_ = false;
     OffsetType offset_type_ = OffsetType::uint32;
-    [[no_unique_address]] detail::LayoutVersion<Versioned> version_;
+    TAFLA_NO_UNIQUE_ADDRESS detail::LayoutVersion<Versioned> version_;
 };
 
 }  // namespace tafla

@@ -55,7 +55,7 @@ TEST(Layout, Version) {
     static_assert(second.version() == 2 && second.is_sized());
     static_assert(first != second);
 
-    // A layout without a version is no longer for those that have one
+    // A layout without a version takes no bytes for one
     static_assert(sizeof(TableLayout<false>) < sizeof(TableLayout<true>));
     static_assert(sizeof(TableLayout<false>) == 2);
 
