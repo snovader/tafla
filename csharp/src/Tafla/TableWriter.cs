@@ -84,9 +84,8 @@ public struct TableWriter
     /// <summary>
     /// Returns new bytes for a table of <paramref name="fields"/> fields in <paramref name="layout"/>,
     /// of <paramref name="length"/> bytes, with its header written, the layout's version included when
-    /// it has one, for the caller to write every other
-    /// byte itself, each field's offset and the field, at positions that it works out, without a sizer
-    /// and a writer.
+    /// it has one, for the caller to write every other byte itself, each field's offset and the field,
+    /// at positions that it works out, without a sizer and a writer.
     /// </summary>
     /// <remarks>
     /// It's for the code that tafla-gen generates, as Rust's <c>table_bytes()</c> and Go's
@@ -96,7 +95,8 @@ public struct TableWriter
     /// </remarks>
     /// <exception cref="BuildException">
     /// The layout's version doesn't fit in its offset type or the header alone is too long for it, as
-    /// <see cref="TableSizer"/> rejects them, or the table is, which names its last field, before anything is allocated.
+    /// <see cref="TableSizer"/> rejects them, or the table is, which names its last field, before
+    /// anything is allocated.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="fields"/> is negative, or <paramref name="length"/> is shorter than the header
