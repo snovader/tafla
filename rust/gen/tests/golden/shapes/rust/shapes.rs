@@ -605,3 +605,155 @@ impl Sample {
         bytes
     }
 }
+
+/// A task, whose fields are enums, alone, in an array and in a struct
+#[derive(Clone, Copy, Debug)]
+pub struct Task<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> Task<'a> {
+    const LAYOUT: TableLayout = TableLayout::DEFAULT;
+
+    /// Reads a [`Task`] from `bytes`
+    pub const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn priority(&self) -> Result<i8, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(0)?;
+        reader.get_i8(position)
+    }
+
+    /// The states that the task has been in, the oldest first
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn history(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(1)?;
+        reader.get_u16_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn step(&self) -> Result<Step, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(2)?;
+        let bytes = reader.get_struct(position, Step::SIZE)?;
+
+        Step::read(bytes)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn name(&self) -> Result<&'a str, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(3)?;
+        reader.get_str(position)
+    }
+}
+
+/// The fields of a [`Task`], to write
+#[derive(Clone, Debug)]
+pub struct TaskFields<'a> {
+    pub priority: i8,
+    /// The states that the task has been in, the oldest first
+    pub history: &'a [u16],
+    pub step: Step,
+    pub name: &'a str,
+}
+
+impl TaskFields<'_> {
+    /// Writes a [`Task`] with every field
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
+    pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
+        let mut sizer = TableSizer::new(4, Task::LAYOUT)?;
+        sizer.add_i8();
+        sizer.add_u16_array(self.history.len());
+        sizer.add_struct(Step::SIZE);
+        sizer.add_str(self.name);
+
+        let mut writer = sizer.writer()?;
+        writer.set_i8(0, self.priority);
+        writer.set_u16_array(1, self.history);
+        writer.set_struct(2, &self.step.to_bytes());
+        writer.set_str(3, self.name);
+
+        writer.into_bytes()
+    }
+}
+
+/// A state and how long the task has been in it
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Step {
+    pub state: u16,
+    pub priority: i8,
+    pub seconds: u32,
+}
+
+impl Step {
+    /// The byte length of a [`Step`]
+    pub const SIZE: usize = 7;
+
+    /// The alignment of an array of a [`Step`]: its largest scalar's size
+    pub const ALIGNMENT: Alignment = Alignment::Four;
+
+    /// Reads a [`Step`] from the start of `bytes`
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if `bytes` are shorter than [`Self::SIZE`].
+    pub fn read(bytes: &[u8]) -> Result<Self, DecodeError> {
+        match bytes.first_chunk() {
+            Some(bytes) => Ok(Self::from_bytes(bytes)),
+            None => Err(DecodeError::OutOfRange {
+                position: 0,
+                byte_length: 7,
+                available: bytes.len(),
+            }),
+        }
+    }
+
+    /// Reads a [`Step`] from its bytes, such as those of an array of them
+    #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn from_bytes(bytes: &[u8; 7]) -> Self {
+        Self {
+            state: u16::from_le_bytes(bytes[0..2].try_into().unwrap_or_default()),
+            priority: i8::from_le_bytes(bytes[2..3].try_into().unwrap_or_default()),
+            seconds: u32::from_le_bytes(bytes[3..7].try_into().unwrap_or_default()),
+        }
+    }
+
+    #[must_use]
+    pub fn to_bytes(self) -> [u8; 7] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..2].copy_from_slice(&self.state.to_le_bytes());
+        bytes[2..3].copy_from_slice(&self.priority.to_le_bytes());
+        bytes[3..7].copy_from_slice(&self.seconds.to_le_bytes());
+
+        bytes
+    }
+
+    /// Writes [`Step`]s one after another, as an array of them holds them
+    #[must_use]
+    pub fn array_to_bytes(items: &[Self]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(items.len() * Self::SIZE);
+        for item in items {
+            bytes.extend_from_slice(&item.to_bytes());
+        }
+
+        bytes
+    }
+}

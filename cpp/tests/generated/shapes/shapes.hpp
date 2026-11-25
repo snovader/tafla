@@ -19,12 +19,14 @@ class Document;
 class ItemList;
 class Pair;
 class Item;
+class Task;
 struct PointFields;
 struct ColumnsFields;
 struct DocumentFields;
 struct ItemListFields;
 struct PairFields;
 struct ItemFields;
+struct TaskFields;
 
 /** A fixed-size sample, such as a stream sends one per frame */
 struct Sample {
@@ -72,6 +74,54 @@ struct Sample {
     }
 
     friend bool operator==(const Sample&, const Sample&) = default;
+};
+
+/** A state and how long the task has been in it */
+struct Step {
+    std::uint16_t state{};
+    std::int8_t priority{};
+    std::uint32_t seconds{};
+
+    /** The byte length of a `Step` */
+    static constexpr std::size_t SIZE = 7;
+
+    /** The alignment of an array of a `Step`: its largest scalar's size */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::four;
+
+    /** Reads a `Step` from the start of `bytes`, or throws a `tafla::DecodeError` if they're shorter than `SIZE` */
+    [[nodiscard]] static Step read(std::span<const std::uint8_t> bytes) {
+        if (bytes.size() < SIZE) {
+            throw ::tafla::DecodeError::out_of_range(0, SIZE, bytes.size());
+        }
+        return from_bytes(bytes.data());
+    }
+
+    /** Reads a `Step` from its `SIZE` bytes at `bytes`, such as those of an array of them */
+    [[nodiscard]] static Step from_bytes(const std::uint8_t* bytes) noexcept {
+        return {
+            .state = ::tafla::load_le<std::uint16_t>(bytes),
+            .priority = ::tafla::load_le<std::int8_t>(bytes + 2),
+            .seconds = ::tafla::load_le<std::uint32_t>(bytes + 3),
+        };
+    }
+
+    /** Writes the `SIZE` bytes of a `Step` at `bytes_` */
+    void to_bytes(std::uint8_t* bytes_) const noexcept {
+        ::tafla::store_le(bytes_, state);
+        ::tafla::store_le(bytes_ + 2, priority);
+        ::tafla::store_le(bytes_ + 3, seconds);
+    }
+
+    /** Writes `Step`s one after another, as an array of them holds them */
+    [[nodiscard]] static std::vector<std::uint8_t> array_to_bytes(std::span<const Step> items) {
+        std::vector<std::uint8_t> bytes(items.size() * SIZE);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            items[index].to_bytes(bytes.data() + index * SIZE);
+        }
+        return bytes;
+    }
+
+    friend bool operator==(const Step&, const Step&) = default;
 };
 
 /** A vector of `Item`s, which reads each item when it's asked for */
@@ -402,6 +452,57 @@ struct ItemFields {
      * its offset
      */
     void to_bytes(std::uint8_t* bytes_) const noexcept;
+};
+
+/** A task, whose fields are enums, alone, in an array and in a struct */
+class Task {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout();
+
+    /** Reads a `Task` from `bytes`, which it views */
+    explicit constexpr Task(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int8_t priority() const;
+
+    /**
+     * The states that the task has been in, the oldest first
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> history() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Step step() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `Task`, to write */
+struct TaskFields {
+    std::int8_t priority{};
+    /** The states that the task has been in, the oldest first */
+    std::span<const std::uint16_t> history{};
+    Step step{};
+    std::string_view name{};
+
+    /**
+     * Writes a `Task` with every field, or throws a `tafla::BuildError` if it's longer than its offset type, `uint32`,
+     * addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Task` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns its
+     * length, the number of bytes that hold it, leaving the bytes after it as they were. Throws `std::invalid_argument`
+     * if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
 inline double Point::x() const {
@@ -738,6 +839,62 @@ inline void ItemFields::to_bytes(std::uint8_t* bytes_) const noexcept {
     ::tafla::store_le(bytes_ + 4, std::uint32_t{12});
     ::tafla::store_le(bytes_ + 8, value);
     pair.to_bytes(bytes_ + 12);
+}
+
+inline std::int8_t Task::priority() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_int8(position);
+}
+
+inline ::tafla::ArrayView<std::uint16_t> Task::history() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint16_array(position);
+}
+
+inline Step Task::step() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return Step::from_bytes(reader.get_struct(position, Step::SIZE).data());
+}
+
+inline std::string_view Task::name() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return reader.get_string(position);
+}
+
+inline ::tafla::Bytes TaskFields::serialize() const {
+    ::tafla::TableSizer sizer_(4, Task::LAYOUT);
+    sizer_.add_int8();
+    sizer_.add_uint16_array(history.size());
+    sizer_.add_struct(Step::SIZE);
+    sizer_.add_string(name);
+
+    auto writer_ = sizer_.writer();
+    writer_.set_int8(0, priority);
+    writer_.set_uint16_array(1, history);
+    writer_.set_struct(2, step);
+    writer_.set_string(3, name);
+
+    return writer_.finish();
+}
+
+inline std::size_t TaskFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(4, Task::LAYOUT);
+    sizer_.add_int8();
+    sizer_.add_uint16_array(history.size());
+    sizer_.add_struct(Step::SIZE);
+    sizer_.add_string(name);
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_int8(0, priority);
+    writer_.set_uint16_array(1, history);
+    writer_.set_struct(2, step);
+    writer_.set_string(3, name);
+
+    return writer_.finish_into();
 }
 
 }  // namespace shapes

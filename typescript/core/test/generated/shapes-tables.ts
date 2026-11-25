@@ -22,7 +22,8 @@ import type {
     ItemListFields,
     PairFields,
     PointFields,
-    SampleFields
+    SampleFields,
+    TaskFields
 } from './shapes/typescript/shapes.ts';
 import { readItems } from './views.ts';
 
@@ -49,6 +50,7 @@ export type ItemList = typescript.ItemList | javascript.ItemList;
 type Item = typescript.Item | javascript.Item;
 type Pair = typescript.Pair | javascript.Pair;
 type Sample = typescript.Sample | javascript.Sample;
+type Task = typescript.Task | javascript.Task;
 
 // Reading every field, with arrays copied to plain arrays to compare with the
 // fields that were written
@@ -94,6 +96,21 @@ function readPair(pair: Pair): PairFields {
 
 export function readSample(sample: Sample): SampleFields {
     return { key: sample.key(), a: sample.a(), b: sample.b() };
+}
+
+export function readTask(task: Task): TaskFields {
+    const step = task.step();
+
+    return {
+        priority: task.priority(),
+        history: Array.from(task.history()),
+        step: {
+            state: step.state(),
+            priority: step.priority(),
+            seconds: step.seconds()
+        },
+        name: task.name()
+    };
 }
 
 // The tables that the generated code writes, in the conformance suite's

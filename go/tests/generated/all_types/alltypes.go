@@ -1910,3 +1910,858 @@ func (v DocumentedArray) Slice() []Documented {
 	}
 	return structs
 }
+
+// Enums as fields and in arrays, which are stored as their integer types
+type Enums struct {
+	bytes []byte
+}
+
+// NewEnums reads an [Enums] from bytes, which it keeps rather than copying
+// them.
+func NewEnums(bytes []byte) Enums {
+	return Enums{bytes: bytes}
+}
+
+// layout returns the layout of an [Enums], which its getters read it in
+func (Enums) layout() tafla.TableLayout {
+	return tafla.TableLayout{}
+}
+
+// An enum of one byte
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Level() (uint8, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint8(position)
+}
+
+// An array of enums, which is an array of their integer type
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Levels() ([]byte, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
+	if err != nil {
+		return nil, err
+	}
+	return reader.GetUint8Array(position)
+}
+
+// Direction fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Enums) Direction() (int8, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetInt8(position)
+}
+
+// Directions fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Enums) Directions() (tafla.ArrayView[int8], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
+	if err != nil {
+		return tafla.ArrayView[int8]{}, err
+	}
+	return reader.GetInt8Array(position)
+}
+
+// Unit fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Unit() (uint16, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 16)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint16(position)
+}
+
+// Units fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Units() (tafla.ArrayView[uint16], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 20)
+	if err != nil {
+		return tafla.ArrayView[uint16]{}, err
+	}
+	return reader.GetUint16Array(position)
+}
+
+// Change fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Change() (int16, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 24)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetInt16(position)
+}
+
+// Changes fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Enums) Changes() (tafla.ArrayView[int16], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 28)
+	if err != nil {
+		return tafla.ArrayView[int16]{}, err
+	}
+	return reader.GetInt16Array(position)
+}
+
+// Status fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Status() (uint32, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 32)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint32(position)
+}
+
+// Statuses fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Enums) Statuses() (tafla.ArrayView[uint32], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 36)
+	if err != nil {
+		return tafla.ArrayView[uint32]{}, err
+	}
+	return reader.GetUint32Array(position)
+}
+
+// Sign fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Sign() (int32, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 40)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetInt32(position)
+}
+
+// Signs fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Signs() (tafla.ArrayView[int32], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 44)
+	if err != nil {
+		return tafla.ArrayView[int32]{}, err
+	}
+	return reader.GetInt32Array(position)
+}
+
+// Mask fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Mask() (uint64, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 48)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint64(position)
+}
+
+// Masks fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Masks() (tafla.ArrayView[uint64], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 52)
+	if err != nil {
+		return tafla.ArrayView[uint64]{}, err
+	}
+	return reader.GetUint64Array(position)
+}
+
+// Extent fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Extent() (int64, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 56)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetInt64(position)
+}
+
+// Extents fails with a [*tafla.DecodeError] if the field lies outside the
+// bytes.
+func (t Enums) Extents() (tafla.ArrayView[int64], error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 60)
+	if err != nil {
+		return tafla.ArrayView[int64]{}, err
+	}
+	return reader.GetInt64Array(position)
+}
+
+// An enum whose values are keywords
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Word() (uint8, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 64)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint8(position)
+}
+
+// A struct of enums
+//
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Enums) Mark() (Mark, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 68)
+	if err != nil {
+		return Mark{}, err
+	}
+	bytes, err := reader.GetStruct(position, 24)
+	if err != nil {
+		return Mark{}, err
+	}
+	return readMark(bytes), nil
+}
+
+// Marks views the array's structs, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field or its structs lie outside the
+// bytes.
+func (t Enums) Marks() (MarkArray, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 72)
+	if err != nil {
+		return MarkArray{}, err
+	}
+	bytes, err := reader.GetStructArray(position, 24)
+	return MarkArray{bytes: bytes}, err
+}
+
+// Tables of an enum, which a vector's view reads
+//
+// It views the vector's items, reading each one when it's asked for. It fails
+// with a [*tafla.DecodeError] if the field, or the vector's count or the ends
+// of its items, lie outside the bytes. An item fails with one when it's read if
+// its own bytes are corrupt.
+func (t Enums) Steps() (StepVector, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 76)
+	if err != nil {
+		return StepVector{}, err
+	}
+	vector, err := reader.GetVector(position)
+	return StepVector{vector: vector}, err
+}
+
+// Fields reads every field of an [Enums] at once, into the [EnumsFields] that
+// it's written from, as its getters read them, and its nested tables and the
+// items of its vectors as their Fields() reads them. Its strings, and its
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
+func (t Enums) Fields() (EnumsFields, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	var fields EnumsFields
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Level, err = reader.GetUint8(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 4); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Levels, err = reader.GetUint8Array(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 8); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Direction, err = reader.GetInt8(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 12); err != nil {
+		return EnumsFields{}, err
+	}
+	array3, err := reader.GetInt8Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Directions = array3.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 16); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Unit, err = reader.GetUint16(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 20); err != nil {
+		return EnumsFields{}, err
+	}
+	array5, err := reader.GetUint16Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Units = array5.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 24); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Change, err = reader.GetInt16(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 28); err != nil {
+		return EnumsFields{}, err
+	}
+	array7, err := reader.GetInt16Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Changes = array7.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 32); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Status, err = reader.GetUint32(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 36); err != nil {
+		return EnumsFields{}, err
+	}
+	array9, err := reader.GetUint32Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Statuses = array9.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 40); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Sign, err = reader.GetInt32(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 44); err != nil {
+		return EnumsFields{}, err
+	}
+	array11, err := reader.GetInt32Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Signs = array11.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 48); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Mask, err = reader.GetUint64(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 52); err != nil {
+		return EnumsFields{}, err
+	}
+	array13, err := reader.GetUint64Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Masks = array13.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 56); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Extent, err = reader.GetInt64(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 60); err != nil {
+		return EnumsFields{}, err
+	}
+	array15, err := reader.GetInt64Array(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Extents = array15.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 64); err != nil {
+		return EnumsFields{}, err
+	}
+	if fields.Word, err = reader.GetUint8(position); err != nil {
+		return EnumsFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 68); err != nil {
+		return EnumsFields{}, err
+	}
+	struct17, err := reader.GetStruct(position, 24)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Mark = readMark(struct17)
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 72); err != nil {
+		return EnumsFields{}, err
+	}
+	structs18, err := reader.GetStructArray(position, 24)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Marks = MarkArray{bytes: structs18}.Slice()
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, 0, 76); err != nil {
+		return EnumsFields{}, err
+	}
+	vector19, err := reader.GetVector(position)
+	if err != nil {
+		return EnumsFields{}, err
+	}
+	fields.Steps = make([]StepFields, 0, vector19.Len())
+	for bytes, err := range vector19.ItemsInPlace() {
+		if err != nil {
+			return EnumsFields{}, err
+		}
+		item, err := (Step{bytes: bytes}).Fields()
+		if err != nil {
+			return EnumsFields{}, err
+		}
+		fields.Steps = append(fields.Steps, item)
+	}
+
+	return fields, nil
+}
+
+// EnumsFields are the fields of an [Enums], to write.
+type EnumsFields struct {
+	// An enum of one byte
+	Level uint8
+	// An array of enums, which is an array of their integer type
+	Levels     []byte
+	Direction  int8
+	Directions []int8
+	Unit       uint16
+	Units      []uint16
+	Change     int16
+	Changes    []int16
+	Status     uint32
+	Statuses   []uint32
+	Sign       int32
+	Signs      []int32
+	Mask       uint64
+	Masks      []uint64
+	Extent     int64
+	Extents    []int64
+	// An enum whose values are keywords
+	Word uint8
+	// A struct of enums
+	Mark  Mark
+	Marks []Mark
+	// Tables of an enum, which a vector's view reads
+	Steps []StepFields
+}
+
+// MarshalBinary writes an [Enums] with every field. It fails with a
+// [*tafla.BuildError] if it's longer than its offset type, uint32, addresses.
+func (f EnumsFields) MarshalBinary() ([]byte, error) {
+	return f.AppendBinary(nil)
+}
+
+// AppendBinary appends an [Enums] with every field to bytes, as
+// [EnumsFields.MarshalBinary] writes it, and returns the extended bytes, into
+// their capacity when they have room. It fails as MarshalBinary does.
+func (f EnumsFields) AppendBinary(bytes []byte) ([]byte, error) {
+	sizer, err := tafla.NewTableSizer(20, Enums{}.layout())
+	if err != nil {
+		return nil, err
+	}
+	sizer.AddUint8()
+	sizer.AddUint8Array(len(f.Levels))
+	sizer.AddInt8()
+	sizer.AddInt8Array(len(f.Directions))
+	sizer.AddUint16()
+	sizer.AddUint16Array(len(f.Units))
+	sizer.AddInt16()
+	sizer.AddInt16Array(len(f.Changes))
+	sizer.AddUint32()
+	sizer.AddUint32Array(len(f.Statuses))
+	sizer.AddInt32()
+	sizer.AddInt32Array(len(f.Signs))
+	sizer.AddUint64()
+	sizer.AddUint64Array(len(f.Masks))
+	sizer.AddInt64()
+	sizer.AddInt64Array(len(f.Extents))
+	sizer.AddUint8()
+	sizer.AddStruct(24)
+	sizer.AddStructArray(len(f.Marks), 24, tafla.Align8)
+	sizer.AddVector(len(f.Steps))
+	for index := range f.Steps {
+		f.Steps[index].size(&sizer)
+	}
+
+	writer, err := sizer.AppendWriter(bytes)
+	if err != nil {
+		return nil, err
+	}
+	writer.SetUint8(0, f.Level)
+	writer.SetUint8Array(1, f.Levels)
+	writer.SetInt8(2, f.Direction)
+	writer.SetInt8Array(3, f.Directions)
+	writer.SetUint16(4, f.Unit)
+	writer.SetUint16Array(5, f.Units)
+	writer.SetInt16(6, f.Change)
+	writer.SetInt16Array(7, f.Changes)
+	writer.SetUint32(8, f.Status)
+	writer.SetUint32Array(9, f.Statuses)
+	writer.SetInt32(10, f.Sign)
+	writer.SetInt32Array(11, f.Signs)
+	writer.SetUint64(12, f.Mask)
+	writer.SetUint64Array(13, f.Masks)
+	writer.SetInt64(14, f.Extent)
+	writer.SetInt64Array(15, f.Extents)
+	writer.SetUint8(16, f.Word)
+	f.Mark.put(writer.ReserveStruct(17, 24))
+	structs := writer.ReserveStructArray(18, len(f.Marks), 24, tafla.Align8)
+	for item := range f.Marks {
+		f.Marks[item].put(structs[item*24:])
+	}
+	vector := writer.SetVector(19, len(f.Steps))
+	for item := range f.Steps {
+		f.Steps[item].write(&writer)
+		writer.SetItemEnd(vector, item)
+	}
+
+	return writer.Bytes()
+}
+
+// A table of an enum, a struct of enums and a string
+type Step struct {
+	bytes    []byte
+	position int
+}
+
+// Level fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Step) Level() (uint8, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint8(position)
+}
+
+// Mark fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Step) Mark() (Mark, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4)
+	if err != nil {
+		return Mark{}, err
+	}
+	bytes, err := reader.GetStruct(position, 24)
+	if err != nil {
+		return Mark{}, err
+	}
+	return readMark(bytes), nil
+}
+
+// Name fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Step) Name() (string, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+8)
+	if err != nil {
+		return "", err
+	}
+	return reader.GetString(position)
+}
+
+// Fields reads every field of a [Step] at once, into the [StepFields] that it's
+// written from, as its getters read them, and its nested tables and the items
+// of its vectors as their Fields() reads them. Its strings, and its arrays and
+// arrays of structs as their Slice() returns them, share the bytes. It fails
+// with a [*tafla.DecodeError] if a field lies outside the bytes.
+func (t Step) Fields() (StepFields, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	var fields StepFields
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return StepFields{}, err
+	}
+	if fields.Level, err = reader.GetUint8(position); err != nil {
+		return StepFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4); err != nil {
+		return StepFields{}, err
+	}
+	struct1, err := reader.GetStruct(position, 24)
+	if err != nil {
+		return StepFields{}, err
+	}
+	fields.Mark = readMark(struct1)
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+8); err != nil {
+		return StepFields{}, err
+	}
+	if fields.Name, err = reader.GetString(position); err != nil {
+		return StepFields{}, err
+	}
+
+	return fields, nil
+}
+
+// StepFields are the fields of a [Step], to write.
+type StepFields struct {
+	Level uint8
+	Mark  Mark
+	Name  string
+}
+
+// size adds a [Step] to its parent's sizer, after the field or vector that
+// holds it
+func (f *StepFields) size(sizer *tafla.TableSizer) {
+	parent := sizer.StartTable(3)
+	sizer.AddFields(2, 25)
+	sizer.AddString(f.Name)
+	sizer.EndTable(parent)
+}
+
+// write writes a [Step] where its parent's writer is, after the field or vector
+// that holds it
+func (f *StepFields) write(writer *tafla.TableWriter) {
+	parent := writer.StartTable(3)
+	fixed := writer.ReserveFields(25)
+	_ = fixed[36]
+	binary.LittleEndian.PutUint32(fixed, 12)
+	binary.LittleEndian.PutUint32(fixed[4:], 13)
+	fixed[12] = f.Level
+	f.Mark.put(fixed[13:])
+	writer.SetString(2, f.Name)
+	writer.EndTable(parent)
+}
+
+// StepVector is a vector of [Step]s, which reads each item when it's asked for.
+type StepVector struct {
+	vector tafla.Vector
+}
+
+// Len returns the number of items.
+func (v StepVector) Len() int {
+	return v.vector.Len()
+}
+
+// Get reads item index, without reading the others. It fails with a
+// [*tafla.DecodeError] if the item lies outside the bytes, and panics if index
+// is out of range, as indexing a slice does.
+func (v StepVector) Get(index int) (Step, error) {
+	bytes, err := v.vector.GetInPlace(index)
+	return Step{bytes: bytes}, err
+}
+
+// All returns an iterator over the items, which reads each item's end once. An
+// item that fails doesn't keep the others from being read.
+func (v StepVector) All() iter.Seq2[Step, error] {
+	return func(yield func(Step, error) bool) {
+		for bytes, err := range v.vector.ItemsInPlace() {
+			if !yield(Step{bytes: bytes}, err) {
+				return
+			}
+		}
+	}
+}
+
+// A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+// that holds an enum
+type Mark struct {
+	Level  uint8
+	Change int16
+	Weight float32
+	Extent int64
+	Turn   Turn
+}
+
+// MarshalBinary returns the 24 bytes of a [Mark]: its scalars, little-endian,
+// one after another. It never fails.
+func (s Mark) MarshalBinary() ([]byte, error) {
+	bytes := make([]byte, 24)
+	s.put(bytes)
+	return bytes, nil
+}
+
+// AppendBinary appends the 24 bytes of a [Mark] to bytes, as
+// [Mark.MarshalBinary] writes them, and returns the extended bytes. It never
+// fails.
+func (s Mark) AppendBinary(bytes []byte) ([]byte, error) {
+	start := len(bytes)
+	bytes = append(bytes, make([]byte, 24)...)
+	s.put(bytes[start:])
+	return bytes, nil
+}
+
+// UnmarshalBinary reads a [Mark] from the start of bytes. It fails with a
+// [*tafla.DecodeError] if bytes are shorter than 24.
+func (s *Mark) UnmarshalBinary(bytes []byte) error {
+	if len(bytes) < 24 {
+		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 24, Available: len(bytes)}
+	}
+
+	*s = readMark(bytes)
+	return nil
+}
+
+// ReadMark reads a [Mark] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Mark.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 24.
+func ReadMark(bytes []byte) (Mark, error) {
+	if len(bytes) < 24 {
+		return Mark{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 24, Available: len(bytes)}
+	}
+
+	return readMark(bytes), nil
+}
+
+// readMark reads the scalars of a [Mark] from the start of bytes, which hold at
+// least its 24 bytes
+func readMark(bytes []byte) Mark {
+	_ = bytes[23]
+	var s Mark
+	s.Level = bytes[0]
+	s.Change = int16(binary.LittleEndian.Uint16(bytes[1:]))
+	s.Weight = math.Float32frombits(binary.LittleEndian.Uint32(bytes[3:]))
+	s.Extent = int64(binary.LittleEndian.Uint64(bytes[7:]))
+	s.Turn = readTurn(bytes[15:])
+	return s
+}
+
+// put writes the scalars of a [Mark] into the start of bytes, which hold at
+// least its 24 bytes
+func (s *Mark) put(bytes []byte) {
+	_ = bytes[23]
+	bytes[0] = s.Level
+	binary.LittleEndian.PutUint16(bytes[1:], uint16(s.Change))
+	binary.LittleEndian.PutUint32(bytes[3:], math.Float32bits(s.Weight))
+	binary.LittleEndian.PutUint64(bytes[7:], uint64(s.Extent))
+	s.Turn.put(bytes[15:])
+}
+
+// MarkArray is an array of [Mark]s, which reads each struct when it's asked
+// for, or all of them at once with Slice(), in place where it can.
+type MarkArray struct {
+	bytes []byte
+}
+
+// Len returns the number of structs.
+func (v MarkArray) Len() int {
+	return len(v.bytes) / 24
+}
+
+// Get reads struct index. It panics if index is out of range, as indexing a
+// slice does.
+func (v MarkArray) Get(index int) Mark {
+	return readMark(v.bytes[index*24:])
+}
+
+// All returns an iterator over the indices and structs, which reads each struct
+// from the bytes in turn.
+func (v MarkArray) All() iter.Seq2[int, Mark] {
+	return func(yield func(int, Mark) bool) {
+		bytes := v.bytes
+		for index := 0; len(bytes) >= 24; index++ {
+			if !yield(index, readMark(bytes)) {
+				return
+			}
+			bytes = bytes[24:]
+		}
+	}
+}
+
+// AsSlice returns nil and false: the fields of a [Mark] don't lie in memory as
+// its bytes hold them, so its structs are never in place.
+func (v MarkArray) AsSlice() ([]Mark, bool) {
+	return nil, false
+}
+
+// Slice returns the structs in place when [MarkArray.AsSlice] can, and
+// otherwise a copy. Treat the slice as read-only: whether it shares the table's
+// bytes depends on the host and on where the bytes lie, so writing to it may
+// write to the table.
+func (v MarkArray) Slice() []Mark {
+	if structs, ok := v.AsSlice(); ok {
+		return structs
+	}
+
+	structs := make([]Mark, len(v.bytes)/24)
+	for index := range structs {
+		structs[index] = readMark(v.bytes[index*24:])
+	}
+	return structs
+}
+
+type Turn struct {
+	Direction int8
+	Mask      uint64
+}
+
+// MarshalBinary returns the 9 bytes of a [Turn]: its scalars, little-endian,
+// one after another. It never fails.
+func (s Turn) MarshalBinary() ([]byte, error) {
+	bytes := make([]byte, 9)
+	s.put(bytes)
+	return bytes, nil
+}
+
+// AppendBinary appends the 9 bytes of a [Turn] to bytes, as
+// [Turn.MarshalBinary] writes them, and returns the extended bytes. It never
+// fails.
+func (s Turn) AppendBinary(bytes []byte) ([]byte, error) {
+	start := len(bytes)
+	bytes = append(bytes, make([]byte, 9)...)
+	s.put(bytes[start:])
+	return bytes, nil
+}
+
+// UnmarshalBinary reads a [Turn] from the start of bytes. It fails with a
+// [*tafla.DecodeError] if bytes are shorter than 9.
+func (s *Turn) UnmarshalBinary(bytes []byte) error {
+	if len(bytes) < 9 {
+		return &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 9, Available: len(bytes)}
+	}
+
+	*s = readTurn(bytes)
+	return nil
+}
+
+// ReadTurn reads a [Turn] from the start of bytes and returns it, which the
+// compiler can keep in registers, where [Turn.UnmarshalBinary] reads into a
+// struct in memory. It fails with a [*tafla.DecodeError] if bytes are shorter
+// than 9.
+func ReadTurn(bytes []byte) (Turn, error) {
+	if len(bytes) < 9 {
+		return Turn{}, &tafla.DecodeError{Kind: tafla.OutOfRange, ByteLength: 9, Available: len(bytes)}
+	}
+
+	return readTurn(bytes), nil
+}
+
+// readTurn reads the scalars of a [Turn] from the start of bytes, which hold at
+// least its 9 bytes
+func readTurn(bytes []byte) Turn {
+	_ = bytes[8]
+	var s Turn
+	s.Direction = int8(bytes[0])
+	s.Mask = binary.LittleEndian.Uint64(bytes[1:])
+	return s
+}
+
+// put writes the scalars of a [Turn] into the start of bytes, which hold at
+// least its 9 bytes
+func (s *Turn) put(bytes []byte) {
+	_ = bytes[8]
+	bytes[0] = byte(s.Direction)
+	binary.LittleEndian.PutUint64(bytes[1:], s.Mask)
+}

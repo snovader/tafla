@@ -1436,3 +1436,608 @@ impl<'a> DocumentedArray<'a> {
         self.structs.iter().map(Documented::from_bytes)
     }
 }
+
+/// Enums as fields and in arrays, which are stored as their integer types
+#[derive(Clone, Copy, Debug)]
+pub struct Enums<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> Enums<'a> {
+    const LAYOUT: TableLayout = TableLayout::DEFAULT;
+
+    /// Reads an [`Enums`] from `bytes`
+    pub const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// An enum of one byte
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn level(&self) -> Result<u8, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(0)?;
+        reader.get_u8(position)
+    }
+
+    /// An array of enums, which is an array of their integer type
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn levels(&self) -> Result<&'a [u8], DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(1)?;
+        reader.get_u8_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn direction(&self) -> Result<i8, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(2)?;
+        reader.get_i8(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn directions(&self) -> Result<ArrayView<'a, i8>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(3)?;
+        reader.get_i8_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn unit(&self) -> Result<u16, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(4)?;
+        reader.get_u16(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn units(&self) -> Result<ArrayView<'a, u16>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(5)?;
+        reader.get_u16_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn change(&self) -> Result<i16, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(6)?;
+        reader.get_i16(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn changes(&self) -> Result<ArrayView<'a, i16>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(7)?;
+        reader.get_i16_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn status(&self) -> Result<u32, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(8)?;
+        reader.get_u32(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn statuses(&self) -> Result<ArrayView<'a, u32>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(9)?;
+        reader.get_u32_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn sign(&self) -> Result<i32, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(10)?;
+        reader.get_i32(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn signs(&self) -> Result<ArrayView<'a, i32>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(11)?;
+        reader.get_i32_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn mask(&self) -> Result<u64, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(12)?;
+        reader.get_u64(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn masks(&self) -> Result<ArrayView<'a, u64>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(13)?;
+        reader.get_u64_array(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn extent(&self) -> Result<i64, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(14)?;
+        reader.get_i64(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn extents(&self) -> Result<ArrayView<'a, i64>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(15)?;
+        reader.get_i64_array(position)
+    }
+
+    /// An enum whose values are keywords
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn word(&self) -> Result<u8, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(16)?;
+        reader.get_u8(position)
+    }
+
+    /// A struct of enums
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn mark(&self) -> Result<Mark, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(17)?;
+        let bytes = reader.get_struct(position, Mark::SIZE)?;
+
+        Mark::read(bytes)
+    }
+
+    /// A view of the structs, which reads each [`Mark`] when it's asked for
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field or its structs lie outside the bytes.
+    pub fn marks(&self) -> Result<MarkArray<'a>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(18)?;
+        let bytes = reader.get_struct_array(position, Mark::SIZE)?;
+        let (structs, _) = bytes.as_chunks::<{ Mark::SIZE }>();
+
+        Ok(MarkArray { structs })
+    }
+
+    /// Tables of an enum, which a vector's view reads
+    ///
+    /// A view of the items, which reads each [`Step`] when it's asked for, and
+    /// fails then if its bytes are corrupt
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field, or the vector's count or the ends of its items, lie outside the bytes.
+    pub fn steps(&self) -> Result<StepVector<'a>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(19)?;
+        Ok(StepVector {
+            vector: reader.get_vector(position)?,
+        })
+    }
+}
+
+/// The fields of an [`Enums`], to write
+#[derive(Clone, Debug)]
+pub struct EnumsFields<'a, T = Mark, U = StepFields<'a>> {
+    /// An enum of one byte
+    pub level: u8,
+    /// An array of enums, which is an array of their integer type
+    pub levels: &'a [u8],
+    pub direction: i8,
+    pub directions: &'a [i8],
+    pub unit: u16,
+    pub units: &'a [u16],
+    pub change: i16,
+    pub changes: &'a [i16],
+    pub status: u32,
+    pub statuses: &'a [u32],
+    pub sign: i32,
+    pub signs: &'a [i32],
+    pub mask: u64,
+    pub masks: &'a [u64],
+    pub extent: i64,
+    pub extents: &'a [i64],
+    /// An enum whose values are keywords
+    pub word: u8,
+    /// A struct of enums
+    pub mark: Mark,
+    /// [`Mark`]s, or items of any type `T` whose reference converts into a [`Mark`]
+    pub marks: &'a [T],
+    /// Tables of an enum, which a vector's view reads
+    ///
+    /// [`StepFields`], or items of any type `U` whose reference converts into them
+    pub steps: &'a [U],
+}
+
+impl<'a, T, U> EnumsFields<'a, T, U>
+where
+    &'a T: Into<Mark>,
+    &'a U: Into<StepFields<'a>>,
+{
+    /// Writes an [`Enums`] with every field
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
+    pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
+        let mut sizer = TableSizer::new(20, Enums::LAYOUT)?;
+        sizer.add_u8();
+        sizer.add_u8_array(self.levels.len());
+        sizer.add_i8();
+        sizer.add_i8_array(self.directions.len());
+        sizer.add_u16();
+        sizer.add_u16_array(self.units.len());
+        sizer.add_i16();
+        sizer.add_i16_array(self.changes.len());
+        sizer.add_u32();
+        sizer.add_u32_array(self.statuses.len());
+        sizer.add_i32();
+        sizer.add_i32_array(self.signs.len());
+        sizer.add_u64();
+        sizer.add_u64_array(self.masks.len());
+        sizer.add_i64();
+        sizer.add_i64_array(self.extents.len());
+        sizer.add_u8();
+        sizer.add_struct(Mark::SIZE);
+        sizer.add_struct_array(self.marks.len(), Mark::SIZE, Mark::ALIGNMENT);
+        sizer.add_vector(self.steps.len());
+        for item in self.steps {
+            let fields: StepFields<'a> = item.into();
+            fields.size(&mut sizer);
+        }
+
+        let mut writer = sizer.writer()?;
+        writer.set_u8(0, self.level);
+        writer.set_u8_array(1, self.levels);
+        writer.set_i8(2, self.direction);
+        writer.set_i8_array(3, self.directions);
+        writer.set_u16(4, self.unit);
+        writer.set_u16_array(5, self.units);
+        writer.set_i16(6, self.change);
+        writer.set_i16_array(7, self.changes);
+        writer.set_u32(8, self.status);
+        writer.set_u32_array(9, self.statuses);
+        writer.set_i32(10, self.sign);
+        writer.set_i32_array(11, self.signs);
+        writer.set_u64(12, self.mask);
+        writer.set_u64_array(13, self.masks);
+        writer.set_i64(14, self.extent);
+        writer.set_i64_array(15, self.extents);
+        writer.set_u8(16, self.word);
+        writer.set_struct(17, &self.mark.to_bytes());
+        writer.set_structs(
+            18,
+            self.marks,
+            |item| Mark::to_bytes(item.into()),
+            Mark::ALIGNMENT,
+        );
+        let vector = writer.set_vector(19, self.steps.len());
+        for (index, item) in self.steps.iter().enumerate() {
+            let fields: StepFields<'a> = item.into();
+            fields.write(&mut writer);
+            writer.set_item_end(vector, index);
+        }
+
+        writer.into_bytes()
+    }
+}
+
+/// A table of an enum, a struct of enums and a string
+#[derive(Clone, Copy, Debug)]
+pub struct Step<'a> {
+    bytes: &'a [u8],
+    position: usize,
+}
+
+impl<'a> Step<'a> {
+    /// Reads the table at `position` in `bytes`, as its parent's getter finds it
+    const fn new(bytes: &'a [u8], position: usize) -> Self {
+        Self { bytes, position }
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn level(&self) -> Result<u8, DecodeError> {
+        let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
+        let position = reader.field_offset(self.position, 0)?;
+        reader.get_u8(position)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn mark(&self) -> Result<Mark, DecodeError> {
+        let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
+        let position = reader.field_offset(self.position, 1)?;
+        let bytes = reader.get_struct(position, Mark::SIZE)?;
+
+        Mark::read(bytes)
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn name(&self) -> Result<&'a str, DecodeError> {
+        let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
+        let position = reader.field_offset(self.position, 2)?;
+        reader.get_str(position)
+    }
+}
+
+/// The fields of a [`Step`], to write
+#[derive(Clone, Debug)]
+pub struct StepFields<'a> {
+    pub level: u8,
+    pub mark: Mark,
+    pub name: &'a str,
+}
+
+impl StepFields<'_> {
+    /// The alignment that a parent pads a [`Step`] to: the largest alignment of its
+    /// arrays and nested tables, or 1
+    pub const ALIGNMENT: Alignment = Alignment::One;
+
+    /// Adds a [`Step`] to its parent's sizer, after the field or vector that holds it
+    pub fn size(&self, sizer: &mut TableSizer) {
+        let parent = sizer.start_table(3);
+        sizer.add_u8();
+        sizer.add_struct(Mark::SIZE);
+        sizer.add_str(self.name);
+        sizer.end_table(parent);
+    }
+
+    /// Writes a [`Step`] where its parent's writer is, after the field or vector that holds it
+    pub fn write(&self, writer: &mut TableWriter) {
+        let parent = writer.start_table(3);
+        writer.set_u8(0, self.level);
+        writer.set_struct(1, &self.mark.to_bytes());
+        writer.set_str(2, self.name);
+        writer.end_table(parent);
+    }
+}
+
+impl From<&Self> for StepFields<'_> {
+    fn from(value: &Self) -> Self {
+        value.clone()
+    }
+}
+
+/// A vector of [`Step`]s, which reads each item when it's asked for
+#[derive(Clone, Copy, Debug)]
+pub struct StepVector<'a> {
+    vector: Vector<'a>,
+}
+
+impl<'a> StepVector<'a> {
+    /// The number of items
+    pub const fn len(&self) -> usize {
+        self.vector.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.vector.is_empty()
+    }
+
+    /// Reads item `index`, without reading the others, or returns `None` past the end
+    ///
+    /// # Errors
+    ///
+    /// Returns `Some` of a [`DecodeError`] if the item lies outside the bytes.
+    pub fn get(&self, index: usize) -> Option<Result<Step<'a>, DecodeError>> {
+        self.vector.get_in_place(index).map(Self::item)
+    }
+
+    /// Iterates over the items, reading each item's end once
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Result<Step<'a>, DecodeError>> + use<'a> {
+        self.vector.iter_in_place().map(Self::item)
+    }
+
+    /// Reads an item in place, from its bytes and those after it in the message
+    fn item(bytes: Result<&'a [u8], DecodeError>) -> Result<Step<'a>, DecodeError> {
+        Ok(Step::new(bytes?, 0))
+    }
+}
+
+/// A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+/// that holds an enum
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Mark {
+    pub level: u8,
+    pub change: i16,
+    pub weight: f32,
+    pub extent: i64,
+    pub turn: Turn,
+}
+
+impl Mark {
+    /// The byte length of a [`Mark`]
+    pub const SIZE: usize = 24;
+
+    /// The alignment of an array of a [`Mark`]: its largest scalar's size
+    pub const ALIGNMENT: Alignment = Alignment::Eight;
+
+    /// Reads a [`Mark`] from the start of `bytes`
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if `bytes` are shorter than [`Self::SIZE`].
+    pub fn read(bytes: &[u8]) -> Result<Self, DecodeError> {
+        match bytes.first_chunk() {
+            Some(bytes) => Ok(Self::from_bytes(bytes)),
+            None => Err(DecodeError::OutOfRange {
+                position: 0,
+                byte_length: 24,
+                available: bytes.len(),
+            }),
+        }
+    }
+
+    /// Reads a [`Mark`] from its bytes, such as those of an array of them
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8; 24]) -> Self {
+        Self {
+            level: u8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
+            change: i16::from_le_bytes(bytes[1..3].try_into().unwrap_or_default()),
+            weight: f32::from_le_bytes(bytes[3..7].try_into().unwrap_or_default()),
+            extent: i64::from_le_bytes(bytes[7..15].try_into().unwrap_or_default()),
+            turn: Turn {
+                direction: i8::from_le_bytes(bytes[15..16].try_into().unwrap_or_default()),
+                mask: u64::from_le_bytes(bytes[16..24].try_into().unwrap_or_default()),
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn to_bytes(self) -> [u8; 24] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..1].copy_from_slice(&self.level.to_le_bytes());
+        bytes[1..3].copy_from_slice(&self.change.to_le_bytes());
+        bytes[3..7].copy_from_slice(&self.weight.to_le_bytes());
+        bytes[7..15].copy_from_slice(&self.extent.to_le_bytes());
+        bytes[15..24].copy_from_slice(&self.turn.to_bytes());
+
+        bytes
+    }
+
+    /// Writes [`Mark`]s one after another, as an array of them holds them
+    #[must_use]
+    pub fn array_to_bytes(items: &[Self]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(items.len() * Self::SIZE);
+        for item in items {
+            bytes.extend_from_slice(&item.to_bytes());
+        }
+
+        bytes
+    }
+}
+
+impl From<&Self> for Mark {
+    fn from(value: &Self) -> Self {
+        *value
+    }
+}
+
+/// An array of [`Mark`]s, which reads each struct when it's asked for
+#[derive(Clone, Copy, Debug)]
+pub struct MarkArray<'a> {
+    structs: &'a [[u8; Mark::SIZE]],
+}
+
+impl<'a> MarkArray<'a> {
+    /// The number of structs
+    pub const fn len(&self) -> usize {
+        self.structs.len()
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        self.structs.is_empty()
+    }
+
+    /// Reads struct `index`, or returns `None` past the end
+    pub fn get(&self, index: usize) -> Option<Mark> {
+        self.structs.get(index).map(Mark::from_bytes)
+    }
+
+    /// Iterates over the structs
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = Mark> + use<'a> {
+        self.structs.iter().map(Mark::from_bytes)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Turn {
+    pub direction: i8,
+    pub mask: u64,
+}
+
+impl Turn {
+    /// The byte length of a [`Turn`]
+    pub const SIZE: usize = 9;
+
+    /// The alignment of an array of a [`Turn`]: its largest scalar's size
+    pub const ALIGNMENT: Alignment = Alignment::Eight;
+
+    /// Reads a [`Turn`] from the start of `bytes`
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if `bytes` are shorter than [`Self::SIZE`].
+    pub fn read(bytes: &[u8]) -> Result<Self, DecodeError> {
+        match bytes.first_chunk() {
+            Some(bytes) => Ok(Self::from_bytes(bytes)),
+            None => Err(DecodeError::OutOfRange {
+                position: 0,
+                byte_length: 9,
+                available: bytes.len(),
+            }),
+        }
+    }
+
+    /// Reads a [`Turn`] from its bytes, such as those of an array of them
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8; 9]) -> Self {
+        Self {
+            direction: i8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
+            mask: u64::from_le_bytes(bytes[1..9].try_into().unwrap_or_default()),
+        }
+    }
+
+    #[must_use]
+    pub fn to_bytes(self) -> [u8; 9] {
+        let mut bytes = [0; Self::SIZE];
+        bytes[0..1].copy_from_slice(&self.direction.to_le_bytes());
+        bytes[1..9].copy_from_slice(&self.mask.to_le_bytes());
+
+        bytes
+    }
+
+    /// Writes [`Turn`]s one after another, as an array of them holds them
+    #[must_use]
+    pub fn array_to_bytes(items: &[Self]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(items.len() * Self::SIZE);
+        for item in items {
+            bytes.extend_from_slice(&item.to_bytes());
+        }
+
+        bytes
+    }
+}

@@ -825,3 +825,258 @@ class SampleFields(Protocol):
 
     @_builtins.property
     def b(self) -> float: ...
+
+
+class Task:
+    """A task, whose fields are enums, alone, in an array and in a struct"""
+
+    __slots__ = ("_reader",)
+
+    _LAYOUT: Final = TableLayout.DEFAULT
+
+    def __init__(self, data: Buffer) -> None:
+        """Raises ``TypeError`` if ``data`` isn't C-contiguous."""
+        self._reader = TableReader(data, self._LAYOUT)
+
+    @classmethod
+    def serialize(cls, **fields: Unpack[TaskFields]) -> memoryview:
+        """Writes a ``Task`` with every field"""
+        writer = TableWriter(4, cls._LAYOUT)
+        writer.set_int8(0, fields["priority"])
+        writer.set_uint16_array(1, fields["history"])
+        writer.set_struct(2, fields["step"].serialize())
+        writer.set_string(3, fields["name"])
+
+        return writer.bytes()
+
+    def priority(self) -> int:
+        return self._reader.get_int8(self._reader.root_offset(0))
+
+    def history(self) -> memoryview[int]:
+        """The states that the task has been in, the oldest first"""
+        return self._reader.get_uint16_array(self._reader.root_offset(1))
+
+    def step(self) -> Step:
+        return Step.read(
+            self._reader.get_struct(self._reader.root_offset(2), Step.SIZE)
+        )
+
+    def name(self) -> str:
+        return self._reader.get_string(self._reader.root_offset(3))
+
+    def fields(self) -> TaskFields:
+        """Reads every field at once, as ``serialize()`` takes them.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return {
+            "priority": reader.get_int8(reader.root_offset(0)),
+            "history": reader.get_uint16_array(reader.root_offset(1)),
+            "step": Step.read(reader.get_struct(reader.root_offset(2), Step.SIZE)),
+            "name": reader.get_string(reader.root_offset(3)),
+        }
+
+    def field_values(self) -> TaskFieldValues:
+        """Reads every field's value into a tuple, in the fields' order, as its getter
+        returns it.
+
+        It raises ``DecodeError`` for bytes that the getters can't read, as they do.
+        """
+        reader = self._reader
+        return (
+            reader.get_int8(reader.root_offset(0)),
+            reader.get_uint16_array(reader.root_offset(1)),
+            Step.read(reader.get_struct(reader.root_offset(2), Step.SIZE)),
+            reader.get_string(reader.root_offset(3)),
+        )
+
+    @classmethod
+    def read_values(cls, data: Buffer) -> TaskFieldValues:
+        """Reads every field's value from ``data`` as ``field_values()`` reads them,
+        without creating a ``Task``.
+
+        Raises ``TypeError`` if ``data`` isn't C-contiguous, and ``DecodeError`` for
+        bytes that the getters can't read.
+        """
+        reader = TableReader(data, cls._LAYOUT)
+        return (
+            reader.get_int8(reader.root_offset(0)),
+            reader.get_uint16_array(reader.root_offset(1)),
+            Step.read(reader.get_struct(reader.root_offset(2), Step.SIZE)),
+            reader.get_string(reader.root_offset(3)),
+        )
+
+
+class TaskFields(TypedDict):
+    """The fields of a ``Task``, to write"""
+
+    priority: int
+    history: Buffer | Iterable[int]
+    """The states that the task has been in, the oldest first"""
+    step: Step
+    name: str
+
+
+type TaskFieldValues = tuple[int, memoryview[int], Step, str]
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class Step:
+    """A state and how long the task has been in it"""
+
+    SIZE: ClassVar[int] = 7
+    """The byte length of a ``Step``"""
+    ALIGNMENT: ClassVar[Literal[4]] = 4
+    """The alignment of an array of a ``Step``: its largest scalar's size"""
+    _STRUCT: ClassVar[Struct] = Struct("<HbI")
+
+    state: int
+    priority: int
+    seconds: int
+
+    def __init__(self, state: int, priority: int, seconds: int) -> None:
+        """Sets each slot directly, not through ``object.__setattr__()``"""
+        _Step_state(self, state)
+        _Step_priority(self, priority)
+        _Step_seconds(self, seconds)
+
+    @classmethod
+    def read(cls, data: Buffer, offset: int = 0) -> Self:
+        """Reads a ``Step`` at ``offset`` in ``data``.
+
+        Raises ``DecodeError`` if ``offset`` is negative or ``data`` ends before it,
+        and ``TypeError`` if ``data`` isn't C-contiguous.
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            values = cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Step can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+        return cls(values[0], values[1], values[2])
+
+    @classmethod
+    def read_array(cls, data: Buffer) -> list[Self]:
+        """Reads the ``Step``s one after another in ``data``.
+
+        Raises ``DecodeError`` if ``data`` isn't a whole number of them, and
+        ``TypeError`` if it isn't C-contiguous.
+        """
+        try:
+            return [
+                cls(values[0], values[1], values[2])
+                for values in cls._STRUCT.iter_unpack(data)
+            ]
+        except error as cause:
+            raise DecodeError(
+                f"Steps don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Step can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    def serialize(self) -> bytes:
+        """Returns the bytes of a ``Step``.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        try:
+            return self._STRUCT.pack(self.state, self.priority, self.seconds)
+        except (error, OverflowError) as cause:
+            raise ValueError("Step's values don't fit its fields") from cause
+
+    @classmethod
+    def serialize_array(cls, items: Sequence[StepFields]) -> bytearray:
+        """Returns the bytes of ``Step``s, or of any other objects of their
+        fields, one after another, as an array of them holds them.
+
+        Raises ``ValueError`` if a field's value doesn't fit its type.
+        """
+        size = cls.SIZE
+        pack_into = cls._STRUCT.pack_into
+        data = bytearray(len(items) * size)
+        try:
+            for index, item in enumerate(items):
+                pack_into(data, index * size, item.state, item.priority, item.seconds)
+        except (error, OverflowError) as cause:
+            raise ValueError("Step's values don't fit its fields") from cause
+
+        return data
+
+    @classmethod
+    def read_values(cls, data: Buffer, offset: int = 0) -> tuple[int, int, int]:
+        """Reads the values of a ``Step`` at ``offset`` in ``data``, in its fields'
+        order, as ``read()`` reads them, and raises as it does
+        """
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, cls.SIZE, memoryview(data).nbytes)
+
+        try:
+            return cls._STRUCT.unpack_from(data, offset)
+        except (error, OverflowError) as cause:
+            raise DecodeError.out_of_range(
+                offset, cls.SIZE, memoryview(data).nbytes
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Step can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def read_array_values(cls, data: Buffer) -> list[tuple[int, int, int]]:
+        """Reads the values of the ``Step``s one after another in ``data``, as
+        ``read_array()`` reads them, and raises as it does
+        """
+        try:
+            return list(cls._STRUCT.iter_unpack(data))
+        except error as cause:
+            raise DecodeError(
+                f"Steps don't fit in {memoryview(data).nbytes} bytes"
+            ) from cause
+        except BufferError as cause:
+            raise TypeError(
+                "Step can't read a buffer that isn't C-contiguous"
+            ) from cause
+
+    @classmethod
+    def serialize_values(cls, state: int, priority: int, seconds: int, /) -> bytes:
+        """Returns the bytes of a ``Step`` of these values, in its fields' order,
+        as ``read_values()`` returns them.
+
+        Raises ``ValueError`` if a value doesn't fit its field's type.
+        """
+        try:
+            return cls._STRUCT.pack(state, priority, seconds)
+        except (error, OverflowError) as cause:
+            raise ValueError("Step's values don't fit its fields") from cause
+
+
+_Step_state = Step.__dict__["state"].__set__
+_Step_priority = Step.__dict__["priority"].__set__
+_Step_seconds = Step.__dict__["seconds"].__set__
+
+
+class StepFields(Protocol):
+    """The fields of a ``Step``, which an array of them is written from: the
+    attributes of a ``Step``, or of any other object with attributes of
+    the same names and types
+    """
+
+    @_builtins.property
+    def state(self) -> int: ...
+
+    @_builtins.property
+    def priority(self) -> int: ...
+
+    @_builtins.property
+    def seconds(self) -> int: ...

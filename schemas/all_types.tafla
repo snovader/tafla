@@ -1,7 +1,9 @@
 // Every type of field: each scalar alone and as an array, strings, nested
-// tables, vectors of tables, and structs alone, as fields, in arrays and
-// within other structs, with doc comments on each kind of declaration and
-// field names that are keywords in some target language.
+// tables, vectors of tables, structs alone, as fields, in arrays and
+// within other structs, and enums of every integer type, as fields, in
+// arrays, in structs and in the tables of a vector, with doc comments on each
+// kind of declaration and field names that are keywords in some target
+// language.
 
 /// A field of every scalar type, and a bool
 message Scalars {
@@ -140,4 +142,130 @@ struct Documented {
     /// of two lines
     two: uint16;
     undocumented: uint32;
+}
+
+/// Enums as fields and in arrays, which are stored as their integer types
+message Enums {
+    /// An enum of one byte
+    level: Level;
+    /// An array of enums, which is an array of their integer type
+    levels: [Level];
+    direction: Direction;
+    directions: [Direction];
+    unit: Unit;
+    units: [Unit];
+    change: Change;
+    changes: [Change];
+    status: Status;
+    statuses: [Status];
+    sign: Sign;
+    signs: [Sign];
+    mask: Mask;
+    masks: [Mask];
+    extent: Extent;
+    extents: [Extent];
+    /// An enum whose values are keywords
+    word: Word;
+    /// A struct of enums
+    mark: Mark;
+    marks: [Mark];
+    /// Tables of an enum, which a vector's view reads
+    steps: [Step];
+}
+
+/// A table of an enum, a struct of enums and a string
+table Step {
+    level: Level;
+    mark: Mark;
+    name: string;
+}
+
+/// A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+/// that holds an enum
+struct Mark {
+    level: Level;
+    change: Change;
+    weight: float32;
+    extent: Extent;
+    turn: Turn;
+}
+
+struct Turn {
+    direction: Direction;
+    mask: Mask;
+}
+
+/// How much of something there is.
+///
+/// A field of it holds any `uint8`, whether it has a name here or not.
+enum Level: uint8 {
+    /// The least
+    low = 0;
+    medium = 1;
+    /// The most, in documentation
+    /// of two lines
+    high = 2;
+}
+
+/// An enum of `int8`, with a negative value
+enum Direction: int8 {
+    backward = -1;
+    none = 0;
+    forward = 1;
+    /// The least `int8`
+    furthest_back = -128;
+}
+
+/// An enum of `uint16`, whose values aren't in order
+enum Unit: uint16 {
+    last = 65535;
+    first = 0;
+    v_2 = 2;
+}
+
+enum Change: int16 {
+    least = -32768;
+    greatest = 32767;
+}
+
+enum Status: uint32 {
+    ok = 0;
+    not_found = 404;
+    greatest = 4294967295;
+}
+
+enum Sign: int32 {
+    least = -2147483648;
+    greatest = 2147483647;
+}
+
+/// An enum of `uint64`, with a value that a float64 can't hold exactly
+enum Mask: uint64 {
+    none = 0;
+    one = 1;
+    beyond_float64 = 9007199254740993;
+    all = 18446744073709551615;
+}
+
+enum Extent: int64 {
+    least = -9223372036854775808;
+    zero = 0;
+    greatest = 9223372036854775807;
+}
+
+/// Values named after keywords and literals of the target languages
+enum Word: uint8 {
+    class = 0;
+    default = 1;
+    in = 2;
+    match = 3;
+    self = 4;
+    type = 5;
+    true = 6;
+    null = 7;
+    none = 8;
+    init = 9;
+    new = 10;
+    name = 11;
+    value = 12;
 }

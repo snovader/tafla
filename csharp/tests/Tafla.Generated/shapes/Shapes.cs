@@ -503,3 +503,148 @@ public readonly record struct Sample
         global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[8..], B);
     }
 }
+
+/// <summary>A task, whose fields are enums, alone, in an array and in a struct</summary>
+public readonly ref struct Task
+{
+    internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
+
+    private readonly global::Tafla.TableReader _reader;
+
+    /// <summary>Reads a <see cref="Task"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Task(global::System.ReadOnlySpan<byte> bytes)
+    {
+        _reader = new global::Tafla.TableReader(bytes, TableLayout);
+    }
+
+    public sbyte Priority => _reader.GetInt8(_reader.RootOffset(0));
+
+    /// <summary>The states that the task has been in, the oldest first</summary>
+    public global::System.ReadOnlySpan<ushort> History => _reader.GetUInt16Array(_reader.RootOffset(1));
+
+    public Step Step => new(_reader.GetStruct(_reader.RootOffset(2), 7));
+
+    public string Name => _reader.GetString(_reader.RootOffset(3));
+}
+
+/// <summary>The fields of a <see cref="Task"/>, to write.</summary>
+public readonly record struct TaskFields
+{
+    public required sbyte Priority { get; init; }
+
+    /// <summary>The states that the task has been in, the oldest first</summary>
+    public required global::System.ReadOnlyMemory<ushort> History { get; init; }
+
+    public required Step Step { get; init; }
+
+    public required string Name { get; init; }
+
+    /// <summary>Writes a <see cref="Task"/> with every field into new bytes of its length.</summary>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public byte[] Serialize()
+    {
+        var sizer = new global::Tafla.TableSizer(4, Task.TableLayout);
+        sizer.AddInt8();
+        sizer.AddUInt16Array(History.Length);
+        sizer.AddStruct(size: 7);
+        sizer.AddString(Name);
+
+        var writer = sizer.CreateWriter();
+        writer.SetInt8(0, Priority);
+        writer.SetUInt16Array(1, History.Span);
+        Step.Write(writer.ReserveStruct(2, size: 7));
+        writer.SetString(3, Name);
+
+        return writer.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a <see cref="Task"/> with every field into the start of <paramref name="bytes"/>, as
+    /// <see cref="Serialize"/> writes it into new bytes, and returns its length. The bytes needn't be zero,
+    /// and those after the message keep their values. The caller owns them: writing into them again, as the
+    /// next message does, overwrites this one, and what a reader of them reads.
+    /// </summary>
+    /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
+    /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public int SerializeInto(byte[] bytes)
+    {
+        var sizer = new global::Tafla.TableSizer(4, Task.TableLayout);
+        sizer.AddInt8();
+        sizer.AddUInt16Array(History.Length);
+        sizer.AddStruct(size: 7);
+        sizer.AddString(Name);
+
+        var writer = sizer.CreateWriter(bytes);
+        writer.SetInt8(0, Priority);
+        writer.SetUInt16Array(1, History.Span);
+        Step.Write(writer.ReserveStruct(2, size: 7));
+        writer.SetString(3, Name);
+
+        return writer.ByteLength;
+    }
+}
+
+/// <summary>A state and how long the task has been in it</summary>
+public readonly record struct Step
+{
+    /// <summary>The byte length of a <see cref="Step"/>.</summary>
+    public const int Size = 7;
+
+    /// <summary>The alignment of an array of <see cref="Step"/>s: its largest scalar's size.</summary>
+    public const int Alignment = 4;
+
+    /// <summary>Reads a <see cref="Step"/> from the start of <paramref name="bytes"/>.</summary>
+    /// <exception cref="global::Tafla.DecodeException">The bytes are shorter than a <see cref="Step"/>.</exception>
+    [global::System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+    public Step(global::System.ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < Size)
+        {
+            throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
+        }
+
+        State = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes);
+        Priority = unchecked((sbyte)bytes[2]);
+        Seconds = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes[3..]);
+    }
+
+    public required ushort State { get; init; }
+
+    public required sbyte Priority { get; init; }
+
+    public required uint Seconds { get; init; }
+
+    /// <summary>Returns the bytes of <paramref name="structs"/> one after another, as an array of <see cref="Step"/>s holds them.</summary>
+    /// <exception cref="global::System.OverflowException">They take more bytes than an <see cref="int"/> counts.</exception>
+    public static byte[] SerializeArray(global::System.ReadOnlySpan<Step> structs)
+    {
+        var bytes = new byte[checked(structs.Length * Size)];
+        for (var index = 0; index < structs.Length; index++)
+        {
+            structs[index].Write(new global::System.Span<byte>(bytes, index * Size, Size));
+        }
+
+        return bytes;
+    }
+
+    /// <summary>Returns the bytes of the <see cref="Step"/>: its scalars, little-endian, one after another.</summary>
+    public byte[] Serialize()
+    {
+        var bytes = new byte[Size];
+        Write(bytes);
+
+        return bytes;
+    }
+
+    /// <summary>Writes the <see cref="Step"/> into the start of <paramref name="bytes"/>.</summary>
+    /// <exception cref="global::System.ArgumentOutOfRangeException">The bytes are shorter than a <see cref="Step"/>, before any of them is written.</exception>
+    public void Write(global::System.Span<byte> bytes)
+    {
+        global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
+
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes, State);
+        bytes[2] = unchecked((byte)Priority);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[3..], Seconds);
+    }
+}

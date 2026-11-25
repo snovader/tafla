@@ -22,6 +22,8 @@ class Keywords;
 class Reserved;
 class Path;
 class Structs;
+class Enums;
+class Step;
 struct ScalarsFields;
 struct ArraysFields;
 struct InnerFields;
@@ -32,6 +34,8 @@ struct KeywordsFields;
 struct ReservedFields;
 struct PathFields;
 struct StructsFields;
+struct EnumsFields;
+struct StepFields;
 
 struct Point {
     float x{};
@@ -263,6 +267,107 @@ struct Documented {
     friend bool operator==(const Documented&, const Documented&) = default;
 };
 
+struct Turn {
+    std::int8_t direction{};
+    std::uint64_t mask{};
+
+    /** The byte length of a `Turn` */
+    static constexpr std::size_t SIZE = 9;
+
+    /** The alignment of an array of a `Turn`: its largest scalar's size */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::eight;
+
+    /** Reads a `Turn` from the start of `bytes`, or throws a `tafla::DecodeError` if they're shorter than `SIZE` */
+    [[nodiscard]] static Turn read(std::span<const std::uint8_t> bytes) {
+        if (bytes.size() < SIZE) {
+            throw ::tafla::DecodeError::out_of_range(0, SIZE, bytes.size());
+        }
+        return from_bytes(bytes.data());
+    }
+
+    /** Reads a `Turn` from its `SIZE` bytes at `bytes`, such as those of an array of them */
+    [[nodiscard]] static Turn from_bytes(const std::uint8_t* bytes) noexcept {
+        return {
+            .direction = ::tafla::load_le<std::int8_t>(bytes),
+            .mask = ::tafla::load_le<std::uint64_t>(bytes + 1),
+        };
+    }
+
+    /** Writes the `SIZE` bytes of a `Turn` at `bytes_` */
+    void to_bytes(std::uint8_t* bytes_) const noexcept {
+        ::tafla::store_le(bytes_, direction);
+        ::tafla::store_le(bytes_ + 1, mask);
+    }
+
+    /** Writes `Turn`s one after another, as an array of them holds them */
+    [[nodiscard]] static std::vector<std::uint8_t> array_to_bytes(std::span<const Turn> items) {
+        std::vector<std::uint8_t> bytes(items.size() * SIZE);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            items[index].to_bytes(bytes.data() + index * SIZE);
+        }
+        return bytes;
+    }
+
+    friend bool operator==(const Turn&, const Turn&) = default;
+};
+
+/**
+ * A struct of enums of 1, 2 and 8 bytes beside a scalar, and of a struct
+ * that holds an enum
+ */
+struct Mark {
+    std::uint8_t level{};
+    std::int16_t change{};
+    float weight{};
+    std::int64_t extent{};
+    Turn turn{};
+
+    /** The byte length of a `Mark` */
+    static constexpr std::size_t SIZE = 24;
+
+    /** The alignment of an array of a `Mark`: its largest scalar's size */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::eight;
+
+    /** Reads a `Mark` from the start of `bytes`, or throws a `tafla::DecodeError` if they're shorter than `SIZE` */
+    [[nodiscard]] static Mark read(std::span<const std::uint8_t> bytes) {
+        if (bytes.size() < SIZE) {
+            throw ::tafla::DecodeError::out_of_range(0, SIZE, bytes.size());
+        }
+        return from_bytes(bytes.data());
+    }
+
+    /** Reads a `Mark` from its `SIZE` bytes at `bytes`, such as those of an array of them */
+    [[nodiscard]] static Mark from_bytes(const std::uint8_t* bytes) noexcept {
+        return {
+            .level = ::tafla::load_le<std::uint8_t>(bytes),
+            .change = ::tafla::load_le<std::int16_t>(bytes + 1),
+            .weight = ::tafla::load_le<float>(bytes + 3),
+            .extent = ::tafla::load_le<std::int64_t>(bytes + 7),
+            .turn = Turn::from_bytes(bytes + 15),
+        };
+    }
+
+    /** Writes the `SIZE` bytes of a `Mark` at `bytes_` */
+    void to_bytes(std::uint8_t* bytes_) const noexcept {
+        ::tafla::store_le(bytes_, level);
+        ::tafla::store_le(bytes_ + 1, change);
+        ::tafla::store_le(bytes_ + 3, weight);
+        ::tafla::store_le(bytes_ + 7, extent);
+        turn.to_bytes(bytes_ + 15);
+    }
+
+    /** Writes `Mark`s one after another, as an array of them holds them */
+    [[nodiscard]] static std::vector<std::uint8_t> array_to_bytes(std::span<const Mark> items) {
+        std::vector<std::uint8_t> bytes(items.size() * SIZE);
+        for (std::size_t index = 0; index < items.size(); ++index) {
+            items[index].to_bytes(bytes.data() + index * SIZE);
+        }
+        return bytes;
+    }
+
+    friend bool operator==(const Mark&, const Mark&) = default;
+};
+
 /** A vector of `Tree`s, which reads each item when it's asked for */
 using TreeVector = ::tafla::TableVector<Tree>;
 
@@ -274,6 +379,12 @@ using PointArray = ::tafla::StructArray<Point>;
 
 /** An array of `Documented`s, which reads each struct when it's asked for */
 using DocumentedArray = ::tafla::StructArray<Documented>;
+
+/** A vector of `Step`s, which reads each item when it's asked for */
+using StepVector = ::tafla::TableVector<Step>;
+
+/** An array of `Mark`s, which reads each struct when it's asked for */
+using MarkArray = ::tafla::StructArray<Mark>;
 
 /** A field of every scalar type, and a bool */
 class Scalars {
@@ -945,6 +1056,249 @@ struct StructsFields {
 };
 
 }  // namespace generic
+
+/** Enums as fields and in arrays, which are stored as their integer types */
+class Enums {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout();
+
+    /** Reads an `Enums` from `bytes`, which it views */
+    explicit constexpr Enums(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /**
+     * An enum of one byte
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t level() const;
+
+    /**
+     * An array of enums, which is an array of their integer type
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::span<const std::uint8_t> levels() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int8_t direction() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int8_t> directions() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint16_t unit() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint16_t> units() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int16_t change() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int16_t> changes() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint32_t status() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint32_t> statuses() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int32_t sign() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int32_t> signs() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint64_t mask() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::uint64_t> masks() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int64_t extent() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<std::int64_t> extents() const;
+
+    /**
+     * An enum whose values are keywords
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t word() const;
+
+    /**
+     * A struct of enums
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Mark mark() const;
+
+    /**
+     * Views the structs, reading each one when it's asked for, and `to_vector()` reads every struct. Throws a
+     * `tafla::DecodeError` if the field or its structs lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE MarkArray marks() const;
+
+    /**
+     * Tables of an enum, which a vector's view reads
+     *
+     * Views the items, reading each one when it's asked for, which throws a `tafla::DecodeError` if its bytes are
+     * corrupt, and `to_vector()` reads every item. Throws a `tafla::DecodeError` if the field, or the vector's count or
+     * the ends of its items, lie outside the bytes.
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE StepVector steps() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of an `Enums`, to write */
+struct EnumsFields {
+    /** An enum of one byte */
+    std::uint8_t level{};
+    /** An array of enums, which is an array of their integer type */
+    std::span<const std::uint8_t> levels{};
+    std::int8_t direction{};
+    std::span<const std::int8_t> directions{};
+    std::uint16_t unit{};
+    std::span<const std::uint16_t> units{};
+    std::int16_t change{};
+    std::span<const std::int16_t> changes{};
+    std::uint32_t status{};
+    std::span<const std::uint32_t> statuses{};
+    std::int32_t sign{};
+    std::span<const std::int32_t> signs{};
+    std::uint64_t mask{};
+    std::span<const std::uint64_t> masks{};
+    std::int64_t extent{};
+    std::span<const std::int64_t> extents{};
+    /** An enum whose values are keywords */
+    std::uint8_t word{};
+    /** A struct of enums */
+    Mark mark{};
+    std::span<const Mark> marks{};
+    /** Tables of an enum, which a vector's view reads */
+    std::span<const StepFields> steps{};
+
+    /**
+     * Writes an `Enums` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes an `Enums` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+namespace generic {
+/**
+ * The fields of an `Enums`, to write, as `EnumsFields` holds them, but whose `marks` and `steps` can be views of any
+ * items that convert into their items rather than spans of them
+ */
+template <class T = std::span<const Mark>, class U = std::span<const StepFields>>
+struct EnumsFields {
+    /** An enum of one byte */
+    std::uint8_t level{};
+    /** An array of enums, which is an array of their integer type */
+    std::span<const std::uint8_t> levels{};
+    std::int8_t direction{};
+    std::span<const std::int8_t> directions{};
+    std::uint16_t unit{};
+    std::span<const std::uint16_t> units{};
+    std::int16_t change{};
+    std::span<const std::int16_t> changes{};
+    std::uint32_t status{};
+    std::span<const std::uint32_t> statuses{};
+    std::int32_t sign{};
+    std::span<const std::int32_t> signs{};
+    std::uint64_t mask{};
+    std::span<const std::uint64_t> masks{};
+    std::int64_t extent{};
+    std::span<const std::int64_t> extents{};
+    /** An enum whose values are keywords */
+    std::uint8_t word{};
+    /** A struct of enums */
+    Mark mark{};
+    /**
+     * A view of `Mark`s, or of any items that convert into them, such as `std::views::transform()` of the caller's own:
+     * a `std::span` of `Mark`s unless `T` is another
+     */
+    T marks{};
+    /**
+     * Tables of an enum, which a vector's view reads
+     *
+     * A view of `StepFields`, or of any items that convert into them, such as `std::views::transform()` of the caller's
+     * own: a `std::span` of `StepFields` unless `U` is another
+     */
+    U steps{};
+
+    /**
+     * Writes an `Enums` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes an `Enums` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+}  // namespace generic
+
+/** A table of an enum, a struct of enums and a string */
+class Step {
+public:
+    /**
+     * Reads the table at `position` in `bytes`, as its parent's getter finds it. It holds the bytes from the table's
+     * start, which the positions of its decode errors count from.
+     */
+    constexpr Step(std::span<const std::uint8_t> bytes, std::size_t position) noexcept
+        : bytes_(position <= bytes.size() ? bytes.subspan(position) : std::span<const std::uint8_t>()) {}
+
+    /**
+     * Reads an empty table, whose getters throw a `tafla::DecodeError`, so that a `std::vector` of them can be sized
+     * before they're read
+     */
+    constexpr Step() noexcept = default;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t level() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Mark mark() const;
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::string_view name() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `Step`, to write */
+struct StepFields {
+    std::uint8_t level{};
+    Mark mark{};
+    std::string_view name{};
+
+    /** The alignment that a parent pads a `Step` to: the largest alignment of its arrays and nested tables, or 1 */
+    static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
+
+    /** Adds a `Step` to its parent's sizer, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void size(::tafla::TableSizer& sizer_) const;
+
+    /** Writes a `Step` where its parent's writer is, after the field or vector that holds it */
+    TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
+};
 
 inline std::int8_t Scalars::int8() const {
     const ::tafla::TableReader reader(bytes_, LAYOUT);
@@ -1676,6 +2030,394 @@ inline std::size_t generic::StructsFields<T, U>::serialize_into(std::span<std::u
     path.write(writer_);
 
     return writer_.finish_into();
+}
+
+inline std::uint8_t Enums::level() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint8(position);
+}
+
+inline std::span<const std::uint8_t> Enums::levels() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    return reader.get_uint8_array(position);
+}
+
+inline std::int8_t Enums::direction() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    return reader.get_int8(position);
+}
+
+inline ::tafla::ArrayView<std::int8_t> Enums::directions() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(3);
+    return reader.get_int8_array(position);
+}
+
+inline std::uint16_t Enums::unit() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(4);
+    return reader.get_uint16(position);
+}
+
+inline ::tafla::ArrayView<std::uint16_t> Enums::units() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(5);
+    return reader.get_uint16_array(position);
+}
+
+inline std::int16_t Enums::change() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(6);
+    return reader.get_int16(position);
+}
+
+inline ::tafla::ArrayView<std::int16_t> Enums::changes() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(7);
+    return reader.get_int16_array(position);
+}
+
+inline std::uint32_t Enums::status() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(8);
+    return reader.get_uint32(position);
+}
+
+inline ::tafla::ArrayView<std::uint32_t> Enums::statuses() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(9);
+    return reader.get_uint32_array(position);
+}
+
+inline std::int32_t Enums::sign() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(10);
+    return reader.get_int32(position);
+}
+
+inline ::tafla::ArrayView<std::int32_t> Enums::signs() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(11);
+    return reader.get_int32_array(position);
+}
+
+inline std::uint64_t Enums::mask() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(12);
+    return reader.get_uint64(position);
+}
+
+inline ::tafla::ArrayView<std::uint64_t> Enums::masks() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(13);
+    return reader.get_uint64_array(position);
+}
+
+inline std::int64_t Enums::extent() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(14);
+    return reader.get_int64(position);
+}
+
+inline ::tafla::ArrayView<std::int64_t> Enums::extents() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(15);
+    return reader.get_int64_array(position);
+}
+
+inline std::uint8_t Enums::word() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(16);
+    return reader.get_uint8(position);
+}
+
+inline Mark Enums::mark() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(17);
+    return Mark::from_bytes(reader.get_struct(position, Mark::SIZE).data());
+}
+
+inline MarkArray Enums::marks() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(18);
+    return MarkArray(reader.get_struct_array(position, Mark::SIZE));
+}
+
+inline StepVector Enums::steps() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(19);
+    return StepVector(reader.get_vector(position));
+}
+
+inline ::tafla::Bytes EnumsFields::serialize() const {
+    ::tafla::TableSizer sizer_(20, Enums::LAYOUT);
+    sizer_.add_uint8();
+    sizer_.add_uint8_array(levels.size());
+    sizer_.add_int8();
+    sizer_.add_int8_array(directions.size());
+    sizer_.add_uint16();
+    sizer_.add_uint16_array(units.size());
+    sizer_.add_int16();
+    sizer_.add_int16_array(changes.size());
+    sizer_.add_uint32();
+    sizer_.add_uint32_array(statuses.size());
+    sizer_.add_int32();
+    sizer_.add_int32_array(signs.size());
+    sizer_.add_uint64();
+    sizer_.add_uint64_array(masks.size());
+    sizer_.add_int64();
+    sizer_.add_int64_array(extents.size());
+    sizer_.add_uint8();
+    sizer_.add_struct(Mark::SIZE);
+    sizer_.add_struct_array(marks.size(), Mark::SIZE, Mark::ALIGNMENT);
+    sizer_.add_vector(steps.size());
+    for (const auto& item_ : steps) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_uint8(0, level);
+    writer_.set_uint8_array(1, levels);
+    writer_.set_int8(2, direction);
+    writer_.set_int8_array(3, directions);
+    writer_.set_uint16(4, unit);
+    writer_.set_uint16_array(5, units);
+    writer_.set_int16(6, change);
+    writer_.set_int16_array(7, changes);
+    writer_.set_uint32(8, status);
+    writer_.set_uint32_array(9, statuses);
+    writer_.set_int32(10, sign);
+    writer_.set_int32_array(11, signs);
+    writer_.set_uint64(12, mask);
+    writer_.set_uint64_array(13, masks);
+    writer_.set_int64(14, extent);
+    writer_.set_int64_array(15, extents);
+    writer_.set_uint8(16, word);
+    writer_.set_struct(17, mark);
+    writer_.set_structs(18, marks);
+    const auto vector19_ = writer_.set_vector(19, steps.size());
+    for (std::size_t index_ = 0; index_ < steps.size(); ++index_) {
+        steps[index_].write(writer_);
+        writer_.set_item_end(vector19_, index_);
+    }
+
+    return writer_.finish();
+}
+
+inline std::size_t EnumsFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(20, Enums::LAYOUT);
+    sizer_.add_uint8();
+    sizer_.add_uint8_array(levels.size());
+    sizer_.add_int8();
+    sizer_.add_int8_array(directions.size());
+    sizer_.add_uint16();
+    sizer_.add_uint16_array(units.size());
+    sizer_.add_int16();
+    sizer_.add_int16_array(changes.size());
+    sizer_.add_uint32();
+    sizer_.add_uint32_array(statuses.size());
+    sizer_.add_int32();
+    sizer_.add_int32_array(signs.size());
+    sizer_.add_uint64();
+    sizer_.add_uint64_array(masks.size());
+    sizer_.add_int64();
+    sizer_.add_int64_array(extents.size());
+    sizer_.add_uint8();
+    sizer_.add_struct(Mark::SIZE);
+    sizer_.add_struct_array(marks.size(), Mark::SIZE, Mark::ALIGNMENT);
+    sizer_.add_vector(steps.size());
+    for (const auto& item_ : steps) {
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint8(0, level);
+    writer_.set_uint8_array(1, levels);
+    writer_.set_int8(2, direction);
+    writer_.set_int8_array(3, directions);
+    writer_.set_uint16(4, unit);
+    writer_.set_uint16_array(5, units);
+    writer_.set_int16(6, change);
+    writer_.set_int16_array(7, changes);
+    writer_.set_uint32(8, status);
+    writer_.set_uint32_array(9, statuses);
+    writer_.set_int32(10, sign);
+    writer_.set_int32_array(11, signs);
+    writer_.set_uint64(12, mask);
+    writer_.set_uint64_array(13, masks);
+    writer_.set_int64(14, extent);
+    writer_.set_int64_array(15, extents);
+    writer_.set_uint8(16, word);
+    writer_.set_struct(17, mark);
+    writer_.set_structs(18, marks);
+    const auto vector19_ = writer_.set_vector(19, steps.size());
+    for (std::size_t index_ = 0; index_ < steps.size(); ++index_) {
+        steps[index_].write(writer_);
+        writer_.set_item_end(vector19_, index_);
+    }
+
+    return writer_.finish_into();
+}
+
+template <class T, class U>
+inline ::tafla::Bytes generic::EnumsFields<T, U>::serialize() const {
+    static_assert(::tafla::ViewOf<T, Mark>);
+    static_assert(::tafla::ViewOf<U, StepFields>);
+
+    ::tafla::TableSizer sizer_(20, Enums::LAYOUT);
+    sizer_.add_uint8();
+    sizer_.add_uint8_array(levels.size());
+    sizer_.add_int8();
+    sizer_.add_int8_array(directions.size());
+    sizer_.add_uint16();
+    sizer_.add_uint16_array(units.size());
+    sizer_.add_int16();
+    sizer_.add_int16_array(changes.size());
+    sizer_.add_uint32();
+    sizer_.add_uint32_array(statuses.size());
+    sizer_.add_int32();
+    sizer_.add_int32_array(signs.size());
+    sizer_.add_uint64();
+    sizer_.add_uint64_array(masks.size());
+    sizer_.add_int64();
+    sizer_.add_int64_array(extents.size());
+    sizer_.add_uint8();
+    sizer_.add_struct(Mark::SIZE);
+    sizer_.add_struct_array(std::ranges::size(marks), Mark::SIZE, Mark::ALIGNMENT);
+    sizer_.add_vector(std::ranges::size(steps));
+    for (const auto& element_ : steps) {
+        const StepFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer();
+    writer_.set_uint8(0, level);
+    writer_.set_uint8_array(1, levels);
+    writer_.set_int8(2, direction);
+    writer_.set_int8_array(3, directions);
+    writer_.set_uint16(4, unit);
+    writer_.set_uint16_array(5, units);
+    writer_.set_int16(6, change);
+    writer_.set_int16_array(7, changes);
+    writer_.set_uint32(8, status);
+    writer_.set_uint32_array(9, statuses);
+    writer_.set_int32(10, sign);
+    writer_.set_int32_array(11, signs);
+    writer_.set_uint64(12, mask);
+    writer_.set_uint64_array(13, masks);
+    writer_.set_int64(14, extent);
+    writer_.set_int64_array(15, extents);
+    writer_.set_uint8(16, word);
+    writer_.set_struct(17, mark);
+    writer_.set_structs<Mark>(18, marks);
+    const auto vector19_ = writer_.set_vector(19, std::ranges::size(steps));
+    for (std::size_t index_ = 0; const auto& element_ : steps) {
+        const StepFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector19_, index_);
+        ++index_;
+    }
+
+    return writer_.finish();
+}
+
+template <class T, class U>
+inline std::size_t generic::EnumsFields<T, U>::serialize_into(std::span<std::uint8_t> bytes_) const {
+    static_assert(::tafla::ViewOf<T, Mark>);
+    static_assert(::tafla::ViewOf<U, StepFields>);
+
+    ::tafla::TableSizer sizer_(20, Enums::LAYOUT);
+    sizer_.add_uint8();
+    sizer_.add_uint8_array(levels.size());
+    sizer_.add_int8();
+    sizer_.add_int8_array(directions.size());
+    sizer_.add_uint16();
+    sizer_.add_uint16_array(units.size());
+    sizer_.add_int16();
+    sizer_.add_int16_array(changes.size());
+    sizer_.add_uint32();
+    sizer_.add_uint32_array(statuses.size());
+    sizer_.add_int32();
+    sizer_.add_int32_array(signs.size());
+    sizer_.add_uint64();
+    sizer_.add_uint64_array(masks.size());
+    sizer_.add_int64();
+    sizer_.add_int64_array(extents.size());
+    sizer_.add_uint8();
+    sizer_.add_struct(Mark::SIZE);
+    sizer_.add_struct_array(std::ranges::size(marks), Mark::SIZE, Mark::ALIGNMENT);
+    sizer_.add_vector(std::ranges::size(steps));
+    for (const auto& element_ : steps) {
+        const StepFields& item_ = element_;
+        item_.size(sizer_);
+    }
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint8(0, level);
+    writer_.set_uint8_array(1, levels);
+    writer_.set_int8(2, direction);
+    writer_.set_int8_array(3, directions);
+    writer_.set_uint16(4, unit);
+    writer_.set_uint16_array(5, units);
+    writer_.set_int16(6, change);
+    writer_.set_int16_array(7, changes);
+    writer_.set_uint32(8, status);
+    writer_.set_uint32_array(9, statuses);
+    writer_.set_int32(10, sign);
+    writer_.set_int32_array(11, signs);
+    writer_.set_uint64(12, mask);
+    writer_.set_uint64_array(13, masks);
+    writer_.set_int64(14, extent);
+    writer_.set_int64_array(15, extents);
+    writer_.set_uint8(16, word);
+    writer_.set_struct(17, mark);
+    writer_.set_structs<Mark>(18, marks);
+    const auto vector19_ = writer_.set_vector(19, std::ranges::size(steps));
+    for (std::size_t index_ = 0; const auto& element_ : steps) {
+        const StepFields& item_ = element_;
+        item_.write(writer_);
+        writer_.set_item_end(vector19_, index_);
+        ++index_;
+    }
+
+    return writer_.finish_into();
+}
+
+inline std::uint8_t Step::level() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 0);
+    return reader.get_uint8(position);
+}
+
+inline Mark Step::mark() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 1);
+    return Mark::from_bytes(reader.get_struct(position, Mark::SIZE).data());
+}
+
+inline std::string_view Step::name() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    const auto position = reader.field_offset(0, 2);
+    return reader.get_string(position);
+}
+
+inline void StepFields::size(::tafla::TableSizer& sizer_) const {
+    const auto parent_ = sizer_.start_table(3);
+    sizer_.add_uint8();
+    sizer_.add_struct(Mark::SIZE);
+    sizer_.add_string(name);
+    sizer_.end_table(parent_);
+}
+
+inline void StepFields::write(::tafla::TableWriter& writer_) const {
+    const auto parent_ = writer_.start_table(3);
+    writer_.set_uint8(0, level);
+    writer_.set_struct(1, mark);
+    writer_.set_string(2, name);
+    writer_.end_table(parent_);
 }
 
 }  // namespace all_types

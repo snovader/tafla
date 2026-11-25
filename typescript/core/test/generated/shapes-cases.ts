@@ -5,13 +5,15 @@ import {
     readItemList,
     readPoint,
     readSample,
+    readTask,
     type Shapes
 } from './shapes-tables.ts';
 import type {
     DocumentFields,
     ItemListFields,
     PointFields,
-    SampleFields
+    SampleFields,
+    TaskFields
 } from './shapes/typescript/shapes.ts';
 import * as typescript from './shapes/typescript/shapes.ts';
 
@@ -26,6 +28,7 @@ export type ShapesCase = { name: string; description: string } & (
     | { type: 'Document'; fields: DocumentFields }
     | { type: 'ItemList'; fields: ItemListFields }
     | { type: 'Sample'; fields: SampleFields }
+    | { type: 'Task'; fields: TaskFields }
 );
 
 const INT64_MIN = -(2n ** 63n);
@@ -119,6 +122,38 @@ export const SHAPES_CASES: readonly ShapesCase[] = [
         description: 'A struct of the largest uint32, signed zero and NaN',
         type: 'Sample',
         fields: { key: UINT32_MAX, a: -0, b: Number.NaN }
+    },
+    {
+        name: 'task',
+        description:
+            'Enums by the values that the schema names: an int8 that is negative, an array of uint16 and a struct of both',
+        type: 'Task',
+        fields: {
+            priority: typescript.Priority.Low,
+            history: [
+                typescript.State.Waiting,
+                typescript.State.Running,
+                typescript.State.Failed
+            ],
+            step: {
+                state: typescript.State.Done,
+                priority: typescript.Priority.High,
+                seconds: UINT32_MAX
+            },
+            name: 'task'
+        }
+    },
+    {
+        name: 'task-unnamed',
+        description:
+            'Enums of integers that the schema gives no name, which read as values: the extremes of int8 and uint16',
+        type: 'Task',
+        fields: {
+            priority: -128,
+            history: [3, 65_535, 999],
+            step: { state: 65_535, priority: 127, seconds: 0 },
+            name: ''
+        }
     }
 ];
 
@@ -136,6 +171,9 @@ export function serialize(shapes: Shapes, shapesCase: ShapesCase): Uint8Array {
 
         case 'Sample':
             return shapes.Sample.serialize(shapesCase.fields);
+
+        case 'Task':
+            return shapes.Task.serialize(shapesCase.fields);
     }
 }
 
@@ -157,6 +195,9 @@ export function read(
 
         case 'Sample':
             return readSample(new shapes.Sample(bytes));
+
+        case 'Task':
+            return readTask(new shapes.Task(bytes));
     }
 }
 
