@@ -1059,10 +1059,6 @@ function writeField(
             writer.setString(index, value as string);
             break;
 
-        case STRING_VECTOR:
-            writer.setStringVector(index, value as readonly string[]);
-            break;
-
         case STRUCT:
             writer.setStruct(index, value as Uint8Array);
             break;
@@ -1072,6 +1068,11 @@ function writeField(
             writer.setStructArray(index, bytes, size, alignment);
             break;
         }
+
+        // Last, so that the kinds before it are written as they were
+        case STRING_VECTOR:
+            writer.setStringVector(index, value as readonly string[]);
+            break;
     }
 }
 
