@@ -59,6 +59,7 @@ const STRUCT_ARRAY = 24;
 const TABLE_IN_PLACE = 25;
 /** A vector recorded in place, whose items' fields' records follow its own */
 const VECTOR_IN_PLACE = 26;
+const STRING_VECTOR = 27;
 
 /** The size of a scalar of each kind, INT8 to FLOAT64 */
 const SIZES: readonly ElementSize[] = [1, 1, 2, 2, 4, 4, 8, 8, 4, 8];
@@ -380,6 +381,25 @@ export class TableBuilder {
     setString(string: string): void {
         // The writer encodes it in place, so only its length is counted here
         this.#addField(STRING, string, this._size + utf8Length(string), 0, 0);
+    }
+
+    /**
+     * Writes a vector of strings, each as UTF-8 with lone surrogates
+     * replaced by U+FFFD, after the end of each, which lets readers find any
+     * string without reading the others. It takes no more bytes for each
+     * string than the end of it, where a vector of tables of one string
+     * takes each table's offset and the string's count too.
+     */
+    setStringVector(strings: ArrayLike<string>): void {
+        // The writer encodes them in place, so only their lengths are
+        // counted here
+        const count = strings.length;
+        let byteLength = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            byteLength += utf8Length(strings[i]);
+        }
+
+        this.#addField(STRING_VECTOR, strings, byteLength, 0, 0);
     }
 
     /**
@@ -1034,6 +1054,10 @@ function writeField(
 
         case STRING:
             writer.setString(index, value as string);
+            break;
+
+        case STRING_VECTOR:
+            writer.setStringVector(index, value as ArrayLike<string>);
             break;
 
         case STRUCT:

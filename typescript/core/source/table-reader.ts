@@ -673,6 +673,94 @@ export class TableReader {
     }
 
     /**
+     * Reads every string of the vector of strings at `position`, in order.
+     *
+     * A vector of strings is laid out as a vector of tables is: its count,
+     * the end of each string from the vector's position, and then the
+     * strings' UTF-8, one after another, so the ends are read and checked
+     * as `getVector()` reads a vector's.
+     *
+     * @throws {DecodeError} If the count, the ends or the strings don't lie
+     * within the bytes, a string ends before it starts, or one isn't valid
+     * UTF-8.
+     */
+    getStringVector(position: number): string[] {
+        // Checking the ends bounds the count before allocating for it
+        const count = this.getVectorLength(position);
+        const strings = new Array<string>(count);
+
+        let start = (count + 1) * this._size;
+        for (let i = 0; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            const offset = this.#itemOffset(position, start, end);
+            strings[i] = this.#itemString(offset, end - start);
+            start = end;
+        }
+
+        return strings;
+    }
+
+    /**
+     * Reads string `index` of the vector of strings at `position`, from its
+     * end and the end of the string before it, without reading any other
+     * string. It takes the vector's `count`, which the caller has read with
+     * `getVectorLength()`, as `getVectorItemOffset()` does, so that reading
+     * many strings, as a `StringVector` does, reads and checks it once.
+     *
+     * @throws {RangeError} If `index` isn't an integer in [0, `count`).
+     * @throws {DecodeError} If the string's ends or the string don't lie
+     * within the bytes, it ends before it starts, or it isn't valid UTF-8.
+     */
+    getStringVectorItem(
+        position: number,
+        count: number,
+        index: number
+    ): string {
+        const start = this.getVectorItemOffset(position, count, index);
+        // The end that getVectorItemOffset() read, and checked against the
+        // start and the bytes
+        const end =
+            position + this.#getSize(position + (index + 1) * this._size);
+
+        return this.#itemString(start, end - start);
+    }
+
+    /**
+     * Reads the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as `getString()` reads a string's after its count: short ASCII
+     * a byte at a time, and any other out of line
+     */
+    #itemString(start: number, length: number): string {
+        const ascii = decodeShortAscii(this._bytes, start, length);
+        if (ascii !== undefined) {
+            return ascii;
+        }
+
+        return this.#decodeItem(start, length);
+    }
+
+    /** `#itemString()` of a string that isn't short ASCII */
+    #decodeItem(start: number, length: number): string {
+        const short = decodeShortUtf8(this._bytes, start, length);
+        if (short !== undefined) {
+            return short;
+        }
+
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch (error) {
+            throw new DecodeError(`The string at ${start} isn't valid UTF-8`, {
+                cause: error
+            });
+        }
+    }
+
+    /**
      * Checks that a vector item, from `start` to `end` from the vector's
      * position, starts no later than it ends and lies within the bytes. The
      * vector's position and the ends are integers, as in
