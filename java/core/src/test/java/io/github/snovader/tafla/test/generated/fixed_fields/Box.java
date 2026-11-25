@@ -12,7 +12,7 @@ public final class Box {
     public static final long FORMAT_VERSION = 1;
 
     private static final TableLayout LAYOUT = TableLayout.builder()
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .build();
 
     private final TableReader reader;
@@ -41,7 +41,7 @@ public final class Box {
 
     /** Writes a {@code Box} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addStruct(Vec2.SIZE);
         sizer.addStruct(Vec2.SIZE);
         sizer.addTable(Range.ALIGNMENT);
@@ -68,7 +68,7 @@ public final class Box {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(3, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(3, LAYOUT);
         sizer.addStruct(Vec2.SIZE);
         sizer.addStruct(Vec2.SIZE);
         sizer.addTable(Range.ALIGNMENT);

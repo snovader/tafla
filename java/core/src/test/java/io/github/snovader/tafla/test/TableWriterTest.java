@@ -295,16 +295,10 @@ public class TableWriterTest {
     }
 
     @Example
-    void versions_and_field_counts_are_checked_as_TableBuilder_checks_them() {
-        var versioned = TableLayout.builder().versioned(true).offsetType(OffsetType.UINT8).build();
+    void field_counts_are_checked_as_TableBuilder_checks_them() {
+        var versioned = TableLayout.builder().version(255).offsetType(OffsetType.UINT8).build();
 
-        assertRejectedAlike(
-            () -> new TableBuilder(0, TableLayout.DEFAULT, 1),
-            () -> new TableSizer(0, TableLayout.DEFAULT, 1)
-        );
-        assertRejectedAlike(() -> new TableBuilder(0, versioned), () -> new TableSizer(0, versioned));
-        assertRejectedAlike(() -> new TableBuilder(0, versioned, 256), () -> new TableSizer(0, versioned, 256));
-        assertRejectedAlike(() -> new TableBuilder(0, versioned, -1), () -> new TableSizer(0, versioned, -1));
+        assertRejectedAlike(() -> new TableBuilder(255, versioned), () -> new TableSizer(255, versioned));
         assertRejectedAlike(() -> new TableBuilder(-1), () -> new TableSizer(-1));
     }
 
