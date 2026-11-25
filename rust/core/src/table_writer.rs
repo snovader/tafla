@@ -457,12 +457,12 @@ impl TableWriter {
     }
 
     /// Returns new bytes for a table of `fields` fields in `layout`, of
-    /// `length` bytes, with the layout's version in its header when it has
-    /// one, which the caller writes itself, at positions that it
+    /// `length` bytes, which the caller writes itself, at positions that it
     /// works out, without a sizer and a writer: an empty `Vec` with the
-    /// table's header and a capacity of exactly `length`, at least the
-    /// header's slots and offsets, to which the caller appends every other
-    /// byte, each field's offset and the field.
+    /// table's header, the layout's version included when it has one, and a
+    /// capacity of exactly `length`, at least the header's slots and
+    /// offsets, to which the caller appends every other byte, each field's
+    /// offset and the field.
     ///
     /// It's for the code that tafla-gen generates, as Go's `AppendTable()`
     /// is, outside the compatibility promise of the rest of the API: it may
@@ -473,8 +473,9 @@ impl TableWriter {
     /// # Errors
     ///
     /// [`BuildError::VersionTooLarge`] or [`BuildError::HeaderTooLong`] as
-    /// [`TableSizer::new()`] returns them, or [`BuildError::TooLong`], naming the last field, if `length` is longer
-    /// than the layout's offset type addresses.
+    /// [`TableSizer::new()`] returns them, or [`BuildError::TooLong`],
+    /// naming the last field, if `length` is longer than the layout's offset
+    /// type addresses.
     #[inline]
     pub fn table_bytes<const VERSIONED: bool>(
         fields: usize,

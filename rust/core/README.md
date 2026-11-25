@@ -80,9 +80,10 @@ The generated code writes a table of fields whose sizes the schema fixes
 whole, at positions that it works out: a nested one from its bytes, which
 the sizer's `add_table_bytes()` adds and the writer's `copy_table()` copies,
 and a message of such fields, and a string after them, into the bytes that
-`TableWriter::table_bytes()` returns with its header, without a sizer and a writer. Like Go's `AppendTable()`, these are
-for the generated code, outside the compatibility promise of the rest of
-the API, and may change with the generator.
+`TableWriter::table_bytes()` returns with its header, without a sizer and a
+writer. Like Go's `AppendTable()`, these are for the generated code, outside
+the compatibility promise of the rest of the API, and may change with the
+generator.
 
 ## Format
 
