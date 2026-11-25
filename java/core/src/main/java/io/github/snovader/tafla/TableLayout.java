@@ -11,15 +11,23 @@ import java.util.*;
  * // The response's length and format version, then its field offsets
  * static final TableLayout LAYOUT = TableLayout.builder()
  *     .sized(true)
- *     .versioned(true)
+ *     .version(1)
  *     .build();
  * }
+ *
+ * <p>A layout with a version is the layout of that version of the format: its builders and
+ * writers write the version, and its readers read tables of any version, so that an application
+ * can read a table's version before it chooses how to read the fields. The layouts of a format's
+ * versions should differ in the version only, as {@link #withVersion(long)} makes them.
  */
 public final class TableLayout {
+    /** The version of a layout that has none, which no header slot holds */
+    private static final long NO_VERSION = -1;
+
     /** No header slots, and offsets and lengths of the offset type {@code uint32} */
-    public static final TableLayout DEFAULT = new TableLayout(false, false, OffsetType.UINT32);
-    private static final TableLayout HEADERLESS_UINT8 = new TableLayout(false, false, OffsetType.UINT8);
-    private static final TableLayout HEADERLESS_UINT16 = new TableLayout(false, false, OffsetType.UINT16);
+    public static final TableLayout DEFAULT = new TableLayout(false, NO_VERSION, OffsetType.UINT32);
+    private static final TableLayout HEADERLESS_UINT8 = new TableLayout(false, NO_VERSION, OffsetType.UINT8);
+    private static final TableLayout HEADERLESS_UINT16 = new TableLayout(false, NO_VERSION, OffsetType.UINT16);
 
     /**
      * The longest array that the JDK's own collections allocate, which limits a table of
@@ -28,16 +36,16 @@ public final class TableLayout {
     static final int MAX_ARRAY_LENGTH = Integer.MAX_VALUE - 8;
 
     private final boolean sized;
-    private final boolean versioned;
+    private final long version;
     private final OffsetType offsetType;
     private final int headerSize;
 
-    private TableLayout(boolean sized, boolean versioned, OffsetType offsetType) {
+    private TableLayout(boolean sized, long version, OffsetType offsetType) {
         this.sized = sized;
-        this.versioned = versioned;
+        this.version = version;
         this.offsetType = offsetType;
 
-        var headerSlots = (sized ? 1 : 0) + (versioned ? 1 : 0);
+        var headerSlots = (sized ? 1 : 0) + (version == NO_VERSION ? 0 : 1);
         this.headerSize = headerSlots * offsetType.size();
     }
 
@@ -53,7 +61,37 @@ public final class TableLayout {
 
     /** {@return whether the header has a slot for a version, after the length when sized} */
     public boolean versioned() {
-        return versioned;
+        return version != NO_VERSION;
+    }
+
+    /** {@return the version that builders and writers write to the header, when it has a slot} */
+    public OptionalLong version() {
+        return version == NO_VERSION ? OptionalLong.empty() : OptionalLong.of(version);
+    }
+
+    /**
+     * {@return the layout with {@code version} in place of its own}, for another version of the
+     * same format
+     *
+     * @throws IllegalArgumentException if the version doesn't fit in the offset type
+     */
+    public TableLayout withVersion(long version) {
+        return new TableLayout(sized, checkedVersion(version, offsetType), offsetType);
+    }
+
+    /** {@return the version to write to the header}, of a layout that has one */
+    long headerVersion() {
+        return version;
+    }
+
+    private static long checkedVersion(long version, OffsetType offsetType) {
+        if (version < 0 || version > offsetType.maxValue()) {
+            throw new IllegalArgumentException(
+                String.format("Version %d doesn't fit in a %s slot", version, offsetType)
+            );
+        }
+
+        return version;
     }
 
     /**
@@ -98,25 +136,12 @@ public final class TableLayout {
 
     /**
      * {@return the byte length of the header slots and field offsets of a table of {@code fields}
-     * fields}, whose writer puts {@code version} in the header when {@code versioned}
+     * fields}
      *
-     * @throws IllegalArgumentException if the layout is versioned and no version is given, or the
-     *     other way round, the version doesn't fit in the offset type, the number of fields is
-     *     negative, or the header alone is longer than the layout addresses
+     * @throws IllegalArgumentException if the number of fields is negative, or the header alone is
+     *     longer than the layout addresses
      */
-    int headerLength(int fields, boolean versioned, long version) {
-        if (this.versioned != versioned) {
-            throw new IllegalArgumentException(
-                this.versioned ? "A versioned layout needs a version" : "The layout has no version slot"
-            );
-        }
-
-        if (versioned && (version < 0 || version > offsetType.maxValue())) {
-            throw new IllegalArgumentException(
-                String.format("Version %d doesn't fit in a %s slot", version, offsetType)
-            );
-        }
-
+    int headerLength(int fields) {
         if (fields < 0) {
             throw new IllegalArgumentException(String.format("A table can't hold %d fields", fields));
         }
@@ -151,9 +176,9 @@ public final class TableLayout {
     @Override
     public String toString() {
         return String.format(
-            "TableLayout[sized=%s, versioned=%s, offsetType=%s]",
+            "TableLayout[sized=%s, version=%s, offsetType=%s]",
             sized,
-            versioned,
+            version == NO_VERSION ? "none" : Long.toString(version),
             offsetType
         );
     }
@@ -164,6 +189,7 @@ public final class TableLayout {
      */
     public static final class Builder {
         private boolean sized = false;
+        private long version = NO_VERSION;
         private boolean versioned = false;
         private OffsetType offsetType = OffsetType.UINT32;
 
@@ -176,12 +202,14 @@ public final class TableLayout {
         }
 
         /**
-         * Whether the header has a slot for a version, after the length when sized, which is false by
-         * default. Readers can check it before reading any field, and a {@link TableBuilder} of the
-         * layout needs a version to write to it.
+         * The version that the header holds, after the length when sized, which gives it a slot for
+         * one; a layout has none by default. Builders and writers write it, and readers can check
+         * the one that a table holds, with {@link TableReader#getVersion()}, before reading any
+         * field. {@link #build()} checks that it fits in the offset type.
          */
-        public Builder versioned(boolean versioned) {
-            this.versioned = versioned;
+        public Builder version(long version) {
+            this.version = version;
+            this.versioned = true;
             return this;
         }
 
@@ -196,8 +224,17 @@ public final class TableLayout {
             return this;
         }
 
+        /**
+         * {@return the layout that the options set out}
+         *
+         * @throws IllegalArgumentException if the version doesn't fit in the offset type
+         */
         public TableLayout build() {
-            return new TableLayout(sized, versioned, offsetType);
+            return new TableLayout(
+                sized,
+                versioned ? checkedVersion(version, offsetType) : NO_VERSION,
+                offsetType
+            );
         }
     }
 }

@@ -12,7 +12,6 @@ import java.util.function.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class TableBuilderTest {
-    private static final TableLayout SIZED = TableLayout.builder().sized(true).build();
 
     // Tables of up to 64 KiB, so fewer of them
     @Property(tries = 250)
@@ -398,12 +397,15 @@ public class TableBuilderTest {
         var layout = versioned(offsetType);
         var max = offsetType.maxValue();
 
-        var reader = new TableReader(new TableBuilder(0, layout, max).bytes(), layout);
+        // A reader reads a table of any version, whatever its layout's
+        var reader = new TableReader(new TableBuilder(0, layout.withVersion(max)).bytes(), layout);
         assertEquals(max, reader.getVersion());
 
-        var exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, max + 1));
+        var exception = assertThrows(IllegalArgumentException.class, () -> layout.withVersion(max + 1));
         assertEquals(String.format("Version %d doesn't fit in a %s slot", max + 1, offsetType), exception.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> new TableBuilder(0, layout, -1));
+        var options = TableLayout.builder().offsetType(offsetType).version(max + 1);
+        assertEquals(exception.getMessage(), assertThrows(IllegalArgumentException.class, options::build).getMessage());
+        assertThrows(IllegalArgumentException.class, () -> layout.withVersion(-1));
     }
 
     @Property(generation = GenerationMode.EXHAUSTIVE)
@@ -519,18 +521,6 @@ public class TableBuilderTest {
     }
 
     @Example
-    void should_need_a_version_exactly_when_the_layout_has_a_slot_for_it() {
-        var exception = assertThrows(
-            IllegalArgumentException.class,
-            () -> new TableBuilder(1, versioned(OffsetType.UINT32))
-        );
-        assertEquals("A versioned layout needs a version", exception.getMessage());
-
-        exception = assertThrows(IllegalArgumentException.class, () -> new TableBuilder(1, SIZED, 1));
-        assertEquals("The layout has no version slot", exception.getMessage());
-    }
-
-    @Example
     void should_write_a_lone_surrogate_as_the_replacement_character() {
         var builder = new TableBuilder(1);
         builder.setString("a\uD800b\uDC00\uD83D\uDE00");
@@ -636,6 +626,6 @@ public class TableBuilderTest {
     }
 
     private static TableLayout versioned(OffsetType offsetType) {
-        return TableLayout.builder().versioned(true).offsetType(offsetType).build();
+        return TableLayout.builder().version(0).offsetType(offsetType).build();
     }
 }

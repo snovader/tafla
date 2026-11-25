@@ -37,7 +37,6 @@ public final class TableBuilder {
     private byte @Nullable [] written;
 
     private final TableLayout layout;
-    private final long version;
     /** The type of offsets, lengths and header slots */
     private final OffsetType offsetType;
     /**
@@ -85,28 +84,15 @@ public final class TableBuilder {
 
     /**
      * @param fields the number of fields that the table will hold
-     * @param layout the table's header and offset type, which its readers must use too
-     * @throws IllegalArgumentException if the layout is versioned, or the header alone is longer
-     *     than the layout addresses
+     * @param layout the table's header and offset type, which its readers must use too, with the
+     *     version to write to the header when it has one. Readers can check it with
+     *     {@link TableReader#getVersion()} before reading any field.
+     * @throws IllegalArgumentException if the number of fields is negative, or the header alone is
+     *     longer than the layout addresses
      */
     public TableBuilder(int fields, TableLayout layout) {
-        this(fields, layout, false, 0);
-    }
-
-    /**
-     * @param version the version to write to the header. Readers can check it with
-     *     {@link TableReader#getVersion()} before reading any field.
-     * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset type, or the header alone is longer than the layout addresses
-     */
-    public TableBuilder(int fields, TableLayout layout, long version) {
-        this(fields, layout, true, version);
-    }
-
-    private TableBuilder(int fields, TableLayout layout, boolean versioned, long version) {
-        this.offset = layout.headerLength(fields, versioned, version);
+        this.offset = layout.headerLength(fields);
         this.layout = layout;
-        this.version = version;
         this.offsetType = layout.offsetType();
         this.maxLength = (int) layout.maxLength();
 
@@ -136,7 +122,7 @@ public final class TableBuilder {
         }
 
         // The constructor checked the header, as the sizer's writer() does
-        var writer = new TableWriter(new byte[offset], offset, fields, layout, version, List.of());
+        var writer = new TableWriter(new byte[offset], offset, fields, layout, List.of());
         writeFields(writer, 0, fields);
         written = writer.bytes();
 
@@ -547,7 +533,7 @@ public final class TableBuilder {
      *     fit in the offset type
      */
     private int headerOf(int fields) {
-        return TableLayout.headerless(offsetType).headerLength(fields, false, 0);
+        return TableLayout.headerless(offsetType).headerLength(fields);
     }
 
     /** @throws IllegalArgumentException if the table recorded in place has fields left to set */
