@@ -120,7 +120,7 @@ function setterVariant([type, TypedArray]: ElementType): Variant {
     const values = randomValues(TypedArray);
 
     const run = compile(
-        { TableBuilder, values },
+        { TableArena, TableBuilder, values },
         `const builder = new TableBuilder(TableArena.DEFAULT, values.length);
         for (let i = 0; i < values.length; i++) {
             builder.set${type}(values[i]);
@@ -159,7 +159,7 @@ function arraySetterVariant(
     const name = `set${type}Array`;
 
     const run = compile(
-        { TableBuilder, inputs },
+        { TableArena, TableBuilder, inputs },
         `const builder = new TableBuilder(TableArena.DEFAULT, inputs.length);
         for (let i = 0; i < inputs.length; i++) {
             builder.set${type}Array(inputs[i]);
