@@ -39,7 +39,15 @@ public final class TaflaCodec {
     private TaflaCodec() {}
 
     public static Codec create() {
-        return new Codec("tafla", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
+        return new Codec(
+            "tafla",
+            new Records(),
+            new Documents(),
+            new Lists(),
+            new Structs(),
+            new Samples(),
+            new StringTables()
+        );
     }
 
     private static final class Records implements Workload<RecordInput> {
@@ -230,6 +238,31 @@ public final class TaflaCodec {
                 reader.getFloat32(Integer.BYTES),
                 reader.getFloat32(Integer.BYTES + Float.BYTES)
             );
+        }
+    }
+
+    /** A table of 16 string fields, since tafla has no vector of strings */
+    private static final class StringTables implements Workload<List<String>> {
+        @Override
+        public byte[] serialize(List<String> strings) {
+            var builder = new TableBuilder(strings.size());
+            for (var string : strings) {
+                builder.setString(string);
+            }
+
+            return builder.bytes();
+        }
+
+        @Override
+        public List<String> deserialize(byte[] bytes) {
+            var reader = new TableReader(bytes);
+
+            var strings = new String[StringShapes.COUNT];
+            for (int i = 0; i < strings.length; i++) {
+                strings[i] = reader.getString(reader.rootOffset(i));
+            }
+
+            return Arrays.asList(strings);
         }
     }
 }

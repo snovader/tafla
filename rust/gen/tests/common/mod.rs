@@ -214,14 +214,23 @@ pub const BENCHMARK_SCHEMAS: [BenchmarkSchema; 8] = [
     },
 ];
 
-/// The schemas of the suites that only one language has, such as the
-/// TypeScript suite of strings, each with its generated code beside it
-pub const SINGLE_SUITE_SCHEMAS: [BenchmarkSchema; 1] = [BenchmarkSchema {
-    target: "typescript",
-    schema: "typescript/benchmarks/strings/strings.tafla",
-    directory: "typescript/benchmarks/strings/generated/tafla",
-    package: None,
-}];
+/// The schemas of the strings suites, which are copies of one schema, since
+/// the suites write and read the same table. Each directory holds the
+/// generated code and nothing else.
+pub const STRINGS_SCHEMAS: [BenchmarkSchema; 2] = [
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/strings/strings.tafla",
+        directory: "typescript/benchmarks/strings/generated/tafla",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/strings.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.strings"),
+    },
+];
 
 impl BenchmarkSchema {
     pub fn source(&self) -> String {

@@ -7,11 +7,13 @@ import io.github.snovader.tafla.benchmarks.generated.protobuf.Messages;
 
 import java.io.*;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * protoc's generated messages, built with their builders and parsed with their parsers. Repeated
- * fields are added and read one element at a time, which keeps them unboxed, and are copied into
- * arrays when parsed. uint32s are Java {@code int}s with the same bits.
+ * scalars are added and read one element at a time, which keeps them unboxed, and are copied into
+ * arrays when parsed. uint32s are Java {@code int}s with the same bits. Repeated strings are added
+ * together, and read as the parsed message's list.
  *
  * <p>protobuf has no structs, so an array of them is a repeated message of the three floats, whose
  * fields protobuf writes as fixed32s. Packed repeated floats would be a column for each field,
@@ -21,7 +23,15 @@ public final class ProtobufCodec {
     private ProtobufCodec() {}
 
     public static Codec create() {
-        return new Codec("protobuf", new Records(), new Documents(), new Lists(), new Structs(), new Samples());
+        return new Codec(
+            "protobuf",
+            new Records(),
+            new Documents(),
+            new Lists(),
+            new Structs(),
+            new Samples(),
+            new StringTables()
+        );
     }
 
     /**
@@ -202,6 +212,19 @@ public final class ProtobufCodec {
             var sample = parse(Messages.Sample.parser(), bytes);
 
             return new SampleInput(Integer.toUnsignedLong(sample.getKey()), sample.getA(), sample.getB());
+        }
+    }
+
+    /** A repeated string, whose strings the parser decodes as it parses them */
+    private static final class StringTables implements Workload<List<String>> {
+        @Override
+        public byte[] serialize(List<String> strings) {
+            return Messages.Strings.newBuilder().addAllItems(strings).build().toByteArray();
+        }
+
+        @Override
+        public List<String> deserialize(byte[] bytes) {
+            return parse(Messages.Strings.parser(), bytes).getItemsList();
         }
     }
 }

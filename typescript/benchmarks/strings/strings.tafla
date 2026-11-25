@@ -1,6 +1,6 @@
-// The strings suite's table, which tafla-gen's code writes and reads as the
-// suite's hand-built TableBuilder codec does. Only the TypeScript suite has
-// it; rust/gen/tests/benchmarks.rs checks the code generated from it.
+// The strings suites' table, which tafla-gen's code writes and reads as the
+// suites' hand-built TableBuilder codecs do. Every strings suite has a copy
+// of this schema, which rust/gen/tests/benchmarks.rs keeps the same.
 
 /// A table of 16 strings, so that a call spends its time on their UTF-8
 message Strings {

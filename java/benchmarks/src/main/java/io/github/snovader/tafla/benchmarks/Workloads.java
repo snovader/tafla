@@ -51,25 +51,4 @@ public final class Workloads {
 
         return new ListInput(List.copyOf(list));
     }
-
-    /**
-     * A deterministic generator in [0, 1), so every run sees the same values. Its state is an
-     * {@code int}, as the TypeScript generator's is after its 32-bit shifts, and narrowing a
-     * {@code double} to {@code float} rounds as {@code Math.fround()} does.
-     */
-    private static final class Xorshift {
-        private int state;
-
-        Xorshift(int seed) {
-            this.state = 0x2545f491 ^ seed;
-        }
-
-        double next() {
-            state ^= state << 13;
-            state ^= state >>> 17;
-            state ^= state << 5;
-
-            return Integer.toUnsignedLong(state) / 0x1p32;
-        }
-    }
 }
