@@ -1164,12 +1164,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"fast-check@npm:^4.10.3":
-  version: 4.10.3
-  resolution: "fast-check@npm:4.10.3"
+"fast-check@npm:^4.11.0":
+  version: 4.11.0
+  resolution: "fast-check@npm:4.11.0"
   dependencies:
     pure-rand: "npm:^8.0.0"
-  checksum: 10c0/95fea14b4dca5918aaf27bed2444f6ca00ddb9411c470cfc1b0a8673e190abf04119c594da15d7ebfe9dfd987b236459eca8966200654a40572fb6ff779a7c97
+  checksum: 10c0/b235512868b3b8e6be8fff7f3e8a02f80d6c5b754c00e4f228b63ad814361bbe093f52af9eaceec2af01ce3b0dee6263536812e35ca1c9c8fc4b5fc04219b4bd
   languageName: node
   linkType: hard
 
@@ -1805,7 +1805,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "tafla@workspace:core"
   dependencies:
-    fast-check: "npm:^4.10.3"
+    fast-check: "npm:^4.11.0"
     hypotes: "npm:^0.3.1"
     magic-string: "npm:^1.4.5"
     oxc-parser: "npm:^0.159.0"

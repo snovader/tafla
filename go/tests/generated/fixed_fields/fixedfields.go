@@ -553,7 +553,7 @@ func TaggedVersionOf(bytes []byte) (uint32, error) {
 
 // layout returns the layout of a [Tagged], which its getters read it in
 func (Tagged) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned().WithOffsetType(tafla.Uint8)
+	return tafla.TableLayout{}.Sized().WithVersion(TaggedFormatVersion).WithOffsetType(tafla.Uint8)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -644,7 +644,7 @@ func (f TaggedFields) MarshalBinary() ([]byte, error) {
 // [TaggedFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f TaggedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	bytes, table, err := tafla.AppendVersionedTable(bytes, 3, Tagged{}.layout(), TaggedFormatVersion, 18+uint64(len(f.Label)))
+	bytes, table, err := tafla.AppendTable(bytes, 3, Tagged{}.layout(), 18+uint64(len(f.Label)))
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +813,7 @@ func PixelVersionOf(bytes []byte) (uint32, error) {
 
 // layout returns the layout of a [Pixel], which its getters read it in
 func (Pixel) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned().WithOffsetType(tafla.Uint16)
+	return tafla.TableLayout{}.Sized().WithVersion(PixelFormatVersion).WithOffsetType(tafla.Uint16)
 }
 
 // Position fails with a [*tafla.DecodeError] if the field lies outside the
@@ -886,7 +886,7 @@ func (f PixelFields) MarshalBinary() ([]byte, error) {
 // [PixelFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f PixelFields) AppendBinary(bytes []byte) ([]byte, error) {
-	bytes, table, err := tafla.AppendVersionedTable(bytes, 2, Pixel{}.layout(), PixelFormatVersion, 20)
+	bytes, table, err := tafla.AppendTable(bytes, 2, Pixel{}.layout(), 20)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1058,7 @@ func BoxVersionOf(bytes []byte) (uint32, error) {
 
 // layout returns the layout of a [Box], which its getters read it in
 func (Box) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Versioned()
+	return tafla.TableLayout{}.WithVersion(BoxFormatVersion)
 }
 
 // Min fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1153,7 +1153,7 @@ func (f BoxFields) MarshalBinary() ([]byte, error) {
 // [BoxFields.MarshalBinary] writes it, and returns the extended bytes, into
 // their capacity when they have room. It fails as MarshalBinary does.
 func (f BoxFields) AppendBinary(bytes []byte) ([]byte, error) {
-	bytes, table, err := tafla.AppendVersionedTable(bytes, 3, Box{}.layout(), BoxFormatVersion, 48)
+	bytes, table, err := tafla.AppendTable(bytes, 3, Box{}.layout(), 48)
 	if err != nil {
 		return nil, err
 	}

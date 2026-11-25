@@ -17,7 +17,7 @@ import (
 type Tafla struct{}
 
 // documentLayout is the document's header: its length and version
-var documentLayout = tafla.TableLayout{}.Sized().Versioned()
+var documentLayout = tafla.TableLayout{}.Sized().WithVersion(documentVersion)
 
 const documentVersion = 1
 
@@ -79,7 +79,7 @@ func (Tafla) DeserializeRecord(bytes []byte) (workloads.Record, error) {
 }
 
 func (Tafla) SerializeDocument(document workloads.Document) ([]byte, error) {
-	builder, err := tafla.NewVersionedTableBuilder(4, documentLayout, documentVersion)
+	builder, err := tafla.NewTableBuilder(4, documentLayout)
 	if err != nil {
 		return nil, err
 	}
