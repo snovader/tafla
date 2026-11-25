@@ -1,0 +1,29 @@
+error: `red` of `Color` clashes with the declaration `ColorRed`
+ --> enum_go_constants.tafla:5:5
+  |
+5 |     red = 0;
+  |     ^^^ the code generated for Go declares `ColorRed` as `red` of `Color`
+
+error: `point` of `New` clashes with `NewPoint` of the code generated for `Point`
+  --> enum_go_constants.tafla:15:5
+   |
+15 |     point = 0;
+   |     ^^^^^ the code generated for Go declares `NewPoint` as `point` of `New`
+
+error: `sample` of `Read` clashes with `ReadSample` of the code generated for `Sample`
+  --> enum_go_constants.tafla:21:5
+   |
+21 |     sample = 0;
+   |     ^^^^^^ the code generated for Go declares `ReadSample` as `sample` of `Read`
+
+error: `version` of `PointFormat` clashes with `PointFormatVersion` of the code generated for `Point`
+  --> enum_go_constants.tafla:26:5
+   |
+26 |     version = 1;
+   |     ^^^^^^^ the code generated for Go declares `PointFormatVersion` as `version` of `PointFormat`
+
+error: `c` of `AB` clashes with `ABC` of the enum `A`
+  --> enum_go_constants.tafla:35:5
+   |
+35 |     c = 0;
+   |     ^ the code generated for Go declares `ABC` as `c` of `AB`

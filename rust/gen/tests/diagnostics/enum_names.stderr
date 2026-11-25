@@ -1,0 +1,71 @@
+error: `color` should be PascalCase
+ --> enum_names.tafla:1:6
+  |
+1 | enum color: uint8 {
+  |      ^^^^^
+
+error: `Red` should be snake_case
+ --> enum_names.tafla:2:5
+  |
+2 |     Red = 0;
+  |     ^^^
+
+error: `dark__red` should be snake_case
+ --> enum_names.tafla:3:5
+  |
+3 |     dark__red = 1;
+  |     ^^^^^^^^^
+
+error: `green` is declared twice in `color`
+ --> enum_names.tafla:5:5
+  |
+5 |     green = 3;
+  |     ^^^^^
+
+error: `light_blue_` should be snake_case
+ --> enum_names.tafla:7:5
+  |
+7 |     light_blue_ = 5;
+  |     ^^^^^^^^^^^
+
+error: `v1` and `v_1` are both `v1` in camelCase
+ --> enum_names.tafla:9:5
+  |
+9 |     v1 = 7;
+  |     ^^ TypeScript, JavaScript, Go, Swift and C# name values without underscores
+
+error: `Point` is declared twice
+  --> enum_names.tafla:13:6
+   |
+13 | enum Point: uint8 {
+   |      ^^^^^
+
+error: `uint8` should be PascalCase
+  --> enum_names.tafla:21:6
+   |
+21 | enum uint8: uint8 {
+   |      ^^^^^
+
+error: `uint8` is a built-in type
+  --> enum_names.tafla:21:6
+   |
+21 | enum uint8: uint8 {
+   |      ^^^^^
+
+error: `Option` clashes with a name of the generated code
+  --> enum_names.tafla:26:6
+   |
+26 | enum Option: uint8 {
+   |      ^^^^^^ the code generated for Rust uses `Option`
+
+error: `RowFields` clashes with the fields of `Row`
+  --> enum_names.tafla:31:6
+   |
+31 | enum RowFields: uint8 {
+   |      ^^^^^^^^^ the generated code declares `RowFields` to write `Row` from
+
+error: `RowVector` clashes with the view of a vector of `Row`
+  --> enum_names.tafla:36:6
+   |
+36 | enum RowVector: uint8 {
+   |      ^^^^^^^^^ the generated code declares `RowVector` to read a vector of `Row` lazily

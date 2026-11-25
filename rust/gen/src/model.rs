@@ -1,5 +1,7 @@
 //! A checked schema, which the generators read: every type resolved, every
-//! name unique and every layout within what tafla can write. Tables and
+//! name unique and every layout within what tafla can write. An enum is its
+//! underlying integer in the format, so a field of an enum is a scalar, or
+//! an array of scalars, that names its enum beside its type. Tables and
 //! structs nest in place at most 64 deep, so the generators and the methods
 //! here can follow them by recursion.
 
@@ -8,6 +10,9 @@ pub struct Schema {
     /// In declaration order, which the generators keep, except that C++ and
     /// TypeScript declare definitions after those that they read
     pub definitions: Vec<Definition>,
+    /// In declaration order, apart from the definitions, none of which they
+    /// depend on, so the generators declare them first
+    pub enums: Vec<Enum>,
     /// Whether a vector or an array of structs holds each definition, by its
     /// index, found once rather than by a search of every field per definition
     items: Vec<bool>,
@@ -23,6 +28,30 @@ pub struct Definition {
     pub docs: Vec<String>,
     pub kind: Kind,
     pub fields: Vec<Field>,
+}
+
+/// Names for some of the values of an integer type. A field of the enum
+/// holds any value of that type, named or not, in the type's bytes.
+#[derive(Debug)]
+pub struct Enum {
+    /// `PascalCase`
+    pub name: String,
+    pub docs: Vec<String>,
+    /// The integer type that stores a value: any scalar but `bool` and the
+    /// floats
+    pub underlying: Scalar,
+    /// At least one, each with a name and an integer of its own
+    pub values: Vec<EnumValue>,
+}
+
+#[derive(Debug)]
+pub struct EnumValue {
+    /// `snake_case`
+    pub name: String,
+    pub docs: Vec<String>,
+    /// Within the range of the enum's underlying type, the widest of which
+    /// reach from an `int64`'s least to a `uint64`'s greatest
+    pub value: i128,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +126,11 @@ pub struct Field {
     pub name: String,
     pub docs: Vec<String>,
     pub field_type: FieldType,
+    /// The enum that names the values of a scalar or of an array's elements,
+    /// by its index in [`Schema::enums`]. The field's type is the enum's
+    /// underlying integer, so code that doesn't name the enum reads and
+    /// writes the field as it is.
+    pub enumeration: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,6 +221,24 @@ impl Scalar {
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|scalar| scalar.name() == name)
     }
+
+    /// The least and the greatest value of an integer type, and `None` for
+    /// `bool` and the floats
+    pub const fn integer_range(self) -> Option<(i128, i128)> {
+        // The widening casts are lossless, and `From` isn't const
+        #[allow(clippy::cast_lossless)]
+        match self {
+            Self::Int8 => Some((i8::MIN as i128, i8::MAX as i128)),
+            Self::Uint8 => Some((0, u8::MAX as i128)),
+            Self::Int16 => Some((i16::MIN as i128, i16::MAX as i128)),
+            Self::Uint16 => Some((0, u16::MAX as i128)),
+            Self::Int32 => Some((i32::MIN as i128, i32::MAX as i128)),
+            Self::Uint32 => Some((0, u32::MAX as i128)),
+            Self::Int64 => Some((i64::MIN as i128, i64::MAX as i128)),
+            Self::Uint64 => Some((0, u64::MAX as i128)),
+            Self::Bool | Self::Float32 | Self::Float64 => None,
+        }
+    }
 }
 
 impl Schema {
@@ -194,7 +246,7 @@ impl Schema {
     /// positions in `definitions`. It finds what the generators ask of each
     /// definition once, so that generating code takes time in proportion to
     /// the schema.
-    pub fn new(definitions: Vec<Definition>) -> Self {
+    pub fn new(definitions: Vec<Definition>, enums: Vec<Enum>) -> Self {
         let mut items = vec![false; definitions.len()];
         for field in definitions.iter().flat_map(|definition| &definition.fields) {
             if let FieldType::Vector(item) | FieldType::StructArray(item) = field.field_type {
@@ -215,6 +267,7 @@ impl Schema {
 
         Self {
             definitions,
+            enums,
             items,
             table_alignments,
         }
@@ -222,6 +275,10 @@ impl Schema {
 
     pub fn definition(&self, index: usize) -> &Definition {
         &self.definitions[index]
+    }
+
+    pub fn enumeration(&self, index: usize) -> &Enum {
+        &self.enums[index]
     }
 
     /// Whether a vector or an array of structs holds the definition at
@@ -243,6 +300,25 @@ impl Schema {
             match field.field_type {
                 FieldType::Scalar(scalar) => scalars.push(scalar),
                 FieldType::Struct(index) => self.push_scalars(self.definition(index), scalars),
+                _ => unreachable!("structs hold scalars and structs only"),
+            }
+        }
+    }
+
+    /// The enum of each of a struct's scalars, by its index in
+    /// [`Schema::enums`], in the order of
+    /// [`struct_scalars()`](Self::struct_scalars)
+    pub fn struct_enums(&self, definition: &Definition) -> Vec<Option<usize>> {
+        let mut enums = Vec::new();
+        self.push_enums(definition, &mut enums);
+        enums
+    }
+
+    fn push_enums(&self, definition: &Definition, enums: &mut Vec<Option<usize>>) {
+        for field in &definition.fields {
+            match field.field_type {
+                FieldType::Scalar(_) => enums.push(field.enumeration),
+                FieldType::Struct(index) => self.push_enums(self.definition(index), enums),
                 _ => unreachable!("structs hold scalars and structs only"),
             }
         }

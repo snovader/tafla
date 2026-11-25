@@ -3,28 +3,57 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, Span};
 use crate::generate::reserved;
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema, StructLayout,
-    strongly_connected_components,
+    Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    StructLayout, strongly_connected_components,
 };
-use crate::naming::camel_case;
-use crate::parser::{Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Name};
+use crate::naming::{camel_case, pascal_case};
+use crate::parser::{
+    Attribute, AttributeValue, Declaration, Declarations, EnumDeclaration, FieldDeclaration,
+    Keyword, Name,
+};
+
+/// What a schema declares by each name: a message, table or struct, by its
+/// index among them, or an enum, by its index among the enums
+#[derive(Default)]
+struct Names<'a> {
+    definitions: HashMap<&'a str, usize>,
+    /// With the enum's underlying type, when it names an integer type
+    enums: HashMap<&'a str, (usize, Option<Scalar>)>,
+    /// Where each name is declared, for an error that points at the
+    /// declaration that takes a name of the generated code
+    spans: HashMap<&'a str, Span>,
+}
+
+impl Names<'_> {
+    /// Where `name` is declared, if the schema declares it
+    fn span(&self, name: &str) -> Option<Span> {
+        self.spans.get(name).copied()
+    }
+}
 
 /// Checks every declaration and returns all the errors found, in source order
-pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
+pub fn check(schema: &Declarations) -> Result<Schema, Vec<Diagnostic>> {
+    let declarations = schema.declarations.as_slice();
     let mut errors = Vec::new();
-    let indices = index_names(declarations, &mut errors);
+    let names = index_names(schema, &mut errors);
 
+    let enums: Vec<Enum> = schema
+        .enums
+        .iter()
+        .map(|declaration| check_enum(declaration, &mut errors))
+        .collect();
     let mut definitions: Vec<Definition> = declarations
         .iter()
-        .map(|declaration| check_declaration(declaration, declarations, &indices, &mut errors))
+        .map(|declaration| check_declaration(declaration, declarations, &names, &mut errors))
         .collect();
 
-    check_fields_declarations(declarations, &indices, &mut errors);
-    check_view_declarations(&definitions, declarations, &indices, &mut errors);
-    check_go_functions(&definitions, declarations, &indices, &mut errors);
+    check_fields_declarations(declarations, &names, &mut errors);
+    check_view_declarations(&definitions, &names, &mut errors);
+    check_go_functions(&definitions, &names, &mut errors);
+    check_go_constants(&definitions, &schema.enums, &names, &mut errors);
 
     if errors.is_empty() {
         check_cycles(&definitions, declarations, &mut errors);
@@ -41,43 +70,224 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
     }
 
     if errors.is_empty() {
-        Ok(Schema::new(definitions))
+        Ok(Schema::new(definitions, enums))
     } else {
         errors.sort_by_key(|error| error.span.start);
         Err(errors)
     }
 }
 
-fn index_names<'a>(
-    declarations: &'a [Declaration],
-    errors: &mut Vec<Diagnostic>,
-) -> HashMap<&'a str, usize> {
-    let mut indices = HashMap::new();
+fn index_names<'a>(schema: &'a Declarations, errors: &mut Vec<Diagnostic>) -> Names<'a> {
+    let mut names = Names::default();
 
-    for (index, declaration) in declarations.iter().enumerate() {
-        let name = &declaration.name;
-        if !is_pascal_case(&name.text) {
-            errors.push(Diagnostic::new(
-                format!("`{}` should be PascalCase", name.text),
-                name.span,
-            ));
+    for (index, declaration) in schema.declarations.iter().enumerate() {
+        if check_declared_name(&declaration.name, &mut names, errors) {
+            names.definitions.insert(&declaration.name.text, index);
         }
-        if Scalar::from_name(&name.text).is_some() || name.text == "string" {
-            errors.push(Diagnostic::new(
-                format!("`{}` is a built-in type", name.text),
-                name.span,
-            ));
+    }
+    for (index, declaration) in schema.enums.iter().enumerate() {
+        if check_declared_name(&declaration.name, &mut names, errors) {
+            let underlying = integer_type(&declaration.underlying.text);
+            names
+                .enums
+                .insert(&declaration.name.text, (index, underlying));
         }
-        check_reserved_name(name, errors);
-        if indices.insert(name.text.as_str(), index).is_some() {
+    }
+
+    names
+}
+
+/// Checks the name of a message, table, struct or enum, which share their
+/// names, and whether it's the first declaration of the name, which the name
+/// then stands for
+fn check_declared_name<'a>(
+    name: &'a Name,
+    names: &mut Names<'a>,
+    errors: &mut Vec<Diagnostic>,
+) -> bool {
+    if !is_pascal_case(&name.text) {
+        errors.push(Diagnostic::new(
+            format!("`{}` should be PascalCase", name.text),
+            name.span,
+        ));
+    }
+    if Scalar::from_name(&name.text).is_some() || name.text == "string" {
+        errors.push(Diagnostic::new(
+            format!("`{}` is a built-in type", name.text),
+            name.span,
+        ));
+    }
+    check_reserved_name(name, errors);
+
+    match names.spans.entry(&name.text) {
+        Entry::Vacant(entry) => {
+            entry.insert(name.span);
+            true
+        }
+        Entry::Occupied(_) => {
             errors.push(Diagnostic::new(
                 format!("`{}` is declared twice", name.text),
                 name.span,
             ));
+            false
         }
     }
+}
 
-    indices
+/// Checks an enum: that its underlying type is an integer type, and that its
+/// values are `snake_case`, at least one, each of a name and an integer of
+/// its own, which its underlying type holds
+fn check_enum(declaration: &EnumDeclaration, errors: &mut Vec<Diagnostic>) -> Enum {
+    let name = &declaration.name.text;
+    let underlying = check_underlying_type(&declaration.underlying, errors);
+
+    // An enum without values names nothing, and would be written as an
+    // empty type in each language
+    if declaration.values.is_empty() {
+        errors.push(
+            Diagnostic::new(format!("`{name}` has no values"), declaration.name.span)
+                .with_help("enums name at least one value"),
+        );
+    }
+
+    check_value_names(declaration, errors);
+    check_value_integers(declaration, underlying, errors);
+
+    let values = declaration.values.iter().map(|value| EnumValue {
+        name: value.name.text.clone(),
+        docs: value.docs.clone(),
+        value: value.value,
+    });
+    Enum {
+        name: name.clone(),
+        docs: declaration.docs.clone(),
+        // An enum of another type has its error, and no schema
+        underlying: underlying.unwrap_or(Scalar::Uint8),
+        values: values.collect(),
+    }
+}
+
+/// The integer type that an enum names after its colon, or `None`, with an
+/// error, for any other name
+fn check_underlying_type(name: &Name, errors: &mut Vec<Diagnostic>) -> Option<Scalar> {
+    if let Some(scalar) = integer_type(&name.text) {
+        return Some(scalar);
+    }
+
+    let message = if Scalar::from_name(&name.text).is_some() || name.text == "string" {
+        format!("an enum can't be stored as `{}`", name.text)
+    } else {
+        format!("`{}` isn't an integer type", name.text)
+    };
+    errors.push(
+        Diagnostic::new(message, name.span)
+            .with_help("an enum is stored as an integer type, `int8` to `uint64`"),
+    );
+    None
+}
+
+/// The integer type of a name, or `None` for any other name
+fn integer_type(name: &str) -> Option<Scalar> {
+    Scalar::from_name(name).filter(|scalar| scalar.integer_range().is_some())
+}
+
+/// Checks that an enum's values are `snake_case` and declared once, and that
+/// no two share a name without their underscores, as
+/// [`check_field_names()`] checks fields
+fn check_value_names(declaration: &EnumDeclaration, errors: &mut Vec<Diagnostic>) {
+    let mut names = HashSet::new();
+    // Each camelCase name, with the value that takes it first
+    let mut camel_case_names = HashMap::new();
+
+    for value in &declaration.values {
+        let name = &value.name;
+        let snake_case = is_snake_case(&name.text);
+        if !snake_case {
+            errors.push(Diagnostic::new(
+                format!("`{}` should be snake_case", name.text),
+                name.span,
+            ));
+        }
+        if !names.insert(name.text.as_str()) {
+            errors.push(Diagnostic::new(
+                format!(
+                    "`{}` is declared twice in `{}`",
+                    name.text, declaration.name.text
+                ),
+                name.span,
+            ));
+            continue;
+        }
+
+        // A name that isn't snake_case has its error already
+        if !snake_case {
+            continue;
+        }
+        match camel_case_names.entry(camel_case(&name.text)) {
+            Entry::Vacant(entry) => {
+                entry.insert(name.text.as_str());
+            }
+            Entry::Occupied(entry) => errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` and `{}` are both `{}` in camelCase",
+                        name.text,
+                        entry.get(),
+                        entry.key()
+                    ),
+                    name.span,
+                )
+                .with_help(
+                    "TypeScript, JavaScript, Go, Swift and C# name values without underscores",
+                ),
+            ),
+        }
+    }
+}
+
+/// Checks that each of an enum's values fits in its underlying type, when
+/// that's an integer type, and that no two values are the same integer, so
+/// that an integer has at most one name
+fn check_value_integers(
+    declaration: &EnumDeclaration,
+    underlying: Option<Scalar>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    // Each integer, with the value that takes it first
+    let mut integers = HashMap::new();
+
+    for value in &declaration.values {
+        if let Some(scalar) = underlying
+            && let Some((least, greatest)) = scalar.integer_range()
+            && !(least..=greatest).contains(&value.value)
+        {
+            errors.push(
+                Diagnostic::new(
+                    format!("{} doesn't fit in `{}`", value.value, scalar.name()),
+                    value.span,
+                )
+                .with_help(format!("`{}` holds {least} to {greatest}", scalar.name())),
+            );
+        }
+
+        match integers.entry(value.value) {
+            Entry::Vacant(entry) => {
+                entry.insert(value.name.text.as_str());
+            }
+            Entry::Occupied(entry) => errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` and `{}` are both {}",
+                        value.name.text,
+                        entry.get(),
+                        value.value
+                    ),
+                    value.span,
+                )
+                .with_help("each value of an enum is an integer of its own"),
+            ),
+        }
+    }
 }
 
 /// Checks that a declaration doesn't take a name that a target's generated
@@ -109,7 +319,7 @@ fn check_reserved_name(name: &Name, errors: &mut Vec<Diagnostic>) {
 fn check_declaration(
     declaration: &Declaration,
     declarations: &[Declaration],
-    indices: &HashMap<&str, usize>,
+    names: &Names,
     errors: &mut Vec<Diagnostic>,
 ) -> Definition {
     let kind = match declaration.keyword {
@@ -150,7 +360,7 @@ fn check_declaration(
     let mut fields = Vec::with_capacity(declaration.fields.len());
 
     for field in &declaration.fields {
-        if let Some(field_type) = resolve_type(field, declarations, indices, errors) {
+        if let Some((field_type, enumeration)) = resolve_type(field, declarations, names, errors) {
             if matches!(kind, Kind::Struct(_))
                 && !matches!(field_type, FieldType::Scalar(_) | FieldType::Struct(_))
             {
@@ -164,6 +374,7 @@ fn check_declaration(
                 name: field.name.text.clone(),
                 docs: field.docs.clone(),
                 field_type,
+                enumeration,
             });
         }
     }
@@ -317,17 +528,17 @@ pub const fn java_parameter_slots(field_type: FieldType) -> usize {
 /// `<Name>FieldValues`, which Python declares as the tuple of its values
 fn check_fields_declarations(
     declarations: &[Declaration],
-    indices: &HashMap<&str, usize>,
+    names: &Names,
     errors: &mut Vec<Diagnostic>,
 ) {
     for declaration in declarations {
         let name = &declaration.name.text;
         let fields = format!("{name}Fields");
-        if let Some(&clash) = indices.get(fields.as_str()) {
+        if let Some(clash) = names.span(&fields) {
             errors.push(
                 Diagnostic::new(
                     format!("`{fields}` clashes with the fields of `{name}`"),
-                    declarations[clash].name.span,
+                    clash,
                 )
                 .with_help(format!(
                     "the generated code declares `{fields}` to write `{name}` from"
@@ -338,12 +549,12 @@ fn check_fields_declarations(
         // Python's tuple of a message's or a table's values
         let values = format!("{name}FieldValues");
         if declaration.keyword != Keyword::Struct
-            && let Some(&clash) = indices.get(values.as_str())
+            && let Some(clash) = names.span(&values)
         {
             errors.push(
                 Diagnostic::new(
                     format!("`{values}` clashes with the field values of `{name}`"),
-                    declarations[clash].name.span,
+                    clash,
                 )
                 .with_help(format!(
                     "Python's generated code declares `{values}` as the tuple of `{name}`'s values"
@@ -358,8 +569,7 @@ fn check_fields_declarations(
 /// code declares beside the tables and structs that they hold
 fn check_view_declarations(
     definitions: &[Definition],
-    declarations: &[Declaration],
-    indices: &HashMap<&str, usize>,
+    names: &Names,
     errors: &mut Vec<Diagnostic>,
 ) {
     let mut views = HashSet::new();
@@ -375,17 +585,17 @@ fn check_view_declarations(
     for (suffix, kind, index) in items {
         let item = &definitions[index].name;
         let view = format!("{item}{suffix}");
-        let Some(&clash) = indices.get(view.as_str()) else {
+        let Some(clash) = names.span(&view) else {
             continue;
         };
-        if !views.insert(clash) {
+        if !views.insert(clash.start) {
             continue;
         }
 
         errors.push(
             Diagnostic::new(
                 format!("`{view}` clashes with the view of {kind} of `{item}`"),
-                declarations[clash].name.span,
+                clash,
             )
             .with_help(format!(
                 "the generated code declares `{view}` to read {kind} of `{item}` lazily"
@@ -399,40 +609,107 @@ fn check_view_declarations(
 /// package of the schema's declarations: `New<Message>`, which reads a
 /// message, a versioned message's `<Message>VersionOf` and
 /// `<Message>FormatVersion`, and `Read<Struct>`, which reads a struct
-fn check_go_functions(
-    definitions: &[Definition],
-    declarations: &[Declaration],
-    indices: &HashMap<&str, usize>,
-    errors: &mut Vec<Diagnostic>,
-) {
+fn check_go_functions(definitions: &[Definition], names: &Names, errors: &mut Vec<Diagnostic>) {
     for definition in definitions {
         let name = &definition.name;
-        let functions = match definition.kind {
-            Kind::Message(layout) => {
-                let mut functions = vec![(format!("New{name}"), "read")];
-                if layout.version.is_some() {
-                    functions.push((format!("{name}VersionOf"), "read the version of"));
-                    functions.push((format!("{name}FormatVersion"), "hold the version of"));
-                }
-                functions
-            }
-            Kind::Struct(_) => vec![(format!("Read{name}"), "read")],
-            Kind::Table => continue,
-        };
 
-        for (function, purpose) in functions {
-            let Some(&clash) = indices.get(function.as_str()) else {
+        for (function, purpose) in go_functions(definition) {
+            let Some(clash) = names.span(&function) else {
                 continue;
             };
 
             errors.push(
                 Diagnostic::new(
                     format!("`{function}` clashes with a name of the code generated for `{name}`"),
-                    declarations[clash].name.span,
+                    clash,
                 )
                 .with_help(format!(
                     "the code generated for Go declares `{function}` to {purpose} `{name}`"
                 )),
+            );
+        }
+    }
+}
+
+/// The functions and constants that the code generated for Go declares
+/// beside a definition, each with what it does to the definition
+fn go_functions(definition: &Definition) -> Vec<(String, &'static str)> {
+    let name = &definition.name;
+    match definition.kind {
+        Kind::Message(layout) => {
+            let mut functions = vec![(format!("New{name}"), "read")];
+            if layout.version.is_some() {
+                functions.push((format!("{name}VersionOf"), "read the version of"));
+                functions.push((format!("{name}FormatVersion"), "hold the version of"));
+            }
+            functions
+        }
+        Kind::Struct(_) => vec![(format!("Read{name}"), "read")],
+        Kind::Table => Vec::new(),
+    }
+}
+
+/// Checks that no value of an enum takes a name of Go's package, where the
+/// code generated for Go declares each value as the constant
+/// `<Enum><Value>`, such as `ColorDarkRed` for `dark_red` of `Color`: a
+/// declaration's, a function's or constant's that Go declares beside a
+/// message or struct, or another value's, as `b_c` of `A` and `c` of `AB`
+fn check_go_constants(
+    definitions: &[Definition],
+    enums: &[EnumDeclaration],
+    names: &Names,
+    errors: &mut Vec<Diagnostic>,
+) {
+    // Each name that Go declares beside the declarations, with what it is
+    let mut declared: HashMap<String, String> = definitions
+        .iter()
+        .flat_map(|definition| {
+            go_functions(definition).into_iter().map(|(function, _)| {
+                (
+                    function,
+                    format!("of the code generated for `{}`", definition.name),
+                )
+            })
+        })
+        .collect();
+
+    for declaration in enums {
+        let name = &declaration.name.text;
+
+        for value in &declaration.values {
+            // A name that isn't snake_case has its error already
+            if !is_snake_case(&value.name.text) {
+                continue;
+            }
+            let constant = format!("{name}{}", pascal_case(&value.name.text));
+            let help = format!(
+                "the code generated for Go declares `{constant}` as `{}` of `{name}`",
+                value.name.text
+            );
+
+            let of_enum = format!("of the enum `{name}`");
+            let clash = if names.span(&constant).is_some() {
+                format!("clashes with the declaration `{constant}`")
+            } else {
+                match declared.entry(constant) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(of_enum);
+                        continue;
+                    }
+                    // Two values of an enum that share a name without their
+                    // underscores have their error already
+                    Entry::Occupied(entry) if *entry.get() == of_enum => continue,
+                    Entry::Occupied(entry) => {
+                        format!("clashes with `{}` {}", entry.key(), entry.get())
+                    }
+                }
+            };
+            errors.push(
+                Diagnostic::new(
+                    format!("`{}` of `{name}` {clash}", value.name.text),
+                    value.name.span,
+                )
+                .with_help(help),
             );
         }
     }
@@ -556,7 +833,30 @@ fn offset_type_help(value: Option<&AttributeValue>) -> String {
 fn resolve_type(
     field: &FieldDeclaration,
     declarations: &[Declaration],
-    indices: &HashMap<&str, usize>,
+    names: &Names,
+    errors: &mut Vec<Diagnostic>,
+) -> Option<(FieldType, Option<usize>)> {
+    if let Some(&(index, underlying)) = names.enums.get(field.type_name.text.as_str()) {
+        // An enum whose underlying type isn't an integer type has its error
+        // already
+        let underlying = underlying?;
+        let field_type = if field.is_array {
+            FieldType::Array(underlying)
+        } else {
+            FieldType::Scalar(underlying)
+        };
+        return Some((field_type, Some(index)));
+    }
+
+    let field_type = resolve_definition(field, declarations, names, errors)?;
+    Some((field_type, None))
+}
+
+/// The type of a field of a built-in type, or of a message, table or struct
+fn resolve_definition(
+    field: &FieldDeclaration,
+    declarations: &[Declaration],
+    names: &Names,
     errors: &mut Vec<Diagnostic>,
 ) -> Option<FieldType> {
     let name = &field.type_name;
@@ -587,8 +887,8 @@ fn resolve_type(
         return Some(FieldType::String);
     }
 
-    let Some(&index) = indices.get(name.text.as_str()) else {
-        errors.push(unknown_type(name, indices));
+    let Some(&index) = names.definitions.get(name.text.as_str()) else {
+        errors.push(unknown_type(name, names));
         return None;
     };
 
@@ -619,12 +919,13 @@ fn resolve_type(
 /// The most edits that a misspelled type is suggested across
 const MAX_SUGGESTION_DISTANCE: usize = 2;
 
-fn unknown_type(name: &Name, indices: &HashMap<&str, usize>) -> Diagnostic {
+fn unknown_type(name: &Name, names: &Names) -> Diagnostic {
     let builtins = Scalar::ALL
         .iter()
         .map(|scalar| scalar.name())
         .chain(["string"]);
-    let suggestion = indices
+    let suggestion = names
+        .spans
         .keys()
         .copied()
         .chain(builtins)

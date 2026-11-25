@@ -1,0 +1,44 @@
+// Go declares each value as a constant of its package, named after its enum
+
+enum Color: uint8 {
+    /// `ColorRed`, which a struct declares
+    red = 0;
+    green = 1;
+}
+
+struct ColorRed {
+    value: uint8;
+}
+
+/// `NewPoint` reads a `Point` in Go
+enum New: uint8 {
+    point = 0;
+    line = 1;
+}
+
+/// `ReadSample` reads a `Sample` in Go
+enum Read: uint8 {
+    sample = 0;
+}
+
+/// `PointFormatVersion` holds the version of `Point` in Go
+enum PointFormat: uint8 {
+    version = 1;
+}
+
+/// `ABC`, as `c` of `AB` is
+enum A: uint8 {
+    b_c = 0;
+}
+
+enum AB: uint8 {
+    c = 0;
+}
+
+message Point (version: 1) {
+    x: float64;
+}
+
+struct Sample {
+    key: uint32;
+}

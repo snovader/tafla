@@ -1,5 +1,5 @@
-error: expected `message`, `table` or `struct`, found `enum`
+error: expected `message`, `table`, `struct` or `enum`, found `union`
  --> unknown_keyword.tafla:1:1
   |
-1 | enum Color {
-  | ^^^^
+1 | union Color {
+  | ^^^^^

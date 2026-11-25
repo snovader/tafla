@@ -1,0 +1,5 @@
+error: expected an integer, found `green`
+ --> enum_value_of_a_name.tafla:2:11
+  |
+2 |     red = green;
+  |           ^^^^^
