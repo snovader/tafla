@@ -86,7 +86,7 @@ public struct Document: ~Escapable {
 
     /// The layout that a `Document` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion) }
 
     @usableFromInline
     let _reader: TableReader
@@ -161,7 +161,7 @@ public struct DocumentFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 4, layout: Document.layout, version: Document.formatVersion)
+        var sizer = try TableSizer(fields: 4, layout: Document.layout)
         sizer.addFloat64()
         sizer.addFloat64()
         sizer.addString(self.name)

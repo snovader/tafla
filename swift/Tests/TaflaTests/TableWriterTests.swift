@@ -112,28 +112,27 @@ struct TableWriterTests {
         for (fields, layout) in [
             (256, TableLayout(offsetType: .uint8)),
             (255, TableLayout(sized: true, offsetType: .uint8)),
-            (32_767, TableLayout(sized: true, versioned: true, offsetType: .uint16)),
+            (32_767, TableLayout(sized: true, version: 0, offsetType: .uint16)),
             (Int.max, TableLayout.default),
         ] {
-            let version: UInt32? = layout.isVersioned ? 0 : nil
             let error = BuildError.headerTooLong(fields: fields, offsetType: layout.offsetType)
 
             #expect(throws: error) {
-                try TableBuilder(fields: fields, layout: layout, version: version)
+                try TableBuilder(fields: fields, layout: layout)
             }
             #expect(throws: error) {
-                try TableSizer(fields: fields, layout: layout, version: version)
+                try TableSizer(fields: fields, layout: layout)
             }
         }
     }
 
     @Test func rejectsAVersionTooLargeForItsSlotAsTableBuilderDoes() throws {
-        let layout = TableLayout(versioned: true, offsetType: .uint8)
+        let layout = TableLayout(version: 0, offsetType: .uint8)
 
         #expect(throws: BuildError.versionTooLarge(version: 256, offsetType: .uint8)) {
-            try TableSizer(fields: 0, layout: layout, version: 256)
+            try TableSizer(fields: 0, layout: layout.withVersion(256))
         }
-        #expect(try TableSizer(fields: 0, layout: layout, version: 255).bytes { _ in } == [255])
+        #expect(try TableSizer(fields: 0, layout: layout.withVersion(255)).bytes { _ in } == [255])
     }
 
     // An array of structs of 0 bytes can't be counted, so the sizer throws
@@ -301,12 +300,6 @@ struct TableWriterTests {
     @Test func stopsTheProgramForAMistakeOfTheCaller() async {
         await #expect(processExitsWith: .failure) {
             _ = try? TableSizer(fields: -1)
-        }
-        await #expect(processExitsWith: .failure) {
-            _ = try? TableSizer(fields: 0, layout: TableLayout(versioned: true))
-        }
-        await #expect(processExitsWith: .failure) {
-            _ = try? TableSizer(fields: 0, version: 1)
         }
         await #expect(processExitsWith: .failure) {
             var sizer = try TableSizer(fields: 1)

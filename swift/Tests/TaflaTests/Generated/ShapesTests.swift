@@ -16,7 +16,7 @@ let shapesMessages = [
     ),
     Message(
         "shapes.Document",
-        layout: TableLayout(sized: true, versioned: true),
+        layout: TableLayout(sized: true, version: 0),
         version: 1,
         draw: { $0.document() },
         read: { bytes throws(DecodeError) in try DocumentFields(reading: Document(bytes)) },

@@ -31,9 +31,6 @@
 public struct TableSizer: Sendable {
     /// The layout that the table is written in, which its readers must use
     public let layout: TableLayout
-    /// The version in the header, or 0 when the layout has no version
-    @usableFromInline
-    let version: UInt32
     /// The number of the root's fields
     @usableFromInline
     let fieldCount: Int
@@ -59,30 +56,21 @@ public struct TableSizer: Sendable {
     var failure: BuildError?
 
     /// Starts sizing a table of `fields` fields, which mustn't be negative, in
-    /// `layout`, which its readers must use too, with `version` in its
-    /// header. Nested tables use ``TableLayout/default``. A versioned layout
-    /// needs a version, and a layout without a version slot takes none:
-    /// anything else is a programming error, which stops the program, as
-    /// `TableBuilder`'s initializer does.
+    /// `layout`, which its readers must use too, and whose version its writer
+    /// writes in the header when it has one. Nested tables use
+    /// ``TableLayout/default``.
     ///
     /// Throws ``BuildError/versionTooLarge(version:offsetType:)`` if the
-    /// version doesn't fit in the layout's offset type, or
+    /// layout's version doesn't fit in its offset type, or
     /// ``BuildError/headerTooLong(fields:offsetType:)`` if the header alone is
     /// too long for it.
-    public init(fields: Int, layout: TableLayout = .default, version: UInt32? = nil) throws(BuildError) {
+    public init(fields: Int, layout: TableLayout = .default) throws(BuildError) {
         precondition(fields >= 0, "A table can't hold \(fields) fields")
-        precondition(
-            layout.isVersioned == (version != nil),
-            layout.isVersioned ? "A versioned layout needs a version" : "The layout has no version slot"
-        )
 
-        if let version {
-            try layout.check(version: version)
-        }
+        try layout.checkVersion()
         let headerLength = try layout.headerLength(fields: fields)
 
         self.layout = layout
-        self.version = version ?? 0
         self.fieldCount = fields
         self.maxLength = min(UInt64(layout.offsetType.maxValue), UInt64(Int.max))
         self.position = UInt64(headerLength)
@@ -132,7 +120,7 @@ public struct TableSizer: Sendable {
 
         let bytes = [UInt8](unsafeUninitializedCapacity: length) { buffer, initialized in
             let memory = UnsafeMutableRawBufferPointer(buffer)
-            var writer = TableWriter(bytes: memory, fields: fieldCount, layout: layout, version: version)
+            var writer = TableWriter(bytes: memory, fields: fieldCount, layout: layout)
             write(&writer)
 
             // A writer can only be exchanged for another of the same type,

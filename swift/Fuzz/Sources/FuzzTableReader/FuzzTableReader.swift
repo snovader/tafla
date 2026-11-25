@@ -33,7 +33,7 @@ public func fuzzTableReader(_ data: UnsafePointer<UInt8>?, _ size: Int) -> CInt 
         for sized in [false, true] {
             checkHeader(TableReader(bytes, layout: TableLayout(sized: sized, offsetType: offsetType)), input)
 
-            let versioned = TableLayout(sized: sized, versioned: true, offsetType: offsetType)
+            let versioned = TableLayout(sized: sized, version: 0, offsetType: offsetType)
             checkVersion(TableReader(bytes, layout: versioned), input)
         }
 

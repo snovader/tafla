@@ -75,18 +75,29 @@ public enum Alignment: Int, Sendable, Hashable, Comparable, CaseIterable {
 /// have no header, as ``TableLayout/default`` has none.
 ///
 /// ```swift
-/// let layout = TableLayout(sized: true, versioned: true)
+/// let layout = TableLayout(sized: true, version: 1)
 /// let frame = TableLayout(offsetType: .uint8)
 ///
 /// layout.headerSize  // 8
 /// frame.headerSize  // 0
 /// ```
+///
+/// A layout with a version is the layout of that version of the format: its
+/// builders and writers write the version, and its readers read tables of
+/// any version, so that a program can read a table's version before it
+/// chooses how to read the fields. The layouts of a format's versions should
+/// differ in the version only, as ``withVersion(_:)`` makes them.
 public struct TableLayout: Sendable, Hashable {
+    /// The version that the header holds, after the length when sized, or
+    /// `nil` for a header without one. Builders and writers write it, and
+    /// readers can check the version that a table holds, with
+    /// `TableReader.version`, before reading any field.
+    ///
+    /// It's the first stored property, before the two of a byte each, so that
+    /// the layout takes 8 bytes rather than 12.
+    public let version: UInt32?
     /// Whether the header starts with the table's total byte length
     public let isSized: Bool
-    /// Whether the header holds a version, after the length when sized.
-    /// Readers can check it before reading any field.
-    public let isVersioned: Bool
     /// The unsigned integer type of the header slots, field offsets, counts,
     /// lengths and item ends, which limits how long the table can be
     public let offsetType: OffsetType
@@ -101,11 +112,25 @@ public struct TableLayout: Sendable, Hashable {
         TableLayout()
     }
 
+    /// A version must fit in the offset type: the builders and sizers check
+    /// it, and throw ``BuildError/versionTooLarge(version:offsetType:)``.
     @inlinable
-    public init(sized: Bool = false, versioned: Bool = false, offsetType: OffsetType = .uint32) {
+    public init(sized: Bool = false, version: UInt32? = nil, offsetType: OffsetType = .uint32) {
         self.isSized = sized
-        self.isVersioned = versioned
+        self.version = version
         self.offsetType = offsetType
+    }
+
+    /// Whether the header holds a version, after the length when sized
+    @inlinable
+    public var isVersioned: Bool { version != nil }
+
+    /// The layout with `version` as its version, for another version of the
+    /// same format. A layout without a version gains the slot for one, so
+    /// its header is a slot longer.
+    @inlinable
+    public func withVersion(_ version: UInt32) -> TableLayout {
+        TableLayout(sized: isSized, version: version, offsetType: offsetType)
     }
 
     /// The offset size, the width in bytes of the offset type: 1, 2 or 4
@@ -135,12 +160,12 @@ public struct TableLayout: Sendable, Hashable {
         return UInt32(length)
     }
 
-    /// Checks that `version` fits in the header's slot.
+    /// Checks that the layout's version fits in the header's slot.
     ///
     /// Throws ``BuildError/versionTooLarge(version:offsetType:)`` if it
     /// doesn't fit in the layout's offset type.
-    func check(version: UInt32) throws(BuildError) {
-        guard version <= offsetType.maxValue else {
+    func checkVersion() throws(BuildError) {
+        if let version, version > offsetType.maxValue {
             throw .versionTooLarge(version: version, offsetType: offsetType)
         }
     }

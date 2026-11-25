@@ -32,7 +32,7 @@ struct TableBuilderTests {
             #expect(bytes.count == emptyLength + units * drawn.kind.unit)
             #expect(try withSpan(of: bytes) { try readTable($0, longest) } == longest)
 
-            var builder = try TableBuilder(fields: table.fields.count + 1, layout: table.layout, version: table.version)
+            var builder = try TableBuilder(fields: table.fields.count + 1, layout: table.writtenLayout)
             for field in table.fields {
                 try builder.set(field)
             }
@@ -127,12 +127,33 @@ struct TableBuilderTests {
     }
 
     @Test func rejectsAVersionTooLargeForItsSlot() throws {
-        let layout = TableLayout(versioned: true, offsetType: .uint16)
+        let layout = TableLayout(version: 0, offsetType: .uint16)
 
         #expect(throws: BuildError.versionTooLarge(version: 0x1_0000, offsetType: .uint16)) {
-            _ = try TableBuilder(fields: 0, layout: layout, version: 0x1_0000)
+            _ = try TableBuilder(fields: 0, layout: layout.withVersion(0x1_0000))
         }
-        #expect(try TableBuilder(fields: 0, layout: layout, version: 0xffff).bytes() == [0xff, 0xff])
+        #expect(try TableBuilder(fields: 0, layout: layout.withVersion(0xffff)).bytes() == [0xff, 0xff])
+    }
+
+    @Test func writesTheLayoutsVersion() throws {
+        let first = TableLayout(sized: true, version: 1)
+        let second = first.withVersion(2)
+
+        #expect(second.version == 2)
+        #expect(second.isSized && second.isVersioned)
+        #expect(TableLayout.default.version == nil)
+        #expect(!TableLayout.default.isVersioned)
+
+        // A layout without a version gains the slot for one
+        let versioned = TableLayout.default.withVersion(7)
+        #expect(versioned.version == 7)
+        #expect(versioned.headerSize == TableLayout.default.headerSize + 4)
+
+        let bytes = try TableBuilder(fields: 0, layout: second).bytes()
+
+        // A reader reads a table of any version, whatever its layout's
+        #expect(try withSpan(of: bytes) { try TableReader($0, layout: first).version } == 2)
+        #expect(try withSpan(of: bytes) { try TableReader($0, layout: second).version } == 2)
     }
 
     @Test func rejectsAnIncompleteNestedBuilder() throws {
@@ -369,12 +390,6 @@ struct TableBuilderTests {
     @Test func stopsTheProgramForAMistakeOfTheCaller() async {
         await #expect(processExitsWith: .failure) {
             _ = try? TableBuilder(fields: -1)
-        }
-        await #expect(processExitsWith: .failure) {
-            _ = try? TableBuilder(fields: 0, layout: TableLayout(versioned: true))
-        }
-        await #expect(processExitsWith: .failure) {
-            _ = try? TableBuilder(fields: 0, version: 1)
         }
         await #expect(processExitsWith: .failure) {
             var builder = try? TableBuilder(fields: 1)

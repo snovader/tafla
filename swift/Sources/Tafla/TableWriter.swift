@@ -59,7 +59,7 @@ public struct TableWriter: ~Copyable {
     /// header and at most what the offset type addresses, and zeros its
     /// offsets, which each field's setter writes
     @inlinable
-    init(bytes: UnsafeMutableRawBufferPointer, fields: Int, layout: TableLayout, version: UInt32) {
+    init(bytes: UnsafeMutableRawBufferPointer, fields: Int, layout: TableLayout) {
         output = ByteWriter(bytes: bytes)
         headerSize = layout.headerSize
         slots = layout.headerSize
@@ -68,7 +68,7 @@ public struct TableWriter: ~Copyable {
         if layout.isSized {
             output.writeSlot(UInt32(truncatingIfNeeded: bytes.count), offsetType: offsetType)
         }
-        if layout.isVersioned {
+        if let version = layout.version {
             output.writeSlot(version, offsetType: offsetType)
         }
         output.writeZeros(fields &* offsetType.size)
