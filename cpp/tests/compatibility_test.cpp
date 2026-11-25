@@ -140,7 +140,7 @@ TEST(Compatibility, EveryKindOfField) {
 }
 
 TEST(Compatibility, VersionedDocumentWithNestedTables) {
-    constexpr auto layout = TableLayout().sized().versioned();
+    constexpr auto layout = TableLayout().sized().with_version(3);
     const std::vector<std::uint32_t> keys{0, 86'400, 172'800};
     const std::vector<float> values{21.75F, 18.5F, -3.25F};
     const std::vector<std::uint16_t> item_values{7, 8, 9};
@@ -155,7 +155,7 @@ TEST(Compatibility, VersionedDocumentWithNestedTables) {
     item.set_float32(0.5F);
     item.set_uint16_array(item_values);
 
-    TableBuilder document(5, layout, 3);
+    TableBuilder document(5, layout);
     document.set_float64(59.3293);
     document.set_string("Europe/Stockholm");
     document.set_table(std::move(columns));
@@ -208,7 +208,7 @@ TEST(Compatibility, Uint8OffsetsWithATableNestedAsBytes) {
 }
 
 TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
-    const auto layout = TableLayout().sized().with_offset_type(OffsetType::uint16).versioned();
+    const auto layout = TableLayout().sized().with_offset_type(OffsetType::uint16).with_version(513);
     const auto narrow_layout = TableLayout().with_offset_type(OffsetType::uint8);
     const std::vector<double> wide_values{1.25};
     const std::vector<float> values{1.0F, 2.0F};
@@ -218,7 +218,7 @@ TEST(Compatibility, Uint16OffsetsWithVectorItemsOfOtherOffsetTypes) {
     TableBuilder wide(1, TableLayout());
     wide.set_float64_array(wide_values);
 
-    TableBuilder medium(2, layout, 513);
+    TableBuilder medium(2, layout);
     medium.set_float32_array(values);
     std::vector<NestedTable> items;
     items.emplace_back(std::move(narrow));

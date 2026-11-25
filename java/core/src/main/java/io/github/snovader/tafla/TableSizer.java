@@ -34,7 +34,6 @@ import java.util.*;
  */
 public final class TableSizer {
     private final TableLayout layout;
-    private final long version;
     private final int fields;
     /** The offset size, the width in bytes of offsets, lengths and header slots */
     private final int offsetSize;
@@ -56,34 +55,17 @@ public final class TableSizer {
     }
 
     /**
-     * Sizes a table of a layout without a version, with the checks of {@link TableBuilder}'s
-     * constructor.
+     * Sizes a table of a layout, whose version the writer writes to the header when it has one,
+     * with the checks of {@link TableBuilder}'s constructor.
      *
      * @param fields the number of fields that the table holds
      * @param layout the table's header and offset type, which its readers must use too
-     * @throws IllegalArgumentException if the layout is versioned, the number of fields is
-     *     negative, or the header alone is longer than the layout addresses
+     * @throws IllegalArgumentException if the number of fields is negative, or the header alone is
+     *     longer than the layout addresses
      */
     public TableSizer(int fields, TableLayout layout) {
-        this(fields, layout, false, 0);
-    }
-
-    /**
-     * Sizes a table of a versioned layout, with the checks of {@link TableBuilder}'s constructor.
-     *
-     * @param version the version that the writer writes to the header
-     * @throws IllegalArgumentException if the layout isn't versioned, the version doesn't fit in
-     *     the layout's offset type, the number of fields is negative, or the header alone is longer
-     *     than the layout addresses
-     */
-    public TableSizer(int fields, TableLayout layout, long version) {
-        this(fields, layout, true, version);
-    }
-
-    private TableSizer(int fields, TableLayout layout, boolean versioned, long version) {
-        this.position = layout.headerLength(fields, versioned, version);
+        this.position = layout.headerLength(fields);
         this.layout = layout;
-        this.version = version;
         this.fields = fields;
         this.offsetSize = layout.offsetSize();
     }
@@ -113,7 +95,7 @@ public final class TableSizer {
     public TableWriter writer() {
         var length = byteLength();
 
-        return new TableWriter(new byte[length], length, fields, layout, version, encodedStrings());
+        return new TableWriter(new byte[length], length, fields, layout, encodedStrings());
     }
 
     /**
@@ -150,7 +132,7 @@ public final class TableSizer {
             );
         }
 
-        return new TableWriter(bytes, length, fields, layout, version, encodedStrings());
+        return new TableWriter(bytes, length, fields, layout, encodedStrings());
     }
 
     /** {@return the long strings that were added, in order, with their bytes} */

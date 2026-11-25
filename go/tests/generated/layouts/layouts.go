@@ -281,7 +281,7 @@ func Uint8OffsetsVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint8OffsetsVersioned], which its getters
 // read it in
 func (Uint8OffsetsVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Versioned().WithOffsetType(tafla.Uint8)
+	return tafla.TableLayout{}.WithVersion(Uint8OffsetsVersionedFormatVersion).WithOffsetType(tafla.Uint8)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -371,7 +371,7 @@ func (f Uint8OffsetsVersionedFields) MarshalBinary() ([]byte, error) {
 // extended bytes, into their capacity when they have room. It fails as
 // MarshalBinary does.
 func (f Uint8OffsetsVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint8OffsetsVersioned{}.layout(), Uint8OffsetsVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint8OffsetsVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -425,7 +425,7 @@ func Uint8OffsetsSizedVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint8OffsetsSizedVersioned], which its
 // getters read it in
 func (Uint8OffsetsSizedVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned().WithOffsetType(tafla.Uint8)
+	return tafla.TableLayout{}.Sized().WithVersion(Uint8OffsetsSizedVersionedFormatVersion).WithOffsetType(tafla.Uint8)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -515,7 +515,7 @@ func (f Uint8OffsetsSizedVersionedFields) MarshalBinary() ([]byte, error) {
 // returns the extended bytes, into their capacity when they have room. It fails
 // as MarshalBinary does.
 func (f Uint8OffsetsSizedVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint8OffsetsSizedVersioned{}.layout(), Uint8OffsetsSizedVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint8OffsetsSizedVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -810,7 +810,7 @@ func Uint16OffsetsVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint16OffsetsVersioned], which its getters
 // read it in
 func (Uint16OffsetsVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Versioned().WithOffsetType(tafla.Uint16)
+	return tafla.TableLayout{}.WithVersion(Uint16OffsetsVersionedFormatVersion).WithOffsetType(tafla.Uint16)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -900,7 +900,7 @@ func (f Uint16OffsetsVersionedFields) MarshalBinary() ([]byte, error) {
 // extended bytes, into their capacity when they have room. It fails as
 // MarshalBinary does.
 func (f Uint16OffsetsVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint16OffsetsVersioned{}.layout(), Uint16OffsetsVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint16OffsetsVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -954,7 +954,7 @@ func Uint16OffsetsSizedVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint16OffsetsSizedVersioned], which its
 // getters read it in
 func (Uint16OffsetsSizedVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned().WithOffsetType(tafla.Uint16)
+	return tafla.TableLayout{}.Sized().WithVersion(Uint16OffsetsSizedVersionedFormatVersion).WithOffsetType(tafla.Uint16)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1044,7 +1044,7 @@ func (f Uint16OffsetsSizedVersionedFields) MarshalBinary() ([]byte, error) {
 // returns the extended bytes, into their capacity when they have room. It fails
 // as MarshalBinary does.
 func (f Uint16OffsetsSizedVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint16OffsetsSizedVersioned{}.layout(), Uint16OffsetsSizedVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint16OffsetsSizedVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -1339,7 +1339,7 @@ func Uint32OffsetsVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint32OffsetsVersioned], which its getters
 // read it in
 func (Uint32OffsetsVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Versioned()
+	return tafla.TableLayout{}.WithVersion(Uint32OffsetsVersionedFormatVersion)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1429,7 +1429,7 @@ func (f Uint32OffsetsVersionedFields) MarshalBinary() ([]byte, error) {
 // extended bytes, into their capacity when they have room. It fails as
 // MarshalBinary does.
 func (f Uint32OffsetsVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint32OffsetsVersioned{}.layout(), Uint32OffsetsVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint32OffsetsVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}
@@ -1483,7 +1483,7 @@ func Uint32OffsetsSizedVersionedVersionOf(bytes []byte) (uint32, error) {
 // layout returns the layout of a [Uint32OffsetsSizedVersioned], which its
 // getters read it in
 func (Uint32OffsetsSizedVersioned) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned()
+	return tafla.TableLayout{}.Sized().WithVersion(Uint32OffsetsSizedVersionedFormatVersion)
 }
 
 // Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -1573,7 +1573,7 @@ func (f Uint32OffsetsSizedVersionedFields) MarshalBinary() ([]byte, error) {
 // returns the extended bytes, into their capacity when they have room. It fails
 // as MarshalBinary does.
 func (f Uint32OffsetsSizedVersionedFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(3, Uint32OffsetsSizedVersioned{}.layout(), Uint32OffsetsSizedVersionedFormatVersion)
+	sizer, err := tafla.NewTableSizer(3, Uint32OffsetsSizedVersioned{}.layout())
 	if err != nil {
 		return nil, err
 	}

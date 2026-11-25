@@ -96,23 +96,15 @@ concept Temporary = std::ranges::contiguous_range<Range> && !std::ranges::borrow
 class TableBuilder {
 public:
     /// Starts a table of `fields` fields in `layout`, which its readers must
-    /// use too. Nested tables use the default layout.
+    /// use too, with the layout's version in its header when it has one.
+    /// Nested tables use the default layout.
     ///
-    /// Throws a `BuildError` if the header alone is too long for the
-    /// layout's offset type.
-    TableBuilder(std::size_t fields, TableLayout<false> layout)
-        : TableBuilder(fields, detail::header_length(fields, layout.is_sized(), false, layout.offset_type()),
-                       layout.is_sized(), std::nullopt, layout.offset_type()) {}
-
-    /// Starts a table of `fields` fields in `layout`, with `version` in its
-    /// header. Readers can check it with `TableReader::version()` before
-    /// reading any field.
-    ///
-    /// Throws a `BuildError` if `version` doesn't fit in the layout's offset
-    /// type, or the header alone is too long for it.
-    TableBuilder(std::size_t fields, TableLayout<true> layout, std::uint32_t version)
-        : TableBuilder(fields, versioned_header(fields, layout, version), layout.is_sized(), version,
-                       layout.offset_type()) {}
+    /// Throws a `BuildError` if the layout's version doesn't fit in its
+    /// offset type, or the header alone is too long for it.
+    template <bool Versioned>
+    TableBuilder(std::size_t fields, TableLayout<Versioned> layout)
+        : TableBuilder(fields, detail::checked_header(fields, layout), layout.is_sized(),
+                       detail::header_version(layout), layout.offset_type()) {}
 
     /// Moves `other`'s fields and what it owns, and leaves it as a builder
     /// that was just started, with its layout and number of fields, which
@@ -615,11 +607,6 @@ private:
 
     TableBuilder(std::size_t fields, std::uint32_t header, bool sized, std::optional<std::uint32_t> version,
                  OffsetType offset_type);
-
-    static std::uint32_t versioned_header(std::size_t fields, TableLayout<true> layout, std::uint32_t version) {
-        detail::check_version(version, layout.offset_type());
-        return detail::header_length(fields, layout.is_sized(), true, layout.offset_type());
-    }
 
     /// What the builder counts of the table whose fields it's recording: its
     /// own, or those of a table that it records in place

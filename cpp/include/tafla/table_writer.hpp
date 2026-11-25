@@ -51,6 +51,29 @@ inline void check_version(std::uint32_t version, OffsetType offset_type) {
     }
 }
 
+/// The version that a layout's writers write to the header, when it has one
+template <bool Versioned>
+TAFLA_ALWAYS_INLINE constexpr std::optional<std::uint32_t> header_version(TableLayout<Versioned> layout) noexcept {
+    if constexpr (Versioned) {
+        return layout.version();
+    } else {
+        return std::nullopt;
+    }
+}
+
+/// The byte length of the header of a table of `fields` fields in `layout`.
+///
+/// Throws a `BuildError` if the layout's version doesn't fit in its offset
+/// type, or the header is longer than its offsets address.
+template <bool Versioned>
+TAFLA_ALWAYS_INLINE std::uint32_t checked_header(std::size_t fields, TableLayout<Versioned> layout) {
+    if constexpr (Versioned) {
+        check_version(layout.version(), layout.offset_type());
+    }
+
+    return header_length(fields, layout.is_sized(), Versioned, layout.offset_type());
+}
+
 /// Throws the error of bytes given to a writer that are shorter than its
 /// table
 [[noreturn]] TAFLA_COLD inline void throw_too_short(std::size_t length, std::size_t given) {
@@ -172,29 +195,20 @@ private:
 class TableSizer {
 public:
     /// Starts sizing a table of `fields` fields in `layout`, which its
-    /// readers must use too. Nested tables use the default layout.
+    /// readers must use too, and whose version its writer writes in the
+    /// header when it has one. Nested tables use the default layout.
     ///
-    /// Throws a `BuildError` if the header alone is too long for the
-    /// layout's offset type, as `TableBuilder`'s constructor does.
-    TAFLA_ALWAYS_INLINE TableSizer(std::size_t fields, TableLayout<false> layout)
+    /// Throws a `BuildError` if the layout's version doesn't fit in its
+    /// offset type, or the header alone is too long for it, as
+    /// `TableBuilder`'s constructor does.
+    template <bool Versioned>
+    TAFLA_ALWAYS_INLINE TableSizer(std::size_t fields, TableLayout<Versioned> layout)
         : fields_(fields),
+          version_(detail::header_version(layout).value_or(0)),
+          versioned_(Versioned),
           sized_(layout.is_sized()),
           offset_type_(layout.offset_type()),
-          position_(detail::header_length(fields, layout.is_sized(), false, layout.offset_type())) {}
-
-    /// Starts sizing a table of `fields` fields in `layout`, whose writer
-    /// writes `version` in its header.
-    ///
-    /// Throws a `BuildError` if `version` doesn't fit in the layout's offset
-    /// type, or the header alone is too long for it, as `TableBuilder`'s
-    /// constructor does.
-    TAFLA_ALWAYS_INLINE TableSizer(std::size_t fields, TableLayout<true> layout, std::uint32_t version)
-        : fields_(fields),
-          version_(version),
-          versioned_(true),
-          sized_(layout.is_sized()),
-          offset_type_(layout.offset_type()),
-          position_(checked_header(fields, layout, version)) {}
+          position_(detail::checked_header(fields, layout)) {}
 
     /// The byte length of the table, with every field added.
     ///
@@ -378,12 +392,6 @@ public:
     }
 
 private:
-    TAFLA_ALWAYS_INLINE static std::uint64_t checked_header(std::size_t fields, TableLayout<true> layout,
-                                                            std::uint32_t version) {
-        detail::check_version(version, layout.offset_type());
-        return detail::header_length(fields, layout.is_sized(), true, layout.offset_type());
-    }
-
     template <class T>
     TAFLA_ALWAYS_INLINE void add_elements(std::size_t count) noexcept {
         add_array(detail::saturating_product(count, sizeof(T)), static_cast<Alignment>(sizeof(T)));

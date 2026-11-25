@@ -627,14 +627,14 @@ TEST(TableBuilder, RejectsATableOf32BitOffsetsPast4GiBBeforeWritingIt) {
 TEST(TableBuilder, RejectsAVersionTooLargeForItsSlot) {
     for (const auto& [offset_type, version] :
          {std::pair{OffsetType::uint8, 0x100U}, std::pair{OffsetType::uint16, 0x1'0000U}}) {
-        const auto layout = TableLayout().with_offset_type(offset_type).versioned();
+        const auto layout = TableLayout().with_offset_type(offset_type);
 
-        const auto error = build_error_of([&] { TableBuilder(1, layout, version); });
+        const auto error = build_error_of([&] { TableBuilder(1, layout.with_version(version)); });
         EXPECT_TRUE(same_error(error, BuildError::Kind::version_too_large, offset_type, version, 0));
         EXPECT_EQ(error.version(), version);
         EXPECT_EQ(std::string(error.what()), "Version " + std::to_string(version) + " doesn't fit in a " +
                                                  std::string(name(offset_type)) + " slot");
-        EXPECT_NO_THROW(TableBuilder(1, layout, version - 1));
+        EXPECT_NO_THROW(TableBuilder(1, layout.with_version(version - 1)));
     }
 }
 

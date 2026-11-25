@@ -177,7 +177,7 @@ func DocumentVersionOf(bytes []byte) (uint32, error) {
 
 // layout returns the layout of a [Document], which its getters read it in
 func (Document) layout() tafla.TableLayout {
-	return tafla.TableLayout{}.Sized().Versioned()
+	return tafla.TableLayout{}.Sized().WithVersion(DocumentFormatVersion)
 }
 
 // X fails with a [*tafla.DecodeError] if the field lies outside the bytes.
@@ -279,7 +279,7 @@ func (f DocumentFields) MarshalBinary() ([]byte, error) {
 // [DocumentFields.MarshalBinary] writes it, and returns the extended bytes,
 // into their capacity when they have room. It fails as MarshalBinary does.
 func (f DocumentFields) AppendBinary(bytes []byte) ([]byte, error) {
-	sizer, err := tafla.NewVersionedTableSizer(4, Document{}.layout(), DocumentFormatVersion)
+	sizer, err := tafla.NewTableSizer(4, Document{}.layout())
 	if err != nil {
 		return nil, err
 	}

@@ -14,14 +14,14 @@
  *
  * {@snippet :
  * // A format's header, shared by its writer and its readers
- * TableLayout layout = TableLayout.builder().sized(true).versioned(true).build();
  * int formatVersion = 1;
+ * TableLayout layout = TableLayout.builder().sized(true).version(formatVersion).build();
  *
  * var series = new TableBuilder(2);
  * series.setUint32Array(new long[] {0, 86400});
  * series.setFloat32Array(new float[] {21.75f, 18.5f});
  *
- * var builder = new TableBuilder(3, layout, formatVersion);
+ * var builder = new TableBuilder(3, layout);
  * builder.setFloat64(59.3293);
  * builder.setString("Europe/Stockholm");
  * builder.setTable(series); // written straight into the table
@@ -150,16 +150,18 @@
  *     or below 0 for {@code getStruct()}, and {@code getVectorOffset()} and
  *     {@code getVectorItemOffset()} an {@link IndexOutOfBoundsException} for an item outside the
  *     vector, or the count it's given.</li>
+ *   <li>{@code TableLayout} throws an {@link IllegalArgumentException} from its builder's
+ *     {@code build()} and from {@code withVersion()} for a version that doesn't fit in the offset
+ *     type.</li>
  *   <li>{@code TableBuilder} throws an {@link IllegalStateException} for a field beyond the number
  *     that its table holds, a table recorded in place too, for writing before every field is set
  *     or while a fill records a table in it, and for a field set after writing. It throws an
- *     {@link IllegalArgumentException} for a version missing from or given for a layout, a version
- *     that doesn't fit, a negative number of fields or count, a nested builder or a table recorded
- *     in place with fields left to set, an alignment other than 1, 2, 4 or 8, and a struct size
- *     below 1 or bytes that aren't a whole number of structs. A field that would make the table
- *     too long for its offset type throws an {@code IllegalArgumentException} from its setter and
- *     isn't added. A table recorded in place passes on what its fill throws, and leaves the
- *     builder as it was whatever is thrown.</li>
+ *     {@link IllegalArgumentException} for a negative number of fields or count, a nested builder
+ *     or a table recorded in place with fields left to set, an alignment other than 1, 2, 4 or 8,
+ *     and a struct size below 1 or bytes that aren't a whole number of structs. A field that would
+ *     make the table too long for its offset type throws an {@code IllegalArgumentException} from
+ *     its setter and isn't added. A table recorded in place passes on what its fill throws, and
+ *     leaves the builder as it was whatever is thrown.</li>
  *   <li>{@code TableSizer} throws the {@code IllegalArgumentException}s of {@code TableBuilder}'s
  *     constructor, and one for a negative count, a negative struct size, a struct size below 1 in
  *     an array of structs, and an alignment other than 1, 2, 4 or 8. Its {@code byteLength()} and

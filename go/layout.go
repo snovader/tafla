@@ -96,8 +96,15 @@ func (a Alignment) mustBeValid() {
 // offsets of the offset type [Uint32]. Nested tables use it.
 //
 //	// The response's length and format version, then its field offsets
-//	var layout = tafla.TableLayout{}.Sized().Versioned()
+//	var layout = tafla.TableLayout{}.Sized().WithVersion(1)
+//
+// A layout with a version is the layout of that version of the format: its
+// builders and writers write the version, and its readers read tables of
+// any version, so that a program can read a table's version before it
+// chooses how to read the fields. The layouts of a format's versions
+// should differ in the version only.
 type TableLayout struct {
+	version    uint32
 	offsetType OffsetType
 	sized      bool
 	versioned  bool
@@ -110,11 +117,17 @@ func (l TableLayout) Sized() TableLayout {
 	return l
 }
 
-// Versioned returns the layout with a slot for a version in its header,
-// after the length when sized. Readers can check it before reading any
-// field.
-func (l TableLayout) Versioned() TableLayout {
+// WithVersion returns the layout with version in a slot of its header,
+// after the length when sized, which builders and writers write there.
+// Readers can check the version that a table holds, with
+// [TableReader.Version], before reading any field.
+//
+// A version must fit in the layout's offset type, which
+// [TableLayout.WithOffsetType] may set later, so the builders and sizers
+// check it, and fail with VersionTooLarge.
+func (l TableLayout) WithVersion(version uint32) TableLayout {
 	l.versioned = true
+	l.version = version
 	return l
 }
 
@@ -140,6 +153,12 @@ func (l TableLayout) IsSized() bool {
 // IsVersioned reports whether the header has a slot for a version.
 func (l TableLayout) IsVersioned() bool {
 	return l.versioned
+}
+
+// Version returns the version that builders and writers write to the
+// header, and whether the layout has one.
+func (l TableLayout) Version() (version uint32, ok bool) {
+	return l.version, l.versioned
 }
 
 // OffsetType returns the layout's offset type.
@@ -202,19 +221,10 @@ func (l TableLayout) headerLength(fields int) (uint32, error) {
 	return uint32(slots * size), nil
 }
 
-// checkVersion checks that the layout is versioned exactly when a version
-// is given, which is a mistake of the caller's, and that the version fits
-// in the header's slot
-func (l TableLayout) checkVersion(versioned bool, version uint32) error {
-	if l.versioned != versioned {
-		if l.versioned {
-			panic("tafla: a versioned layout needs a version")
-		}
-		panic("tafla: the layout has no version slot")
-	}
-
-	if versioned && version > l.offsetType.MaxValue() {
-		return &BuildError{Kind: VersionTooLarge, Version: version, OffsetType: l.offsetType}
+// checkVersion checks that the layout's version fits in the header's slot
+func (l TableLayout) checkVersion() error {
+	if l.version > l.offsetType.MaxValue() {
+		return &BuildError{Kind: VersionTooLarge, Version: l.version, OffsetType: l.offsetType}
 	}
 
 	return nil

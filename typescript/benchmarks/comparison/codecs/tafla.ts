@@ -11,8 +11,11 @@ import {
 import type { DocumentOutput, ItemInput } from '../workloads.ts';
 import type { Codec } from './codec.ts';
 
-const DOCUMENT_LAYOUT = TableLayout.create({ sized: true, versioned: true });
 const DOCUMENT_VERSION = 1;
+const DOCUMENT_LAYOUT = TableLayout.create({
+    sized: true,
+    version: DOCUMENT_VERSION
+});
 
 const SAMPLE_SIZE = 3 * SIZEOF_32;
 const sampleWriter = new StructWriter(new Uint8Array(SAMPLE_SIZE));
@@ -46,11 +49,7 @@ export const tafla: Codec = {
     },
     document: {
         serialize(input) {
-            const document = new TableBuilder(
-                4,
-                DOCUMENT_LAYOUT,
-                DOCUMENT_VERSION
-            );
+            const document = new TableBuilder(4, DOCUMENT_LAYOUT);
             document.setFloat64(input.x);
             document.setFloat64(input.y);
             document.setString(input.name);
