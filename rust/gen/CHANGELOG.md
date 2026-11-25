@@ -51,6 +51,17 @@ first commits, for code built from its source before the release.
 - A `bool` scalar, one byte that writers write as 0 or 1 and readers read as
   true when it isn't 0, in tables and structs, which tafla-gen generates as
   each language's boolean. Arrays of bools aren't supported.
+- Enums, such as `enum Priority: int8 { low = -1; high = 1; }`, which name
+  integers of an integer type, `int8` to `uint64`, and are stored as it, in
+  fields, structs and arrays, without changing the format. A field of an
+  enum reads any integer of its type, named or not, as cheaply as the
+  integer, and an array of an enum is the view in place of an array of its
+  integer. tafla-gen declares each enum in every target, as a frozen object
+  and a type alias in TypeScript and JavaScript, an `IntEnum` in Python, a
+  class of constants in Java, a newtype of the integer with constants in
+  Rust, a defined type and constants in Go, an `enum class` in C++, a
+  `RawRepresentable` struct in Swift and an `enum` in C#, and checks that
+  each value fits the type and has a name and an integer of its own.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.
