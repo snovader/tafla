@@ -110,11 +110,12 @@ describe('versioned tables', () => {
     ] as const)(
         'should reject a version that a %s slot cannot hold (%s)',
         (offsetType, version) => {
-            const layout = TableLayout.create({ versioned: true, offsetType });
+            const error = new RangeError(`Version ${version} doesn't fit in a ${offsetType} slot`);
 
-            expect(() => new TableBuilder(1, layout, version)).toThrow(
-                new RangeError(`Version ${version} doesn't fit in a ${offsetType} slot`)
-            );
+            expect(() => TableLayout.create({ version, offsetType })).toThrow(error);
+            expect(() =>
+                TableLayout.create({ version: 0, offsetType }).withVersion(version)
+            ).toThrow(error);
         }
     );
 
@@ -125,14 +126,16 @@ describe('versioned tables', () => {
         expect(() => reader.getVersion()).toThrow(new TypeError('The table has no version'));
     });
 
-    it('should require a version exactly when the layout has a slot for it', () => {
-        const versioned = TableLayout.create({ versioned: true });
-        const unversioned = TableLayout.create({ sized: true });
+    it("should read a table's version whatever the version of the reader's layout", () => {
+        const first = TableLayout.create({ sized: true, version: 1 });
+        const second = first.withVersion(2);
 
-        // @ts-expect-error: A versioned layout needs a version
-        expect(() => new TableBuilder(1, versioned)).toThrow(TypeError);
-        // @ts-expect-error: The layout has no version slot
-        expect(() => new TableBuilder(1, unversioned, 1)).toThrow(TypeError);
+        const table = new TableBuilder(0, second).bytes();
+
+        expect(second.version()).toBe(2);
+        expect(second.sized()).toBe(true);
+        expect(new TableReader(table, first).getVersion()).toBe(2);
+        expect(new TableReader(table, second).getVersion()).toBe(2);
     });
 });
 

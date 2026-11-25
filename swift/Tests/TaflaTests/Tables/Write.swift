@@ -9,7 +9,7 @@ extension Table {
     /// A sizer of the table's layout, version and number of fields, with no
     /// field added
     func sizer() throws(BuildError) -> TableSizer {
-        try TableSizer(fields: fields.count, layout: layout, version: version)
+        try TableSizer(fields: fields.count, layout: writtenLayout)
     }
 
     /// A sizer of the table with every field added

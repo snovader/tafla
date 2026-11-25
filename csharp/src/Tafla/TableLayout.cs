@@ -14,7 +14,7 @@ namespace Tafla;
 /// <example>
 /// <code>
 /// // The response's length and format version, then its field offsets
-/// static readonly TableLayout Layout = new() { Sized = true, Versioned = true };
+/// static readonly TableLayout Layout = new() { Sized = true, Version = 1 };
 /// </code>
 /// </example>
 public readonly record struct TableLayout
@@ -26,11 +26,21 @@ public readonly record struct TableLayout
     public bool Sized { get; init; }
 
     /// <summary>
-    /// Whether the header has a slot for a version, after the length when sized. False by default.
-    /// Readers can check it before reading any field, and a <see cref="TableBuilder"/> of the layout
-    /// needs a version to write to it.
+    /// The version that the header holds, after the length when sized, which gives it a slot for one.
+    /// Null, for no version, by default. Builders and writers write it, and readers can check the one
+    /// that a table holds, with <see cref="TableReader.GetVersion"/>, before reading any field.
     /// </summary>
-    public bool Versioned { get; init; }
+    /// <remarks>
+    /// A layout with a version is the layout of that version of the format, and its readers read
+    /// tables of any version, so that a program can read a table's version before it chooses how to
+    /// read the fields. The layouts of a format's versions should differ in the version only, as
+    /// <c>layout with { Version = 2 }</c> makes them. A version must fit in the offset type, which may
+    /// be set after it, so the builders and sizers check it, and throw a <see cref="BuildException"/>.
+    /// </remarks>
+    public uint? Version { get; init; }
+
+    /// <summary>Whether the header has a slot for a version, after the length when sized.</summary>
+    public bool Versioned => Version.HasValue;
 
     /// <summary>
     /// The offset type, the unsigned integer type of the header slots, field offsets, counts, lengths
@@ -71,30 +81,20 @@ public readonly record struct TableLayout
     /// <summary>
     /// Returns the length of the header and the offsets of a table of <paramref name="fields"/> fields
     /// in <paramref name="layout"/>, after the checks of the constructors of <see cref="TableBuilder"/>
-    /// and <see cref="TableSizer"/>, which take a version when <paramref name="versioned"/>.
+    /// and <see cref="TableSizer"/>.
     /// </summary>
     /// <exception cref="BuildException">
-    /// The version doesn't fit in the layout's offset type, or the header alone is too long for it.
+    /// The layout's version doesn't fit in its offset type, or the header alone is too long for it.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="fields"/> is negative.</exception>
-    /// <exception cref="ArgumentException">
-    /// The layout is versioned and no version was given, or a version was given to a layout without one.
-    /// </exception>
-    internal static int HeaderLength(int fields, TableLayout layout, bool versioned, uint version)
+    internal static int HeaderLength(int fields, TableLayout layout)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(fields);
-        if (layout.Versioned != versioned)
-        {
-            throw new ArgumentException(
-                versioned ? "The layout has no version slot" : "A versioned layout needs a version",
-                nameof(layout)
-            );
-        }
 
         var offsetType = layout.OffsetType;
-        if (version > offsetType.MaxValue)
+        if (layout.Version.GetValueOrDefault() > offsetType.MaxValue)
         {
-            throw BuildException.VersionTooLarge(version, offsetType);
+            throw BuildException.VersionTooLarge(layout.Version.GetValueOrDefault(), offsetType);
         }
 
         long header = ((long)layout.HeaderSlots + fields) * layout.OffsetSize;

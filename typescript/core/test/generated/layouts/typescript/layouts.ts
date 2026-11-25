@@ -182,7 +182,7 @@ export class Uint8OffsetsVersioned {
     static readonly FORMAT_VERSION = 255;
 
     static readonly #LAYOUT = TableLayout.create({
-        versioned: true,
+        version: Uint8OffsetsVersioned.FORMAT_VERSION,
         offsetType: 'uint8'
     });
 
@@ -215,11 +215,7 @@ export class Uint8OffsetsVersioned {
 
     /** Writes a `Uint8OffsetsVersioned` with every field */
     static serialize(fields: Uint8OffsetsVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsVersioned.#LAYOUT,
-            Uint8OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -246,11 +242,7 @@ export class Uint8OffsetsVersioned {
         fields: Uint8OffsetsVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsVersioned.#LAYOUT,
-            Uint8OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -305,7 +297,7 @@ export class Uint8OffsetsSizedVersioned {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Uint8OffsetsSizedVersioned.FORMAT_VERSION,
         offsetType: 'uint8'
     });
 
@@ -341,11 +333,7 @@ export class Uint8OffsetsSizedVersioned {
 
     /** Writes a `Uint8OffsetsSizedVersioned` with every field */
     static serialize(fields: Uint8OffsetsSizedVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.#LAYOUT,
-            Uint8OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -372,11 +360,7 @@ export class Uint8OffsetsSizedVersioned {
         fields: Uint8OffsetsSizedVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint8OffsetsSizedVersioned.#LAYOUT,
-            Uint8OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint8OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -601,7 +585,7 @@ export class Uint16OffsetsVersioned {
     static readonly FORMAT_VERSION = 65535;
 
     static readonly #LAYOUT = TableLayout.create({
-        versioned: true,
+        version: Uint16OffsetsVersioned.FORMAT_VERSION,
         offsetType: 'uint16'
     });
 
@@ -634,11 +618,7 @@ export class Uint16OffsetsVersioned {
 
     /** Writes a `Uint16OffsetsVersioned` with every field */
     static serialize(fields: Uint16OffsetsVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsVersioned.#LAYOUT,
-            Uint16OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -665,11 +645,7 @@ export class Uint16OffsetsVersioned {
         fields: Uint16OffsetsVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsVersioned.#LAYOUT,
-            Uint16OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -724,7 +700,7 @@ export class Uint16OffsetsSizedVersioned {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true,
+        version: Uint16OffsetsSizedVersioned.FORMAT_VERSION,
         offsetType: 'uint16'
     });
 
@@ -760,11 +736,7 @@ export class Uint16OffsetsSizedVersioned {
 
     /** Writes a `Uint16OffsetsSizedVersioned` with every field */
     static serialize(fields: Uint16OffsetsSizedVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.#LAYOUT,
-            Uint16OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -791,11 +763,7 @@ export class Uint16OffsetsSizedVersioned {
         fields: Uint16OffsetsSizedVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint16OffsetsSizedVersioned.#LAYOUT,
-            Uint16OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint16OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1016,7 +984,9 @@ export class Uint32OffsetsVersioned {
      */
     static readonly FORMAT_VERSION = 4294967295;
 
-    static readonly #LAYOUT = TableLayout.create({ versioned: true });
+    static readonly #LAYOUT = TableLayout.create({
+        version: Uint32OffsetsVersioned.FORMAT_VERSION
+    });
 
     readonly #reader: TableReader;
 
@@ -1047,11 +1017,7 @@ export class Uint32OffsetsVersioned {
 
     /** Writes a `Uint32OffsetsVersioned` with every field */
     static serialize(fields: Uint32OffsetsVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsVersioned.#LAYOUT,
-            Uint32OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1078,11 +1044,7 @@ export class Uint32OffsetsVersioned {
         fields: Uint32OffsetsVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsVersioned.#LAYOUT,
-            Uint32OffsetsVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1137,7 +1099,7 @@ export class Uint32OffsetsSizedVersioned {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true
+        version: Uint32OffsetsSizedVersioned.FORMAT_VERSION
     });
 
     readonly #reader: TableReader;
@@ -1172,11 +1134,7 @@ export class Uint32OffsetsSizedVersioned {
 
     /** Writes a `Uint32OffsetsSizedVersioned` with every field */
     static serialize(fields: Uint32OffsetsSizedVersionedFields): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.#LAYOUT,
-            Uint32OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);
@@ -1203,11 +1161,7 @@ export class Uint32OffsetsSizedVersioned {
         fields: Uint32OffsetsSizedVersionedFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            3,
-            Uint32OffsetsSizedVersioned.#LAYOUT,
-            Uint32OffsetsSizedVersioned.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(3, Uint32OffsetsSizedVersioned.#LAYOUT);
         sizer.addUint32();
         sizer.addString(fields.name);
         sizer.addUint16Array(fields.values.length);

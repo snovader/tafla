@@ -663,10 +663,10 @@ TEST(TableWriter, RejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes) {
             EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields + 1, layout); }),
                                      build_error_of([&] { TableBuilder(fields + 1, layout); })));
 
-            const auto versioned = layout.versioned();
-            EXPECT_NO_THROW(TableSizer(fields - 1, versioned, 0));
-            EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields, versioned, 0); }),
-                                     build_error_of([&] { TableBuilder(fields, versioned, 0); })));
+            const auto versioned = layout.with_version(0);
+            EXPECT_NO_THROW(TableSizer(fields - 1, versioned));
+            EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(fields, versioned); }),
+                                     build_error_of([&] { TableBuilder(fields, versioned); })));
         }
     }
 
@@ -677,12 +677,12 @@ TEST(TableWriter, RejectsAHeaderTooLongForItsOffsetsAsTableBuilderDoes) {
 TEST(TableWriter, RejectsAVersionTooLargeForItsSlotAsTableBuilderDoes) {
     for (const auto& [offset_type, version] :
          {std::pair{OffsetType::uint8, 0x100U}, std::pair{OffsetType::uint16, 0x1'0000U}}) {
-        const auto layout = TableLayout().with_offset_type(offset_type).versioned();
+        const auto layout = TableLayout().with_offset_type(offset_type);
         const auto error = BuildError::version_too_large(version, offset_type);
 
-        EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(1, layout, version); }), error));
-        EXPECT_TRUE(same_details(build_error_of([&] { TableBuilder(1, layout, version); }), error));
-        EXPECT_NO_THROW(TableSizer(1, layout, version - 1));
+        EXPECT_TRUE(same_details(build_error_of([&] { TableSizer(1, layout.with_version(version)); }), error));
+        EXPECT_TRUE(same_details(build_error_of([&] { TableBuilder(1, layout.with_version(version)); }), error));
+        EXPECT_NO_THROW(TableSizer(1, layout.with_version(version - 1)));
     }
 }
 

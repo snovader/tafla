@@ -13,14 +13,14 @@ can come from untrusted sources.
 using Tafla;
 
 // A format's header, shared by its writer and its readers
-static readonly TableLayout Layout = new() { Sized = true, Versioned = true };
+static readonly TableLayout Layout = new() { Sized = true, Version = FormatVersion };
 const uint FormatVersion = 1;
 
 var series = new TableBuilder(2);
 series.SetUInt32Array([0, 86_400]); // copied when it's set
 series.SetFloat32Array([21.75f, 18.5f]);
 
-var builder = new TableBuilder(3, Layout, FormatVersion);
+var builder = new TableBuilder(3, Layout);
 builder.SetFloat64(59.3293);
 builder.SetString("Europe/Stockholm");
 builder.SetTable(series); // copied into the table, aligned for its arrays

@@ -195,7 +195,7 @@ private func parseTable(_ json: JSON, name: String) throws -> Table {
 
     let tableLayout = TableLayout(
         sized: try layout["sized"].bool,
-        versioned: try layout["versioned"].bool,
+        version: try layout["versioned"].bool ? 0 : nil,
         offsetType: offsetType
     )
 

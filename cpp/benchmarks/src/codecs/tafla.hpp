@@ -29,8 +29,8 @@ namespace tafla::benchmarks {
 struct Tafla {
     static constexpr std::string_view name = "tafla";
 
-    static constexpr auto kDocumentLayout = TableLayout().sized().versioned();
     static constexpr std::uint32_t kDocumentVersion = 1;
+    static constexpr auto kDocumentLayout = TableLayout().sized().with_version(kDocumentVersion);
 
     /// An item as a struct: its three float32s, aligned to 4 in an array
     static constexpr std::size_t kItemSize = 12;
@@ -56,7 +56,7 @@ struct Tafla {
     }
 
     [[nodiscard]] Bytes serialize(DocumentShape, const Document& input) const {
-        TableBuilder document(4, kDocumentLayout, kDocumentVersion);
+        TableBuilder document(4, kDocumentLayout);
         document.set_float64(input.x);
         document.set_float64(input.y);
         document.set_string(input.name.view());

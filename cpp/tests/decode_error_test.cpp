@@ -94,7 +94,7 @@ std::vector<std::string> reads_of(std::span<const std::uint8_t> bytes, const Tab
                                   std::size_t index, std::size_t size, Errors* errors) {
     const auto& layout = table.layout;
     const TableReader reader(bytes, layout.unversioned());
-    const TableReader versioned(bytes, layout.unversioned().versioned());
+    const TableReader versioned(bytes, layout.unversioned().with_version(0));
 
     std::vector<std::string> reads;
     const auto read = [&](auto function) {
@@ -353,8 +353,8 @@ TEST(DecodeError, ThrownForInvalidUtf8) {
 }
 
 TEST(DecodeError, DescribesAnUnsupportedVersion) {
-    const auto layout = TableLayout().sized().versioned();
-    TableBuilder builder(1, layout, 2);
+    const auto layout = TableLayout().sized().with_version(2);
+    TableBuilder builder(1, layout);
     builder.set_uint8(42);
     const auto bytes = builder.to_bytes();
 

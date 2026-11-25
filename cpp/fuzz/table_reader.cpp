@@ -406,7 +406,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
 
     check_header(TableReader(bytes, layout), index);
-    check_version(TableReader(bytes, layout.versioned()), index);
+    check_version(TableReader(bytes, layout.with_version(0)), index);
     check_position(TableReader(bytes, layout), position, index, data[3]);
 
     return 0;

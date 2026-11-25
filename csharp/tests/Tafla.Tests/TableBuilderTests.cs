@@ -692,8 +692,8 @@ public class TableBuilderTests
     [InlineData(OffsetType.UInt16, true, false, 32766)]
     public void RejectsAHeaderTooLong(OffsetType offsetType, bool sized, bool versioned, int most)
     {
-        var layout = new TableLayout { Sized = sized, Versioned = versioned, OffsetType = offsetType };
-        TableBuilder Start(int fields) => versioned ? new TableBuilder(fields, layout, 1) : new TableBuilder(fields, layout);
+        var layout = new TableLayout { Sized = sized, Version = versioned ? 1 : null, OffsetType = offsetType };
+        TableBuilder Start(int fields) => new(fields, layout);
 
         var builder = Start(most);
         for (var field = 0; field < most; field++)
@@ -727,11 +727,13 @@ public class TableBuilderTests
     [InlineData(OffsetType.UInt16, 65535u)]
     public void RejectsAVersionTooLargeForItsSlot(OffsetType offsetType, uint largest)
     {
-        var layout = new TableLayout { Versioned = true, OffsetType = offsetType };
-        var reader = new TableReader(new TableBuilder(0, layout, largest).ToArray(), layout);
+        var layout = new TableLayout { Version = 0, OffsetType = offsetType };
+
+        // A reader reads a table of any version, whatever its layout's
+        var reader = new TableReader(new TableBuilder(0, layout with { Version = largest }).ToArray(), layout);
         Assert.Equal(largest, reader.GetVersion());
 
-        var error = Assert.Throws<BuildException>(() => new TableBuilder(0, layout, largest + 1));
+        var error = Assert.Throws<BuildException>(() => new TableBuilder(0, layout with { Version = largest + 1 }));
         Assert.Equal((BuildErrorKind.VersionTooLarge, largest + 1, offsetType), (error.Kind, error.Version, error.OffsetType));
         Assert.Equal($"Version {largest + 1} doesn't fit in a {offsetType.Name} slot", error.Message);
     }
@@ -740,12 +742,9 @@ public class TableBuilderTests
     [Fact]
     public void ThrowsArgumentExceptionsForMistakesOfTheCaller()
     {
-        var versioned = new TableLayout { Versioned = true };
         var builder = new TableBuilder(4);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new TableBuilder(-1));
-        Assert.Throws<ArgumentException>(() => new TableBuilder(1, versioned));
-        Assert.Throws<ArgumentException>(() => new TableBuilder(1, TableLayout.Default, 1));
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetTable(new byte[4], 3));
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetTable(new TableBuilder(0), 16));
         Assert.Throws<ArgumentOutOfRangeException>(() => builder.SetStructArray(new byte[4], 0, 1));

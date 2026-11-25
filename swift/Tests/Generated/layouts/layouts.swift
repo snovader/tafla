@@ -142,7 +142,7 @@ public struct Uint8OffsetsVersioned: ~Escapable {
 
     /// The layout that a `Uint8OffsetsVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(versioned: true, offsetType: .uint8) }
+    public static var layout: TableLayout { TableLayout(version: formatVersion, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -206,11 +206,7 @@ public struct Uint8OffsetsVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint8`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint8OffsetsVersioned.layout,
-            version: Uint8OffsetsVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint8OffsetsVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)
@@ -231,7 +227,7 @@ public struct Uint8OffsetsSizedVersioned: ~Escapable {
 
     /// The layout that a `Uint8OffsetsSizedVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint8) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion, offsetType: .uint8) }
 
     @usableFromInline
     let _reader: TableReader
@@ -295,11 +291,7 @@ public struct Uint8OffsetsSizedVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint8`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint8OffsetsSizedVersioned.layout,
-            version: Uint8OffsetsSizedVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint8OffsetsSizedVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)
@@ -452,7 +444,7 @@ public struct Uint16OffsetsVersioned: ~Escapable {
 
     /// The layout that a `Uint16OffsetsVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(versioned: true, offsetType: .uint16) }
+    public static var layout: TableLayout { TableLayout(version: formatVersion, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -516,11 +508,7 @@ public struct Uint16OffsetsVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint16`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint16OffsetsVersioned.layout,
-            version: Uint16OffsetsVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint16OffsetsVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)
@@ -541,7 +529,7 @@ public struct Uint16OffsetsSizedVersioned: ~Escapable {
 
     /// The layout that a `Uint16OffsetsSizedVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true, offsetType: .uint16) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion, offsetType: .uint16) }
 
     @usableFromInline
     let _reader: TableReader
@@ -605,11 +593,7 @@ public struct Uint16OffsetsSizedVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint16`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint16OffsetsSizedVersioned.layout,
-            version: Uint16OffsetsSizedVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint16OffsetsSizedVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)
@@ -762,7 +746,7 @@ public struct Uint32OffsetsVersioned: ~Escapable {
 
     /// The layout that a `Uint32OffsetsVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(versioned: true) }
+    public static var layout: TableLayout { TableLayout(version: formatVersion) }
 
     @usableFromInline
     let _reader: TableReader
@@ -826,11 +810,7 @@ public struct Uint32OffsetsVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint32OffsetsVersioned.layout,
-            version: Uint32OffsetsVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint32OffsetsVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)
@@ -851,7 +831,7 @@ public struct Uint32OffsetsSizedVersioned: ~Escapable {
 
     /// The layout that a `Uint32OffsetsSizedVersioned` is written and read in
     @inlinable
-    public static var layout: TableLayout { TableLayout(sized: true, versioned: true) }
+    public static var layout: TableLayout { TableLayout(sized: true, version: formatVersion) }
 
     @usableFromInline
     let _reader: TableReader
@@ -915,11 +895,7 @@ public struct Uint32OffsetsSizedVersionedFields: Hashable, Sendable {
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(
-            fields: 3,
-            layout: Uint32OffsetsSizedVersioned.layout,
-            version: Uint32OffsetsSizedVersioned.formatVersion
-        )
+        var sizer = try TableSizer(fields: 3, layout: Uint32OffsetsSizedVersioned.layout)
         sizer.addUInt32()
         sizer.addString(self.name)
         sizer.addUInt16Array(count: self.values.count)

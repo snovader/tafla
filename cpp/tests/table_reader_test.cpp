@@ -158,7 +158,7 @@ RC_GTEST_PROP(TableReader, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
 
     for (std::size_t position = 0; position <= bytes.size() + 8; ++position) {
         check_reads(bytes, TableReader(bytes, layout), position);
-        check_reads(bytes, TableReader(bytes, layout.versioned()), position);
+        check_reads(bytes, TableReader(bytes, layout.with_version(0)), position);
     }
     check_reads(bytes, TableReader(bytes, layout), SIZE_MAX);
     check_reads(bytes, TableReader(bytes, layout), SIZE_MAX - 3);
@@ -171,7 +171,7 @@ RC_GTEST_PROP(TableReader, ReadsTheBytesWhereTheFormatPutsThemOrFails, ()) {
                                                        : std::nullopt)
                      : std::optional<std::size_t>(bytes.size())));
 
-    const auto version = try_read([&] { return TableReader(bytes, layout.versioned()).version(); });
+    const auto version = try_read([&] { return TableReader(bytes, layout.with_version(0)).version(); });
     const auto expected = little_endian(bytes, sized ? width : 0, width);
     RC_ASSERT(version ==
               (expected ? std::optional<std::uint32_t>(static_cast<std::uint32_t>(*expected)) : std::nullopt));

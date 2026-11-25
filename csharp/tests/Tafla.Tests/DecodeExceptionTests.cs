@@ -147,7 +147,7 @@ public class DecodeExceptionTests
                 reader => reader.FieldOffset(position, index),
                 reader => VectorText(reader.GetVector(position)),
                 reader => reader.GetSize(),
-                reader => new TableReader(reader.Bytes, layout with { Versioned = true }).GetVersion(),
+                reader => new TableReader(reader.Bytes, layout with { Version = 0 }).GetVersion(),
             };
 
             reads.AddRange(getters.Select(getter => Attempt(new TableReader(bytes.Span, layout), getter)));
@@ -344,7 +344,8 @@ public class DecodeExceptionTests
     {
         var reader = default(TableReader);
         Assert.True(reader.Bytes.IsEmpty);
-        Assert.Equal(TableLayout.Default, reader.Layout);
+        Assert.False(reader.Sized);
+        Assert.Equal(OffsetType.UInt32, reader.OffsetType);
         Assert.Equal(0u, reader.GetSize());
 
         var error = Assert.Throws<DecodeException>(() => default(TableReader).RootOffset(0));

@@ -21,7 +21,7 @@ let fixedFieldsMessages = [
     ),
     Message(
         "fixed_fields.Tagged",
-        layout: TableLayout(sized: true, versioned: true, offsetType: .uint8),
+        layout: TableLayout(sized: true, version: 0, offsetType: .uint8),
         version: 3,
         draw: { draw in TaggedFields(id: draw.integer(), position: draw.vec2(), label: draw.string(most: 80)) },
         read: { bytes throws(DecodeError) in
@@ -41,7 +41,7 @@ let fixedFieldsMessages = [
     ),
     Message(
         "fixed_fields.Pixel",
-        layout: TableLayout(sized: true, versioned: true, offsetType: .uint16),
+        layout: TableLayout(sized: true, version: 0, offsetType: .uint16),
         version: 2,
         draw: { draw in PixelFields(position: draw.vec2(), color: draw.integer()) },
         read: { bytes throws(DecodeError) in
@@ -61,7 +61,7 @@ let fixedFieldsMessages = [
     ),
     Message(
         "fixed_fields.Box",
-        layout: TableLayout(versioned: true),
+        layout: TableLayout(version: 0),
         version: 1,
         draw: { draw in BoxFields(min: draw.vec2(), max: draw.vec2(), range: draw.range()) },
         read: { bytes throws(DecodeError) in

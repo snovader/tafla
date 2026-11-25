@@ -134,7 +134,7 @@ private func layoutMessage<Fields: LayoutFields>(
 ) -> Message {
     Message(
         "layouts.\(name)",
-        layout: TableLayout(sized: sized, versioned: version != nil, offsetType: offsetType),
+        layout: TableLayout(sized: sized, version: version, offsetType: offsetType),
         version: version,
         draw: { draw in Fields(id: draw.integer(), name: draw.string(most: 48), values: draw.integers(most: 64)) },
         read: read,
@@ -152,7 +152,7 @@ struct LayoutsTests {
 
         #expect(try fields.serialize() == [14, 0, 5, 9, 11, 1, 0, 0, 0, 1, 97, 1, 2, 0])
         #expect(Uint8OffsetsSizedVersioned.formatVersion == 0)
-        #expect(Uint8OffsetsSizedVersioned.layout == TableLayout(sized: true, versioned: true, offsetType: .uint8))
+        #expect(Uint8OffsetsSizedVersioned.layout == TableLayout(sized: true, version: 0, offsetType: .uint8))
     }
 
     // A field that makes a table of uint8 offsets longer than 255 bytes fails

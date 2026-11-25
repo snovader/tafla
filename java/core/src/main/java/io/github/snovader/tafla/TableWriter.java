@@ -62,7 +62,6 @@ public final class TableWriter {
         int length,
         int fields,
         TableLayout layout,
-        long version,
         List<TableSizer.EncodedString> encodedStrings
     ) {
         this.bytes = bytes;
@@ -80,7 +79,7 @@ public final class TableWriter {
         }
 
         if (layout.versioned()) {
-            setLength(slot, version);
+            setLength(slot, layout.headerVersion());
         }
     }
 

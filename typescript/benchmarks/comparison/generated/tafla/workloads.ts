@@ -250,7 +250,7 @@ export class Document {
 
     static readonly #LAYOUT = TableLayout.create({
         sized: true,
-        versioned: true
+        version: Document.FORMAT_VERSION
     });
 
     readonly #reader: TableReader;
@@ -279,11 +279,7 @@ export class Document {
 
     /** Writes a `Document` with every field */
     static serialize(fields: DocumentFields): Uint8Array {
-        const sizer = new TableSizer(
-            4,
-            Document.#LAYOUT,
-            Document.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(4, Document.#LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name);
@@ -314,11 +310,7 @@ export class Document {
         fields: DocumentFields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(
-            4,
-            Document.#LAYOUT,
-            Document.FORMAT_VERSION
-        );
+        const sizer = new TableSizer(4, Document.#LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name);

@@ -1127,15 +1127,9 @@ impl Generator<'_> {
         }
 
         self.view_checks(writer, index, in_generic);
-        if layout.version.is_some() {
-            writer.line(format!(
-                "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT, {name}::FORMAT_VERSION);"
-            ));
-        } else {
-            writer.line(format!(
-                "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT);"
-            ));
-        }
+        writer.line(format!(
+            "::tafla::TableSizer sizer_({fields}, {name}::LAYOUT);"
+        ));
         self.sizes(writer, index, in_generic);
         writer.blank();
         writer.line(match output {
@@ -2058,14 +2052,15 @@ fn assignment(writer: &mut CodeWriter, declaration: &str, value: &str) {
     writer.line(format!("{INDENT}{value};"));
 }
 
-/// A C++ expression of the message's layout
+/// A C++ expression of the message's layout, whose version is the class's
+/// `FORMAT_VERSION`
 fn layout_expression(layout: Layout) -> String {
     let mut expression = "::tafla::TableLayout()".to_owned();
     if layout.sized {
         expression.push_str(".sized()");
     }
     if layout.version.is_some() {
-        expression.push_str(".versioned()");
+        expression.push_str(".with_version(FORMAT_VERSION)");
     }
     match layout.offset_type {
         OffsetType::Uint8 => expression.push_str(".with_offset_type(::tafla::OffsetType::uint8)"),

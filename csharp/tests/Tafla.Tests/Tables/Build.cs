@@ -5,9 +5,7 @@ public static class Build
 {
     /// <summary>Starts a builder of the table's layout, version and number of fields, with no field set.</summary>
     public static TableBuilder Builder(this Table table) =>
-        table.Layout.Versioned
-            ? new TableBuilder(table.Fields.Count, table.Layout.ToTableLayout(), table.Version)
-            : new TableBuilder(table.Fields.Count, table.Layout.ToTableLayout());
+        new(table.Fields.Count, table.Layout.ToTableLayout(table.Version));
 
     /// <summary>Builds the table, with every field set, and the tables nested in it from builders of their own.</summary>
     public static TableBuilder Built(this Table table) => Built(table, inPlace: false);

@@ -12,9 +12,7 @@ public static class Write
     /// <summary>Returns a sizer of the table's layout, version and number of fields, with every field added.</summary>
     public static TableSizer Sized(this Table table)
     {
-        var sizer = table.Layout.Versioned
-            ? new TableSizer(table.Fields.Count, table.Layout.ToTableLayout(), table.Version)
-            : new TableSizer(table.Fields.Count, table.Layout.ToTableLayout());
+        var sizer = new TableSizer(table.Fields.Count, table.Layout.ToTableLayout(table.Version));
 
         foreach (var field in table.Fields)
         {

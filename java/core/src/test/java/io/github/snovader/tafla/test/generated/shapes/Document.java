@@ -16,7 +16,7 @@ public final class Document {
 
     private static final TableLayout LAYOUT = TableLayout.builder()
         .sized(true)
-        .versioned(true)
+        .version(FORMAT_VERSION)
         .build();
 
     private final TableReader reader;
@@ -45,7 +45,7 @@ public final class Document {
 
     /** Writes a {@code Document} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(4, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(4, LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name());
@@ -74,7 +74,7 @@ public final class Document {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(4, LAYOUT, FORMAT_VERSION);
+        var sizer = new TableSizer(4, LAYOUT);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addString(fields.name());

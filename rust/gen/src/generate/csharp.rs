@@ -371,7 +371,7 @@ impl Generator<'_> {
             properties.push("Sized = true".to_owned());
         }
         if layout.version.is_some() {
-            properties.push("Versioned = true".to_owned());
+            properties.push("Version = FormatVersion".to_owned());
         }
         if layout.offset_type != OffsetType::Uint32 {
             properties.push(format!(
@@ -540,7 +540,7 @@ impl Generator<'_> {
         writer.indent();
         match &whole {
             Some(whole) => self.serialize_whole(writer, definition, layout, whole),
-            None => self.serialize_body(writer, definition, layout, false),
+            None => self.serialize_body(writer, definition, false),
         }
         writer.close("}");
         writer.blank();
@@ -572,7 +572,7 @@ impl Generator<'_> {
         writer.line("public int SerializeInto(byte[] bytes)");
         writer.line("{");
         writer.indent();
-        self.serialize_body(writer, definition, layout, true);
+        self.serialize_body(writer, definition, true);
         writer.close("}");
     }
 
@@ -639,9 +639,6 @@ impl Generator<'_> {
             text(definition.fields.len().to_string()),
             text(format!("{name}.TableLayout")),
         ];
-        if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FormatVersion")));
-        }
         arguments.push(text(length));
         writer.statement(
             &STYLE,
@@ -692,21 +689,12 @@ impl Generator<'_> {
     /// The body of a message's `Serialize()` or, `into` the caller's bytes,
     /// `SerializeInto()`: the sizer, the writer, the fields, and what the
     /// method returns
-    fn serialize_body(
-        &self,
-        writer: &mut CodeWriter,
-        definition: &Definition,
-        layout: Layout,
-        into: bool,
-    ) {
+    fn serialize_body(&self, writer: &mut CodeWriter, definition: &Definition, into: bool) {
         let name = &definition.name;
-        let mut arguments = vec![
+        let arguments = vec![
             text(definition.fields.len().to_string()),
             text(format!("{name}.TableLayout")),
         ];
-        if layout.version.is_some() {
-            arguments.push(text(format!("{name}.FormatVersion")));
-        }
         writer.statement(
             &STYLE,
             "var sizer = ",

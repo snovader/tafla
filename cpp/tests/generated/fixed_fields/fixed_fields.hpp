@@ -359,7 +359,7 @@ public:
 
     /** The layout of the table, which its writer writes and its reader reads */
     static constexpr auto LAYOUT =
-        ::tafla::TableLayout().sized().versioned().with_offset_type(::tafla::OffsetType::uint8);
+        ::tafla::TableLayout().sized().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint8);
 
     /**
      * Reads a `Tagged` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in another format
@@ -459,7 +459,7 @@ public:
 
     /** The layout of the table, which its writer writes and its reader reads */
     static constexpr auto LAYOUT =
-        ::tafla::TableLayout().sized().versioned().with_offset_type(::tafla::OffsetType::uint16);
+        ::tafla::TableLayout().sized().with_version(FORMAT_VERSION).with_offset_type(::tafla::OffsetType::uint16);
 
     /**
      * Reads a `Pixel` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in another format
@@ -551,7 +551,7 @@ public:
     static constexpr std::uint32_t FORMAT_VERSION = 1;
 
     /** The layout of the table, which its writer writes and its reader reads */
-    static constexpr auto LAYOUT = ::tafla::TableLayout().versioned();
+    static constexpr auto LAYOUT = ::tafla::TableLayout().with_version(FORMAT_VERSION);
 
     /**
      * Reads a `Box` from `bytes`, which it views, or throws a `tafla::DecodeError` if they're in another format version
