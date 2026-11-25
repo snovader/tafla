@@ -7,6 +7,12 @@ export const SUITE_DIRECTORY = new URL(
     import.meta.url
 );
 
+/**
+ * The directory of the cases of what's proposed for the format, which only
+ * this implementation reads
+ */
+export const PROPOSED_DIRECTORY = new URL('proposed/', SUITE_DIRECTORY);
+
 export interface SuiteFiles {
     /** The text of `cases.json` */
     json: string;
