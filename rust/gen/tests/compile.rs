@@ -556,3 +556,17 @@ fn empty_attributes_give_the_default_layout() {
         );
     }
 }
+
+#[test]
+fn csharp_declares_the_enums_of_a_schema_without_definitions() {
+    let source = "enum Level: int8 { low = -1; }\n";
+
+    let files = generate("levels.tafla", source, "csharp", &Options::default());
+
+    let declaration = "namespace Levels;\n\npublic enum Level : sbyte\n{\n    Low = -1,\n}\n";
+    assert!(
+        files[0].contents.ends_with(declaration),
+        "{}",
+        files[0].contents
+    );
+}

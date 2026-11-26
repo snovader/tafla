@@ -7,6 +7,125 @@
 
 namespace AllTypes;
 
+/// <summary>
+/// <para>
+/// How much of something there is.
+/// </para>
+/// <para>
+/// A field of it holds any <c>uint8</c>, whether it has a name here or not.
+/// </para>
+/// </summary>
+public enum Level : byte
+{
+    /// <summary>The least</summary>
+    Low = 0,
+
+    Medium = 1,
+
+    /// <summary>
+    /// The most, in documentation
+    /// of two lines
+    /// </summary>
+    High = 2,
+}
+
+/// <summary>An enum of <c>int8</c>, with a negative value</summary>
+public enum Direction : sbyte
+{
+    Backward = -1,
+
+    None = 0,
+
+    Forward = 1,
+
+    /// <summary>The least <c>int8</c></summary>
+    FurthestBack = -128,
+}
+
+/// <summary>An enum of <c>uint16</c>, whose values aren't in order</summary>
+public enum Unit : ushort
+{
+    Last = 65535,
+
+    First = 0,
+
+    V2 = 2,
+}
+
+public enum Change : short
+{
+    Least = -32768,
+
+    Greatest = 32767,
+}
+
+public enum Status : uint
+{
+    Ok = 0,
+
+    NotFound = 404,
+
+    Greatest = 4294967295,
+}
+
+public enum Sign : int
+{
+    Least = -2147483648,
+
+    Greatest = 2147483647,
+}
+
+/// <summary>An enum of <c>uint64</c>, with a value that a float64 can't hold exactly</summary>
+public enum Mask : ulong
+{
+    None = 0,
+
+    One = 1,
+
+    BeyondFloat64 = 9007199254740993,
+
+    All = 18446744073709551615,
+}
+
+public enum Extent : long
+{
+    Least = -9223372036854775808,
+
+    Zero = 0,
+
+    Greatest = 9223372036854775807,
+}
+
+/// <summary>Values named after keywords and literals of the target languages</summary>
+public enum Word : byte
+{
+    Class = 0,
+
+    Default = 1,
+
+    In = 2,
+
+    Match = 3,
+
+    Self = 4,
+
+    Type = 5,
+
+    True = 6,
+
+    Null = 7,
+
+    None = 8,
+
+    Init = 9,
+
+    New = 10,
+
+    Name = 11,
+
+    Value = 12,
+}
+
 /// <summary>A field of every scalar type, and a bool</summary>
 public readonly ref struct Scalars
 {
@@ -1415,41 +1534,41 @@ public readonly ref struct Enums
     }
 
     /// <summary>An enum of one byte</summary>
-    public byte Level => _reader.GetUInt8(_reader.RootOffset(0));
+    public Level Level => (Level)_reader.GetUInt8(_reader.RootOffset(0));
 
     /// <summary>An array of enums, which is an array of their integer type</summary>
     public global::System.ReadOnlySpan<byte> Levels => _reader.GetUInt8Array(_reader.RootOffset(1));
 
-    public sbyte Direction => _reader.GetInt8(_reader.RootOffset(2));
+    public Direction Direction => (Direction)_reader.GetInt8(_reader.RootOffset(2));
 
     public global::System.ReadOnlySpan<sbyte> Directions => _reader.GetInt8Array(_reader.RootOffset(3));
 
-    public ushort Unit => _reader.GetUInt16(_reader.RootOffset(4));
+    public Unit Unit => (Unit)_reader.GetUInt16(_reader.RootOffset(4));
 
     public global::System.ReadOnlySpan<ushort> Units => _reader.GetUInt16Array(_reader.RootOffset(5));
 
-    public short Change => _reader.GetInt16(_reader.RootOffset(6));
+    public Change Change => (Change)_reader.GetInt16(_reader.RootOffset(6));
 
     public global::System.ReadOnlySpan<short> Changes => _reader.GetInt16Array(_reader.RootOffset(7));
 
-    public uint Status => _reader.GetUInt32(_reader.RootOffset(8));
+    public Status Status => (Status)_reader.GetUInt32(_reader.RootOffset(8));
 
     public global::System.ReadOnlySpan<uint> Statuses => _reader.GetUInt32Array(_reader.RootOffset(9));
 
-    public int Sign => _reader.GetInt32(_reader.RootOffset(10));
+    public Sign Sign => (Sign)_reader.GetInt32(_reader.RootOffset(10));
 
     public global::System.ReadOnlySpan<int> Signs => _reader.GetInt32Array(_reader.RootOffset(11));
 
-    public ulong Mask => _reader.GetUInt64(_reader.RootOffset(12));
+    public Mask Mask => (Mask)_reader.GetUInt64(_reader.RootOffset(12));
 
     public global::System.ReadOnlySpan<ulong> Masks => _reader.GetUInt64Array(_reader.RootOffset(13));
 
-    public long Extent => _reader.GetInt64(_reader.RootOffset(14));
+    public Extent Extent => (Extent)_reader.GetInt64(_reader.RootOffset(14));
 
     public global::System.ReadOnlySpan<long> Extents => _reader.GetInt64Array(_reader.RootOffset(15));
 
     /// <summary>An enum whose values are keywords</summary>
-    public byte Word => _reader.GetUInt8(_reader.RootOffset(16));
+    public Word Word => (Word)_reader.GetUInt8(_reader.RootOffset(16));
 
     /// <summary>A struct of enums</summary>
     public Mark Mark => new(_reader.GetStruct(_reader.RootOffset(17), 24));
@@ -1474,41 +1593,41 @@ public readonly ref struct Enums
 public readonly record struct EnumsFields
 {
     /// <summary>An enum of one byte</summary>
-    public required byte Level { get; init; }
+    public required Level Level { get; init; }
 
     /// <summary>An array of enums, which is an array of their integer type</summary>
     public required global::System.ReadOnlyMemory<byte> Levels { get; init; }
 
-    public required sbyte Direction { get; init; }
+    public required Direction Direction { get; init; }
 
     public required global::System.ReadOnlyMemory<sbyte> Directions { get; init; }
 
-    public required ushort Unit { get; init; }
+    public required Unit Unit { get; init; }
 
     public required global::System.ReadOnlyMemory<ushort> Units { get; init; }
 
-    public required short Change { get; init; }
+    public required Change Change { get; init; }
 
     public required global::System.ReadOnlyMemory<short> Changes { get; init; }
 
-    public required uint Status { get; init; }
+    public required Status Status { get; init; }
 
     public required global::System.ReadOnlyMemory<uint> Statuses { get; init; }
 
-    public required int Sign { get; init; }
+    public required Sign Sign { get; init; }
 
     public required global::System.ReadOnlyMemory<int> Signs { get; init; }
 
-    public required ulong Mask { get; init; }
+    public required Mask Mask { get; init; }
 
     public required global::System.ReadOnlyMemory<ulong> Masks { get; init; }
 
-    public required long Extent { get; init; }
+    public required Extent Extent { get; init; }
 
     public required global::System.ReadOnlyMemory<long> Extents { get; init; }
 
     /// <summary>An enum whose values are keywords</summary>
-    public required byte Word { get; init; }
+    public required Word Word { get; init; }
 
     /// <summary>A struct of enums</summary>
     public required Mark Mark { get; init; }
@@ -1549,23 +1668,23 @@ public readonly record struct EnumsFields
         }
 
         var writer = sizer.CreateWriter();
-        writer.SetUInt8(0, Level);
+        writer.SetUInt8(0, (byte)Level);
         writer.SetUInt8Array(1, Levels.Span);
-        writer.SetInt8(2, Direction);
+        writer.SetInt8(2, (sbyte)Direction);
         writer.SetInt8Array(3, Directions.Span);
-        writer.SetUInt16(4, Unit);
+        writer.SetUInt16(4, (ushort)Unit);
         writer.SetUInt16Array(5, Units.Span);
-        writer.SetInt16(6, Change);
+        writer.SetInt16(6, (short)Change);
         writer.SetInt16Array(7, Changes.Span);
-        writer.SetUInt32(8, Status);
+        writer.SetUInt32(8, (uint)Status);
         writer.SetUInt32Array(9, Statuses.Span);
-        writer.SetInt32(10, Sign);
+        writer.SetInt32(10, (int)Sign);
         writer.SetInt32Array(11, Signs.Span);
-        writer.SetUInt64(12, Mask);
+        writer.SetUInt64(12, (ulong)Mask);
         writer.SetUInt64Array(13, Masks.Span);
-        writer.SetInt64(14, Extent);
+        writer.SetInt64(14, (long)Extent);
         writer.SetInt64Array(15, Extents.Span);
-        writer.SetUInt8(16, Word);
+        writer.SetUInt8(16, (byte)Word);
         Mark.Write(writer.ReserveStruct(17, size: 24));
         var structs18 = Marks.Span;
         var bytes18 = writer.ReserveStructArray(18, structs18.Length, size: 24, alignment: 8);
@@ -1622,23 +1741,23 @@ public readonly record struct EnumsFields
         }
 
         var writer = sizer.CreateWriter(bytes);
-        writer.SetUInt8(0, Level);
+        writer.SetUInt8(0, (byte)Level);
         writer.SetUInt8Array(1, Levels.Span);
-        writer.SetInt8(2, Direction);
+        writer.SetInt8(2, (sbyte)Direction);
         writer.SetInt8Array(3, Directions.Span);
-        writer.SetUInt16(4, Unit);
+        writer.SetUInt16(4, (ushort)Unit);
         writer.SetUInt16Array(5, Units.Span);
-        writer.SetInt16(6, Change);
+        writer.SetInt16(6, (short)Change);
         writer.SetInt16Array(7, Changes.Span);
-        writer.SetUInt32(8, Status);
+        writer.SetUInt32(8, (uint)Status);
         writer.SetUInt32Array(9, Statuses.Span);
-        writer.SetInt32(10, Sign);
+        writer.SetInt32(10, (int)Sign);
         writer.SetInt32Array(11, Signs.Span);
-        writer.SetUInt64(12, Mask);
+        writer.SetUInt64(12, (ulong)Mask);
         writer.SetUInt64Array(13, Masks.Span);
-        writer.SetInt64(14, Extent);
+        writer.SetInt64(14, (long)Extent);
         writer.SetInt64Array(15, Extents.Span);
-        writer.SetUInt8(16, Word);
+        writer.SetUInt8(16, (byte)Word);
         Mark.Write(writer.ReserveStruct(17, size: 24));
         var structs18 = Marks.Span;
         var bytes18 = writer.ReserveStructArray(18, structs18.Length, size: 24, alignment: 8);
@@ -1670,7 +1789,7 @@ public readonly ref struct Step
         _position = position;
     }
 
-    public byte Level => _reader.GetUInt8(_reader.FieldOffset(_position, 0));
+    public Level Level => (Level)_reader.GetUInt8(_reader.FieldOffset(_position, 0));
 
     public Mark Mark => new(_reader.GetStruct(_reader.FieldOffset(_position, 1), 24));
 
@@ -1680,7 +1799,7 @@ public readonly ref struct Step
 /// <summary>The fields of a <see cref="Step"/>, to write.</summary>
 public readonly record struct StepFields
 {
-    public required byte Level { get; init; }
+    public required Level Level { get; init; }
 
     public required Mark Mark { get; init; }
 
@@ -1700,7 +1819,7 @@ public readonly record struct StepFields
     internal void WriteTo(ref global::Tafla.TableWriter writer)
     {
         var parent = writer.StartTable(3);
-        writer.SetUInt8(0, Level);
+        writer.SetUInt8(0, (byte)Level);
         Mark.Write(writer.ReserveStruct(1, size: 24));
         writer.SetString(2, Name);
         writer.EndTable(parent);
@@ -1782,20 +1901,20 @@ public readonly record struct Mark
             throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
         }
 
-        Level = bytes[0];
-        Change = global::System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes[1..]);
+        Level = (Level)bytes[0];
+        Change = (Change)global::System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(bytes[1..]);
         Weight = global::System.Buffers.Binary.BinaryPrimitives.ReadSingleLittleEndian(bytes[3..]);
-        Extent = global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(bytes[7..]);
+        Extent = (Extent)global::System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(bytes[7..]);
         Turn = new(bytes[15..]);
     }
 
-    public required byte Level { get; init; }
+    public required Level Level { get; init; }
 
-    public required short Change { get; init; }
+    public required Change Change { get; init; }
 
     public required float Weight { get; init; }
 
-    public required long Extent { get; init; }
+    public required Extent Extent { get; init; }
 
     public required Turn Turn { get; init; }
 
@@ -1827,10 +1946,10 @@ public readonly record struct Mark
     {
         global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
 
-        bytes[0] = Level;
-        global::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes[1..], Change);
+        bytes[0] = (byte)Level;
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(bytes[1..], (short)Change);
         global::System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(bytes[3..], Weight);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(bytes[7..], Extent);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(bytes[7..], (long)Extent);
         Turn.Write(bytes[15..]);
     }
 }
@@ -1926,13 +2045,13 @@ public readonly record struct Turn
             throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
         }
 
-        Direction = unchecked((sbyte)bytes[0]);
-        Mask = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes[1..]);
+        Direction = (Direction)unchecked((sbyte)bytes[0]);
+        Mask = (Mask)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes[1..]);
     }
 
-    public required sbyte Direction { get; init; }
+    public required Direction Direction { get; init; }
 
-    public required ulong Mask { get; init; }
+    public required Mask Mask { get; init; }
 
     /// <summary>Returns the bytes of <paramref name="structs"/> one after another, as an array of <see cref="Turn"/>s holds them.</summary>
     /// <exception cref="global::System.OverflowException">They take more bytes than an <see cref="int"/> counts.</exception>
@@ -1963,6 +2082,6 @@ public readonly record struct Turn
         global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
 
         bytes[0] = unchecked((byte)Direction);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes[1..], Mask);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(bytes[1..], (ulong)Mask);
     }
 }

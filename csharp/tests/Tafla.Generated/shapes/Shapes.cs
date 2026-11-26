@@ -7,6 +7,28 @@
 
 namespace Shapes;
 
+/// <summary>How soon to do a task</summary>
+public enum Priority : sbyte
+{
+    Low = -1,
+
+    Normal = 0,
+
+    High = 1,
+}
+
+/// <summary>What has become of a task</summary>
+public enum State : ushort
+{
+    Waiting = 0,
+
+    Running = 1,
+
+    Done = 2,
+
+    Failed = 1000,
+}
+
 /// <summary>A small table of two coordinates, an identifier and a name</summary>
 public readonly ref struct Point
 {
@@ -517,7 +539,7 @@ public readonly ref struct Task
         _reader = new global::Tafla.TableReader(bytes, TableLayout);
     }
 
-    public sbyte Priority => _reader.GetInt8(_reader.RootOffset(0));
+    public Priority Priority => (Priority)_reader.GetInt8(_reader.RootOffset(0));
 
     /// <summary>The states that the task has been in, the oldest first</summary>
     public global::System.ReadOnlySpan<ushort> History => _reader.GetUInt16Array(_reader.RootOffset(1));
@@ -530,7 +552,7 @@ public readonly ref struct Task
 /// <summary>The fields of a <see cref="Task"/>, to write.</summary>
 public readonly record struct TaskFields
 {
-    public required sbyte Priority { get; init; }
+    public required Priority Priority { get; init; }
 
     /// <summary>The states that the task has been in, the oldest first</summary>
     public required global::System.ReadOnlyMemory<ushort> History { get; init; }
@@ -550,7 +572,7 @@ public readonly record struct TaskFields
         sizer.AddString(Name);
 
         var writer = sizer.CreateWriter();
-        writer.SetInt8(0, Priority);
+        writer.SetInt8(0, (sbyte)Priority);
         writer.SetUInt16Array(1, History.Span);
         Step.Write(writer.ReserveStruct(2, size: 7));
         writer.SetString(3, Name);
@@ -576,7 +598,7 @@ public readonly record struct TaskFields
         sizer.AddString(Name);
 
         var writer = sizer.CreateWriter(bytes);
-        writer.SetInt8(0, Priority);
+        writer.SetInt8(0, (sbyte)Priority);
         writer.SetUInt16Array(1, History.Span);
         Step.Write(writer.ReserveStruct(2, size: 7));
         writer.SetString(3, Name);
@@ -604,14 +626,14 @@ public readonly record struct Step
             throw global::Tafla.DecodeException.OutOfRange(0, Size, bytes.Length);
         }
 
-        State = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes);
-        Priority = unchecked((sbyte)bytes[2]);
+        State = (State)global::System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes);
+        Priority = (Priority)unchecked((sbyte)bytes[2]);
         Seconds = global::System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes[3..]);
     }
 
-    public required ushort State { get; init; }
+    public required State State { get; init; }
 
-    public required sbyte Priority { get; init; }
+    public required Priority Priority { get; init; }
 
     public required uint Seconds { get; init; }
 
@@ -643,7 +665,7 @@ public readonly record struct Step
     {
         global::System.ArgumentOutOfRangeException.ThrowIfLessThan(bytes.Length, Size, nameof(bytes));
 
-        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes, State);
+        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bytes, (ushort)State);
         bytes[2] = unchecked((byte)Priority);
         global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[3..], Seconds);
     }

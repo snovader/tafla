@@ -30,6 +30,7 @@ public class ShapesCasesTests
             "Document" => DocumentOf(fields).Serialize(),
             "ItemList" => ItemListOf(fields).Serialize(),
             "Sample" => SampleOf(fields).Serialize(),
+            "Task" => TaskOf(fields).Serialize(),
             var other => throw UnknownType(other),
         };
 
@@ -64,6 +65,10 @@ public class ShapesCasesTests
                 Assert.Equal(expected.Key, read.Key);
                 Assert.Equal(BitConverter.SingleToUInt32Bits(expected.A), BitConverter.SingleToUInt32Bits(read.A));
                 Assert.Equal(BitConverter.SingleToUInt32Bits(expected.B), BitConverter.SingleToUInt32Bits(read.B));
+                break;
+
+            case "Task":
+                Assert.Equal(ShapesTests.Describe(TaskOf(fields)), ShapesTests.Describe(new Shapes.Task(bytes)));
                 break;
 
             default:
@@ -146,6 +151,24 @@ public class ShapesCasesTests
             A = Float32(json, "a"),
             B = Float32(json, "b"),
         };
+
+    /// <summary>A task, whose enums JSON holds as their integers</summary>
+    private static TaskFields TaskOf(JsonElement json)
+    {
+        var step = json.GetProperty("step");
+        return new()
+        {
+            Priority = (Priority)(sbyte)Bits(ScalarType.Int8, json.GetProperty("priority")),
+            History = json.GetProperty("history").EnumerateArray().Select(state => (ushort)Bits(ScalarType.UInt16, state)).ToArray(),
+            Step = new()
+            {
+                State = (State)(ushort)Bits(ScalarType.UInt16, step.GetProperty("state")),
+                Priority = (Priority)(sbyte)Bits(ScalarType.Int8, step.GetProperty("priority")),
+                Seconds = (uint)Bits(ScalarType.UInt32, step.GetProperty("seconds")),
+            },
+            Name = json.GetProperty("name").GetString()!,
+        };
+    }
 
     // Values, which JSON holds as cases.json does
 
