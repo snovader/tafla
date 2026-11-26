@@ -196,6 +196,28 @@ closure, and Swift's exclusive access to the builder keeps the closure from
 using the builder itself. Whatever the closure throws is passed on, and the
 builder is left as it was, as it is when the errors below are thrown.
 
+## Absent fields
+
+`setAbsent()` sets the next field as absent, on a builder or an item: its
+offset is 0, and it takes no bytes, as `SPEC.md`'s absent fields describe.
+`TableWriter.setAbsent(_:)` writes field `index` so, for which the sizer
+adds nothing. A reader finds an absent field by comparing its offset with 0,
+or one from `fieldOffset(_:inTableAt:)` with the nested table's position,
+before it reads the field, so only a format whose readers make that check for
+the field can leave it out, as the code generated from a schema's optional
+fields does:
+
+```swift
+var builder = try TableBuilder(fields: 2)
+try builder.setFloat64(59.3293)
+try builder.setAbsent()  // the time zone, left out
+let data = Data(try builder.bytes())
+
+let reader = TableReader(data.bytes)
+let field = try reader.rootOffset(1)  // 0
+let timeZone = try field == 0 ? nil : reader.string(at: field)  // nil
+```
+
 ## Errors and preconditions
 
 Each API throws its own error, with typed throws, so a caller catches a
@@ -210,7 +232,9 @@ Each API throws its own error, with typed throws, so a caller catches a
   than they hold.
 - `TableReader` doesn't compare versions. A reader throws
   `DecodeError.unsupportedVersion` when `version` isn't one it reads, as the
-  example does, so that every decoding failure is a `DecodeError`.
+  example does, so that every decoding failure is a `DecodeError`, and one
+  that reads a range of versions throws `versionOutsideRange`, as the code
+  generated from a message with a `since` attribute does.
 - On a 32-bit host, such as watchOS's arm64_32, an offset or length past the
   largest `Int`, 2 GiB, throws `outOfRange` before it's read, since no bytes
   reach it.
@@ -263,9 +287,10 @@ and so do each vector item's, after the vector's `addVector(count:)` and
 struct's scalars follow its `setStruct(_:)`, and an array's structs its
 `setStructArray(_:count:alignment:)`, each scalar written with
 `writeScalar(_:)`, so that the generated code writes its structs without
-collecting their bytes first. The writer writes into the bytes that
-`bytes(_:)` returns, rather than into bytes of its own that it copies, so it
-lives only while the closure runs, and can't be copied.
+collecting their bytes first. An absent field isn't added to the sizer, and
+the writer's `setAbsent(_:)` writes its offset, 0. The writer writes into the
+bytes that `bytes(_:)` returns, rather than into bytes of its own that it
+copies, so it lives only while the closure runs, and can't be copied.
 
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract, which the other
@@ -282,7 +307,9 @@ runtimes share:
   `BuildError.notAsSized`. The sizer throws the `BuildError` that
   `TableBuilder`'s setter of a field would have, from `byteLength` and
   `bytes(_:)`, for a table too long for its offset type and an array of
-  0-byte structs, and its initializer throws as the builder's does.
+  0-byte structs, and its initializer throws as the builder's does. It
+  counts only the fields added, so a root field that makes the table too
+  long after absent ones has an index that many fewer than the builder's.
 
 ## Generated code
 
@@ -372,7 +399,14 @@ The tests are:
   the writer's own errors and of what stops the program.
 - `UTF8Tests.swift`: the validator of strings on Apple's systems before 2024,
   whose standard library can't validate UTF-8, against the standard library's.
-- `ExampleTests.swift`: the example above.
+- `FieldPresenceTests.swift`: tables of the same descriptions with fields
+  left out at every depth, which read back, write the offset 0 for each
+  absent field, and are written by `TableSizer` and `TableWriter` as by
+  `TableBuilder`; the fields after a table's own, which a reader of a later
+  revision finds missing; and the same tables corrupted, which read as
+  values or decode errors within their bytes. `ConformanceTests.swift` reads
+  and rebuilds the cases of `conformance/presence` too.
+- `ExampleTests.swift`: the examples above.
 - `Generated/`: the code that tafla-gen generates from the example schemas in
   `schemas/` at the root of the repository, which lies in `Tests/Generated`,
   a module of each that `Package.swift` declares. It writes the tables that

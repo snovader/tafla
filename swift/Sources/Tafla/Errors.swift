@@ -26,6 +26,13 @@ public enum DecodeError: Error, Hashable, Sendable, CustomStringConvertible {
     /// versions: a reader throws this when ``TableReader/version`` isn't its
     /// own.
     case unsupportedVersion(version: UInt32, supported: UInt32)
+    /// The header carries format `version`, which the reader can't read,
+    /// since it reads the versions `supported`: a reader of a format whose
+    /// later versions append fields, which reads the tables of its earlier
+    /// versions too. `TableReader` doesn't compare versions: such a reader,
+    /// as tafla-gen generates for a message with a `since` attribute, throws
+    /// this when ``TableReader/version`` isn't one of them.
+    case versionOutsideRange(version: UInt32, supported: ClosedRange<UInt32>)
 
     public var description: String {
         switch self {
@@ -37,6 +44,9 @@ public enum DecodeError: Error, Hashable, Sendable, CustomStringConvertible {
             "The vector item at \(start) ends before it starts, at \(end)"
         case .unsupportedVersion(let version, let supported):
             "Unsupported format version \(version); the reader reads version \(supported)"
+        case .versionOutsideRange(let version, let supported):
+            "Unsupported format version \(version); the reader reads versions \(supported.lowerBound) to "
+                + "\(supported.upperBound)"
         }
     }
 }

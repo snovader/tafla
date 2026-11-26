@@ -20,10 +20,20 @@ enum Field: Sendable {
     /// its count and the ends of its items, whose items follow it among its
     /// parent's fields, each a `table` field followed by its own
     case vectorInPlace(count: Int, length: UInt64)
+    /// A field left out, whose offset is 0, and which takes no bytes
+    case absent
 
     /// What a slot of `Fields` without a field holds, which is never
     /// written: a scalar of no size, which stops the program if it is
     static var unset: Field { .scalar(bits: 0, size: 0) }
+
+    /// Whether the field was left out, so that its offset is 0
+    var isAbsent: Bool {
+        if case .absent = self {
+            return true
+        }
+        return false
+    }
 
     /// The alignment that the field needs from the table's start
     var alignment: Alignment {
@@ -32,7 +42,7 @@ enum Field: Sendable {
         case .structArray(_, _, let alignment), .tableBytes(_, let alignment), .table(_, let alignment),
             .sharedTable(_, _, let alignment):
             alignment
-        case .scalar, .string, .structBytes, .vector, .vectorInPlace: .one
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace, .absent: .one
         }
     }
 
@@ -43,7 +53,7 @@ enum Field: Sendable {
         switch self {
         case .array, .structArray: alignment.padding(at: offset + width)
         case .tableBytes, .table, .sharedTable: alignment.padding(at: offset)
-        case .scalar, .string, .structBytes, .vector, .vectorInPlace: 0
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace, .absent: 0
         }
     }
 
@@ -75,6 +85,8 @@ enum Field: Sendable {
             return length
         case .vectorInPlace(_, let length):
             return length
+        case .absent:
+            return 0
         }
     }
 
@@ -113,6 +125,8 @@ enum Field: Sendable {
             writeVector(items, to: &writer, offsetType: offsetType)
         case .vectorInPlace(let count, _):
             writeVector(count: count, following: fields, from: &next, to: &writer, offsetType: offsetType)
+        case .absent:
+            break
         }
     }
 
@@ -192,7 +206,10 @@ extension TableHeader {
 
             let offset = UInt64(writer.position - start)
             writer.writeZeros(Int(field.padding(at: offset, width: UInt64(width))))
-            writer.writeSlot(UInt32(writer.position - start), at: slot, offsetType: offsetType)
+            // An absent field's offset is 0, rather than where its value
+            // would be
+            let position = field.isAbsent ? 0 : UInt32(writer.position - start)
+            writer.writeSlot(position, at: slot, offsetType: offsetType)
             field.write(to: &writer, offsetType: offsetType, following: fields, from: &next)
             slot += width
         }
