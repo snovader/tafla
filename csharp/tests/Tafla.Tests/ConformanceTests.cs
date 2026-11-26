@@ -3,13 +3,17 @@ using Tafla.Tests.Tables;
 namespace Tafla.Tests;
 
 /// <summary>
-/// Reads and rebuilds the tables of tafla's conformance suite, which the TypeScript runtime writes.
-/// See conformance/README.md at the root of the repository for the format of their descriptions in
-/// cases.json.
+/// Reads and rebuilds the tables of tafla's conformance suite, which the TypeScript runtime writes,
+/// and its cases of presence, in conformance/presence/: tables with absent fields, and tables that a
+/// reader of a later revision of their format reads, finding the fields that it knows after theirs
+/// missing. See conformance/README.md at the root of the repository for the format of their
+/// descriptions in cases.json.
 /// </summary>
 public class ConformanceTests
 {
     private static Suite Suite => Suite.Instance;
+
+    private static Suite Presence => Suite.Presence;
 
     public static TheoryData<string> ValidCases => [.. Suite.Valid.Select(valid => valid.Name)];
 
@@ -17,23 +21,17 @@ public class ConformanceTests
 
     public static TheoryData<string> InvalidCases => [.. Suite.Invalid.Select(invalid => invalid.Name)];
 
-    [Theory]
-    [MemberData(nameof(ValidCases))]
-    public void ReadsEveryValidTable(string name)
-    {
-        var valid = Suite.Valid.Single(valid => valid.Name == name);
+    public static TheoryData<string> ValidCasesOfPresence => [.. Presence.Valid.Select(valid => valid.Name)];
 
-        Assert.Equal(valid.Table, Read.Table(valid.Bytes, valid.Table));
-    }
+    public static TheoryData<string> InvalidCasesOfPresence => [.. Presence.Invalid.Select(invalid => invalid.Name)];
 
     [Theory]
     [MemberData(nameof(ValidCases))]
-    public void RebuildsEveryValidTableByteForByte(string name)
-    {
-        var valid = Suite.Valid.Single(valid => valid.Name == name);
+    public void ReadsEveryValidTable(string name) => ReadsValidTable(Suite, name);
 
-        Assert.Equal(valid.Bytes, valid.Table.Bytes());
-    }
+    [Theory]
+    [MemberData(nameof(ValidCases))]
+    public void RebuildsEveryValidTableByteForByte(string name) => RebuildsValidTable(Suite, name);
 
     /// <summary>
     /// Rebuilds every valid table with the tables nested in it that a builder writes in place,
@@ -41,12 +39,7 @@ public class ConformanceTests
     /// </summary>
     [Theory]
     [MemberData(nameof(ValidCases))]
-    public void RebuildsEveryValidTableRecordedInPlaceByteForByte(string name)
-    {
-        var valid = Suite.Valid.Single(valid => valid.Name == name);
-
-        Assert.Equal(valid.Bytes, valid.Table.BuiltInPlace().ToArray());
-    }
+    public void RebuildsEveryValidTableRecordedInPlaceByteForByte(string name) => RebuildsValidTableInPlace(Suite, name);
 
     /// <summary>
     /// Writes every valid table whose nested tables a writer writes in place, without a header and
@@ -54,16 +47,7 @@ public class ConformanceTests
     /// </summary>
     [Theory]
     [MemberData(nameof(ValidCases))]
-    public void RewritesEveryValidTableNestedInPlaceByteForByte(string name)
-    {
-        var valid = Suite.Valid.Single(valid => valid.Name == name);
-        if (valid.Table.NestedInPlace() != valid.Table)
-        {
-            return;
-        }
-
-        Assert.Equal(valid.Bytes, valid.Table.Written());
-    }
+    public void RewritesEveryValidTableNestedInPlaceByteForByte(string name) => RewritesValidTable(Suite, name);
 
     /// <summary>
     /// Reads every equivalent table, whose bytes differ from its valid case's, as the valid case's
@@ -85,10 +69,84 @@ public class ConformanceTests
     /// </summary>
     [Theory]
     [MemberData(nameof(InvalidCases))]
-    public void ReadsInvalidTablesUpToTheFieldThatFails(string name)
+    public void ReadsInvalidTablesUpToTheFieldThatFails(string name) => ReadsInvalidTable(Suite, name);
+
+    [Fact]
+    public void LoadsEveryCase()
     {
-        var invalid = Suite.Invalid.Single(invalid => invalid.Name == name);
-        var table = Suite.TableOf(invalid.Case);
+        Assert.NotEmpty(Suite.Valid);
+        Assert.NotEmpty(Suite.Equivalent);
+        Assert.NotEmpty(Suite.Invalid);
+    }
+
+    // The cases of presence. Their absent fields must have the offset 0, and a table's count of
+    // missing fields must be what its description gives.
+
+    [Theory]
+    [MemberData(nameof(ValidCasesOfPresence))]
+    public void ReadsEveryValidTableOfPresence(string name) => ReadsValidTable(Presence, name);
+
+    [Theory]
+    [MemberData(nameof(ValidCasesOfPresence))]
+    public void RebuildsEveryValidTableOfPresenceByteForByte(string name) => RebuildsValidTable(Presence, name);
+
+    [Theory]
+    [MemberData(nameof(ValidCasesOfPresence))]
+    public void RebuildsEveryValidTableOfPresenceRecordedInPlaceByteForByte(string name) =>
+        RebuildsValidTableInPlace(Presence, name);
+
+    [Theory]
+    [MemberData(nameof(ValidCasesOfPresence))]
+    public void RewritesEveryValidTableOfPresenceNestedInPlaceByteForByte(string name) => RewritesValidTable(Presence, name);
+
+    [Theory]
+    [MemberData(nameof(InvalidCasesOfPresence))]
+    public void ReadsInvalidTablesOfPresenceUpToTheFieldThatFails(string name) => ReadsInvalidTable(Presence, name);
+
+    [Fact]
+    public void LoadsEveryCaseOfPresence()
+    {
+        Assert.NotEmpty(Presence.Valid);
+        Assert.Empty(Presence.Equivalent);
+        Assert.NotEmpty(Presence.Invalid);
+    }
+
+    private static void ReadsValidTable(Suite suite, string name)
+    {
+        var valid = suite.Valid.Single(valid => valid.Name == name);
+
+        Assert.Equal(valid.Table, Read.Table(valid.Bytes, valid.Table));
+    }
+
+    private static void RebuildsValidTable(Suite suite, string name)
+    {
+        var valid = suite.Valid.Single(valid => valid.Name == name);
+
+        Assert.Equal(valid.Bytes, valid.Table.Bytes());
+    }
+
+    private static void RebuildsValidTableInPlace(Suite suite, string name)
+    {
+        var valid = suite.Valid.Single(valid => valid.Name == name);
+
+        Assert.Equal(valid.Bytes, valid.Table.BuiltInPlace().ToArray());
+    }
+
+    private static void RewritesValidTable(Suite suite, string name)
+    {
+        var valid = suite.Valid.Single(valid => valid.Name == name);
+        if (valid.Table.NestedInPlace() != valid.Table)
+        {
+            return;
+        }
+
+        Assert.Equal(valid.Bytes, valid.Table.Written());
+    }
+
+    private static void ReadsInvalidTable(Suite suite, string name)
+    {
+        var invalid = suite.Invalid.Single(invalid => invalid.Name == name);
+        var table = suite.TableOf(invalid.Case);
 
         for (var index = 0; index < invalid.Field; index++)
         {
@@ -98,13 +156,5 @@ public class ConformanceTests
 
         var field = table.Fields[invalid.Field];
         Assert.Throws<DecodeException>(() => Read.RootField(invalid.Bytes, table.Layout, invalid.Field, field));
-    }
-
-    [Fact]
-    public void LoadsEveryCase()
-    {
-        Assert.NotEmpty(Suite.Valid);
-        Assert.NotEmpty(Suite.Equivalent);
-        Assert.NotEmpty(Suite.Invalid);
     }
 }

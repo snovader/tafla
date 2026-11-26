@@ -4,8 +4,8 @@ using System.Globalization;
 namespace Tafla.Tests.Tables;
 
 // The tests' one model of tables: the conformance suite's descriptions, which Cases parses from
-// cases.json and Strategy generates, with the builder and reader that every test builds and reads
-// them with. See conformance/README.md at the root of the repository.
+// cases.json and presence/cases.json and Strategy generates, with the builder and reader that every
+// test builds and reads them with. See conformance/README.md at the root of the repository.
 //
 // Scalars hold their value's bits, as many as the type is wide, so that equal descriptions hold
 // floats of the same bits: NaN equals itself, and -0 doesn't equal 0.
@@ -30,6 +30,13 @@ public sealed record Table(Layout Layout, uint Version, Seq<Field> Fields)
 {
     public Table(Layout layout, params Field[] fields)
         : this(layout, 0, fields) { }
+
+    /// <summary>
+    /// How many fields a reader of a later revision of the table knows after <see cref="Fields"/>,
+    /// each of which it must find missing from the table, as SPEC.md's Revisions describes. Only the
+    /// cases of presence have it.
+    /// </summary>
+    public int? Missing { get; init; }
 }
 
 /// <summary>A table's layout, as a description gives it.</summary>
@@ -82,6 +89,9 @@ public sealed record StructArray(Seq<ScalarType> Types, Seq<Seq<Scalar>> Items) 
 public sealed record TableField(Nested Nested, int? Alignment) : Field;
 
 public sealed record VectorField(Seq<Nested> Items) : Field;
+
+/// <summary>A field left out of its table, whose offset is 0, as SetAbsent sets it. Only the cases of presence have it.</summary>
+public sealed record Absent : Field;
 
 /// <summary>A table nested from its builder or from the bytes that its builder writes.</summary>
 public sealed record Nested(Source From, Table Table);

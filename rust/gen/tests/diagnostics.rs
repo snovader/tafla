@@ -239,6 +239,7 @@ fn declarations_cant_take_the_name_of_a_member_of_the_generated_csharp() {
         "Write",
         "ToString",
         "FormatVersion",
+        "FirstVersion",
         "To",
         "Enumerator",
     ] {

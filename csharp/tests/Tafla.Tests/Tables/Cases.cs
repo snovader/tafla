@@ -18,10 +18,15 @@ public sealed record ChangedCase(string Name, byte[] Bytes, string Case, int Fie
     public override string ToString() => Name;
 }
 
-/// <summary>The conformance suite's cases.json, with the bytes of each case.</summary>
+/// <summary>
+/// The conformance suite's cases.json, or the cases of presence in presence/cases.json, with the bytes of
+/// each case.
+/// </summary>
 public sealed class Suite
 {
-    private static readonly Lazy<Suite> Loaded = new(Load);
+    private static readonly Lazy<Suite> Loaded = new(() => Load(Directory));
+
+    private static readonly Lazy<Suite> LoadedPresence = new(() => Load(Path.Combine(Directory, "presence")));
 
     private Suite(List<ValidCase> valid, List<ChangedCase> equivalent, List<ChangedCase> invalid)
     {
@@ -32,6 +37,12 @@ public sealed class Suite
 
     /// <summary>The suite, which is loaded once.</summary>
     public static Suite Instance => Loaded.Value;
+
+    /// <summary>
+    /// The cases of presence, of absent fields and of tables that a later revision of their format
+    /// reads, which lie apart from the suite's other cases, and are loaded once.
+    /// </summary>
+    public static Suite Presence => LoadedPresence.Value;
 
     public IReadOnlyList<ValidCase> Valid { get; }
 
@@ -63,9 +74,9 @@ public sealed class Suite
         }
     }
 
-    private static Suite Load()
+    /// <summary>Loads the cases.json in <paramref name="directory"/>, whose cases' files lie under it</summary>
+    private static Suite Load(string directory)
     {
-        var directory = Directory;
         using var json = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "cases.json")));
         var root = json.RootElement;
 
@@ -114,12 +125,16 @@ public sealed class Suite
 
         var version = table.TryGetProperty("version", out var value) ? value.GetUInt32() : 0;
         var fields = table.GetProperty("fields").EnumerateArray().Select(ParseField);
+        int? missing = table.TryGetProperty("missing", out var count) ? count.GetInt32() : null;
 
         return new Table(
             new Layout(layout.GetProperty("sized").GetBoolean(), layout.GetProperty("versioned").GetBoolean(), offsetType),
             version,
             new Seq<Field>(fields)
-        );
+        )
+        {
+            Missing = missing,
+        };
     }
 
     /// <summary>Parses a field from JSON that holds 64-bit integers as strings and the floats that JSON has no number for by name.</summary>
@@ -159,6 +174,9 @@ public sealed class Suite
 
             case "vector":
                 return new VectorField(new Seq<Nested>(field.GetProperty("items").EnumerateArray().Select(ParseNested)));
+
+            case "absent":
+                return new Absent();
 
             default:
                 throw new InvalidDataException($"{type} isn't a field's type");

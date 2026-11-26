@@ -460,3 +460,26 @@ fn csharp_renames_the_members_of_readers_fields_and_structs_and_their_own_names(
         ],
     );
 }
+
+/// A field named after a message's first version takes a `_`, as one named
+/// after its format version does, and the `Has<Field>` property of a field
+/// that may be missing takes one where it would clash with another field's
+/// property, or with its reader's name, which C# reserves
+#[test]
+fn csharp_renames_first_versions_and_the_properties_that_tell_whether_a_table_holds_a_field() {
+    assert_generates(
+        "csharp",
+        "message Versions (version: 2, since: 1) { first_version: uint8; label: string (since: 2); }\n\
+         message Clashes { has_values: uint8; values: [uint8]?; }\n\
+         table HasNote { note: [uint8]?; }",
+        &[
+            "    public const uint FirstVersion = 1;",
+            "    public byte FirstVersion_ => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public required byte FirstVersion_ { get; init; }",
+            "    public byte HasValues => _reader.GetUInt8(_reader.RootOffset(0));",
+            "    public bool HasValues_ => _reader.RootOffset(1) != 0;",
+            "    public required byte HasValues { get; init; }",
+            "    public bool HasNote_ => _reader.FieldOffset(_position, 0) != _position;",
+        ],
+    );
+}
