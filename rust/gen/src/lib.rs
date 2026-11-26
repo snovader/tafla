@@ -49,8 +49,15 @@ pub fn compile(
             "the `{}` target doesn't generate optional fields or fields added `since` a version yet",
             target.name()
         );
-        let error = Diagnostic::new(message, span)
-            .with_help("only the `typescript` and `javascript` targets generate them");
+        let targets: Vec<String> = Target::names()
+            .filter_map(Target::from_name)
+            .filter(|target| target.generates_missing_fields())
+            .map(|target| format!("`{}`", target.name()))
+            .collect();
+        let error = Diagnostic::new(message, span).with_help(format!(
+            "the targets that generate them are {}",
+            targets.join(", ")
+        ));
         return Err(vec![error]);
     }
 

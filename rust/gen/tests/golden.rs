@@ -34,23 +34,20 @@ fn generated_code_matches_the_golden_files() {
 
 /// The schemas that only some targets generate so far, with their golden
 /// directories under those targets' roots: optional fields and fields added
-/// `since` a version, which the TypeScript and JavaScript targets generate
-const PARTIAL_SCHEMAS: [(&str, &str, &[&str]); 1] = [(
-    "presence",
-    "typescript/core/test/presence.tafla",
-    &["typescript", "javascript"],
-)];
+/// `since` a version, which the targets whose
+/// `Target::generates_missing_fields()` is true generate
+const PARTIAL_SCHEMAS: [(&str, &str); 1] = [("presence", "typescript/core/test/presence.tafla")];
 
 #[test]
 fn generated_code_of_the_partial_schemas_matches_the_golden_files() {
     let mut differences = Vec::new();
 
-    for (name, path, target_names) in PARTIAL_SCHEMAS {
+    for (name, path) in PARTIAL_SCHEMAS {
         let source = fs::read_to_string(Path::new(REPOSITORY).join(path)).unwrap();
 
         for (target_name, target) in targets() {
             let result = compile(path, &source, target, &Options::default());
-            if !target_names.contains(&target_name) {
+            if !target.generates_missing_fields() {
                 // Every other target refuses the schema, rather than
                 // generating code that reads its fields as required
                 assert!(result.is_err(), "{target_name} generates {path}");
@@ -71,7 +68,7 @@ fn every_golden_directory_has_a_schema_and_a_target() {
     let schemas: Vec<String> = example_schemas()
         .into_iter()
         .map(|schema| schema.name)
-        .chain(PARTIAL_SCHEMAS.iter().map(|(name, ..)| (*name).to_owned()))
+        .chain(PARTIAL_SCHEMAS.iter().map(|(name, _)| (*name).to_owned()))
         .collect();
     let roots: BTreeSet<&str> = GOLDEN_ROOTS.iter().map(|root| root.root).collect();
     let mut stale = Vec::new();

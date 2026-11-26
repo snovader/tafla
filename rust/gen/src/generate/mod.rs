@@ -137,13 +137,33 @@ impl Target {
     }
 
     /// Whether the target generates optional fields and fields added since a
-    /// version, which only TypeScript's and JavaScript's do so far
+    /// version. Each target has an arm of its own, between lines that stay,
+    /// so that each can change apart.
     pub const fn generates_missing_fields(self) -> bool {
         match self {
             #[cfg(feature = "typescript")]
             Self::TypeScript | Self::JavaScript => true,
-            #[allow(unreachable_patterns)]
-            _ => false,
+            // Python
+            #[cfg(feature = "python")]
+            Self::Python => false,
+            // Java
+            #[cfg(feature = "java")]
+            Self::Java => false,
+            // Rust
+            #[cfg(feature = "rust")]
+            Self::Rust => false,
+            // Go
+            #[cfg(feature = "go")]
+            Self::Go => false,
+            // C++
+            #[cfg(feature = "cpp")]
+            Self::Cpp => false,
+            // Swift
+            #[cfg(feature = "swift")]
+            Self::Swift => false,
+            // C#
+            #[cfg(feature = "csharp")]
+            Self::CSharp => false,
         }
     }
 
