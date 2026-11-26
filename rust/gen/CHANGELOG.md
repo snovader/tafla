@@ -25,10 +25,12 @@ first commits, for code built from its source before the release.
   that doesn't hold them, or a scalar's default, zero or the value after
   `=`, as `count: uint16? = 1`, beside `hasCount()`, which tells whether the
   table holds it. A message's `since` attribute names the first
-  version that its reader reads, as `version: 2, since: 1`. Only the
-  TypeScript and JavaScript targets generate them so far, and every other
-  target fails on a schema that declares them. The code that they generate
-  needs the release of `tafla` on npm with `TableWriter.setAbsent()`.
+  version that its reader reads, as `version: 2, since: 1`. Every target
+  generates them, in its language's idiom, as the README's "Optional fields"
+  describes. The code that each generates needs the release of its runtime
+  with `setAbsent()`. Schemas can no longer declare `NotRequired`, `Long`,
+  `Double`, `Float`, `Boolean`, `Nullable` or `FirstVersion`, which the
+  generated code names, nor, in Go, a `<Message>FirstVersion`.
 - tafla-gen, a schema compiler written in Rust, which generates code that
   writes and reads a schema's messages, tables and structs in TypeScript,
   JavaScript, Python, Java, Rust, Go, C++, Swift and C#, with lazy views of vectors and

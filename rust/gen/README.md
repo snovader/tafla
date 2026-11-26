@@ -96,9 +96,8 @@ with another type, and one that returns a literal default as long. A field
 that's always written, such as a count, reads its default as any value; a
 caller that needs to know reads `has_<field>()` too.
 
-Only the TypeScript and JavaScript targets generate optional fields and
-fields added `since` a version so far; every other target fails on a schema
-that declares one, at the first, rather than read it as required.
+Each target reads and writes them in its language's idiom, as
+[optional fields](#optional-fields) shows.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
@@ -139,14 +138,17 @@ or read its tables, or a target couldn't generate its code:
   schema generates code for every target. These are the runtime's classes,
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
-  `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
+  `TypedDict` and `NotRequired` in Python, `List`, `String`, `Override`,
+  the boxes `Boolean`, `Long`, `Float` and `Double`, and JSpecify's
+  `Nullable` in Java, `Option`
   in Rust and `Int`, `RawSpan` and `Hashable` in Swift, `Fields`, the record
   of a Java class's fields, keywords, such as `None` in Python and `Self` in
   Rust and Swift, the macros of the C standard library that a C++ header
   may define, such as `NULL` and `EOF`, and the members that C#'s generated
   types declare, which a type of the same name can't, such as a struct's
   `Size` and `Write()`, a record's `ToString()` and the `ToArray()` of the
-  view of an array of `To`s, and `Enumerator`, which its views nest; C++ and C# name everything else in full, and Swift names
+  view of an array of `To`s, `FirstVersion`, which a message that reads
+  earlier versions declares, and `Enumerator`, which its views nest; C++ and C# name everything else in full, and Swift names
   `Swift.Range`, so that a schema can declare `Range`.
   `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
@@ -186,7 +188,8 @@ or read its tables, or a target couldn't generate its code:
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
   `uint32`, `int64`, `uint64` or `float64` takes two slots, as a `long` or
-  `double`, and every other field one.
+  `double`, and every other field one, an optional scalar too, which the
+  record holds boxed.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
 - The paths from a struct to its scalars take at most 1,024 fields in all: a
@@ -206,8 +209,9 @@ or read its tables, or a target couldn't generate its code:
   tables without a limit.
 - A declaration can't take the name of a function or constant that the
   generated Go declares beside a message, in the package of the schema's
-  declarations: `New<Message>`, which reads it, and a versioned message's
-  `<Message>VersionOf` and `<Message>FormatVersion`.
+  declarations: `New<Message>`, which reads it, a versioned message's
+  `<Message>VersionOf` and `<Message>FormatVersion`, and the
+  `<Message>FirstVersion` of one that reads earlier versions.
 - A field can't take the name of the view of a vector or an array of structs
   beside it, `<field>_view`, in `camelCase` too, nor that of the view of an
   array of scalars, which Java declares, and a declaration can't take
@@ -320,13 +324,9 @@ them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
 
-A table with an optional field isn't of fixed size, since its writer may
-leave the field out, so it's written field by field, through the sizer and
-the writer, and so is a message or table that nests it, rather than whole at
-constant positions. A field added `since` a version leaves a table of fixed
-size, since writers write every field. In TypeScript and JavaScript, a table
-with either kind of field has no `fields()` or static `read()` yet, and
-neither has a table or a view that holds it.
+A table with an optional field is written field by field, and a table with
+a field that may be missing isn't read whole, as
+[optional fields](#optional-fields) describes.
 
 | Target     | Files                                    | Messages and tables                                                      | Structs                                              |
 | ---------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
@@ -821,6 +821,37 @@ var bytes = Triples.serialize(items.size(), (index, bytes, offset) -> {
     Triple.write(bytes, offset, item.value(), item.first(), item.second());
 });
 ```
+
+### Optional fields
+
+The getter of an optional field, or of one that a later version or revision
+added, returns the language's missing value where the table lacks it, or a
+scalar's default, beside a method that tells whether the table holds the
+scalar. The fields that a message is written from hold an optional field in
+the language's idiom, and a missing value writes it as absent, with the
+runtime's `setAbsent()`; a field added `since` a version is required there,
+since a writer writes its own version:
+
+| Target                 | A missing string, array, table or struct                                    | A scalar that may be missing    | An optional field to write              |
+| ---------------------- | --------------------------------------------------------------------------- | ------------------------------- | --------------------------------------- |
+| TypeScript, JavaScript | `undefined`                                                                 | Its default, and `hasX()`       | `x?: T \| undefined`                    |
+| Python                 | `None`                                                                      | Its default, and `has_x()`      | `NotRequired[T \| None]`                |
+| Java                   | `null`, `@Nullable`, and so does an array's `xView()`                       | Its default, and `hasX()`       | `@Nullable`, a scalar boxed             |
+| Rust                   | `Ok(None)`, of a `Result<Option<T>, DecodeError>`                           | `Ok` of its default, `has_x()`  | `Option<T>`                             |
+| Go                     | `false` in a comma-ok `(T, bool, error)`                                    | Its default, and `HasX()`       | `tafla.Optional[T]`, as `tafla.Some(v)` |
+| C++                    | `std::nullopt`, of a `std::optional<T>`                                     | Its default, and `has_x()`      | `std::optional<T>`                      |
+| C#                     | `null` for a string or struct; an empty span or view, or a default reader, which `HasX` tells apart | Its default, and `HasX` | `T?`, not `required`                    |
+
+A message that reads earlier versions has `FIRST_VERSION`, as
+[versions](#versions) describes, `<Message>FirstVersion` in Go and
+`FirstVersion` in C#. A table that holds an optional field isn't of fixed
+size, since its writer may leave the field out, so no target writes it, or a
+message that holds it, whole at constant positions; a field added `since` a
+version leaves a table of fixed size, since writers write every field. And
+no target reads such a table's fields all at once, as TypeScript's and
+JavaScript's `fields()`, Python's `field_values()`, `read_values()` and
+`fields()`, and Go's `Fields()` do, nor a table or a view that holds it,
+since those reads skip the getters' checks.
 
 ### Versions
 

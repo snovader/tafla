@@ -88,7 +88,10 @@ Counts, lengths and item ends are of the offset type, as offsets are.
   aligned to the largest alignment of its arrays and of its own nested
   tables, or 1 if it has neither; a nested table given as bytes is aligned to
   4 unless the writer passes another alignment. A nested table has no length
-  prefix, so its own offsets lead to its fields.
+  prefix, so its own offsets lead to its fields. Code generated from a schema
+  aligns a nested table to the alignment that the schema gives it, which
+  counts its arrays and nested tables that may be absent too, so a builder
+  that leaves one out writes the same bytes by passing that alignment.
 - **Vectors** hold tables of any layout. Each item's end is its offset from
   the vector's position, which is that of its count. Item `i` starts where
   item `i - 1` ends, and item 0 right after the last end, so readers find any
@@ -246,5 +249,5 @@ each runtime documents, and rejects what it can't write.
 and corrupted ones, and `conformance/README.md` describes how implementations
 check themselves against them. A change to the bytes of an existing case is a
 change to this format. The cases of absent fields and of later revisions
-lie in `conformance/presence/`, which an implementation reads once it reads
-them.
+lie in `conformance/presence/`, beside the others, which every implementation reads
+too.

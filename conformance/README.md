@@ -28,8 +28,8 @@ Each language's CI runs its test when this directory changes.
 - `equivalent/<name>.bin`: the changed table of each equivalent case
 - `invalid/<name>.bin`: the corrupted table of each invalid case
 - `presence/`: the cases of absent fields and of tables read by a later
-  revision of their format, described below, which only the TypeScript
-  implementation reads so far
+  revision of their format, described below, which every implementation
+  reads too
 - `generated/`: the tables that the code generated from the example schema
   `schemas/shapes.tafla` writes in every language, which
   [`generated/README.md`](generated/README.md) describes
@@ -193,8 +193,8 @@ with `"kind": "overwrite"`. Readers read the file rather than apply it.
 `presence/cases.json` describes tables with absent fields and tables that a
 later revision reads, as `SPEC.md` describes them, with the files of its
 valid and invalid cases under `presence/`, as the suite's own. They lie
-apart from it, so that an implementation that doesn't read them yet still
-reads every other case; `test/conformance/presence-cases.ts` holds them,
+apart from it, in a description of their own, since only they hold absent
+fields and missing counts; `test/conformance/presence-cases.ts` holds them,
 and `yarn conformance:generate` writes them. Their descriptions add:
 
 - A field of `"type": "absent"`, whose offset must be 0, and which is set
