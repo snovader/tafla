@@ -1196,7 +1196,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 730 KB, or 590 KB without the `json` feature, whose decoding and
+about 770 KB, or 630 KB without the `json` feature, whose decoding and
 encoding take the rest, a third of it to write and parse floats as text. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.

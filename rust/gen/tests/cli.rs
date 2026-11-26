@@ -628,7 +628,7 @@ fn names_the_messages_and_structs_of_a_schema_for_another_name() {
         stderr(&output),
         "error: `Columns` is a table, which is read within a message, not on its own\n \
          --> schemas/shapes.tafla\n  = help: the schema's messages and structs are `Point`, \
-         `Document`, `ItemList` and `Sample`\n"
+         `Document`, `ItemList`, `Sample`, `Task` and `Step`\n"
     );
 }
 
