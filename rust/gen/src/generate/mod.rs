@@ -145,7 +145,7 @@ impl Target {
             Self::TypeScript | Self::JavaScript => true,
             // Python
             #[cfg(feature = "python")]
-            Self::Python => false,
+            Self::Python => true,
             // Java
             #[cfg(feature = "java")]
             Self::Java => false,
