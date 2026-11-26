@@ -151,7 +151,7 @@ impl Target {
             Self::Java => false,
             // Rust
             #[cfg(feature = "rust")]
-            Self::Rust => false,
+            Self::Rust => true,
             // Go
             #[cfg(feature = "go")]
             Self::Go => false,
