@@ -33,6 +33,9 @@ pub fn table_of(value: &Value) -> Table {
             .iter()
             .map(field_of)
             .collect(),
+        missing: value["missing"]
+            .as_u64()
+            .map(|missing| usize::try_from(missing).unwrap()),
     }
 }
 
@@ -47,6 +50,7 @@ fn field_of(field: &Value) -> Field {
     }
 
     match type_name {
+        "absent" => Field::Absent,
         "bool" => Field::Bool(value.as_bool().unwrap()),
         "int8[]" => Field::I8Array(elements(value, integer)),
         "uint8[]" => Field::U8Array(elements(value, integer)),

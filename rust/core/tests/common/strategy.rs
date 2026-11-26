@@ -1,11 +1,14 @@
 //! Strategies of table descriptions in the conformance suite's shape: tables
 //! of every layout, with fields of every type holding values across their
 //! range, and tables nested in them, from builders and from bytes, to a
-//! bounded depth.
+//! bounded depth, and tables with fields left out, as a format that lets
+//! fields be absent writes them.
 //!
 //! Tables follow the rules of the format and the builder's documentation:
 //! a version fits in its slot, a table nested with `set_table()` has no
 //! header, and a table and the tables in it fit in their offset types.
+
+use std::iter;
 
 use proptest::{char, collection::vec, num, option, prelude::*, sample::select};
 use tafla::{Alignment, OffsetType};
@@ -28,6 +31,67 @@ pub fn table() -> BoxedStrategy<Table> {
 /// Tables of the layouts that `layouts` generates
 pub fn tables(layouts: impl Strategy<Value = Layout> + 'static) -> BoxedStrategy<Table> {
     tables_of(layouts.boxed(), DEPTH, false, &Values::new())
+}
+
+/// Tables of any layout with fields left out, at every depth, as a format
+/// that lets them be absent writes them: each field in turn is absent when
+/// the next of a cycle of choices says so. A vector holds every item, whose
+/// fields may be absent.
+pub fn presence_table() -> BoxedStrategy<Table> {
+    (table(), vec(any::<bool>(), 1..=24))
+        .prop_map(|(table, absences)| {
+            let mut absences = absences.into_iter().cycle();
+            with_absences(table, &mut absences)
+        })
+        .boxed()
+}
+
+/// Tables of any layout, with fields left out a quarter of the time
+pub fn any_table() -> BoxedStrategy<Table> {
+    prop_oneof![3 => table(), 1 => presence_table()].boxed()
+}
+
+/// Tables of at least one field, with fields left out as in
+/// [`presence_table()`] but for the root's first, as a table of a format
+/// whose later revisions append fields holds it
+pub fn revised_table() -> BoxedStrategy<Table> {
+    let tables = table().prop_filter("a table of fields", |table| !table.fields.is_empty());
+
+    (tables, vec(any::<bool>(), 1..=24))
+        .prop_map(|(table, absences)| {
+            let mut absences = iter::once(false).chain(absences.into_iter().cycle());
+            with_absences(table, &mut absences)
+        })
+        .boxed()
+}
+
+/// The table with each field left out when the next of `absences` says so,
+/// and the fields of the tables nested in those that it keeps. Absent fields
+/// take no bytes, so the table still fits its offset type.
+fn with_absences(mut table: Table, absences: &mut impl Iterator<Item = bool>) -> Table {
+    let within = |nested: Nested, absences: &mut _| Nested {
+        from: nested.from,
+        table: with_absences(nested.table, absences),
+    };
+
+    let mut fields = Vec::with_capacity(table.fields.len());
+    for field in table.fields {
+        fields.push(match field {
+            _ if absences.next() == Some(true) => Field::Absent,
+            Field::Table { nested, alignment } => Field::Table {
+                nested: within(nested, absences),
+                alignment,
+            },
+            Field::Vector(items) => {
+                let items = items.into_iter().map(|item| within(item, absences));
+                Field::Vector(items.collect())
+            }
+            field => field,
+        });
+    }
+    table.fields = fields;
+
+    table
 }
 
 /// Layouts of any header and offset type
@@ -140,6 +204,7 @@ fn tables_of(
                 layout,
                 version,
                 fields,
+                missing: None,
             })
         })
         .boxed()
@@ -417,6 +482,7 @@ fn longest(field: &Field, width: u64) -> u64 {
     let array = |len: usize, size: u64| size - 1 + width + len as u64 * size;
 
     match field {
+        Field::Absent => 0,
         Field::I8(_) | Field::U8(_) | Field::Bool(_) => 1,
         Field::I16(_) | Field::U16(_) => 2,
         Field::I32(_) | Field::U32(_) | Field::F32(_) => 4,

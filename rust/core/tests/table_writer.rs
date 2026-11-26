@@ -414,6 +414,9 @@ enum Call {
     CopyTable {
         length: usize,
     },
+    Absent {
+        index: usize,
+    },
 }
 
 fn call() -> impl Strategy<Value = Call> {
@@ -442,6 +445,7 @@ fn call() -> impl Strategy<Value = Call> {
         (small(), small()).prop_map(|(index, count)| Call::Vector { index, count }),
         small().prop_map(|item| Call::ItemEnd { item }),
         (0..40_usize).prop_map(|length| Call::CopyTable { length }),
+        small().prop_map(|index| Call::Absent { index }),
     ]
 }
 
@@ -479,6 +483,7 @@ impl Call {
                 }
             }
             Self::CopyTable { length } => writer.copy_table(&vec![0xa5; length]),
+            Self::Absent { index } => writer.set_absent(index),
         }
     }
 }
@@ -494,6 +499,7 @@ fn test_pads_a_struct_array_a_nested_table_and_a_vector_as_table_builder_counts_
             layout: Layout::headerless(OffsetType::Uint16),
             version: None,
             fields,
+            missing: None,
         },
     };
     let table = Table {
@@ -516,6 +522,7 @@ fn test_pads_a_struct_array_a_nested_table_and_a_vector_as_table_builder_counts_
             },
             Field::Vector(vec![nested(vec![Field::String("🦀".to_owned())])]),
         ],
+        missing: None,
     };
 
     #[rustfmt::skip]
@@ -551,12 +558,14 @@ fn test_names_the_root_field_that_makes_the_table_too_long_with_the_length_after
             layout: Layout::headerless(OffsetType::Uint8),
             version: None,
             fields: vec![Field::U8Array(vec![0; 100])],
+            missing: None,
         },
     };
     let table = Table {
         layout: Layout::headerless(OffsetType::Uint8),
         version: None,
         fields: vec![Field::U8(1), Field::Vector(vec![item; 3]), Field::U8(2)],
+        missing: None,
     };
 
     let error = BuildError::TooLong {
