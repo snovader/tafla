@@ -193,6 +193,36 @@ impl<'a> TableBuilder<'a> {
         self.add_field(Field::String(string.into()))
     }
 
+    /// Sets the next field as absent: an offset of 0 and no value. A reader
+    /// finds it by comparing the field's offset, from
+    /// `TableReader::root_offset()`, with 0, or one from
+    /// `TableReader::field_offset()` with the nested table's position,
+    /// before it reads the field, so only a format whose readers make that
+    /// check for the field can leave it out.
+    ///
+    /// ```
+    /// use tafla::{TableBuilder, TableLayout, TableReader};
+    ///
+    /// let mut builder = TableBuilder::new(2, TableLayout::DEFAULT)?;
+    /// builder.set_absent()?;
+    /// builder.set_u8(7)?;
+    /// let bytes = builder.to_bytes()?;
+    ///
+    /// let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    /// assert_eq!(reader.root_offset(0)?, 0);
+    /// assert_eq!(reader.get_u8(reader.root_offset(1)?)?, 7);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already. An absent field takes no bytes but its offset, which the
+    /// table's header holds, so it never makes the table too long.
+    pub fn set_absent(&mut self) -> Result<(), BuildError> {
+        self.add_field(Field::Absent)
+    }
+
     /// Sets a struct field from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding. The
     /// builder borrows a slice or owns a `Vec` until the table is written.
@@ -759,6 +789,7 @@ impl<'a> InPlaceTable<'_, 'a> {
         set_f32_array(values: impl Into<Cow<'a, [f32]>>),
         set_f64_array(values: impl Into<Cow<'a, [f64]>>),
         set_str(string: impl Into<Cow<'a, str>>),
+        set_absent(),
         set_struct(bytes: impl Into<Cow<'a, [u8]>>),
         set_struct_array(bytes: impl Into<Cow<'a, [u8]>>, size: usize, alignment: Alignment),
         set_table(table: impl Into<NestedTable<'a>>),
@@ -956,6 +987,8 @@ enum Field<'a> {
     /// A nested table, which starts at a multiple of its alignment
     Table(NestedTable<'a>),
     Vector(Vec<NestedTable<'a>>),
+    /// A field left out, which takes an offset of 0 and no bytes
+    Absent,
 }
 
 impl Field<'_> {
@@ -965,7 +998,11 @@ impl Field<'_> {
             Self::Array(array) => array.alignment(),
             Self::StructArray { alignment, .. } => *alignment,
             Self::Table(table) => table.alignment(),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => Alignment::One,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::Absent => Alignment::One,
         }
     }
 
@@ -977,7 +1014,11 @@ impl Field<'_> {
             Self::Array(array) => array.alignment().padding(offset.wrapping_add(width)),
             Self::StructArray { alignment, .. } => alignment.padding(offset.wrapping_add(width)),
             Self::Table(table) => table.alignment().padding(offset),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::Absent => 0,
         }
     }
 
@@ -997,6 +1038,7 @@ impl Field<'_> {
             Self::Vector(items) => items.iter().fold(width, |length, item| {
                 length.saturating_add(width + item.byte_length() as u64)
             }),
+            Self::Absent => 0,
         }
     }
 
@@ -1031,6 +1073,7 @@ impl Field<'_> {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::Absent => writer.set_absent(index),
         }
     }
 }

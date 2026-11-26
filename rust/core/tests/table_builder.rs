@@ -321,6 +321,7 @@ const fn nested(from: Source, fields: Vec<Field>) -> Nested {
             layout: Layout::headerless(OffsetType::Uint32),
             version: None,
             fields,
+            missing: None,
         },
     }
 }

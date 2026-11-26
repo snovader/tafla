@@ -34,6 +34,16 @@ pub enum DecodeError {
     ///
     /// [`TableReader::version()`]: crate::TableReader::version
     UnsupportedVersion { version: u32, supported: u32 },
+    /// The header carries format `version`, which the reader can't read,
+    /// since it reads the versions from `first` to `last`: a reader of a
+    /// format whose later versions append fields, which reads the tables of
+    /// its earlier versions too. `TableReader` doesn't compare versions:
+    /// such a reader, as tafla-gen generates for a message with a `since`
+    /// attribute, returns this when [`TableReader::version()`] isn't one of
+    /// them.
+    ///
+    /// [`TableReader::version()`]: crate::TableReader::version
+    VersionOutsideRange { version: u32, first: u32, last: u32 },
 }
 
 impl DecodeError {
@@ -70,6 +80,14 @@ impl fmt::Display for DecodeError {
                 f,
                 "Unsupported format version {version}; the reader reads version {supported}"
             ),
+            Self::VersionOutsideRange {
+                version,
+                first,
+                last,
+            } => write!(
+                f,
+                "Unsupported format version {version}; the reader reads versions {first} to {last}"
+            ),
         }
     }
 }
@@ -79,7 +97,8 @@ impl Error for DecodeError {
         match self {
             Self::OutOfRange { .. }
             | Self::ItemEndsBeforeStart { .. }
-            | Self::UnsupportedVersion { .. } => None,
+            | Self::UnsupportedVersion { .. }
+            | Self::VersionOutsideRange { .. } => None,
             Self::InvalidUtf8 { source, .. } => Some(source),
         }
     }

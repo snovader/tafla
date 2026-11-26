@@ -92,6 +92,8 @@ impl Field {
     /// Adds the field to the sizer, with what decides its length
     pub fn add(&self, sizer: &mut TableSizer) {
         match self {
+            // An absent field takes no bytes but its offset
+            Self::Absent => {}
             Self::I8(_) => sizer.add_i8(),
             Self::U8(_) | Self::Bool(_) => sizer.add_u8(),
             Self::I16(_) => sizer.add_i16(),
@@ -135,6 +137,7 @@ impl Field {
     /// Writes the field as field `index` of the writer's table
     pub fn write(&self, writer: &mut TableWriter, index: usize) {
         match self {
+            Self::Absent => writer.set_absent(index),
             Self::I8(value) => writer.set_i8(index, *value),
             Self::U8(value) => writer.set_u8(index, *value),
             Self::I16(value) => writer.set_i16(index, *value),
@@ -211,6 +214,7 @@ impl Field {
                     .iter()
                     .map(|field| field.nested_in_place(layout))
                     .collect(),
+                missing: nested.table.missing,
             },
         };
 

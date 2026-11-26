@@ -13,6 +13,10 @@ pub struct Table {
     /// versioned
     pub version: Option<u32>,
     pub fields: Vec<Field>,
+    /// How many fields a reader of a later revision of the table knows
+    /// after `fields`, each of which it must find missing from the table.
+    /// Only the cases of presence have it.
+    pub missing: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +71,9 @@ pub enum Field {
         alignment: Option<Alignment>,
     },
     Vector(Vec<Nested>),
+    /// A field left out of its table, whose offset is 0, set with
+    /// `set_absent()`. Only the cases of presence have it.
+    Absent,
 }
 
 /// A table nested from its builder or from the bytes that its builder
@@ -264,6 +271,7 @@ impl PartialEq for Field {
                 },
             ) => a == b && a_alignment == b_alignment,
             (Self::Vector(a), Self::Vector(b)) => a == b,
+            (Self::Absent, Self::Absent) => true,
             _ => false,
         }
     }
