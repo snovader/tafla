@@ -51,6 +51,7 @@ const PYTHON: &[&str] = &[
     "Iterator",
     "Literal",
     "None",
+    "NotRequired",
     "OverflowError",
     "Protocol",
     "Self",

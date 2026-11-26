@@ -14,6 +14,12 @@ repository's first commits, for code built from its source before the release.
 
 ### Added
 
+- `TableBuilder.set_absent()` and `TableWriter.set_absent()`, natively too,
+  which leave a field out of a table with the offset 0 and no value, for a
+  format that lets it be absent, as
+  [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+  describes. The runtime reads and rebuilds the cases of absent fields and
+  of tables of later revisions in `conformance/presence/`.
 - The runtime, which writes and reads tables in the format that
   [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) describes:
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,

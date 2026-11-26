@@ -430,6 +430,7 @@ class TestIndices(unittest.TestCase):
             ("set_float64", lambda writer, index: writer.set_float64(index, 0.5)),
             ("set_string", lambda writer, index: writer.set_string(index, "a")),
             ("set_struct", lambda writer, index: writer.set_struct(index, b"\x01")),
+            ("set_absent", lambda writer, index: writer.set_absent(index)),
             (
                 "set_int32_array",
                 lambda writer, index: writer.set_int32_array(index, [1]),
