@@ -233,6 +233,117 @@ export interface OptionalFields {
     label?: string | undefined;
 }
 
+/** The same fields as `Optional`, all required */
+export class Full {
+    static readonly #LAYOUT = TableLayout.DEFAULT;
+
+    declare private readonly _reader: TableReader;
+
+    constructor(bytes: Uint8Array) {
+        this._reader = new TableReader(bytes, Full.#LAYOUT);
+    }
+
+    /** Writes a `Full` with every field */
+    static serialize(fields: FullFields): Uint8Array {
+        const sizer = new TableSizer(6, Full.#LAYOUT);
+        sizer.addFloat64();
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.label);
+
+        const writer = sizer.writer();
+        writer.setFloat64(0, fields.x);
+        writer.setUint32(1, fields.id);
+        writer.setString(2, fields.name);
+        writer.setFloat64(3, fields.y);
+        writer.setFloat64(4, fields.z);
+        writer.setString(5, fields.label);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Full` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields: FullFields, bytes: Uint8Array): Uint8Array {
+        const sizer = new TableSizer(6, Full.#LAYOUT);
+        sizer.addFloat64();
+        sizer.addUint32();
+        sizer.addString(fields.name);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addString(fields.label);
+
+        const writer = sizer.writer(bytes);
+        writer.setFloat64(0, fields.x);
+        writer.setUint32(1, fields.id);
+        writer.setString(2, fields.name);
+        writer.setFloat64(3, fields.y);
+        writer.setFloat64(4, fields.z);
+        writer.setString(5, fields.label);
+
+        return writer.bytes();
+    }
+
+    x(): number {
+        return this._reader.getFloat64(this._reader.rootOffset(0));
+    }
+
+    id(): number {
+        return this._reader.getUint32(this._reader.rootOffset(1));
+    }
+
+    name(): string {
+        return this._reader.getString(this._reader.rootOffset(2));
+    }
+
+    y(): number {
+        return this._reader.getFloat64(this._reader.rootOffset(3));
+    }
+
+    z(): number {
+        return this._reader.getFloat64(this._reader.rootOffset(4));
+    }
+
+    label(): string {
+        return this._reader.getString(this._reader.rootOffset(5));
+    }
+
+    /**
+     * Reads every field into the `FullFields` that writes it, nested
+     * tables and the items of vectors and arrays of structs included
+     */
+    fields(): FullFields {
+        return {
+            x: this._reader.getFloat64(this._reader.rootOffset(0)),
+            id: this._reader.getUint32(this._reader.rootOffset(1)),
+            name: this._reader.getString(this._reader.rootOffset(2)),
+            y: this._reader.getFloat64(this._reader.rootOffset(3)),
+            z: this._reader.getFloat64(this._reader.rootOffset(4)),
+            label: this._reader.getString(this._reader.rootOffset(5))
+        };
+    }
+}
+
+/** The fields of a `Full`, to write */
+export interface FullFields {
+    x: number;
+    id: number;
+    name: string;
+    y: number;
+    z: number;
+    label: string;
+}
+
 /** The same fields and `z`, in a message that reads its own version alone */
 export class Exact {
     /**

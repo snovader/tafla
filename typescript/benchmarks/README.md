@@ -2,8 +2,9 @@
 
 `yarn bench` times `tafla`'s getters and setters of every element type
 on their own, `yarn bench:compare` compares the package with other
-JavaScript libraries, and `yarn bench:strings` compares how they write and
-read strings. Run them from `typescript/`.
+JavaScript libraries, `yarn bench:strings` compares how they write and
+read strings, and `yarn bench:presence` times optional fields and fields
+that later versions append. Run them from `typescript/`.
 
 ## Getters and setters
 
@@ -419,3 +420,57 @@ without the samples, they took as long as in the other processes.
   does, without its native string extractor.
 - tafla-gen creates its generated fields from the input array in each call,
   as the protobufjs codec creates its message.
+
+## Optional fields and versions
+
+`yarn bench:presence` times what optional fields and fields that a later
+version appends cost the code that tafla-gen generates, from
+`presence/presence.tafla` into `presence/generated/tafla/`. Each call reads
+or writes 64 tables of its own values:
+
+- **required fields**: `x`, `id` and `y` of tables that have only them and
+  a string (`Plain`), that also have two optional fields, present or absent
+  (`Optional`), and of messages that read one version (`Exact`) or two
+  (`Ranged`), from tables of either version.
+- **z of root tables**: a required `z`, an optional one, present and
+  absent, and one that version 2 appended, read from tables of either
+  version. Two more variants read the optional `z` as a getter that returns
+  a default for an absent field would, once V8 inlines it: `NaN`, and `0`.
+- **z of nested tables**: a required `z` of a nested table, and one that its
+  second revision appended, read from tables of either revision.
+- **construct**: the constructor of a message without a version, of one
+  that checks its own version, and of one that checks a range of versions.
+- **write**: the messages above, and `Full`, which has `Optional`'s fields,
+  all required.
+
+```sh
+uptime
+yarn bench:presence --rounds 41 --no-heap
+```
+
+On an Apple M2 Pro in Node 26.13.0, in two processes alike, at a load of
+1.4:
+
+- Reads of required fields took as long in every kind of table, 0.99 to
+  1.02 times `Plain`'s, with an A/A of 1.00: their getters are the same
+  code.
+- A present optional `z`, and a `z` that version 2 appended, took 1.47 to
+  1.49 times a required `z`, and allocated a heap number of 12 bytes each:
+  the getter returns `number | undefined`, and V8 boxes a double that
+  merges with another type, as it does with the `NaN` default, which
+  JavaScript loads as a global (1.39 times). A default of `0` took 1.00 to
+  1.01 times, without allocating, so the comparison with 0 is free. An
+  absent `z` took 0.91 to 0.93 times, and one missing from version 1, found
+  from the version alone, 0.58 times.
+- A `z` that the nested table's second revision appended took 1.48 times,
+  with the box and a read of the first field's offset, and one missing from
+  the first revision 0.98 to 0.99 times.
+- Constructing a message that checks a range of versions took 1.01 times
+  the time of one that checks its own, which took 1.02 to 1.03 times the
+  time of one without a version.
+- Writing `Optional` with both optional fields present took as long as
+  writing `Full`, whose fields are required, 2.52 to 2.60 times against 2.47
+  to 2.58 times `Plain`, within each other's noise in two processes at a
+  load of 2.75, and with both absent 1.09 times `Plain`, for their offsets
+  and checks. `Ranged` wrote as fast as `Exact`.
+

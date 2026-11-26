@@ -9,6 +9,7 @@
 import { bench, type Group, type Variant } from 'benk';
 import {
     Exact,
+    Full,
     Holder,
     HolderExact,
     HolderV1,
@@ -39,8 +40,18 @@ const presentFields: OptionalFields[] = plainFields.map((fields, i) => ({
     label: `label ${i}`
 }));
 
+// Of the same shape as the present fields, so that the writer's type
+// feedback is the same for both
 const absentFields: OptionalFields[] = plainFields.map(fields => ({
-    ...fields
+    ...fields,
+    z: undefined,
+    label: undefined
+}));
+
+const fullFields = presentFields.map(fields => ({
+    ...fields,
+    z: fields.z ?? 0,
+    label: fields.label ?? ''
 }));
 
 const exactFields = presentFields.map(fields => ({
@@ -54,6 +65,7 @@ const bytes = {
     plain: plainFields.map(fields => Plain.serialize(fields)),
     present: presentFields.map(fields => Optional.serialize(fields)),
     absent: absentFields.map(fields => Optional.serialize(fields)),
+    full: fullFields.map(fields => Full.serialize(fields)),
     exact: exactFields.map(fields => Exact.serialize(fields)),
     ranged: exactFields.map(fields => Ranged.serialize(fields)),
     rangedV1: plainFields.map(fields => RangedV1.serialize(fields)),
@@ -312,6 +324,7 @@ const groups: Group[] = [
             writes('Plain', Plain, plainFields, bytes.plain),
             writes('Optional: absent', Optional, absentFields, bytes.absent),
             writes('Optional: present', Optional, presentFields, bytes.present),
+            writes('Full: required', Full, fullFields, bytes.full),
             writes('Exact', Exact, exactFields, bytes.exact),
             writes('Ranged', Ranged, exactFields, bytes.ranged)
         ]

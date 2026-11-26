@@ -21,6 +21,16 @@ message Optional {
     label: string?;
 }
 
+/// The same fields as `Optional`, all required
+message Full {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+    z: float64;
+    label: string;
+}
+
 /// The same fields and `z`, in a message that reads its own version alone
 message Exact (version: 2) {
     x: float64;
