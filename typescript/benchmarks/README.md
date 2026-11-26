@@ -426,7 +426,8 @@ without the samples, they took as long as in the other processes.
 `yarn bench:lists` compares how tafla and the other libraries write and read
 lists of 10, 100 and 10,000 distinct strings: 8, 16 and 256 characters of
 ASCII, 16 with two of 2 bytes, 16 of ASCII with one character of 2 bytes in
-every tenth string, and 8 and 256 of 3 bytes. tafla writes each list in two
+every tenth string, and in every string but the first, and 8 and 256 of 3
+bytes. tafla writes each list in two
 ways, each written with a `TableBuilder` by hand and by the code that
 tafla-gen generates from `strings/lists/lists.tafla` into
 `strings/lists/generated/`:
@@ -436,8 +437,9 @@ tafla-gen generates from `strings/lists/lists.tafla` into
   which the suite checks. tafla reads every string with
   `getStringVector()`, tafla-gen with its getter's `StringVector` and
   `toArray()`, which calls it, and **tafla [string] each** reads them a
-  string at a time with `StringVector.get(i)`, which shows what decoding a
-  run of ASCII at once saves.
+  string at a time with `StringVector.get(i)`. `getStringVector()` decodes
+  the strings after two of ASCII in a row in runs of at most 16 KiB, and
+  slices them from each run, so **each** shows what that saves.
 - **`[Name]`**, how a schema holds a list of strings without one: a vector
   of tables of one string each. tafla records each table in place with
   `setVectorInPlace()` and reads each string with `getString()`, and
@@ -459,7 +461,8 @@ array; a **length before each string**, as a string field holds it; and a
 **table of one string each**, today's vector of tables. The ends are read
 all at once three ways: a string at a time, by decoding the strings as **one
 run** and slicing it when it's ASCII, and by doing so only **if the first
-string is ASCII**, as `getStringVector()` does.
+string is ASCII**. These two compare what a layout whose strings lie in one
+run allows; `getStringVector()` reads runs as the lists suite describes.
 
 ```sh
 uptime
@@ -469,13 +472,16 @@ yarn bench:list-layouts --no-heap --rounds 41
 
 ### Results
 
-One run of each on 2026-11-26, on an Apple M2 Pro with 32 GB in macOS
-27.0.1, with Node 26.13.0, of the commands above. Other processes kept the
-1-minute load average at 3.5 to 5 on the 10 cores. Each table gives a
-group's fastest round when every call took under 1 µs, and its median round
-otherwise, as benk reports, with each time's ratio to the first column. The
-A/A pairs were within 2% of their variants, but for the 10,000 strings of
-256 characters of ASCII, whose rounds fell into two modes.
+The lists suite ran on 2026-11-27, with `--rounds 61`, and the layouts suite
+on the same day with the command above, on an Apple M2 Pro with 32 GB in
+macOS 27.0.1, with Node 26.13.0. Other processes kept the 1-minute load
+average at 4.5 to 7.2 on the 10 cores. Each table gives a group's fastest
+round when every call took under 1 µs, and its median round otherwise, as
+benk reports, with each time's ratio to the first column. The A/A pairs were
+within 2% of their variants, but for two groups of strings of 256
+characters, the last string of 10 and every string of 10,000 of ASCII, at
+1.06 times, whose rounds fell into two modes, as many groups of 10,000
+strings' did.
 
 Encoded size, in bytes: a vector of strings takes 4 bytes for each string
 and 8 for the table's offset and the vector's count beside the strings'
@@ -487,161 +493,191 @@ protobuf and 903 in MessagePack, and 100 of 256 characters of 3 bytes
 
 Serialize:
 
-| Strings                                              | tafla-gen [string] |  tafla [string] | tafla-gen [Name] |    tafla [Name] |     flatbuffers |      protobufjs |        msgpackr |
-| ---------------------------------------------------- | -----------------: | --------------: | ---------------: | --------------: | --------------: | --------------: | --------------: |
-| 10 × 8 chars of ASCII                                |             451 ns |  461 ns (1.02×) |   613 ns (1.36×) |  769 ns (1.71×) | 2.26 µs (5.01×) |  369 ns (0.82×) |  320 ns (0.71×) |
-| 10 × 16 chars of ASCII                               |             652 ns |  660 ns (1.01×) |   814 ns (1.25×) |  955 ns (1.46×) | 2.37 µs (3.63×) |  627 ns (0.96×) |  480 ns (0.74×) |
-| 10 × 256 chars of ASCII                              |            1.38 µs | 1.31 µs (0.95×) |  1.56 µs (1.13×) | 1.66 µs (1.20×) | 3.74 µs (2.71×) | 1.48 µs (1.07×) |  492 ns (0.36×) |
-| 10 × 16 chars, two of 2 bytes                        |             878 ns |  898 ns (1.02×) |  1.05 µs (1.20×) |  1.2 µs (1.37×) |  2.3 µs (2.62×) |  658 ns (0.75×) |  481 ns (0.55×) |
-| 10 × 16 chars, every tenth string one of 2 bytes     |             664 ns |  682 ns (1.03×) |   827 ns (1.25×) |  969 ns (1.46×) |  2.3 µs (3.46×) |  647 ns (0.97×) |  468 ns (0.70×) |
-| 10 × 8 chars of 3 bytes                              |             665 ns |  682 ns (1.03×) |   838 ns (1.26×) |    1 µs (1.50×) | 2.49 µs (3.74×) |  642 ns (0.97×) |  396 ns (0.60×) |
-| 10 × 256 chars of 3 bytes                            |            4.09 µs |    4 µs (0.98×) |   4.2 µs (1.03×) | 4.37 µs (1.07×) | 6.19 µs (1.51×) | 3.59 µs (0.88×) | 1.74 µs (0.43×) |
-| 100 × 8 chars of ASCII                               |            3.13 µs | 3.11 µs (0.99×) |   4.6 µs (1.47×) | 5.54 µs (1.77×) |   21 µs (6.71×) | 3.52 µs (1.12×) | 2.54 µs (0.81×) |
-| 100 × 16 chars of ASCII                              |            5.01 µs | 5.03 µs (1.00×) |  6.51 µs (1.30×) | 7.41 µs (1.48×) | 20.5 µs (4.09×) | 5.22 µs (1.04×) | 3.98 µs (0.79×) |
-| 100 × 256 chars of ASCII                             |            11.5 µs | 10.9 µs (0.95×) |  13.2 µs (1.15×) |   14 µs (1.22×) | 28.3 µs (2.46×) |  9.2 µs (0.80×) | 4.17 µs (0.36×) |
-| 100 × 16 chars, two of 2 bytes                       |            7.57 µs | 7.73 µs (1.02×) |  9.08 µs (1.20×) | 10.3 µs (1.36×) |   22 µs (2.91×) | 5.42 µs (0.72×) | 4.22 µs (0.56×) |
-| 100 × 16 chars, every tenth string one of 2 bytes    |            5.37 µs |  5.4 µs (1.01×) |  6.92 µs (1.29×) | 7.82 µs (1.46×) | 21.3 µs (3.97×) | 5.31 µs (0.99×) |    4 µs (0.74×) |
-| 100 × 8 chars of 3 bytes                             |            5.42 µs | 5.37 µs (0.99×) |  7.05 µs (1.30×) | 8.11 µs (1.50×) | 22.7 µs (4.19×) | 4.61 µs (0.85×) | 3.34 µs (0.62×) |
-| 100 × 256 chars of 3 bytes                           |              40 µs | 39.7 µs (0.99×) |  42.9 µs (1.07×) | 43.7 µs (1.09×) | 54.4 µs (1.36×) | 31.3 µs (0.78×) | 16.8 µs (0.42×) |
-| 10,000 × 8 chars of ASCII                            |             293 µs |  288 µs (0.98×) |   418 µs (1.43×) |  529 µs (1.81×) | 1.96 ms (6.69×) |  312 µs (1.06×) |  244 µs (0.83×) |
-| 10,000 × 16 chars of ASCII                           |             476 µs |  480 µs (1.01×) |   604 µs (1.27×) |  713 µs (1.50×) | 1.98 ms (4.16×) |  483 µs (1.01×) |  384 µs (0.81×) |
-| 10,000 × 256 chars of ASCII                          |             1.1 ms | 1.11 ms (1.01×) |  1.29 ms (1.17×) | 1.42 ms (1.29×) | 2.54 ms (2.31×) |  789 µs (0.72×) |  424 µs (0.39×) |
-| 10,000 × 16 chars, two of 2 bytes                    |             709 µs |  707 µs (1.00×) |   841 µs (1.19×) |  947 µs (1.34×) | 1.94 ms (2.74×) |  488 µs (0.69×) |  401 µs (0.57×) |
-| 10,000 × 16 chars, every tenth string one of 2 bytes |             511 µs |  506 µs (0.99×) |   643 µs (1.26×) |  751 µs (1.47×) | 1.98 ms (3.87×) |  482 µs (0.94×) |  396 µs (0.77×) |
-| 10,000 × 8 chars of 3 bytes                          |             505 µs |  507 µs (1.00×) |   644 µs (1.28×) |  759 µs (1.50×) | 2.16 ms (4.28×) |  382 µs (0.76×) |  330 µs (0.65×) |
-| 10,000 × 256 chars of 3 bytes                        |            3.81 ms | 3.78 ms (0.99×) |  3.99 ms (1.05×) | 4.38 ms (1.15×) |  4.6 ms (1.21×) |  2.8 ms (0.73×) | 1.72 ms (0.45×) |
+| Strings                                                      | tafla-gen [string] |  tafla [string] | tafla-gen [Name] |    tafla [Name] |     flatbuffers |      protobufjs |        msgpackr |
+| ------------------------------------------------------------ | -----------------: | --------------: | ---------------: | --------------: | --------------: | --------------: | --------------: |
+| 10 × 8 chars of ASCII                                        |             441 ns |  455 ns (1.03×) |   626 ns (1.42×) |  755 ns (1.71×) |  2.3 µs (5.22×) |  346 ns (0.78×) |  321 ns (0.73×) |
+| 10 × 16 chars of ASCII                                       |             638 ns |  658 ns (1.03×) |   822 ns (1.29×) |  952 ns (1.49×) | 2.34 µs (3.67×) |  576 ns (0.90×) |  470 ns (0.74×) |
+| 10 × 256 chars of ASCII                                      |            1.28 µs | 1.33 µs (1.04×) |  1.55 µs (1.21×) | 1.65 µs (1.29×) | 3.45 µs (2.70×) |  1.5 µs (1.17×) |  477 ns (0.37×) |
+| 10 × 16 chars, two of 2 bytes                                |             894 ns |  893 ns (1.00×) |  1.05 µs (1.17×) | 1.21 µs (1.35×) | 2.37 µs (2.65×) |  655 ns (0.73×) |  489 ns (0.55×) |
+| 10 × 16 chars, every tenth string one of 2 bytes             |             681 ns |  680 ns (1.00×) |   837 ns (1.23×) |  984 ns (1.44×) | 2.41 µs (3.54×) |  649 ns (0.95×) |  457 ns (0.67×) |
+| 10 × 16 chars, every string but the first one of 2 bytes     |             837 ns |  834 ns (1.00×) |   993 ns (1.19×) | 1.14 µs (1.36×) | 2.38 µs (2.84×) |  645 ns (0.77×) |  465 ns (0.56×) |
+| 10 × 8 chars of 3 bytes                                      |             689 ns |  697 ns (1.01×) |   850 ns (1.23×) |  998 ns (1.45×) | 2.54 µs (3.69×) |  655 ns (0.95×) |  402 ns (0.58×) |
+| 10 × 256 chars of 3 bytes                                    |            4.09 µs | 4.05 µs (0.99×) |  4.29 µs (1.05×) | 4.43 µs (1.08×) | 6.25 µs (1.53×) | 3.49 µs (0.85×) | 1.73 µs (0.42×) |
+| 100 × 8 chars of ASCII                                       |            3.04 µs | 3.06 µs (1.01×) |  4.68 µs (1.54×) | 5.45 µs (1.79×) |   20 µs (6.58×) | 3.41 µs (1.12×) |  2.4 µs (0.79×) |
+| 100 × 16 chars of ASCII                                      |            5.08 µs | 5.04 µs (0.99×) |  6.77 µs (1.33×) | 7.58 µs (1.49×) | 21.1 µs (4.15×) | 5.31 µs (1.05×) |  3.9 µs (0.77×) |
+| 100 × 256 chars of ASCII                                     |            11.4 µs |   11 µs (0.96×) |  13.4 µs (1.18×) | 14.2 µs (1.25×) | 30.2 µs (2.65×) | 10.4 µs (0.91×) | 4.17 µs (0.37×) |
+| 100 × 16 chars, two of 2 bytes                               |            7.47 µs | 7.42 µs (0.99×) |   8.9 µs (1.19×) |   10 µs (1.34×) | 21.1 µs (2.82×) |  5.4 µs (0.72×) | 4.17 µs (0.56×) |
+| 100 × 16 chars, every tenth string one of 2 bytes            |            5.35 µs | 5.37 µs (1.00×) |  6.86 µs (1.28×) | 7.94 µs (1.48×) | 21.9 µs (4.09×) | 5.32 µs (0.99×) | 3.95 µs (0.74×) |
+| 100 × 16 chars, every string but the first one of 2 bytes    |            7.13 µs | 7.07 µs (0.99×) |  8.56 µs (1.20×) | 9.66 µs (1.35×) | 22.1 µs (3.10×) | 5.45 µs (0.76×) | 4.19 µs (0.59×) |
+| 100 × 8 chars of 3 bytes                                     |            5.35 µs | 5.33 µs (1.00×) |  6.88 µs (1.29×) | 7.95 µs (1.49×) | 23.2 µs (4.34×) |  4.6 µs (0.86×) | 3.34 µs (0.62×) |
+| 100 × 256 chars of 3 bytes                                   |            39.2 µs | 39.5 µs (1.01×) |  42.6 µs (1.09×) | 46.8 µs (1.19×) |   65 µs (1.66×) | 28.2 µs (0.72×) | 16.5 µs (0.42×) |
+| 10,000 × 8 chars of ASCII                                    |             284 µs |  284 µs (1.00×) |   414 µs (1.46×) |  518 µs (1.82×) | 1.95 ms (6.87×) |  305 µs (1.07×) |  237 µs (0.83×) |
+| 10,000 × 16 chars of ASCII                                   |             473 µs |  472 µs (1.00×) |   612 µs (1.29×) |  708 µs (1.50×) | 1.98 ms (4.19×) |  477 µs (1.01×) |  379 µs (0.80×) |
+| 10,000 × 256 chars of ASCII                                  |            1.07 ms | 1.07 ms (1.00×) |  1.29 ms (1.21×) | 1.39 ms (1.30×) | 2.67 ms (2.50×) |  809 µs (0.76×) |  430 µs (0.40×) |
+| 10,000 × 16 chars, two of 2 bytes                            |             725 µs |  726 µs (1.00×) |   869 µs (1.20×) |  991 µs (1.37×) | 1.97 ms (2.72×) |  487 µs (0.67×) |  411 µs (0.57×) |
+| 10,000 × 16 chars, every tenth string one of 2 bytes         |             513 µs |  511 µs (1.00×) |   649 µs (1.27×) |  750 µs (1.46×) | 1.97 ms (3.84×) |  472 µs (0.92×) |  394 µs (0.77×) |
+| 10,000 × 16 chars, every string but the first one of 2 bytes |             682 µs |  663 µs (0.97×) |   791 µs (1.16×) |  901 µs (1.32×) | 1.97 ms (2.89×) |  467 µs (0.68×) |  394 µs (0.58×) |
+| 10,000 × 8 chars of 3 bytes                                  |             511 µs |  493 µs (0.96×) |   629 µs (1.23×) |  739 µs (1.45×) | 2.17 ms (4.25×) |  371 µs (0.73×) |  320 µs (0.63×) |
+| 10,000 × 256 chars of 3 bytes                                |            3.75 ms | 3.67 ms (0.98×) |  3.88 ms (1.03×) | 4.03 ms (1.07×) | 4.47 ms (1.19×) | 2.76 ms (0.74×) | 1.72 ms (0.46×) |
 
 Deserialize:
 
-| Strings                                              | tafla-gen [string] | tafla [string] each | tafla-gen [Name] |    tafla [Name] |      flatbuffers |      protobufjs |        msgpackr |
-| ---------------------------------------------------- | -----------------: | ------------------: | ---------------: | --------------: | ---------------: | --------------: | --------------: |
-| 10 × 8 chars of ASCII                                |             246 ns |      326 ns (1.33×) |   389 ns (1.58×) |  351 ns (1.43×) |   929 ns (3.78×) |  240 ns (0.98×) |  225 ns (0.91×) |
-| 10 × 16 chars of ASCII                               |             231 ns |      489 ns (2.12×) |   544 ns (2.35×) |  512 ns (2.22×) |   933 ns (4.04×) |  374 ns (1.62×) |  657 ns (2.84×) |
-| 10 × 256 chars of ASCII                              |             381 ns |      967 ns (2.54×) |  1.07 µs (2.81×) |  992 ns (2.60×) |  1.05 µs (2.76×) | 1.04 µs (2.73×) |  979 ns (2.57×) |
-| 10 × 16 chars, two of 2 bytes                        |             734 ns |      764 ns (1.04×) |   805 ns (1.10×) |  793 ns (1.08×) |  1.27 µs (1.73×) | 1.49 µs (2.03×) |  703 ns (0.96×) |
-| 10 × 16 chars, every tenth string one of 2 bytes     |             697 ns |      528 ns (0.76×) |   574 ns (0.82×) |  547 ns (0.78×) |   962 ns (1.38×) |  481 ns (0.69×) |  657 ns (0.94×) |
-| 10 × 8 chars of 3 bytes                              |             636 ns |      690 ns (1.08×) |   716 ns (1.13×) |  706 ns (1.11×) |  1.82 µs (2.86×) | 1.97 µs (3.10×) |  626 ns (0.98×) |
-| 10 × 256 chars of 3 bytes                            |            3.89 µs |     3.97 µs (1.02×) |  4.02 µs (1.03×) | 3.98 µs (1.02×) |  4.51 µs (1.16×) | 4.06 µs (1.04×) |  4.4 µs (1.13×) |
-| 100 × 8 chars of ASCII                               |            1.07 µs |     2.89 µs (2.70×) |  3.23 µs (3.02×) | 2.95 µs (2.76×) |  9.09 µs (8.50×) | 2.41 µs (2.25×) | 2.18 µs (2.04×) |
-| 100 × 16 chars of ASCII                              |             864 ns |     4.57 µs (5.29×) |  4.93 µs (5.71×) | 4.65 µs (5.38×) | 8.94 µs (10.35×) | 3.77 µs (4.36×) | 6.52 µs (7.55×) |
-| 100 × 256 chars of ASCII                             |            1.93 µs |     9.19 µs (4.76×) |  9.55 µs (4.95×) |  9.3 µs (4.82×) |    10 µs (5.18×) | 10.1 µs (5.23×) | 9.63 µs (4.99×) |
-| 100 × 16 chars, two of 2 bytes                       |            6.76 µs |     7.18 µs (1.06×) |  7.52 µs (1.11×) | 7.28 µs (1.08×) |  12.2 µs (1.80×) | 14.7 µs (2.17×) | 6.74 µs (1.00×) |
-| 100 × 16 chars, every tenth string one of 2 bytes    |            5.58 µs |     4.93 µs (0.88×) |  5.36 µs (0.96×) | 5.01 µs (0.90×) |  9.31 µs (1.67×) | 4.94 µs (0.89×) | 6.59 µs (1.18×) |
-| 100 × 8 chars of 3 bytes                             |            5.87 µs |     6.31 µs (1.07×) |  6.71 µs (1.14×) | 6.38 µs (1.09×) |  18.6 µs (3.17×) | 19.7 µs (3.36×) | 6.25 µs (1.06×) |
-| 100 × 256 chars of 3 bytes                           |            38.6 µs |       39 µs (1.01×) |  39.5 µs (1.02×) | 39.1 µs (1.01×) |  45.2 µs (1.17×) | 40.7 µs (1.05×) | 44.2 µs (1.15×) |
-| 10,000 × 8 chars of ASCII                            |            92.8 µs |      279 µs (3.01×) |   308 µs (3.32×) |  290 µs (3.12×) |   890 µs (9.59×) |  237 µs (2.55×) |  213 µs (2.30×) |
-| 10,000 × 16 chars of ASCII                           |            71.4 µs |      447 µs (6.26×) |   478 µs (6.69×) |  460 µs (6.44×) |  897 µs (12.56×) |  372 µs (5.21×) |  648 µs (9.08×) |
-| 10,000 × 256 chars of ASCII                          |             158 µs |      940 µs (5.95×) |   952 µs (6.03×) |  939 µs (5.94×) |   990 µs (6.27×) |    1 ms (6.33×) |  965 µs (6.11×) |
-| 10,000 × 16 chars, two of 2 bytes                    |             667 µs |      702 µs (1.05×) |   729 µs (1.09×) |  708 µs (1.06×) |  1.22 ms (1.83×) | 1.44 ms (2.16×) |  666 µs (1.00×) |
-| 10,000 × 16 chars, every tenth string one of 2 bytes |             541 µs |      487 µs (0.90×) |   530 µs (0.98×) |  499 µs (0.92×) |   938 µs (1.73×) |  501 µs (0.93×) |  678 µs (1.25×) |
-| 10,000 × 8 chars of 3 bytes                          |             555 µs |      600 µs (1.08×) |   634 µs (1.14×) |  605 µs (1.09×) |  1.71 ms (3.08×) |  1.9 ms (3.42×) |  590 µs (1.06×) |
-| 10,000 × 256 chars of 3 bytes                        |            3.95 ms |     4.04 ms (1.02×) |  4.06 ms (1.03×) | 4.04 ms (1.02×) |  4.56 ms (1.15×) | 4.12 ms (1.04×) | 4.55 ms (1.15×) |
+| Strings                                                      | tafla-gen [string] | tafla [string] each | tafla-gen [Name] |    tafla [Name] |     flatbuffers |      protobufjs |        msgpackr |
+| ------------------------------------------------------------ | -----------------: | ------------------: | ---------------: | --------------: | --------------: | --------------: | --------------: |
+| 10 × 8 chars of ASCII                                        |             274 ns |      328 ns (1.20×) |   373 ns (1.36×) |  351 ns (1.28×) |  918 ns (3.35×) |  249 ns (0.91×) |  226 ns (0.82×) |
+| 10 × 16 chars of ASCII                                       |             287 ns |      498 ns (1.74×) |   538 ns (1.87×) |  515 ns (1.79×) |  935 ns (3.26×) |  381 ns (1.33×) |  663 ns (2.31×) |
+| 10 × 256 chars of ASCII                                      |             486 ns |      957 ns (1.97×) |  1.02 µs (2.10×) |  953 ns (1.96×) | 1.03 µs (2.12×) | 1.01 µs (2.08×) |  966 ns (1.99×) |
+| 10 × 16 chars, two of 2 bytes                                |             765 ns |      771 ns (1.01×) |   807 ns (1.05×) |  794 ns (1.04×) | 1.32 µs (1.73×) | 1.46 µs (1.91×) |  702 ns (0.92×) |
+| 10 × 16 chars, every tenth string one of 2 bytes             |             576 ns |      525 ns (0.91×) |   569 ns (0.99×) |  546 ns (0.95×) |  955 ns (1.66×) |  475 ns (0.82×) |  660 ns (1.15×) |
+| 10 × 16 chars, every string but the first one of 2 bytes     |             746 ns |      758 ns (1.02×) |   800 ns (1.07×) |  779 ns (1.04×) | 1.22 µs (1.64×) | 1.35 µs (1.81×) |  694 ns (0.93×) |
+| 10 × 8 chars of 3 bytes                                      |             650 ns |      669 ns (1.03×) |   707 ns (1.09×) |  694 ns (1.07×) | 1.84 µs (2.83×) | 1.96 µs (3.02×) |  633 ns (0.97×) |
+| 10 × 256 chars of 3 bytes                                    |            3.92 µs |     3.92 µs (1.00×) |  3.94 µs (1.01×) | 3.94 µs (1.01×) | 4.51 µs (1.15×) | 3.98 µs (1.02×) | 4.48 µs (1.14×) |
+| 100 × 8 chars of ASCII                                       |            1.36 µs |     2.85 µs (2.10×) |  3.22 µs (2.37×) | 2.94 µs (2.16×) | 8.79 µs (6.46×) | 2.39 µs (1.76×) | 2.17 µs (1.60×) |
+| 100 × 16 chars of ASCII                                      |            1.17 µs |     4.58 µs (3.91×) |  4.96 µs (4.24×) | 4.68 µs (4.00×) | 8.88 µs (7.59×) | 3.85 µs (3.29×) | 6.56 µs (5.61×) |
+| 100 × 256 chars of ASCII                                     |            2.56 µs |     9.07 µs (3.54×) |  9.34 µs (3.65×) | 8.93 µs (3.49×) | 9.71 µs (3.79×) |   10 µs (3.91×) | 9.58 µs (3.74×) |
+| 100 × 16 chars, two of 2 bytes                               |            6.88 µs |     7.16 µs (1.04×) |  7.41 µs (1.08×) | 7.24 µs (1.05×) | 11.9 µs (1.73×) | 14.3 µs (2.08×) | 6.83 µs (0.99×) |
+| 100 × 16 chars, every tenth string one of 2 bytes            |            3.83 µs |     5.04 µs (1.32×) |  5.41 µs (1.41×) |  5.1 µs (1.33×) | 9.27 µs (2.42×) | 5.04 µs (1.32×) | 6.73 µs (1.76×) |
+| 100 × 16 chars, every string but the first one of 2 bytes    |            7.49 µs |     7.59 µs (1.01×) |  8.04 µs (1.07×) | 7.68 µs (1.03×) | 11.8 µs (1.58×) | 16.8 µs (2.24×) | 7.54 µs (1.01×) |
+| 100 × 8 chars of 3 bytes                                     |             5.8 µs |     6.15 µs (1.06×) |   6.5 µs (1.12×) | 6.22 µs (1.07×) | 17.2 µs (2.97×) | 19.3 µs (3.33×) | 5.96 µs (1.03×) |
+| 100 × 256 chars of 3 bytes                                   |            37.7 µs |     37.9 µs (1.01×) |  38.6 µs (1.02×) | 38.8 µs (1.03×) | 44.5 µs (1.18×) | 39.3 µs (1.04×) | 43.8 µs (1.16×) |
+| 10,000 × 8 chars of ASCII                                    |             120 µs |      275 µs (2.29×) |   313 µs (2.61×) |  288 µs (2.40×) |  883 µs (7.36×) |  236 µs (1.97×) |  211 µs (1.76×) |
+| 10,000 × 16 chars of ASCII                                   |             104 µs |      445 µs (4.28×) |   481 µs (4.62×) |  457 µs (4.39×) |  875 µs (8.41×) |  378 µs (3.63×) |  649 µs (6.24×) |
+| 10,000 × 256 chars of ASCII                                  |             300 µs |      908 µs (3.03×) |   939 µs (3.13×) |  888 µs (2.96×) |  976 µs (3.25×) |  983 µs (3.28×) |  951 µs (3.17×) |
+| 10,000 × 16 chars, two of 2 bytes                            |             705 µs |      718 µs (1.02×) |   762 µs (1.08×) |  745 µs (1.06×) | 1.22 ms (1.73×) | 1.52 ms (2.16×) |  703 µs (1.00×) |
+| 10,000 × 16 chars, every tenth string one of 2 bytes         |             351 µs |      465 µs (1.32×) |   521 µs (1.48×) |  494 µs (1.41×) |  910 µs (2.59×) |  494 µs (1.41×) |  661 µs (1.88×) |
+| 10,000 × 16 chars, every string but the first one of 2 bytes |             698 µs |      708 µs (1.01×) |   755 µs (1.08×) |  734 µs (1.05×) | 1.12 ms (1.60×) | 1.45 ms (2.08×) |  663 µs (0.95×) |
+| 10,000 × 8 chars of 3 bytes                                  |             575 µs |      583 µs (1.01×) |   643 µs (1.12×) |  613 µs (1.07×) | 1.68 ms (2.92×) | 1.94 ms (3.37×) |  595 µs (1.03×) |
+| 10,000 × 256 chars of 3 bytes                                |            3.86 ms |     3.89 ms (1.01×) |   3.9 ms (1.01×) | 3.87 ms (1.00×) | 4.47 ms (1.16×) | 3.97 ms (1.03×) | 4.45 ms (1.15×) |
 
 Read the last string, without reading the others:
 
-| Strings                                              | tafla-gen [string] | tafla-gen [Name] |    tafla [Name] |    flatbuffers |
-| ---------------------------------------------------- | -----------------: | ---------------: | --------------: | -------------: |
-| 10 × 8 chars of ASCII                                |            80.0 ns |  95.3 ns (1.19×) | 83.6 ns (1.04×) | 148 ns (1.85×) |
-| 10 × 16 chars of ASCII                               |            96.2 ns |   113 ns (1.17×) |  102 ns (1.06×) | 146 ns (1.52×) |
-| 10 × 256 chars of ASCII                              |             144 ns |   152 ns (1.06×) |  145 ns (1.01×) | 149 ns (1.03×) |
-| 10 × 16 chars, two of 2 bytes                        |             121 ns |   129 ns (1.07×) |  128 ns (1.06×) | 174 ns (1.44×) |
-| 10 × 16 chars, every tenth string one of 2 bytes     |             123 ns |   129 ns (1.05×) |  129 ns (1.05×) | 165 ns (1.34×) |
-| 10 × 8 chars of 3 bytes                              |             111 ns |   119 ns (1.07×) |  116 ns (1.05×) | 223 ns (2.01×) |
-| 10 × 256 chars of 3 bytes                            |             447 ns |   443 ns (0.99×) |  439 ns (0.98×) | 479 ns (1.07×) |
-| 100 × 8 chars of ASCII                               |            81.6 ns |  87.8 ns (1.08×) | 87.1 ns (1.07×) | 144 ns (1.76×) |
-| 100 × 16 chars of ASCII                              |            97.0 ns |   103 ns (1.06×) |  102 ns (1.05×) | 141 ns (1.45×) |
-| 100 × 256 chars of ASCII                             |             148 ns |   157 ns (1.06×) |  146 ns (0.99×) | 160 ns (1.08×) |
-| 100 × 16 chars, two of 2 bytes                       |             122 ns |   126 ns (1.03×) |  126 ns (1.03×) | 178 ns (1.46×) |
-| 100 × 16 chars, every tenth string one of 2 bytes    |             124 ns |   129 ns (1.04×) |  127 ns (1.02×) | 172 ns (1.39×) |
-| 100 × 8 chars of 3 bytes                             |             120 ns |   119 ns (0.99×) |  121 ns (1.01×) | 228 ns (1.90×) |
-| 100 × 256 chars of 3 bytes                           |             449 ns |   442 ns (0.98×) |  454 ns (1.01×) | 488 ns (1.09×) |
-| 10,000 × 8 chars of ASCII                            |            84.4 ns |  86.8 ns (1.03×) | 89.2 ns (1.06×) | 148 ns (1.75×) |
-| 10,000 × 16 chars of ASCII                           |             104 ns |   102 ns (0.98×) |  108 ns (1.04×) | 148 ns (1.42×) |
-| 10,000 × 256 chars of ASCII                          |             150 ns |   153 ns (1.02×) |  148 ns (0.99×) | 154 ns (1.03×) |
-| 10,000 × 16 chars, two of 2 bytes                    |             127 ns |   127 ns (1.00×) |  131 ns (1.03×) | 178 ns (1.40×) |
-| 10,000 × 16 chars, every tenth string one of 2 bytes |             130 ns |   130 ns (1.00×) |  132 ns (1.02×) | 172 ns (1.32×) |
-| 10,000 × 8 chars of 3 bytes                          |             116 ns |   120 ns (1.03×) |  120 ns (1.03×) | 228 ns (1.97×) |
-| 10,000 × 256 chars of 3 bytes                        |             449 ns |   448 ns (1.00×) |  459 ns (1.02×) | 492 ns (1.10×) |
+| Strings                                                      | tafla-gen [string] | tafla-gen [Name] |    tafla [Name] |    flatbuffers |
+| ------------------------------------------------------------ | -----------------: | ---------------: | --------------: | -------------: |
+| 10 × 8 chars of ASCII                                        |            80.1 ns |  84.6 ns (1.06×) | 84.0 ns (1.05×) | 146 ns (1.82×) |
+| 10 × 16 chars of ASCII                                       |            97.0 ns |   102 ns (1.05×) |  101 ns (1.04×) | 146 ns (1.51×) |
+| 10 × 256 chars of ASCII                                      |             141 ns |   143 ns (1.01×) |  139 ns (0.99×) | 151 ns (1.07×) |
+| 10 × 16 chars, two of 2 bytes                                |             119 ns |   124 ns (1.04×) |  126 ns (1.06×) | 171 ns (1.44×) |
+| 10 × 16 chars, every tenth string one of 2 bytes             |             124 ns |   125 ns (1.01×) |  128 ns (1.03×) | 165 ns (1.33×) |
+| 10 × 16 chars, every string but the first one of 2 bytes     |             123 ns |   126 ns (1.02×) |  128 ns (1.04×) | 170 ns (1.38×) |
+| 10 × 8 chars of 3 bytes                                      |             112 ns |   116 ns (1.04×) |  117 ns (1.04×) | 226 ns (2.02×) |
+| 10 × 256 chars of 3 bytes                                    |             427 ns |   430 ns (1.01×) |  426 ns (1.00×) | 491 ns (1.15×) |
+| 100 × 8 chars of ASCII                                       |            81.1 ns |  86.0 ns (1.06×) | 87.3 ns (1.08×) | 146 ns (1.80×) |
+| 100 × 16 chars of ASCII                                      |            97.5 ns |   103 ns (1.06×) |  103 ns (1.06×) | 147 ns (1.51×) |
+| 100 × 256 chars of ASCII                                     |             140 ns |   144 ns (1.03×) |  140 ns (1.00×) | 149 ns (1.06×) |
+| 100 × 16 chars, two of 2 bytes                               |             121 ns |   125 ns (1.03×) |  124 ns (1.02×) | 171 ns (1.41×) |
+| 100 × 16 chars, every tenth string one of 2 bytes            |             128 ns |   129 ns (1.01×) |  130 ns (1.02×) | 170 ns (1.33×) |
+| 100 × 16 chars, every string but the first one of 2 bytes    |             123 ns |   127 ns (1.03×) |  128 ns (1.04×) | 171 ns (1.39×) |
+| 100 × 8 chars of 3 bytes                                     |             112 ns |   116 ns (1.04×) |  115 ns (1.03×) | 226 ns (2.02×) |
+| 100 × 256 chars of 3 bytes                                   |             426 ns |   429 ns (1.01×) |  426 ns (1.00×) | 484 ns (1.14×) |
+| 10,000 × 8 chars of ASCII                                    |            81.7 ns |  83.7 ns (1.02×) | 85.2 ns (1.04×) | 140 ns (1.71×) |
+| 10,000 × 16 chars of ASCII                                   |            99.0 ns |  99.7 ns (1.01×) |  102 ns (1.03×) | 141 ns (1.42×) |
+| 10,000 × 256 chars of ASCII                                  |             141 ns |   143 ns (1.01×) |  139 ns (0.99×) | 147 ns (1.04×) |
+| 10,000 × 16 chars, two of 2 bytes                            |             124 ns |   126 ns (1.02×) |  128 ns (1.03×) | 182 ns (1.47×) |
+| 10,000 × 16 chars, every tenth string one of 2 bytes         |             123 ns |   125 ns (1.02×) |  128 ns (1.04×) | 171 ns (1.39×) |
+| 10,000 × 16 chars, every string but the first one of 2 bytes |             123 ns |   125 ns (1.02×) |  127 ns (1.03×) | 171 ns (1.39×) |
+| 10,000 × 8 chars of 3 bytes                                  |             112 ns |   115 ns (1.03×) |  116 ns (1.04×) | 227 ns (2.03×) |
+| 10,000 × 256 chars of 3 bytes                                |             427 ns |   428 ns (1.00×) |  426 ns (1.00×) | 493 ns (1.15×) |
 
-- A vector of strings is written in 0.68–0.97 times the time of tafla-gen's
+- A vector of strings is written in 0.65–0.97 times the time of tafla-gen's
   vector of tables of one string each, which creates and writes a table for
-  each string, and in 0.55–0.93 times the time of `TableBuilder`'s.
-  protobufjs writes the lists in 0.69–1.12 times the time of the vector of
-  strings, and msgpackr, which reuses its buffer, in 0.36–0.83 times.
-- Lists of ASCII are read in 0.15–0.63 times the time of the vector of
-  tables, since their strings lie in one run, which is decoded once. Read a
-  string at a time, a vector of strings takes 0.84–0.99 times its time,
-  without a reader for each table. Lists outside ASCII are read in 0.87–0.98
-  times its time.
-- The lists of ASCII with a character of 2 bytes in every tenth string are
-  read in 1.02–1.21 times the time of the vector of tables, and 1.11–1.32
-  times that of reading them a string at a time: their first string is
-  ASCII, so their run is decoded, and then read a string at a time.
-- A string is found from its ends in either vector, in 80–450 ns, most of
+  each string, and in 0.55–0.91 times the time of `TableBuilder`'s.
+  protobufjs writes the lists in 0.67–1.17 times the time of the vector of
+  strings, and msgpackr, which reuses its buffer, in 0.37–0.83 times.
+- Lists of ASCII are read in 0.22–0.73 times the time of the vector of
+  tables, and in 0.23–0.84 times the time of reading each string, since
+  their strings are decoded in runs. Read a string at a time, a vector of
+  strings takes 0.88–1.00 times the time of the vector of tables, without a
+  reader for each table.
+- Lists outside ASCII are read in 0.89–0.99 times the time of the vector of
+  tables, and in 0.94–1.00 times that of reading each string.
+- Lists of ASCII with a character of 2 bytes in every tenth string are read
+  in 0.67–0.71 times the time of the vector of tables from 100 strings, and
+  in 0.75–0.76 times that of reading each string, since their strings of
+  ASCII are sliced from the runs too. Of 10 strings, they take 1.01 and 1.10
+  times as long. Lists whose first string alone is ASCII take 0.92–0.93 and
+  0.98–0.99 times as long.
+- msgpackr reads lists outside ASCII in 0.92–1.16 times the time of the
+  vector of strings, and protobufjs in 1.02–3.37 times. For lists of ASCII,
+  msgpackr takes 0.82–6.24 times as long, and protobufjs 0.91–3.91 times.
+- A string is found from its ends in either vector, in 80–427 ns, most of
   which is the reader's construction and the string's decoding: the vector
-  of tables takes 0.98–1.19 times as long, and FlatBuffers 1.03–2.01 times.
+  of tables takes 1.00–1.06 times as long, and FlatBuffers 1.04–2.03 times.
 
 Layouts, read every string, with the ends' time and each layout's ratio to
 it:
 
-| Strings                           |    ends | ends, run decoded once | ends, run if first is ASCII | ends as a Uint32Array | length before each string | table of one string each |
-| --------------------------------- | ------: | ---------------------: | --------------------------: | --------------------: | ------------------------: | -----------------------: |
-| 10 × 8 chars of ASCII             |  285 ns |                  0.65× |                       0.90× |                 1.07× |                     1.01× |                    1.04× |
-| 10 × 16 chars of ASCII            |  418 ns |                  0.40× |                       0.59× |                 1.06× |                     1.00× |                    1.04× |
-| 10 × 256 chars of ASCII           |  897 ns |                  0.29× |                       0.43× |                 1.03× |                     1.00× |                    1.01× |
-| 10 × 16 chars, two of 2 bytes     | 1.42 µs |                  1.28× |                       1.14× |                 1.01× |                     1.02× |                    1.01× |
-| 10 × 8 chars of 3 bytes           | 1.87 µs |                  1.14× |                       1.12× |                 1.01× |                     1.01× |                    1.00× |
-| 10 × 256 chars of 3 bytes         | 3.94 µs |                  1.74× |                       1.10× |                 1.00× |                     1.00× |                    1.00× |
-| 100 × 8 chars of ASCII            | 2.47 µs |                  0.33× |                       0.36× |                 1.01× |                     0.99× |                    1.05× |
-| 100 × 16 chars of ASCII           | 3.83 µs |                  0.16× |                       0.18× |                 1.00× |                     0.99× |                    1.03× |
-| 100 × 256 chars of ASCII          | 8.83 µs |                  0.19× |                       0.19× |                 1.01× |                     0.99× |                    1.01× |
-| 100 × 16 chars, two of 2 bytes    | 13.4 µs |                  1.18× |                       1.01× |                 1.01× |                     1.01× |                    1.01× |
-| 100 × 8 chars of 3 bytes          | 17.9 µs |                  1.06× |                       1.02× |                 1.00× |                     1.02× |                    1.01× |
-| 100 × 256 chars of 3 bytes        | 37.9 µs |                  1.72× |                       1.01× |                 1.00× |                     1.00× |                    1.00× |
-| 10,000 × 8 chars of ASCII         |  238 µs |                  0.29× |                       0.29× |                 1.00× |                     1.01× |                    1.07× |
-| 10,000 × 16 chars of ASCII        |  380 µs |                  0.14× |                       0.13× |                 1.01× |                     1.01× |                    1.05× |
-| 10,000 × 256 chars of ASCII       |  888 µs |                  0.15× |                       0.15× |                 0.98× |                     0.99× |                    1.01× |
-| 10,000 × 16 chars, two of 2 bytes | 1.34 ms |                  1.16× |                       1.01× |                 1.01× |                     1.01× |                    1.01× |
-| 10,000 × 8 chars of 3 bytes       | 1.75 ms |                  1.06× |                       1.00× |                 1.01× |                     1.02× |                    1.02× |
-| 10,000 × 256 chars of 3 bytes     | 3.89 ms |                  1.68× |                       0.99× |                 1.00× |                     0.99× |                    0.99× |
+| Strings                                                      |    ends | ends, run decoded once | ends, run if first is ASCII | ends as a Uint32Array | length before each string | table of one string each |
+| ------------------------------------------------------------ | ------: | ---------------------: | --------------------------: | --------------------: | ------------------------: | -----------------------: |
+| 10 × 8 chars of ASCII                                        |  284 ns |                  0.66× |                       0.90× |                 1.07× |                     1.00× |                    1.04× |
+| 10 × 16 chars of ASCII                                       |  419 ns |                  0.39× |                       0.59× |                 1.05× |                     0.99× |                    1.04× |
+| 10 × 256 chars of ASCII                                      |  901 ns |                  0.28× |                       0.42× |                 1.02× |                     1.00× |                    1.01× |
+| 10 × 16 chars, two of 2 bytes                                | 1.51 µs |                  1.24× |                       1.08× |                 1.04× |                     0.97× |                    0.99× |
+| 10 × 16 chars, every tenth string one of 2 bytes             |  501 ns |                  1.58× |                       1.74× |                 1.06× |                     1.00× |                    1.03× |
+| 10 × 16 chars, every string but the first one of 2 bytes     | 1.31 µs |                  1.28× |                       1.34× |                 1.02× |                     0.99× |                    1.01× |
+| 10 × 8 chars of 3 bytes                                      |  1.8 µs |                  1.16× |                       1.13× |                 1.02× |                     1.02× |                    1.01× |
+| 10 × 256 chars of 3 bytes                                    | 3.86 µs |                  1.73× |                       1.11× |                 1.01× |                     0.99× |                    1.00× |
+| 100 × 8 chars of ASCII                                       | 2.45 µs |                  0.33× |                       0.36× |                 1.00× |                     1.00× |                    1.07× |
+| 100 × 16 chars of ASCII                                      |  3.8 µs |                  0.16× |                       0.18× |                 1.00× |                     1.00× |                    1.04× |
+| 100 × 256 chars of ASCII                                     |  8.8 µs |                  0.19× |                       0.20× |                 0.99× |                     1.00× |                    0.99× |
+| 100 × 16 chars, two of 2 bytes                               | 13.4 µs |                  1.19× |                       1.01× |                 1.02× |                     1.00× |                    1.01× |
+| 100 × 16 chars, every tenth string one of 2 bytes            | 4.86 µs |                  1.24× |                       1.28× |                 1.00× |                     1.00× |                    1.04× |
+| 100 × 16 chars, every string but the first one of 2 bytes    | 13.5 µs |                  1.16× |                       1.16× |                 0.99× |                     0.99× |                    1.01× |
+| 100 × 8 chars of 3 bytes                                     | 17.4 µs |                  1.07× |                       1.02× |                 1.00× |                     1.02× |                    1.01× |
+| 100 × 256 chars of 3 bytes                                   | 37.8 µs |                  1.71× |                       1.01× |                 1.00× |                     1.01× |                    1.01× |
+| 10,000 × 8 chars of ASCII                                    |  239 µs |                  0.29× |                       0.29× |                 1.00× |                     1.00× |                    1.07× |
+| 10,000 × 16 chars of ASCII                                   |  373 µs |                  0.13× |                       0.14× |                 1.00× |                     1.00× |                    1.04× |
+| 10,000 × 256 chars of ASCII                                  |  885 µs |                  0.15× |                       0.14× |                 0.97× |                     0.98× |                    1.00× |
+| 10,000 × 16 chars, two of 2 bytes                            | 1.31 ms |                  1.16× |                       1.00× |                 1.00× |                     1.00× |                    1.02× |
+| 10,000 × 16 chars, every tenth string one of 2 bytes         |  472 µs |                  1.22× |                       1.22× |                 1.00× |                     1.01× |                    1.04× |
+| 10,000 × 16 chars, every string but the first one of 2 bytes | 1.37 ms |                  1.15× |                       1.14× |                 1.01× |                     1.00× |                    1.01× |
+| 10,000 × 8 chars of 3 bytes                                  |  1.8 ms |                  1.04× |                       0.99× |                 0.99× |                     1.01× |                    0.99× |
+| 10,000 × 256 chars of 3 bytes                                | 3.89 ms |                  1.67× |                       0.99× |                 0.99× |                     0.99× |                    1.01× |
 
 Layouts, read the last string:
 
-| Strings                           |    ends | ends as a Uint32Array | length before each string | table of one string each |
-| --------------------------------- | ------: | --------------------: | ------------------------: | -----------------------: |
-| 10 × 8 chars of ASCII             | 66.6 ns |                 1.32× |                     1.13× |                    1.01× |
-| 10 × 16 chars of ASCII            | 81.1 ns |                 1.27× |                     1.12× |                    1.00× |
-| 10 × 256 chars of ASCII           |  128 ns |                 1.16× |                     1.05× |                    1.01× |
-| 10 × 16 chars, two of 2 bytes     |  169 ns |                 1.12× |                     1.05× |                    1.01× |
-| 10 × 8 chars of 3 bytes           |  216 ns |                 1.10× |                     1.03× |                    1.00× |
-| 10 × 256 chars of 3 bytes         |  413 ns |                 1.05× |                     1.01× |                    1.00× |
-| 100 × 8 chars of ASCII            | 66.2 ns |                 1.33× |                     3.64× |                    1.02× |
-| 100 × 16 chars of ASCII           | 80.0 ns |                 1.28× |                     3.21× |                    1.01× |
-| 100 × 256 chars of ASCII          |  128 ns |                 1.17× |                     2.31× |                    1.01× |
-| 100 × 16 chars, two of 2 bytes    |  170 ns |                 1.13× |                     2.01× |                    1.00× |
-| 100 × 8 chars of 3 bytes          |  215 ns |                 1.10× |                     1.81× |                    1.02× |
-| 100 × 256 chars of 3 bytes        |  413 ns |                 1.05× |                     1.40× |                    1.00× |
-| 10,000 × 8 chars of ASCII         | 70.1 ns |                 1.33× |                   156.92× |                    1.02× |
-| 10,000 × 16 chars of ASCII        | 82.6 ns |                 1.27× |                   141.65× |                    1.02× |
-| 10,000 × 256 chars of ASCII       |  134 ns |                 1.18× |                   294.78× |                    1.01× |
-| 10,000 × 16 chars, two of 2 bytes |  178 ns |                 1.11× |                    76.40× |                    0.99× |
-| 10,000 × 8 chars of 3 bytes       |  223 ns |                 1.10× |                    82.06× |                    1.00× |
-| 10,000 × 256 chars of 3 bytes     |  424 ns |                 1.06× |                   177.59× |                    1.01× |
+| Strings                                                      |    ends | ends as a Uint32Array | length before each string | table of one string each |
+| ------------------------------------------------------------ | ------: | --------------------: | ------------------------: | -----------------------: |
+| 10 × 8 chars of ASCII                                        | 66.2 ns |                 1.33× |                     1.13× |                    1.02× |
+| 10 × 16 chars of ASCII                                       | 80.5 ns |                 1.27× |                     1.14× |                    1.01× |
+| 10 × 256 chars of ASCII                                      |  131 ns |                 1.15× |                     1.05× |                    1.00× |
+| 10 × 16 chars, two of 2 bytes                                |  172 ns |                 1.13× |                     1.04× |                    1.01× |
+| 10 × 16 chars, every tenth string one of 2 bytes             |  165 ns |                 1.13× |                     1.07× |                    1.01× |
+| 10 × 16 chars, every string but the first one of 2 bytes     |  166 ns |                 1.14× |                     1.05× |                    1.01× |
+| 10 × 8 chars of 3 bytes                                      |  216 ns |                 1.10× |                     1.03× |                    1.00× |
+| 10 × 256 chars of 3 bytes                                    |  413 ns |                 1.05× |                     1.01× |                    1.00× |
+| 100 × 8 chars of ASCII                                       | 66.6 ns |                 1.32× |                     3.66× |                    1.13× |
+| 100 × 16 chars of ASCII                                      | 80.0 ns |                 1.28× |                     3.23× |                    1.02× |
+| 100 × 256 chars of ASCII                                     |  129 ns |                 1.16× |                     2.29× |                    1.00× |
+| 100 × 16 chars, two of 2 bytes                               |  169 ns |                 1.14× |                     2.03× |                    1.01× |
+| 100 × 16 chars, every tenth string one of 2 bytes            |  168 ns |                 1.13× |                     2.04× |                    1.00× |
+| 100 × 16 chars, every string but the first one of 2 bytes    |  166 ns |                 1.14× |                     2.05× |                    1.02× |
+| 100 × 8 chars of 3 bytes                                     |  216 ns |                 1.11× |                     1.78× |                    1.01× |
+| 100 × 256 chars of 3 bytes                                   |  415 ns |                 1.05× |                     1.40× |                    1.00× |
+| 10,000 × 8 chars of ASCII                                    | 67.9 ns |                 1.34× |                   156.11× |                    1.02× |
+| 10,000 × 16 chars of ASCII                                   | 82.1 ns |                 1.28× |                   138.86× |                    1.02× |
+| 10,000 × 256 chars of ASCII                                  |  131 ns |                 1.19× |                   287.02× |                    1.01× |
+| 10,000 × 16 chars, two of 2 bytes                            |  173 ns |                 1.13× |                    78.03× |                    1.00× |
+| 10,000 × 16 chars, every tenth string one of 2 bytes         |  170 ns |                 1.14× |                   115.88× |                    1.01× |
+| 10,000 × 16 chars, every string but the first one of 2 bytes |  175 ns |                 1.14× |                    71.43× |                    1.01× |
+| 10,000 × 8 chars of 3 bytes                                  |  228 ns |                 1.11× |                    80.70× |                    1.00× |
+| 10,000 × 256 chars of 3 bytes                                |  431 ns |                 1.06× |                   156.84× |                    1.00× |
 
-- Every layout is written within 3% of the ends' time, but for the ends as
-  a `Uint32Array`, at 0.91–1.00 times, which writes them through the typed
+- Every layout is written within 4% of the ends' time, but for the ends as
+  a `Uint32Array`, at 0.92–1.01 times, which writes them through the typed
   array.
 - A length before each string reads every string as fast as the ends, but
-  finds the last only by reading the lengths before it: 1.03–1.13 times as
-  long for 10 strings, and 76–295 times for 10,000.
-- The ends as a `Uint32Array` take 1.05–1.33 times as long to find a string,
+  finds the last only by reading the lengths before it: 1.01–1.14 times as
+  long for 10 strings, and 71–287 times for 10,000.
+- The ends as a `Uint32Array` take 1.05–1.34 times as long to find a string,
   which is the typed array's construction, and pad the ends to 4 bytes.
-- Decoding the strings as one run reads lists of ASCII in 0.14–0.65 times
-  the time, and in 0.13–0.90 times after reading the first string on its
-  own, and only the ends lay the strings out as one run. Decoding a
-  run outside ASCII takes 1.06–1.74 times as long, since it's decoded again
-  a string at a time, which decoding only after a first string of ASCII
-  avoids: 1.00–1.02 times from 100 strings, and 1.10–1.14 for 10.
+- Decoding the strings as one run reads lists of ASCII in 0.13–0.66 times
+  the time, and only the ends lay the strings out as one run. Decoding a
+  run outside ASCII, and then each string, takes 1.04–1.73 times as long,
+  and doing so after a first string of ASCII 0.99–1.16 times from 100
+  strings, and 1.08–1.34 for 10. Lists with a string outside ASCII in every
+  tenth take 1.22–1.74 times as long either way, which is why
+  `getStringVector()` slices the strings of ASCII from a run that isn't all
+  ASCII, and starts a run after two strings of ASCII in a row.
 
 ### Limitations
 
@@ -650,8 +686,10 @@ Layouts, read the last string:
   the runtime's code. Their table of one string each reads its strings
   without a reader of each table, which tafla-gen's code creates.
 - A string of more than 12 characters sliced from a decoded run keeps the
-  run alive while it's held, as V8 slices strings, so a caller that keeps a
-  few strings of a large list keeps all of its characters. The heap bytes
-  aren't counted here.
+  run alive while it's held, as V8 slices strings. Runs of at most 16 KiB
+  bound it: in Node 26, one string kept from 10,000 strings of 16 and 256
+  characters of ASCII kept 28 and 23 KiB alive, against 1.5 KiB for a
+  string read on its own, and 157 KiB and 2.5 MB for one run of every
+  string. The heap bytes aren't counted here.
 - msgpackr packs into a buffer that its `Packr` reuses, as in the suite of
   strings.

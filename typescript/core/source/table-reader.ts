@@ -710,6 +710,13 @@ export class TableReader {
      * alive while it's held, as V8 slices strings, which is why a run is
      * bounded.
      *
+     * In Node 26, it read lists of 10 to 10,000 strings of ASCII in
+     * 0.23–0.84 times the time that `StringVector.get()` took to read them a
+     * string at a time, lists with a string outside ASCII in every tenth in
+     * 0.75–0.76 times from 100 strings and 1.10 for 10, and lists outside
+     * ASCII in 0.94–1.00 times: `yarn bench:lists`, which
+     * `benchmarks/README.md` describes.
+     *
      * @throws {DecodeError} If the count, the ends or the strings don't lie
      * within the bytes, a string ends before it starts, or one isn't valid
      * UTF-8.
@@ -734,8 +741,8 @@ export class TableReader {
      * `first`, which starts at `start`, into `strings`, and returns the index
      * of the string after it.
      *
-     * The first two strings are read on their own. When both are ASCII, the
-     * strings after them are decoded in runs of at most
+     * Strings are read on their own until two in a row are ASCII. The
+     * strings after those are decoded in runs of at most
      * {@link MAX_STRING_RUN} bytes, when a run is more than
      * {@link MIN_STRING_RUN} bytes. A run of ASCII is sliced at every end,
      * and the next run follows it at once, and any other run is sliced by
@@ -753,10 +760,14 @@ export class TableReader {
         const size = this._size;
 
         // Two strings of ASCII in a row, whose characters are a byte each,
-        // make the strings after them likely ASCII too
+        // make the strings after them likely ASCII too. Reading the strings
+        // before them here, rather than in a chunk each, read lists outside
+        // ASCII in 0.94–1.00 times the time that reading each string took,
+        // rather than 1.01–1.05, in Node 26.
         let index = first;
         let end = start;
-        while (index < first + 2) {
+        let ascii = 0;
+        while (ascii < 2) {
             if (index === count) {
                 return index;
             }
@@ -769,9 +780,8 @@ export class TableReader {
             strings[index] = string;
             index++;
 
-            if (string.length !== next - end) {
-                return index;
-            }
+            // Fewer characters than bytes, when any character isn't ASCII
+            ascii = string.length === next - end ? ascii + 1 : 0;
             end = next;
         }
 
