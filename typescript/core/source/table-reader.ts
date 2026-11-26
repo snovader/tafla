@@ -411,6 +411,27 @@ export class TableReader {
     }
 
     /**
+     * Reads the array of bools at `position`, a `uint8` array whose bytes
+     * are true when they aren't 0, into a new array. `getUint8Array()` reads
+     * the same bytes in place. A loop reads them, since `Array.from()` of
+     * the bytes with a function took 21 µs to read 1,000 bools, where the
+     * loop took 1.8 µs, in Node 26.
+     */
+    getBoolArray(position: number): boolean[] {
+        const length = this.#getSize(position);
+        this.#arrayOffset(position, length);
+
+        const bytes = this._bytes;
+        const start = position + this._size;
+        const bools = new Array<boolean>(length);
+        for (let i = 0; i < length; i++) {
+            bools[i] = bytes[start + i] !== 0;
+        }
+
+        return bools;
+    }
+
+    /**
      * Checks that `byteLength` bytes of elements follow the length prefix at
      * `position`.
      *
@@ -680,6 +701,13 @@ export class TableReader {
      * strings' UTF-8, one after another, so the ends are read and checked
      * as `getVector()` reads a vector's.
      *
+     * The strings lie one after another, so when the first is ASCII, the
+     * others are decoded as one run and sliced at their ends, if they're
+     * ASCII too, whose characters are a byte each. Otherwise each is read on
+     * its own, as `getStringVectorItem()` reads it. A string sliced from a
+     * run of more than 12 characters keeps the run alive while it's held,
+     * as V8 slices strings.
+     *
      * @throws {DecodeError} If the count, the ends or the strings don't lie
      * within the bytes, a string ends before it starts, or one isn't valid
      * UTF-8.
@@ -688,16 +716,115 @@ export class TableReader {
         // Checking the ends bounds the count before allocating for it
         const count = this.getVectorLength(position);
         const strings = new Array<string>(count);
+        if (count === 0) {
+            return strings;
+        }
 
-        let start = (count + 1) * this._size;
-        for (let i = 0; i < count; i++) {
-            const end = this.#getSize(position + (i + 1) * this._size);
-            const offset = this.#itemOffset(position, start, end);
-            strings[i] = this.#itemString(offset, end - start);
-            start = end;
+        const start = (count + 1) * this._size;
+        const end = this.#getSize(position + this._size);
+        const first = this.#itemString(
+            this.#itemOffset(position, start, end),
+            end - start
+        );
+        strings[0] = first;
+
+        // Fewer characters than bytes, when any character isn't ASCII
+        const ascii = first.length === end - start;
+        if (!(ascii && this.#readAsciiRun(position, count, end, strings))) {
+            this.#readStrings(position, count, end, strings);
         }
 
         return strings;
+    }
+
+    /**
+     * Reads strings 1 to `count - 1` of the vector of strings at
+     * `position`, from `start`, where string 1 starts, one at a time into
+     * `strings`
+     */
+    #readStrings(
+        position: number,
+        count: number,
+        start: number,
+        strings: string[]
+    ): void {
+        let from = start;
+        for (let i = 1; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * this._size);
+            const offset = this.#itemOffset(position, from, end);
+            strings[i] = this.#itemString(offset, end - from);
+            from = end;
+        }
+    }
+
+    /**
+     * Reads strings 1 to `count - 1` of the vector of strings at
+     * `position`, from `start`, where string 1 starts, into `strings` by
+     * decoding their bytes as one run and slicing it at their ends, when the
+     * run is more than {@link MIN_STRING_RUN} bytes of ASCII.
+     *
+     * A string of ASCII is valid UTF-8 wherever it's cut, so every slice is
+     * the string that reading its bytes on their own reads. Any other run,
+     * and any end that `#readStrings()` would reject, leaves them to it,
+     * which reads each string on its own and throws where it should.
+     *
+     * Through `getStringVector()`, lists of 10 to 10,000 strings of 8 to 256
+     * characters of ASCII took 0.13–0.65 times as long to read as a string
+     * at a time, by `benchmarks/strings/lists`' layouts in Node 26, and
+     * lists outside ASCII 1.00–1.02 times as long from 100 strings.
+     *
+     * @returns Whether it read them.
+     */
+    #readAsciiRun(
+        position: number,
+        count: number,
+        start: number,
+        strings: string[]
+    ): boolean {
+        const size = this._size;
+        const last = this.#getSize(position + count * size);
+        const length = last - start;
+        if (
+            !(length > MIN_STRING_RUN && position + last <= this._bytes.length)
+        ) {
+            return false;
+        }
+
+        const run = this.#decodeRun(position + start, length);
+        if (run.length !== length) {
+            return false;
+        }
+
+        let from = start;
+        for (let i = 1; i < count; i++) {
+            const end = this.#getSize(position + (i + 1) * size);
+            if (!(from <= end && end <= last)) {
+                return false;
+            }
+
+            strings[i] = run.slice(from - start, end - start);
+            from = end;
+        }
+
+        return true;
+    }
+
+    /**
+     * Decodes the `length` bytes of UTF-8 at `start`, which lie within the
+     * bytes, as one string, or returns '' when they aren't valid UTF-8,
+     * which is shorter than any run that `#readAsciiRun()` decodes
+     */
+    #decodeRun(start: number, length: number): string {
+        const bytes = new Uint8Array(
+            this._view.buffer,
+            this._view.byteOffset + start,
+            length
+        );
+        try {
+            return decode(bytes);
+        } catch {
+            return '';
+        }
     }
 
     /**
@@ -867,6 +994,13 @@ export class TableReader {
         }
     }
 }
+
+/**
+ * The fewest bytes of a vector's strings after its first that
+ * `getStringVector()` decodes as one run: decoding takes about 85 ns a call,
+ * where a short string of ASCII takes 20–45 ns to read on its own
+ */
+const MIN_STRING_RUN = 32;
 
 /** Reads an offset of a layout whose offsets are narrower than uint32's */
 function readNarrowSize(

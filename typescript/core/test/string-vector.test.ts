@@ -90,6 +90,103 @@ describe('a vector of strings', () => {
     });
 });
 
+/** Strings of ASCII, which getStringVector() reads as one run */
+const ASCII_VECTORS = fc.array(fc.string({ maxLength: 40 }), { minLength: 1, maxLength: 12 });
+
+/** Every string of a view, each from its ends, or the error that reading one throws */
+function eachOrError(view: StringVector): unknown {
+    try {
+        return Array.from({ length: view.length() }, (_, index) => view.get(index));
+    } catch (error) {
+        return error;
+    }
+}
+
+function allOrError(view: StringVector): unknown {
+    try {
+        return view.toArray();
+    } catch (error) {
+        return error;
+    }
+}
+
+describe('reading every string at once', () => {
+    property.prop([ASCII_VECTORS])(
+        'should read lists of ASCII as each string on its own',
+        strings => {
+            expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+        }
+    );
+
+    property.prop([
+        fc.oneof(ASCII_VECTORS, VECTORS),
+        fc.array(fc.tuple(fc.nat(), fc.integer({ min: 0, max: 255 })), {
+            minLength: 1,
+            maxLength: 4
+        })
+    ])(
+        'should read what reading each string on its own reads, and throw DecodeError where any of them does',
+        (strings, overwrites) => {
+            const bytes = tableOf(strings);
+            for (const [at, byte] of overwrites) {
+                // Past the table's offset, so that the vector is found
+                bytes[4 + (at % (bytes.length - 4))] = byte;
+            }
+
+            let view: StringVector;
+            try {
+                view = viewOf(bytes);
+            } catch (error) {
+                expect(error).toBeInstanceOf(DecodeError);
+                return;
+            }
+
+            const each = eachOrError(view);
+            const all = allOrError(view);
+            if (each instanceof Error) {
+                expect(each).toBeInstanceOf(DecodeError);
+                expect(all).toBeInstanceOf(DecodeError);
+            } else {
+                expect(all).toStrictEqual(each);
+            }
+        }
+    );
+
+    it('should read a list whose first strings are ASCII and later ones aren’t', () => {
+        const strings = [
+            'Stockholm',
+            'Oslo',
+            'Copenhagen',
+            'Helsinki',
+            'Zürich',
+            '東京',
+            'Reykjavík'
+        ];
+
+        expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+    });
+
+    it('should throw DecodeError for a string of a run of ASCII that ends past the run', () => {
+        const strings = ['first', 'a'.repeat(20), 'b'.repeat(20), 'c'.repeat(20)];
+        const bytes = tableOf(strings);
+        // The end of the second string, after the table's offset, the count
+        // and the first end, is past the last string's end, within the bytes
+        new DataView(bytes.buffer).setUint32(4 + 4 + 4, bytes.length - 4 - 1, true);
+
+        expect(() => viewOf(bytes).toArray()).toThrow(DecodeError);
+    });
+
+    it('should throw DecodeError for a string that isn’t valid UTF-8 after a first of ASCII', () => {
+        const strings = ['first', 'a'.repeat(20), 'b'.repeat(20)];
+        const bytes = tableOf(strings);
+        bytes[bytes.length - 1] = 0xff;
+
+        expect(() => viewOf(bytes).toArray()).toThrow(
+            new DecodeError(`The string at ${bytes.length - 20} isn't valid UTF-8`)
+        );
+    });
+});
+
 describe('a vector of strings that readers reject', () => {
     it.each([-1, 2, 0.5, Number.NaN])(
         'should throw RangeError for string %s of a vector of 2',

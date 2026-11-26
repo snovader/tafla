@@ -310,6 +310,7 @@ const GETTERS = {
         const length = reader.getVectorLength(position);
         return length === 0 ? null : reader.getVectorItemOffset(position, length, length - 1);
     },
+    getBoolArray: (reader, position) => reader.getBoolArray(position),
     getStringVector: (reader, position) => reader.getStringVector(position),
     // The last string, which reads the ends before and after it
     getStringVectorItem: (reader, position) => {

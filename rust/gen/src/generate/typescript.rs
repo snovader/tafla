@@ -1127,13 +1127,9 @@ impl Generator<'_> {
                         vec![offset],
                     ),
                     // A bool for each byte, true where it isn't 0
-                    FieldType::Array(Scalar::Bool) => call(
-                        "Array.from",
-                        vec![
-                            call(format!("{reader}.getUint8Array"), vec![offset]),
-                            text("byte => byte !== 0"),
-                        ],
-                    ),
+                    FieldType::Array(Scalar::Bool) => {
+                        call(format!("{reader}.getBoolArray"), vec![offset])
+                    }
                     FieldType::StringVector => {
                         call(format!("{reader}.getStringVector"), vec![offset])
                     }
@@ -2206,6 +2202,10 @@ impl Generator<'_> {
             let value = format!("fields.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("add{}", scalar_method(scalar)), vec![]),
+                FieldType::Array(Scalar::Bool) => (
+                    "addBoolArray".to_owned(),
+                    vec![text(format!("{value}.length"))],
+                ),
                 FieldType::Array(scalar) => (
                     format!("add{}Array", scalar_method(scalar)),
                     vec![text(format!("{value}.length"))],
@@ -2273,12 +2273,9 @@ impl Generator<'_> {
                     format!("set{}", scalar_method(scalar)),
                     vec![position, stored_value(scalar, &value)],
                 ),
-                // The uint8 array's setter converts each bool to 1 or 0, as
-                // the constructor of a Uint8Array does
-                FieldType::Array(Scalar::Bool) => (
-                    "setUint8Array".to_owned(),
-                    vec![position, self.bool_array_bytes(&value)],
-                ),
+                FieldType::Array(Scalar::Bool) => {
+                    ("setBoolArray".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Array(scalar) => (
                     format!("set{}Array", scalar_method(scalar)),
                     vec![position, text(value)],
@@ -2524,25 +2521,6 @@ impl Generator<'_> {
             ".getVersion();",
         );
         writer.close("}");
-    }
-
-    /// An array of bools, `value`, as the `ArrayLike<number>` that the
-    /// uint8 array's setter takes, which converts each bool to 1 or 0 as the
-    /// constructor of a `Uint8Array` does
-    fn bool_array_bytes(&self, value: &str) -> Expr {
-        if self.typed {
-            text(format!(
-                "{value} as ArrayLike<unknown> as ArrayLike<number>"
-            ))
-        } else {
-            call(
-                "/** @type {ArrayLike<number>} */ ",
-                vec![call(
-                    "/** @type {ArrayLike<unknown>} */ ",
-                    vec![text(value)],
-                )],
-            )
-        }
     }
 
     fn doc(&self, writer: &mut CodeWriter, docs: &[String], tags: &[String]) {

@@ -125,10 +125,7 @@ export class Entry {
         return {
             key: reader.getString(reader.fieldOffset(position, 0)),
             aliases: reader.getStringVector(reader.fieldOffset(position, 1)),
-            enabled: Array.from(
-                reader.getUint8Array(reader.fieldOffset(position, 2)),
-                byte => byte !== 0
-            )
+            enabled: reader.getBoolArray(reader.fieldOffset(position, 2))
         };
     }
 
@@ -144,7 +141,7 @@ export class Entry {
         const parent = sizer.startTable(3);
         sizer.addString(fields.key);
         sizer.addStringVector(fields.aliases);
-        sizer.addUint8Array(fields.enabled.length);
+        sizer.addBoolArray(fields.enabled.length);
         sizer.endTable(parent);
     }
 
@@ -160,12 +157,7 @@ export class Entry {
         const parent = writer.startTable(3);
         writer.setString(0, fields.key);
         writer.setStringVector(1, fields.aliases);
-        writer.setUint8Array(
-            2,
-            /** @type {ArrayLike<number>} */ (
-                /** @type {ArrayLike<unknown>} */ (fields.enabled)
-            )
-        );
+        writer.setBoolArray(2, fields.enabled);
         writer.endTable(parent);
     }
 
@@ -278,7 +270,7 @@ export class Tagged {
         const sizer = new TableSizer(5, Tagged.#LAYOUT);
         sizer.addUint32();
         sizer.addStringVector(fields.tags);
-        sizer.addUint8Array(fields.flags.length);
+        sizer.addBoolArray(fields.flags.length);
         sizer.addTable(Names.ALIGNMENT);
         Names.size(sizer, fields.names);
         sizer.addVector(fields.entries.length);
@@ -289,12 +281,7 @@ export class Tagged {
         const writer = sizer.writer();
         writer.setUint32(0, fields.id);
         writer.setStringVector(1, fields.tags);
-        writer.setUint8Array(
-            2,
-            /** @type {ArrayLike<number>} */ (
-                /** @type {ArrayLike<unknown>} */ (fields.flags)
-            )
-        );
+        writer.setBoolArray(2, fields.flags);
         writer.setTable(3, Names.ALIGNMENT);
         Names.write(writer, fields.names);
         const vector4 = writer.setVector(4, fields.entries.length);
@@ -323,7 +310,7 @@ export class Tagged {
         const sizer = new TableSizer(5, Tagged.#LAYOUT);
         sizer.addUint32();
         sizer.addStringVector(fields.tags);
-        sizer.addUint8Array(fields.flags.length);
+        sizer.addBoolArray(fields.flags.length);
         sizer.addTable(Names.ALIGNMENT);
         Names.size(sizer, fields.names);
         sizer.addVector(fields.entries.length);
@@ -334,12 +321,7 @@ export class Tagged {
         const writer = sizer.writer(bytes);
         writer.setUint32(0, fields.id);
         writer.setStringVector(1, fields.tags);
-        writer.setUint8Array(
-            2,
-            /** @type {ArrayLike<number>} */ (
-                /** @type {ArrayLike<unknown>} */ (fields.flags)
-            )
-        );
+        writer.setBoolArray(2, fields.flags);
         writer.setTable(3, Names.ALIGNMENT);
         Names.write(writer, fields.names);
         const vector4 = writer.setVector(4, fields.entries.length);
@@ -412,17 +394,12 @@ export class Labels {
     static serialize(fields) {
         const sizer = new TableSizer(3, Labels.#LAYOUT);
         sizer.addStringVector(fields.labels);
-        sizer.addUint8Array(fields.bits.length);
+        sizer.addBoolArray(fields.bits.length);
         sizer.addUint8();
 
         const writer = sizer.writer();
         writer.setStringVector(0, fields.labels);
-        writer.setUint8Array(
-            1,
-            /** @type {ArrayLike<number>} */ (
-                /** @type {ArrayLike<unknown>} */ (fields.bits)
-            )
-        );
+        writer.setBoolArray(1, fields.bits);
         writer.setUint8(2, fields.count);
 
         return writer.bytes();
@@ -444,17 +421,12 @@ export class Labels {
     static serializeInto(fields, bytes) {
         const sizer = new TableSizer(3, Labels.#LAYOUT);
         sizer.addStringVector(fields.labels);
-        sizer.addUint8Array(fields.bits.length);
+        sizer.addBoolArray(fields.bits.length);
         sizer.addUint8();
 
         const writer = sizer.writer(bytes);
         writer.setStringVector(0, fields.labels);
-        writer.setUint8Array(
-            1,
-            /** @type {ArrayLike<number>} */ (
-                /** @type {ArrayLike<unknown>} */ (fields.bits)
-            )
-        );
+        writer.setBoolArray(1, fields.bits);
         writer.setUint8(2, fields.count);
 
         return writer.bytes();
@@ -488,10 +460,7 @@ export class Labels {
     fields() {
         return {
             labels: this._reader.getStringVector(this._reader.rootOffset(0)),
-            bits: Array.from(
-                this._reader.getUint8Array(this._reader.rootOffset(1)),
-                byte => byte !== 0
-            ),
+            bits: this._reader.getBoolArray(this._reader.rootOffset(1)),
             count: this._reader.getUint8(this._reader.rootOffset(2))
         };
     }

@@ -112,7 +112,7 @@ Each field has a `type`:
 | `struct[]`                                            | `fields`: the scalars' types, and `items`: each struct's values        | `setStructArray()`             |
 | `table`                                               | `from` and `table`, a nested table, and `alignment` when one is passed | `setTable()`                   |
 | `vector`                                              | `items`: `{ "from", "table" }` for each item                           | `setVector()`                  |
-| `bool[]`, proposed                                    | `value`: an array of `true` and `false`                                | `setUint8Array()`, of 1 and 0  |
+| `bool[]`, proposed                                    | `value`: an array of `true` and `false`                                | `setBoolArray()`               |
 | `string[]`, proposed                                  | `value`: an array of strings                                           | `setStringVector()`            |
 
 - A bool is the uint8 1 or 0, since the runtimes have no getters or setters
@@ -203,8 +203,9 @@ of field types lists:
 - A `string[]` is read with `getStringVector()`, and each of its strings is
   also found from its ends alone, with `getStringVectorItem()`, and compared
   with the string that reading every string finds, as a vector's items are.
-- A `bool[]` is the uint8 array of its bools' bytes, 1 and 0, and each byte
-  reads as true when it isn't 0.
+- A `bool[]` is the uint8 array of its bools' bytes, 1 and 0, which
+  `setBoolArray()` writes and `setUint8Array()` writes alike, and each byte
+  reads as true when it isn't 0, with `getBoolArray()`.
 
 | What                                                       | Cases                                                                                               |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |

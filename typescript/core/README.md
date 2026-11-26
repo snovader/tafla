@@ -128,6 +128,9 @@ and then the fields in the order they were set:
   strings, `getStringVector()` reads every string, and a `StringVector`
   reads one string from its ends with `get(i)` and every string with
   `toArray()`.
+- An array of bools is a `uint8` array of 1 and 0, which `setBoolArray()`
+  writes from bools and `getBoolArray()` reads into bools, true where a byte
+  isn't 0. `getUint8Array()` reads its bytes in place.
 
 The repository's `conformance` directory holds golden tables of every part of
 the format, which every implementation of tafla reads and rebuilds byte for

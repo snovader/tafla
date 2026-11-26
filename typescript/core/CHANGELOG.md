@@ -34,6 +34,9 @@ repository's first commits, for code built from its source before the release.
   string, `TableReader.getStringVectorItem()` one from its ends, and
   `StringVector` views one. Its cases lie in `conformance/proposed/` until
   every implementation reads it.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray()`, `TableSizer.addBoolArray()`,
+  `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`.
 - API for the code that tafla-gen generates, which lays out the fields whose
   sizes the schema fixes itself, and may change with it:
   `TableSizer.addTableBytes()`, which adds a nested table or a vector's items

@@ -226,7 +226,7 @@ export function setField(builder: TableItem, field: FieldDescription): void {
             break;
 
         case 'bool[]':
-            builder.setUint8Array(field.value.map(Number));
+            builder.setBoolArray(field.value);
             break;
 
         case 'int8[]':
@@ -553,7 +553,7 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
             break;
 
         case 'bool[]':
-            sizer.addUint8Array(field.value.length);
+            sizer.addBoolArray(field.value.length);
             break;
 
         case 'int8[]':
@@ -690,7 +690,7 @@ function writeField(
             break;
 
         case 'bool[]':
-            writer.setUint8Array(index, field.value.map(Number));
+            writer.setBoolArray(index, field.value);
             break;
 
         case 'int8[]':
@@ -1078,13 +1078,7 @@ export class DescriptionReader {
                 return { ...field, value: reader.getUint8(position) !== 0 };
 
             case 'bool[]':
-                return {
-                    ...field,
-                    value: Array.from(
-                        reader.getUint8Array(position),
-                        byte => byte !== 0
-                    )
-                };
+                return { ...field, value: reader.getBoolArray(position) };
 
             case 'int8[]':
                 return {
