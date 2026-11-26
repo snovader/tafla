@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,7 +24,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * The command of the jar that the build packages, run as {@code java -jar}, with the cases of
  * the native command's tests in rust/gen/tests/cli.rs that a host could get wrong: the files it
- * reads and writes, what it prints, and its exit codes.
+ * reads and writes, stdin that {@code decode} and {@code encode} read, what it prints, bytes
+ * included, and its exit codes.
  */
 class CommandTest {
     private static final Path JAR = Path.of(System.getProperty("tafla.gen.jar"));
@@ -36,7 +38,10 @@ class CommandTest {
 
     private static final String USAGE =
             "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp>"
-                    + " <schema>... [--out <dir>] [--runtime <module>] [--package <package>]";
+                    + " <schema>... [--out <dir>] [--runtime <module>] [--package <package>]\n"
+                    + "       tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version]"
+                    + " [--ascii]\n"
+                    + "       tafla-gen encode <schema> <name> [<file>]";
     private static final String POINT = "message Point { x: uint8; }\n";
 
     private record Output(int status, String stdout, String stderr) {}
@@ -45,6 +50,15 @@ class CommandTest {
     @TempDir Path out;
 
     private static Output taflaGen(Path directory, String... arguments) {
+        return taflaGen(directory, new byte[0], StandardCharsets.UTF_8, arguments);
+    }
+
+    /**
+     * Runs the command with {@code stdin} as its standard input, and its stdout read in {@code
+     * charset}: ISO-8859-1 reads each byte of a table as a character of its own
+     */
+    private static Output taflaGen(
+            Path directory, byte[] stdin, Charset charset, String... arguments) {
         List<String> command = new ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         command.add("-jar");
@@ -53,11 +67,13 @@ class CommandTest {
 
         try {
             Process process = new ProcessBuilder(command).directory(directory.toFile()).start();
-            process.getOutputStream().close();
+            try (var input = process.getOutputStream()) {
+                input.write(stdin);
+            }
 
-            // The command prints less than a pipe holds, so reading one stream after the other
-            // can't block it
-            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            // The command reads all of stdin first, and prints less than a pipe holds, so
+            // reading one stream after the other can't block it
+            String stdout = new String(process.getInputStream().readAllBytes(), charset);
             String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             return new Output(process.waitFor(), stdout, stderr);
         } catch (IOException error) {
@@ -322,5 +338,66 @@ class CommandTest {
                         "error: " + error + "\n" + USAGE + "\nRun `tafla-gen --help` for more.\n"),
                 output);
         assertEquals(List.of("point.tafla"), pathsOf(directory));
+    }
+
+    private static final String POINT_TABLE = "conformance/generated/shapes/point.bin";
+
+    @Test
+    void decodesATableFromAFileOrStdinAndEncodesItsJsonBackIntoItsBytes() throws IOException {
+        byte[] table = Files.readAllBytes(REPOSITORY.resolve(POINT_TABLE));
+
+        Output fromFile =
+                taflaGen(REPOSITORY, "decode", "schemas/shapes.tafla", "Point", POINT_TABLE);
+        Output fromStdin =
+                taflaGen(
+                        REPOSITORY,
+                        table,
+                        StandardCharsets.UTF_8,
+                        "decode",
+                        "schemas/shapes.tafla",
+                        "Point");
+
+        String json =
+                """
+                {
+                    "x": "-0",
+                    "y": "NaN",
+                    "id": "-9223372036854775808",
+                    "name": "a\u00e5\u4e16\ud83e\udd80"
+                }
+                """;
+        assertEquals(new Output(0, json, ""), fromFile);
+        assertEquals(fromFile, fromStdin);
+
+        Output encoded =
+                taflaGen(
+                        REPOSITORY,
+                        json.getBytes(StandardCharsets.UTF_8),
+                        StandardCharsets.ISO_8859_1,
+                        "encode",
+                        "schemas/shapes.tafla",
+                        "Point",
+                        "-");
+        assertEquals(new Output(0, new String(table, StandardCharsets.ISO_8859_1), ""), encoded);
+    }
+
+    @Test
+    void printsTheErrorOfATableThatFailsToDecode() {
+        Output output =
+                taflaGen(
+                        REPOSITORY,
+                        new byte[3],
+                        StandardCharsets.UTF_8,
+                        "decode",
+                        "schemas/shapes.tafla",
+                        "Point");
+
+        assertEquals(
+                new Output(
+                        1,
+                        "",
+                        "error: <stdin> isn't a `Point`: `x`: Read exceeds the supplied buffer:"
+                                + " 4 bytes at 0 of 3\n"),
+                output);
     }
 }
