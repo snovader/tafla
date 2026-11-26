@@ -88,9 +88,15 @@ and then the fields in the order they were set:
   item from two ends without reading the others. An item without a header and
   with its parent's offset type is read in place, from the bytes that
   `Vector.GetInPlace()` returns, which run on to the end of its parent's.
+- An absent field, which `TableBuilder.SetAbsent()` and
+  `TableWriter.SetAbsent()` leave out, has the offset 0 and no bytes, for a
+  format that lets it be absent. Its reader compares the offset from
+  `RootOffset()` with 0, or the position from `FieldOffset()` with the nested
+  table's, before it reads the field.
 
 `ConformanceTests` reads and rebuilds the repository's conformance suite,
-which covers the whole format, byte for byte.
+which covers the whole format, byte for byte, and its cases of absent fields
+and of tables that a later revision of their format reads.
 
 ## Copying and sharing
 
@@ -221,7 +227,9 @@ its table. A nested table's fields follow its parent's `AddTable()` and
 `SetTable()`, between `StartTable()` and `EndTable()`, and a vector's items
 follow its `AddVector()` and `SetVector()` the same way, each followed by the
 writer's `SetItemEnd()`. `ReserveStruct()` and `ReserveStructArray()` return
-the bytes of structs for the caller to write in place.
+the bytes of structs for the caller to write in place. An absent field isn't
+added to the sizer at all, and the writer's `SetAbsent()` writes its offset,
+0, even into reused bytes that aren't zero.
 
 A table whose fields' sizes are fixed, of scalars, structs and such tables,
 has a fixed length, and code that lays it out itself, as tafla-gen's does,
@@ -473,7 +481,16 @@ The tests in `tests/Tafla.Tests` are:
 - `ConformanceTests`: the conformance suite in `conformance/`: valid tables
   read back their values and rebuild byte for byte, equivalent tables read
   their valid case's values, and invalid tables fail with a
-  `DecodeException` at their field.
+  `DecodeException` at their field. The cases of presence, in
+  `conformance/presence/`, are read and rebuilt alike: their absent fields
+  must have the offset 0, and a table that a later revision reads must lack
+  the fields that its description counts as missing.
+- `AbsentFieldsTests`: properties of tables with absent fields, from the
+  conformance suite's descriptions with fields left out at every depth: they
+  read back, their absent fields' offsets are 0, a sizer and a writer write
+  what the builder writes, in reused bytes too, a reader of a later revision
+  finds the fields after a table's own missing, and corrupted bytes read as
+  values or a `DecodeException` within the bytes.
 - `RoundTripTests`, `FormatTests`, `DecodeExceptionTests`,
   `TableBuilderTests` and `TableWriterTests`: properties of tables built,
   and sized and written, from the conformance

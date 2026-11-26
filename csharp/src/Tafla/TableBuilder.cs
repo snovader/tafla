@@ -218,6 +218,24 @@ public sealed partial class TableBuilder
     }
 
     /// <summary>
+    /// Sets the next field as absent: an offset of 0 and no value. A reader finds it by comparing the
+    /// field's offset, from <see cref="TableReader.RootOffset"/>, with 0, or one from
+    /// <see cref="TableReader.FieldOffset"/> with the nested table's position, before it reads the
+    /// field, so only a format whose readers make that check for the field can leave it out.
+    /// </summary>
+    /// <exception cref="BuildException">The table holds all its fields already.</exception>
+    public void SetAbsent()
+    {
+        if (_table.FieldsSet == _table.Fields)
+        {
+            throw BuildException.TooManyFields(_table.Fields);
+        }
+
+        WriteSlot(_bytes.AsSpan(_table.Offsets + _table.FieldsSet * _layout.OffsetSize), 0);
+        _table.FieldsSet++;
+    }
+
+    /// <summary>
     /// Sets a struct field from its bytes: its scalars, little-endian, one after another, which are
     /// written as they are, without padding.
     /// </summary>
