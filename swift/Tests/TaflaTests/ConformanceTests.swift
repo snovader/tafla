@@ -2,12 +2,17 @@ import Tafla
 import Testing
 
 // Reads and rebuilds the tables of tafla's conformance suite, which the
-// TypeScript runtime writes. See conformance/README.md at the root of the
-// repository for the format of their descriptions in cases.json.
+// TypeScript runtime writes, and its cases of presence, which lie apart from
+// them. See conformance/README.md at the root of the repository for the
+// format of their descriptions in cases.json.
 
 @Suite("Conformance")
 struct ConformanceTests {
     let suite = Suite.shared
+    /// Tables with absent fields, whose offsets must be 0, and tables that a
+    /// reader of a later revision reads, which must find the number of fields
+    /// that they describe as `missing`
+    let presence = Suite.presence
 
     @Test func readsEveryValidTable() throws {
         #expect(suite.valid.count > 0)
@@ -56,19 +61,57 @@ struct ConformanceTests {
         #expect(suite.invalid.count > 0)
 
         for invalid in suite.invalid {
-            let table = suite.table(of: invalid.validCase)
+            try readUpToTheFieldThatFails(invalid, of: suite)
+        }
+    }
 
-            try withSpan(of: invalid.bytes) { bytes throws in
-                let reader = TableReader(bytes, layout: table.layout)
+    @Test func readsEveryValidCaseOfPresenceAtAnyAddress() throws {
+        #expect(presence.valid.count > 0)
 
-                for (index, expected) in table.fields[..<invalid.field].enumerated() {
-                    #expect(try readRootField(reader, index, expected) == expected, "\(invalid.name)/\(index)")
+        for valid in presence.valid {
+            for byteOffset in 0..<8 {
+                let read = try withSpan(of: valid.bytes, atByteOffset: byteOffset) {
+                    try readTable($0, valid.table)
                 }
-
-                #expect(throws: DecodeError.self, "\(invalid.name)/\(invalid.field)") {
-                    try readRootField(reader, invalid.field, table.fields[invalid.field])
-                }
+                #expect(read == valid.table, "\(valid.name) at \(byteOffset)")
             }
+        }
+    }
+
+    // With TableBuilder, and with TableSizer and TableWriter, whose nested
+    // tables these cases nest in place
+    @Test func rebuildsEveryValidCaseOfPresenceByteForByte() throws {
+        for valid in presence.valid {
+            #expect(try valid.table.bytes() == valid.bytes, "\(valid.name)")
+            #expect(try valid.table.bytesInPlace() == valid.bytes, "\(valid.name) in place")
+            #expect(try valid.table.nestedInPlace().write() == valid.bytes, "\(valid.name) written")
+        }
+    }
+
+    @Test func readsInvalidCasesOfPresenceUpToTheFieldThatFails() throws {
+        #expect(presence.invalid.count > 0)
+
+        for invalid in presence.invalid {
+            try readUpToTheFieldThatFails(invalid, of: presence)
+        }
+    }
+}
+
+/// Reads the root fields before an invalid case's field, which must hold
+/// their described values, and then the field, which must fail with a decode
+/// error
+private func readUpToTheFieldThatFails(_ invalid: ChangedCase, of suite: Suite) throws {
+    let table = suite.table(of: invalid.validCase)
+
+    try withSpan(of: invalid.bytes) { bytes throws in
+        let reader = TableReader(bytes, layout: table.layout)
+
+        for (index, expected) in table.fields[..<invalid.field].enumerated() {
+            #expect(try readRootField(reader, index, expected) == expected, "\(invalid.name)/\(index)")
+        }
+
+        #expect(throws: DecodeError.self, "\(invalid.name)/\(invalid.field)") {
+            try readRootField(reader, invalid.field, table.fields[invalid.field])
         }
     }
 }

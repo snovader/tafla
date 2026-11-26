@@ -14,13 +14,15 @@ import PackageDescription
 let lifetimes: SwiftSetting = .enableExperimentalFeature("Lifetimes")
 
 /// The code that tafla-gen generates from each example schema in `schemas/`
-/// at the root of the repository, a module of each, which the generator's
-/// tests compare with what it generates, and which the tests in
-/// `Tests/TaflaTests/Generated` run
+/// at the root of the repository, and from the schema of optional fields and
+/// versions, `typescript/core/test/presence.tafla`, a module of each, which
+/// the generator's tests compare with what it generates, and which the tests
+/// in `Tests/TaflaTests/Generated` run
 let generated = [
     (module: "GeneratedAllTypes", schema: "all_types"),
     (module: "GeneratedFixedFields", schema: "fixed_fields"),
     (module: "GeneratedLayouts", schema: "layouts"),
+    (module: "GeneratedPresence", schema: "presence"),
     (module: "GeneratedShapes", schema: "shapes"),
 ]
 

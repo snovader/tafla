@@ -148,6 +148,12 @@ extension TableBuilder {
             try builder.pointee.setString(value)
         }
 
+        /// Sets the next field as absent, as ``TableBuilder/setAbsent()``
+        /// does.
+        public mutating func setAbsent() throws(BuildError) {
+            try builder.pointee.setAbsent()
+        }
+
         /// Sets a struct field from its bytes, as
         /// ``TableBuilder/setStruct(_:)`` does.
         public mutating func setStruct(_ bytes: [UInt8]) throws(BuildError) {

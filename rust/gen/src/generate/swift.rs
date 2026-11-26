@@ -28,11 +28,19 @@
 //! module through an accessor that it can't see into, and the getters inlined
 //! into it would then load the layout's offset type from memory and switch on
 //! it at each field, rather than know it.
+//!
+//! A field that may be missing, optional or added `since` a version, reads as
+//! `nil`, the views of its bytes too, since `Optional` holds a nonescapable
+//! view and keeps its lifetime, or as a scalar's default, with `has<Field>`.
+//! Swift writes every table field by field, through the sizer and the writer,
+//! so no table is written or read whole without the checks.
 
 use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+};
 use crate::naming::camel_case;
 
 /// The runtime's module, unless [`Options::runtime`] names another
@@ -194,6 +202,17 @@ impl Generator<'_> {
             ));
             writer.blank();
         }
+        if let Some(since) = layout.since {
+            swift_doc(
+                writer,
+                &[
+                    "The first version of the format that the initializer reads. The getters of the fields that",
+                    "later versions added return `nil`, or a scalar's default, for a table of an earlier version.",
+                ],
+            );
+            writer.line(format!("public static let firstVersion: UInt32 = {since}"));
+            writer.blank();
+        }
         swift_doc(
             writer,
             &[format!(
@@ -209,31 +228,18 @@ impl Generator<'_> {
         writer.blank();
         writer.line("@usableFromInline");
         writer.line("let _reader: TableReader");
+        if layout.since.is_some() {
+            swift_doc(
+                writer,
+                &["The version that the header carries, from `firstVersion` to `formatVersion`"],
+            );
+            writer.line("@usableFromInline");
+            writer.line("let _version: UInt32");
+        }
         writer.blank();
 
         if layout.version.is_some() {
-            swift_doc(
-                writer,
-                &[
-                    format!(
-                        "Reads {} from `bytes`, which it can't outlive.",
-                        article(name)
-                    ),
-                    String::new(),
-                    "Throws a `DecodeError` if `bytes` are in another format version.".to_owned(),
-                ],
-            );
-            writer.line("@inlinable");
-            writer.line("@_lifetime(copy bytes)");
-            writer.open("public init(_ bytes: RawSpan) throws(DecodeError) {");
-            writer.line("_reader = TableReader(bytes, layout: Self.layout)");
-            writer.blank();
-            writer.line("let version = try _reader.version");
-            writer.open("guard version == Self.formatVersion else {");
-            writer
-                .line("throw .unsupportedVersion(version: version, supported: Self.formatVersion)");
-            writer.close("}");
-            writer.close("}");
+            versioned_initializer(writer, name, layout);
             writer.blank();
 
             swift_doc(
@@ -318,7 +324,28 @@ impl Generator<'_> {
                     | FieldType::Vector(_)
             );
 
+            // A scalar that may be missing returns its default, and every
+            // other field that may be missing `nil`
+            let default = match field.field_type {
+                FieldType::Scalar(_) if field.may_be_missing() => field.default.map(swift_literal),
+                _ => None,
+            };
+            let returned = if field.may_be_missing() && default.is_none() {
+                format!("{value_type}?")
+            } else {
+                value_type
+            };
+
             let mut docs = field.docs.clone();
+            if let Some(default) = &default {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push(format!(
+                    "`{default}` when the table doesn't hold it, as `{}` tells.",
+                    presence_identifier(field)
+                ));
+            }
             if !docs.is_empty() {
                 docs.push(String::new());
             }
@@ -327,25 +354,85 @@ impl Generator<'_> {
 
             writer.line("@inlinable");
             writer.open(format!(
-                "public var {}: {value_type} {{",
+                "public var {}: {returned} {{",
                 identifier(&field.name)
             ));
             if is_view {
                 writer.line("@_lifetime(copy self)");
             }
-            match read {
-                Read::Expression(expression) => {
-                    writer.line(format!("get throws(DecodeError) {{ {expression} }}"));
-                }
-                Read::FromPosition(statement) => {
-                    writer.open("get throws(DecodeError) {");
-                    writer.line(format!("let field = try {position}"));
-                    writer.line(format!("return {statement}"));
-                    writer.close("}");
+            if field.may_be_missing() {
+                writer.open("get throws(DecodeError) {");
+                let missing = default.as_deref().unwrap_or("nil");
+                self.missing_read(writer, definition, index, &position, missing);
+                writer.close("}");
+            } else {
+                match read {
+                    Read::Expression(expression) => {
+                        writer.line(format!("get throws(DecodeError) {{ {expression} }}"));
+                    }
+                    Read::FromPosition(statement) => {
+                        writer.open("get throws(DecodeError) {");
+                        writer.line(format!("let field = try {position}"));
+                        writer.line(format!("return {statement}"));
+                        writer.close("}");
+                    }
                 }
             }
             writer.close("}");
+
+            if default.is_some() {
+                writer.blank();
+                presence_property(writer, definition, index, &position);
+            }
         }
+    }
+
+    /// The body of the getter of field `index`, which may be missing, at
+    /// `position`: the checks that return `missing` when the table doesn't
+    /// hold it, which `since_condition()` and `checks_offset()` describe, and
+    /// then the read of its value at its offset
+    fn missing_read(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        index: usize,
+        position: &str,
+        missing: &str,
+    ) {
+        let field = &definition.fields[index];
+
+        if let Some(present) = since_condition(definition, index) {
+            writer.open(format!("guard {present} else {{"));
+            writer.line(format!("return {missing}"));
+            writer.close("}");
+            writer.blank();
+        }
+
+        // A field that a later version added, but that every table of that
+        // version holds, is read as a required field is
+        if !checks_offset(definition, field) {
+            match self.read(field.field_type, position).1 {
+                Read::Expression(expression) => writer.line(format!("return {expression}")),
+                Read::FromPosition(statement) => {
+                    writer.line(format!("let field = try {position}"));
+                    writer.line(format!("return {statement}"));
+                }
+            }
+            return;
+        }
+
+        writer.line(format!("let field = try {position}"));
+        writer.open(format!(
+            "guard field != {} else {{",
+            absent_offset(definition)
+        ));
+        writer.line(format!("return {missing}"));
+        writer.close("}");
+        writer.blank();
+
+        let (Read::Expression(read) | Read::FromPosition(read)) =
+            self.read(field.field_type, "field").1;
+        writer.line(format!("return {read}"));
     }
 
     /// The type that a getter returns, and how it reads its field at
@@ -480,21 +567,23 @@ impl Generator<'_> {
             writer.line(format!(
                 "public var {}: {}",
                 identifier(&field.name),
-                self.input_type(field.field_type)
+                self.property_type(field)
             ));
         }
     }
 
     /// The memberwise initializer, which a public struct declares itself,
-    /// since Swift's own is internal
+    /// since Swift's own is internal. An optional field's parameter defaults
+    /// to `nil`, which leaves the field out.
     fn initializer(&self, writer: &mut CodeWriter, fields: &[Field]) {
         let parameters = fields
             .iter()
             .map(|field| {
+                let default = if field.optional { " = nil" } else { "" };
                 text(format!(
-                    "{}: {}",
+                    "{}: {}{default}",
                     identifier(&field.name),
-                    self.input_type(field.field_type)
+                    self.property_type(field)
                 ))
             })
             .collect();
@@ -574,106 +663,144 @@ impl Generator<'_> {
         writer.close("}");
     }
 
-    /// Adds each field to `sizer`, with what decides its length
+    /// Adds each field to `sizer`, with what decides its length. An optional
+    /// field that's absent adds nothing: its offset is counted with the
+    /// table's others.
     fn adds(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let name = identifier(&field.name);
-            match field.field_type {
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!("sizer.add{}()", method(scalar.stored())));
-                }
-                FieldType::Array(scalar) => {
-                    writer.line(format!(
-                        "sizer.add{}Array(count: self.{name}.count)",
-                        method(scalar)
-                    ));
-                }
-                FieldType::String => writer.line(format!("sizer.addString(self.{name})")),
-                FieldType::Struct(index) => {
-                    let structure = &self.schema.definition(index).name;
-                    writer.line(format!("sizer.addStruct(size: {structure}.size)"));
-                }
-                FieldType::StructArray(index) => {
-                    let structure = &self.schema.definition(index).name;
-                    let arguments = vec![
-                        text(format!("count: self.{name}.count")),
-                        text(format!("size: {structure}.size")),
-                        text(format!("alignment: {structure}.alignment")),
-                    ];
-                    writer.statement(&STYLE, "", &call("sizer.addStructArray", arguments), "");
-                }
-                FieldType::Table(index) => {
-                    let table = &self.schema.definition(index).name;
-                    writer.line(format!(
-                        "sizer.addTable(alignment: {table}Fields.alignment)"
-                    ));
-                    writer.line(format!("self.{name}.add(to: &sizer)"));
-                }
-                FieldType::Vector(_) => {
-                    writer.line(format!("sizer.addVector(count: self.{name}.count)"));
-                    writer.open(format!("for item in self.{name} {{"));
-                    writer.line("item.add(to: &sizer)");
-                    writer.close("}");
-                }
+            if !field.optional {
+                self.add(writer, field.field_type, &format!("self.{name}"));
+                continue;
+            }
+
+            // A scalar's or a struct's length doesn't depend on its value,
+            // which a local would leave unused
+            if matches!(
+                field.field_type,
+                FieldType::Scalar(_) | FieldType::Struct(_)
+            ) {
+                writer.open(format!("if self.{name} != nil {{"));
+            } else {
+                writer.open(format!("if let value = self.{name} {{"));
+            }
+            self.add(writer, field.field_type, "value");
+            writer.close("}");
+        }
+    }
+
+    /// Adds a field of `value` to `sizer`
+    fn add(&self, writer: &mut CodeWriter, field_type: FieldType, value: &str) {
+        match field_type {
+            FieldType::Scalar(scalar) => {
+                writer.line(format!("sizer.add{}()", method(scalar.stored())));
+            }
+            FieldType::Array(scalar) => {
+                writer.line(format!(
+                    "sizer.add{}Array(count: {value}.count)",
+                    method(scalar)
+                ));
+            }
+            FieldType::String => writer.line(format!("sizer.addString({value})")),
+            FieldType::Struct(index) => {
+                let structure = &self.schema.definition(index).name;
+                writer.line(format!("sizer.addStruct(size: {structure}.size)"));
+            }
+            FieldType::StructArray(index) => {
+                let structure = &self.schema.definition(index).name;
+                let arguments = vec![
+                    text(format!("count: {value}.count")),
+                    text(format!("size: {structure}.size")),
+                    text(format!("alignment: {structure}.alignment")),
+                ];
+                writer.statement(&STYLE, "", &call("sizer.addStructArray", arguments), "");
+            }
+            FieldType::Table(index) => {
+                let table = &self.schema.definition(index).name;
+                writer.line(format!(
+                    "sizer.addTable(alignment: {table}Fields.alignment)"
+                ));
+                writer.line(format!("{value}.add(to: &sizer)"));
+            }
+            FieldType::Vector(_) => {
+                writer.line(format!("sizer.addVector(count: {value}.count)"));
+                writer.open(format!("for item in {value} {{"));
+                writer.line("item.add(to: &sizer)");
+                writer.close("}");
             }
         }
     }
 
-    /// Writes each field with `writer`, by its index
+    /// Writes each field with `writer`, by its index, and an optional field
+    /// that's absent as such
     fn writes(&self, writer: &mut CodeWriter, definition: &Definition) {
         for (index, field) in definition.fields.iter().enumerate() {
             let name = identifier(&field.name);
-            match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => {
-                    writer.line(format!("writer.setUInt8({index}, self.{name} ? 1 : 0)"));
-                }
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!(
-                        "writer.set{}({index}, self.{name})",
-                        method(scalar)
-                    ));
-                }
-                FieldType::Array(scalar) => {
-                    writer.line(format!(
-                        "writer.set{}Array({index}, self.{name})",
-                        method(scalar)
-                    ));
-                }
-                FieldType::String => writer.line(format!("writer.setString({index}, self.{name})")),
-                FieldType::Struct(_) => {
-                    writer.line(format!("writer.setStruct({index})"));
-                    writer.line(format!("self.{name}.write(to: &writer)"));
-                }
-                FieldType::StructArray(item) => {
-                    let structure = &self.schema.definition(item).name;
-                    let arguments = vec![
-                        text(index.to_string()),
-                        text(format!("count: self.{name}.count")),
-                        text(format!("alignment: {structure}.alignment")),
-                    ];
-                    writer.statement(&STYLE, "", &call("writer.setStructArray", arguments), "");
-                    writer.open(format!("for item in self.{name} {{"));
-                    writer.line("item.write(to: &writer)");
-                    writer.close("}");
-                }
-                FieldType::Table(item) => {
-                    let table = &self.schema.definition(item).name;
-                    writer.line(format!(
-                        "writer.setTable({index}, alignment: {table}Fields.alignment)"
-                    ));
-                    writer.line(format!("self.{name}.write(to: &writer)"));
-                }
-                FieldType::Vector(_) => {
-                    // Named after the field's index, since a table may hold
-                    // several vectors
-                    writer.line(format!(
-                        "let vector{index} = writer.setVector({index}, count: self.{name}.count)"
-                    ));
-                    writer.open(format!("for (index, item) in self.{name}.enumerated() {{"));
-                    writer.line("item.write(to: &writer)");
-                    writer.line(format!("writer.setItemEnd(vector{index}, item: index)"));
-                    writer.close("}");
-                }
+            if !field.optional {
+                self.write(writer, index, field.field_type, &format!("self.{name}"));
+                continue;
+            }
+
+            // The local hides no field, which the calls name through `self`,
+            // nor any type, whose names are `PascalCase`
+            writer.open(format!("if let value = self.{name} {{"));
+            self.write(writer, index, field.field_type, "value");
+            writer.close("} else {");
+            writer.indent();
+            writer.line(format!("writer.setAbsent({index})"));
+            writer.close("}");
+        }
+    }
+
+    /// Writes field `index` of `value` with `writer`
+    fn write(&self, writer: &mut CodeWriter, index: usize, field_type: FieldType, value: &str) {
+        match field_type {
+            FieldType::Scalar(Scalar::Bool) => {
+                writer.line(format!("writer.setUInt8({index}, {value} ? 1 : 0)"));
+            }
+            FieldType::Scalar(scalar) => {
+                writer.line(format!("writer.set{}({index}, {value})", method(scalar)));
+            }
+            FieldType::Array(scalar) => {
+                writer.line(format!(
+                    "writer.set{}Array({index}, {value})",
+                    method(scalar)
+                ));
+            }
+            FieldType::String => writer.line(format!("writer.setString({index}, {value})")),
+            FieldType::Struct(_) => {
+                writer.line(format!("writer.setStruct({index})"));
+                writer.line(format!("{value}.write(to: &writer)"));
+            }
+            FieldType::StructArray(item) => {
+                let structure = &self.schema.definition(item).name;
+                let arguments = vec![
+                    text(index.to_string()),
+                    text(format!("count: {value}.count")),
+                    text(format!("alignment: {structure}.alignment")),
+                ];
+                writer.statement(&STYLE, "", &call("writer.setStructArray", arguments), "");
+                writer.open(format!("for item in {value} {{"));
+                writer.line("item.write(to: &writer)");
+                writer.close("}");
+            }
+            FieldType::Table(item) => {
+                let table = &self.schema.definition(item).name;
+                writer.line(format!(
+                    "writer.setTable({index}, alignment: {table}Fields.alignment)"
+                ));
+                writer.line(format!("{value}.write(to: &writer)"));
+            }
+            FieldType::Vector(_) => {
+                // Named after the field's index, since a table may hold
+                // several vectors
+                writer.line(format!(
+                    "let vector{index} = writer.setVector({index}, count: {value}.count)"
+                ));
+                writer.open(format!("for (index, item) in {value}.enumerated() {{"));
+                writer.line("item.write(to: &writer)");
+                writer.line(format!("writer.setItemEnd(vector{index}, item: index)"));
+                writer.close("}");
             }
         }
     }
@@ -837,7 +964,18 @@ impl Generator<'_> {
         writer.close("}");
     }
 
-    /// The type of a field in a fields struct or a struct
+    /// The type of a field's property in a fields struct or a struct, which
+    /// is optional when the field is, so that `nil` leaves it out
+    fn property_type(&self, field: &Field) -> String {
+        let input = self.input_type(field.field_type);
+        if field.optional {
+            format!("{input}?")
+        } else {
+            input
+        }
+    }
+
+    /// The type of a field's value in a fields struct or a struct
     fn input_type(&self, field_type: FieldType) -> String {
         match field_type {
             FieldType::Scalar(scalar) => swift_type(scalar).to_owned(),
@@ -849,6 +987,47 @@ impl Generator<'_> {
             FieldType::Vector(index) => format!("[{}Fields]", self.schema.definition(index).name),
         }
     }
+}
+
+/// A versioned message's initializer, which checks that the version is
+/// the message's own, or within the versions that it reads when it has a
+/// first version, which it then holds for the getters of the fields that
+/// later versions added
+fn versioned_initializer(writer: &mut CodeWriter, name: &str, layout: Layout) {
+    let throws = if layout.since.is_some() {
+        "Throws a `DecodeError` if `bytes` are in a format version before `firstVersion` or after `formatVersion`."
+    } else {
+        "Throws a `DecodeError` if `bytes` are in another format version."
+    };
+    swift_doc(
+        writer,
+        &[
+            format!(
+                "Reads {} from `bytes`, which it can't outlive.",
+                article(name)
+            ),
+            String::new(),
+            throws.to_owned(),
+        ],
+    );
+    writer.line("@inlinable");
+    writer.line("@_lifetime(copy bytes)");
+    writer.open("public init(_ bytes: RawSpan) throws(DecodeError) {");
+    writer.line("_reader = TableReader(bytes, layout: Self.layout)");
+    writer.blank();
+    writer.line("let version = try _reader.version");
+    if layout.since.is_some() {
+        writer.line("let supported = Self.firstVersion...Self.formatVersion");
+        writer.open("guard supported.contains(version) else {");
+        writer.line("throw .versionOutsideRange(version: version, supported: supported)");
+        writer.close("}");
+        writer.line("_version = version");
+    } else {
+        writer.open("guard version == Self.formatVersion else {");
+        writer.line("throw .unsupportedVersion(version: version, supported: Self.formatVersion)");
+        writer.close("}");
+    }
+    writer.close("}");
 }
 
 /// The view of a vector of a table, which reads each item in place when it's
@@ -982,6 +1161,142 @@ fn struct_array_view(writer: &mut CodeWriter, definition: &Definition) {
     writer.close("}");
 }
 
+/// The property that tells whether a table holds field `index`, a scalar that
+/// may be missing, whose getter returns its default otherwise:
+/// `has<Field>`, which makes the getter's checks, at `position`
+fn presence_property(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    index: usize,
+    position: &str,
+) {
+    let field = &definition.fields[index];
+    let since = since_condition(definition, index);
+    let reads_offset = checks_offset(definition, field);
+
+    let name = camel_case(&field.name);
+    let docs = if reads_offset {
+        vec![
+            format!("Whether the table holds `{name}`."),
+            String::new(),
+            "Throws a `DecodeError` if an offset that it reads lies outside the bytes.".to_owned(),
+        ]
+    } else {
+        vec![format!("Whether the table holds `{name}`")]
+    };
+    swift_doc(writer, &docs);
+
+    writer.line("@inlinable");
+    writer.open(format!(
+        "public var {}: Bool {{",
+        presence_identifier(field)
+    ));
+    let absent = absent_offset(definition);
+    match (since, reads_offset) {
+        (Some(present), false) => writer.line(format!("get throws(DecodeError) {{ {present} }}")),
+        (None, true) => writer.line(format!(
+            "get throws(DecodeError) {{ try {position} != {absent} }}"
+        )),
+        (Some(present), true) => {
+            writer.open("get throws(DecodeError) {");
+            writer.open(format!("guard {present} else {{"));
+            writer.line("return false");
+            writer.close("}");
+            writer.blank();
+            writer.line(format!("return try {position} != {absent}"));
+            writer.close("}");
+        }
+        (None, false) => unreachable!("a field that may be missing has a check"),
+    }
+    writer.close("}");
+}
+
+/// The condition on which a table holds field `index`, which a later version
+/// or revision added, or `None` for a field of every version and revision:
+///
+/// - A versioned message holds it from the version that added it, which its
+///   reader holds.
+/// - Any other table holds its offset when the offset would end no later
+///   than the table's first value starts, which its first field's offset
+///   gives. The offset may still be 0, as padding before an aligned first
+///   value reads, which `checks_offset()` checks then.
+fn since_condition(definition: &Definition, index: usize) -> Option<String> {
+    let since = definition.fields[index].since?;
+
+    let condition = match definition.layout() {
+        Some(layout) if layout.version.is_some() => format!("_version >= {since}"),
+        Some(layout) => {
+            let width = offset_size(layout.offset_type);
+            let header = usize::from(layout.sized) * width;
+            format!(
+                "try _reader.rootOffset(0) >= {}",
+                header + (index + 1) * width
+            )
+        }
+        None => format!(
+            "try _reader.fieldOffset(0, inTableAt: _position) - _position >= {}",
+            (index + 1) * NESTED_OFFSET_SIZE
+        ),
+    };
+
+    Some(condition)
+}
+
+/// Whether a field that may be missing is read after comparing its offset
+/// with the offset of an absent field: an optional field, and a field that a
+/// later revision of a table without a version added, whose offset may lie
+/// in padding
+fn checks_offset(definition: &Definition, field: &Field) -> bool {
+    let versioned = definition
+        .layout()
+        .is_some_and(|layout| layout.version.is_some());
+    field.optional || (field.since.is_some() && !versioned)
+}
+
+/// The position that an absent field's offset reads as: 0 in the root, and a
+/// nested table's own position in it, since its offsets count from there
+fn absent_offset(definition: &Definition) -> &'static str {
+    if definition.layout().is_some() {
+        "0"
+    } else {
+        "_position"
+    }
+}
+
+/// The name of the property that tells whether a table holds a scalar that
+/// may be missing, `has<Field>`
+fn presence_identifier(field: &Field) -> String {
+    identifier(&format!("has_{}", field.name))
+}
+
+/// A scalar's default as a Swift literal, which the getter's return type
+/// converts: a float's as the shortest literal of the `Double` that holds
+/// it, which holds a `float32`'s default exactly, so that its conversion to
+/// a `Float` doesn't round it again
+fn swift_literal(value: ScalarValue) -> String {
+    match value {
+        ScalarValue::Bool(value) => value.to_string(),
+        ScalarValue::Integer(value) => value.to_string(),
+        ScalarValue::Float(value) => format!("{value:?}"),
+    }
+}
+
+/// The offset size of nested tables, which have `uint32` offsets, since the
+/// checker rejects tables nested in messages of a narrower offset type, as
+/// `fixed::NESTED_OFFSET_SIZE`, which a build of the `swift` feature alone
+/// doesn't compile
+const NESTED_OFFSET_SIZE: usize = 4;
+
+/// The width of an offset type's header slots, offsets and counts, as
+/// `fixed::offset_size()`
+const fn offset_size(offset_type: OffsetType) -> usize {
+    match offset_type {
+        OffsetType::Uint8 => 1,
+        OffsetType::Uint16 => 2,
+        OffsetType::Uint32 => 4,
+    }
+}
+
 /// A field's name in `camelCase`, with a `_` after it if it would clash with
 /// a member of the generated code, or in backticks if it's a keyword
 fn identifier(name: &str) -> String {
@@ -1104,6 +1419,24 @@ mod tests {
         assert!(KEYWORDS.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(MEMBERS.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(MEMBERS.iter().all(|member| !KEYWORDS.contains(member)));
+    }
+
+    #[test]
+    fn test_literals() {
+        assert_eq!(swift_literal(ScalarValue::Bool(true)), "true");
+        assert_eq!(swift_literal(ScalarValue::Integer(-128)), "-128");
+        assert_eq!(
+            swift_literal(ScalarValue::Integer(i128::from(u64::MAX))),
+            "18446744073709551615"
+        );
+        assert_eq!(swift_literal(ScalarValue::Float(-0.0)), "-0.0");
+        assert_eq!(swift_literal(ScalarValue::Float(1.0)), "1.0");
+        assert_eq!(swift_literal(ScalarValue::Float(1e300)), "1e300");
+        // A float32's default, which the Double holds exactly
+        assert_eq!(
+            swift_literal(ScalarValue::Float(f64::from(0.1_f32))),
+            "0.10000000149011612"
+        );
     }
 
     #[test]

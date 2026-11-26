@@ -17,7 +17,8 @@
 /// ``setStruct(_:)``, and an array's structs its
 /// ``setStructArray(_:count:alignment:)``, each written with
 /// ``writeScalar(_:)``, as the code that tafla-gen generates writes them
-/// without collecting their bytes first.
+/// without collecting their bytes first. A field left out is written with
+/// ``setAbsent(_:)``, as the offset 0, which the sizer added nothing for.
 ///
 /// It's the target of the code that tafla-gen generates, whose calls follow
 /// from the schema, so it doesn't check them again: fields are set in index
@@ -223,6 +224,20 @@ public struct TableWriter: ~Copyable {
     public mutating func setStruct(_ index: Int, _ bytes: [UInt8]) {
         setOffset(index)
         output.writeBytes(bytes)
+    }
+
+    /// Writes field `index` as absent: an offset of 0 and no value, which a
+    /// reader finds by comparing the field's offset, from
+    /// `TableReader.rootOffset(_:)`, with 0, or one from
+    /// `TableReader.fieldOffset(_:inTableAt:)` with the nested table's
+    /// position, before it reads the field. The sizer adds nothing for it.
+    /// Only a format whose readers make that check for the field, such as
+    /// code generated from a schema that declares it optional, can leave it
+    /// out.
+    @inlinable
+    public mutating func setAbsent(_ index: Int) {
+        precondition(index >= 0, "A negative field index")
+        output.writeSlot(0, at: slots + index * offsetType.size, offsetType: offsetType)
     }
 
     /// Writes the offset of struct field `index`, whose scalars the caller

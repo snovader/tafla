@@ -28,6 +28,16 @@ struct Suite: Sendable {
         }
     }()
 
+    /// The cases of presence, which lie apart from the suite's others: tables
+    /// with absent fields, and tables that a later revision reads
+    static let presence: Suite = {
+        do {
+            return try Suite(directory: conformance.appendingPathComponent("presence"))
+        } catch {
+            fatalError("Can't load the cases of presence: \(error)")
+        }
+    }()
+
     init(directory: URL) throws {
         let contents = try Data(contentsOf: directory.appendingPathComponent("cases.json"))
         let suite = try JSONDecoder().decode(JSON.self, from: contents)
@@ -202,7 +212,8 @@ private func parseTable(_ json: JSON, name: String) throws -> Table {
     return Table(
         layout: tableLayout,
         version: tableLayout.isVersioned ? UInt32(try json["version"].int) : nil,
-        fields: try json["fields"].array.map { try parseField($0, name: name) }
+        fields: try json["fields"].array.map { try parseField($0, name: name) },
+        missing: json.has("missing") ? try json["missing"].int : nil
     )
 }
 
@@ -214,6 +225,7 @@ private func parseField(_ json: JSON, name: String) throws -> Field {
     }
 
     switch type {
+    case "absent": return .absent
     case "bool": return .bool(try json["value"].bool)
     case "int8[]": return .int8Array(try json["value"].array.map { Int8(try $0.int) })
     case "uint8[]": return .uint8Array(try json["value"].array.map { UInt8(try $0.int) })

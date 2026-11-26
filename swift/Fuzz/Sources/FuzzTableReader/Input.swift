@@ -96,7 +96,7 @@ struct Input {
             require(position >= 0 && position < count, "\(error) of \(count) bytes")
         case .itemEndsBeforeStart(let start, let end):
             require(end < start, "\(error)")
-        case .unsupportedVersion:
+        case .unsupportedVersion, .versionOutsideRange:
             fatalError("A read failed with \(error)")
         }
     }

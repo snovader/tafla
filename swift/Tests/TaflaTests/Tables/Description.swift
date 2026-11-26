@@ -16,6 +16,10 @@ struct Table: Hashable, Sendable {
     /// The version in the header, present only when the layout is versioned
     var version: UInt32?
     var fields: [Field]
+    /// How many fields a reader of a later revision of the table knows after
+    /// `fields`, each of which it must find missing from the table. Only the
+    /// cases of presence, and the tests of revisions, have it.
+    var missing: Int? = nil
 }
 
 /// A field of each type that a table holds, with its value
@@ -54,6 +58,10 @@ enum Field: Hashable, Sendable {
     /// it's set with when the description gives one
     case table(Nested, alignment: Alignment?)
     case vector([Nested])
+    /// A field left out of its table, whose offset is 0, and which takes no
+    /// bytes. Only the cases of presence, and the tests of absent fields,
+    /// have it.
+    case absent
 
     static func float32(_ value: Float) -> Field { .float32(bits: value.bitPattern) }
 

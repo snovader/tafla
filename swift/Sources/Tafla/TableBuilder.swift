@@ -222,6 +222,19 @@ public struct TableBuilder: Sendable {
         try add(.string(value, utf8Count: value.utf8.count))
     }
 
+    /// Sets the next field as absent: an offset of 0 and no value. A reader
+    /// finds it by comparing the field's offset, from
+    /// `TableReader.rootOffset(_:)`, with 0, or one from
+    /// `TableReader.fieldOffset(_:inTableAt:)` with the nested table's
+    /// position, before it reads the field, so only a format whose readers
+    /// make that check for the field can leave it out.
+    ///
+    /// Throws ``BuildError/tooManyFields(fields:)`` if the table holds all its
+    /// fields already. It adds no bytes, so it never makes the table too long.
+    public mutating func setAbsent() throws(BuildError) {
+        try add(.absent)
+    }
+
     /// Sets a struct field from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding. Throws
     /// as ``setInt8(_:)`` does.

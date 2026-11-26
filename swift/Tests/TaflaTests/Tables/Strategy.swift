@@ -61,6 +61,16 @@ enum Tables {
     /// How deeply tables nest: the root's fields can hold tables whose fields
     /// hold tables
     static let depth = 2
+
+    /// Tables of any layout with fields left out, at every depth, but the
+    /// root's first field, which a table read by a later revision holds
+    static let leavingFieldsOut = Generator<Table, [Table]>(
+        run: { rng in
+            var draw = Draw(seed: rng.next())
+            return draw.tableLeavingFieldsOut()
+        },
+        shrink: { table in shrinks(of: table) }
+    )
 }
 
 /// Smaller tables than `table`, each without one of its fields, or of the
@@ -362,6 +372,43 @@ struct Draw: RandomNumberGenerator {
     mutating func nested(layouts: (inout Draw) -> TableLayout, depth: Int, small: Bool) -> Nested {
         Nested(from: element(of: Source.allCases), table: table(layouts: layouts, depth: depth, small: small))
     }
+
+    /// A table of any layout, with fields left out as
+    /// `Tables.leavingFieldsOut` leaves them out, without shrinking
+    mutating func tableLeavingFieldsOut() -> Table {
+        let table = table()
+        return leavingOut(table, keepingFirst: true)
+    }
+
+    /// The table with each field left out one time in three, as an absent
+    /// field, and the fields of the tables nested in the others and of their
+    /// vector items too, but its first field when `keepingFirst`. Leaving a
+    /// field out only shortens a table, which still fits in its offset type.
+    mutating func leavingOut(_ table: Table, keepingFirst: Bool = false) -> Table {
+        var left = table
+        for (index, field) in table.fields.enumerated() {
+            let kept = keepingFirst && index == 0
+            left.fields[index] = !kept && int(0...2) == 0 ? .absent : leavingOut(within: field)
+        }
+
+        return left
+    }
+
+    /// The field with fields left out of the tables that it nests
+    mutating func leavingOut(within field: Field) -> Field {
+        switch field {
+        case .table(let nested, let alignment):
+            return .table(Nested(from: nested.from, table: leavingOut(nested.table)), alignment: alignment)
+        case .vector(let items):
+            var left: [Nested] = []
+            for item in items {
+                left.append(Nested(from: item.from, table: leavingOut(item.table)))
+            }
+            return .vector(left)
+        default:
+            return field
+        }
+    }
 }
 
 /// The most fields, array elements, characters, structs in an array and
@@ -417,6 +464,7 @@ func longest(_ field: Field, width: UInt64) -> UInt64 {
     }
 
     switch field {
+    case .absent: return 0
     case .int8, .uint8, .bool: return 1
     case .int16, .uint16: return 2
     case .int32, .uint32, .float32: return 4

@@ -41,7 +41,8 @@ extension Table {
     /// root's offset type
     func nestedInPlace() -> Table {
         let layout = headerless(layout.offsetType)
-        return Table(layout: self.layout, version: version, fields: fields.map { $0.nestedInPlace(layout) })
+        return Table(
+            layout: self.layout, version: version, fields: fields.map { $0.nestedInPlace(layout) }, missing: missing)
     }
 }
 
@@ -50,9 +51,8 @@ extension Field {
     /// writes in place, in `layout`
     func nestedInPlace(_ layout: TableLayout) -> Field {
         func inPlace(_ nested: Nested) -> Nested {
-            Nested(
-                from: .builder,
-                table: Table(layout: layout, fields: nested.table.fields.map { $0.nestedInPlace(layout) }))
+            let fields = nested.table.fields.map { $0.nestedInPlace(layout) }
+            return Nested(from: .builder, table: Table(layout: layout, fields: fields, missing: nested.table.missing))
         }
 
         switch self {
@@ -77,6 +77,8 @@ extension TableSizer {
     /// Adds a field, with what decides its length
     mutating func add(_ field: Field) {
         switch field {
+        // An absent field takes no bytes but its offset
+        case .absent: break
         case .int8: addInt8()
         case .uint8, .bool: addUInt8()
         case .int16: addInt16()
@@ -126,6 +128,7 @@ extension TableWriter {
     /// Writes a field as field `index` of the writer's table
     mutating func set(_ index: Int, _ field: Field) {
         switch field {
+        case .absent: setAbsent(index)
         case .int8(let value): setInt8(index, value)
         case .uint8(let value): setUInt8(index, value)
         case .int16(let value): setInt16(index, value)
