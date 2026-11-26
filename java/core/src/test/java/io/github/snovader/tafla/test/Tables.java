@@ -32,6 +32,7 @@ final class Tables {
     /** Sets the field on the builder with the setter of its type, building a nested table first */
     static void setField(TableBuilder builder, FieldDescription field) {
         switch (field) {
+            case AbsentField ignored -> builder.setAbsent();
             case ScalarField scalar -> scalar.type().set(builder, scalar.value());
             case BoolField bool -> builder.setUint8(bool.uint8());
             case ArrayField array -> array.type().setArray(builder, array.values());
@@ -129,7 +130,7 @@ final class Tables {
      */
     static TableDescription nestedInPlace(TableDescription table) {
         var fields = fieldsInPlace(table.fields(), table.layout().offsetType());
-        return new TableDescription(table.layout(), table.version(), fields);
+        return new TableDescription(table.layout(), table.version(), fields, table.missing());
     }
 
     private static List<FieldDescription> fieldsInPlace(List<FieldDescription> fields, OffsetType offsetType) {
@@ -156,12 +157,16 @@ final class Tables {
 
     private static TableDescription tableInPlace(TableDescription nested, OffsetType offsetType) {
         var layout = LayoutDescription.headerless(offsetType);
-        return new TableDescription(layout, OptionalLong.empty(), fieldsInPlace(nested.fields(), offsetType));
+        var fields = fieldsInPlace(nested.fields(), offsetType);
+
+        return new TableDescription(layout, OptionalLong.empty(), fields, nested.missing());
     }
 
     /** Adds the field to the sizer with the method of its type, and then a nested table's fields */
     private static void addField(TableSizer sizer, FieldDescription field) {
         switch (field) {
+            // An absent field takes no bytes but its offset, which the table's count of fields adds
+            case AbsentField ignored -> {}
             case ScalarField scalar -> scalar.type().add(sizer);
             case BoolField ignored -> sizer.addUint8();
             case ArrayField array -> array.type().addArray(sizer, array.values().length);
@@ -203,6 +208,7 @@ final class Tables {
     private static void writeField(TableWriter writer, int fieldIndex, FieldDescription field, IntUnaryOperator indices) {
         var index = indices.applyAsInt(fieldIndex);
         switch (field) {
+            case AbsentField ignored -> writer.setAbsent(index);
             case ScalarField scalar -> scalar.type().set(writer, index, scalar.value());
             case BoolField bool -> writer.setUint8(index, bool.uint8());
             case ArrayField array -> array.type().setArray(writer, index, array.values());

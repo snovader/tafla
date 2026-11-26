@@ -12,23 +12,45 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Reads and rebuilds the tables of tafla's conformance suite, which the TypeScript runtime writes.
- * See {@code conformance/README.md} at the root of the repository for the format of their
- * descriptions in {@code cases.json}, which {@link DescriptionJson} reads.
+ * Reads and rebuilds the tables of tafla's conformance suite, which the TypeScript runtime writes,
+ * and its cases of presence, which lie apart from them in {@code presence/}: tables with absent
+ * fields, and tables that a reader of a later revision reads. See {@code conformance/README.md} at
+ * the root of the repository for the format of their descriptions in {@code cases.json}, which
+ * {@link DescriptionJson} reads.
  */
 public class ConformanceTest {
     private static final Path CONFORMANCE = Path.of(System.getProperty("tafla.conformance"));
-    private static final JsonObject SUITE = readSuite();
+    private static final List<Suite> SUITES = List.of(
+        Suite.read(CONFORMANCE),
+        Suite.read(CONFORMANCE.resolve("presence"))
+    );
 
-    /** A case of the suite, which shows as its name when a property fails */
-    record Case(JsonObject description) {
+    /** The cases of a {@code cases.json}, whose files lie in its directory */
+    record Suite(Path directory, JsonObject json) {
+        static Suite read(Path directory) {
+            try (var reader = Json.createReader(
+                Files.newBufferedReader(directory.resolve("cases.json"), StandardCharsets.UTF_8)
+            )) {
+                return new Suite(directory, reader.readObject());
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            }
+        }
+
+        List<Case> cases(String kind) {
+            return json.getJsonArray(kind).stream().map(value -> new Case(this, value.asJsonObject())).toList();
+        }
+    }
+
+    /** A case of a suite, which shows as its name when a property fails */
+    record Case(Suite suite, JsonObject description) {
         String name() {
             return description.getString("name");
         }
 
         byte[] bytes() {
             try {
-                return Files.readAllBytes(CONFORMANCE.resolve(description.getString("file")));
+                return Files.readAllBytes(suite.directory().resolve(description.getString("file")));
             } catch (IOException ex) {
                 throw new UncheckedIOException(ex);
             }
@@ -40,25 +62,19 @@ public class ConformanceTest {
         }
     }
 
-    private static JsonObject readSuite() {
-        try (var reader = Json.createReader(
-            Files.newBufferedReader(CONFORMANCE.resolve("cases.json"), StandardCharsets.UTF_8)
-        )) {
-            return reader.readObject();
-        } catch (IOException ex) {
-            throw new UncheckedIOException(ex);
-        }
-    }
-
+    /** {@return the cases of a kind, of every suite} */
     private static List<Case> cases(String kind) {
-        return SUITE.getJsonArray(kind).stream().map(value -> new Case(value.asJsonObject())).toList();
+        return SUITES.stream().flatMap(suite -> suite.cases(kind).stream()).toList();
     }
 
-    /** {@return the valid case whose table description reads an equivalent or invalid case's bytes} */
+    /**
+     * {@return the valid case of its own suite whose table description reads an equivalent or
+     * invalid case's bytes}
+     */
     private static Case validCaseOf(Case otherCase) {
         var name = otherCase.description().getString("case");
 
-        return cases("valid").stream()
+        return otherCase.suite().cases("valid").stream()
             .filter(candidate -> candidate.name().equals(name))
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException("There's no valid case " + name));
@@ -84,6 +100,10 @@ public class ConformanceTest {
         return Arbitraries.of(cases("invalid"));
     }
 
+    /**
+     * Each value read back as described, each absent field's offset 0, and a table that describes
+     * the fields that a later revision appends without them
+     */
     @Property(generation = GenerationMode.EXHAUSTIVE, shrinking = ShrinkingMode.OFF)
     void should_read_every_valid_table(@ForAll("validCases") Case validCase) {
         var table = tableOf(validCase);

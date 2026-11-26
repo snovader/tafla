@@ -48,6 +48,7 @@ final class InPlaceTables {
     /** Sets the field on the item as {@link Tables#setField} sets it on a builder */
     private void setField(TableBuilder.Item item, FieldDescription field, OffsetType offsetType) {
         switch (field) {
+            case AbsentField ignored -> item.setAbsent();
             case ScalarField scalar -> scalar.type().set(item, scalar.value());
             case BoolField bool -> item.setUint8(bool.uint8());
             case ArrayField array -> array.type().setArray(item, array.values());
