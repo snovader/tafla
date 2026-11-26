@@ -13,6 +13,7 @@ use proptest::arbitrary::Arbitrary;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tafla::{Alignment, ArrayView, BuildError, DecodeError, Element, TableBuilder, TableLayout};
+#[cfg(feature = "json")]
 use tafla_gen::{DecodeOptions, Root};
 
 /// The cases of each property: enough to draw every kind of edge value
@@ -515,6 +516,7 @@ pub fn arbitrary_bytes() -> impl Strategy<Value = Vec<u8>> {
 /// in `bytes`, which a conforming writer wrote, as JSON that encodes back
 /// into the same bytes, and that decoding those bytes again reads the same
 /// JSON, with strings in UTF-8 and in ASCII
+#[cfg(feature = "json")]
 pub fn check_json_round_trip(schema: &str, name: &str, bytes: &[u8]) -> Result<(), TestCaseError> {
     let schema = tafla_gen::parse(schema).expect("an example schema is valid");
     let root = Root::find(&schema, name).expect("the name is a message or a struct");
@@ -534,5 +536,16 @@ pub fn check_json_round_trip(schema: &str, name: &str, bytes: &[u8]) -> Result<(
         prop_assert_eq!(root.decode(bytes, &options), Ok(json));
     }
 
+    Ok(())
+}
+
+/// Without the `json` feature, tafla-gen neither decodes nor encodes
+#[cfg(not(feature = "json"))]
+#[allow(clippy::unnecessary_wraps)] // The signature of the check with the feature
+pub const fn check_json_round_trip(
+    _schema: &str,
+    _name: &str,
+    _bytes: &[u8],
+) -> Result<(), TestCaseError> {
     Ok(())
 }

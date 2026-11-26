@@ -8,6 +8,8 @@
 //! make it do: tables nest at most [`MAX_DEPTH`] deep, and the values read
 //! take at most [`MAX_READ_FACTOR`] times the bytes.
 
+use std::fmt::Write;
+
 use tafla::{TableLayout, TableReader};
 
 use super::layout::Part;
@@ -224,7 +226,7 @@ impl<'a> Walk<'a> {
             value.push_json(&mut description);
             // A byte that reads as true, but that no writer writes
             if scalar == Scalar::Bool && bytes[0] > 1 {
-                description.push_str(&format!(", of the byte {}", bytes[0]));
+                let _ = write!(description, ", of the byte {}", bytes[0]);
             }
             description.replace('"', "")
         });
@@ -393,17 +395,13 @@ impl<'a> Walk<'a> {
     /// Records the part of `length` bytes at `start`, of the field being
     /// read, when the layout is asked for
     fn part(&mut self, start: usize, length: usize, describe: impl FnOnce() -> String) {
-        if self.parts.is_some() {
-            let part = Part {
+        if let Some(parts) = &mut self.parts {
+            parts.push(Part {
                 start,
                 length,
                 path: path_of(&self.path),
                 description: describe(),
-            };
-            self.parts
-                .as_mut()
-                .expect("the parts are recorded")
-                .push(part);
+            });
         }
     }
 

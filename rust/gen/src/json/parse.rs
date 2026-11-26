@@ -302,10 +302,10 @@ impl<'a> Parser<'a> {
                 continue;
             };
             given[index] = true;
-            if self.path.is_empty() {
-                if let Some(span) = self.root_fields.get_mut(index) {
-                    *span = key_span;
-                }
+            if self.path.is_empty()
+                && let Some(span) = self.root_fields.get_mut(index)
+            {
+                *span = key_span;
             }
 
             let field = &definition.fields[index];

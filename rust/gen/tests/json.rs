@@ -6,6 +6,8 @@
 //! self-sharing bytes decode as values or decode errors within the limits;
 //! and errors in JSON name the path of their field.
 
+#![cfg(feature = "json")]
+
 mod tables;
 
 use std::fmt::Write;
@@ -300,14 +302,14 @@ fn shared_levels(levels: usize) -> Vec<u8> {
 
     for level in 0..levels {
         let position = 4 + level * VECTOR as usize;
-        let next = position as u32 + VECTOR;
+        let next = u32::try_from(position).unwrap() + VECTOR;
         for slot in [2, 24, 36] {
             bytes.extend(u32::to_le_bytes(slot));
         }
         // Two trees: the offsets of their value and their children, which
         // are the next level's vector, and the value
         for item_start in [position + 12, position + 24] {
-            for slot in [8, next - item_start as u32, 7] {
+            for slot in [8, next - u32::try_from(item_start).unwrap(), 7] {
                 bytes.extend(u32::to_le_bytes(slot));
             }
         }
@@ -541,7 +543,7 @@ impl Random {
     }
 
     fn below(&mut self, count: usize) -> usize {
-        (self.next() % count as u64) as usize
+        usize::try_from(self.next() % count as u64).unwrap()
     }
 
     fn chance(&mut self, percent: u64) -> bool {
@@ -668,9 +670,9 @@ impl Model {
         } else {
             *random.pick(&[OffsetType::Uint8, OffsetType::Uint16, OffsetType::Uint32])
         };
-        let version = random
-            .chance(40)
-            .then(|| (random.next() % (u64::from(offset_type.max_value()) + 1)) as u32);
+        let version = random.chance(40).then(|| {
+            u32::try_from(random.next() % (u64::from(offset_type.max_value()) + 1)).unwrap()
+        });
 
         Self {
             structs,

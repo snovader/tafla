@@ -99,8 +99,14 @@ impl ScalarValue {
                 write!(json, "\"NaN:0x{:016x}\"", value.to_bits())
             }
             // The float64 that equals it, which parses and narrows to it
-            Self::Float32(value) => Ok(push_float(json, f64::from(value))),
-            Self::Float64(value) => Ok(push_float(json, value)),
+            Self::Float32(value) => {
+                push_float(json, f64::from(value));
+                Ok(())
+            }
+            Self::Float64(value) => {
+                push_float(json, value);
+                Ok(())
+            }
         };
     }
 
