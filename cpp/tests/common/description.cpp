@@ -31,6 +31,8 @@ bool same(const T& left, const T& right) {
         return left.nested == right.nested && left.alignment == right.alignment;
     } else if constexpr (std::is_same_v<T, VectorField>) {
         return left.items == right.items;
+    } else if constexpr (std::is_same_v<T, Absent>) {
+        return true;
     } else {
         return left == right;
     }
@@ -193,7 +195,8 @@ bool operator==(const Field& left, const Field& right) {
 }
 
 bool operator==(const Table& left, const Table& right) {
-    return left.layout == right.layout && left.version == right.version && left.fields == right.fields;
+    return left.layout == right.layout && left.version == right.version && left.fields == right.fields &&
+           left.missing == right.missing;
 }
 
 bool operator==(const Nested& left, const Nested& right) {
@@ -231,6 +234,7 @@ std::ostream& operator<<(std::ostream& stream, const Field& field) {
                        }
                        stream << "]";
                    },
+                   [&stream](const Absent&) { stream << "absent"; },
                    [&stream](const auto& value) {
                        using T = std::decay_t<decltype(value)>;
                        if constexpr (std::is_arithmetic_v<T>) {
@@ -257,6 +261,9 @@ std::ostream& operator<<(std::ostream& stream, const Table& table) {
     }
     stream << " ";
     print_fields(stream, table.fields);
+    if (table.missing) {
+        stream << " missing " << *table.missing;
+    }
     return stream << "}";
 }
 

@@ -365,6 +365,18 @@ public:
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
+    /// Sets the next field as absent: the offset 0 and no value. A reader
+    /// finds it by comparing the field's offset, from
+    /// `TableReader::root_offset()`, with 0, or one from `field_offset()` with
+    /// the nested table's position, before it reads the field, so only a
+    /// format whose readers make that check for the field can leave it out.
+    ///
+    /// Throws a `BuildError` if the table holds all its fields already.
+    void set_absent() {
+        const auto length = check_field(0);
+        commit({Kind::absent, 0, Alignment::one, 0, 0, 0, nullptr}, length);
+    }
+
     /// Embeds a table, from its builder or its bytes, without a length
     /// prefix. Readers find its fields with `TableReader::field_offset()` from
     /// the field's position, which reads offsets of the parent's offset type,
@@ -455,6 +467,8 @@ private:
         table_bytes,
         /// A vector, whose items follow it
         vector,
+        /// A field left out, which takes the offset 0 and no bytes
+        absent,
     };
 
     /// A field that the builder records, to write it with the others. A table
@@ -1245,6 +1259,10 @@ public:
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
+    void set_absent() {
+        builder_->set_absent();
+    }
+
     void set_table(NestedTable table) {
         builder_->set_table(std::move(table));
     }
@@ -1569,6 +1587,9 @@ TAFLA_ALWAYS_INLINE void TableBuilder::write_field(Writer& writer, std::size_t i
         case Kind::table_bytes:
             writer.set_table(index, field.alignment);
             writer.copy_table({static_cast<const std::uint8_t*>(field.data), field.count});
+            return;
+        case Kind::absent:
+            writer.set_absent(index);
             return;
         case Kind::table:
         case Kind::vector:

@@ -42,9 +42,10 @@ public:
         /// the ends.
         item_ends_before_start,
         /// The header carries format `version()`, which the reader can't
-        /// read, since it reads version `supported()`. `TableReader` doesn't
-        /// compare versions: a reader throws this when
-        /// `TableReader::version()` isn't its own.
+        /// read, since it reads version `supported()`, or the versions from
+        /// `first_supported()` to it. `TableReader` doesn't compare versions:
+        /// a reader throws this when `TableReader::version()` isn't one that
+        /// it reads.
         unsupported_version,
     };
 
@@ -68,7 +69,15 @@ public:
     static DecodeError unsupported_version(std::uint32_t version, std::uint32_t supported) {
         auto message = "Unsupported format version " + std::to_string(version) + "; the reader reads version " +
                        std::to_string(supported);
-        return {Kind::unsupported_version, message, 0, 0, 0, version, supported};
+        return {Kind::unsupported_version, message, 0, 0, 0, version, supported, supported};
+    }
+
+    /// The error of a reader of the versions from `first` to `supported`, its
+    /// own, such as tafla-gen's of a message with a `since` attribute
+    static DecodeError unsupported_version(std::uint32_t version, std::uint32_t first, std::uint32_t supported) {
+        auto message = "Unsupported format version " + std::to_string(version) + "; the reader reads versions " +
+                       std::to_string(first) + " to " + std::to_string(supported);
+        return {Kind::unsupported_version, message, 0, 0, 0, version, supported, first};
     }
 
     [[nodiscard]] Kind kind() const noexcept {
@@ -100,21 +109,29 @@ public:
         return static_cast<std::uint32_t>(second_);
     }
 
-    /// The version that the reader of an unsupported version reads
+    /// The version that the reader of an unsupported version reads, its own,
+    /// or the last of those that it reads
     [[nodiscard]] std::uint32_t supported() const noexcept {
         return supported_;
     }
 
+    /// The first version that the reader of an unsupported version reads,
+    /// which is `supported()` for a reader of one version
+    [[nodiscard]] std::uint32_t first_supported() const noexcept {
+        return first_supported_;
+    }
+
 private:
     DecodeError(Kind kind, const std::string& message, std::size_t position, std::uint64_t byte_length,
-                std::size_t available, std::uint64_t second, std::uint32_t supported)
+                std::size_t available, std::uint64_t second, std::uint32_t supported, std::uint32_t first_supported = 0)
         : Error(message),
           kind_(kind),
           position_(position),
           byte_length_(byte_length),
           available_(available),
           second_(second),
-          supported_(supported) {}
+          supported_(supported),
+          first_supported_(first_supported) {}
 
     Kind kind_;
     std::size_t position_;
@@ -123,6 +140,7 @@ private:
     /// A vector item's end, or a header's version
     std::uint64_t second_;
     std::uint32_t supported_;
+    std::uint32_t first_supported_;
 };
 
 /// Thrown when a `TableBuilder`, or a `TableSizer` and its `TableWriter`,

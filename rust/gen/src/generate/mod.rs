@@ -157,7 +157,7 @@ impl Target {
             Self::Go => true,
             // C++
             #[cfg(feature = "cpp")]
-            Self::Cpp => false,
+            Self::Cpp => true,
             // Swift
             #[cfg(feature = "swift")]
             Self::Swift => false,

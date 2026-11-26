@@ -56,6 +56,8 @@ std::optional<Value> value_of(const Field& field) {
                 return Value{false, 1, 0, field.scalar_bytes()};
             } else if constexpr (std::is_same_v<T, Bool>) {
                 return Value{false, 1, 0, {static_cast<std::uint8_t>(value.value ? 1 : 0)}};
+            } else if constexpr (std::is_same_v<T, Absent>) {
+                return Value{false, 1, 0, {}};
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return Value{true, 1, value.size(), std::vector<std::uint8_t>(value.begin(), value.end())};
             } else if constexpr (std::is_same_v<T, Struct>) {

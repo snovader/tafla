@@ -364,7 +364,18 @@ TEST(DecodeError, DescribesAnUnsupportedVersion) {
     EXPECT_EQ(error.kind(), tafla::DecodeError::Kind::unsupported_version);
     EXPECT_EQ(error.version(), 2U);
     EXPECT_EQ(error.supported(), 1U);
+    EXPECT_EQ(error.first_supported(), 1U);
     EXPECT_STREQ(error.what(), "Unsupported format version 2; the reader reads version 1");
+}
+
+TEST(DecodeError, DescribesAVersionOutsideTheVersionsThatAReaderReads) {
+    const auto error = tafla::DecodeError::unsupported_version(4, 2, 3);
+
+    EXPECT_EQ(error.kind(), tafla::DecodeError::Kind::unsupported_version);
+    EXPECT_EQ(error.version(), 4U);
+    EXPECT_EQ(error.first_supported(), 2U);
+    EXPECT_EQ(error.supported(), 3U);
+    EXPECT_STREQ(error.what(), "Unsupported format version 4; the reader reads versions 2 to 3");
 }
 
 TEST(DecodeError, IsAnErrorOfTafla) {

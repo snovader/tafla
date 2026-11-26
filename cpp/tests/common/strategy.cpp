@@ -320,6 +320,8 @@ std::uint64_t longest(const Field& field, std::uint64_t width) {
                 return sizeof(T);
             } else if constexpr (std::is_same_v<T, Bool>) {
                 return 1;
+            } else if constexpr (std::is_same_v<T, Absent>) {
+                return 0;
             } else if constexpr (std::is_same_v<T, std::string>) {
                 return width + value.size();
             } else if constexpr (std::is_same_v<T, Struct>) {

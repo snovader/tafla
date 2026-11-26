@@ -59,6 +59,10 @@ struct Table {
     /// The version in the header, present only when the layout is versioned
     std::optional<std::uint32_t> version;
     std::vector<Field> fields;
+    /// How many fields a reader of a later revision of the table knows after
+    /// `fields`, each of which it must find missing from the table. Only the
+    /// cases of presence have it.
+    std::optional<std::size_t> missing = std::nullopt;
 
     /// The alignment that `set_table()` pads the table to when given its
     /// builder: the largest alignment of its arrays, of scalars and of
@@ -104,6 +108,10 @@ struct VectorField {
     std::vector<Nested> items;
 };
 
+/// A field left out of its table, whose offset is 0. Only the cases of
+/// presence have it.
+struct Absent {};
+
 /// A field of each type that a table holds, with its value. Equal fields
 /// hold floats of the same bits, so that NaN equals itself and -0 doesn't
 /// equal 0.
@@ -113,7 +121,7 @@ struct Field {
                                std::vector<std::uint8_t>, std::vector<std::int16_t>, std::vector<std::uint16_t>,
                                std::vector<std::int32_t>, std::vector<std::uint32_t>, std::vector<std::int64_t>,
                                std::vector<std::uint64_t>, std::vector<float>, std::vector<double>, std::string, Struct,
-                               StructArray, TableField, VectorField>;
+                               StructArray, TableField, VectorField, Absent>;
 
     Value value;
 
