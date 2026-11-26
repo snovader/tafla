@@ -3,8 +3,6 @@
 //! structs nest in place at most 64 deep, so the generators and the methods
 //! here can follow them by recursion.
 
-use crate::diagnostic::Span;
-
 #[derive(Debug)]
 pub struct Schema {
     /// In declaration order, which the generators keep, except that C++ and
@@ -16,10 +14,6 @@ pub struct Schema {
     /// The alignment of each message and table, by its index, and 1 for each
     /// struct, whose layout has its alignment
     table_alignments: Vec<u8>,
-    /// Where the schema first declares a field optional or added since a
-    /// version, if it does, for the error of a target that doesn't generate
-    /// such fields
-    presence: Option<Span>,
 }
 
 #[derive(Debug)]
@@ -241,7 +235,7 @@ impl Schema {
     /// positions in `definitions`. It finds what the generators ask of each
     /// definition once, so that generating code takes time in proportion to
     /// the schema.
-    pub fn new(definitions: Vec<Definition>, presence: Option<Span>) -> Self {
+    pub fn new(definitions: Vec<Definition>) -> Self {
         let mut items = vec![false; definitions.len()];
         for field in definitions.iter().flat_map(|definition| &definition.fields) {
             if let FieldType::Vector(item) | FieldType::StructArray(item) = field.field_type {
@@ -264,14 +258,7 @@ impl Schema {
             definitions,
             items,
             table_alignments,
-            presence,
         }
-    }
-
-    /// Where the schema first declares a field optional or added since a
-    /// version, if it does
-    pub const fn presence(&self) -> Option<Span> {
-        self.presence
     }
 
     pub fn definition(&self, index: usize) -> &Definition {

@@ -139,7 +139,7 @@ or read its tables, or a target couldn't generate its code:
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` and `NotRequired` in Python, `List`, `String`, `Override`,
-  the boxes `Boolean`, `Long`, `Float` and `Double`, and JSpecify's
+  the boxes `Boolean`, `Long`, `Float` and `Double`, and `JSpecify`'s
   `Nullable` in Java, `Option`
   in Rust and `Int`, `RawSpan` and `Hashable` in Swift, `Fields`, the record
   of a Java class's fields, keywords, such as `None` in Python and `Self` in
@@ -840,11 +840,14 @@ since a writer writes its own version:
 | Rust                   | `Ok(None)`, of a `Result<Option<T>, DecodeError>`                           | `Ok` of its default, `has_x()`  | `Option<T>`                             |
 | Go                     | `false` in a comma-ok `(T, bool, error)`                                    | Its default, and `HasX()`       | `tafla.Optional[T]`, as `tafla.Some(v)` |
 | C++                    | `std::nullopt`, of a `std::optional<T>`                                     | Its default, and `has_x()`      | `std::optional<T>`                      |
+| Swift                  | `nil`, of a `T?`, the nonescapable views too                                | Its default, and `hasX`         | `T?`, `nil` by default                  |
 | C#                     | `null` for a string or struct; an empty span or view, or a default reader, which `HasX` tells apart | Its default, and `HasX` | `T?`, not `required`                    |
 
 A message that reads earlier versions has `FIRST_VERSION`, as
 [versions](#versions) describes, `<Message>FirstVersion` in Go and
-`FirstVersion` in C#. A table that holds an optional field isn't of fixed
+`FirstVersion` in C# and `firstVersion` in Swift. A version outside them
+fails with the runtime's decode error, which names the versions that the
+reader reads in Rust, C++ and Swift. A table that holds an optional field isn't of fixed
 size, since its writer may leave the field out, so no target writes it, or a
 message that holds it, whole at constant positions; a field added `since` a
 version leaves a table of fixed size, since writers write every field. And
@@ -1046,7 +1049,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 590 KB. It has no imports, so any host runs it with an empty import
+about 700 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 

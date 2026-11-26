@@ -43,7 +43,7 @@ pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
     }
 
     if errors.is_empty() {
-        Ok(Schema::new(definitions, first_presence(declarations)))
+        Ok(Schema::new(definitions))
     } else {
         errors.sort_by_key(|error| error.span.start);
         Err(errors)
@@ -592,22 +592,6 @@ fn check_since(
         // The version has an error of its own
         (true, None) => None,
     }
-}
-
-/// Where the declarations first declare a field optional or added since a
-/// version, if they do
-fn first_presence(declarations: &[Declaration]) -> Option<Span> {
-    declarations
-        .iter()
-        .flat_map(|declaration| &declaration.fields)
-        .filter_map(|field| {
-            let attribute = field
-                .attributes
-                .first()
-                .map(|attribute| attribute.name.span);
-            field.optional.or(attribute)
-        })
-        .min_by_key(|span| span.start)
 }
 
 /// The rules of a declaration's optional fields and of the fields that its

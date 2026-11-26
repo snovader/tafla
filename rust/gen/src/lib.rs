@@ -29,9 +29,7 @@ pub fn parse(source: &str) -> Result<Schema, Vec<Diagnostic>> {
 ///
 /// # Errors
 ///
-/// Returns the schema's errors, as [`parse`] does, or an error at the
-/// schema's first optional field or field added `since` a version, if the
-/// target doesn't generate such fields.
+/// Returns the schema's errors, as [`parse`] does.
 pub fn compile(
     file_name: &str,
     source: &str,
@@ -39,27 +37,6 @@ pub fn compile(
     options: &Options,
 ) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let schema = parse(source)?;
-
-    // A target that doesn't know such fields would generate readers that
-    // read them as required, and writers that can't leave them out
-    if let Some(span) = schema.presence()
-        && !target.generates_missing_fields()
-    {
-        let message = format!(
-            "the `{}` target doesn't generate optional fields or fields added `since` a version yet",
-            target.name()
-        );
-        let targets: Vec<String> = Target::names()
-            .filter_map(Target::from_name)
-            .filter(|target| target.generates_missing_fields())
-            .map(|target| format!("`{}`", target.name()))
-            .collect();
-        let error = Diagnostic::new(message, span).with_help(format!(
-            "the targets that generate them are {}",
-            targets.join(", ")
-        ));
-        return Err(vec![error]);
-    }
 
     Ok(generate::generate(&schema, file_name, target, options))
 }

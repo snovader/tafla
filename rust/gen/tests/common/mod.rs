@@ -233,7 +233,7 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 2] = [
 ];
 
 /// The schema of the TypeScript suite of optional fields and versions,
-/// which only the TypeScript and JavaScript targets generate so far
+/// whose suite only TypeScript has
 pub const PRESENCE_SCHEMAS: [BenchmarkSchema; 1] = [BenchmarkSchema {
     target: "typescript",
     schema: "typescript/benchmarks/presence/presence.tafla",

@@ -1,6 +1,5 @@
 // Optional fields, and fields that later versions of a message and later
-// revisions of a table append, which only the TypeScript and JavaScript
-// targets generate so far. The messages and tables named `V1` are the first
+// revisions of a table append. The messages and tables named `V1` are the first
 // version or revision of the others, whose bytes the tests read with them.
 // A scalar that may be missing reads as its default, zero unless the schema
 // gives one after `=`.

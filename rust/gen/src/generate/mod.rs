@@ -136,45 +136,6 @@ impl Target {
         Self::TARGETS.iter().map(|(names, _)| names[0])
     }
 
-    /// Whether the target generates optional fields and fields added since a
-    /// version. Each target has an arm of its own, between lines that stay,
-    /// so that each can change apart.
-    pub const fn generates_missing_fields(self) -> bool {
-        match self {
-            #[cfg(feature = "typescript")]
-            Self::TypeScript | Self::JavaScript => true,
-            // Python
-            #[cfg(feature = "python")]
-            Self::Python => true,
-            // Java
-            #[cfg(feature = "java")]
-            Self::Java => true,
-            // Rust
-            #[cfg(feature = "rust")]
-            Self::Rust => true,
-            // Go
-            #[cfg(feature = "go")]
-            Self::Go => true,
-            // C++
-            #[cfg(feature = "cpp")]
-            Self::Cpp => true,
-            // Swift
-            #[cfg(feature = "swift")]
-            Self::Swift => true,
-            // C#
-            #[cfg(feature = "csharp")]
-            Self::CSharp => true,
-        }
-    }
-
-    /// The target's full name, as the command takes it
-    pub fn name(self) -> &'static str {
-        Self::TARGETS
-            .iter()
-            .find(|&&(_, target)| target == self)
-            .map_or("", |(names, _)| names[0])
-    }
-
     /// The names of each target that this build generates: its full name,
     /// and then its abbreviation if it has one
     pub fn names_and_abbreviations() -> impl Iterator<Item = &'static [&'static str]> {
