@@ -148,6 +148,26 @@ RC_GTEST_PROP(GeneratedShapes, AnItemListIsWrittenFromAViewOfOtherItemsAsFromThe
     RC_ASSERT(written_into_any_bytes(converted, expected.span()));
 }
 
+/// A task's enums hold any integer of their types, most of which the schema
+/// doesn't name, and are written and read as those integers
+RC_GTEST_PROP(GeneratedShapes, ATaskOfAnyIntegersIsWrittenAsTableBuilderWritesItAndReadsBack, ()) {
+    const auto history = *values::arrays(values::integers<std::uint16_t>());
+    const auto name = *values::strings();
+    const shapes::TaskFields fields{
+        .priority = static_cast<shapes::Priority>(*values::integers<std::int8_t>()),
+        .history = history,
+        .step = {.state = static_cast<shapes::State>(*values::integers<std::uint16_t>()),
+                 .priority = static_cast<shapes::Priority>(*values::integers<std::int8_t>()),
+                 .seconds = *values::integers<std::uint32_t>()},
+        .name = name,
+    };
+
+    const auto bytes = fields.serialize();
+    RC_ASSERT(bytes == to_bytes(tables::describe(fields)));
+    RC_ASSERT(written_into_any_bytes(fields, bytes.span()));
+    RC_ASSERT(tables::read(shapes::Task(bytes)) == tables::describe(fields));
+}
+
 RC_GTEST_PROP(GeneratedShapes, ASampleIsWrittenLittleEndianAtItsOffsetsAndReadsBack, ()) {
     const shapes::Sample sample{
         .key = *values::integers<std::uint32_t>(),
@@ -202,6 +222,7 @@ RC_GTEST_PROP(GeneratedShapes, CorruptedTablesReadAsValuesOrDecodeErrors, ()) {
         static_cast<void>(try_read([&] { return tables::read(shapes::Point(bytes)); }));
         static_cast<void>(try_read([&] { return tables::read(shapes::Document(bytes)); }));
         static_cast<void>(try_read([&] { return tables::describe(shapes::Sample::read(bytes)); }));
+        static_cast<void>(try_read([&] { return tables::read(shapes::Task(bytes)); }));
     }
 
     for (const auto& bytes :

@@ -13,6 +13,29 @@
 #include <tafla/tafla.hpp>
 
 namespace shapes {
+/**
+ * How soon to do a task
+ *
+ * A value of `Priority`: one that it names, or any other `std::int8_t`
+ */
+enum class Priority : std::int8_t {
+    low = -1,
+    normal = 0,
+    high = 1,
+};
+
+/**
+ * What has become of a task
+ *
+ * A value of `State`: one that it names, or any other `std::uint16_t`
+ */
+enum class State : std::uint16_t {
+    waiting = 0,
+    running = 1,
+    done = 2,
+    failed = 1000,
+};
+
 class Point;
 class Columns;
 class Document;
@@ -78,8 +101,8 @@ struct Sample {
 
 /** A state and how long the task has been in it */
 struct Step {
-    std::uint16_t state{};
-    std::int8_t priority{};
+    State state{};
+    Priority priority{};
     std::uint32_t seconds{};
 
     /** The byte length of a `Step` */
@@ -99,16 +122,16 @@ struct Step {
     /** Reads a `Step` from its `SIZE` bytes at `bytes`, such as those of an array of them */
     [[nodiscard]] static Step from_bytes(const std::uint8_t* bytes) noexcept {
         return {
-            .state = ::tafla::load_le<std::uint16_t>(bytes),
-            .priority = ::tafla::load_le<std::int8_t>(bytes + 2),
+            .state = static_cast<State>(::tafla::load_le<std::uint16_t>(bytes)),
+            .priority = static_cast<Priority>(::tafla::load_le<std::int8_t>(bytes + 2)),
             .seconds = ::tafla::load_le<std::uint32_t>(bytes + 3),
         };
     }
 
     /** Writes the `SIZE` bytes of a `Step` at `bytes_` */
     void to_bytes(std::uint8_t* bytes_) const noexcept {
-        ::tafla::store_le(bytes_, state);
-        ::tafla::store_le(bytes_ + 2, priority);
+        ::tafla::store_le(bytes_, static_cast<std::uint16_t>(state));
+        ::tafla::store_le(bytes_ + 2, static_cast<std::int8_t>(priority));
         ::tafla::store_le(bytes_ + 3, seconds);
     }
 
@@ -464,10 +487,12 @@ public:
     explicit constexpr Task(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
 
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
-    [[nodiscard]] TAFLA_ALWAYS_INLINE std::int8_t priority() const;
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Priority priority() const;
 
     /**
      * The states that the task has been in, the oldest first
+     *
+     * `State`s, as the `std::uint16_t`s that store them
      *
      * Throws a `tafla::DecodeError` if the field lies outside the bytes
      */
@@ -485,8 +510,12 @@ private:
 
 /** The fields of a `Task`, to write */
 struct TaskFields {
-    std::int8_t priority{};
-    /** The states that the task has been in, the oldest first */
+    Priority priority{};
+    /**
+     * The states that the task has been in, the oldest first
+     *
+     * `State`s, as the `std::uint16_t`s that store them
+     */
     std::span<const std::uint16_t> history{};
     Step step{};
     std::string_view name{};
@@ -841,10 +870,10 @@ inline void ItemFields::to_bytes(std::uint8_t* bytes_) const noexcept {
     pair.to_bytes(bytes_ + 12);
 }
 
-inline std::int8_t Task::priority() const {
+inline Priority Task::priority() const {
     const ::tafla::TableReader reader(bytes_, LAYOUT);
     const auto position = reader.root_offset(0);
-    return reader.get_int8(position);
+    return static_cast<Priority>(reader.get_int8(position));
 }
 
 inline ::tafla::ArrayView<std::uint16_t> Task::history() const {
@@ -873,7 +902,7 @@ inline ::tafla::Bytes TaskFields::serialize() const {
     sizer_.add_string(name);
 
     auto writer_ = sizer_.writer();
-    writer_.set_int8(0, priority);
+    writer_.set_int8(0, static_cast<std::int8_t>(priority));
     writer_.set_uint16_array(1, history);
     writer_.set_struct(2, step);
     writer_.set_string(3, name);
@@ -889,7 +918,7 @@ inline std::size_t TaskFields::serialize_into(std::span<std::uint8_t> bytes_) co
     sizer_.add_string(name);
 
     auto writer_ = sizer_.writer(bytes_);
-    writer_.set_int8(0, priority);
+    writer_.set_int8(0, static_cast<std::int8_t>(priority));
     writer_.set_uint16_array(1, history);
     writer_.set_struct(2, step);
     writer_.set_string(3, name);

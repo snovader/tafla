@@ -11,10 +11,24 @@
 #include <tafla/tafla.hpp>
 
 namespace linux_::EOF_::schema_Upper::b_c {
+/** A value of `Host`: one that it names, or any other `std::uint8_t` */
+enum class Host : std::uint8_t {
+    linux_ = 0,
+    unix_ = 1,
+    min_ = 2,
+    max_ = 3,
+    major_ = 4,
+    near_ = 5,
+    small_ = 6,
+    interface_ = 7,
+};
+
 class Interface;
 class Macros;
+class Platform;
 struct InterfaceFields;
 struct MacrosFields;
+struct PlatformFields;
 
 class Interface {
 public:
@@ -133,6 +147,43 @@ struct MacrosFields {
 
     /**
      * Writes a `Macros` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+/**
+ * A message of only fields of fixed size, which the generated code writes
+ * whole
+ */
+class Platform {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout();
+
+    /** Reads a `Platform` from `bytes`, which it views */
+    explicit constexpr Platform(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Host host() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `Platform`, to write */
+struct PlatformFields {
+    Host host{};
+
+    /**
+     * Writes a `Platform` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Platform` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
      * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
      * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
      */
@@ -313,6 +364,31 @@ inline std::size_t MacrosFields::serialize_into(std::span<std::uint8_t> bytes_) 
     interface_.write(writer_);
 
     return writer_.finish_into();
+}
+
+inline Host Platform::host() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return static_cast<Host>(reader.get_uint8(position));
+}
+
+inline ::tafla::Bytes PlatformFields::serialize() const {
+    auto table_ = ::tafla::Bytes::for_overwrite(5);
+    std::uint8_t* const bytes_ = table_.data();
+
+    ::tafla::store_le(bytes_, std::uint32_t{4});
+    ::tafla::store_le(bytes_ + 4, static_cast<std::uint8_t>(host));
+
+    return table_;
+}
+
+inline std::size_t PlatformFields::serialize_into(std::span<std::uint8_t> given_) const {
+    std::uint8_t* const bytes_ = ::tafla::room_for_table(given_, 5);
+
+    ::tafla::store_le(bytes_, std::uint32_t{4});
+    ::tafla::store_le(bytes_ + 4, static_cast<std::uint8_t>(host));
+
+    return 5;
 }
 
 }  // namespace linux_::EOF_::schema_Upper::b_c
