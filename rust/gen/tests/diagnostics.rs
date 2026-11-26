@@ -351,3 +351,31 @@ fn doc_comments_hold_tabs_and_end_before_a_crlf() {
     assert_eq!(point.docs, ["a\tb"]);
     assert_eq!(point.fields[0].docs, ["c"]);
 }
+
+/// Rust's generated code makes and matches the variants of `Result` and
+/// `Option` by their names in the prelude, which an enum of the same name
+/// would hide, since its struct of one integer is a function too
+#[test]
+fn declarations_cant_take_a_variant_of_rusts_prelude() {
+    for name in ["Ok", "Err", "Some", "None"] {
+        let source = format!("enum {name}: uint8 {{ a = 0; }}");
+        let diagnostics = parse(&source).unwrap_err();
+        let messages: Vec<&str> = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+
+        assert_eq!(
+            messages,
+            [format!(
+                "`{name}` clashes with a name of the generated code"
+            )]
+        );
+        assert!(
+            diagnostics[0]
+                .render("names.tafla", &source)
+                .contains(&format!("Rust uses `{name}`")),
+            "{name}"
+        );
+    }
+}

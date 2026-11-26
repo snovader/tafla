@@ -3,7 +3,10 @@
 //! arrays of structs as views that read each item when it's asked for;
 //! they're written from structs of their fields, which a `TableSizer` sizes
 //! and a `TableWriter` writes, nested tables in place. Structs are plain
-//! structs read and written at fixed offsets.
+//! structs read and written at fixed offsets. An enum is a `Copy` struct of
+//! its integer, with a constant of each value that the schema names, so that
+//! a field of it holds any integer of its type; an array of an enum is an
+//! array of its integers.
 
 use std::collections::HashSet;
 use std::fmt::Display;
@@ -13,7 +16,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
 
@@ -72,15 +75,16 @@ pub fn generate(
     options: &Options,
 ) -> Vec<GeneratedFile> {
     let runtime = options.runtime.as_deref().unwrap_or(RUNTIME);
+    let definitions = schema.definitions.iter();
+    let enums = schema.enums.iter();
     let generator = Generator {
         schema,
         fixed: FixedSizes::new(schema, MAX_LAID_OUT),
         borrows: borrowing(schema),
         vector_components: strongly_connected_components(&schema.definitions, vectors),
-        declared: schema
-            .definitions
-            .iter()
+        declared: definitions
             .map(|definition| definition.name.as_str())
+            .chain(enums.map(|enumeration| enumeration.name.as_str()))
             .collect(),
     };
 
@@ -88,6 +92,11 @@ pub fn generate(
     writer.line(format!("// {header}"));
     writer.blank();
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        writer.blank();
+        enum_struct(&mut writer, enumeration);
+    }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blank();
@@ -340,28 +349,6 @@ impl Generator<'_> {
     fn structure(&self, writer: &mut CodeWriter, definition: &Definition) {
         let name = &definition.name;
         let size = definition.struct_layout().size;
-        // Each field, its range of bytes in the struct, and the type that
-        // reads it from them
-        let mut offset = 0;
-        let fields: Vec<(String, usize, usize, String)> = definition
-            .fields
-            .iter()
-            .map(|field| {
-                let (end, read) = match field.field_type {
-                    FieldType::Scalar(scalar) => {
-                        (offset + usize::from(scalar.size()), scalar_type(scalar))
-                    }
-                    FieldType::Struct(index) => {
-                        let inner = self.schema.definition(index);
-                        (offset + inner.struct_layout().size, inner.name.as_str())
-                    }
-                    _ => unreachable!("structs hold scalars and structs only"),
-                };
-                let field = (identifier(&field.name), offset, end, read.to_owned());
-                offset = end;
-                field
-            })
-            .collect();
 
         rust_doc(writer, &definition.docs);
         writer.line("#[derive(Clone, Copy, Debug, PartialEq)]");
@@ -371,7 +358,7 @@ impl Generator<'_> {
             writer.line(format!(
                 "pub {}: {},",
                 identifier(&field.name),
-                self.input_type(field.field_type)
+                self.input_type(field)
             ));
         }
         writer.close("}");
@@ -436,24 +423,31 @@ impl Generator<'_> {
             integer(&size)
         ));
         writer.line("let mut bytes = [0; Self::SIZE];");
-        for (field, start, end, read) in &fields {
-            if read == "bool" {
-                writer.line(format!(
-                    "bytes[{}] = u8::from(self.{field});",
-                    integer(start)
-                ));
-                continue;
-            }
-            let bytes = if read.starts_with(char::is_uppercase) {
-                format!("self.{field}.to_bytes()")
-            } else {
-                format!("self.{field}.to_le_bytes()")
+        let mut start = 0;
+        for field in &definition.fields {
+            let value = format!("self.{}", identifier(&field.name));
+            let (end, bytes) = match field.field_type {
+                FieldType::Scalar(Scalar::Bool) => {
+                    writer.line(format!("bytes[{}] = u8::from({value});", integer(&start)));
+                    start += 1;
+                    continue;
+                }
+                FieldType::Scalar(scalar) => (
+                    start + usize::from(scalar.size()),
+                    format!("{}.to_le_bytes()", stored(field, value)),
+                ),
+                FieldType::Struct(index) => (
+                    start + self.schema.definition(index).struct_layout().size,
+                    format!("{value}.to_bytes()"),
+                ),
+                _ => unreachable!("structs hold scalars and structs only"),
             };
             writer.line(format!(
                 "bytes[{}..{}].copy_from_slice(&{bytes});",
-                integer(start),
-                integer(end)
+                integer(&start),
+                integer(&end)
             ));
+            start = end;
         }
         writer.blank();
         writer.line("bytes");
@@ -500,12 +494,18 @@ impl Generator<'_> {
                 }
                 FieldType::Scalar(scalar) => {
                     let end = start + usize::from(scalar.size());
-                    writer.line(format!(
-                        "{name}: {}::from_le_bytes(bytes[{}..{}].try_into().unwrap_or_default()),",
-                        scalar_type(scalar),
+                    let read = format!("{}::from_le_bytes", scalar_type(scalar));
+                    let bytes = format!(
+                        "bytes[{}..{}].try_into().unwrap_or_default()",
                         integer(&start),
                         integer(&end)
-                    ));
+                    );
+                    match self.scalar_enum(field) {
+                        Some(enumeration) => {
+                            enum_of_bytes(writer, &name, &enumeration.name, &read, &bytes);
+                        }
+                        None => writer.line(format!("{name}: {read}({bytes}),")),
+                    }
                     start = end;
                 }
                 FieldType::Struct(index) => {
@@ -559,17 +559,20 @@ impl Generator<'_> {
             writer.indent();
         }
         for (field, generic) in definition.fields.iter().zip(&generic) {
-            rust_doc(writer, &field.docs);
-            let field_type = match generic {
-                Some(generic) => {
-                    if !field.docs.is_empty() {
-                        rust_doc(writer, &[String::new()]);
-                    }
-                    rust_doc(writer, &[self.generic_doc(field.field_type, generic)]);
-                    format!("&'a [{}]", generic.parameter)
-                }
-                None => self.input_type(field.field_type),
+            let (note, field_type) = match generic {
+                Some(generic) => (
+                    Some(self.generic_doc(field.field_type, generic)),
+                    format!("&'a [{}]", generic.parameter),
+                ),
+                None => (self.integers_doc(field), self.input_type(field)),
             };
+            rust_doc(writer, &field.docs);
+            if let Some(note) = note {
+                if !field.docs.is_empty() {
+                    rust_doc(writer, &[String::new()]);
+                }
+                rust_doc(writer, &[note]);
+            }
             writer.line(format!("pub {}: {field_type},", identifier(&field.name)));
         }
         writer.close("}");
@@ -953,7 +956,7 @@ impl Generator<'_> {
                     writer.line(format!("bytes[{}] = u8::from({value});", integer(&start)));
                     continue;
                 }
-                FieldType::Scalar(_) => format!("{value}.to_le_bytes()"),
+                FieldType::Scalar(_) => format!("{}.to_le_bytes()", stored(field, value)),
                 FieldType::Struct(_) | FieldType::Table(_) => format!("{value}.to_bytes()"),
                 _ => unreachable!("whole tables hold scalars, structs and whole tables only"),
             };
@@ -1070,7 +1073,7 @@ impl Generator<'_> {
                 ),
                 FieldType::Scalar(scalar) => (
                     format!("set_{}", scalar_type(scalar)),
-                    vec![position, text(value)],
+                    vec![position, text(stored(field, value))],
                 ),
                 FieldType::Array(scalar) => (
                     format!("set_{}_array", scalar_type(scalar)),
@@ -1168,14 +1171,21 @@ impl Generator<'_> {
             writer.blank();
             rust_doc(writer, &docs);
             let name = identifier(&field.name);
-            let result = format!("Result<{}, DecodeError>", self.value_type(field.field_type));
+            let result = format!("Result<{}, DecodeError>", self.value_type(field));
             open_method(writer, &format!("pub fn {name}"), &["&self"], &result);
             writer.line(reader);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => writer.line("Ok(reader.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
-                    writer.line(format!("reader.get_{}(position)", scalar_type(scalar)));
+                    let read = format!("get_{}(position)", scalar_type(scalar));
+                    match self.scalar_enum(field) {
+                        Some(enumeration) => {
+                            let wrap = format!("map({})", enumeration.name);
+                            chain(writer, "reader", &[&read, &wrap]);
+                        }
+                        None => writer.line(format!("reader.{read}")),
+                    }
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
@@ -1261,7 +1271,10 @@ impl Generator<'_> {
                 )],
                 "if the field or its structs lie outside the bytes",
             ),
-            _ => (vec![], "if the field lies outside the bytes"),
+            _ => (
+                self.integers_doc(field).into_iter().collect(),
+                "if the field lies outside the bytes",
+            ),
         };
 
         let mut docs = field.docs.clone();
@@ -1277,9 +1290,43 @@ impl Generator<'_> {
         docs
     }
 
-    fn value_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+    /// The enum that names the values of a scalar field, whose struct the
+    /// field holds. An array of an enum holds its integers, so it has none.
+    fn scalar_enum(&self, field: &Field) -> Option<&Enum> {
+        match field.field_type {
+            FieldType::Scalar(_) => field
+                .enumeration
+                .map(|index| self.schema.enumeration(index)),
+            _ => None,
+        }
+    }
+
+    /// The documentation of an array of an enum, which is an array of the
+    /// enum's integers, and `None` for any other field
+    fn integers_doc(&self, field: &Field) -> Option<String> {
+        let FieldType::Array(scalar) = field.field_type else {
+            return None;
+        };
+        let enumeration = self.schema.enumeration(field.enumeration?);
+
+        Some(format!(
+            "Each element is the `{}` of {}",
+            scalar_type(scalar),
+            article(&enumeration.name)
+        ))
+    }
+
+    /// The type of a scalar field: its enum's struct, or the scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> String {
+        match self.scalar_enum(field) {
+            Some(enumeration) => enumeration.name.clone(),
+            None => scalar_type(scalar).to_owned(),
+        }
+    }
+
+    fn value_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
@@ -1292,11 +1339,11 @@ impl Generator<'_> {
         }
     }
 
-    fn input_type(&self, field_type: FieldType) -> String {
+    fn input_type(&self, field: &Field) -> String {
         let fields = |index: usize| self.fields_type(index, "'a");
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
@@ -1369,7 +1416,7 @@ fn serialize_whole(
                 writer.line(format!("fixed[{}] = u8::from({value});", integer(&start)));
                 continue;
             }
-            FieldType::Scalar(_) => format!("{value}.to_le_bytes()"),
+            FieldType::Scalar(_) => format!("{}.to_le_bytes()", stored(field, value)),
             FieldType::Struct(_) | FieldType::Table(_) => format!("{value}.to_bytes()"),
             _ => unreachable!("a whole message's fields before its string have fixed sizes"),
         };
@@ -1438,6 +1485,71 @@ const fn offset_type_name(offset_type: OffsetType) -> &'static str {
         OffsetType::Uint8 => "u8",
         OffsetType::Uint16 => "u16",
         OffsetType::Uint32 => "u32",
+    }
+}
+
+/// An enum: a struct of its integer, since a field of the enum holds any
+/// integer of its type, with a constant of each value that the schema names.
+/// The constants are in `SCREAMING_SNAKE_CASE`, which no keyword is in, so
+/// they need no escaping.
+fn enum_struct(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let underlying = scalar_type(enumeration.underlying);
+
+    let mut docs = enumeration.docs.clone();
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.push(format!(
+        "A value is any `{underlying}`: one that a constant of [`{name}`] names, or any other"
+    ));
+    rust_doc(writer, &docs);
+    writer.line("#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]");
+    writer.line(format!("pub struct {name}(pub {underlying});"));
+    writer.blank();
+
+    writer.open(format!("impl {name} {{"));
+    for value in &enumeration.values {
+        rust_doc(writer, &value.docs);
+        writer.line(format!(
+            "pub const {}: Self = Self({});",
+            value.name.to_ascii_uppercase(),
+            signed_integer(value.value)
+        ));
+    }
+    writer.close("}");
+}
+
+/// A struct's field `name` of an enum, read from `bytes` by `read`, the
+/// function of the enum's integer type, as rustfmt breaks it. The read is
+/// always wider than rustfmt's `fn_call_width`, so it never stays on the
+/// field's line as the enum's argument: rustfmt breaks the read's own
+/// argument when both calls fit on the field's line with room for the `),`
+/// that ends the enum's, and the enum's otherwise.
+fn enum_of_bytes(writer: &mut CodeWriter, name: &str, enumeration: &str, read: &str, bytes: &str) {
+    let calls = format!("{name}: {enumeration}({read}(");
+    if writer.fits(&STYLE, &format!("{calls}),")) {
+        writer.open(calls);
+        writer.line(format!("{bytes},"));
+        writer.close(")),");
+        return;
+    }
+
+    let argument = text(format!("{read}({bytes})"));
+    writer.statement(
+        &STYLE,
+        &format!("{name}: "),
+        &call(enumeration, vec![argument]),
+        ",",
+    );
+}
+
+/// The expression of the integer that the `value` of a scalar field stores:
+/// the integer of its enum's struct, or the value itself
+fn stored(field: &Field, value: String) -> String {
+    match field.enumeration {
+        Some(_) => format!("{value}.0"),
+        None => value,
     }
 }
 
@@ -1809,6 +1921,17 @@ fn integer(value: &impl Display) -> String {
         grouped.push(digit);
     }
     grouped
+}
+
+/// The literal of an enum's value: its digits in groups, as [`integer()`]
+/// groups them, after its sign
+fn signed_integer(value: i128) -> String {
+    let digits = integer(&value.unsigned_abs());
+    if value < 0 {
+        format!("-{digits}")
+    } else {
+        digits
+    }
 }
 
 /// "a [`Name`]" or "an [`Name`]", the name linked in documentation

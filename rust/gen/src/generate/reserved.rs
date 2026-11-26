@@ -98,18 +98,24 @@ const JAVA: &[&str] = &[
 ];
 
 /// The names that Rust imports from the runtime, the types and traits of the
-/// prelude that it names, which a struct of the same name would hide, and
-/// `Self`, a keyword
+/// prelude that it names, which a struct of the same name would hide, the
+/// variants of the prelude that it makes and matches, `Err`, `None`, `Ok` and
+/// `Some`, which an enum of the same name would hide, since its struct of
+/// one integer is a function too, and `Self`, a keyword
 const RUST: &[&str] = &[
     "Alignment",
     "ArrayView",
     "BuildError",
     "DecodeError",
+    "Err",
     "ExactSizeIterator",
+    "None",
     "OffsetType",
+    "Ok",
     "Option",
     "Result",
     "Self",
+    "Some",
     "TableLayout",
     "TableReader",
     "TableSizer",

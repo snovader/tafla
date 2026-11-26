@@ -5,6 +5,122 @@ use tafla::{
     TableWriter, Vector,
 };
 
+/// How much of something there is.
+///
+/// A field of it holds any `uint8`, whether it has a name here or not.
+///
+/// A value is any `u8`: one that a constant of [`Level`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Level(pub u8);
+
+impl Level {
+    /// The least
+    pub const LOW: Self = Self(0);
+    pub const MEDIUM: Self = Self(1);
+    /// The most, in documentation
+    /// of two lines
+    pub const HIGH: Self = Self(2);
+}
+
+/// An enum of `int8`, with a negative value
+///
+/// A value is any `i8`: one that a constant of [`Direction`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Direction(pub i8);
+
+impl Direction {
+    pub const BACKWARD: Self = Self(-1);
+    pub const NONE: Self = Self(0);
+    pub const FORWARD: Self = Self(1);
+    /// The least `int8`
+    pub const FURTHEST_BACK: Self = Self(-128);
+}
+
+/// An enum of `uint16`, whose values aren't in order
+///
+/// A value is any `u16`: one that a constant of [`Unit`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Unit(pub u16);
+
+impl Unit {
+    pub const LAST: Self = Self(65_535);
+    pub const FIRST: Self = Self(0);
+    pub const V_2: Self = Self(2);
+}
+
+/// A value is any `i16`: one that a constant of [`Change`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Change(pub i16);
+
+impl Change {
+    pub const LEAST: Self = Self(-32_768);
+    pub const GREATEST: Self = Self(32_767);
+}
+
+/// A value is any `u32`: one that a constant of [`Status`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Status(pub u32);
+
+impl Status {
+    pub const OK: Self = Self(0);
+    pub const NOT_FOUND: Self = Self(404);
+    pub const GREATEST: Self = Self(4_294_967_295);
+}
+
+/// A value is any `i32`: one that a constant of [`Sign`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Sign(pub i32);
+
+impl Sign {
+    pub const LEAST: Self = Self(-2_147_483_648);
+    pub const GREATEST: Self = Self(2_147_483_647);
+}
+
+/// An enum of `uint64`, with a value that a float64 can't hold exactly
+///
+/// A value is any `u64`: one that a constant of [`Mask`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Mask(pub u64);
+
+impl Mask {
+    pub const NONE: Self = Self(0);
+    pub const ONE: Self = Self(1);
+    pub const BEYOND_FLOAT64: Self = Self(9_007_199_254_740_993);
+    pub const ALL: Self = Self(18_446_744_073_709_551_615);
+}
+
+/// A value is any `i64`: one that a constant of [`Extent`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Extent(pub i64);
+
+impl Extent {
+    pub const LEAST: Self = Self(-9_223_372_036_854_775_808);
+    pub const ZERO: Self = Self(0);
+    pub const GREATEST: Self = Self(9_223_372_036_854_775_807);
+}
+
+/// Values named after keywords and literals of the target languages
+///
+/// A value is any `u8`: one that a constant of [`Word`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Word(pub u8);
+
+impl Word {
+    pub const CLASS: Self = Self(0);
+    pub const DEFAULT: Self = Self(1);
+    pub const IN: Self = Self(2);
+    pub const MATCH: Self = Self(3);
+    pub const SELF: Self = Self(4);
+    pub const TYPE: Self = Self(5);
+    pub const TRUE: Self = Self(6);
+    pub const NULL: Self = Self(7);
+    pub const NONE: Self = Self(8);
+    pub const INIT: Self = Self(9);
+    pub const NEW: Self = Self(10);
+    pub const NAME: Self = Self(11);
+    pub const VALUE: Self = Self(12);
+}
+
 /// A field of every scalar type, and a bool
 #[derive(Clone, Copy, Debug)]
 pub struct Scalars<'a> {
@@ -1456,13 +1572,15 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn level(&self) -> Result<u8, DecodeError> {
+    pub fn level(&self) -> Result<Level, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(0)?;
-        reader.get_u8(position)
+        reader.get_u8(position).map(Level)
     }
 
     /// An array of enums, which is an array of their integer type
+    ///
+    /// Each element is the `u8` of a [`Level`]
     ///
     /// # Errors
     ///
@@ -1476,12 +1594,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn direction(&self) -> Result<i8, DecodeError> {
+    pub fn direction(&self) -> Result<Direction, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(2)?;
-        reader.get_i8(position)
+        reader.get_i8(position).map(Direction)
     }
 
+    /// Each element is the `i8` of a [`Direction`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1494,12 +1614,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn unit(&self) -> Result<u16, DecodeError> {
+    pub fn unit(&self) -> Result<Unit, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(4)?;
-        reader.get_u16(position)
+        reader.get_u16(position).map(Unit)
     }
 
+    /// Each element is the `u16` of a [`Unit`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1512,12 +1634,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn change(&self) -> Result<i16, DecodeError> {
+    pub fn change(&self) -> Result<Change, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(6)?;
-        reader.get_i16(position)
+        reader.get_i16(position).map(Change)
     }
 
+    /// Each element is the `i16` of a [`Change`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1530,12 +1654,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn status(&self) -> Result<u32, DecodeError> {
+    pub fn status(&self) -> Result<Status, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(8)?;
-        reader.get_u32(position)
+        reader.get_u32(position).map(Status)
     }
 
+    /// Each element is the `u32` of a [`Status`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1548,12 +1674,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn sign(&self) -> Result<i32, DecodeError> {
+    pub fn sign(&self) -> Result<Sign, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(10)?;
-        reader.get_i32(position)
+        reader.get_i32(position).map(Sign)
     }
 
+    /// Each element is the `i32` of a [`Sign`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1566,12 +1694,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn mask(&self) -> Result<u64, DecodeError> {
+    pub fn mask(&self) -> Result<Mask, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(12)?;
-        reader.get_u64(position)
+        reader.get_u64(position).map(Mask)
     }
 
+    /// Each element is the `u64` of a [`Mask`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1584,12 +1714,14 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn extent(&self) -> Result<i64, DecodeError> {
+    pub fn extent(&self) -> Result<Extent, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(14)?;
-        reader.get_i64(position)
+        reader.get_i64(position).map(Extent)
     }
 
+    /// Each element is the `i64` of an [`Extent`]
+    ///
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
@@ -1604,10 +1736,10 @@ impl<'a> Enums<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn word(&self) -> Result<u8, DecodeError> {
+    pub fn word(&self) -> Result<Word, DecodeError> {
         let reader = TableReader::new(self.bytes, Self::LAYOUT);
         let position = reader.root_offset(16)?;
-        reader.get_u8(position)
+        reader.get_u8(position).map(Word)
     }
 
     /// A struct of enums
@@ -1658,25 +1790,34 @@ impl<'a> Enums<'a> {
 #[derive(Clone, Debug)]
 pub struct EnumsFields<'a, T = Mark, U = StepFields<'a>> {
     /// An enum of one byte
-    pub level: u8,
+    pub level: Level,
     /// An array of enums, which is an array of their integer type
+    ///
+    /// Each element is the `u8` of a [`Level`]
     pub levels: &'a [u8],
-    pub direction: i8,
+    pub direction: Direction,
+    /// Each element is the `i8` of a [`Direction`]
     pub directions: &'a [i8],
-    pub unit: u16,
+    pub unit: Unit,
+    /// Each element is the `u16` of a [`Unit`]
     pub units: &'a [u16],
-    pub change: i16,
+    pub change: Change,
+    /// Each element is the `i16` of a [`Change`]
     pub changes: &'a [i16],
-    pub status: u32,
+    pub status: Status,
+    /// Each element is the `u32` of a [`Status`]
     pub statuses: &'a [u32],
-    pub sign: i32,
+    pub sign: Sign,
+    /// Each element is the `i32` of a [`Sign`]
     pub signs: &'a [i32],
-    pub mask: u64,
+    pub mask: Mask,
+    /// Each element is the `u64` of a [`Mask`]
     pub masks: &'a [u64],
-    pub extent: i64,
+    pub extent: Extent,
+    /// Each element is the `i64` of an [`Extent`]
     pub extents: &'a [i64],
     /// An enum whose values are keywords
-    pub word: u8,
+    pub word: Word,
     /// A struct of enums
     pub mark: Mark,
     /// [`Mark`]s, or items of any type `T` whose reference converts into a [`Mark`]
@@ -1725,23 +1866,23 @@ where
         }
 
         let mut writer = sizer.writer()?;
-        writer.set_u8(0, self.level);
+        writer.set_u8(0, self.level.0);
         writer.set_u8_array(1, self.levels);
-        writer.set_i8(2, self.direction);
+        writer.set_i8(2, self.direction.0);
         writer.set_i8_array(3, self.directions);
-        writer.set_u16(4, self.unit);
+        writer.set_u16(4, self.unit.0);
         writer.set_u16_array(5, self.units);
-        writer.set_i16(6, self.change);
+        writer.set_i16(6, self.change.0);
         writer.set_i16_array(7, self.changes);
-        writer.set_u32(8, self.status);
+        writer.set_u32(8, self.status.0);
         writer.set_u32_array(9, self.statuses);
-        writer.set_i32(10, self.sign);
+        writer.set_i32(10, self.sign.0);
         writer.set_i32_array(11, self.signs);
-        writer.set_u64(12, self.mask);
+        writer.set_u64(12, self.mask.0);
         writer.set_u64_array(13, self.masks);
-        writer.set_i64(14, self.extent);
+        writer.set_i64(14, self.extent.0);
         writer.set_i64_array(15, self.extents);
-        writer.set_u8(16, self.word);
+        writer.set_u8(16, self.word.0);
         writer.set_struct(17, &self.mark.to_bytes());
         writer.set_structs(
             18,
@@ -1776,10 +1917,10 @@ impl<'a> Step<'a> {
     /// # Errors
     ///
     /// Returns a [`DecodeError`] if the field lies outside the bytes.
-    pub fn level(&self) -> Result<u8, DecodeError> {
+    pub fn level(&self) -> Result<Level, DecodeError> {
         let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
         let position = reader.field_offset(self.position, 0)?;
-        reader.get_u8(position)
+        reader.get_u8(position).map(Level)
     }
 
     /// # Errors
@@ -1806,7 +1947,7 @@ impl<'a> Step<'a> {
 /// The fields of a [`Step`], to write
 #[derive(Clone, Debug)]
 pub struct StepFields<'a> {
-    pub level: u8,
+    pub level: Level,
     pub mark: Mark,
     pub name: &'a str,
 }
@@ -1828,7 +1969,7 @@ impl StepFields<'_> {
     /// Writes a [`Step`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
         let parent = writer.start_table(3);
-        writer.set_u8(0, self.level);
+        writer.set_u8(0, self.level.0);
         writer.set_struct(1, &self.mark.to_bytes());
         writer.set_str(2, self.name);
         writer.end_table(parent);
@@ -1881,10 +2022,10 @@ impl<'a> StepVector<'a> {
 /// that holds an enum
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mark {
-    pub level: u8,
-    pub change: i16,
+    pub level: Level,
+    pub change: Change,
     pub weight: f32,
-    pub extent: i64,
+    pub extent: Extent,
     pub turn: Turn,
 }
 
@@ -1915,13 +2056,23 @@ impl Mark {
     #[must_use]
     pub fn from_bytes(bytes: &[u8; 24]) -> Self {
         Self {
-            level: u8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
-            change: i16::from_le_bytes(bytes[1..3].try_into().unwrap_or_default()),
+            level: Level(u8::from_le_bytes(
+                bytes[0..1].try_into().unwrap_or_default(),
+            )),
+            change: Change(i16::from_le_bytes(
+                bytes[1..3].try_into().unwrap_or_default(),
+            )),
             weight: f32::from_le_bytes(bytes[3..7].try_into().unwrap_or_default()),
-            extent: i64::from_le_bytes(bytes[7..15].try_into().unwrap_or_default()),
+            extent: Extent(i64::from_le_bytes(
+                bytes[7..15].try_into().unwrap_or_default(),
+            )),
             turn: Turn {
-                direction: i8::from_le_bytes(bytes[15..16].try_into().unwrap_or_default()),
-                mask: u64::from_le_bytes(bytes[16..24].try_into().unwrap_or_default()),
+                direction: Direction(i8::from_le_bytes(
+                    bytes[15..16].try_into().unwrap_or_default(),
+                )),
+                mask: Mask(u64::from_le_bytes(
+                    bytes[16..24].try_into().unwrap_or_default(),
+                )),
             },
         }
     }
@@ -1929,10 +2080,10 @@ impl Mark {
     #[must_use]
     pub fn to_bytes(self) -> [u8; 24] {
         let mut bytes = [0; Self::SIZE];
-        bytes[0..1].copy_from_slice(&self.level.to_le_bytes());
-        bytes[1..3].copy_from_slice(&self.change.to_le_bytes());
+        bytes[0..1].copy_from_slice(&self.level.0.to_le_bytes());
+        bytes[1..3].copy_from_slice(&self.change.0.to_le_bytes());
         bytes[3..7].copy_from_slice(&self.weight.to_le_bytes());
-        bytes[7..15].copy_from_slice(&self.extent.to_le_bytes());
+        bytes[7..15].copy_from_slice(&self.extent.0.to_le_bytes());
         bytes[15..24].copy_from_slice(&self.turn.to_bytes());
 
         bytes
@@ -1985,8 +2136,8 @@ impl<'a> MarkArray<'a> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Turn {
-    pub direction: i8,
-    pub mask: u64,
+    pub direction: Direction,
+    pub mask: Mask,
 }
 
 impl Turn {
@@ -2016,16 +2167,20 @@ impl Turn {
     #[must_use]
     pub fn from_bytes(bytes: &[u8; 9]) -> Self {
         Self {
-            direction: i8::from_le_bytes(bytes[0..1].try_into().unwrap_or_default()),
-            mask: u64::from_le_bytes(bytes[1..9].try_into().unwrap_or_default()),
+            direction: Direction(i8::from_le_bytes(
+                bytes[0..1].try_into().unwrap_or_default(),
+            )),
+            mask: Mask(u64::from_le_bytes(
+                bytes[1..9].try_into().unwrap_or_default(),
+            )),
         }
     }
 
     #[must_use]
     pub fn to_bytes(self) -> [u8; 9] {
         let mut bytes = [0; Self::SIZE];
-        bytes[0..1].copy_from_slice(&self.direction.to_le_bytes());
-        bytes[1..9].copy_from_slice(&self.mask.to_le_bytes());
+        bytes[0..1].copy_from_slice(&self.direction.0.to_le_bytes());
+        bytes[1..9].copy_from_slice(&self.mask.0.to_le_bytes());
 
         bytes
     }
