@@ -10,7 +10,10 @@ import (
 
 // Reads tables with TableReader as their descriptions set them out, and
 // returns the descriptions with the values read in place of theirs, so that
-// they equal the descriptions when the bytes hold the described values.
+// they equal the descriptions when the bytes hold the described values. A
+// field described as absent must have the offset 0, and a table's Missing
+// fields are counted from its offsets, as a reader of a later revision of it
+// finds them missing.
 //
 // A nested table, from SetTable or in a vector, is read in place when it has
 // no header and its parent's offset type: a field from its position in its
@@ -23,8 +26,9 @@ import (
 
 // ErrMismatch is the error of bytes that read without a decode error, but
 // otherwise than their description: a sized table whose header holds
-// another length, a vector of another number of items, or one whose items
-// Get finds otherwise than iterating does.
+// another length, a vector of another number of items, one whose items Get
+// finds otherwise than iterating does, or a field described as absent whose
+// offset isn't 0.
 var ErrMismatch = errors.New("the bytes don't read as described")
 
 // ReadTable reads a table from its own bytes, as the root or a vector item is
@@ -60,6 +64,12 @@ func ReadTable(bytes []byte, table Table) (Table, error) {
 		read.Fields = append(read.Fields, value)
 	}
 
+	missing, err := r.countMissing(0, true, table)
+	if err != nil {
+		return Table{}, err
+	}
+	read.Missing = missing
+
 	return read, nil
 }
 
@@ -85,8 +95,69 @@ func (r descriptionReader) readRootField(index int, field Field) (Field, error) 
 	if err != nil {
 		return nil, err
 	}
+	if _, ok := field.(Absent); ok {
+		return readAbsent(position)
+	}
 
 	return r.readField(position, field)
+}
+
+// readAbsent reads a field described as absent, whose offset, from its
+// table's start, must be 0
+func readAbsent(offset int) (Field, error) {
+	if offset != 0 {
+		return nil, fmt.Errorf("%w: a field described as absent has the offset %d", ErrMismatch, offset)
+	}
+
+	return Absent{}, nil
+}
+
+// countMissing counts the fields after the table's own that it doesn't hold,
+// of the Missing fields that a reader of a later revision knows there, as
+// SPEC.md's Revisions describes: a field whose offset would end after the
+// table's first value starts, which its first field's offset gives, or
+// whose offset is 0, as an offset in the padding before the first value
+// reads, or an absent field's. A table that holds one of them counts fewer
+// than Missing. The table is the root, after its header, or a table nested
+// at position, whose offsets count from its start.
+func (r descriptionReader) countMissing(position int, root bool, table Table) (int, error) {
+	if table.Missing == 0 {
+		return 0, nil
+	}
+
+	header := 0
+	offset := func(index int) (int, error) {
+		offset, err := r.reader.FieldOffset(position, index)
+		return offset - position, err
+	}
+	if root {
+		header = table.Layout.HeaderSize()
+		offset = r.reader.RootOffset
+	}
+	width := table.Layout.OffsetType.Size()
+
+	firstValue, err := offset(0)
+	if err != nil {
+		return 0, err
+	}
+
+	count := 0
+	for index := len(table.Fields); index < len(table.Fields)+table.Missing; index++ {
+		if header+(index+1)*width > firstValue {
+			count++
+			continue
+		}
+
+		fieldOffset, err := offset(index)
+		if err != nil {
+			return 0, err
+		}
+		if fieldOffset == 0 {
+			count++
+		}
+	}
+
+	return count, nil
 }
 
 func (r descriptionReader) readField(position int, field Field) (Field, error) {
@@ -303,12 +374,25 @@ func (r descriptionReader) readInPlace(position int, table Table) (Table, error)
 		if err != nil {
 			return Table{}, err
 		}
-		value, err := r.readField(offset, field)
+
+		var value Field
+		if _, ok := field.(Absent); ok {
+			// Its offset counts from the table's start
+			value, err = readAbsent(offset - position)
+		} else {
+			value, err = r.readField(offset, field)
+		}
 		if err != nil {
 			return Table{}, err
 		}
 		read.Fields = append(read.Fields, value)
 	}
+
+	missing, err := r.countMissing(position, false, table)
+	if err != nil {
+		return Table{}, err
+	}
+	read.Missing = missing
 
 	return read, nil
 }

@@ -21,3 +21,9 @@ error: `ReadPair` clashes with a name of the code generated for `Pair`
    |
 15 | table ReadPair { x: uint8; }
    |       ^^^^^^^^ the code generated for Go declares `ReadPair` to read `Pair`
+
+error: `RecordFirstVersion` clashes with a name of the code generated for `Record`
+  --> go_functions.tafla:18:7
+   |
+18 | table RecordFirstVersion { x: uint8; }
+   |       ^^^^^^^^^^^^^^^^^^ the code generated for Go declares `RecordFirstVersion` to hold the first readable version of `Record`

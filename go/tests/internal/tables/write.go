@@ -52,7 +52,7 @@ func (t Table) NestedInPlace() Table {
 		fields[index] = nestedInPlace(field, layout)
 	}
 
-	return Table{Layout: t.Layout, Version: t.Version, Fields: fields}
+	return Table{Layout: t.Layout, Version: t.Version, Fields: fields, Missing: t.Missing}
 }
 
 // Alignment returns the alignment that SetTable pads the table to when given
@@ -129,6 +129,8 @@ func Add(sizer *tafla.TableSizer, field Field) {
 		sizer.AddFloat64Array(len(value))
 	case String:
 		sizer.AddString(string(value))
+	case Absent:
+		sizer.AddAbsent()
 	case Struct:
 		sizer.AddStruct(StructSize(StructTypes(value)))
 	case StructArray:
@@ -193,6 +195,8 @@ func Write(writer *tafla.TableWriter, index int, field Field) {
 		writer.SetFloat64Array(index, value)
 	case String:
 		writer.SetString(index, string(value))
+	case Absent:
+		writer.SetAbsent(index)
 	case Struct:
 		writer.SetStruct(index, StructBytes(value))
 	case StructArray:
@@ -251,7 +255,7 @@ func nestedInPlace(field Field, layout Layout) Field {
 			fields[index] = nestedInPlace(field, layout)
 		}
 
-		return Nested{From: FromBuilder, Table: Table{Layout: layout, Fields: fields}}
+		return Nested{From: FromBuilder, Table: Table{Layout: layout, Fields: fields, Missing: nested.Table.Missing}}
 	}
 
 	switch value := field.(type) {
