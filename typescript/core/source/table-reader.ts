@@ -768,10 +768,13 @@ export class TableReader {
      * and any end that `#readStrings()` would reject, leaves them to it,
      * which reads each string on its own and throws where it should.
      *
-     * Through `getStringVector()`, lists of 10 to 10,000 strings of 8 to 256
-     * characters of ASCII took 0.13–0.65 times as long to read as a string
-     * at a time, by `benchmarks/strings/lists`' layouts in Node 26, and
-     * lists outside ASCII 1.00–1.02 times as long from 100 strings.
+     * In Node 26, `getStringVector()` read lists of 10 to 10,000 strings of
+     * 8 to 256 characters of ASCII in 0.16–0.75 times the time that
+     * `StringVector.get()` took to read them a string at a time, and lists
+     * outside ASCII in 0.92–0.99 times. Lists whose first string is ASCII
+     * and every tenth isn't took 1.11–1.32 times as long, since their run is
+     * decoded and then read a string at a time: `yarn bench:lists`, which
+     * `benchmarks/README.md` describes.
      *
      * @returns Whether it read them.
      */
