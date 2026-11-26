@@ -507,7 +507,10 @@ The tests in `tests/Tafla.Tests` are:
   values or a `DecodeException`, and writes and reads the cases of
   `conformance/generated` byte for byte, as every language's does.
   `NamesTests` runs the code of `tests/names.tafla`, of names that would
-  clash in C#.
+  clash in C#, and `PresenceTests` the code of
+  `typescript/core/test/presence.tafla`, of optional fields and fields added
+  by later versions and revisions, which its readers find missing from older
+  tables.
 
 The property tests run 256 cases each, on every core, and print the seed of
 a failing case, which `CsCheck_Seed=<seed> dotnet test` runs again.
@@ -601,6 +604,20 @@ off it; here `.editorconfig` turns the build's analyzers back on for it, and
 `dotnet format whitespace --folder --include-generated` checks its
 formatting, which plain `dotnet format` skips. `tests/names` holds the code
 of `tests/names.tafla`, which `rust/gen/tests/csharp_schemas.rs` keeps.
+
+A field that may be missing from a table, optional or added `since` a
+version, reads as `null` where the table lacks it when it's a string or a
+struct, and as its default when it's a scalar. Spans, views and nested
+tables' readers are `ref struct`s, which can't be nullable, so they read as
+empty, or as the default reader, whose reads throw a `DecodeException`, as
+every other field reads as a property. A `Has<Field>` property beside a
+scalar or a `ref struct` tells whether the table holds it. In the fields that
+write a table, an optional field is nullable, and null leaves it out: a
+`ReadOnlyMemory<T>?` that holds an empty array writes an empty one, so a
+`null` array, which converts to empty memory, isn't left out. A message whose
+`since` names its first version reads every version from its `FirstVersion`
+to its `FormatVersion`. A message or table with an optional field is written
+field by field, through the sizer and the writer, rather than whole.
 
 Not yet part of the runtime: the writer's reservation of a table's leading
 fields of fixed sizes among its others, as Go's `ReserveFields()` does, which

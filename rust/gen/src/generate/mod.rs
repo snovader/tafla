@@ -163,7 +163,7 @@ impl Target {
             Self::Swift => false,
             // C#
             #[cfg(feature = "csharp")]
-            Self::CSharp => false,
+            Self::CSharp => true,
         }
     }
 
