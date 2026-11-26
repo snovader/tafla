@@ -154,7 +154,9 @@ def build_table(table: Description) -> TableBuilder:
 def set_field(builder: TableBuilder, field: Description) -> None:
     kind = field["type"]
 
-    if kind == "table":
+    if kind == "absent":
+        builder.set_absent()
+    elif kind == "table":
         builder.set_table(_build_nested(field), field.get("alignment"))
     elif kind == "vector":
         builder.set_vector([_build_nested(item) for item in field["items"]])
@@ -304,7 +306,9 @@ def write_table(
 def write_field(writer: TableWriter, index: int, field: Description) -> None:
     kind = field["type"]
 
-    if kind == "table":
+    if kind == "absent":
+        writer.set_absent(index)
+    elif kind == "table":
         writer.set_table(index, alignment_of(field))
         _write_nested(writer, field["table"])
     elif kind == "vector":
@@ -347,7 +351,11 @@ def nested_in_place(table: Description) -> Description:
 
     def in_place(nested: Description) -> Description:
         layout = {"sized": False, "versioned": False, "offsetType": offset_type}
-        return {"layout": layout, "fields": [field(each) for each in nested["fields"]]}
+        table = {"layout": layout, "fields": [field(each) for each in nested["fields"]]}
+        if "missing" in nested:
+            table["missing"] = nested["missing"]
+
+        return table
 
     def field(description: Description) -> Description:
         if description["type"] == "table":
@@ -498,18 +506,26 @@ class DescriptionReader:
     of its own: a vector item from its bytes, and a field from its position to
     the end of its parent, since its length isn't written.
 
+    A field of ``"type": "absent"`` must have the offset 0, from its table's
+    start, and is returned as it is. A table's ``missing``, which only the
+    cases of presence have, is replaced by the number of the fields after its
+    own that a reader of a later revision finds missing from it, as
+    ``__count_missing()`` counts them.
+
     ``visit`` is called with the placement of every field before it's read,
-    nested ones included.
+    nested ones included, but absent ones, which have no bytes.
     """
 
-    __slots__ = ["__offset_type", "__reader", "__visit"]
+    __slots__ = ["__header_size", "__offset_type", "__reader", "__visit"]
 
     __offset_type: OffsetType
 
     def __init__(
         self, data: Buffer, layout: Description, visit: Visit | None = None
     ) -> None:
-        self.__reader = TableReader(data, layout_of(layout))
+        table_layout = layout_of(layout)
+        self.__reader = TableReader(data, table_layout)
+        self.__header_size = table_layout.header_size()
         self.__offset_type = layout["offsetType"]
         self.__visit = visit
 
@@ -527,6 +543,8 @@ class DescriptionReader:
         return self.__read_header_and_fields(table)
 
     def read_root_field(self, index: int, field: Description) -> Description:
+        """Reads a field of the root table. Raises ``MismatchError`` if the
+        field is described as absent and its offset isn't 0."""
         return self.__read_field(0, self.__reader.root_offset(index), field)
 
     def __read_header_and_fields(self, table: Description) -> Description:
@@ -540,12 +558,61 @@ class DescriptionReader:
             self.read_root_field(index, field)
             for index, field in enumerate(table["fields"])
         ]
+        if "missing" in table:
+            read["missing"] = self.__count_missing(0, table)
 
         return read
+
+    def __count_missing(self, position: int, table: Description) -> int:
+        """Counts the fields after the table's own that it doesn't hold, of
+        the ``missing`` fields that a reader of a later revision knows there,
+        as SPEC.md's Revisions finds them: a field whose offset would end
+        after the table's first value starts, which isn't read, and one whose
+        offset is 0, as padding before the first value reads. A table that
+        holds one of them counts fewer than ``missing``."""
+        reader = self.__reader
+        fields = len(table["fields"])
+        offset_size = offset_size_of(self.__offset_type)
+
+        # The root's offsets follow its header, and a nested table's count
+        # from its own start, where it has no header
+        if position == 0:
+            header_size = self.__header_size
+            first_value = reader.root_offset(0)
+        else:
+            header_size = 0
+            first_value = reader.field_offset(position, 0) - position
+
+        count = 0
+        for index in range(fields, fields + table["missing"]):
+            # The offset is read only when it ends before the first value
+            beyond = header_size + (index + 1) * offset_size > first_value
+            if beyond or self.__offset_of(position, index) == 0:
+                count += 1
+
+        return count
+
+    def __offset_of(self, position: int, index: int) -> int:
+        """The offset of field ``index`` of the table at ``position``, from
+        the table's start"""
+        if position == 0:
+            return self.__reader.root_offset(index)
+
+        return self.__reader.field_offset(position, index) - position
 
     def __read_field(
         self, table: int, position: int, field: Description
     ) -> Description:
+        kind = field["type"]
+
+        # The offset of an absent field is 0 from its table's start
+        if kind == "absent":
+            if position != table:
+                raise MismatchError(
+                    f"A field described as absent has the offset {position - table}"
+                )
+            return field
+
         if self.__visit is not None:
             placement = Placement(
                 field,
@@ -555,8 +622,6 @@ class DescriptionReader:
                 offset_size_of(self.__offset_type),
             )
             self.__visit(placement)
-
-        kind = field["type"]
 
         if kind == "table":
             return {**field, "table": self.__read_nested(position, field["table"])}
@@ -664,13 +729,17 @@ class DescriptionReader:
 
     def __read_in_place(self, position: int, table: Description) -> Description:
         reader = self.__reader
-        return {
+        read: Description = {
             "layout": table["layout"],
             "fields": [
                 self.__read_field(position, reader.field_offset(position, index), field)
                 for index, field in enumerate(table["fields"])
             ],
         }
+        if "missing" in table:
+            read["missing"] = self.__count_missing(position, table)
+
+        return read
 
 
 def read_table(

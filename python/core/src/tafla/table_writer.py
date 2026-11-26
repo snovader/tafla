@@ -540,6 +540,22 @@ class TableWriter:
         self.__set_count(len(encoded), len(encoded))
         self.__data += encoded
 
+    def set_absent(self, index: int) -> None:
+        """Writes field ``index`` as absent: an offset of 0 and no value, which
+        a reader finds by comparing the field's offset, from
+        ``TableReader.root_offset()``, with 0, or one from ``field_offset()``
+        with the nested table's position, before it reads the field. Only a
+        format whose readers make that check for the field, such as code that
+        tafla-gen generates from a schema that declares it optional, can leave
+        it out."""
+        # The slots are zeros until they're written, but 0 is written as any
+        # offset is, so that an index outside the table raises as it does for
+        # the other setters
+        try:
+            self.__length.pack_into(self.__data, self.__slots + index * self.__size, 0)
+        except _PACK_ERRORS as error:
+            raise self.__slot_error(0, error) from error
+
     def set_struct(self, index: int, data: Buffer) -> None:
         """Writes a struct field from its bytes: its scalars, little-endian, one
         after another, without padding. A ``struct.Struct`` with a ``<`` format

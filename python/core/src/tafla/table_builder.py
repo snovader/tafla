@@ -255,6 +255,14 @@ class TableBuilder:
                 TableWriter._set_encoded_string, encoded, self.__size + len(encoded)
             )
 
+    def set_absent(self) -> None:
+        """Sets the next field as absent: an offset of 0 and no value. A reader
+        finds it by comparing the field's offset, from
+        ``TableReader.root_offset()``, with 0, or one from ``field_offset()``
+        with the nested table's position, before it reads the field, so only a
+        format whose readers make that check for the field can leave it out."""
+        self.__add_field(_set_absent, None, 0)
+
     def set_struct(self, data: Buffer) -> None:
         """Sets a struct field from its bytes: its scalars, little-endian, one
         after another, which are written as they are, without padding. A
@@ -687,6 +695,13 @@ class TableBuilder:
             writer.end_table(parent)
         else:
             writer._copy_table(table.bytes())
+
+
+def _set_absent(writer: TableWriter, index: int, _value: None) -> None:
+    """Writes an absent field as the builder writes every other field that
+    takes its index and value alone, as a setter of the two, though it has no
+    value, so that writing the others checks for none more"""
+    writer.set_absent(index)
 
 
 def _finalized_error() -> TypeError:
