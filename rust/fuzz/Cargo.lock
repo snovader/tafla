@@ -181,6 +181,9 @@ dependencies = [
 [[package]]
 name = "tafla-gen"
 version = "0.0.0"
+dependencies = [
+ "tafla",
+]
 
 [[package]]
 name = "unicode-ident"
