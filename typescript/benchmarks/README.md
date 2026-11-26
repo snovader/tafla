@@ -434,8 +434,9 @@ or writes 64 tables of its own values:
   (`Ranged`), from tables of either version.
 - **z of root tables**: a required `z`, an optional one, present and
   absent, and one that version 2 appended, read from tables of either
-  version. Two more variants read the optional `z` as a getter that returns
-  a default for an absent field would, once V8 inlines it: `NaN`, and `0`.
+  version. Each `z` that may be missing reads as its default, 1.5, which V8
+  can't hold as a small integer. Two more variants read the optional `z` as
+  a getter whose default was `NaN` would, once V8 inlines it.
 - **z of nested tables**: a required `z` of a nested table, and one that its
   second revision appended, read from tables of either revision.
 - **construct**: the constructor of a message without a version, of one
@@ -449,28 +450,29 @@ yarn bench:presence --rounds 41 --no-heap
 ```
 
 On an Apple M2 Pro in Node 26.13.0, in two processes alike, at a load of
-1.4:
+3.0:
 
 - Reads of required fields took as long in every kind of table, 0.99 to
-  1.02 times `Plain`'s, with an A/A of 1.00: their getters are the same
-  code.
-- A present optional `z`, and a `z` that version 2 appended, took 1.47 to
-  1.49 times a required `z`, and allocated a heap number of 12 bytes each:
-  the getter returns `number | undefined`, and V8 boxes a double that
+  1.02 times `Plain`'s, with an A/A of 1.00 to 1.01: their getters are the
+  same code.
+- A present optional `z`, and a `z` that version 2 appended, took 1.08 to
+  1.09 times a required `z`, for the comparison with 0 or the version, and
+  allocated nothing. A getter that returned `number | undefined`, as the
+  first prototype did, took 1.47 to 1.49 times, at a load of 1.4, and
+  allocated a heap number of 12 bytes for each `z`: V8 boxes a double that
   merges with another type, as it does with the `NaN` default, which
-  JavaScript loads as a global (1.39 times). A default of `0` took 1.00 to
-  1.01 times, without allocating, so the comparison with 0 is free. An
-  absent `z` took 0.91 to 0.93 times, and one missing from version 1, found
-  from the version alone, 0.58 times.
-- A `z` that the nested table's second revision appended took 1.48 times,
-  with the box and a read of the first field's offset, and one missing from
-  the first revision 0.98 to 0.99 times.
-- Constructing a message that checks a range of versions took 1.01 times
-  the time of one that checks its own, which took 1.02 to 1.03 times the
-  time of one without a version.
+  JavaScript loads as a global, 1.42 to 1.46 times here. So a scalar that
+  may be missing reads as a literal default. An absent `z` took 0.80 to
+  0.81 times, and one missing from version 1, found from the version alone,
+  0.46 times.
+- A `z` that the nested table's second revision appended took 1.22 to 1.25
+  times, for the read of the first field's offset, without allocating, and
+  one missing from the first revision 0.91 to 0.94 times.
+- Constructing a message that checks a range of versions took as long as
+  one that checks its own, 1.03 to 1.04 times the time of one without a
+  version.
 - Writing `Optional` with both optional fields present took as long as
-  writing `Full`, whose fields are required, 2.52 to 2.60 times against 2.47
-  to 2.58 times `Plain`, within each other's noise in two processes at a
-  load of 2.75, and with both absent 1.09 times `Plain`, for their offsets
-  and checks. `Ranged` wrote as fast as `Exact`.
-
+  writing `Full`, whose fields are required, 2.45 to 2.49 times against 2.38
+  to 2.49 times `Plain`, within each other's noise, and with both absent
+  1.09 to 1.10 times `Plain`, for their offsets and checks. `Ranged` wrote as
+  fast as `Exact`.
