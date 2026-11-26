@@ -385,8 +385,14 @@ that the enum doesn't name reads as itself.
 | Swift                  | A `RawRepresentable` struct of its `rawValue`, `Hashable`, `Sendable` | `Priority.high`           | `Priority`                   |
 | C#                     | `enum Priority : sbyte`                                               | `Priority.High`           | `Priority`                   |
 
-A value named after a keyword of a language takes the generated code's
-escape of names there, as a field's does.
+A value in upper case or `PascalCase`, or after its enum's name as in Go,
+can't be a keyword. C++ gives a value named after one of its keywords, or
+after a macro that a field takes a `_` after, a `_`, as `class_` and
+`linux_`, and Swift escapes a value's name as a field's, as `` `class` ``
+and `self_`. In Python, a field of an enum is an `int`, which a member is,
+so a struct written from members holds them as given, and one read from
+bytes holds integers; the generated code never calls the enum, which would
+reject an integer that it doesn't name.
 
 ### Views
 
