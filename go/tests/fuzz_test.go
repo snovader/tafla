@@ -1,8 +1,9 @@
 package tafla_test
 
 // Native fuzz targets, which mirror rust/fuzz. Their seeds are the
-// conformance suite's tables, so that the fuzzer mutates tables that the
-// descriptions read deep into, and `go test` runs them as tests. A panic is
+// conformance suite's tables, and those of its cases of presence, so that
+// the fuzzer mutates tables that the descriptions read deep into, and `go
+// test` runs them as tests. A panic is
 // a finding, and so is a read that disagrees with SPEC.md, or an error other
 // than the decode error.
 //
@@ -32,20 +33,24 @@ const checked = 8
 // or before them
 var farPositions = []int{math.MaxInt, math.MaxInt - 1, math.MaxInt - 3, math.MaxInt - 7, -1, -8, math.MinInt}
 
-// addSeeds adds the conformance suite's tables to the corpus
+// addSeeds adds the conformance suite's tables, and those of its cases of
+// presence, to the corpus
 func addSeeds(f *testing.F) {
-	for _, directory := range []string{"valid", "equivalent", "invalid"} {
-		files, err := filepath.Glob(filepath.Join(tables.Conformance(), directory, "*.bin"))
-		if err != nil {
-			f.Fatal(err)
-		}
-
-		for _, file := range files {
-			bytes, err := os.ReadFile(file)
+	suites := []string{tables.Conformance(), filepath.Join(tables.Conformance(), "presence")}
+	for _, suite := range suites {
+		for _, directory := range []string{"valid", "equivalent", "invalid"} {
+			files, err := filepath.Glob(filepath.Join(suite, directory, "*.bin"))
 			if err != nil {
 				f.Fatal(err)
 			}
-			f.Add(bytes)
+
+			for _, file := range files {
+				bytes, err := os.ReadFile(file)
+				if err != nil {
+					f.Fatal(err)
+				}
+				f.Add(bytes)
+			}
 		}
 	}
 }
@@ -79,20 +84,26 @@ func FuzzTableReader(f *testing.F) {
 }
 
 // FuzzConformance reads mutated tables as every valid table of the
-// conformance suite describes them, following their offsets into nested
-// tables, vectors, arrays, strings and structs, as the conformance test
-// reads them. Reads may fail, but only with the decode error, or read values
-// other than described, and finding a vector's item by index must find what
-// iterating finds.
+// conformance suite and of its cases of presence describes them, following
+// their offsets into nested tables, vectors, arrays, strings and structs, as
+// the conformance test reads them, and counting the fields that a reader of a
+// later revision finds missing. Reads may fail, but only with the decode
+// error, or read values other than described, and finding a vector's item by
+// index must find what iterating finds.
 func FuzzConformance(f *testing.F) {
 	addSeeds(f)
 	suite, err := tables.LoadSuite()
 	if err != nil {
 		f.Fatal(err)
 	}
+	presence, err := tables.LoadPresenceSuite()
+	if err != nil {
+		f.Fatal(err)
+	}
+	valids := append(suite.Valid, presence.Valid...)
 
 	f.Fuzz(func(t *testing.T, bytes []byte) {
-		for _, valid := range suite.Valid {
+		for _, valid := range valids {
 			read, err := tables.ReadTable(bytes, valid.Table)
 			var decodeError *tafla.DecodeError
 			switch {
@@ -108,7 +119,8 @@ func FuzzConformance(f *testing.F) {
 				}
 			case errors.Is(err, tables.ErrMismatch):
 				// The bytes read, but with a size or a number of items other
-				// than described
+				// than described, or an offset other than 0 where a field is
+				// described as absent
 				if strings.Contains(err.Error(), "Get finds") {
 					t.Fatalf("%s: %v", valid.Name, err)
 				}

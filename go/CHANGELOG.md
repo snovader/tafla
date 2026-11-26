@@ -15,6 +15,18 @@ first commits, for code built from its source before the release.
 
 ### Added
 
+- `TableBuilder.SetAbsent()`, `Item.SetAbsent()`,
+  `TableSizer.AddAbsent()` and `TableWriter.SetAbsent()`, which leave a
+  field out of a table with the offset 0 and no value, for a format that
+  lets it be absent, as
+  [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+  describes. The sizer counts an absent field among the root's, so that a
+  table too long names the field that made it so, as `TableBuilder` does.
+  The runtime reads and rebuilds the cases of absent fields and of tables
+  of later revisions in `conformance/presence/`.
+- `Optional` and `Some()`, a value that may be absent, as the struct of
+  fields that tafla-gen's Go writes a table from holds an optional field:
+  the zero `Optional` is absent.
 - The runtime, which writes and reads tables in the format that
   [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md) describes:
   tables of scalars, strings, typed arrays, nested tables, vectors of tables,

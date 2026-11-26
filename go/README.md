@@ -86,10 +86,18 @@ and then the fields in the order they were set:
   item from two ends without reading the others. An item without a header and
   with its parent's offset type is read in place, from the bytes that
   `Vector.GetInPlace()` returns, which run on to the end of its parent's.
+- A field that the format lets be absent is left out with `SetAbsent()`: its
+  offset is 0, and it takes no bytes. Its reader compares the offset that
+  `RootOffset()` returns with 0, or one that `FieldOffset()` returns with the
+  nested table's position, before it reads the field, as the code that
+  tafla-gen generates for an optional field does, and returns the field's
+  missing value rather than read the header there. A required field is read
+  without the comparison.
 
 The runtime writes the same bytes as the other runtimes for the same fields,
 and reads their tables: `conformance_test.go` reads and rebuilds the
-repository's conformance suite, which covers the whole format, and
+repository's conformance suite, which covers the whole format, and its cases
+of absent fields and of tables of later revisions, and
 `tests/generated` writes and reads the tables of `conformance/generated`
 with the code that tafla-gen generates.
 
@@ -214,7 +222,10 @@ rest of the API, and may change in any release, with the generator.
 the schema, so it doesn't check them again. Its contract, which the other
 runtimes share:
 
-- Fields are set in index order, each once, as the sizer added them, and each
+- Fields are set in index order, each once, as the sizer added them, an
+  absent field with `TableSizer.AddAbsent()` and `TableWriter.SetAbsent()`,
+  which writes its offset of 0 over the bytes that `AppendWriter()` reuses,
+  and each
   vector item is followed by its `SetItemEnd()`. Fields that the sizer added
   together are reserved together: a table's first fields with
   `ReserveFields()`, before any setter, and a nested table with
@@ -266,7 +277,12 @@ go test -tags tafla_portable ./...
 `staticcheck` installs with `go install honnef.co/go/tools/cmd/staticcheck@latest`.
 The tests in `tests/` are:
 
-- `conformance_test.go`: reads and rebuilds the conformance suite.
+- `conformance_test.go`: reads and rebuilds the conformance suite, and its
+  cases of presence in `conformance/presence`.
+- `presence_test.go`: properties of tables with absent fields, at every
+  depth, which read back, have the offset 0 and are written by the sizer and
+  the writer as `TableBuilder` writes them, and of the fields that a reader
+  of a later revision finds missing.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
   `table_builder_test.go` and `table_writer_test.go`: properties of tables
   built from the conformance suite's descriptions, which
@@ -275,7 +291,8 @@ The tests in `tests/` are:
   integer limits, empty arrays, the limits of each offset type, strings
   outside the Basic Multilingual Plane and unaligned bytes.
 - `fuzz_test.go`: native fuzz targets, which mirror `rust/fuzz`, and whose
-  seeds, the conformance suite's tables, run as tests.
+  seeds, the conformance suite's tables and those of its cases of presence,
+  run as tests.
 - `generated`: the Go that tafla-gen generates from the example
   schemas in `schemas/`, in a package of each schema, and the tests beside
   them, which read back what it writes, write what `TableBuilder` writes,
@@ -317,7 +334,8 @@ or a read that disagrees with `SPEC.md` is a finding:
   reads every array, struct array and vector there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
   within the input, and the decode error otherwise.
-- `FuzzConformance` mutates the conformance suite's tables and reads them as
+- `FuzzConformance` mutates the conformance suite's tables, and those of its
+  cases of presence, and reads them as
   every valid case's description, as the conformance test reads them.
 
 Run each from `tests/` with `-fuzz`, and stop it with Ctrl-C or `-fuzztime`. Go writes an

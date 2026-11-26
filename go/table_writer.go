@@ -268,6 +268,12 @@ func (s *TableSizer) AddString(value string) {
 	s.add(min(s.width()+uint64(len(value)), past))
 }
 
+// AddAbsent adds an absent field, which [TableWriter.SetAbsent] writes: it
+// takes no bytes but its offset, which the table's offsets count. It counts
+// the field among the root's, so that a table too long names the field that
+// made it so, as TableBuilder names it.
+func (s *TableSizer) AddAbsent() { s.add(0) }
+
 // AddStruct adds a struct field of size bytes.
 func (s *TableSizer) AddStruct(size int) {
 	s.add(min(uint64(size), past))
@@ -679,6 +685,18 @@ func (w *TableWriter) SetString(index int, value string) {
 	w.putSlot(w.position, uint32(len(value)))
 	w.position += w.width
 	w.position += copy(w.bytes[w.position:w.position+len(value)], value)
+}
+
+// SetAbsent writes field index as absent: an offset of 0 and no value, which
+// [TableSizer.AddAbsent] added. A reader finds it by comparing the field's
+// offset, from [TableReader.RootOffset], with 0, or one from
+// [TableReader.FieldOffset] with the nested table's position, before it
+// reads the field, so only a format whose readers make that check for the
+// field, such as code generated from a schema that declares it optional, can
+// leave it out. The offset is written as any other, since the bytes that
+// [TableSizer.AppendWriter] reuses aren't zeroed.
+func (w *TableWriter) SetAbsent(index int) {
+	w.putSlot(w.slots+index*w.width, 0)
 }
 
 // SetStruct writes struct field index from its bytes: its scalars,

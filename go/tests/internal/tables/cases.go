@@ -45,7 +45,20 @@ type ChangedCase struct {
 
 // LoadSuite reads cases.json and the bytes of its cases.
 func LoadSuite() (*Suite, error) {
-	directory := Conformance()
+	return loadSuite(Conformance())
+}
+
+// LoadPresenceSuite reads the cases of presence, in presence/cases.json, and
+// the bytes of its cases: tables with absent fields, and tables that a
+// reader of a later revision reads, whose descriptions give how many fields
+// that reader finds missing.
+func LoadPresenceSuite() (*Suite, error) {
+	return loadSuite(filepath.Join(Conformance(), "presence"))
+}
+
+// loadSuite reads the cases.json in directory, and the bytes of its cases,
+// whose files lie under it
+func loadSuite(directory string) (*Suite, error) {
 	contents, err := os.ReadFile(filepath.Join(directory, "cases.json"))
 	if err != nil {
 		return nil, err
@@ -134,6 +147,7 @@ type jsonTable struct {
 	} `json:"layout"`
 	Version *uint32     `json:"version"`
 	Fields  []jsonField `json:"fields"`
+	Missing int         `json:"missing"`
 }
 
 type jsonField struct {
@@ -162,11 +176,14 @@ func (t *jsonTable) table() (Table, error) {
 		return Table{}, fmt.Errorf("%q isn't an offset type", t.Layout.OffsetType)
 	}
 
-	table := Table{Layout: Layout{
-		Sized:      t.Layout.Sized,
-		Versioned:  t.Layout.Versioned,
-		OffsetType: offsetType,
-	}}
+	table := Table{
+		Layout: Layout{
+			Sized:      t.Layout.Sized,
+			Versioned:  t.Layout.Versioned,
+			OffsetType: offsetType,
+		},
+		Missing: t.Missing,
+	}
 	if t.Version != nil {
 		table.Version = *t.Version
 	}
@@ -190,6 +207,8 @@ func (f *jsonField) field() (Field, error) {
 	}
 
 	switch f.Type {
+	case "absent":
+		return Absent{}, nil
 	case "bool":
 		var value bool
 		err := json.Unmarshal(f.Value, &value)

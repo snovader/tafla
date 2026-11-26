@@ -339,6 +339,53 @@ func drawNested(t *rapid.T, layouts *rapid.Generator[Layout], depth int, small b
 	}
 }
 
+// WithAbsences returns the table with fields left out, at every depth, as
+// the cases of presence leave them out: each field in turn, the root's and
+// then those of each table nested in it, is absent when the next of
+// absences, which repeat, says so. An absent field takes no bytes, so the
+// table fits in its offset type when it did.
+func WithAbsences(table Table, absences []bool) Table {
+	next := 0
+	isAbsent := func() bool {
+		absent := absences[next%len(absences)]
+		next++
+		return absent
+	}
+
+	var within func(table Table) Table
+	nested := func(nested Nested) Nested {
+		return Nested{From: nested.From, Table: within(nested.Table)}
+	}
+	field := func(field Field) Field {
+		if isAbsent() {
+			return Absent{}
+		}
+
+		switch value := field.(type) {
+		case TableField:
+			return TableField{Nested: nested(value.Nested), Alignment: value.Alignment}
+		case Vector:
+			items := make(Vector, len(value))
+			for index, item := range value {
+				items[index] = nested(item)
+			}
+			return items
+		default:
+			return field
+		}
+	}
+	within = func(table Table) Table {
+		fields := make([]Field, len(table.Fields))
+		for index, value := range table.Fields {
+			fields[index] = field(value)
+		}
+		table.Fields = fields
+		return table
+	}
+
+	return within(table)
+}
+
 // choice is a way to draw a value, with its weight among the others
 type choice[T any] struct {
 	weight int
@@ -400,6 +447,8 @@ func longest(field Field, width uint64) uint64 {
 	}
 
 	switch value := field.(type) {
+	case Absent:
+		return 0
 	case Int8, Uint8, Bool:
 		return 1
 	case Int16, Uint16:
