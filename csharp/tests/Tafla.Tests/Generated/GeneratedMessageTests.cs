@@ -66,6 +66,7 @@ public class GeneratedMessageTests
     [
         .. ShapesTests.Messages,
         .. AllTypesTests.Messages,
+        .. EnumsTests.Messages,
         .. LayoutsTests.Messages,
         .. FixedFieldsTests.Messages,
     ];

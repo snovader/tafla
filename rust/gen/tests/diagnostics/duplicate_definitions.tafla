@@ -5,3 +5,9 @@ table Pair {
 message Pair {
     second: float32;
 }
+
+enum Pair: uint8 { first = 1; }
+
+enum State: uint8 { idle = 0; }
+message State { value: uint8; }
+enum State: int8 { busy = 1; }

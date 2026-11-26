@@ -18,16 +18,23 @@ from tests.generated.shapes.shapes import (
     ItemListFields,
     Point,
     PointFields,
+    Priority,
     Sample,
+    State,
+    Step,
+    Task,
+    TaskFields,
 )
 from tests.generated.shapes_tables import (
     describe_document,
     describe_item_list,
     describe_point,
     describe_sample,
+    describe_task,
     read_document,
     read_item_list,
     read_point,
+    read_task,
 )
 from tests.tables import Description, from_json
 from tests.test_conformance import CONFORMANCE
@@ -97,6 +104,18 @@ def _sample(fields: Description) -> dict[str, Any]:
     }
 
 
+def _task(fields: Description) -> TaskFields:
+    """A task's fields, whose enums JSON holds as their integers"""
+    step = fields["step"]
+
+    return {
+        "priority": fields["priority"],
+        "history": fields["history"],
+        "step": Step(step["state"], step["priority"], step["seconds"]),
+        "name": fields["name"],
+    }
+
+
 def values_of(case: Description) -> Any:
     """Returns a case's fields as the generated code takes them"""
     fields = case["fields"]
@@ -110,6 +129,8 @@ def values_of(case: Description) -> Any:
             return _item_list(fields)
         case "Sample":
             return _sample(fields)
+        case "Task":
+            return _task(fields)
         case other:
             raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
@@ -125,6 +146,8 @@ def serialize(kind: str, values: Any) -> Buffer:
             return ItemList.serialize(**values)
         case "Sample":
             return Sample(**values).serialize()
+        case "Task":
+            return Task.serialize(**values)
         case other:
             raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
@@ -140,6 +163,8 @@ def read(kind: str, data: Buffer) -> object:
             return read_item_list(ItemList(data))
         case "Sample":
             return asdict(Sample.read(data))
+        case "Task":
+            return read_task(Task(data))
         case other:
             raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
@@ -156,6 +181,8 @@ def describe(kind: str, values: Any) -> list[Description]:
             return describe_item_list(values)["fields"]
         case "Sample":
             return describe_sample(Sample(**values))
+        case "Task":
+            return describe_task(values)["fields"]
         case other:
             raise AssertionError(f"shapes.tafla has no message or struct {other}")
 
@@ -181,7 +208,19 @@ class TestShapesCases(unittest.TestCase):
     def test_finds_cases_of_every_message_and_the_struct(self) -> None:
         kinds = {case["type"] for case in CASES}
 
-        self.assertEqual(kinds, {"Point", "Document", "ItemList", "Sample"})
+        self.assertEqual(kinds, {"Point", "Document", "ItemList", "Sample", "Task"})
+
+    def test_writes_the_task_of_named_values_from_its_enums_members(self) -> None:
+        """The case ``task`` holds integers that the schema names, which the
+        members of the generated enums are"""
+        serialized = Task.serialize(
+            priority=Priority.LOW,
+            history=[State.WAITING, State.RUNNING, State.FAILED],
+            step=Step(State.DONE, Priority.HIGH, 0xFFFF_FFFF),
+            name="task",
+        )
+
+        self.assertEqual(bytes(serialized), read_bytes("shapes/task.bin"))
 
 
 if __name__ == "__main__":

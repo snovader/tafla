@@ -12,10 +12,10 @@ use super::writer::{
 };
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     strongly_connected_components,
 };
-use crate::naming::camel_case;
+use crate::naming::{camel_case, pascal_case};
 
 /// The runtime's module, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -114,6 +114,11 @@ pub fn generate(
     writer.line(format!("// {header}"));
     writer.blank();
     generator.imports(&mut writer, runtime);
+
+    for enumeration in &schema.enums {
+        writer.blank();
+        generator.enumeration(&mut writer, enumeration);
+    }
 
     for class in class_order(schema) {
         writer.blank();
@@ -1124,7 +1129,7 @@ impl Generator<'_> {
                     // The view's fields(), which reads every item
                     FieldType::StructArray(_) | FieldType::Vector(_) => {
                         suffix = ".fields()";
-                        let view = value_type(field.field_type, self.schema);
+                        let view = value_type(field, self.schema);
                         call(format!("new {view}"), vec![text(reader), offset])
                     }
                 };
@@ -1537,7 +1542,7 @@ impl Generator<'_> {
             self.private_field(
                 writer,
                 &identifier(&field.name),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
         }
         writer.blank();
@@ -1752,11 +1757,11 @@ impl Generator<'_> {
             self.getter_doc(
                 writer,
                 &schema_docs(&field.docs),
-                &value_type(field.field_type, self.schema),
+                &value_type(field, self.schema),
             );
             writer.open(format!(
                 "{field_name}(){} {{",
-                self.annotation(&value_type(field.field_type, self.schema))
+                self.annotation(&value_type(field, self.schema))
             ));
             writer.line(format!("return this._{field_name};"));
             writer.close("}");
@@ -2039,7 +2044,7 @@ impl Generator<'_> {
             ..
         } in reads
         {
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
             writer.blank();
             self.struct_getter_doc(writer, field, &return_type);
             writer.open(format!(
@@ -2110,7 +2115,7 @@ impl Generator<'_> {
                 writer.line(format!(
                     "{}: {};",
                     identifier(&field.name),
-                    input_type(field.field_type, self.schema)
+                    input_type(field, self.schema)
                 ));
             }
             writer.close("}");
@@ -2124,12 +2129,50 @@ impl Generator<'_> {
                 let description = schema_docs(&field.docs).join(" ");
                 let property = format!(
                     "@property {{{}}} {} {description}",
-                    input_type(field.field_type, self.schema),
+                    input_type(field, self.schema),
                     identifier(&field.name)
                 );
                 lines.push(property.trim_end().to_owned());
             }
             writer.lines(&doc_comment(&lines));
+        }
+    }
+
+    /// An enum: an object of its values by their names in `PascalCase`, and
+    /// a type of the same name, an alias of its integer type, since a field
+    /// of the enum holds any integer of that type. The object is frozen, so
+    /// that its values are constants, of literal types.
+    fn enumeration(&self, writer: &mut CodeWriter, enumeration: &Enum) {
+        let name = &enumeration.name;
+        let underlying = enumeration.underlying;
+        let is_big = scalar_type(underlying) == "bigint";
+
+        writer.lines(&doc_comment(&schema_docs(&enumeration.docs)));
+        writer.open(format!("export const {name} = globalThis.Object.freeze({{"));
+        for (index, value) in enumeration.values.iter().enumerate() {
+            let last = index + 1 == enumeration.values.len();
+            writer.lines(&doc_comment(&schema_docs(&value.docs)));
+            writer.line(format!(
+                "{}: {}{}{}",
+                pascal_case(&value.name),
+                value.value,
+                if is_big { "n" } else { "" },
+                if last { "" } else { "," }
+            ));
+        }
+        writer.close("});");
+
+        let summary = format!(
+            "A value of {{@link {name}}}: one that it names, or any other `{}`",
+            underlying.name()
+        );
+        writer.blank();
+        if self.typed {
+            writer.lines(&doc_comment(&[summary]));
+            writer.line(format!("export type {name} = {};", scalar_type(underlying)));
+        } else {
+            let typedef = format!("@typedef {{{}}} {name}", scalar_type(underlying));
+            writer.lines(&doc_comment(&[summary, String::new(), typedef]));
         }
     }
 
@@ -2300,7 +2343,7 @@ impl Generator<'_> {
                     vec![text("this._position"), text(index.to_string())],
                 )
             };
-            let return_type = value_type(field.field_type, self.schema);
+            let return_type = value_type(field, self.schema);
 
             writer.blank();
             self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
@@ -2746,10 +2789,11 @@ fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str)
     }
 }
 
-/// The type that a getter returns
-fn value_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+/// The type that a getter returns. An array of enums is the typed array of
+/// their integer type, which has no type of its elements to name the enum.
+fn value_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
@@ -2760,13 +2804,13 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 }
 
 /// The type that a field's setter takes
-fn input_type(field_type: FieldType, schema: &Schema) -> String {
-    match field_type {
-        FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+fn input_type(field: &Field, schema: &Schema) -> String {
+    match field.field_type {
+        FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
         FieldType::Array(scalar) => {
             format!(
                 "ArrayLike<{}> | {}",
-                scalar_type(scalar),
+                element_type(field, scalar, schema),
                 typed_array(scalar)
             )
         }
@@ -2777,6 +2821,15 @@ fn input_type(field_type: FieldType, schema: &Schema) -> String {
         FieldType::StructArray(index) | FieldType::Vector(index) => {
             format!("readonly {}Fields[]", schema.definition(index).name)
         }
+    }
+}
+
+/// The type of a scalar field or of an array's elements: the field's enum,
+/// which is an alias of its integer type, or the scalar's type
+fn element_type<'a>(field: &Field, scalar: Scalar, schema: &'a Schema) -> &'a str {
+    match field.enumeration {
+        Some(index) => &schema.enumeration(index).name,
+        None => scalar_type(scalar),
     }
 }
 
