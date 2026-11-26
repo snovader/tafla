@@ -1,0 +1,454 @@
+{
+  "description_version": 1,
+  "schemas": [
+    {
+      "path": "schemas/layouts.tafla",
+      "definitions": [
+        {
+          "kind": "message",
+          "name": "Uint8Offsets",
+          "docs": ["`uint8` offsets, for tables of up to 255 bytes"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": false, "version": null, "header_size": 0},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 3,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 7,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint8OffsetsSized",
+          "docs": ["`uint8` offsets, after the table's length"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": true, "version": null, "header_size": 1},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 4,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 8,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint8OffsetsVersioned",
+          "docs": ["`uint8` offsets, after the largest version they hold"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": false, "version": 255, "header_size": 1},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 4,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 8,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint8OffsetsSizedVersioned",
+          "docs": ["`uint8` offsets, after the table's length and version zero"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": true, "version": 0, "header_size": 2},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 5,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 9,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint16Offsets",
+          "docs": ["`uint16` offsets, for tables of up to 65,535 bytes"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": false, "version": null, "header_size": 0},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 6,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 10,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint16OffsetsSized",
+          "docs": ["`uint16` offsets, after the table's length"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": true, "version": null, "header_size": 2},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 8,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 12,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint16OffsetsVersioned",
+          "docs": ["`uint16` offsets, after the largest version they hold"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": false, "version": 65535, "header_size": 2},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 8,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 12,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint16OffsetsSizedVersioned",
+          "docs": ["`uint16` offsets, after the table's length and a version"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": true, "version": 1, "header_size": 4},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 10,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 14,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint32Offsets",
+          "docs": ["`uint32` offsets, the default, for tables of up to 4 GiB"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 12,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 16,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint32OffsetsSized",
+          "docs": ["`uint32` offsets, after the table's length"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": true, "version": null, "header_size": 4},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 16,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 20,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint32OffsetsVersioned",
+          "docs": ["`uint32` offsets, after the largest version they hold"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": 4294967295, "header_size": 4},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 16,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 20,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Uint32OffsetsSizedVersioned",
+          "docs": ["`uint32` offsets, after the table's length and a version"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": true, "version": 2, "header_size": 8},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 20,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 24,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": null,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

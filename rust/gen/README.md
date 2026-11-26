@@ -2,9 +2,11 @@
 
 Compiles a schema of messages, tables and structs into code that writes and
 reads them with tafla's runtime for TypeScript, JavaScript, Python, Java,
-Rust, Go, C++, Swift or C#. It runs as a command, as a Rust library, and as a
-WebAssembly module without imports, which the packages for the other
-languages run.
+Rust, Go, C++, Swift or C#. It also describes a schema as JSON, for tools
+that aren't code generators, and checks that a new version of a schema reads
+and writes the tables of the version before it. It runs as a command, as a
+Rust library, and as a WebAssembly module without imports, which the
+packages for the other languages run.
 
 ```text
 /// A document, whose header holds its length and version, with a nested
@@ -813,6 +815,8 @@ switch (Document.versionOf(bytes)) {
 
 ```sh
 tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen describe <schema>...
+tafla-gen check <schema> --against <old schema>
 ```
 
 `cargo install tafla-gen` installs the command from crates.io. On npm,
@@ -820,6 +824,12 @@ tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>.
 Rust toolchain, as
 [its README](https://github.com/snovader/tafla/tree/main/typescript/gen#readme)
 describes.
+
+The first form generates code, and the subcommands `describe` and `check`,
+which take the target's place, print what [Description](#description) and
+[Compatibility](#compatibility) describe and write no file. A subcommand's
+name isn't a target's, so the two never clash, and a subcommand takes none of
+the options that generate code.
 
 `ts`, `js`, `py`, `rs` and `cs` abbreviate the targets. Options may come before,
 between or after the schemas, and `--` ends them, so that every argument
@@ -830,11 +840,11 @@ and writes none of their files, but writes the files of the others, and then
 fails. `-h` or `--help` prints the usage, the targets and the options, and
 `-V` or `--version` the version, both to stdout.
 
-| Exit code | When                                                                                                                                                                                            |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0         | Every schema generated its files                                                                                                                                                                |
-| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, or a file can't be written                                                                                  |
-| 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, or a `--package` that isn't a Java package, or more than one schema for Go |
+| Exit code | When                                                                                                                                                                                                                                                                                           |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0         | Every schema generated its files or was described, or `check` found no errors, though it may print notes                                                                                                                                                                                       |
+| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, a file can't be written, or `check` found errors                                                                                                                                                           |
+| 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, a `--package` that isn't a Java package, more than one schema for Go, a subcommand with an option that generates code, or `check` without `--against` or with two schemas |
 
 With wrong arguments, the command prints the error and its usage to stderr,
 and writes nothing.
@@ -876,7 +886,206 @@ they share.
   Go takes one schema at a time, since each is a package of its own, which
   needs a directory of its own.
 
+- `--against` names the old schema that `check` compares its schema with.
+
 From this repository, `cargo run -p tafla-gen --` runs the command.
+
+## Description
+
+`tafla-gen describe <schema>...` prints a description of the schemas to
+stdout, as JSON, for tools that aren't code generators, such as a viewer of
+tables, a reader in a language without a target, or a check of a format's
+documentation: each declaration with its layout, and each field with its
+index, its type and where a writer puts it, which a tool would otherwise
+work out from [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md).
+It describes each schema once, in the order they were given, or prints the
+errors of those that have any and nothing to stdout. The sizes and offsets
+are those that the generators lay out tables of fixed size with, so that a
+description can't disagree with the code generated from its schema. Of this
+schema:
+
+```text
+/// A frame of samples
+message Frame (sized, version: 2) {
+    origin: Vec2;
+    samples: [float32];
+}
+
+struct Vec2 {
+    x: float32;
+    y: float32;
+}
+```
+
+the description is:
+
+```json
+{
+  "description_version": 1,
+  "schemas": [
+    {
+      "path": "frame.tafla",
+      "definitions": [
+        {
+          "kind": "message",
+          "name": "Frame",
+          "docs": ["A frame of samples"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": true, "version": 2, "header_size": 8},
+          "alignment": 4,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "origin",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 16,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "samples",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "float32"},
+              "offset": 24,
+              "size": null,
+              "alignment": 4
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Vec2",
+          "docs": [],
+          "size": 8,
+          "alignment": 4,
+          "fields": [
+            {
+              "index": 0,
+              "name": "x",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 0,
+              "size": 4
+            },
+            {
+              "index": 1,
+              "name": "y",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 4,
+              "size": 4
+            }
+          ],
+          "scalars": [
+            {
+              "path": ["x"],
+              "scalar": "float32",
+              "offset": 0
+            },
+            {
+              "path": ["y"],
+              "scalar": "float32",
+              "offset": 4
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+The command writes each array and object on lines of their own, but for
+those of strings, numbers, bools and nulls alone, and its whitespace isn't
+part of the description. The description's keys, their meanings and their
+types are its contract, which `description_version` names:
+
+| Key                     | Of               | Value                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `description_version`   | The description  | `1`, which changes when a tool written for this version would misread a description: when a key is removed or means something else, or a `kind` is added. Keys may be added within a version, so a tool ignores keys it doesn't know                                                                                                      |
+| `schemas`               | The description  | Each schema, with its `path` as the command was given it and its `definitions` in declaration order                                                                                                                                                                                                                                       |
+| `kind`                  | A definition     | `message`, `table` or `struct`                                                                                                                                                                                                                                                                                                            |
+| `name`, `docs`          | A definition     | Its name, and the lines of its doc comment, without `///`                                                                                                                                                                                                                                                                                 |
+| `layout`                | A message, table | `offset_type`, `uint8`, `uint16` or `uint32`, its width `offset_size` in bytes, whether it's `sized`, its `version` or `null`, and the `header_size` in bytes. A table's is the layout of every nested table: `uint32`, without a header                                                                                                  |
+| `alignment`             | A message, table | The largest alignment of its arrays and its nested tables, or 1: a parent pads a nested table to start at a multiple of it, and a message's arrays are aligned in memory when its bytes start at a multiple of it                                                                                                                         |
+| `size`                  | A message, table | Its byte length, header included, when every field's size is fixed and it fits in its offset type, and `null` otherwise                                                                                                                                                                                                                   |
+| `size`, `alignment`     | A struct         | Its byte length, the sum of its scalars' sizes, and its largest scalar's size, which an array aligns it to                                                                                                                                                                                                                                |
+| `fields`                | A definition     | Each field, in the order of its `index`                                                                                                                                                                                                                                                                                                   |
+| `index`, `name`, `docs` | A field          | Its index, by which readers read it, its name in `snake_case`, and its doc comment's lines                                                                                                                                                                                                                                                |
+| `type`                  | A field          | `{"kind": "scalar" or "array", "scalar": <scalar>}`, `{"kind": "string"}`, or `{"kind": "struct", "struct_array", "table" or "vector", "definition": <name>}`, where a scalar is named as in schemas, such as `float32`                                                                                                                   |
+| `offset`                | A field          | Where a writer puts its value, from the start of its table, which it writes as the field's offset: an array's count, after the padding that aligns its elements, and a nested table's start, after the padding that aligns it. `null` after a field whose size depends on its value. A struct's field's offset is from the struct's start |
+| `size`                  | A field          | The byte length of its value, when the schema fixes it: a scalar's, a struct's, or a nested table's `size`, and `null` otherwise                                                                                                                                                                                                          |
+| `alignment`             | A table's field  | What a writer aligns its value to: an array's element size or its struct's alignment, a nested table's `alignment`, and 1 for every other field                                                                                                                                                                                           |
+| `scalars`               | A struct         | Each of its scalars in order, those of the structs in it in their place, with the `path` of field names that leads to it, its `scalar` and its `offset` from the struct's start                                                                                                                                                           |
+
+## Compatibility
+
+`tafla-gen check <schema> --against <old schema>` compares a new version of a
+schema with the version before it, and reports where a reader generated from
+one would misread the tables written with the other, under the format's
+rules of [evolution](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution).
+A table carries no count of its fields, so a reader that expects a field that
+a table doesn't hold reads its offset from the bytes of the first value, and
+nothing at run time can tell. The command prints errors and notes, which
+point into the new schema, as the checker's errors do, and then a note of
+each declaration of the old schema that the new one doesn't declare. It fails
+with exit code 1 if there's an error, and succeeds with notes alone.
+
+```text
+error: `Point` changes, and keeps version 1
+ --> point.tafla:1:25
+  |
+1 | message Point (version: 1) {
+  |                         ^ `y` is appended, and only the version tells the old tables from the new ones
+```
+
+Declarations are matched by name, and fields by index. A declaration that's
+renamed is one removed and another added: the new one isn't compared with
+anything, and the old one's note names it. Fields are compared by their
+bytes, so a field may take another name, and a field of a table or a struct
+may take another table or struct of the same fields, under any name. A
+message whose version changes is compared with the old message of its name,
+and the versions are told apart as [versions](#versions) shows: when another
+message of the new schema has the old version and the same layout and
+fields, such as `DocumentV1 (sized, version: 1)` beside
+`Document (sized, version: 2)`, the tables of the old version are still
+read.
+
+A pair of tables, messages included, is the same when every field keeps its
+type, appended to when the new one only appends fields, or appends to a table
+or a struct that it holds, and different otherwise. A reader of the old
+fields reads a table that's appended to alike, in place or as a vector's
+item, as SPEC.md says of readers that don't check the version, but a reader
+of the new fields misreads the old table. Each rule protects one direction or
+both: old readers that read the new schema's tables, and new readers that
+read the old schema's tables.
+
+| Rule                                                                                                                                                                                                                                                                   | Protects                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| A message keeps its offset type, which is the width of every slot, offset and count                                                                                                                                                                                    | Both directions           |
+| A message neither gains nor loses the length or the version in its header, since every slot and offset after it moves                                                                                                                                                  | Both directions           |
+| A message or a table stays a message or a table, and a struct a struct; a table is a message of the default layout                                                                                                                                                     | Both directions           |
+| A field keeps its type at its index. No type's bytes are another's: a `bool` written as a `uint8` other than 0 or 1 reads as another value, an `int8` as another `uint8`, a narrower or wider scalar at another width, and a `[uint8]` needn't be UTF-8 for a `string` | Both directions           |
+| A message or a table keeps every field: a reader of the old fields would read a missing field's offset from a value's bytes                                                                                                                                            | Old readers of new tables |
+| A message that's appended to, or whose tables or structs are, changes its version; a message without a version can't change                                                                                                                                            | New readers of old tables |
+| A table that no message holds isn't appended to, since no version tells its tables apart                                                                                                                                                                               | New readers of old tables |
+| A struct that no message holds, which is read on its own, keeps its size                                                                                                                                                                                               | Both directions           |
+| The struct of an array keeps its size, since a reader finds struct `i` at `i` times the size that it knows                                                                                                                                                             | Both directions           |
+| A struct within a struct keeps its size, but for the last, since every scalar after it moves                                                                                                                                                                           | Both directions           |
+
+The notes are of changes that misread nothing:
+
+- A field that keeps its type takes another name, which the generated code
+  takes too, so code that reads the field by its old name no longer compiles.
+- A message's version changes, and no message of the new schema reads the
+  old version: readers generated from the new schema reject the old tables
+  with the decode error, rather than misreading them.
+- A message's version goes back, to a version that tables written before may
+  hold with other fields, if that version was ever used.
+- A declaration of the old schema isn't declared in the new one, so nothing
+  is compared with it.
 
 ## Library
 
@@ -927,6 +1136,27 @@ assert_eq!(output.code, USAGE_ERROR);
 assert!(output.stderr.starts_with("error: unknown target `cobol`"));
 ```
 
+`describe()` returns a schema's description, as `tafla-gen describe` prints
+it, and `compatibility()` compares a new version of a schema with the old one.
+It returns a `Comparison`, whose `diagnostics` are errors and notes, by their
+`Severity`, and whose `undeclared` are the old schema's declarations that the
+new one doesn't declare. `Comparison::render()` renders them as the command
+prints them, and `has_errors()` says whether the command fails. A schema that
+has errors isn't compared: they're returned as `InvalidSchemas`, each
+schema's own.
+
+```rust
+use tafla_gen::compatibility;
+
+let old = "message Point (version: 1) { x: float64; }";
+let new = "message Point (version: 1) { x: float64; y: float64; }";
+let comparison = compatibility(old, new).expect("both schemas are valid");
+assert!(comparison.has_errors());
+assert!(comparison
+    .render("point.tafla", new)
+    .starts_with("error: `Point` changes, and keeps version 1\n"));
+```
+
 Each target has a Cargo feature, `typescript` (which generates JavaScript
 too), `python`, `java`, `rust`, `go`, `cpp`, `swift` and `csharp`, and the
 default features are all eight. A crate that generates one language from its
@@ -940,7 +1170,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 590 KB. It has no imports, so any host runs it with an empty import
+about 630 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
@@ -980,7 +1210,9 @@ it read:
   0, a string of the directory to write under, a count of schemas, and each
   schema's path. For status 1, the command is over, with the help, the
   version or wrong arguments: an exit code, a string to print to stdout, and
-  a string to print to stderr.
+  a string to print to stderr. A subcommand names its schemas with status 0
+  too, `check`'s schema before the old one, and the directory `.`, under
+  which it writes nothing.
 - `tafla_generate`'s request is a count of arguments and the same arguments,
   and then each of those schemas, in their order: a `u32` of 0 and the
   schema's bytes as a string, which needn't be UTF-8, or a `u32` of 1 and a
@@ -988,8 +1220,10 @@ it read:
   response is, for status 0, a count of the schemas that have files to
   write, for each a count of files and each file's path and contents, and
   then a count of errors and each error as a string. For status 1, it's as
-  `tafla_command`'s, for arguments that don't generate, and for a malformed
-  request, such as one without each of the schemas, with exit code 2.
+  `tafla_command`'s: what a subcommand prints and its exit code, for
+  arguments that don't generate, and for a malformed request, such as one
+  without each of the schemas, with exit code 2. So a host that prints what
+  a response of status 1 holds runs the subcommands as it is.
 
 The host writes each file at its path under the directory, and makes the
 path's directories. It writes a schema's files up to the first that fails,
@@ -1024,9 +1258,20 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   structs that contain themselves, take more than 65,536 bytes or reach their
   scalars through more than 1,024 fields and chains of tables or structs
   more than 64 deep fail with errors that point at them, and the command writes and prints what the library generates and
-  finds.
+  finds. A schema's description gives the offsets of the tables that the
+  runtime's `TableBuilder` writes from it, and any schema is compatible with
+  itself, and with a field appended to a versioned message in a new
+  version, but not in the same version.
+- `tests/describe.rs`: the description of each example schema matches
+  `tests/descriptions/<schema>.json`, and its offsets are those of the tables
+  that the generated code writes in `conformance/generated`.
+- `tests/compatibility.rs`: each pair of schemas in `tests/compatibility/`,
+  `<case>.old.tafla` and `<case>.tafla`, fails with the errors and notes in
+  the `.stderr` file beside them, every example schema is compatible with
+  itself, and each rule holds of the changes that it allows and rejects.
 - `tests/cli.rs` and `tests/compile.rs`: the command, its arguments,
-  output and exit codes, and the library's options. The tests of
+  output and exit codes, its subcommands' included, and the library's
+  options. The tests of
   `typescript/gen` run the command's cases that a host of the WebAssembly
   module could get wrong, through `@tafla/gen`.
 - `tests/members.rs`: fields named after the generated code's members take a
@@ -1088,8 +1333,8 @@ and `STRINGS_SCHEMAS` lists where:
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
 
 After a change to the generator or the schemas, rewrite the golden files,
-the suites' generated code and the expected errors, review their diff, and
-run every language's tests:
+the suites' generated code, the expected errors and the descriptions, review
+their diff, and run every language's tests:
 
 ```sh
 TAFLA_GEN_UPDATE=1 cargo test -p tafla-gen

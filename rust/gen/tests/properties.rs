@@ -3,7 +3,10 @@
 //! structs that contain themselves, grow too large or reach their scalars
 //! through too many fields and chains of tables or structs that nest too
 //! deep fail with the checker's errors, its files stay in the output
-//! directory, and the CLI writes what the library generates.
+//! directory, and the CLI writes what the library generates. A schema's
+//! description gives the offsets of the tables that `TableBuilder` writes,
+//! and a schema is compatible with itself and with a field appended to a
+//! message in a new version, but not in the same version.
 
 mod common;
 
@@ -11,10 +14,12 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::process::Command;
 
-use common::targets;
+use common::{as_usize, check_described_offsets, described, fields_of, targets};
 use proptest::prelude::*;
 use proptest::sample::{Index, subsequence};
-use tafla_gen::{Diagnostic, GeneratedFile, Options, compile, parse};
+use serde_json::Value;
+use tafla::{Alignment, BuildError, OffsetType, TableBuilder, TableLayout};
+use tafla_gen::{Diagnostic, GeneratedFile, Options, compatibility, compile, describe, parse};
 
 /// The most bytes that a struct takes
 const MAX_STRUCT_SIZE: usize = 65_536;
@@ -276,6 +281,221 @@ proptest! {
         tokens in prop::collection::vec(prop::sample::select(&TOKENS[..]), 1..40)
     ) {
         check_cli(&tokens.concat(), &Options::default())?;
+    }
+}
+
+proptest! {
+    #[test]
+    fn described_offsets_are_those_of_the_tables_that_table_builder_writes(schema in schema()) {
+        let description: Value =
+            serde_json::from_str(&describe("schema.tafla", &schema.render()).unwrap()).unwrap();
+        let definitions = description["schemas"][0]["definitions"].as_array().unwrap();
+
+        for message in definitions.iter().filter(|definition| definition["kind"] == "message") {
+            let name = message["name"].as_str().unwrap();
+            // A message of narrow offsets may be too long for them
+            let Ok(bytes) = build_message(definitions, message).and_then(|table| table.to_bytes())
+            else {
+                continue;
+            };
+
+            check_described_offsets(definitions, name, &bytes, 0).map_err(TestCaseError::fail)?;
+            if let Some(size) = message["size"].as_u64() {
+                prop_assert_eq!(bytes.len() as u64, size, "{}", name);
+            }
+        }
+    }
+
+    #[test]
+    fn every_schema_is_compatible_with_itself(schema in schema()) {
+        let source = schema.render();
+
+        let comparison = compatibility(&source, &source).unwrap();
+
+        prop_assert_eq!(comparison.diagnostics, []);
+        prop_assert_eq!(comparison.undeclared, Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_field_appended_to_a_message_needs_a_new_version(schema in schema()) {
+        let message = schema.definitions.iter().position(|definition| {
+            matches!(definition.kind, Kind::Message { version: Some(_), .. })
+        });
+        prop_assume!(message.is_some());
+        let message = message.unwrap();
+
+        let old = schema.render();
+        let appended = schema.render_with(Some((message, "appended_value: uint8")));
+        // Too many fields for a Java record, which the checker rejects
+        prop_assume!(parse(&appended).is_ok());
+        let (bumped, version) = with_another_version(&appended, message);
+
+        let kept = compatibility(&old, &appended).unwrap();
+        let changed = compatibility(&old, &bumped).unwrap();
+
+        prop_assert!(!changed.has_errors(), "{:?}", changed.diagnostics);
+        let errors: Vec<&str> = kept
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.is_error())
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect();
+        prop_assert_eq!(
+            errors,
+            [format!("`{}` changes, and keeps version {version}", name(message))]
+        );
+    }
+}
+
+/// The source with another version of the message at `index`, the next or,
+/// at its offset type's largest, the one before, and the old version
+fn with_another_version(source: &str, index: usize) -> (String, u64) {
+    let start = source
+        .find(&format!("message {} (", name(index)))
+        .expect("the message is declared");
+    let end = start + source[start..].find('{').unwrap();
+    let declaration = &source[start..end];
+
+    let version_start = declaration.find("version: ").unwrap() + "version: ".len();
+    let version_end = version_start + declaration[version_start..].find(',').unwrap();
+    let version: u64 = declaration[version_start..version_end].parse().unwrap();
+    let bits: u32 = declaration
+        .split("offset_type: uint")
+        .nth(1)
+        .and_then(|rest| rest.split(|c: char| !c.is_ascii_digit()).next())
+        .unwrap()
+        .parse()
+        .unwrap();
+    let other = if version < (1 << bits) - 1 {
+        version + 1
+    } else {
+        version - 1
+    };
+
+    let changed = format!(
+        "{}{other}{}",
+        &source[..start + version_start],
+        &source[start + version_end..]
+    );
+    (changed, version)
+}
+
+/// A builder of a message of the description, each of whose fields is set
+/// to a value of its type, with an item in each vector of the message and
+/// of its nested tables, and none deeper, since a table may hold itself in a
+/// vector
+fn build_message(
+    definitions: &[Value],
+    message: &Value,
+) -> Result<TableBuilder<'static>, BuildError> {
+    let layout = &message["layout"];
+    let offset_type = match layout["offset_type"].as_str().unwrap() {
+        "uint8" => OffsetType::Uint8,
+        "uint16" => OffsetType::Uint16,
+        _ => OffsetType::Uint32,
+    };
+    let mut base = TableLayout::DEFAULT.with_offset_type(offset_type);
+    if layout["sized"] == true {
+        base = base.sized();
+    }
+
+    let fields = fields_of(message).len();
+    let mut builder = match layout["version"].as_u64() {
+        Some(version) => {
+            TableBuilder::new(fields, base.with_version(u32::try_from(version).unwrap()))?
+        }
+        None => TableBuilder::new(fields, base)?,
+    };
+    fill(definitions, message, &mut builder, 0)?;
+    Ok(builder)
+}
+
+fn build_table(
+    definitions: &[Value],
+    name: &str,
+    depth: usize,
+) -> Result<TableBuilder<'static>, BuildError> {
+    let table = described(definitions, name);
+    let mut builder = TableBuilder::new(fields_of(table).len(), TableLayout::DEFAULT)?;
+    fill(definitions, table, &mut builder, depth)?;
+    Ok(builder)
+}
+
+/// Sets each field of a message or table in `builder`
+fn fill(
+    definitions: &[Value],
+    table: &Value,
+    builder: &mut TableBuilder<'static>,
+    depth: usize,
+) -> Result<(), BuildError> {
+    for field in fields_of(table) {
+        let field_type = &field["type"];
+        let nested = || field_type["definition"].as_str().unwrap();
+        match field_type["kind"].as_str().unwrap() {
+            "scalar" => set_scalar(builder, field_type["scalar"].as_str().unwrap())?,
+            "array" => set_array(builder, field_type["scalar"].as_str().unwrap())?,
+            "string" => builder.set_str("ab")?,
+            "struct" => {
+                let size = as_usize(&described(definitions, nested())["size"]);
+                builder.set_struct(vec![7; size])?;
+            }
+            "struct_array" => {
+                let structure = described(definitions, nested());
+                let size = as_usize(&structure["size"]);
+                let alignment = match structure["alignment"].as_u64().unwrap() {
+                    1 => Alignment::One,
+                    2 => Alignment::Two,
+                    4 => Alignment::Four,
+                    _ => Alignment::Eight,
+                };
+                builder.set_struct_array(vec![7; size * 2], size, alignment)?;
+            }
+            "table" => builder.set_table(build_table(definitions, nested(), depth + 1)?)?,
+            "vector" => {
+                let items = if depth == 0 {
+                    vec![build_table(definitions, nested(), depth + 1)?]
+                } else {
+                    Vec::new()
+                };
+                builder.set_vector(items)?;
+            }
+            other => panic!("no field is of the kind {other}"),
+        }
+    }
+    Ok(())
+}
+
+fn set_scalar(builder: &mut TableBuilder<'static>, scalar: &str) -> Result<(), BuildError> {
+    match scalar {
+        "bool" | "uint8" => builder.set_u8(1),
+        "int8" => builder.set_i8(-1),
+        "int16" => builder.set_i16(-2),
+        "uint16" => builder.set_u16(2),
+        "int32" => builder.set_i32(-4),
+        "uint32" => builder.set_u32(4),
+        "int64" => builder.set_i64(-8),
+        "uint64" => builder.set_u64(8),
+        "float32" => builder.set_f32(0.5),
+        "float64" => builder.set_f64(0.25),
+        other => panic!("no scalar is named {other}"),
+    }
+}
+
+/// Sets an array of three elements, so that an array that isn't aligned
+/// leaves what follows it unaligned too
+fn set_array(builder: &mut TableBuilder<'static>, scalar: &str) -> Result<(), BuildError> {
+    match scalar {
+        "int8" => builder.set_i8_array(vec![-1; 3]),
+        "uint8" => builder.set_u8_array(vec![1; 3]),
+        "int16" => builder.set_i16_array(vec![-2; 3]),
+        "uint16" => builder.set_u16_array(vec![2; 3]),
+        "int32" => builder.set_i32_array(vec![-4; 3]),
+        "uint32" => builder.set_u32_array(vec![4; 3]),
+        "int64" => builder.set_i64_array(vec![-8; 3]),
+        "uint64" => builder.set_u64_array(vec![8; 3]),
+        "float32" => builder.set_f32_array(vec![0.5; 3]),
+        "float64" => builder.set_f64_array(vec![0.25; 3]),
+        other => panic!("no array is of {other}"),
     }
 }
 

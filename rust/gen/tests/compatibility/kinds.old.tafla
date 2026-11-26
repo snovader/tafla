@@ -1,0 +1,22 @@
+message Shape {
+    point: Point;
+    extent: Extent;
+}
+
+table Point {
+    x: float64;
+    y: float64;
+}
+
+struct Extent {
+    width: float64;
+    height: float64;
+}
+
+message Removed {
+    value: uint8;
+}
+
+message Renamed {
+    value: uint8;
+}

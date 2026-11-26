@@ -185,6 +185,27 @@ first commits, for code built from its source before the release.
   runtime's does. The checker keeps declarations from taking the names that
   it relies on, such as `Int`, `RawSpan` and `Swift`, and fields named
   `serialize` or `self` take a `_` in Swift.
+- `tafla-gen describe <schema>...`, and the library's `describe()`, which
+  describe schemas as JSON, for tools that aren't code generators: each
+  declaration with its layout, each field with its index, its type and,
+  where the schema fixes them, the offset and size that a writer gives it,
+  and each struct's size, alignment and scalars' offsets, from the same
+  computations that the generators lay out tables of fixed size with.
+  `description_version` names the version of its shape, which README.md's
+  "Description" specifies.
+- `tafla-gen check <schema> --against <old schema>`, and the library's
+  `compatibility()`, which compare a new version of a schema with the
+  version before it under SPEC.md's rules of evolution, and report, in the
+  checker's style and pointing into the new schema, where a reader of one
+  version would misread the other's tables: a layout that changes, a field
+  that changes its type or is removed, a message whose fields change without
+  a new version, or one without a version, and structs whose size changes
+  where readers rely on it. The command fails when there's such an error,
+  and also notes renamed fields and old versions that no message reads.
+  README.md's "Compatibility" lists the rules and the direction that each
+  protects. The command runs through every host of the WebAssembly module,
+  whose interface is unchanged. Diagnostics have a `Severity`, an error or a
+  note.
 
 ### Changed
 

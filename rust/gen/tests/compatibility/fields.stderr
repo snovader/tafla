@@ -1,0 +1,53 @@
+note: no message reads version 1 of `Point` any more
+ --> fields.tafla:3:25
+  |
+3 | message Point (version: 2) {
+  |                         ^ to read the tables written before, declare their fields beside it, such as in `PointV1`
+
+error: `x` changes its type from `float64` to `float32`
+ --> fields.tafla:4:8
+  |
+4 |     x: float32;
+  |        ^^^^^^^ a field keeps its index and its type, and new fields come after the old ones
+
+note: field 2 was named `name`
+ --> fields.tafla:6:5
+  |
+6 |     label: string;
+  |     ^^^^^ its bytes are the same, and the generated code names it anew
+
+error: `tags` changes its type from `[uint8]` to `[int8]`
+ --> fields.tafla:7:12
+  |
+7 |     tags: [int8];
+  |            ^^^^ a field keeps its index and its type, and new fields come after the old ones
+
+note: no message reads version 1 of `Pair` any more
+  --> fields.tafla:11:24
+   |
+11 | message Pair (version: 2) {
+   |                        ^ to read the tables written before, declare their fields beside it, such as in `PairV1`
+
+error: field 0 changes from `first: int32` to `second: int64`
+  --> fields.tafla:12:13
+   |
+12 |     second: int64;
+   |             ^^^^^ a field keeps its index and its type, and new fields come after the old ones
+
+note: field 1 was named `second`
+  --> fields.tafla:13:5
+   |
+13 |     first: int32;
+   |     ^^^^^ its bytes are the same, and the generated code names it anew
+
+note: no message reads version 1 of `Flag` any more
+  --> fields.tafla:17:24
+   |
+17 | message Flag (version: 2) {
+   |                        ^ to read the tables written before, declare their fields beside it, such as in `FlagV1`
+
+error: `on` changes its type from `bool` to `uint8`
+  --> fields.tafla:18:9
+   |
+18 |     on: uint8;
+   |         ^^^^^ a field keeps its index and its type, and new fields come after the old ones

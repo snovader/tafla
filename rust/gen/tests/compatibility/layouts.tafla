@@ -1,0 +1,8 @@
+/// Wider offsets: every slot, offset and count changes its width
+message Narrow (offset_type: uint32) { value: uint32; }
+/// The version moves into the length's slot
+message Sized (version: 1) { value: uint32; }
+/// The offsets move into the version's slot
+message Versioned { value: uint32; }
+/// The first offset moves to make room for the length
+message Plain (sized) { value: uint32; }

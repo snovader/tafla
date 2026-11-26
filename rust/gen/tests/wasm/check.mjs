@@ -3,8 +3,8 @@
 // golden files of every example schema and renders the errors of every
 // invalid schema in tests/diagnostics, as the native library does. Its
 // `tafla_command` and `tafla_generate` exports run the command for a host
-// that reads the schemas and writes the files, as tests/cli.rs checks of the
-// native command.
+// that reads the schemas and writes the files, its subcommands `describe` and
+// `check` included, as tests/cli.rs checks of the native command.
 //
 // node gen/tests/wasm/check.mjs <tafla_gen.wasm>
 
@@ -384,7 +384,9 @@ function expectEqual(what, actual, expected) {
 const POINT = 'message Point { x: uint8; }\n';
 const USAGE =
     'usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... ' +
-    '[--out <dir>] [--runtime <module>] [--package <package>]';
+    '[--out <dir>] [--runtime <module>] [--package <package>]\n' +
+    '       tafla-gen describe <schema>...\n' +
+    '       tafla-gen check <schema> --against <old schema>';
 
 // The directory to write under and the schemas to read, each once
 expectEqual(
@@ -470,6 +472,68 @@ expectEqual(
 if (generated.errors?.some(error => !error.endsWith('\n'))) {
     fail(`an error doesn't end its line: ${JSON.stringify(generated.errors)}`);
 }
+
+// A subcommand names its schemas as a generation does, the schema to check
+// before the old one, and prints rather than writes
+expectEqual(
+    'the schemas of a subcommand',
+    command(instance, ['check', '--against', 'old.tafla', 'new.tafla']),
+    { status: 0, out: '.', schemas: ['new.tafla', 'old.tafla'] }
+);
+const described = generate(instance, ['describe', 'point.tafla'], [POINT]);
+if (
+    described.status !== 1 ||
+    described.code !== 0 ||
+    described.stderr !== '' ||
+    JSON.parse(described.stdout ?? '').schemas[0].definitions[0].name !==
+        'Point'
+) {
+    fail(`a description: ${JSON.stringify(described)}`);
+}
+expectEqual(
+    'a check',
+    generate(
+        instance,
+        ['check', 'point.tafla', '--against', 'old.tafla'],
+        ['message Point { x: uint16; }\n', POINT]
+    ),
+    {
+        status: 1,
+        code: 1,
+        stdout: '',
+        stderr:
+            'error: `Point` changes, and has no version\n' +
+            ' --> point.tafla:1:9\n' +
+            '  |\n' +
+            '1 | message Point { x: uint16; }\n' +
+            '  |         ^^^^^ `x` changes, and only the version tells its old tables from its new ones\n' +
+            '\n' +
+            'error: `x` changes its type from `uint8` to `uint16`\n' +
+            ' --> point.tafla:1:20\n' +
+            '  |\n' +
+            '1 | message Point { x: uint16; }\n' +
+            '  |                    ^^^^^^ a field keeps its index and its type, and new fields come after the old ones\n'
+    }
+);
+expectEqual(
+    'a check of a schema that cannot be read',
+    generate(
+        instance,
+        ['check', 'point.tafla', '--against', 'old.tafla'],
+        [POINT, { error: 'No such file' }]
+    ),
+    { status: 1, code: 1, stdout: '', stderr: 'old.tafla: No such file\n' }
+);
+expectEqual(
+    'a subcommand without its schemas',
+    generate(instance, ['describe', 'point.tafla'], []),
+    {
+        status: 1,
+        code: 2,
+        stdout: '',
+        stderr: 'malformed request\n'
+    }
+);
 
 // A schema too few, a schema too many, and a source that's neither read nor
 // failed

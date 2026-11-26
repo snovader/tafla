@@ -1,0 +1,23 @@
+error: `Document` changes, and keeps version 1
+ --> nested.tafla:2:28
+  |
+2 | message Document (version: 1) {
+  |                            ^ `Columns` changes, which `columns` holds, and only the version tells its old tables from its new ones
+
+error: `Index` changes, and has no version
+ --> nested.tafla:8:9
+  |
+8 | message Index {
+  |         ^^^^^ `Columns` changes, which `columns` holds, and only the version tells its old tables from its new ones
+
+error: `Loose` changes, and no message holds it
+  --> nested.tafla:23:7
+   |
+23 | table Loose {
+   |       ^^^^^ only a message's version tells a table's old fields from its new ones
+
+note: no message reads version 1 of `Tree` any more
+  --> nested.tafla:29:24
+   |
+29 | message Tree (version: 2) {
+   |                        ^ to read the tables written before, declare their fields beside it, such as in `TreeV1`

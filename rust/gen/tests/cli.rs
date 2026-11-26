@@ -1,6 +1,8 @@
 //! The `tafla-gen` binary: it writes the generated files under `--out`,
 //! prints errors as the library renders them, and fails on wrong arguments
-//! with exit code 2 and on a schema's errors with 1.
+//! with exit code 2 and on a schema's errors with 1. Its subcommands print
+//! a schema's description, and where a schema is incompatible with the
+//! version before it.
 
 mod common;
 
@@ -8,6 +10,9 @@ use std::path::Path;
 use std::process::{Command, Output};
 
 use common::{DIAGNOSTICS, Golden, REPOSITORY, read_tree, targets};
+use tafla_gen::{DESCRIPTION_VERSION, describe};
+
+const COMPATIBILITY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/compatibility");
 
 fn tafla_gen(directory: &str, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_tafla-gen"))
@@ -315,14 +320,18 @@ fn prints_its_version_to_stdout() {
 }
 
 const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... \
-                     [--out <dir>] [--runtime <module>] [--package <package>]";
+                     [--out <dir>] [--runtime <module>] [--package <package>]\n       \
+                     tafla-gen describe <schema>...\n       \
+                     tafla-gen check <schema> --against <old schema>";
 
 /// Fails as wrong arguments do: with the error, the usage and exit code 2,
-/// without writing a file
+/// without writing a file. A target's arguments are given an `--out`, which
+/// a subcommand's aren't.
 fn assert_usage_error(directory: &str, arguments: &[&str], error: &str) {
     let out = tempfile::tempdir().unwrap();
     let mut arguments = arguments.to_vec();
-    if !arguments.contains(&"--out") {
+    let subcommand = matches!(arguments.first(), Some(&("describe" | "check")));
+    if !subcommand && !arguments.contains(&"--out") {
         arguments.extend(["--out", out.path().to_str().unwrap()]);
     }
 
@@ -528,4 +537,162 @@ fn reports_a_schema_it_cannot_read_and_writes_the_others() {
     assert!(stderr(&output).starts_with("schemas/missing.tafla: "));
     let files: Vec<String> = read_tree(out.path()).into_keys().collect();
     assert_eq!(files, ["shapes.rs"]);
+}
+
+#[test]
+fn describes_each_schema_once_to_stdout() {
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "describe",
+            "schemas/shapes.tafla",
+            "schemas/layouts.tafla",
+            "schemas/shapes.tafla",
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(stderr(&output), "");
+    let description: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(description["description_version"], DESCRIPTION_VERSION);
+    let schemas = description["schemas"].as_array().unwrap();
+    let paths: Vec<&serde_json::Value> = schemas.iter().map(|schema| &schema["path"]).collect();
+    assert_eq!(paths, ["schemas/shapes.tafla", "schemas/layouts.tafla"]);
+
+    // Each schema is described as the library describes it alone
+    let source = std::fs::read_to_string(Path::new(REPOSITORY).join("schemas/shapes.tafla"));
+    let alone: serde_json::Value =
+        serde_json::from_str(&describe("schemas/shapes.tafla", &source.unwrap()).unwrap()).unwrap();
+    assert_eq!(schemas[0], alone["schemas"][0]);
+}
+
+#[test]
+fn describes_nothing_when_a_schema_has_errors() {
+    let output = tafla_gen(
+        DIAGNOSTICS,
+        &[
+            "describe",
+            "unknown_types.tafla",
+            "missing.tafla",
+            "cycles.tafla",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    let read = |name: &str| std::fs::read_to_string(Path::new(DIAGNOSTICS).join(name)).unwrap();
+    let expected = [
+        read("unknown_types.stderr"),
+        format!("missing.tafla: {}\n", not_found()),
+        read("cycles.stderr"),
+    ];
+    assert_eq!(stderr(&output), expected.join("\n"));
+}
+
+/// Why a file that doesn't exist can't be read, as the command prints it:
+/// in Rust's words, with the operating system's code
+fn not_found() -> String {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::read(directory.path().join("missing.tafla"))
+        .unwrap_err()
+        .to_string()
+}
+
+#[test]
+fn checks_a_schema_against_the_one_before_it() {
+    for (case, code) in [("fields", 1), ("versions_back", 0)] {
+        let new = format!("{case}.tafla");
+        let old = format!("{case}.old.tafla");
+
+        let output = tafla_gen(COMPATIBILITY, &["check", &new, "--against", &old]);
+
+        assert_eq!(output.status.code(), Some(code), "{case}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+        let expected =
+            std::fs::read_to_string(Path::new(COMPATIBILITY).join(format!("{case}.stderr")));
+        assert_eq!(stderr(&output), expected.unwrap(), "{case}");
+    }
+}
+
+#[test]
+fn checks_a_compatible_schema_without_printing() {
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "check",
+            "--against",
+            "schemas/shapes.tafla",
+            "schemas/shapes.tafla",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+}
+
+#[test]
+fn checks_nothing_when_a_schema_has_errors_or_cannot_be_read() {
+    let output = tafla_gen(
+        DIAGNOSTICS,
+        &["check", "cycles.tafla", "--against", "unknown_types.tafla"],
+    );
+    let missing = tafla_gen(
+        REPOSITORY,
+        &[
+            "check",
+            "schemas/shapes.tafla",
+            "--against",
+            "missing.tafla",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    let read = |name: &str| std::fs::read_to_string(Path::new(DIAGNOSTICS).join(name)).unwrap();
+    assert_eq!(
+        stderr(&output),
+        format!(
+            "{}\n{}",
+            read("cycles.stderr"),
+            read("unknown_types.stderr")
+        )
+    );
+    assert_eq!(missing.status.code(), Some(1));
+    assert_eq!(
+        stderr(&missing),
+        format!("missing.tafla: {}\n", not_found())
+    );
+}
+
+#[test]
+fn rejects_wrong_arguments_of_subcommands() {
+    for (arguments, error) in [
+        (&["describe"][..], "no schema is given"),
+        (&["check", "--against", "a.tafla"], "no schema is given"),
+        (
+            &["check", "b.tafla"],
+            "`check` needs `--against` and the schema to compare with",
+        ),
+        (
+            &["check", "b.tafla", "c.tafla", "--against", "a.tafla"],
+            "`check` compares one schema at a time",
+        ),
+        (
+            &["describe", "a.tafla", "--out", "out"],
+            "`--out` isn't an option of `describe`",
+        ),
+        (
+            &["check", "b.tafla", "--against", "a.tafla", "--package", "p"],
+            "`--package` isn't an option of `check`",
+        ),
+        (
+            &["describe", "a.tafla", "--against", "b.tafla"],
+            "`--against` is an option of `check`",
+        ),
+        (
+            &["rust", "a.tafla", "--against", "b.tafla"],
+            "`--against` is an option of `check`",
+        ),
+    ] {
+        assert_usage_error(REPOSITORY, arguments, error);
+    }
 }

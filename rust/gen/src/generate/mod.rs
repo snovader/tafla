@@ -10,15 +10,9 @@ mod cpp;
 #[cfg(feature = "csharp")]
 mod csharp;
 // The fields that Go's, Rust's, C++'s, TypeScript's and C#'s generated code
-// lays out itself
-#[cfg(any(
-    feature = "go",
-    feature = "rust",
-    feature = "cpp",
-    feature = "typescript",
-    feature = "csharp"
-))]
-mod fixed;
+// lays out itself, and that a schema's description gives the offsets of in
+// every build
+pub mod fixed;
 #[cfg(feature = "go")]
 mod go;
 #[cfg(feature = "java")]

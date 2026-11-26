@@ -5,8 +5,8 @@
 //! the schemas generate, and this binary reads the schemas, writes the files
 //! and prints. It exits with 0 when every schema generated its files, 1 when
 //! a schema has errors or a file couldn't be read or written, and 2 when the
-//! arguments are wrong. Errors go to stderr, and only `--help` and
-//! `--version` print to stdout.
+//! arguments are wrong. Errors go to stderr, and only `--help`, `--version`
+//! and `describe` print to stdout.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -18,6 +18,7 @@ fn main() -> ExitCode {
     let output = match Command::parse(std::env::args_os().skip(1)) {
         Command::Print(output) => output,
         Command::Generate(generation) => run(&generation),
+        Command::Inspect(inspection) => inspection.inspect(read),
     };
 
     print!("{}", output.stdout);

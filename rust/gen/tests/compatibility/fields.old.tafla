@@ -1,0 +1,15 @@
+message Point (version: 1) {
+    x: float64;
+    y: float64;
+    name: string;
+    tags: [uint8];
+}
+
+message Pair (version: 1) {
+    first: int32;
+    second: int32;
+}
+
+message Flag (version: 1) {
+    on: bool;
+}

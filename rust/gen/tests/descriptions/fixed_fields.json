@@ -1,0 +1,782 @@
+{
+  "description_version": 1,
+  "schemas": [
+    {
+      "path": "schemas/fixed_fields.tafla",
+      "definitions": [
+        {
+          "kind": "struct",
+          "name": "Vec2",
+          "docs": ["Two coordinates"],
+          "size": 8,
+          "alignment": 4,
+          "fields": [
+            {
+              "index": 0,
+              "name": "x",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 0,
+              "size": 4
+            },
+            {
+              "index": 1,
+              "name": "y",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float32"},
+              "offset": 4,
+              "size": 4
+            }
+          ],
+          "scalars": [
+            {
+              "path": ["x"],
+              "scalar": "float32",
+              "offset": 0
+            },
+            {
+              "path": ["y"],
+              "scalar": "float32",
+              "offset": 4
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Quad",
+          "docs": ["Eight coordinates, the bytes of a large struct"],
+          "size": 64,
+          "alignment": 8,
+          "fields": [
+            {
+              "index": 0,
+              "name": "a",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 0,
+              "size": 8
+            },
+            {
+              "index": 1,
+              "name": "b",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 8,
+              "size": 8
+            },
+            {
+              "index": 2,
+              "name": "c",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 16,
+              "size": 8
+            },
+            {
+              "index": 3,
+              "name": "d",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 24,
+              "size": 8
+            },
+            {
+              "index": 4,
+              "name": "e",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 32,
+              "size": 8
+            },
+            {
+              "index": 5,
+              "name": "f",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 40,
+              "size": 8
+            },
+            {
+              "index": 6,
+              "name": "g",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 48,
+              "size": 8
+            },
+            {
+              "index": 7,
+              "name": "h",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "float64"},
+              "offset": 56,
+              "size": 8
+            }
+          ],
+          "scalars": [
+            {
+              "path": ["a"],
+              "scalar": "float64",
+              "offset": 0
+            },
+            {
+              "path": ["b"],
+              "scalar": "float64",
+              "offset": 8
+            },
+            {
+              "path": ["c"],
+              "scalar": "float64",
+              "offset": 16
+            },
+            {
+              "path": ["d"],
+              "scalar": "float64",
+              "offset": 24
+            },
+            {
+              "path": ["e"],
+              "scalar": "float64",
+              "offset": 32
+            },
+            {
+              "path": ["f"],
+              "scalar": "float64",
+              "offset": 40
+            },
+            {
+              "path": ["g"],
+              "scalar": "float64",
+              "offset": 48
+            },
+            {
+              "path": ["h"],
+              "scalar": "float64",
+              "offset": 56
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Block",
+          "docs": ["256 bytes, longer than a table of `uint8` offsets"],
+          "size": 256,
+          "alignment": 8,
+          "fields": [
+            {
+              "index": 0,
+              "name": "first",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Quad"},
+              "offset": 0,
+              "size": 64
+            },
+            {
+              "index": 1,
+              "name": "second",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Quad"},
+              "offset": 64,
+              "size": 64
+            },
+            {
+              "index": 2,
+              "name": "third",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Quad"},
+              "offset": 128,
+              "size": 64
+            },
+            {
+              "index": 3,
+              "name": "fourth",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Quad"},
+              "offset": 192,
+              "size": 64
+            }
+          ],
+          "scalars": [
+            {
+              "path": ["first", "a"],
+              "scalar": "float64",
+              "offset": 0
+            },
+            {
+              "path": ["first", "b"],
+              "scalar": "float64",
+              "offset": 8
+            },
+            {
+              "path": ["first", "c"],
+              "scalar": "float64",
+              "offset": 16
+            },
+            {
+              "path": ["first", "d"],
+              "scalar": "float64",
+              "offset": 24
+            },
+            {
+              "path": ["first", "e"],
+              "scalar": "float64",
+              "offset": 32
+            },
+            {
+              "path": ["first", "f"],
+              "scalar": "float64",
+              "offset": 40
+            },
+            {
+              "path": ["first", "g"],
+              "scalar": "float64",
+              "offset": 48
+            },
+            {
+              "path": ["first", "h"],
+              "scalar": "float64",
+              "offset": 56
+            },
+            {
+              "path": ["second", "a"],
+              "scalar": "float64",
+              "offset": 64
+            },
+            {
+              "path": ["second", "b"],
+              "scalar": "float64",
+              "offset": 72
+            },
+            {
+              "path": ["second", "c"],
+              "scalar": "float64",
+              "offset": 80
+            },
+            {
+              "path": ["second", "d"],
+              "scalar": "float64",
+              "offset": 88
+            },
+            {
+              "path": ["second", "e"],
+              "scalar": "float64",
+              "offset": 96
+            },
+            {
+              "path": ["second", "f"],
+              "scalar": "float64",
+              "offset": 104
+            },
+            {
+              "path": ["second", "g"],
+              "scalar": "float64",
+              "offset": 112
+            },
+            {
+              "path": ["second", "h"],
+              "scalar": "float64",
+              "offset": 120
+            },
+            {
+              "path": ["third", "a"],
+              "scalar": "float64",
+              "offset": 128
+            },
+            {
+              "path": ["third", "b"],
+              "scalar": "float64",
+              "offset": 136
+            },
+            {
+              "path": ["third", "c"],
+              "scalar": "float64",
+              "offset": 144
+            },
+            {
+              "path": ["third", "d"],
+              "scalar": "float64",
+              "offset": 152
+            },
+            {
+              "path": ["third", "e"],
+              "scalar": "float64",
+              "offset": 160
+            },
+            {
+              "path": ["third", "f"],
+              "scalar": "float64",
+              "offset": 168
+            },
+            {
+              "path": ["third", "g"],
+              "scalar": "float64",
+              "offset": 176
+            },
+            {
+              "path": ["third", "h"],
+              "scalar": "float64",
+              "offset": 184
+            },
+            {
+              "path": ["fourth", "a"],
+              "scalar": "float64",
+              "offset": 192
+            },
+            {
+              "path": ["fourth", "b"],
+              "scalar": "float64",
+              "offset": 200
+            },
+            {
+              "path": ["fourth", "c"],
+              "scalar": "float64",
+              "offset": 208
+            },
+            {
+              "path": ["fourth", "d"],
+              "scalar": "float64",
+              "offset": 216
+            },
+            {
+              "path": ["fourth", "e"],
+              "scalar": "float64",
+              "offset": 224
+            },
+            {
+              "path": ["fourth", "f"],
+              "scalar": "float64",
+              "offset": 232
+            },
+            {
+              "path": ["fourth", "g"],
+              "scalar": "float64",
+              "offset": 240
+            },
+            {
+              "path": ["fourth", "h"],
+              "scalar": "float64",
+              "offset": 248
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "name": "Range",
+          "docs": ["A table of only scalars, which nests whole"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": 16,
+          "fields": [
+            {
+              "index": 0,
+              "name": "start",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 8,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "end",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 12,
+              "size": 4,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "name": "Frame",
+          "docs": ["A table of a struct, a table of fixed fields and a scalar, which nests", "whole too"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": 38,
+          "fields": [
+            {
+              "index": 0,
+              "name": "origin",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 12,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "range",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Range"},
+              "offset": 20,
+              "size": 16,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "flags",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint16"},
+              "offset": 36,
+              "size": 2,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Tiny",
+          "docs": ["`uint8` offsets after the table's length: only fixed fields, written", "whole"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": true, "version": null, "header_size": 1},
+          "alignment": 1,
+          "size": 6,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint16"},
+              "offset": 3,
+              "size": 2,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "kind",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint8"},
+              "offset": 5,
+              "size": 1,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Tagged",
+          "docs": ["`uint8` offsets after the table's length and a version: fixed fields and", "a string after them, written whole"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": true, "version": 3, "header_size": 2},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 5,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "position",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 9,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "label",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 17,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Header",
+          "docs": ["`uint8` offsets: two fixed fields together, and then an array"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "kind",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint8"},
+              "offset": 3,
+              "size": 1,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "length",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint16"},
+              "offset": 4,
+              "size": 2,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint8"},
+              "offset": 6,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Pixel",
+          "docs": ["`uint16` offsets after the table's length and a version: a struct among", "fixed fields, written whole"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": true, "version": 2, "header_size": 4},
+          "alignment": 1,
+          "size": 20,
+          "fields": [
+            {
+              "index": 0,
+              "name": "position",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 8,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "color",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 16,
+              "size": 4,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Strip",
+          "docs": ["`uint16` offsets: fixed fields with a struct together, and then an array"],
+          "layout": {"offset_type": "uint16", "offset_size": 2, "sized": false, "version": null, "header_size": 0},
+          "alignment": 2,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 6,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "origin",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 10,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "values",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "uint16"},
+              "offset": 18,
+              "size": null,
+              "alignment": 2
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Box",
+          "docs": ["A version: a struct and a nested table among fixed fields, written whole"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": 1, "header_size": 4},
+          "alignment": 1,
+          "size": 48,
+          "fields": [
+            {
+              "index": 0,
+              "name": "min",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 16,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "max",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 24,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "range",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Range"},
+              "offset": 32,
+              "size": 16,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Track",
+          "docs": ["Fixed fields with a struct and a nested table together, and then other", "fields"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 4,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint32"},
+              "offset": 20,
+              "size": 4,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "origin",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Vec2"},
+              "offset": 24,
+              "size": 8,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "frame",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Frame"},
+              "offset": 32,
+              "size": 38,
+              "alignment": 1
+            },
+            {
+              "index": 3,
+              "name": "points",
+              "docs": [],
+              "type": {"kind": "array", "scalar": "float32"},
+              "offset": 72,
+              "size": null,
+              "alignment": 4
+            },
+            {
+              "index": 4,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": null,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Label",
+          "docs": ["Only a string, written whole"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "text",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 4,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Span",
+          "docs": ["Fixed tables after other fields, alone and in a vector"],
+          "layout": {"offset_type": "uint32", "offset_size": 4, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "name",
+              "docs": [],
+              "type": {"kind": "string"},
+              "offset": 16,
+              "size": null,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "range",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Range"},
+              "offset": null,
+              "size": 16,
+              "alignment": 1
+            },
+            {
+              "index": 2,
+              "name": "frame",
+              "docs": [],
+              "type": {"kind": "table", "definition": "Frame"},
+              "offset": null,
+              "size": 38,
+              "alignment": 1
+            },
+            {
+              "index": 3,
+              "name": "ranges",
+              "docs": [],
+              "type": {"kind": "vector", "definition": "Range"},
+              "offset": null,
+              "size": null,
+              "alignment": 1
+            }
+          ]
+        },
+        {
+          "kind": "message",
+          "name": "Overflow",
+          "docs": ["`uint8` offsets whose fixed fields alone take more than 255 bytes, which", "generated code writes field by field, and fails to write as too long"],
+          "layout": {"offset_type": "uint8", "offset_size": 1, "sized": false, "version": null, "header_size": 0},
+          "alignment": 1,
+          "size": null,
+          "fields": [
+            {
+              "index": 0,
+              "name": "id",
+              "docs": [],
+              "type": {"kind": "scalar", "scalar": "uint8"},
+              "offset": 2,
+              "size": 1,
+              "alignment": 1
+            },
+            {
+              "index": 1,
+              "name": "block",
+              "docs": [],
+              "type": {"kind": "struct", "definition": "Block"},
+              "offset": 3,
+              "size": 256,
+              "alignment": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

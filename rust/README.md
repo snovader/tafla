@@ -86,7 +86,9 @@ on nightly Rust. A panic, a hang or a run out of memory is a finding:
 - `conformance` mutates the conformance suite's tables and reads them as
   every valid case's description, as the conformance test reads them.
 - `gen` parses and checks arbitrary text as a schema, and generates every
-  target's code from each schema that it accepts.
+  target's code and the description from each schema that it accepts, which
+  must be compatible with itself. Text with a line of `---` is an old schema
+  and a new one, which it compares when it accepts both.
 
 Run each from this directory, with the suite's tables or the schemas as
 seeds after the corpus that libFuzzer grows, and stop it with Ctrl-C or

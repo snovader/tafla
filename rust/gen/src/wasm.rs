@@ -23,19 +23,20 @@
 //!   to its end. For status 0, the response is the directory to write under,
 //!   a `u32` count of schemas and each schema's path, which the host reads.
 //!   For status 1, the command is over: a `u32` exit code, and what to print
-//!   to stdout and to stderr.
+//!   to stdout and to stderr. A subcommand names its schemas with status 0
+//!   too, and the directory `.`, which it writes nothing under.
 //! - `tafla_generate`'s request is a `u32` count of arguments and the same
 //!   arguments, and then each of those schemas, in their order: a `u32` of 0
 //!   and its bytes, which needn't be UTF-8, or of 1 and why it can't be read.
 //!   For status 0, the response is a `u32` count of schemas with files to
 //!   write, for each a `u32` count of files and each file's path and
 //!   contents, and then a `u32` count of errors and each error. For status 1,
-//!   it's as `tafla_command`'s, for arguments that don't generate, or a
-//!   malformed request.
+//!   it's as `tafla_command`'s: for a subcommand, which prints rather than
+//!   generates, for arguments that don't generate, or a malformed request.
 
 use std::ffi::OsString;
 
-use crate::cli::{Command, Generated, Generation, Output, USAGE_ERROR};
+use crate::cli::{Command, Generated, Generation, Inspection, Output, USAGE_ERROR};
 use crate::{Diagnostic, GeneratedFile, JavaPackage, Options, Target, compile};
 
 /// Allocates exactly `length` bytes for a request
@@ -158,16 +159,21 @@ fn respond_to_command(request: &[u8]) -> Vec<u8> {
 
     match Command::parse(arguments) {
         Command::Print(output) => printed(&output),
-        Command::Generate(generation) => {
-            let mut response = started(0);
-            push_string(&mut response, generation.out());
-            push_length(&mut response, generation.schemas().len());
-            for schema in generation.schemas() {
-                push_string(&mut response, schema);
-            }
-            response
-        }
+        Command::Generate(generation) => to_read(generation.out(), generation.schemas()),
+        Command::Inspect(inspection) => to_read(".", inspection.schemas()),
     }
+}
+
+/// The response that names the schemas for the host to read, and the
+/// directory to write under
+fn to_read(out: &str, schemas: &[String]) -> Vec<u8> {
+    let mut response = started(0);
+    push_string(&mut response, out);
+    push_length(&mut response, schemas.len());
+    for schema in schemas {
+        push_string(&mut response, schema);
+    }
+    response
 }
 
 fn respond_to_generate(request: &[u8]) -> Vec<u8> {
@@ -179,6 +185,9 @@ fn respond_to_generate(request: &[u8]) -> Vec<u8> {
     let generation = match Command::parse(arguments.into_iter().map(OsString::from)) {
         Command::Print(output) => return printed(&output),
         Command::Generate(generation) => generation,
+        Command::Inspect(inspection) => {
+            return printed(&inspect(&inspection, &mut reader).unwrap_or_else(malformed_request));
+        }
     };
     let Some(generated) = generate(&generation, &mut reader) else {
         return printed(&malformed_request());
@@ -200,23 +209,41 @@ fn respond_to_generate(request: &[u8]) -> Vec<u8> {
 /// arguments in the request, or `None` if the request doesn't hold each of
 /// the generation's schemas and nothing else
 fn generate(generation: &Generation, reader: &mut Reader) -> Option<Generated> {
-    let mut sources = Vec::with_capacity(generation.schemas().len());
-    for _ in generation.schemas() {
+    let mut sources = sources(generation.schemas(), reader)?;
+    Some(generation.generate(|_schema| sources()))
+}
+
+/// Runs a subcommand on the schemas that the host read, as [`generate()`]
+/// generates from them
+fn inspect(inspection: &Inspection, reader: &mut Reader) -> Option<Output> {
+    let mut sources = sources(inspection.schemas(), reader)?;
+    Some(inspection.inspect(|_schema| sources()))
+}
+
+/// What the host read of each of `schemas`, which follow the arguments in
+/// the request, as a function that returns the next schema's each time
+/// it's called, since the command reads each schema once, in their order.
+/// It's `None` if the request doesn't hold each schema and nothing else.
+fn sources<'a>(
+    schemas: &[String],
+    reader: &mut Reader<'a>,
+) -> Option<impl FnMut() -> Result<Vec<u8>, String> + use<'a>> {
+    let mut sources = Vec::with_capacity(schemas.len());
+    for _ in schemas {
         sources.push(reader.source()?);
     }
     if !reader.is_at_end() {
         return None;
     }
 
-    // The generation reads each schema once, in their order
     let mut sources = sources.into_iter();
-    Some(generation.generate(|_schema| {
+    Some(move || {
         sources
             .next()
             .expect("a source of each schema")
             .map(<[u8]>::to_vec)
             .map_err(str::to_owned)
-    }))
+    })
 }
 
 fn malformed_request() -> Output {

@@ -23,7 +23,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * The command of the jar that the build packages, run as {@code java -jar}, with the cases of
  * the native command's tests in rust/gen/tests/cli.rs that a host could get wrong: the files it
- * reads and writes, what it prints, and its exit codes.
+ * reads and writes, what it prints, and its exit codes, its subcommands' included.
  */
 class CommandTest {
     private static final Path JAR = Path.of(System.getProperty("tafla.gen.jar"));
@@ -31,12 +31,15 @@ class CommandTest {
     private static final String VERSION = System.getProperty("tafla.gen.version");
 
     private static final Path DIAGNOSTICS = REPOSITORY.resolve("rust/gen/tests/diagnostics");
+    private static final Path COMPATIBILITY = REPOSITORY.resolve("rust/gen/tests/compatibility");
     private static final String JAVA_GOLDEN = "java/core/src/test/java";
     private static final String JAVA_PACKAGE = "io.github.snovader.tafla.test.generated.shapes";
 
     private static final String USAGE =
             "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp>"
-                    + " <schema>... [--out <dir>] [--runtime <module>] [--package <package>]";
+                    + " <schema>... [--out <dir>] [--runtime <module>] [--package <package>]\n"
+                    + "       tafla-gen describe <schema>...\n"
+                    + "       tafla-gen check <schema> --against <old schema>";
     private static final String POINT = "message Point { x: uint8; }\n";
 
     private record Output(int status, String stdout, String stderr) {}
@@ -163,6 +166,41 @@ class CommandTest {
         String errors = Files.readString(DIAGNOSTICS.resolve("unknown_types.stderr"));
         assertEquals(new Output(1, "", errors), output);
         assertEquals(List.of(), pathsOf(out));
+    }
+
+    @Test
+    void describesEachSchemaToStdoutAndWritesNothing() throws IOException {
+        writeSchema("point.tafla", POINT);
+
+        Output output = taflaGen(directory, "describe", "point.tafla", "point.tafla");
+
+        assertEquals(0, output.status(), output::stderr);
+        assertEquals("", output.stderr());
+        assertTrue(
+                output.stdout().startsWith("{\n  \"description_version\": 1,\n"), output::stdout);
+        assertTrue(output.stdout().contains("\"path\": \"point.tafla\""), output::stdout);
+        assertEquals(1, output.stdout().split("\"path\"", -1).length - 1, output::stdout);
+        assertEquals(List.of("point.tafla"), pathsOf(directory));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"fields", "versions_back"})
+    void checksASchemaAgainstTheOneBeforeIt(String name) throws IOException {
+        Output output =
+                taflaGen(
+                        COMPATIBILITY, "check", name + ".tafla", "--against", name + ".old.tafla");
+
+        String expected = Files.readString(COMPATIBILITY.resolve(name + ".stderr"));
+        assertEquals(new Output(name.equals("fields") ? 1 : 0, "", expected), output);
+    }
+
+    @Test
+    void reportsASchemaToCheckThatItCannotRead() throws IOException {
+        writeSchema("point.tafla", POINT);
+
+        Output output = taflaGen(directory, "check", "point.tafla", "--against", "old.tafla");
+
+        assertEquals(new Output(1, "", "old.tafla: no such file or directory\n"), output);
     }
 
     @Test
@@ -301,6 +339,12 @@ class CommandTest {
                 Arguments.of(
                         new String[] {"rust", "point.tafla", "--verbose"},
                         "unknown option `--verbose`"),
+                Arguments.of(
+                        new String[] {"check", "point.tafla"},
+                        "`check` needs `--against` and the schema to compare with"),
+                Arguments.of(
+                        new String[] {"describe", "point.tafla", "--out", "out"},
+                        "`--out` isn't an option of `describe`"),
                 Arguments.of(
                         new String[] {"java", "point.tafla", "--package", "../generated"},
                         "`../generated` isn't a Java package, which is identifiers in ASCII"

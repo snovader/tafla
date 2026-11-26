@@ -13,21 +13,56 @@ pub struct Span {
     pub end: usize,
 }
 
-/// An error in a schema, at the span that caused it
+/// Whether a [`Diagnostic`] fails its schema
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Severity {
+    /// The schema can't be compiled, or its tables would be misread
+    #[default]
+    Error,
+    /// Something worth knowing that fails nothing, which only
+    /// [`compatibility()`](crate::compatibility) reports
+    Note,
+}
+
+impl Severity {
+    /// The word that a rendered diagnostic starts with
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Note => "note",
+        }
+    }
+}
+
+/// An error in a schema, or a note about it, at the span that caused it
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Diagnostic {
+    pub severity: Severity,
     pub message: String,
     pub span: Span,
     pub help: Option<String>,
 }
 
 impl Diagnostic {
+    /// An error
     pub fn new(message: impl Into<String>, span: Span) -> Self {
         Self {
+            severity: Severity::Error,
             message: message.into(),
             span,
             help: None,
         }
+    }
+
+    pub fn note(message: impl Into<String>, span: Span) -> Self {
+        Self {
+            severity: Severity::Note,
+            ..Self::new(message, span)
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.severity == Severity::Error
     }
 
     #[must_use]
@@ -46,7 +81,7 @@ impl Diagnostic {
         rendered.join("\n")
     }
 
-    /// Renders the error with the line it points at, as compilers print them
+    /// Renders the error or note with the line it points at, as compilers print them
     pub fn render(&self, file_name: &str, source: &str) -> String {
         // A byte-order mark at the start isn't part of the first line, which
         // it would shift the columns of, as the lexer skips it
@@ -66,7 +101,7 @@ impl Diagnostic {
         let gutter = " ".repeat(line.to_string().len());
 
         let mut rendered = String::new();
-        let _ = writeln!(rendered, "error: {}", self.message);
+        let _ = writeln!(rendered, "{}: {}", self.severity.label(), self.message);
         let _ = writeln!(rendered, "{gutter}--> {file_name}:{line}:{column}");
         let _ = writeln!(rendered, "{gutter} |");
         let _ = writeln!(rendered, "{line} | {}", displayed(text));

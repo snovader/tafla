@@ -1,0 +1,15 @@
+message Document (sized, version: 1) {
+    title: string;
+}
+
+message Event (version: 3) {
+    kind: uint8;
+}
+
+message Frame {
+    length: uint32;
+}
+
+message Record (version: 7) {
+    key: uint64;
+}

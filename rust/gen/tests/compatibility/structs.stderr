@@ -1,0 +1,35 @@
+error: `Sample` grows, and no message holds it
+ --> structs.tafla:2:8
+  |
+2 | struct Sample {
+  |        ^^^^^^ a struct that's read on its own has no version, so a reader of the new struct reads past the old one's bytes
+
+error: `Vec2` grows, which moves the fields after it in `Segment`
+  --> structs.tafla:16:12
+   |
+16 |     start: Vec2;
+   |            ^^^^ a struct's scalars lie at fixed offsets
+
+note: field 0 was named `first`
+  --> structs.tafla:22:5
+   |
+22 |     low: int16;
+   |     ^^^ its bytes are the same, and the generated code names it anew
+
+note: field 1 was named `second`
+  --> structs.tafla:23:5
+   |
+23 |     high: int16;
+   |     ^^^^ its bytes are the same, and the generated code names it anew
+
+note: no message reads version 1 of `Path` any more
+  --> structs.tafla:28:24
+   |
+28 | message Path (version: 2) {
+   |                        ^ to read the tables written before, declare their fields beside it, such as in `PathV1`
+
+error: `segments` is an array of `Segment`, whose size changes
+  --> structs.tafla:29:16
+   |
+29 |     segments: [Segment];
+   |                ^^^^^^^ a reader finds each struct of an array by the size that it knows

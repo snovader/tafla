@@ -1,7 +1,7 @@
 // The `tafla-gen` command of the package's build, which runs the generator's
 // WebAssembly module, with the cases of the native command's tests in
 // rust/gen/tests/cli.rs that a host could get wrong: the files it reads and
-// writes, what it prints, and its exit codes.
+// writes, what it prints, and its exit codes, its subcommands' included.
 import { spawnSync } from 'node:child_process';
 import {
     existsSync,
@@ -19,6 +19,7 @@ import { describe, expect, it } from 'hypotes';
 const BIN = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
 const REPOSITORY = fileURLToPath(new URL('../../..', import.meta.url));
 const DIAGNOSTICS = join(REPOSITORY, 'rust/gen/tests/diagnostics');
+const COMPATIBILITY = join(REPOSITORY, 'rust/gen/tests/compatibility');
 const VERSION = (
     JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
         version: string;
@@ -27,7 +28,9 @@ const VERSION = (
 
 const USAGE =
     'usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... ' +
-    '[--out <dir>] [--runtime <module>] [--package <package>]';
+    '[--out <dir>] [--runtime <module>] [--package <package>]\n' +
+    '       tafla-gen describe <schema>...\n' +
+    '       tafla-gen check <schema> --against <old schema>';
 
 /** The directories of the golden files that tafla-gen generates from `schemas/shapes.tafla` */
 const GOLDEN: Array<[target: string, directory: string]> = [
@@ -82,6 +85,50 @@ function readTree(directory: string): Record<string, string> {
 }
 
 describe('tafla-gen', () => {
+    it('should describe each schema it is given to stdout, and write nothing', () => {
+        const directory = writeSchemas({ 'point.tafla': 'message Point { x: uint8; }\n' });
+
+        const output = taflaGen(directory, ['describe', 'point.tafla', 'point.tafla']);
+
+        expect(output).toMatchObject({ status: 0, stderr: '' });
+        const description = JSON.parse(output.stdout) as {
+            schemas: Array<{ path: string; definitions: Array<{ name: string }> }>;
+        };
+        expect(description.schemas).toHaveLength(1);
+        expect(description.schemas[0]?.path).toBe('point.tafla');
+        expect(description.schemas[0]?.definitions[0]?.name).toBe('Point');
+        expect(Object.keys(readTree(directory))).toStrictEqual(['point.tafla']);
+    });
+
+    it.each<[string, number]>([
+        ['fields', 1],
+        ['versions_back', 0]
+    ])('should check the case %s against the schema before it, with exit code %i', (name, code) => {
+        const output = taflaGen(COMPATIBILITY, [
+            'check',
+            `${name}.tafla`,
+            '--against',
+            `${name}.old.tafla`
+        ]);
+
+        expect(output).toStrictEqual(
+            expect.objectContaining({
+                status: code,
+                stdout: '',
+                stderr: readFileSync(join(COMPATIBILITY, `${name}.stderr`), 'utf8')
+            })
+        );
+    });
+
+    it('should report a schema to check that it cannot read', () => {
+        const directory = writeSchemas({ 'point.tafla': 'message Point { x: uint8; }\n' });
+
+        const output = taflaGen(directory, ['check', 'point.tafla', '--against', 'old.tafla']);
+
+        expect(output.status).toBe(1);
+        expect(output.stderr).toBe('old.tafla: ENOENT: no such file or directory\n');
+    });
+
     it.each(GOLDEN)(
         'should write the golden files of an example schema for %s',
         (target, golden) => {
@@ -261,6 +308,8 @@ describe('tafla-gen', () => {
         [['rust'], 'no schema is given'],
         [['rust', 'point.tafla', '--out'], '`--out` needs a value'],
         [['rust', 'point.tafla', '--verbose'], 'unknown option `--verbose`'],
+        [['check', 'point.tafla'], '`check` needs `--against` and the schema to compare with'],
+        [['describe', 'point.tafla', '--out', 'out'], "`--out` isn't an option of `describe`"],
         [
             ['java', 'point.tafla', '--package', '../generated'],
             "`../generated` isn't a Java package, which is identifiers in ASCII separated by dots, such as `com.example.shapes`"
