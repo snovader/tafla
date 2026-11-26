@@ -99,7 +99,10 @@ type, offset size, vector, builder and decode error.
   an optional field does, whose getter returns `std::nullopt`, or a scalar's
   default. Only a format whose readers make that check can leave a field
   out: a reader of a required field reads the bytes at position 0 as its
-  value.
+  value. A reader of a range of versions, such as tafla-gen's of a message
+  with a `since` attribute, throws `DecodeError::unsupported_version(version,
+  first, supported)` for a version outside it, whose `first_supported()` is
+  the first.
 - **`Bytes` aren't zeroed.** A writer allocates a table's bytes at its exact
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
