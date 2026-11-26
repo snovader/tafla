@@ -48,6 +48,12 @@ const KINDS: ReadonlyArray<{
         pick: (index, string) =>
             string % 10 === 9 && index === 5 ? twoBytes : ascii
     },
+    {
+        name: '16 chars, every string but the first one of 2 bytes',
+        length: 16,
+        pick: (index, string) =>
+            string !== 0 && index === 5 ? twoBytes : ascii
+    },
     { name: '8 chars of 3 bytes', length: 8, pick: () => threeBytes },
     { name: '256 chars of 3 bytes', length: 256, pick: () => threeBytes }
 ];

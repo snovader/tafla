@@ -93,6 +93,33 @@ describe('a vector of strings', () => {
 /** Strings of ASCII, which getStringVector() reads as one run */
 const ASCII_VECTORS = fc.array(fc.string({ maxLength: 40 }), { minLength: 1, maxLength: 12 });
 
+/** Strings of ASCII among others, which a run holds and reads on their own */
+const MIXED_VECTORS = fc.array(fc.oneof(fc.string({ maxLength: 40 }), STRINGS), {
+    minLength: 1,
+    maxLength: 16
+});
+
+/**
+ * Lists of many strings, mostly ASCII, whose bytes span several of the runs
+ * that getStringVector() decodes, of at most 16 KiB
+ */
+const LONG_VECTORS = fc
+    .tuple(
+        fc.integer({ min: 100, max: 1500 }),
+        fc.integer({ min: 1, max: 60 }),
+        fc.array(fc.tuple(fc.nat(), STRINGS), { maxLength: 8 })
+    )
+    .map(([count, length, others]) => {
+        const strings = Array.from({ length: count }, (_, index) =>
+            String(index).padStart(length, 'x')
+        );
+        for (const [at, string] of others) {
+            strings[at % count] = string;
+        }
+
+        return strings;
+    });
+
 /** Every string of a view, each from its ends, or the error that reading one throws */
 function eachOrError(view: StringVector): unknown {
     try {
@@ -118,8 +145,22 @@ describe('reading every string at once', () => {
         }
     );
 
+    property.prop([MIXED_VECTORS])(
+        'should read lists of strings of ASCII among others as each string on its own',
+        strings => {
+            expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+        }
+    );
+
+    property.prop([LONG_VECTORS], { numRuns: 30 })(
+        'should read lists longer than a run as each string on its own',
+        strings => {
+            expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+        }
+    );
+
     property.prop([
-        fc.oneof(ASCII_VECTORS, VECTORS),
+        fc.oneof(ASCII_VECTORS, VECTORS, MIXED_VECTORS),
         fc.array(fc.tuple(fc.nat(), fc.integer({ min: 0, max: 255 })), {
             minLength: 1,
             maxLength: 4
@@ -151,6 +192,72 @@ describe('reading every string at once', () => {
             }
         }
     );
+
+    property.prop(
+        [
+            LONG_VECTORS,
+            fc.array(fc.tuple(fc.nat(), fc.integer({ min: 0, max: 255 })), {
+                minLength: 1,
+                maxLength: 4
+            })
+        ],
+        { numRuns: 30 }
+    )(
+        'should read a corrupted list longer than a run as reading each string reads it',
+        (strings, overwrites) => {
+            const bytes = tableOf(strings);
+            for (const [at, byte] of overwrites) {
+                bytes[4 + (at % (bytes.length - 4))] = byte;
+            }
+
+            let view: StringVector;
+            try {
+                view = viewOf(bytes);
+            } catch (error) {
+                expect(error).toBeInstanceOf(DecodeError);
+                return;
+            }
+
+            const each = eachOrError(view);
+            const all = allOrError(view);
+            if (each instanceof Error) {
+                expect(all).toBeInstanceOf(DecodeError);
+            } else {
+                expect(all).toStrictEqual(each);
+            }
+        }
+    );
+
+    it('should read a string longer than a run among strings of ASCII', () => {
+        const strings = [
+            'a',
+            'b'.repeat(20),
+            'c'.repeat(20_000),
+            'd'.repeat(20),
+            'é'.repeat(9000),
+            'e'.repeat(40)
+        ];
+
+        expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+    });
+
+    it('should read a list of strings outside ASCII after a first of ASCII', () => {
+        const strings = ['first', ...Array.from({ length: 50 }, (_, index) => `${index}é東🌍`)];
+
+        expect(viewOf(tableOf(strings)).toArray()).toStrictEqual(strings);
+    });
+
+    it('should throw DecodeError for an end that splits a character within a run', () => {
+        const strings = ['first', 'a'.repeat(20), 'é東', 'b'.repeat(20), 'c'.repeat(20)];
+        const bytes = tableOf(strings);
+        // The end of 'é東', the third string, after the table's offset, the
+        // count and two ends, is a byte less, within 東
+        const view = new DataView(bytes.buffer);
+        const end = 4 + 4 + 2 * 4;
+        view.setUint32(end, view.getUint32(end, true) - 1, true);
+
+        expect(() => viewOf(bytes).toArray()).toThrow(DecodeError);
+    });
 
     it('should read a list whose first strings are ASCII and later ones aren’t', () => {
         const strings = [
