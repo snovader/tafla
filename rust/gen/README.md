@@ -150,7 +150,9 @@ or read its tables, or a target couldn't generate its code:
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
-  in Rust and `Int`, `RawSpan` and `Hashable` in Swift, `Fields`, the record
+  in Rust and its variants, such as `Some`, which the function of an
+  enum's tuple struct of the same name would hide, and `Int`, `RawSpan`,
+  `Hashable` and `RawRepresentable` in Swift, `Fields`, the record
   of a Java class's fields, keywords, such as `None` in Python and `Self` in
   Rust and Swift, the macros of the C standard library that a C++ header
   may define, such as `NULL` and `EOF`, and the members that C#'s generated
