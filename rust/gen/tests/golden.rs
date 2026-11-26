@@ -13,7 +13,7 @@ use common::{
     GOLDEN_ROOTS, Golden, PYTHON_CACHE, REPOSITORY, assert_no_differences, compare_tree,
     example_schemas, targets, update,
 };
-use tafla_gen::{Options, compile};
+use tafla_gen::compile;
 
 #[test]
 fn generated_code_matches_the_golden_files() {
@@ -46,7 +46,9 @@ fn generated_code_of_the_partial_schemas_matches_the_golden_files() {
         let source = fs::read_to_string(Path::new(REPOSITORY).join(path)).unwrap();
 
         for (target_name, target) in targets() {
-            let result = compile(path, &source, target, &Options::default());
+            // Java's in the test module's package of the schema
+            let golden = Golden::of(name, target_name);
+            let result = compile(path, &source, target, &golden.options);
             if !target.generates_missing_fields() {
                 // Every other target refuses the schema, rather than
                 // generating code that reads its fields as required
@@ -54,7 +56,6 @@ fn generated_code_of_the_partial_schemas_matches_the_golden_files() {
                 continue;
             }
 
-            let golden = Golden::of(name, target_name);
             let files = result.unwrap_or_else(|_| panic!("{path} has errors"));
             differences.extend(compare_tree(&golden.directory, &golden.relative(files)));
         }

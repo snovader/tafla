@@ -25,7 +25,12 @@ a sixth of a second, most of which is the JVM loading the module's classes.
 
 The generated Java imports tafla's runtime from
 [`io.github.snovader.tafla:tafla`](https://central.sonatype.com/artifact/io.github.snovader.tafla/tafla),
-which the project that compiles it depends on.
+which the project that compiles it depends on. The code of a schema with
+optional fields, or fields added `since` a version, annotates what may be
+`null` with `@Nullable` from [JSpecify](https://jspecify.dev/), which the
+runtime depends on, so Gradle and Maven compile it with JSpecify too. A
+named module that holds the code `requires static org.jspecify`, as the
+runtime's does.
 
 ## Gradle
 

@@ -148,7 +148,7 @@ impl Target {
             Self::Python => false,
             // Java
             #[cfg(feature = "java")]
-            Self::Java => false,
+            Self::Java => true,
             // Rust
             #[cfg(feature = "rust")]
             Self::Rust => false,

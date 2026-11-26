@@ -282,7 +282,9 @@ pub const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
 
 /// Checks that Java can declare a record of a definition's fields: it reads a
 /// struct into a record of its fields, and writes a message or table from a
-/// `Fields` record of them, whose constructors take every field
+/// `Fields` record of them, whose constructors take every field. An optional
+/// scalar is boxed there, so that `null` leaves it out, which takes one slot,
+/// as every reference does.
 fn check_java_parameters(
     declaration: &Declaration,
     fields: &[Field],
@@ -290,7 +292,13 @@ fn check_java_parameters(
 ) {
     let slots: usize = fields
         .iter()
-        .map(|field| java_parameter_slots(field.field_type))
+        .map(|field| {
+            if field.optional {
+                1
+            } else {
+                java_parameter_slots(field.field_type)
+            }
+        })
         .sum();
 
     if slots > MAX_JAVA_PARAMETER_SLOTS {

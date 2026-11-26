@@ -67,22 +67,28 @@ const PYTHON: &[&str] = &[
 ];
 
 /// The names that Java imports from the runtime, `java.util`,
-/// `java.lang.invoke` and `java.nio`, the classes of `java.lang` that it
-/// names, which a class of its package would hide, and `Fields`, the record
-/// nested in each message and table, which would hide a declaration of that
-/// name. It names `java.util.Arrays` in full instead, since a schema may well
-/// declare `Arrays`.
+/// `java.lang.invoke`, `java.nio` and `JSpecify`, whose `Nullable` annotates
+/// what may be missing, the classes of `java.lang` that it names, which a
+/// class of its package would hide, such as the boxes of optional scalars,
+/// and `Fields`, the record nested in each message and table, which would
+/// hide a declaration of that name. It names `java.util.Arrays` in full
+/// instead, since a schema may well declare `Arrays`.
 const JAVA: &[&str] = &[
     "AbstractList",
+    "Boolean",
     "Byte",
     "ByteBuffer",
     "ByteOrder",
     "DecodeException",
+    "Double",
     "Fields",
+    "Float",
     "IndexOutOfBoundsException",
     "Integer",
     "List",
+    "Long",
     "MethodHandles",
+    "Nullable",
     "Objects",
     "OffsetType",
     "Override",

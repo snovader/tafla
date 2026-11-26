@@ -37,7 +37,8 @@ cargo, so it needs Rust with the `wasm32-unknown-unknown` target.
 `./gradlew :core:build` and the benchmarks' tasks don't.
 
 The test module holds the Java that tafla-gen generates from the example
-schemas in `schemas/`, in a package of each schema,
+schemas in `schemas/`, and from `typescript/core/test/presence.tafla`, of
+optional fields and versions, in a package of each schema,
 `io.github.snovader.tafla.test.generated.<schema>`, which its tests run.
 They're the generator's golden files, which `rust/gen/README.md` describes:
 rewrite them with the generator rather than by hand.

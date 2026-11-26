@@ -1,7 +1,8 @@
 // Java declares a record of each definition's fields, whose constructor takes
 // at most 254 slots of parameters: two for each `uint32`, `int64`, `uint64`
 // and `float64`, which Java holds as a `long` or a `double`, and one for every
-// other field. `AtTheLimit` takes 254 slots, `OneOver` 255 and `Counts` 256.
+// other field, an optional scalar too, which Java boxes. `AtTheLimit` takes
+// 254 slots, `OneOver` 255, `Counts` 256 and `Boxed` 128.
 
 struct AtTheLimit {
     f0: float64; f1: float64; f2: float64; f3: float64; f4: float64;
@@ -88,4 +89,33 @@ message Counts {
     c115: uint32; c116: uint32; c117: uint32; c118: uint32; c119: uint32;
     c120: uint32; c121: uint32; c122: uint32; c123: uint32; c124: uint32;
     c125: uint32; c126: uint32; c127: uint32;
+}
+
+message Boxed {
+    b0: float64?; b1: float64?; b2: float64?; b3: float64?; b4: float64?;
+    b5: float64?; b6: float64?; b7: float64?; b8: float64?; b9: float64?;
+    b10: float64?; b11: float64?; b12: float64?; b13: float64?; b14: float64?;
+    b15: float64?; b16: float64?; b17: float64?; b18: float64?; b19: float64?;
+    b20: float64?; b21: float64?; b22: float64?; b23: float64?; b24: float64?;
+    b25: float64?; b26: float64?; b27: float64?; b28: float64?; b29: float64?;
+    b30: float64?; b31: float64?; b32: float64?; b33: float64?; b34: float64?;
+    b35: float64?; b36: float64?; b37: float64?; b38: float64?; b39: float64?;
+    b40: float64?; b41: float64?; b42: float64?; b43: float64?; b44: float64?;
+    b45: float64?; b46: float64?; b47: float64?; b48: float64?; b49: float64?;
+    b50: float64?; b51: float64?; b52: float64?; b53: float64?; b54: float64?;
+    b55: float64?; b56: float64?; b57: float64?; b58: float64?; b59: float64?;
+    b60: float64?; b61: float64?; b62: float64?; b63: float64?; b64: float64?;
+    b65: float64?; b66: float64?; b67: float64?; b68: float64?; b69: float64?;
+    b70: float64?; b71: float64?; b72: float64?; b73: float64?; b74: float64?;
+    b75: float64?; b76: float64?; b77: float64?; b78: float64?; b79: float64?;
+    b80: float64?; b81: float64?; b82: float64?; b83: float64?; b84: float64?;
+    b85: float64?; b86: float64?; b87: float64?; b88: float64?; b89: float64?;
+    b90: float64?; b91: float64?; b92: float64?; b93: float64?; b94: float64?;
+    b95: float64?; b96: float64?; b97: float64?; b98: float64?; b99: float64?;
+    b100: float64?; b101: float64?; b102: float64?; b103: float64?; b104: float64?;
+    b105: float64?; b106: float64?; b107: float64?; b108: float64?; b109: float64?;
+    b110: float64?; b111: float64?; b112: float64?; b113: float64?; b114: float64?;
+    b115: float64?; b116: float64?; b117: float64?; b118: float64?; b119: float64?;
+    b120: float64?; b121: float64?; b122: float64?; b123: float64?; b124: float64?;
+    b125: float64?; b126: float64?; b127: float64?;
 }
