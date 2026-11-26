@@ -1,10 +1,11 @@
 # tafla-gen
 
 Compiles a schema of messages, tables, structs and enums into code that
-writes and reads them with tafla's runtime for TypeScript, JavaScript, Python, Java,
-Rust, Go, C++, Swift or C#. It runs as a command, as a Rust library, and as a
-WebAssembly module without imports, which the packages for the other
-languages run.
+writes and reads them with tafla's runtime for TypeScript, JavaScript, Python,
+Java, Rust, Go, C++, Swift or C#, and decodes a table's bytes as JSON and
+encodes them from JSON, as [Tables as JSON](#tables-as-json) describes. It
+runs as a command, as a Rust library, and as a WebAssembly module without
+imports, which the packages for the other languages run.
 
 ```text
 /// A document, whose header holds its length and version, with a nested
@@ -896,6 +897,8 @@ switch (Document.versionOf(bytes)) {
 
 ```sh
 tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version] [--ascii]
+tafla-gen encode <schema> <name> [<file>]
 ```
 
 `cargo install tafla-gen` installs the command from crates.io. On npm,
@@ -906,7 +909,8 @@ describes.
 
 `ts`, `js`, `py`, `rs` and `cs` abbreviate the targets. Options may come before,
 between or after the schemas, and `--` ends them, so that every argument
-after it is a schema. The command writes each schema's files under `--out`,
+after it is a schema. A schema is read from a file, whose path names it, so
+`-`, which is stdin to `decode` and `encode`, isn't a schema. The command writes each schema's files under `--out`,
 which is the current directory by default, and names the schema by its path
 in their header. It prints the errors of the schemas that have any to stderr
 and writes none of their files, but writes the files of the others, and then
@@ -915,8 +919,8 @@ fails. `-h` or `--help` prints the usage, the targets and the options, and
 
 | Exit code | When                                                                                                                                                                                            |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0         | Every schema generated its files                                                                                                                                                                |
-| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, or a file can't be written                                                                                  |
+| 0         | Every schema generated its files, or the table was decoded or encoded                                                                                                                           |
+| 1         | A schema has errors, can't be read or isn't UTF-8, two schemas write the same file, a file can't be written, or a table or its JSON can't be decoded or encoded                                  |
 | 2         | The arguments are wrong, such as an unknown target or option, an option without its value or given twice, no schema, or a `--package` that isn't a Java package, or more than one schema for Go |
 
 With wrong arguments, the command prints the error and its usage to stderr,
@@ -960,6 +964,174 @@ they share.
   needs a directory of its own.
 
 From this repository, `cargo run -p tafla-gen --` runs the command.
+
+## Tables as JSON
+
+`tafla-gen decode` reads a table of a schema's message or struct and prints
+its values as JSON, and `tafla-gen encode` reads that JSON and prints the
+table's bytes, which are those that the code generated from the schema writes
+for the same values. So a table can be looked at without writing code, and a
+test's fixture or a bug's table can be written as text:
+
+```sh
+tafla-gen decode schemas/shapes.tafla Document document.bin > document.json
+tafla-gen encode schemas/shapes.tafla Document document.json > document.bin
+```
+
+```json
+{
+    "x": 1.5,
+    "y": -2.25,
+    "name": "\ufeffdocument",
+    "columns": {
+        "base": "-1",
+        "keys": [0, 1, 4294967295],
+        "a": [0.5, "-0", "NaN", 3.4028234663852886e+38],
+        "b": ["Infinity", 1.401298464324817e-45, -3.4028234663852886e+38]
+    }
+}
+```
+
+The name is that of a message, or of a struct, which is read on its own too;
+a table is read within a message. The file is read in full, and without one,
+or for `-`, the command reads stdin. It prints to stdout, the JSON in UTF-8
+and the table's bytes as they are, and its errors to stderr.
+
+### The mapping
+
+A message, a table or a struct is an object of its fields, by their names in
+the schema. JSON writes the values so that none is lost, as
+`conformance/cases.json` writes them:
+
+| Type                                    | JSON                                                                                                                       |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `bool`                                  | `true` or `false`                                                                                                          |
+| `int8` … `int32`, `uint8` … `uint32`    | A number                                                                                                                   |
+| `int64`, `uint64`                       | A string of its digits, such as `"-9223372036854775808"`, since JSON's numbers lose precision past 2^53 in many parsers   |
+| `float32`, `float64`                    | A number, a float32 as the float64 that equals it, or `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`                       |
+| A NaN other than the quiet NaN          | `"NaN:0x"` and every bit of it in hexadecimal: 8 digits of a float32, 16 of a float64, such as `"NaN:0xfff8000000000001"` |
+| An array of a scalar, `[uint8]` too     | An array of its elements                                                                                                   |
+| An enum, and an array of an enum        | Its integer, as its type's JSON, whether the schema names the value or not                                                |
+| `string`                                | A string                                                                                                                   |
+| A struct                                | An object of its fields, with a struct within it as an object                                                              |
+| An array of structs                     | An array of their objects                                                                                                  |
+| A nested table                          | An object of its fields                                                                                                    |
+| A vector of tables                      | An array of their objects                                                                                                  |
+
+- `"NaN"` is the quiet NaN that JavaScript writes, `0x7fc00000` as a float32
+  and `0x7ff8000000000000` as a float64, so decoding writes every other NaN's
+  bits, its sign and payload included, and encoding writes them back.
+- A float64 is written in the fewest digits that read back as it, and a
+  float32 as the float64 that equals it, with an exponent where JavaScript
+  writes one, so that a value of `conformance/generated` reads as its file
+  writes it.
+- Strings are UTF-8, so they hold characters outside the Basic Multilingual
+  Plane as they are, and can't hold a lone surrogate. Decoding writes a
+  control character, a byte-order mark and the characters that would garble
+  a terminal, such as U+2028 and the controls of the text's direction, as
+  `\u` escapes, and with `--ascii` every character outside ASCII, a
+  character outside the plane as a surrogate pair.
+- A bool reads as true from any byte but 0, as readers read it, and is
+  written as 1.
+- Arrays of `uint8` are arrays of numbers, as `cases.json` writes them,
+  rather than base64 or hexadecimal, so that one rule maps every array.
+
+Decoding writes each object's fields in the schema's order, a field to a
+line, indented by four spaces, with an array of scalars and a struct on one
+line, and the items of an array of structs or a vector on a line each, so
+that decoding the bytes that encoding writes prints the same JSON. Encoding
+reads any JSON of these values: fields in any order, each once, an
+`int64` or `uint64` as a number too, any number within a float's range,
+rounded to the nearest float, and a leading byte-order mark. An integer
+has no fraction or exponent. Every field is required, as in the generated
+code.
+
+Encoding names the path of the field of each error, such as
+`columns.keys[1]`, and points at its value in the JSON, as errors in schemas
+are printed. It reports an unknown or repeated field, a missing one, a value
+of another type and a number out of its type's range, up to 50 errors, and
+stops at an error of JSON's syntax. A table too long for its offset type
+fails at the name of the root field that makes it so.
+
+### Untrusted bytes
+
+Decoding reads its bytes through the Rust runtime's `TableReader`, as the
+generated readers do, so a table that they read decodes, unaligned arrays and
+bools of other bytes than 0 and 1 included, and bytes that they fail to read
+fail with the runtime's decode error, which the command prints with the path
+of the field whose read failed. A versioned message of another version fails
+as its reader fails, unless `--any-version` is given. Encoding writes the
+schema's version, and the table's length when it's sized, so a table read
+with `--any-version` encodes in the schema's version. Bytes after the table,
+which readers ignore, aren't decoded.
+
+Decoding reads every field and item at once, where a generated reader reads
+each when it's asked for, so it bounds what corrupted bytes can make it do:
+
+- Tables nest at most 128 deep, the message included, through fields and
+  vectors, deeper than a schema nests them in place, 64 deep, so that a
+  vector's item that holds itself, as `SPEC.md`'s "Validation" describes,
+  and a tree deeper than that fail with the decode error rather than
+  exhaust the stack. Encoding writes tables nested up to the same depth.
+- The values read take at most 8 times the bytes, which a table that a
+  writer wrote never approaches, since it holds each value once. Offsets
+  that lead to the same bytes read them again, so that tables whose vectors
+  share their items could otherwise read 2^n tables from bytes in
+  proportion to n.
+
+So decoding takes time and memory in proportion to its bytes. A table that
+decodes encodes into bytes that decode as the same JSON. They're the same
+bytes for every table that a conforming writer writes, which has its header,
+offsets, values in field order and padding as `SPEC.md`'s "Writers" describes
+them; other tables are written as a writer writes the values that they read.
+Where their offsets share bytes, the table that encoding writes holds each
+value in full, and can be too long for its offset type.
+
+### Layout
+
+`decode --layout` prints where each part of the table lies rather than its
+JSON: each header slot, offset, count, vector item's end, value and run of
+padding, with its position and length in bytes, its first 8 bytes in
+hexadecimal and the path of its field, in the order of the bytes:
+
+```text
+position    length  bytes                      field         value
+       0         4  84 00 00 00                              length 132
+       4         4  01 00 00 00                              version 1
+       8         4  18 00 00 00                x             offset 24
+       …
+      40         4  0b 00 00 00                name          count 11
+      44        11  ef bb bf 64 6f 63 75 6d …  name          11 bytes of UTF-8
+      55         1  00                                       padding
+       …
+      96         4  04 00 00 00                columns.a     count 4
+     100        16  00 00 00 3f 00 00 00 80 …  columns.a     4 float32s
+```
+
+A run of bytes that no read took is padding when it's up to 7 zeros before
+a part, as writers pad, and unread otherwise, such as bytes after the table
+or that corrupted offsets skip. Parts that corrupted offsets make overlap are
+each shown. When a read fails, the layout shows the parts read before it,
+and the command prints the error and fails.
+
+### Library
+
+With the `json` feature, which is a default feature, `Root::find()` finds a
+schema's message or struct by its name, and its `decode()`, `layout()` and
+`encode()` do what the command does, without reading or writing a file. The
+feature adds `tafla`, the Rust runtime, as a dependency.
+
+```rust
+use tafla_gen::{DecodeOptions, Root, parse};
+
+let schema = parse("message Point { x: float64; id: int64; }").expect("the schema is valid");
+let point = Root::find(&schema, "Point")?;
+
+let bytes = point.encode(r#"{"x": -0, "id": "9007199254740993"}"#).expect("the JSON is a point");
+let json = point.decode(&bytes, &DecodeOptions::default())?;
+assert_eq!(json, "{\n    \"x\": \"-0\",\n    \"id\": \"9007199254740993\"\n}\n");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
 
 ## Library
 
@@ -1011,9 +1183,10 @@ assert!(output.stderr.starts_with("error: unknown target `cobol`"));
 ```
 
 Each target has a Cargo feature, `typescript` (which generates JavaScript
-too), `python`, `java`, `rust`, `go`, `cpp`, `swift` and `csharp`, and the
-default features are all eight. A crate that generates one language from its
-build script can depend on that feature alone.
+too), `python`, `java`, `rust`, `go`, `cpp`, `swift` and `csharp`, and
+`json` adds `decode` and `encode`. The default features are all nine. A crate
+that generates one language from its build script can depend on that feature
+alone.
 
 ## WebAssembly
 
@@ -1023,7 +1196,8 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 590 KB. It has no imports, so any host runs it with an empty import
+about 730 KB, or 590 KB without the `json` feature, whose decoding and
+encoding take the rest, a third of it to write and parse floats as text. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 
@@ -1053,26 +1227,29 @@ status, and then what the status says.
   request are errors too.
 
 `tafla_command` and `tafla_generate` are the command, as the library's `cli`
-module runs it, for a host that reads the schemas, writes the files and
-prints. A host calls the first with the command's arguments, reads the
-schemas that it names, and calls the second with the same arguments and what
-it read:
+module runs it, for a host that reads the schemas and tables, writes the
+files and prints. A host calls the first with the command's arguments, reads
+the files that it names, and calls the second with the same arguments and
+what it read:
 
 - `tafla_command`'s request is the arguments, without the command's own
   name, each a string, up to the request's end. Its response is, for status
-  0, a string of the directory to write under, a count of schemas, and each
-  schema's path. For status 1, the command is over, with the help, the
-  version or wrong arguments: an exit code, a string to print to stdout, and
-  a string to print to stderr.
+  0, a string of the directory to write under, a count of files to read, and
+  each file's path, which is `-` for stdin: the schemas, or of `decode` and
+  `encode` the schema and the table. For status 1, the command is over, with
+  the help, the version or wrong arguments: an exit code, a string of the
+  bytes to print to stdout, and a string to print to stderr.
 - `tafla_generate`'s request is a count of arguments and the same arguments,
-  and then each of those schemas, in their order: a `u32` of 0 and the
-  schema's bytes as a string, which needn't be UTF-8, or a `u32` of 1 and a
-  string of why it can't be read, such as the I/O error's message. Its
-  response is, for status 0, a count of the schemas that have files to
-  write, for each a count of files and each file's path and contents, and
-  then a count of errors and each error as a string. For status 1, it's as
-  `tafla_command`'s, for arguments that don't generate, and for a malformed
-  request, such as one without each of the schemas, with exit code 2.
+  and then each of those files, in their order: a `u32` of 0 and the file's
+  bytes as a string, which needn't be UTF-8, or a `u32` of 1 and a string of
+  why it can't be read, such as the I/O error's message. Its response is,
+  for status 0, a count of the schemas that have files to write, for each a
+  count of files and each file's path and contents, and then a count of
+  errors and each error as a string. For status 1, it's as
+  `tafla_command`'s: for `decode` and `encode`, whose stdout is the JSON or
+  the table's bytes, which the host prints as they are, for arguments that
+  don't generate, and for a malformed request, such as one without each of
+  the files, with exit code 2.
 
 The host writes each file at its path under the directory, and makes the
 path's directories. It writes a schema's files up to the first that fails,
@@ -1109,7 +1286,15 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   more than 64 deep fail with errors that point at them, and the command writes and prints what the library generates and
   finds.
 - `tests/cli.rs` and `tests/compile.rs`: the command, its arguments,
-  output and exit codes, and the library's options. The tests of
+  output and exit codes, `decode` and `encode` of files and stdin, and the
+  library's options.
+- `tests/json.rs`: the tables of `conformance/generated` decode as the
+  fields of their cases and encode back byte for byte, the tables of
+  arbitrary schemas encode from JSON as `TableBuilder` writes them and
+  decode back into the same JSON, bytes that writers don't write but readers
+  accept decode, and arbitrary, truncated, deep and self-sharing bytes decode
+  as values or decode errors within the limits. Errors in JSON name their
+  field's path. The tests of
   `typescript/gen` run the command's cases that a host of the WebAssembly
   module could get wrong, through `@tafla/gen`.
 - `tests/members.rs`: fields named after the generated code's members take a
@@ -1118,7 +1303,8 @@ Run the commands of `rust/README.md` from `rust/`. The tests are:
   `tafla` so that clippy and rustfmt check it, reads back what it
   writes, writes the tables that `TableBuilder` writes by hand, rejects other
   versions, and reads corrupted bytes as values or decode errors, through
-  its views as through its getters.
+  its views as through its getters. `decode` reads every table that it
+  writes as JSON, which `encode` writes back into the same bytes.
 - `tests/shapes_cases.rs`: the golden Rust of `shapes.tafla` writes and reads
   the tables of `conformance/generated`, as the code generated in every
   language does.

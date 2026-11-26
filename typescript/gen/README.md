@@ -76,7 +76,7 @@ them, for a schema with errors, an unknown target, and a package that isn't a
 Java package.
 
 `compile()` is synchronous. Its first call reads and instantiates the
-module, of about 590 KB, from the package's files, which takes Node; later
+module, of about 730 KB, from the package's files, which takes Node; later
 calls reuse it.
 
 ## Versions
