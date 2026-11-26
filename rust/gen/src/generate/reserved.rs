@@ -98,24 +98,18 @@ const JAVA: &[&str] = &[
 ];
 
 /// The names that Rust imports from the runtime, the types and traits of the
-/// prelude that it names, which a struct of the same name would hide, the
-/// variants of the prelude that it makes and matches, `Err`, `None`, `Ok` and
-/// `Some`, which an enum of the same name would hide, since its struct of
-/// one integer is a function too, and `Self`, a keyword
+/// prelude that it names, which a struct of the same name would hide, and
+/// `Self`, a keyword
 const RUST: &[&str] = &[
     "Alignment",
     "ArrayView",
     "BuildError",
     "DecodeError",
-    "Err",
     "ExactSizeIterator",
-    "None",
     "OffsetType",
-    "Ok",
     "Option",
     "Result",
     "Self",
-    "Some",
     "TableLayout",
     "TableReader",
     "TableSizer",
@@ -123,6 +117,10 @@ const RUST: &[&str] = &[
     "Vec",
     "Vector",
 ];
+
+/// A generated enum's tuple-struct constructor would hide these prelude variants
+/// in the value namespace. Other declarations generate structs with named fields.
+const RUST_ENUM: &[&str] = &["Err", "None", "Ok", "Some"];
 
 /// The macros of the C standard library that a name can take, which a header
 /// that C++'s generated code includes may define. C++ names the runtime and
@@ -213,10 +211,11 @@ const RESERVED: [(&[&str], &[&str]); 7] = [
 
 /// The targets whose generated code uses `name`, which a declaration can't
 /// take, in the order that the README lists them
-pub fn targets_using(name: &str) -> Vec<&'static str> {
+pub fn targets_using(name: &str, is_enum: bool) -> Vec<&'static str> {
     RESERVED
-        .iter()
+        .into_iter()
+        .chain(is_enum.then_some((&["Rust"][..], RUST_ENUM)))
         .filter(|(_, names)| names.contains(&name))
-        .flat_map(|&(targets, _)| targets.iter().copied())
+        .flat_map(|(targets, _)| targets.iter().copied())
         .collect()
 }

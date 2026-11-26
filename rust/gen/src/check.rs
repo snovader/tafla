@@ -79,22 +79,37 @@ pub fn check(schema: &Declarations) -> Result<Schema, Vec<Diagnostic>> {
 
 fn index_names<'a>(schema: &'a Declarations, errors: &mut Vec<Diagnostic>) -> Names<'a> {
     let mut names = Names::default();
+    let mut enums = schema.enums.iter().enumerate().peekable();
 
     for (index, declaration) in schema.declarations.iter().enumerate() {
-        if check_declared_name(&declaration.name, &mut names, errors) {
+        // Merge the two source-ordered lists so the first declaration owns the name.
+        while let Some((index, enumeration)) = enums
+            .next_if(|(_, enumeration)| enumeration.name.span.start < declaration.name.span.start)
+        {
+            index_enum(index, enumeration, &mut names, errors);
+        }
+        if check_declared_name(&declaration.name, false, &mut names, errors) {
             names.definitions.insert(&declaration.name.text, index);
         }
     }
-    for (index, declaration) in schema.enums.iter().enumerate() {
-        if check_declared_name(&declaration.name, &mut names, errors) {
-            let underlying = integer_type(&declaration.underlying.text);
-            names
-                .enums
-                .insert(&declaration.name.text, (index, underlying));
-        }
+    for (index, enumeration) in enums {
+        index_enum(index, enumeration, &mut names, errors);
     }
-
     names
+}
+
+fn index_enum<'a>(
+    index: usize,
+    declaration: &'a EnumDeclaration,
+    names: &mut Names<'a>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    if check_declared_name(&declaration.name, true, names, errors) {
+        let underlying = integer_type(&declaration.underlying.text);
+        names
+            .enums
+            .insert(&declaration.name.text, (index, underlying));
+    }
 }
 
 /// Checks the name of a message, table, struct or enum, which share their
@@ -102,6 +117,7 @@ fn index_names<'a>(schema: &'a Declarations, errors: &mut Vec<Diagnostic>) -> Na
 /// then stands for
 fn check_declared_name<'a>(
     name: &'a Name,
+    is_enum: bool,
     names: &mut Names<'a>,
     errors: &mut Vec<Diagnostic>,
 ) -> bool {
@@ -117,7 +133,7 @@ fn check_declared_name<'a>(
             name.span,
         ));
     }
-    check_reserved_name(name, errors);
+    check_reserved_name(name, is_enum, errors);
 
     match names.spans.entry(&name.text) {
         Entry::Vacant(entry) => {
@@ -150,6 +166,9 @@ fn check_enum(declaration: &EnumDeclaration, errors: &mut Vec<Diagnostic>) -> En
         );
     }
 
+    if let Some(scalar) = underlying {
+        check_java_enum_size(declaration, scalar, errors);
+    }
     check_value_names(declaration, errors);
     check_value_integers(declaration, underlying, errors);
 
@@ -164,6 +183,34 @@ fn check_enum(declaration: &EnumDeclaration, errors: &mut Vec<Diagnostic>) -> En
         // An enum of another type has its error, and no schema
         underlying: underlying.unwrap_or(Scalar::Uint8),
         values: values.collect(),
+    }
+}
+
+/// A Java class file has 65,534 usable constant-pool slots. Allow 65,500
+/// for the fields, leaving room for the class, constructor and attributes.
+/// Each field needs its name and its integer constant; a long uses two
+/// slots for the constant, including when Java widens a uint32 to a long.
+fn check_java_enum_size(
+    declaration: &EnumDeclaration,
+    scalar: Scalar,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let slots_per_value = 1 + java_parameter_slots(FieldType::Scalar(scalar));
+    let limit = 65_500 / slots_per_value;
+    if declaration.values.len() > limit {
+        errors.push(
+            Diagnostic::new(
+                format!(
+                    "`{}` has too many values for a Java class",
+                    declaration.name.text
+                ),
+                declaration.name.span,
+            )
+            .with_help(format!(
+                "an enum of `{}` can declare at most {limit} values to fit in a Java constant pool",
+                scalar.name()
+            )),
+        );
     }
 }
 
@@ -293,8 +340,8 @@ fn check_value_integers(
 /// Checks that a declaration doesn't take a name that a target's generated
 /// code imports or relies on, such as `List` in Java, which every target
 /// declares it beside
-fn check_reserved_name(name: &Name, errors: &mut Vec<Diagnostic>) {
-    let targets = reserved::targets_using(&name.text);
+fn check_reserved_name(name: &Name, is_enum: bool, errors: &mut Vec<Diagnostic>) {
+    let targets = reserved::targets_using(&name.text, is_enum);
     let Some((last, others)) = targets.split_last() else {
         return;
     };

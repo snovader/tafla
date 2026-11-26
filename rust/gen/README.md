@@ -150,8 +150,7 @@ or read its tables, or a target couldn't generate its code:
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
-  in Rust and its variants, such as `Some`, which the function of an
-  enum's tuple struct of the same name would hide, and `Int`, `RawSpan`,
+  in Rust, and `Int`, `RawSpan`,
   `Hashable` and `RawRepresentable` in Swift, `Fields`, the record
   of a Java class's fields, keywords, such as `None` in Python and `Self` in
   Rust and Swift, the macros of the C standard library that a C++ header
@@ -169,6 +168,12 @@ or read its tables, or a target couldn't generate its code:
 - An enum's type is an integer type, `int8` to `uint64`. Each of its values
   is an integer of that type, and no two values share a name, in
   `camelCase` too, or an integer, so that each integer has at most one name.
+  An enum can't be named `Ok`, `Err`, `Some` or `None`, since its Rust
+  tuple-struct constructor would hide a prelude variant.
+- An enum can declare up to 21,833 values of `uint32`, `int64` or `uint64`,
+  and up to 32,750 of the other integer types. Its Java class reserves 65,500
+  constant-pool slots for the fields. Each name takes one slot, and each
+  distinct value takes two for a Java `long`, or one for a narrower integer.
 - A value of an enum can't take a name that the generated Go declares
   beside the enum, `<Enum><Value>` in `PascalCase`, such as `PriorityHigh`
   for `high` of `Priority`, where a declaration, a function or constant of

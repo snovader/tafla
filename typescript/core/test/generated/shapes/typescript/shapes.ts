@@ -23,7 +23,7 @@ import {
 } from 'tafla';
 
 /** How soon to do a task */
-export const Priority = Object.freeze({
+export const Priority = globalThis.Object.freeze({
     Low: -1,
     Normal: 0,
     High: 1
@@ -33,7 +33,7 @@ export const Priority = Object.freeze({
 export type Priority = number;
 
 /** What has become of a task */
-export const State = Object.freeze({
+export const State = globalThis.Object.freeze({
     Waiting: 0,
     Running: 1,
     Done: 2,

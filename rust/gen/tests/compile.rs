@@ -677,7 +677,7 @@ enum Level: uint16 { low = 0; }
 }
 
 #[test]
-fn rust_type_parameters_take_no_name_that_an_enum_declares() {
+fn type_parameters_take_no_name_that_an_enum_declares() {
     // The items of `pairs` are of any type `T`, unless the schema declares a
     // `T`, as an enum here
     let source = "\
@@ -685,13 +685,35 @@ message Pairs { pairs: [Pair]; level: T; }
 struct Pair { a: uint8; }
 enum T: uint8 { low = 0; }
 ";
-    let files = generate("pairs.tafla", source, "rust", &Options::default());
+    for (target, declaration) in [
+        ("rust", "pub struct PairsFields<'a, U = Pair> {"),
+        (
+            "cpp",
+            "template <class U = std::span<const Pair>>\nstruct PairsFields {",
+        ),
+    ] {
+        let files = generate("pairs.tafla", source, target, &Options::default());
+        assert!(
+            files[0].contents.contains(declaration),
+            "{}",
+            files[0].contents
+        );
+    }
+}
 
-    assert!(
-        files[0]
-            .contents
-            .contains("pub struct PairsFields<'a, U = Pair> {\n"),
-        "{}",
-        files[0].contents
-    );
+#[test]
+fn an_enum_can_be_named_object_in_javascript_and_typescript() {
+    for target in ["javascript", "typescript"] {
+        let files = generate(
+            "objects.tafla",
+            "enum Object: uint8 { first = 0; }",
+            target,
+            &Options::default(),
+        );
+        assert!(
+            files[0]
+                .contents
+                .contains("export const Object = globalThis.Object.freeze(")
+        );
+    }
 }

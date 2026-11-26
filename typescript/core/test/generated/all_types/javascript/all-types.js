@@ -34,7 +34,7 @@ import {
  *
  * A field of it holds any `uint8`, whether it has a name here or not.
  */
-export const Level = Object.freeze({
+export const Level = globalThis.Object.freeze({
     /** The least */
     Low: 0,
     Medium: 1,
@@ -52,7 +52,7 @@ export const Level = Object.freeze({
  */
 
 /** An enum of `int8`, with a negative value */
-export const Direction = Object.freeze({
+export const Direction = globalThis.Object.freeze({
     Backward: -1,
     None: 0,
     Forward: 1,
@@ -67,7 +67,7 @@ export const Direction = Object.freeze({
  */
 
 /** An enum of `uint16`, whose values aren't in order */
-export const Unit = Object.freeze({
+export const Unit = globalThis.Object.freeze({
     Last: 65535,
     First: 0,
     V2: 2
@@ -79,7 +79,7 @@ export const Unit = Object.freeze({
  * @typedef {number} Unit
  */
 
-export const Change = Object.freeze({
+export const Change = globalThis.Object.freeze({
     Least: -32768,
     Greatest: 32767
 });
@@ -90,7 +90,7 @@ export const Change = Object.freeze({
  * @typedef {number} Change
  */
 
-export const Status = Object.freeze({
+export const Status = globalThis.Object.freeze({
     Ok: 0,
     NotFound: 404,
     Greatest: 4294967295
@@ -102,7 +102,7 @@ export const Status = Object.freeze({
  * @typedef {number} Status
  */
 
-export const Sign = Object.freeze({
+export const Sign = globalThis.Object.freeze({
     Least: -2147483648,
     Greatest: 2147483647
 });
@@ -114,7 +114,7 @@ export const Sign = Object.freeze({
  */
 
 /** An enum of `uint64`, with a value that a float64 can't hold exactly */
-export const Mask = Object.freeze({
+export const Mask = globalThis.Object.freeze({
     None: 0n,
     One: 1n,
     BeyondFloat64: 9007199254740993n,
@@ -127,7 +127,7 @@ export const Mask = Object.freeze({
  * @typedef {bigint} Mask
  */
 
-export const Extent = Object.freeze({
+export const Extent = globalThis.Object.freeze({
     Least: -9223372036854775808n,
     Zero: 0n,
     Greatest: 9223372036854775807n
@@ -140,7 +140,7 @@ export const Extent = Object.freeze({
  */
 
 /** Values named after keywords and literals of the target languages */
-export const Word = Object.freeze({
+export const Word = globalThis.Object.freeze({
     Class: 0,
     Default: 1,
     In: 2,

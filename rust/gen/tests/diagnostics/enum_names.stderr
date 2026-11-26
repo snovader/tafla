@@ -35,10 +35,10 @@ error: `v1` and `v_1` are both `v1` in camelCase
   |     ^^ TypeScript, JavaScript, Go, Swift and C# name values without underscores
 
 error: `Point` is declared twice
-  --> enum_names.tafla:13:6
+  --> enum_names.tafla:17:8
    |
-13 | enum Point: uint8 {
-   |      ^^^^^
+17 | struct Point {
+   |        ^^^^^
 
 error: `uint8` should be PascalCase
   --> enum_names.tafla:21:6

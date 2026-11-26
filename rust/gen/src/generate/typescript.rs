@@ -2148,7 +2148,7 @@ impl Generator<'_> {
         let is_big = scalar_type(underlying) == "bigint";
 
         writer.lines(&doc_comment(&schema_docs(&enumeration.docs)));
-        writer.open(format!("export const {name} = Object.freeze({{"));
+        writer.open(format!("export const {name} = globalThis.Object.freeze({{"));
         for (index, value) in enumeration.values.iter().enumerate() {
             let last = index + 1 == enumeration.values.len();
             writer.lines(&doc_comment(&schema_docs(&value.docs)));

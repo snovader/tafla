@@ -34,7 +34,7 @@ import {
  *
  * A field of it holds any `uint8`, whether it has a name here or not.
  */
-export const Level = Object.freeze({
+export const Level = globalThis.Object.freeze({
     /** The least */
     Low: 0,
     Medium: 1,
@@ -49,7 +49,7 @@ export const Level = Object.freeze({
 export type Level = number;
 
 /** An enum of `int8`, with a negative value */
-export const Direction = Object.freeze({
+export const Direction = globalThis.Object.freeze({
     Backward: -1,
     None: 0,
     Forward: 1,
@@ -61,7 +61,7 @@ export const Direction = Object.freeze({
 export type Direction = number;
 
 /** An enum of `uint16`, whose values aren't in order */
-export const Unit = Object.freeze({
+export const Unit = globalThis.Object.freeze({
     Last: 65535,
     First: 0,
     V2: 2
@@ -70,7 +70,7 @@ export const Unit = Object.freeze({
 /** A value of {@link Unit}: one that it names, or any other `uint16` */
 export type Unit = number;
 
-export const Change = Object.freeze({
+export const Change = globalThis.Object.freeze({
     Least: -32768,
     Greatest: 32767
 });
@@ -78,7 +78,7 @@ export const Change = Object.freeze({
 /** A value of {@link Change}: one that it names, or any other `int16` */
 export type Change = number;
 
-export const Status = Object.freeze({
+export const Status = globalThis.Object.freeze({
     Ok: 0,
     NotFound: 404,
     Greatest: 4294967295
@@ -87,7 +87,7 @@ export const Status = Object.freeze({
 /** A value of {@link Status}: one that it names, or any other `uint32` */
 export type Status = number;
 
-export const Sign = Object.freeze({
+export const Sign = globalThis.Object.freeze({
     Least: -2147483648,
     Greatest: 2147483647
 });
@@ -96,7 +96,7 @@ export const Sign = Object.freeze({
 export type Sign = number;
 
 /** An enum of `uint64`, with a value that a float64 can't hold exactly */
-export const Mask = Object.freeze({
+export const Mask = globalThis.Object.freeze({
     None: 0n,
     One: 1n,
     BeyondFloat64: 9007199254740993n,
@@ -106,7 +106,7 @@ export const Mask = Object.freeze({
 /** A value of {@link Mask}: one that it names, or any other `uint64` */
 export type Mask = bigint;
 
-export const Extent = Object.freeze({
+export const Extent = globalThis.Object.freeze({
     Least: -9223372036854775808n,
     Zero: 0n,
     Greatest: 9223372036854775807n
@@ -116,7 +116,7 @@ export const Extent = Object.freeze({
 export type Extent = bigint;
 
 /** Values named after keywords and literals of the target languages */
-export const Word = Object.freeze({
+export const Word = globalThis.Object.freeze({
     Class: 0,
     Default: 1,
     In: 2,

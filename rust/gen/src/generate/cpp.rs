@@ -1536,7 +1536,9 @@ fn generic_fields(schema: &Schema, namespace: &str) -> Vec<Vec<Option<GenericFie
     let declared: HashSet<String> = schema
         .definitions
         .iter()
-        .map(|definition| type_name(&definition.name))
+        .map(|definition| &definition.name)
+        .chain(schema.enums.iter().map(|enumeration| &enumeration.name))
+        .map(|name| type_name(name))
         .collect();
 
     schema
