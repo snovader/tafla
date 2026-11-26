@@ -14,7 +14,14 @@ describes the schema language, the generated code and the command.
 
 ```sh
 npx @tafla/gen typescript shapes.tafla --out source/generated
+npx @tafla/gen decode shapes.tafla Document document.bin > document.json
+npx @tafla/gen encode shapes.tafla Document document.json > document.bin
 ```
+
+`decode` prints a table's values as JSON, and `encode` prints the table's
+bytes from that JSON, each reading the table from stdin without a file, as
+the generator's README describes in
+[Tables as JSON](https://github.com/snovader/tafla/tree/main/rust/gen#tables-as-json).
 
 In a project that depends on the package, the command is `tafla-gen`, as in
 a script of its `package.json`:
