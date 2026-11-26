@@ -154,7 +154,7 @@ impl Target {
             Self::Rust => false,
             // Go
             #[cfg(feature = "go")]
-            Self::Go => false,
+            Self::Go => true,
             // C++
             #[cfg(feature = "cpp")]
             Self::Cpp => false,

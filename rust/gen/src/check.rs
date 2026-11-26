@@ -406,7 +406,8 @@ fn check_view_declarations(
 /// the code generated for Go declares beside a message or a struct, in the
 /// package of the schema's declarations: `New<Message>`, which reads a
 /// message, a versioned message's `<Message>VersionOf` and
-/// `<Message>FormatVersion`, and `Read<Struct>`, which reads a struct
+/// `<Message>FormatVersion`, the `<Message>FirstVersion` of a message that
+/// reads versions since another, and `Read<Struct>`, which reads a struct
 fn check_go_functions(
     definitions: &[Definition],
     declarations: &[Declaration],
@@ -421,6 +422,12 @@ fn check_go_functions(
                 if layout.version.is_some() {
                     functions.push((format!("{name}VersionOf"), "read the version of"));
                     functions.push((format!("{name}FormatVersion"), "hold the version of"));
+                }
+                if layout.since.is_some() {
+                    functions.push((
+                        format!("{name}FirstVersion"),
+                        "hold the first readable version of",
+                    ));
                 }
                 functions
             }

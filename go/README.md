@@ -218,6 +218,17 @@ functions are for the generated code: they're exported because it lies in
 its user's package, but they're outside the compatibility promise of the
 rest of the API, and may change in any release, with the generator.
 
+A schema's optional field, which a table may leave out, is a
+`tafla.Optional` in the struct of fields that the generated code writes a
+table from: the zero `Optional` is absent, and `tafla.Some()` returns one
+that holds a value, so a struct of fields leaves out every optional field
+that it doesn't set. It holds its value rather than a pointer to it, so that
+a string or a scalar needs no variable of its own to point at, and a slice
+can be present and empty. The generated code writes an absent field with
+`AddAbsent()` and `SetAbsent()`, and its getter returns a scalar's default
+where the table doesn't hold it, and `Has<Field>()` tells whether it does,
+or false after the zero value of any other field.
+
 `TableWriter` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract, which the other
 runtimes share:
@@ -294,7 +305,9 @@ The tests in `tests/` are:
   seeds, the conformance suite's tables and those of its cases of presence,
   run as tests.
 - `generated`: the Go that tafla-gen generates from the example
-  schemas in `schemas/`, in a package of each schema, and the tests beside
+  schemas in `schemas/`, and from `typescript/core/test/presence.tafla`,
+  whose optional fields and fields of later versions and revisions
+  `presence_test.go` reads, in a package of each schema, and the tests beside
   them, which read back what it writes, write what `TableBuilder` writes,
   reject other versions and read corrupted bytes as values or decode errors,
   through every getter and view, and the cases of `conformance/generated`.
