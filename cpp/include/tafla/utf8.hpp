@@ -19,6 +19,27 @@
 #include <arm_neon.h>
 #endif
 
+// The checks of characters that aren't ASCII, which reads that inline
+// valid_utf8() call out of line. With clang they save every register they
+// use, so that a read needn't save its own on every path to keep them across
+// a call that only some strings make: saving them made the comparison's
+// record, whose string is ASCII, read 7% slower. GCC saves them only on the
+// path that calls. The checks of each convention lie in a namespace of its
+// own, which their symbols name, so that a program that links code that GCC
+// compiled with code that clang compiled calls each check by the convention
+// it was compiled for, rather than the one copy of the two that the linker
+// keeps.
+#if defined(__clang__) && (defined(__aarch64__) || defined(__x86_64__))
+#define TAFLA_UTF8_OUT_OF_LINE [[gnu::noinline, clang::preserve_most]] inline
+#define TAFLA_UTF8_CONVENTION preserve_most
+#elif defined(__GNUC__)
+#define TAFLA_UTF8_OUT_OF_LINE [[gnu::noinline]] inline
+#define TAFLA_UTF8_CONVENTION standard
+#else
+#define TAFLA_UTF8_OUT_OF_LINE inline
+#define TAFLA_UTF8_CONVENTION standard
+#endif
+
 namespace tafla::detail {
 
 /// The 8 bytes at `bytes`, at any alignment, as a word in the host's byte
@@ -95,13 +116,15 @@ TAFLA_ALWAYS_INLINE std::size_t first_high_byte_of_words(const std::uint8_t* byt
     return first_high_byte(first, second, 8);
 }
 
-/// The position of the first byte from `index` that isn't ASCII, or of one
-/// of the last 7 bytes or fewer, before which every byte is ASCII. ASCII is
-/// skipped a word at a time, and after a word of it 32 bytes at a time while
-/// a block of four words is ASCII, so that a short run of ASCII between other
-/// characters costs a word's test and a long one a test of each 32 bytes. The
-/// high bits of the word that holds a byte that isn't ASCII locate it, rather
-/// than steps to it a byte at a time.
+/// The position of the first byte from `index` that isn't ASCII, or `length`
+/// if there's none, in a string of 8 bytes or more at `bytes`, and `index` in
+/// a shorter one, whose bytes the caller takes one by one. ASCII is skipped a
+/// word at a time, and after a word of it 32 bytes at a time while a block of
+/// four words is ASCII, so that a short run of ASCII between other characters
+/// costs a word's test and a long one a test of each 32 bytes. The last 7
+/// bytes or fewer are tested in the word that ends with the string. The high
+/// bits of the word that holds a byte that isn't ASCII locate it, rather than
+/// steps to it a byte at a time.
 TAFLA_ALWAYS_INLINE std::size_t skip_ascii(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
     while (length - index >= 8) {
         const std::uint64_t word = word_at(bytes + index);
@@ -114,13 +137,25 @@ TAFLA_ALWAYS_INLINE std::size_t skip_ascii(const std::uint8_t* bytes, std::size_
             index += 32;
         }
     }
+
+    // The bytes before `index` leave the word, and zeros, ASCII, take their
+    // place
+    if (index < length && length >= 8) {
+        const auto before = static_cast<unsigned>(8 - (length - index)) * 8;
+        std::uint64_t word = word_at(bytes + length - 8);
+        word = std::endian::native == std::endian::little ? word >> before : word << before;
+        return ascii(word) ? length : index + first_high_byte(word);
+    }
     return index;
 }
+
+inline namespace TAFLA_UTF8_CONVENTION {
 
 /// Whether the bytes from `index` to `length` are UTF-8, as `valid_utf8()`
 /// defines it, where those before `index` are ASCII, checked character by
 /// character
-inline bool valid_utf8_characters_from(const std::uint8_t* bytes, std::size_t index, std::size_t length) noexcept {
+TAFLA_UTF8_OUT_OF_LINE bool valid_utf8_characters_from(const std::uint8_t* bytes, std::size_t index,
+                                                       std::size_t length) noexcept {
     const auto continues = [](std::uint8_t byte) { return (byte & 0xc0) == 0x80; };
 
     while (index < length) {
@@ -175,6 +210,8 @@ inline bool valid_utf8_characters_from(const std::uint8_t* bytes, std::size_t in
 
     return true;
 }
+
+}  // namespace TAFLA_UTF8_CONVENTION
 
 #if defined(TAFLA_UTF8_NEON)
 
@@ -322,6 +359,8 @@ TAFLA_ALWAYS_INLINE uint8x16_t cut_short(uint8x16_t block) noexcept {
 
 }  // namespace utf8_blocks
 
+inline namespace TAFLA_UTF8_CONVENTION {
+
 /// Whether the bytes from `index` to `length`, `kUtf8BlockLength` or more,
 /// are UTF-8, where those before `index` are ASCII, checked 16 bytes at a
 /// time with each byte's 3 before it. A block of ASCII after one that ends
@@ -331,8 +370,8 @@ TAFLA_ALWAYS_INLINE uint8x16_t cut_short(uint8x16_t block) noexcept {
 /// end is an error as any other. Every read stays within the bytes, and the
 /// errors are tested once, at the end. It's kept apart from the reads that
 /// inline `valid_utf8()`, which call it.
-[[gnu::noinline]] inline bool valid_utf8_blocks_from(const std::uint8_t* bytes, std::size_t index,
-                                                     std::size_t length) noexcept {
+TAFLA_UTF8_OUT_OF_LINE bool valid_utf8_blocks_from(const std::uint8_t* bytes, std::size_t index,
+                                                   std::size_t length) noexcept {
     using namespace utf8_blocks;
     const Tables tables = load_tables();
 
@@ -358,6 +397,8 @@ TAFLA_ALWAYS_INLINE uint8x16_t cut_short(uint8x16_t block) noexcept {
 
     return vmaxvq_u8(error) == 0;
 }
+
+}  // namespace TAFLA_UTF8_CONVENTION
 
 #endif
 
@@ -388,13 +429,13 @@ inline bool valid_utf8_from(const std::uint8_t* bytes, std::size_t index, std::s
 /// of the words or halves that it OR-ed locate, taken in turn, or from the
 /// first byte of a string shorter than 4 bytes: on AArch64 in blocks of 16
 /// bytes where 16 or more are left, and otherwise character by character,
-/// skipping ASCII between them by words and blocks. Where
-/// that's the first byte of the string or of its block, as in a string of
-/// another script, a branch tests it on its own, so that reading its
-/// character needn't wait for the words and the count. `valid_utf8_from()` is
-/// left to the compiler to inline, which read the comparison's record faster
-/// than a call to it did. Every read stays within the bytes, at any
-/// alignment, and a word's high bits are its bytes' in either byte order.
+/// skipping ASCII between them by words and blocks. Where that's the first
+/// byte of the string or of its block, as in a string of another script, a
+/// branch tests it on its own, so that reading its character needn't wait for
+/// the words and the count. `valid_utf8_from()`, which chooses between the
+/// checks, is left to the compiler to inline, and the checks themselves are
+/// kept out of line. Every read stays within the bytes, at any alignment, and
+/// a word's high bits are its bytes' in either byte order.
 TAFLA_ALWAYS_INLINE bool valid_utf8(const std::uint8_t* bytes, std::size_t length) noexcept {
     std::size_t index = 0;
     if (length >= 8) {

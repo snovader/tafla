@@ -189,11 +189,26 @@ type, offset size, vector, builder and decode error.
   of 9 to 40 bytes to 0.7 to 1.5 ns rather than 1.1 to 2.4 ns. Where the
   test fails, the high bits of the words that it OR-ed, taken in turn,
   locate the first byte that isn't ASCII, from which `valid_utf8_from()`
-  checks the characters one by one, rather than from the start of the word
-  that holds it. Strings of 6 to 40 bytes with ASCII before that byte then
-  took as long or up to 55% less time. A string whose first byte isn't
-  ASCII, which a branch tests on its own, took up to 0.8 ns longer, such as
-  6-byte strings of 2- and 3-byte characters, 14 to 17% longer.
+  checks the rest, rather than from the start of the word that holds it.
+  Strings of 6 to 40 bytes with ASCII before that byte then took as long or
+  up to 55% less time. A string whose first byte isn't ASCII, which a branch
+  tests on its own, took up to 0.8 ns longer, such as 6-byte strings of 2-
+  and 3-byte characters, 14 to 17% longer.
+- **The rest is checked 16 bytes at a time on AArch64, and elsewhere
+  character by character with ASCII skipped by words.** Where 16 bytes or
+  more are left, NEON checks each block with the table lookups of Keiser and
+  Lemire's algorithm, which protobuf's utf8_range uses too. Otherwise the
+  characters are checked one by one, with ASCII between them skipped a word
+  at a time and the last bytes tested in the word that ends the string. In
+  the strings comparison, reading 16 strings of 768 bytes to 1 KiB of 2-, 3-
+  or 4-byte characters then took 0.16 to 0.20 of the time, about half of
+  protobuf's rather than 2.5 to 2.9 times it. Strings of 24 to 96 bytes of
+  them took 0.24 to 0.40 of the time, and strings of 9 to 18 bytes with one
+  or two among ASCII 0.55 to 0.87. A string of 256 bytes whose last
+  character alone isn't ASCII took 0.6 ns longer, for the call. The checks
+  are kept out of line, and with clang keep the registers of the read that
+  calls them, without which the comparison's record, whose string is ASCII,
+  read 7% slower.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
