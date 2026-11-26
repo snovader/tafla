@@ -4,7 +4,7 @@ use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 use crate::diagnostic::{Diagnostic, Span};
-use crate::generate::reserved;
+use crate::generate::reserved::{self, Declared};
 use crate::model::{
     Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
     StructLayout, strongly_connected_components,
@@ -81,30 +81,35 @@ fn index_names<'a>(schema: &'a Declarations, errors: &mut Vec<Diagnostic>) -> Na
     let mut names = Names::default();
     let mut enums = schema.enums.iter().enumerate().peekable();
 
+    // The definitions and the enums are each in source order: taking the
+    // enums declared before each definition first indexes a name at its
+    // first declaration, so that the later one is the one declared twice
     for (index, declaration) in schema.declarations.iter().enumerate() {
-        // Merge the two source-ordered lists so the first declaration owns the name.
         while let Some((index, enumeration)) = enums
             .next_if(|(_, enumeration)| enumeration.name.span.start < declaration.name.span.start)
         {
             index_enum(index, enumeration, &mut names, errors);
         }
-        if check_declared_name(&declaration.name, false, &mut names, errors) {
+        if check_declared_name(&declaration.name, Declared::Definition, &mut names, errors) {
             names.definitions.insert(&declaration.name.text, index);
         }
     }
     for (index, enumeration) in enums {
         index_enum(index, enumeration, &mut names, errors);
     }
+
     names
 }
 
+/// Indexes an enum by its name, with its underlying type, when it's the
+/// first declaration of the name
 fn index_enum<'a>(
     index: usize,
     declaration: &'a EnumDeclaration,
     names: &mut Names<'a>,
     errors: &mut Vec<Diagnostic>,
 ) {
-    if check_declared_name(&declaration.name, true, names, errors) {
+    if check_declared_name(&declaration.name, Declared::Enum, names, errors) {
         let underlying = integer_type(&declaration.underlying.text);
         names
             .enums
@@ -114,10 +119,11 @@ fn index_enum<'a>(
 
 /// Checks the name of a message, table, struct or enum, which share their
 /// names, and whether it's the first declaration of the name, which the name
-/// then stands for
+/// then stands for. `declared` says which it names, since an enum can't take
+/// some names that the others can.
 fn check_declared_name<'a>(
     name: &'a Name,
-    is_enum: bool,
+    declared: Declared,
     names: &mut Names<'a>,
     errors: &mut Vec<Diagnostic>,
 ) -> bool {
@@ -133,7 +139,7 @@ fn check_declared_name<'a>(
             name.span,
         ));
     }
-    check_reserved_name(name, is_enum, errors);
+    check_reserved_name(name, declared, errors);
 
     match names.spans.entry(&name.text) {
         Entry::Vacant(entry) => {
@@ -186,17 +192,22 @@ fn check_enum(declaration: &EnumDeclaration, errors: &mut Vec<Diagnostic>) -> En
     }
 }
 
-/// A Java class file has 65,534 usable constant-pool slots. Allow 65,500
-/// for the fields, leaving room for the class, constructor and attributes.
-/// Each field needs its name and its integer constant; a long uses two
-/// slots for the constant, including when Java widens a uint32 to a long.
+/// The most slots of a Java class's constant pool that an enum's constants
+/// take, of the pool's 65,534. The rest hold the class's own entries, such as
+/// its name and its constructor's: 17 of them from javac 26 with `-g`.
+const MAX_JAVA_ENUM_SLOTS: usize = 65_500;
+
+/// Checks that Java can declare a class of an enum's constants. Each takes a
+/// slot of the constant pool for its name and one for its integer, or two
+/// for a `long`, as a parameter does: a `uint32`, `int64` or `uint64`.
 fn check_java_enum_size(
     declaration: &EnumDeclaration,
     scalar: Scalar,
     errors: &mut Vec<Diagnostic>,
 ) {
     let slots_per_value = 1 + java_parameter_slots(FieldType::Scalar(scalar));
-    let limit = 65_500 / slots_per_value;
+    let limit = MAX_JAVA_ENUM_SLOTS / slots_per_value;
+
     if declaration.values.len() > limit {
         errors.push(
             Diagnostic::new(
@@ -337,11 +348,11 @@ fn check_value_integers(
     }
 }
 
-/// Checks that a declaration doesn't take a name that a target's generated
-/// code imports or relies on, such as `List` in Java, which every target
-/// declares it beside
-fn check_reserved_name(name: &Name, is_enum: bool, errors: &mut Vec<Diagnostic>) {
-    let targets = reserved::targets_using(&name.text, is_enum);
+/// Checks that a declaration of `declared` doesn't take a name that a
+/// target's generated code imports or relies on, such as `List` in Java,
+/// which every target declares it beside
+fn check_reserved_name(name: &Name, declared: Declared, errors: &mut Vec<Diagnostic>) {
+    let targets = reserved::targets_using(&name.text, declared);
     let Some((last, others)) = targets.split_last() else {
         return;
     };

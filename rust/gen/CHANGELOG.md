@@ -61,10 +61,9 @@ first commits, for code built from its source before the release.
   class of constants in Java, a newtype of the integer with constants in
   Rust, a defined type and constants in Go, an `enum class` in C++, a
   `RawRepresentable` struct in Swift and an `enum` in C#, and checks that
-  each value fits the type and has a name and an integer of its own. The
-  checker reports duplicate names at the later declaration and limits enum
-  sizes to what the generated Java class can hold. Existing messages, tables
-  and structs can still be named `Ok`, `Err` and `Some`.
+  each value fits the type and has a name and an integer of its own, and
+  that an enum has no more values than the constant pool of its Java class
+  holds.
 - A static `versionOf()` on every versioned message that tafla-gen generates
   (`version_of()` in Python and Rust), which reads the version in the header
   so that an application can choose the reader of that version.

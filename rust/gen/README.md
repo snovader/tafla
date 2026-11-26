@@ -150,14 +150,14 @@ or read its tables, or a target couldn't generate its code:
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
   `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
-  in Rust, and `Int`, `RawSpan`,
-  `Hashable` and `RawRepresentable` in Swift, `Fields`, the record
-  of a Java class's fields, keywords, such as `None` in Python and `Self` in
-  Rust and Swift, the macros of the C standard library that a C++ header
-  may define, such as `NULL` and `EOF`, and the members that C#'s generated
-  types declare, which a type of the same name can't, such as a struct's
-  `Size` and `Write()`, a record's `ToString()` and the `ToArray()` of the
-  view of an array of `To`s, and `Enumerator`, which its views nest; C++ and C# name everything else in full, and Swift names
+  in Rust and `Int`, `RawSpan`, `Hashable` and `RawRepresentable` in Swift,
+  `Fields`, the record of a Java class's fields, keywords, such as `None` in
+  Python and `Self` in Rust and Swift, the macros of the C standard library
+  that a C++ header may define, such as `NULL` and `EOF`, and the members
+  that C#'s generated types declare, which a type of the same name can't,
+  such as a struct's `Size` and `Write()`, a record's `ToString()` and the
+  `ToArray()` of the view of an array of `To`s, and `Enumerator`, which its
+  views nest; C++ and C# name everything else in full, and Swift names
   `Swift.Range`, so that a schema can declare `Range`.
   `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
@@ -168,12 +168,13 @@ or read its tables, or a target couldn't generate its code:
 - An enum's type is an integer type, `int8` to `uint64`. Each of its values
   is an integer of that type, and no two values share a name, in
   `camelCase` too, or an integer, so that each integer has at most one name.
-  An enum can't be named `Ok`, `Err`, `Some` or `None`, since its Rust
-  tuple-struct constructor would hide a prelude variant.
-- An enum can declare up to 21,833 values of `uint32`, `int64` or `uint64`,
-  and up to 32,750 of the other integer types. Its Java class reserves 65,500
-  constant-pool slots for the fields. Each name takes one slot, and each
-  distinct value takes two for a Java `long`, or one for a narrower integer.
+  An enum can't take the name of a variant of Rust's prelude, `Ok`, `Err`,
+  `Some` or `None`, which the function of its tuple struct would hide.
+- An enum has at most 32,750 values, or 21,833 of `uint32`, `int64` or
+  `uint64`, since the generated Java declares a constant of each value. A
+  constant's name takes a slot of the class's constant pool, and its integer
+  one more, or two as a `long`, and tafla-gen allows them 65,500 of the
+  pool's 65,534.
 - A value of an enum can't take a name that the generated Go declares
   beside the enum, `<Enum><Value>` in `PascalCase`, such as `PriorityHigh`
   for `high` of `Priority`, where a declaration, a function or constant of

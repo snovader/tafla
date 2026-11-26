@@ -702,18 +702,27 @@ enum T: uint8 { low = 0; }
 }
 
 #[test]
-fn an_enum_can_be_named_object_in_javascript_and_typescript() {
-    for target in ["javascript", "typescript"] {
-        let files = generate(
-            "objects.tafla",
+fn enums_freeze_with_the_global_object_in_javascript_and_typescript() {
+    // `Object.freeze()` in an enum named `Object` would read the enum before
+    // it's initialized, and in any enum, a message named `Object`, which has
+    // no `freeze()`
+    for (source, declaration) in [
+        (
             "enum Object: uint8 { first = 0; }",
-            target,
-            &Options::default(),
-        );
-        assert!(
-            files[0]
-                .contents
-                .contains("export const Object = globalThis.Object.freeze(")
-        );
+            "export const Object = globalThis.Object.freeze({",
+        ),
+        (
+            "message Object { level: Level; }\nenum Level: uint8 { low = 0; }",
+            "export const Level = globalThis.Object.freeze({",
+        ),
+    ] {
+        for target in ["javascript", "typescript"] {
+            let files = generate("objects.tafla", source, target, &Options::default());
+            assert!(
+                files[0].contents.contains(declaration),
+                "{}",
+                files[0].contents
+            );
+        }
     }
 }
