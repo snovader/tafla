@@ -111,6 +111,8 @@ void set_field_on(const Field& field, Target& target, std::optional<OffsetType> 
                     bytes.insert(bytes.end(), item_bytes.begin(), item_bytes.end());
                 }
                 target.set_struct_array(std::move(bytes), struct_size(value.types), struct_alignment(value.types));
+            } else if constexpr (std::is_same_v<T, Absent>) {
+                target.set_absent();
             } else if constexpr (std::is_same_v<T, TableField>) {
                 if (!value.alignment && records_in_place(value.nested, in_place)) {
                     const auto& fields = value.nested.table.fields;

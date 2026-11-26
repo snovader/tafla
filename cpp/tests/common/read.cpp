@@ -37,6 +37,15 @@ ItemResult try_item(Read read) {
 
 std::vector<Field> read_struct(std::span<const std::uint8_t> bytes, const std::vector<ScalarType>& types);
 
+/// Reads a field described as absent, from its offset counted from its
+/// table's start, which must be 0
+Field read_absent(std::size_t offset) {
+    if (offset != 0) {
+        throw ReadMismatch("A field described as absent has the offset " + std::to_string(offset));
+    }
+    return {Absent{}};
+}
+
 template <bool Versioned>
 class Reader {
 public:
@@ -65,13 +74,17 @@ public:
         return read_field(reader_.root_offset(index), field);
     }
 
+    /// Reads `field` at `position`, or an absent field, whose position is its
+    /// offset in the root, which must be 0
     Field read_field(std::size_t position, const Field& field) const {
         return std::visit(
             [this, position](const auto& value) -> Field {
                 using T = std::decay_t<decltype(value)>;
                 const auto& reader = reader_;
 
-                if constexpr (std::is_same_v<T, std::int8_t>) {
+                if constexpr (std::is_same_v<T, Absent>) {
+                    return read_absent(position);
+                } else if constexpr (std::is_same_v<T, std::int8_t>) {
                     return {reader.get_int8(position)};
                 } else if constexpr (std::is_same_v<T, std::uint8_t>) {
                     return {reader.get_uint8(position)};
@@ -145,12 +158,64 @@ public:
     Table read_in_place(std::size_t position, const Table& table) const {
         Table read{table.layout, std::nullopt, {}};
         for (std::size_t index = 0; index < table.fields.size(); ++index) {
-            read.fields.push_back(read_field(reader_.field_offset(position, index), table.fields[index]));
+            const auto& field = table.fields[index];
+            const auto offset = reader_.field_offset(position, index);
+
+            // An absent field's offset counts from the nested table's start
+            if (std::holds_alternative<Absent>(field.value)) {
+                read.fields.push_back(read_absent(offset - position));
+            } else {
+                read.fields.push_back(read_field(offset, field));
+            }
+        }
+
+        if (table.missing) {
+            read.missing = count_nested_missing(position, table);
         }
         return read;
     }
 
+    /// Counts the fields after the root's own that it doesn't hold, of the
+    /// `missing` fields that a reader of a later revision knows there, as
+    /// `count_nested_missing()` counts them
+    [[nodiscard]] std::size_t count_root_missing(const Table& table) const {
+        const auto offset = [this](std::size_t index) { return reader_.root_offset(index); };
+        return count_missing(table, table.layout.header_size(), offset);
+    }
+
+    /// Counts the fields after the nested table's own that it doesn't hold,
+    /// of the `missing` fields that a reader of a later revision knows there:
+    /// a field whose offset would end after the table's first value starts,
+    /// or whose offset is 0, as padding before the first value reads. A table
+    /// that holds one of them counts fewer than `missing`.
+    [[nodiscard]] std::size_t count_nested_missing(std::size_t position, const Table& table) const {
+        // A nested table's offsets count from its own start, where it has no
+        // header
+        const auto offset = [this, position](std::size_t index) {
+            return reader_.field_offset(position, index) - position;
+        };
+        return count_missing(table, 0, offset);
+    }
+
 private:
+    /// Counts the missing fields of a table whose offsets follow a header of
+    /// `header_size` bytes, and whose field `index` lies at `offset(index)`
+    /// from its start
+    template <class Offset>
+    std::size_t count_missing(const Table& table, std::size_t header_size, Offset offset) const {
+        const auto width = offset_size(reader_.layout().offset_type());
+        const auto first_value = offset(0);
+
+        std::size_t count = 0;
+        for (auto index = table.fields.size(); index < table.fields.size() + table.missing.value_or(0); ++index) {
+            const bool holds_offset = header_size + (index + 1) * width <= first_value;
+            if (!holds_offset || offset(index) == 0) {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     /// Reads a table nested with `set_table()`
     Table read_nested(std::size_t position, const Table& table) const {
         if (reads_in_place(table)) {
@@ -284,12 +349,20 @@ Table read_table(std::span<const std::uint8_t> bytes, const Table& table) {
         const Reader<true> reader(TableReader(bytes, unversioned.with_version(0)));
         reader.check_size(table.layout);
         const auto version = TableReader(bytes, unversioned.with_version(0)).version();
-        return {table.layout, version, reader.read_root_fields(table.fields)};
+        Table read{table.layout, version, reader.read_root_fields(table.fields)};
+        if (table.missing) {
+            read.missing = reader.count_root_missing(table);
+        }
+        return read;
     }
 
     const Reader<false> reader(TableReader(bytes, unversioned));
     reader.check_size(table.layout);
-    return {table.layout, std::nullopt, reader.read_root_fields(table.fields)};
+    Table read{table.layout, std::nullopt, reader.read_root_fields(table.fields)};
+    if (table.missing) {
+        read.missing = reader.count_root_missing(table);
+    }
+    return read;
 }
 
 Field read_root_field(std::span<const std::uint8_t> bytes, const Layout& layout, std::size_t index,

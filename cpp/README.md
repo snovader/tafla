@@ -90,6 +90,16 @@ type, offset size, vector, builder and decode error.
   7.5 µs from a builder per item and 3.0 µs through FlatBuffers. A table nested
   from a builder or bytes, with `set_table(table)` and `set_vector(items)`,
   is still what a table built elsewhere, or reused, needs.
+- **Absent fields.** `TableBuilder::set_absent()`, and `Item`'s, set the
+  next field as absent, and `TableWriter::set_absent(index)` writes field
+  `index` so: the offset 0 and no value, which a `TableSizer` adds nothing
+  for, as `SPEC.md`'s absent fields describe. A reader compares the field's
+  offset, from `root_offset()`, with 0, or one from `field_offset()` with the
+  nested table's position, before it reads the field, as tafla-gen's code of
+  an optional field does, whose getter returns `std::nullopt`, or a scalar's
+  default. Only a format whose readers make that check can leave a field
+  out: a reader of a required field reads the bytes at position 0 as its
+  value.
 - **`Bytes` aren't zeroed.** A writer allocates a table's bytes at its exact
   length, uninitialized, and writes each byte once, which a `std::vector`
   would zero first. `Bytes` convert to a `std::span`, and `to_vector()` copies
@@ -256,7 +266,15 @@ and a failure prints the `RC_PARAMS` that reproduces it.
 - `conformance_test`: the conformance suite in `conformance/`: valid tables
   read back their values and rebuild byte for byte, also through
   `TableSizer` and `TableWriter`, equivalent tables read their valid case's
-  values, and invalid tables fail with a `DecodeError` at their field.
+  values, and invalid tables fail with a `DecodeError` at their field. So do
+  its cases of presence in `conformance/presence/`, whose absent fields have
+  the offset 0, and whose tables lack the fields that a reader of a later
+  revision knows.
+- `presence_test`: tables generated as the others' are, with fields left out
+  at every depth: they read back at any address, the sizer and writer write
+  what the builder writes, into new bytes and into given ones, a reader of
+  an earlier or a later revision finds the fields that the table lacks, and
+  corrupted tables read as values or decode errors.
 - `round_trip_test`, `format_test`, `decode_error_test`, `table_builder_test`
   and `table_writer_test`: properties of tables generated from the
   conformance suite's descriptions, by `tests/common/strategy.cpp`, as Rust's

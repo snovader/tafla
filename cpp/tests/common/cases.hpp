@@ -18,6 +18,10 @@ namespace tafla::test {
 /// The conformance suite's directory
 std::filesystem::path conformance_directory();
 
+/// The directory of the suite's cases of presence, which lie apart from its
+/// others: absent fields, and fields that a later revision of a table appends
+std::filesystem::path presence_directory();
+
 /// Reads a file's bytes
 std::vector<std::uint8_t> read_file(const std::filesystem::path& path);
 
@@ -41,8 +45,10 @@ struct ValidCase {
     Table table;
 };
 
-/// The valid cases of `cases.json`, with their bytes
-std::vector<ValidCase> valid_cases(const nlohmann::json& suite);
+/// The valid cases of `cases.json`, with their bytes, from the files that
+/// they name in `directory`
+std::vector<ValidCase> valid_cases(const nlohmann::json& suite,
+                                   const std::filesystem::path& directory = conformance_directory());
 
 /// The description of the valid case that an equivalent or invalid case names
 /// as its `case`
