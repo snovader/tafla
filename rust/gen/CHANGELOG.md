@@ -22,7 +22,9 @@ first commits, for code built from its source before the release.
 - Optional fields, `name: string?`, which a writer may leave out, and fields
   appended by a later version of a message or revision of a table,
   `label: string (since: 2)`, whose getters return `undefined` for a table
-  that doesn't hold them. A message's `since` attribute names the first
+  that doesn't hold them, or a scalar's default, zero or the value after
+  `=`, as `count: uint16? = 1`, beside `hasCount()`, which tells whether the
+  table holds it. A message's `since` attribute names the first
   version that its reader reads, as `version: 2, since: 1`. Only the
   TypeScript and JavaScript targets generate them so far, and every other
   target fails on a schema that declares them. The code that they generate

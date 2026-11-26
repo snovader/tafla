@@ -1,0 +1,21 @@
+// The limits of each type are defaults too, and raise no error
+message Defaults {
+    required: uint8 = 1;
+    name: string? = 1;
+    byte: uint8? = 256;
+    signed: int8? = -129;
+    flag: bool? = 1;
+    count: uint8? = true;
+    wide: float32? = 1e39;
+    whole: uint16? = 1.5;
+    lowest: int64? = -9223372036854775808;
+    highest: uint64? = 18446744073709551615;
+    tiny: float32? = 1e-50;
+    on: bool? = false;
+    later: float64 = -0.0 (since: 2);
+}
+
+table Clash {
+    z: float64?;
+    has_z: uint8;
+}

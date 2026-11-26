@@ -106,8 +106,8 @@ room between them, and an array after it is padded from where the previous
 value ends.
 
 A reader reads a field that may be absent by comparing its offset with 0
-first, and returns the missing value of its language, rather than reading a
-value at position 0. A nested table read in place is absent when its offset
+first, and returns the missing value of its language, or a scalar's default
+that the format gives, rather than reading a value at position 0. A nested table read in place is absent when its offset
 is 0 in its parent, and a field of it when its offset is 0 from the nested
 table's start. A vector holds every item; an item's fields may be absent.
 
@@ -148,8 +148,8 @@ A versioned table's version names its set of fields:
 - A reader reads the versions from the first that its format names to its
   own, and rejects every other version with its decode error. A field that a
   later version appended is missing from a table of an earlier one, and the
-  reader returns its language's missing value for it, from the version alone,
-  without reading its offset. A reader that reads only its own version
+  reader returns its language's missing value for it, or a scalar's default,
+  from the version alone, without reading its offset. A reader that reads only its own version
   rejects every other, even a newer version that only appends fields.
 - A reader rejects a version newer than its own, although it would read the
   fields that it knows from such a table alike, since a newer version may

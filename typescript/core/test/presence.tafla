@@ -2,6 +2,8 @@
 // revisions of a table append, which only the TypeScript and JavaScript
 // targets generate so far. The messages and tables named `V1` are the first
 // version or revision of the others, whose bytes the tests read with them.
+// A scalar that may be missing reads as its default, zero unless the schema
+// gives one after `=`.
 
 /// A record in its second version, which reads the first too
 message Record (sized, version: 2, since: 1) {
@@ -9,8 +11,10 @@ message Record (sized, version: 2, since: 1) {
     name: string?;
     values: [float64]?;
     origin: Point?;
-    flag: bool?;
+    flag: bool? = true;
     entries: [Entry]?;
+    /// A total, -1 when it's absent
+    total: int64? = -1;
     /// Added by version 2
     label: string (since: 2);
     extent: Extent? (since: 2);
@@ -22,15 +26,16 @@ message RecordV1 (sized, version: 1) {
     name: string?;
     values: [float64]?;
     origin: PointV1?;
-    flag: bool?;
+    flag: bool? = true;
     entries: [EntryV1]?;
+    total: int64? = -1;
 }
 
 /// A point whose second revision appends `z`
 table Point {
     x: float64;
     y: float64;
-    z: float64 (since: 2);
+    z: float64 = -0.5 (since: 2);
 }
 
 table PointV1 {
@@ -43,7 +48,7 @@ table PointV1 {
 table Entry {
     key: uint16;
     note: string?;
-    weight: float32 (since: 2);
+    weight: float32 = 0.1 (since: 2);
 }
 
 table EntryV1 {
@@ -59,7 +64,7 @@ struct Extent {
 /// A message without a version, whose second revision appends `count`
 message Sample {
     key: uint32;
-    count: uint16 (since: 2);
+    count: uint16 = 7 (since: 2);
 }
 
 message SampleV1 {

@@ -1,0 +1,53 @@
+error: only a field that may be missing has a default
+ --> defaults.tafla:3:23
+  |
+3 |     required: uint8 = 1;
+  |                       ^ declare it optional with `?`, or added `since` a version
+
+error: only a scalar has a default
+ --> defaults.tafla:4:21
+  |
+4 |     name: string? = 1;
+  |                     ^ a missing string, array, table or struct reads as the language's missing value
+
+error: `256` doesn't fit in `uint8`
+ --> defaults.tafla:5:20
+  |
+5 |     byte: uint8? = 256;
+  |                    ^^^ from 0 to 255
+
+error: `-129` doesn't fit in `int8`
+ --> defaults.tafla:6:21
+  |
+6 |     signed: int8? = -129;
+  |                     ^^^^ from -128 to 127
+
+error: `1` isn't a `bool`
+ --> defaults.tafla:7:19
+  |
+7 |     flag: bool? = 1;
+  |                   ^ a bool's default is `true` or `false`
+
+error: `true` isn't a `uint8`
+ --> defaults.tafla:8:21
+  |
+8 |     count: uint8? = true;
+  |                     ^^^^ an integer's default is an integer, such as `0` or `-1`
+
+error: `1e39` isn't a finite `float32`
+ --> defaults.tafla:9:22
+  |
+9 |     wide: float32? = 1e39;
+  |                      ^^^^
+
+error: `1.5` isn't a `uint16`
+  --> defaults.tafla:10:22
+   |
+10 |     whole: uint16? = 1.5;
+   |                      ^^^ an integer's default is an integer, such as `0` or `-1`
+
+error: `has_z` clashes with the method that tells whether `z` is there
+  --> defaults.tafla:20:5
+   |
+20 |     has_z: uint8;
+   |     ^^^^^ rename it, or `z`

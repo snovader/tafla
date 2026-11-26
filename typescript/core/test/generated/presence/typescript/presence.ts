@@ -98,17 +98,27 @@ export class Point {
         );
     }
 
-    z(): number | undefined {
+    /** `-0.5` when the table doesn't hold it, as `hasZ()` tells */
+    z(): number {
         if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
-            return undefined;
+            return -0.5;
         }
 
         const offset = this._reader.fieldOffset(this._position, 2);
         if (offset === this._position) {
-            return undefined;
+            return -0.5;
         }
 
         return this._reader.getFloat64(offset);
+    }
+
+    /** Whether the table holds `z` */
+    hasZ(): boolean {
+        if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
+            return false;
+        }
+
+        return this._reader.fieldOffset(this._position, 2) !== this._position;
     }
 }
 
@@ -184,17 +194,27 @@ export class Entry {
         return this._reader.getString(offset);
     }
 
-    weight(): number | undefined {
+    /** `0.10000000149011612` when the table doesn't hold it, as `hasWeight()` tells */
+    weight(): number {
         if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
-            return undefined;
+            return 0.10000000149011612;
         }
 
         const offset = this._reader.fieldOffset(this._position, 2);
         if (offset === this._position) {
-            return undefined;
+            return 0.10000000149011612;
         }
 
         return this._reader.getFloat32(offset);
+    }
+
+    /** Whether the table holds `weight` */
+    hasWeight(): boolean {
+        if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
+            return false;
+        }
+
+        return this._reader.fieldOffset(this._position, 2) !== this._position;
     }
 }
 
@@ -384,7 +404,7 @@ export class Record {
 
     /** Writes a `Record` with every field */
     static serialize(fields: RecordFields): Uint8Array {
-        const sizer = new TableSizer(8, Record.#LAYOUT);
+        const sizer = new TableSizer(9, Record.#LAYOUT);
         sizer.addUint32();
         if (fields.name != null) {
             sizer.addString(fields.name);
@@ -404,6 +424,9 @@ export class Record {
             for (const item of fields.entries) {
                 Entry.size(sizer, item);
             }
+        }
+        if (fields.total != null) {
+            sizer.addInt64();
         }
         sizer.addString(fields.label);
         if (fields.extent != null) {
@@ -442,11 +465,16 @@ export class Record {
                 writer.setItemEnd(vector5, i);
             }
         }
-        writer.setString(6, fields.label);
-        if (fields.extent == null) {
-            writer.setAbsent(7);
+        if (fields.total == null) {
+            writer.setAbsent(6);
         } else {
-            writer.setStruct(7, Extent.serialize(fields.extent));
+            writer.setInt64(6, fields.total);
+        }
+        writer.setString(7, fields.label);
+        if (fields.extent == null) {
+            writer.setAbsent(8);
+        } else {
+            writer.setStruct(8, Extent.serialize(fields.extent));
         }
 
         return writer.bytes();
@@ -463,7 +491,7 @@ export class Record {
      * any of them is written.
      */
     static serializeInto(fields: RecordFields, bytes: Uint8Array): Uint8Array {
-        const sizer = new TableSizer(8, Record.#LAYOUT);
+        const sizer = new TableSizer(9, Record.#LAYOUT);
         sizer.addUint32();
         if (fields.name != null) {
             sizer.addString(fields.name);
@@ -483,6 +511,9 @@ export class Record {
             for (const item of fields.entries) {
                 Entry.size(sizer, item);
             }
+        }
+        if (fields.total != null) {
+            sizer.addInt64();
         }
         sizer.addString(fields.label);
         if (fields.extent != null) {
@@ -521,11 +552,16 @@ export class Record {
                 writer.setItemEnd(vector5, i);
             }
         }
-        writer.setString(6, fields.label);
-        if (fields.extent == null) {
-            writer.setAbsent(7);
+        if (fields.total == null) {
+            writer.setAbsent(6);
         } else {
-            writer.setStruct(7, Extent.serialize(fields.extent));
+            writer.setInt64(6, fields.total);
+        }
+        writer.setString(7, fields.label);
+        if (fields.extent == null) {
+            writer.setAbsent(8);
+        } else {
+            writer.setStruct(8, Extent.serialize(fields.extent));
         }
 
         return writer.bytes();
@@ -562,13 +598,19 @@ export class Record {
         return new Point(this._reader, offset);
     }
 
-    flag(): boolean | undefined {
+    /** `true` when the table doesn't hold it, as `hasFlag()` tells */
+    flag(): boolean {
         const offset = this._reader.rootOffset(4);
         if (offset === 0) {
-            return undefined;
+            return true;
         }
 
         return this._reader.getUint8(offset) !== 0;
+    }
+
+    /** Whether the table holds `flag` */
+    hasFlag(): boolean {
+        return this._reader.rootOffset(4) !== 0;
     }
 
     entries(): EntryVector | undefined {
@@ -580,13 +622,31 @@ export class Record {
         return new EntryVector(this._reader, offset);
     }
 
+    /**
+     * A total, -1 when it's absent
+     * `-1n` when the table doesn't hold it, as `hasTotal()` tells
+     */
+    total(): bigint {
+        const offset = this._reader.rootOffset(6);
+        if (offset === 0) {
+            return -1n;
+        }
+
+        return this._reader.getInt64(offset);
+    }
+
+    /** Whether the table holds `total` */
+    hasTotal(): boolean {
+        return this._reader.rootOffset(6) !== 0;
+    }
+
     /** Added by version 2 */
     label(): string | undefined {
         if (this._version < 2) {
             return undefined;
         }
 
-        return this._reader.getString(this._reader.rootOffset(6));
+        return this._reader.getString(this._reader.rootOffset(7));
     }
 
     extent(): Extent | undefined {
@@ -594,7 +654,7 @@ export class Record {
             return undefined;
         }
 
-        const offset = this._reader.rootOffset(7);
+        const offset = this._reader.rootOffset(8);
         if (offset === 0) {
             return undefined;
         }
@@ -611,6 +671,8 @@ export interface RecordFields {
     origin?: PointFields | undefined;
     flag?: boolean | undefined;
     entries?: readonly EntryFields[] | undefined;
+    /** A total, -1 when it's absent */
+    total?: bigint | undefined;
     /** Added by version 2 */
     label: string;
     extent?: ExtentFields | undefined;
@@ -866,7 +928,7 @@ export class RecordV1 {
 
     /** Writes a `RecordV1` with every field */
     static serialize(fields: RecordV1Fields): Uint8Array {
-        const sizer = new TableSizer(6, RecordV1.#LAYOUT);
+        const sizer = new TableSizer(7, RecordV1.#LAYOUT);
         sizer.addUint32();
         if (fields.name != null) {
             sizer.addString(fields.name);
@@ -886,6 +948,9 @@ export class RecordV1 {
             for (const item of fields.entries) {
                 EntryV1.size(sizer, item);
             }
+        }
+        if (fields.total != null) {
+            sizer.addInt64();
         }
 
         const writer = sizer.writer();
@@ -920,6 +985,11 @@ export class RecordV1 {
                 writer.setItemEnd(vector5, i);
             }
         }
+        if (fields.total == null) {
+            writer.setAbsent(6);
+        } else {
+            writer.setInt64(6, fields.total);
+        }
 
         return writer.bytes();
     }
@@ -938,7 +1008,7 @@ export class RecordV1 {
         fields: RecordV1Fields,
         bytes: Uint8Array
     ): Uint8Array {
-        const sizer = new TableSizer(6, RecordV1.#LAYOUT);
+        const sizer = new TableSizer(7, RecordV1.#LAYOUT);
         sizer.addUint32();
         if (fields.name != null) {
             sizer.addString(fields.name);
@@ -958,6 +1028,9 @@ export class RecordV1 {
             for (const item of fields.entries) {
                 EntryV1.size(sizer, item);
             }
+        }
+        if (fields.total != null) {
+            sizer.addInt64();
         }
 
         const writer = sizer.writer(bytes);
@@ -991,6 +1064,11 @@ export class RecordV1 {
                 EntryV1.write(writer, fields.entries[i]);
                 writer.setItemEnd(vector5, i);
             }
+        }
+        if (fields.total == null) {
+            writer.setAbsent(6);
+        } else {
+            writer.setInt64(6, fields.total);
         }
 
         return writer.bytes();
@@ -1027,13 +1105,19 @@ export class RecordV1 {
         return new PointV1(this._reader, offset);
     }
 
-    flag(): boolean | undefined {
+    /** `true` when the table doesn't hold it, as `hasFlag()` tells */
+    flag(): boolean {
         const offset = this._reader.rootOffset(4);
         if (offset === 0) {
-            return undefined;
+            return true;
         }
 
         return this._reader.getUint8(offset) !== 0;
+    }
+
+    /** Whether the table holds `flag` */
+    hasFlag(): boolean {
+        return this._reader.rootOffset(4) !== 0;
     }
 
     entries(): EntryV1Vector | undefined {
@@ -1043,6 +1127,21 @@ export class RecordV1 {
         }
 
         return new EntryV1Vector(this._reader, offset);
+    }
+
+    /** `-1n` when the table doesn't hold it, as `hasTotal()` tells */
+    total(): bigint {
+        const offset = this._reader.rootOffset(6);
+        if (offset === 0) {
+            return -1n;
+        }
+
+        return this._reader.getInt64(offset);
+    }
+
+    /** Whether the table holds `total` */
+    hasTotal(): boolean {
+        return this._reader.rootOffset(6) !== 0;
     }
 }
 
@@ -1054,6 +1153,7 @@ export interface RecordV1Fields {
     origin?: PointV1Fields | undefined;
     flag?: boolean | undefined;
     entries?: readonly EntryV1Fields[] | undefined;
+    total?: bigint | undefined;
 }
 
 /** A message without a version, whose second revision appends `count` */
@@ -1111,17 +1211,27 @@ export class Sample {
         return this._reader.getUint32(this._reader.rootOffset(0));
     }
 
-    count(): number | undefined {
+    /** `7` when the table doesn't hold it, as `hasCount()` tells */
+    count(): number {
         if (this._reader.rootOffset(0) < 8) {
-            return undefined;
+            return 7;
         }
 
         const offset = this._reader.rootOffset(1);
         if (offset === 0) {
-            return undefined;
+            return 7;
         }
 
         return this._reader.getUint16(offset);
+    }
+
+    /** Whether the table holds `count` */
+    hasCount(): boolean {
+        if (this._reader.rootOffset(0) < 8) {
+            return false;
+        }
+
+        return this._reader.rootOffset(1) !== 0;
     }
 }
 

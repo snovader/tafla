@@ -83,9 +83,22 @@ in a later revision, from 2, as the format's
 describes: the getter of such a field returns the missing value for a table
 written before. A message's reader reads the versions from its `since`
 attribute to its own, and rejects every other, as [versions](#versions)
-shows. Only the TypeScript and JavaScript targets generate optional fields
-and fields added `since` a version so far; every other target fails on a
-schema that declares one, at the first, rather than read it as required.
+shows.
+
+A scalar that may be missing, optional or added `since` a version, reads as
+its default where the table lacks it, rather than as the missing value:
+zero, false, or the value after `=`, as `weight: float32? = 1;`, and
+`has_<field>()`, in each target's case, tells whether the table holds it.
+A string, an array, a table or a struct reads as the missing value. In
+JavaScript, a getter that returned a number or `undefined` took 1.5 times as
+long as one of a required number, since V8 boxes a number that it merges
+with another type, and one that returns a literal default as long. A field
+that's always written, such as a count, reads its default as any value; a
+caller that needs to know reads `has_<field>()` too.
+
+Only the TypeScript and JavaScript targets generate optional fields and
+fields added `since` a version so far; every other target fails on a schema
+that declares one, at the first, rather than read it as required.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
@@ -100,15 +113,18 @@ A schema is UTF-8. It may start with a byte-order mark, which is skipped, and
 its lines may end with `\r\n`.
 
 The grammar, where `NAME` is ASCII letters, digits and `_` that don't start
-with a digit, and `INTEGER` is decimal digits:
+with a digit, `INTEGER` is decimal digits, and `DECIMAL` is decimal digits
+with a fraction, `.` and digits, or an exponent, `e` or `E`, a sign and
+digits, or both:
 
 ```text
 schema      = declaration*
 declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 attribute   = NAME (":" (INTEGER | NAME))?
-field       = doc* NAME ":" type "?"? attributes? ";"
+field       = doc* NAME ":" type "?"? ("=" literal)? attributes? ";"
 type        = NAME | "[" NAME "]"
+literal     = "-"? (INTEGER | DECIMAL) | NAME
 ```
 
 ### Rules
@@ -151,6 +167,11 @@ or read its tables, or a target couldn't generate its code:
   fixed offset. In a table with fields added `since` a revision, and no
   version, the first field isn't optional either, since a reader finds which
   fields the table holds from its first field's offset.
+- Only a scalar that may be missing has a default, after `=`: `true` or
+  `false` for a `bool`, an integer within an integer type's range, or a
+  number that's finite as a float of the field's type, which a `float32`
+  rounds to the nearest. No field takes the name of the method that tells
+  whether such a scalar is there, `has_<field>`, in `camelCase` too.
 - A version fits in the message's offset type: 255 for `uint8`, 65,535 for
   `uint16` and 4,294,967,295 for `uint32`.
 - Messages can't be nested; declare a table to nest it.

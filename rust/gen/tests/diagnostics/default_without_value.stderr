@@ -1,0 +1,5 @@
+error: expected a number, `true` or `false`, found `;`
+ --> default_without_value.tafla:2:19
+  |
+2 |     x: float64? = ;
+  |                   ^

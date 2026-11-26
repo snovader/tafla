@@ -146,7 +146,7 @@ function requiredReads(name: string, tables: unknown[]): Variant {
     );
 }
 
-/** Reads `z` of every table, with NaN for a table that doesn't hold it */
+/** Reads `z` of every table, which is its default where the table lacks it */
 function zReads(
     name: string,
     tables: unknown[],
@@ -159,7 +159,7 @@ function zReads(
         name,
         { tables, results },
         `for (let i = 0; i < tables.length; i++) {
-            results[i] = tables[i]${path}.z() ?? NaN;
+            results[i] = tables[i]${path}.z();
         }
         return results;`,
         () => Array.from({ length: TABLES }, (_, i) => expected(i))
@@ -205,19 +205,21 @@ function writes(
     );
 }
 
+/** The default of every `z` that may be missing */
+const DEFAULT = (): number => 1.5;
+
 const NAN = (): number => Number.NaN;
 
 /**
- * Reads the optional `z` of every table as a getter that returns a default
- * for an absent field, rather than undefined, would read it once V8 inlines
- * it. A default of `NaN`, which JavaScript loads as a global, merges a
- * tagged value with the double that's read, as undefined does, which V8
- * boxes; a default of `0`, a literal, doesn't.
+ * Reads the optional `z` of every table as a getter whose default was
+ * `NaN` would read it once V8 inlines it. JavaScript loads `NaN` as a
+ * global, which merges a tagged value with the double that's read, as
+ * undefined does, and V8 boxes it, where it doesn't box a literal such as
+ * the schema's default.
  */
 function zDefaultReads(
     name: string,
     tables: unknown[],
-    missing: 'NaN' | '0',
     expected: (i: number) => number
 ): Variant {
     const results = new Float64Array(TABLES);
@@ -228,7 +230,7 @@ function zDefaultReads(
         `for (let i = 0; i < tables.length; i++) {
             const reader = tables[i]._reader;
             const offset = reader.rootOffset(4);
-            results[i] = offset === 0 ? ${missing} : reader.getFloat64(offset);
+            results[i] = offset === 0 ? NaN : reader.getFloat64(offset);
         }
         return results;`,
         () => Array.from({ length: TABLES }, (_, i) => expected(i))
@@ -257,38 +259,20 @@ const groups: Group[] = [
                 '',
                 i => exactFields[i].z
             ),
-            zReads('Optional: absent', readers.absent, '', NAN),
+            zReads('Optional: absent', readers.absent, '', DEFAULT),
             zDefaultReads(
                 'Optional, NaN default: present',
                 readers.present,
-                'NaN',
                 i => exactFields[i].z
             ),
-            zDefaultReads(
-                'Optional, NaN default: absent',
-                readers.absent,
-                'NaN',
-                NAN
-            ),
-            zDefaultReads(
-                'Optional, 0 default: present',
-                readers.present,
-                '0',
-                i => exactFields[i].z
-            ),
-            zDefaultReads(
-                'Optional, 0 default: absent',
-                readers.absent,
-                '0',
-                () => 0
-            ),
+            zDefaultReads('Optional, NaN default: absent', readers.absent, NAN),
             zReads(
                 'Ranged: version 2',
                 readers.ranged,
                 '',
                 i => exactFields[i].z
             ),
-            zReads('Ranged: version 1', readers.rangedFromV1, '', NAN)
+            zReads('Ranged: version 1', readers.rangedFromV1, '', DEFAULT)
         ]
     },
     {
@@ -306,7 +290,12 @@ const groups: Group[] = [
                 '.point()',
                 i => points[i].z
             ),
-            zReads('Point: revision 1', readers.holderFromV1, '.point()', NAN)
+            zReads(
+                'Point: revision 1',
+                readers.holderFromV1,
+                '.point()',
+                DEFAULT
+            )
         ]
     },
     {

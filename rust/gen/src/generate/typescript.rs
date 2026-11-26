@@ -12,7 +12,7 @@ use super::writer::{
 };
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
     strongly_connected_components,
 };
 use crate::naming::camel_case;
@@ -2407,14 +2407,28 @@ impl Generator<'_> {
                 )
             };
             let return_type = value_type(field.field_type, self.schema);
-            let returned = if field.may_be_missing() {
+            // A scalar that may be missing returns its default rather than
+            // undefined, since V8 boxes a number that it merges with
+            // another type, which took 1.5 times as long to read
+            let default = match field.field_type {
+                FieldType::Scalar(scalar) => field.default.map(|value| ts_literal(value, scalar)),
+                _ => None,
+            };
+            let returned = if field.may_be_missing() && default.is_none() {
                 format!("{return_type} | undefined")
             } else {
                 return_type.clone()
             };
 
+            let mut docs = schema_docs(&field.docs);
+            if let Some(default) = &default {
+                let presence = identifier(&format!("has_{}", field.name));
+                docs.push(format!(
+                    "`{default}` when the table doesn't hold it, as `{presence}()` tells"
+                ));
+            }
             writer.blank();
-            self.getter_doc(writer, &schema_docs(&field.docs), &returned);
+            self.getter_doc(writer, &docs, &returned);
             writer.open(format!(
                 "{}(){} {{",
                 identifier(&field.name),
@@ -2423,8 +2437,10 @@ impl Generator<'_> {
 
             // A field that may be missing is read from its offset once the
             // checks find it in the table; every other field as before
+            let missing = default.as_deref().unwrap_or("undefined");
+            let read_offset = offset.clone();
             let offset = if field.may_be_missing() {
-                missing_checks(writer, definition, index, field, root, offset)
+                missing_checks(writer, definition, index, field, root, offset, missing)
             } else {
                 offset
             };
@@ -2480,7 +2496,56 @@ impl Generator<'_> {
             }
 
             writer.close("}");
+
+            if default.is_some() {
+                self.presence_method(writer, definition, index, field, root, &read_offset);
+            }
         }
+    }
+
+    /// The method that tells whether the table holds a scalar that may be
+    /// missing, `has<Field>()`, whose getter returns the default otherwise
+    fn presence_method(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        index: usize,
+        field: &Field,
+        root: bool,
+        offset: &Expr,
+    ) {
+        writer.blank();
+        self.doc(
+            writer,
+            &[format!(
+                "Whether the table holds `{}`",
+                camel_case(&field.name)
+            )],
+            &["@returns {boolean}".to_owned()],
+        );
+        writer.open(format!(
+            "{}(){} {{",
+            identifier(&format!("has_{}", field.name)),
+            self.annotation("boolean")
+        ));
+
+        let since = since_condition(definition, index, field);
+        let checks_offset = checks_offset(definition, field);
+        match (since, checks_offset) {
+            (Some(since), false) => writer.line(format!("return {};", since.present)),
+            (since, true) => {
+                if let Some(since) = since {
+                    writer.open(format!("if ({}) {{", since.missing));
+                    writer.line("return false;");
+                    writer.close("}");
+                    writer.blank();
+                }
+                let absent = if root { "0" } else { "this._position" };
+                writer.statement(&STYLE, "return ", offset, &format!(" !== {absent};"));
+            }
+            (None, false) => unreachable!("a field that may be missing has a check"),
+        }
+        writer.close("}");
     }
 
     /// The documentation of a view's getter of a field of struct `index`,
@@ -2631,8 +2696,8 @@ impl Generator<'_> {
 }
 
 /// The checks before the read of a field that may be missing, which
-/// return `undefined` when the table doesn't hold it, and leave its
-/// offset in `offset`:
+/// return `missing` when the table doesn't hold it, and leave its offset
+/// in `offset`:
 ///
 /// - A field added since a version of a message with a version is
 ///   missing from a table of an earlier version, which the reader
@@ -2653,44 +2718,96 @@ fn missing_checks(
     field: &Field,
     root: bool,
     offset: Expr,
+    missing: &str,
 ) -> Expr {
-    let layout = definition.layout();
-    let versioned = layout.is_some_and(|layout| layout.version.is_some());
-
-    if let Some(since) = field.since {
-        let condition = if versioned {
-            format!("this._version < {since}")
-        } else if let Some(layout) = layout {
-            let width = fixed::offset_size(layout.offset_type);
-            let header = usize::from(layout.sized) * width;
-            format!(
-                "this._reader.rootOffset(0) < {}",
-                header + (index + 1) * width
-            )
-        } else {
-            format!(
-                "this._reader.fieldOffset(this._position, 0) - this._position < {}",
-                (index + 1) * fixed::NESTED_OFFSET_SIZE
-            )
-        };
-        writer.open(format!("if ({condition}) {{"));
-        writer.line("return undefined;");
+    if let Some(since) = since_condition(definition, index, field) {
+        writer.open(format!("if ({}) {{", since.missing));
+        writer.line(format!("return {missing};"));
         writer.close("}");
         writer.blank();
     }
 
-    if !(field.optional || (field.since.is_some() && !versioned)) {
+    if !checks_offset(definition, field) {
         return offset;
     }
 
     writer.statement(&STYLE, "const offset = ", &offset, ";");
     let absent = if root { "0" } else { "this._position" };
     writer.open(format!("if (offset === {absent}) {{"));
-    writer.line("return undefined;");
+    writer.line(format!("return {missing};"));
     writer.close("}");
     writer.blank();
 
     text("offset")
+}
+
+/// The conditions on which a field that a later version or revision added
+/// is missing from a table, and present, as `missing_checks()` describes
+struct SinceCondition {
+    missing: String,
+    present: String,
+}
+
+fn since_condition(definition: &Definition, index: usize, field: &Field) -> Option<SinceCondition> {
+    let since = field.since?;
+    let layout = definition.layout();
+
+    let (first, end) = match layout {
+        Some(layout) if layout.version.is_some() => {
+            return Some(SinceCondition {
+                missing: format!("this._version < {since}"),
+                present: format!("this._version >= {since}"),
+            });
+        }
+        Some(layout) => {
+            let width = fixed::offset_size(layout.offset_type);
+            let header = usize::from(layout.sized) * width;
+            ("this._reader.rootOffset(0)", header + (index + 1) * width)
+        }
+        None => (
+            "this._reader.fieldOffset(this._position, 0) - this._position",
+            (index + 1) * fixed::NESTED_OFFSET_SIZE,
+        ),
+    };
+
+    Some(SinceCondition {
+        missing: format!("{first} < {end}"),
+        present: format!("{first} >= {end}"),
+    })
+}
+
+/// Whether a field that may be missing is read after comparing its offset
+/// with 0: an optional field, and a field that a later revision of a table
+/// without a version added, whose offset may lie in padding
+fn checks_offset(definition: &Definition, field: &Field) -> bool {
+    let versioned = definition
+        .layout()
+        .is_some_and(|layout| layout.version.is_some());
+    field.optional || (field.since.is_some() && !versioned)
+}
+
+/// A scalar's default as a literal of TypeScript and JavaScript: a 64-bit
+/// integer's as a `bigint`, and a float's without a fraction of zeros or an
+/// exponent where it has none
+fn ts_literal(value: ScalarValue, scalar: Scalar) -> String {
+    match value {
+        ScalarValue::Bool(value) => value.to_string(),
+        ScalarValue::Integer(value) if matches!(scalar, Scalar::Int64 | Scalar::Uint64) => {
+            format!("{value}n")
+        }
+        ScalarValue::Integer(value) => value.to_string(),
+        ScalarValue::Float(value) => number_literal(value),
+    }
+}
+
+fn number_literal(value: f64) -> String {
+    if value == 0.0 && value.is_sign_negative() {
+        "-0".to_owned()
+    } else if value.fract() == 0.0 && value.abs() < 1e16 {
+        format!("{value}")
+    } else {
+        format!("{value:?}")
+    }
 }
 
 fn writer_fits(_writer: &CodeWriter, line: &str) -> bool {

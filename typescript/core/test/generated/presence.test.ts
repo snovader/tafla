@@ -39,9 +39,17 @@ const RECORD_FIELDS: fc.Arbitrary<typescript.RecordFields> = fc.record({
     origin: optional(POINT_FIELDS),
     flag: optional(fc.boolean()),
     entries: optional(fc.array(ENTRY_FIELDS, { maxLength: 3 })),
+    total: optional(fc.bigInt({ min: -(2n ** 63n), max: 2n ** 63n - 1n })),
     label: fc.string(),
     extent: optional(fc.record({ width: FLOAT32S, height: FLOAT32S }))
 });
+
+// The defaults that the schema gives the scalars that may be missing
+const FLAG_DEFAULT = true;
+const TOTAL_DEFAULT = -1n;
+const Z_DEFAULT = -0.5;
+const WEIGHT_DEFAULT = Math.fround(0.1);
+const COUNT_DEFAULT = 7;
 
 /** The first version of a record's fields, without those of version 2 */
 function firstVersionOf(fields: typescript.RecordFields): typescript.RecordV1Fields {
@@ -53,7 +61,8 @@ function firstVersionOf(fields: typescript.RecordFields): typescript.RecordV1Fie
         values: fields.values,
         origin: origin && { x: origin.x, y: origin.y },
         flag: fields.flag,
-        entries: entries?.map(({ key, note }) => ({ key, note }))
+        entries: entries?.map(({ key, note }) => ({ key, note })),
+        total: fields.total
     };
 }
 
@@ -62,7 +71,9 @@ type RecordV1 = typescript.RecordV1 | javascript.RecordV1;
 
 /**
  * Reads every field of a record through its getters, with its arrays and
- * views as plain arrays, and undefined for each field that it doesn't hold
+ * views as plain arrays, undefined for each field but a scalar that it
+ * doesn't hold, and each scalar that may be missing as its getter's value
+ * and whether `has<Field>()` finds it
  */
 function readRecord(record: Record): object {
     const extent = record.extent();
@@ -84,13 +95,14 @@ function readFirstVersion(record: Record | RecordV1): object {
         name: record.name(),
         values: values && Array.from(values),
         origin: record.origin() && { x: record.origin()!.x(), y: record.origin()!.y() },
-        flag: record.flag(),
-        entries: readEntriesV1(record.entries())
+        flag: [record.flag(), record.hasFlag()],
+        entries: readEntriesV1(record.entries()),
+        total: [record.total(), record.hasTotal()]
     };
 }
 
 function readPoint(point: typescript.Point | javascript.Point | undefined): unknown {
-    return point && { x: point.x(), y: point.y(), z: point.z() };
+    return point && { x: point.x(), y: point.y(), z: [point.z(), point.hasZ()] };
 }
 
 function readEntries(
@@ -102,7 +114,11 @@ function readEntries(
 
     return Array.from({ length: entries.length() }, (_, index) => {
         const entry = entries.get(index);
-        return { key: entry.key(), note: entry.note(), weight: entry.weight() };
+        return {
+            key: entry.key(),
+            note: entry.note(),
+            weight: [entry.weight(), entry.hasWeight()]
+        };
     });
 }
 
@@ -124,12 +140,26 @@ function readEntriesV1(
     });
 }
 
-/** A record's fields as its getters return them: absent fields undefined */
+/** A scalar that may be missing, as its getter and `has<Field>()` read it */
+function scalar<T>(value: T | undefined, missing: T): [T, boolean] {
+    return value === undefined ? [missing, false] : [value, true];
+}
+
+/**
+ * A record's fields as its getters return them: absent fields undefined,
+ * and each absent scalar its default
+ */
 function expectedRecord(fields: typescript.RecordFields): object {
+    const { origin, entries } = fields;
+
     return {
         ...expectedFirstVersion(firstVersionOf(fields)),
-        origin: fields.origin,
-        entries: fields.entries,
+        origin: origin && { ...origin, z: scalar(origin.z, Z_DEFAULT) },
+        entries: entries?.map(({ key, note, weight }) => ({
+            key,
+            note,
+            weight: scalar(weight, WEIGHT_DEFAULT)
+        })),
         label: fields.label,
         extent: fields.extent
     };
@@ -138,7 +168,9 @@ function expectedRecord(fields: typescript.RecordFields): object {
 function expectedFirstVersion(fields: typescript.RecordV1Fields): object {
     return {
         ...fields,
-        values: fields.values && Array.from(fields.values)
+        values: fields.values && Array.from(fields.values),
+        flag: scalar(fields.flag, FLAG_DEFAULT),
+        total: scalar(fields.total, TOTAL_DEFAULT)
     };
 }
 
@@ -146,8 +178,12 @@ function expectedFirstVersion(fields: typescript.RecordV1Fields): object {
 function expectedFromFirstVersion(fields: typescript.RecordV1Fields): unknown {
     return {
         ...expectedFirstVersion(fields),
-        origin: fields.origin && { ...fields.origin, z: undefined },
-        entries: fields.entries?.map(entry => ({ ...entry, weight: undefined })),
+        origin: fields.origin && { ...fields.origin, z: [Z_DEFAULT, false] },
+        entries: fields.entries?.map(({ key, note }) => ({
+            key,
+            note,
+            weight: [WEIGHT_DEFAULT, false]
+        })),
         label: undefined,
         extent: undefined
     };
@@ -156,7 +192,7 @@ function expectedFromFirstVersion(fields: typescript.RecordV1Fields): unknown {
 describe.each(PRESENCE)('%s', (_, presence) => {
     describe('optional fields', () => {
         it.prop([RECORD_FIELDS, SLICES])(
-            'should read back every field of a Record, and undefined for each absent one, wherever its bytes lie',
+            'should read back every field of a Record, and undefined or its default for each absent one, wherever its bytes lie',
             (fields, slice) => {
                 const bytes = sliceOf(presence.Record.serialize(fields), slice);
 
@@ -178,11 +214,11 @@ describe.each(PRESENCE)('%s', (_, presence) => {
             const written = presence.Record.serialize({ id: 7, label: 'a' });
 
             const builder = new TableBuilder(
-                8,
+                9,
                 TableLayout.create({ sized: true, version: presence.Record.FORMAT_VERSION })
             );
             builder.setUint32(7);
-            for (let index = 1; index < 6; index++) {
+            for (let index = 1; index < 7; index++) {
                 builder.setAbsent();
             }
             builder.setString('a');
@@ -194,7 +230,7 @@ describe.each(PRESENCE)('%s', (_, presence) => {
 
     describe('versions', () => {
         it.prop([RECORD_FIELDS])(
-            'should read a Record of the first version, with undefined for the fields that the second added, in nested tables too',
+            'should read a Record of the first version, with undefined or the default for each field that the second added, in nested tables too',
             fields => {
                 const first = firstVersionOf(fields);
                 const bytes = presence.RecordV1.serialize(first);
@@ -228,14 +264,16 @@ describe.each(PRESENCE)('%s', (_, presence) => {
         });
 
         it.prop([UINT32S, UINT16S])(
-            'should read a Sample of the first revision, without a version, with undefined for the field that the second appended',
+            'should read a Sample of the first revision, without a version, with the default for the field that the second appended',
             (key, count) => {
                 const first = presence.SampleV1.serialize({ key });
                 const second = presence.Sample.serialize({ key, count });
 
                 expect(new presence.Sample(first).key()).toBe(key);
-                expect(new presence.Sample(first).count()).toBeUndefined();
+                expect(new presence.Sample(first).count()).toBe(COUNT_DEFAULT);
+                expect(new presence.Sample(first).hasCount()).toBe(false);
                 expect(new presence.Sample(second).count()).toBe(count);
+                expect(new presence.Sample(second).hasCount()).toBe(true);
                 // A reader of the first revision reads its fields of a later one
                 expect(new presence.SampleV1(second).key()).toBe(key);
             }
@@ -259,6 +297,7 @@ describe.each(PRESENCE)('%s', (_, presence) => {
             'should read arbitrary bytes as a Sample without a version as values, undefined or DecodeError',
             bytes => {
                 expectValuesOrDecodeError(() => new presence.Sample(bytes).count());
+                expectValuesOrDecodeError(() => new presence.Sample(bytes).hasCount());
                 expectValuesOrDecodeError(() => new presence.Sample(bytes).key());
             }
         );

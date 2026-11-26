@@ -121,6 +121,20 @@ pub struct Field {
     /// The version of its message, or the revision of its table, that added
     /// the field: a reader finds it missing from a table written before
     pub since: Option<u32>,
+    /// The value that the getter of a scalar that may be missing returns
+    /// when the table lacks it, which the schema gives after `=`, or zero,
+    /// or false, and `None` for every other field
+    pub default: Option<ScalarValue>,
+}
+
+/// A scalar's value, as a default: an integer of any scalar integer type, a
+/// float, which a `float32`'s default holds as the `float32` nearest to it,
+/// or a bool
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScalarValue {
+    Integer(i128),
+    Float(f64),
+    Bool(bool),
 }
 
 impl Field {

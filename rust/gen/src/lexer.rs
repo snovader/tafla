@@ -4,6 +4,8 @@ use crate::diagnostic::{Diagnostic, Span};
 pub enum TokenKind {
     Identifier,
     Integer,
+    /// A number with a fraction or an exponent, such as `1.5` or `1e-3`
+    Decimal,
     /// A `///` comment, which documents the declaration after it
     Doc,
     LeftBrace,
@@ -17,6 +19,10 @@ pub enum TokenKind {
     Comma,
     /// The `?` after an optional field's type
     Question,
+    /// The `=` before a field's default
+    Equals,
+    /// The sign of a negative default
+    Minus,
     End,
 }
 
@@ -73,10 +79,9 @@ pub fn tokenize(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b';' => single(&mut index, TokenKind::Semicolon),
             b',' => single(&mut index, TokenKind::Comma),
             b'?' => single(&mut index, TokenKind::Question),
-            b'0'..=b'9' => {
-                index += count_while(&bytes[index..], u8::is_ascii_digit);
-                TokenKind::Integer
-            }
+            b'=' => single(&mut index, TokenKind::Equals),
+            b'-' => single(&mut index, TokenKind::Minus),
+            b'0'..=b'9' => number(bytes, &mut index),
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => {
                 index += count_while(&bytes[index..], |byte| {
                     byte.is_ascii_alphanumeric() || *byte == b'_'
@@ -163,6 +168,31 @@ const fn character_span(start: usize, character: char) -> Span {
         start,
         end: start + character.len_utf8(),
     }
+}
+
+/// Reads a number from `index`: digits, then a fraction of `.` and digits,
+/// then an exponent of `e` or `E`, a sign and digits, each if it's there. A
+/// fraction or an exponent makes it a decimal, which only defaults take.
+fn number(bytes: &[u8], index: &mut usize) -> TokenKind {
+    let digits = |from: usize| count_while(&bytes[from..], u8::is_ascii_digit);
+    let mut kind = TokenKind::Integer;
+    *index += digits(*index);
+
+    if bytes.get(*index) == Some(&b'.') && bytes.get(*index + 1).is_some_and(u8::is_ascii_digit) {
+        *index += 1 + digits(*index + 1);
+        kind = TokenKind::Decimal;
+    }
+
+    if matches!(bytes.get(*index), Some(b'e' | b'E')) {
+        let sign = usize::from(matches!(bytes.get(*index + 1), Some(b'+' | b'-')));
+        let exponent = digits(*index + 1 + sign);
+        if exponent > 0 {
+            *index += 1 + sign + exponent;
+            kind = TokenKind::Decimal;
+        }
+    }
+
+    kind
 }
 
 fn single(index: &mut usize, kind: TokenKind) -> TokenKind {

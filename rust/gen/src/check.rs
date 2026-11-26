@@ -6,11 +6,13 @@ use std::collections::{HashMap, HashSet};
 use crate::diagnostic::{Diagnostic, Span};
 use crate::generate::reserved;
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema, StructLayout,
-    strongly_connected_components,
+    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+    StructLayout, strongly_connected_components,
 };
 use crate::naming::camel_case;
-use crate::parser::{Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Name};
+use crate::parser::{
+    Attribute, AttributeValue, Declaration, FieldDeclaration, Keyword, Literal, LiteralKind, Name,
+};
 
 /// Checks every declaration and returns all the errors found, in source order
 pub fn check(declarations: &[Declaration]) -> Result<Schema, Vec<Diagnostic>> {
@@ -168,10 +170,12 @@ fn check_declaration(
                 field_type,
                 optional: field.optional.is_some(),
                 since: presence.since(field, errors),
+                default: check_default(field, field_type, errors),
             });
         }
     }
 
+    check_presence_names(declaration, &fields, errors);
     check_view_names(declaration, &fields, errors);
     check_java_parameters(declaration, &fields, errors);
 
@@ -781,6 +785,160 @@ impl<'a> Presence<'a> {
         match self.kind {
             Kind::Message(layout) => Some(layout),
             Kind::Table | Kind::Struct(_) => None,
+        }
+    }
+}
+
+/// The default of a scalar field that may be missing, which its getter
+/// returns when the table lacks it: the value after `=`, which must be of the
+/// field's type, or zero or false. Only such a field has one: a required
+/// field is always there, and a missing string, array, table or struct reads
+/// as the language's missing value, which costs nothing more, while a number
+/// merged with one is boxed in JavaScript.
+fn check_default(
+    field: &FieldDeclaration,
+    field_type: FieldType,
+    errors: &mut Vec<Diagnostic>,
+) -> Option<ScalarValue> {
+    // Syntactically, so that an error in `since` doesn't add one here
+    let may_be_missing = field.optional.is_some() || !field.attributes.is_empty();
+
+    let FieldType::Scalar(scalar) = field_type else {
+        if let Some(literal) = &field.default {
+            errors.push(
+                Diagnostic::new("only a scalar has a default", literal.span).with_help(
+                    "a missing string, array, table or struct reads as the language's \
+                     missing value",
+                ),
+            );
+        }
+        return None;
+    };
+
+    let Some(literal) = &field.default else {
+        return may_be_missing.then_some(zero_of(scalar));
+    };
+    if !may_be_missing {
+        errors.push(
+            Diagnostic::new(
+                "only a field that may be missing has a default",
+                literal.span,
+            )
+            .with_help("declare it optional with `?`, or added `since` a version"),
+        );
+        return None;
+    }
+
+    match scalar_value(scalar, literal) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            errors.push(error);
+            None
+        }
+    }
+}
+
+const fn zero_of(scalar: Scalar) -> ScalarValue {
+    match scalar {
+        Scalar::Bool => ScalarValue::Bool(false),
+        Scalar::Float32 | Scalar::Float64 => ScalarValue::Float(0.0),
+        _ => ScalarValue::Integer(0),
+    }
+}
+
+/// The value of a default of a scalar type: `true` or `false` for a bool,
+/// an integer within an integer type's range, or a finite float, of which a
+/// `float32` takes the nearest `float32`
+fn scalar_value(scalar: Scalar, literal: &Literal) -> Result<ScalarValue, Diagnostic> {
+    let text = literal.text.as_str();
+    let span = literal.span;
+    let name = scalar.name();
+
+    match (scalar, literal.kind) {
+        (Scalar::Bool, LiteralKind::Name) if text == "true" || text == "false" => {
+            Ok(ScalarValue::Bool(text == "true"))
+        }
+        (Scalar::Bool, _) => Err(Diagnostic::new(format!("`{text}` isn't a `bool`"), span)
+            .with_help("a bool's default is `true` or `false`")),
+        (Scalar::Float32 | Scalar::Float64, LiteralKind::Integer | LiteralKind::Decimal) => {
+            let value: f64 = text
+                .parse()
+                .map_err(|_| Diagnostic::new(format!("`{text}` isn't a number"), span))?;
+            #[allow(clippy::cast_possible_truncation)]
+            let value = if scalar == Scalar::Float32 {
+                f64::from(value as f32)
+            } else {
+                value
+            };
+            if value.is_finite() {
+                Ok(ScalarValue::Float(value))
+            } else {
+                Err(Diagnostic::new(
+                    format!("`{text}` isn't a finite `{name}`"),
+                    span,
+                ))
+            }
+        }
+        (_, LiteralKind::Integer) if scalar != Scalar::Float32 && scalar != Scalar::Float64 => {
+            let (min, max) = integer_range(scalar);
+            match text.parse::<i128>() {
+                Ok(value) if (min..=max).contains(&value) => Ok(ScalarValue::Integer(value)),
+                _ => Err(
+                    Diagnostic::new(format!("`{text}` doesn't fit in `{name}`"), span)
+                        .with_help(format!("from {min} to {max}")),
+                ),
+            }
+        }
+        _ => Err(
+            Diagnostic::new(format!("`{text}` isn't a `{name}`"), span).with_help(
+                if matches!(scalar, Scalar::Float32 | Scalar::Float64) {
+                    "a float's default is a number, such as `0.5` or `-1e3`"
+                } else {
+                    "an integer's default is an integer, such as `0` or `-1`"
+                },
+            ),
+        ),
+    }
+}
+
+/// The smallest and largest value of an integer type
+fn integer_range(scalar: Scalar) -> (i128, i128) {
+    let bits = u32::from(scalar.size()) * 8;
+    match scalar {
+        Scalar::Int8 | Scalar::Int16 | Scalar::Int32 | Scalar::Int64 => {
+            (-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+        }
+        _ => (0, (1 << bits) - 1),
+    }
+}
+
+/// Checks that no field takes the name of the method that tells whether a
+/// scalar that may be missing is there, `has_<field>`, in `camelCase` too,
+/// which every target declares beside its getter
+fn check_presence_names(declaration: &Declaration, fields: &[Field], errors: &mut Vec<Diagnostic>) {
+    let methods: HashMap<String, &str> = fields
+        .iter()
+        .filter(|field| field.default.is_some())
+        .map(|field| {
+            (
+                camel_case(&format!("has_{}", field.name)),
+                field.name.as_str(),
+            )
+        })
+        .collect();
+
+    for field in &declaration.fields {
+        if let Some(scalar) = methods.get(&camel_case(&field.name.text)) {
+            errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` clashes with the method that tells whether `{scalar}` is there",
+                        field.name.text
+                    ),
+                    field.name.span,
+                )
+                .with_help(format!("rename it, or `{scalar}`")),
+            );
         }
     }
 }

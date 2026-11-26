@@ -204,13 +204,19 @@ export class Optional {
         return this._reader.getFloat64(this._reader.rootOffset(3));
     }
 
-    z(): number | undefined {
+    /** `1.5` when the table doesn't hold it, as `hasZ()` tells */
+    z(): number {
         const offset = this._reader.rootOffset(4);
         if (offset === 0) {
-            return undefined;
+            return 1.5;
         }
 
         return this._reader.getFloat64(offset);
+    }
+
+    /** Whether the table holds `z` */
+    hasZ(): boolean {
+        return this._reader.rootOffset(4) !== 0;
     }
 
     label(): string | undefined {
@@ -584,12 +590,18 @@ export class Ranged {
         return this._reader.getFloat64(this._reader.rootOffset(3));
     }
 
-    z(): number | undefined {
+    /** `1.5` when the table doesn't hold it, as `hasZ()` tells */
+    z(): number {
         if (this._version < 2) {
-            return undefined;
+            return 1.5;
         }
 
         return this._reader.getFloat64(this._reader.rootOffset(4));
+    }
+
+    /** Whether the table holds `z` */
+    hasZ(): boolean {
+        return this._version >= 2;
     }
 }
 
@@ -989,17 +1001,27 @@ export class Point {
         );
     }
 
-    z(): number | undefined {
+    /** `1.5` when the table doesn't hold it, as `hasZ()` tells */
+    z(): number {
         if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
-            return undefined;
+            return 1.5;
         }
 
         const offset = this._reader.fieldOffset(this._position, 2);
         if (offset === this._position) {
-            return undefined;
+            return 1.5;
         }
 
         return this._reader.getFloat64(offset);
+    }
+
+    /** Whether the table holds `z` */
+    hasZ(): boolean {
+        if (this._reader.fieldOffset(this._position, 0) - this._position < 12) {
+            return false;
+        }
+
+        return this._reader.fieldOffset(this._position, 2) !== this._position;
     }
 }
 
