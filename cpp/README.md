@@ -303,7 +303,10 @@ and a failure prints the `RC_PARAMS` that reproduces it.
   writes the tables of `conformance/generated` byte for byte, writes every
   table as `TableBuilder` does, reads back what it writes through its getters
   and its views, rejects other versions, and reads corrupted bytes as values
-  or decode errors. They're the generator's golden files, which
+  or decode errors. `presence/` holds the C++ of the TypeScript tests'
+  `presence.tafla`, whose optional fields are written as absent, and whose
+  readers read earlier versions and revisions with the fields that later ones
+  added missing. They're the generator's golden files, which
   `rust/gen/README.md` describes: rewrite them with the generator rather than
   by hand.
 
