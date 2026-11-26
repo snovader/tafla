@@ -333,6 +333,31 @@ target that imports the generated module, needs nothing:
 A schema's types are declared at the top level of their module, so schemas
 that declare the same names generate code for a module each.
 
+A field that may be missing, an optional field, `name: string?`, or one that
+a later version or revision added, `label: string (since: 2)`, reads as `nil`
+from a table that doesn't hold it: its getter returns an optional, a view of
+the bytes too, which keeps the view's lifetime. Swift's `Optional.map` takes
+only an escapable value, so a caller unwraps a view with `if let`. A scalar
+that may be missing reads as its default instead, and `has<Field>` tells
+whether the table holds it. A message with a `since` attribute reads the
+versions from its `firstVersion` to its `formatVersion`, and throws
+`DecodeError.versionOutsideRange` for others. Its fields' struct has an
+optional property for an optional field, `nil` by default, which leaves the
+field out. With the code generated from the tests' schema of such fields,
+`typescript/core/test/presence.tafla`:
+
+```swift
+let bytes = try RecordFields(id: 7, label: "a").serialize()  // every optional field left out
+
+let all = bytes[...]
+let record = try Record(all.span.bytes)  // reads versions 1 and 2
+if let values = try record.values {  // nil, left out
+    print(Array(values))
+}
+let flag = try record.flag  // true, the schema's default
+let hasFlag = try record.hasFlag  // false
+```
+
 ## Conversions
 
 Each setter takes its field's own Swift type, such as `UInt8` for a `uint8`,
@@ -408,12 +433,16 @@ The tests are:
   and rebuilds the cases of `conformance/presence` too.
 - `ExampleTests.swift`: the examples above.
 - `Generated/`: the code that tafla-gen generates from the example schemas in
-  `schemas/` at the root of the repository, which lies in `Tests/Generated`,
-  a module of each that `Package.swift` declares. It writes the tables that
-  `TableBuilder` writes from the same fields, or fails as it fails, reads back
-  what it writes at any byte offset, rejects other versions, and reads
-  corrupted and arbitrary bytes as values or decode errors, through its
-  getters and views. `ShapesCasesTests.swift` writes the tables of
+  `schemas/` at the root of the repository, and from the schema of optional
+  fields and versions, `typescript/core/test/presence.tafla`, which lies in
+  `Tests/Generated`, a module of each that `Package.swift` declares. It
+  writes the tables that `TableBuilder` writes from the same fields, or fails
+  as it fails, reads back what it writes at any byte offset, rejects the
+  versions that it doesn't read, and reads corrupted and arbitrary bytes as
+  values or decode errors, through its getters and views.
+  `PresenceTests.swift` reads absent fields as `nil` or their defaults, and a
+  table of an earlier version or revision with the fields that later ones
+  added missing. `ShapesCasesTests.swift` writes the tables of
   `conformance/generated` byte for byte, and reads their values back, as the
   code generated in every language does. The modules are the generator's
   golden files: rewrite them with the generator rather than by hand, with

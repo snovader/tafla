@@ -1,19 +1,22 @@
 import Tafla
 import Testing
 
-// The code that tafla-gen generates from the example schemas in schemas/
-// writes the tables that TableBuilder writes from the same fields, or fails
-// as it fails, reads back what it writes wherever its bytes lie, rejects
-// other versions, and reads corrupted and arbitrary bytes as values or
-// decode errors, through its getters and the views that they return, without
+// The code that tafla-gen generates from the example schemas in schemas/,
+// and from the schema of optional fields and versions, writes the tables
+// that TableBuilder writes from the same fields, or fails as it fails, reads
+// back what it writes wherever its bytes lie, rejects the versions that it
+// doesn't read, and reads corrupted and arbitrary bytes as values or decode
+// errors, through its getters and the views that they return, without
 // stopping the program. Its structs are written at fixed offsets, and read
 // back from the start of their bytes.
 
-/// Every message of the example schemas
-let generatedMessages = shapesMessages + allTypesMessages + layoutsMessages + fixedFieldsMessages
+/// Every message of the example schemas, and of the schema of optional
+/// fields and versions
+let generatedMessages = shapesMessages + allTypesMessages + layoutsMessages + fixedFieldsMessages + presenceMessages
 
-/// Every struct of the example schemas
-let generatedStructs = shapesStructs + allTypesStructs + fixedFieldsStructs
+/// Every struct of the example schemas, and of the schema of optional fields
+/// and versions
+let generatedStructs = shapesStructs + allTypesStructs + fixedFieldsStructs + presenceStructs
 
 @Suite("Generated code")
 struct GeneratedTests {
@@ -59,9 +62,10 @@ struct GeneratedTests {
     }
 
     // A versioned message reads the version in the header of any bytes, and
-    // its reader rejects every version but its own
+    // its reader rejects every version but its own, or but those from its
+    // first, whose fields' values PresenceTests.swift checks
     @Test(arguments: generatedMessages.filter { $0.version != nil })
-    func rejectsOtherVersionsWithUnsupportedVersion(message: Message) async {
+    func rejectsTheVersionsThatItDoesntRead(message: Message) async {
         guard let version = message.version, let versionOf = message.versionOf else {
             Issue.record("\(message.name) isn't versioned")
             return
@@ -85,6 +89,15 @@ struct GeneratedTests {
                 #expect(try versionOf(bytes) == drawn.other)
                 if drawn.other == version {
                     #expect(sameValues(try message.read(bytes), drawn.fields))
+                } else if let firstVersion = message.firstVersion {
+                    let supported = firstVersion...version
+                    if supported.contains(drawn.other) {
+                        _ = try message.read(bytes)
+                    } else {
+                        #expect(throws: DecodeError.versionOutsideRange(version: drawn.other, supported: supported)) {
+                            try message.read(bytes)
+                        }
+                    }
                 } else {
                     #expect(throws: DecodeError.unsupportedVersion(version: drawn.other, supported: version)) {
                         try message.read(bytes)
