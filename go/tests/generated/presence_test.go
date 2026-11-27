@@ -62,7 +62,7 @@ func text(t *rapid.T) string {
 }
 
 func drawPoint(t *rapid.T) presence.PointFields {
-	return presence.PointFields{X: float64s(t), Y: float64s(t), Z: float64s(t)}
+	return presence.PointFields{X: float64s(t), Y: float64s(t), Z: float64s(t), Label: drawOptional(t, "pointLabel", text)}
 }
 
 func drawEntry(t *rapid.T) presence.EntryFields {
@@ -160,7 +160,7 @@ func describeRecord(fields presence.RecordFields) tables.Table {
 		describeOptional(fields.Name, describeString),
 		describeOptional(fields.Values, func(values []float64) tables.Field { return tables.Float64Array(values) }),
 		describeOptional(fields.Origin, func(origin presence.PointFields) tables.Field {
-			return tables.TableField{Nested: nested(tables.Float64(origin.X), tables.Float64(origin.Y), tables.Float64(origin.Z))}
+			return tables.TableField{Nested: nested(tables.Float64(origin.X), tables.Float64(origin.Y), tables.Float64(origin.Z), describeOptional(origin.Label, describeString))}
 		}),
 		describeOptional(fields.Flag, func(flag bool) tables.Field { return tables.Bool(flag) }),
 		describeOptional(fields.Entries, describeEntries),
@@ -187,7 +187,7 @@ func describeFromFirstVersion(fields presence.RecordV1Fields) []tables.Field {
 		describeOptional(fields.Name, describeString),
 		describeOptional(fields.Values, func(values []float64) tables.Field { return tables.Float64Array(values) }),
 		describeOptional(fields.Origin, func(origin presence.PointV1Fields) tables.Field {
-			return tables.TableField{Nested: nested(tables.Float64(origin.X), tables.Float64(origin.Y), absent)}
+			return tables.TableField{Nested: nested(tables.Float64(origin.X), tables.Float64(origin.Y), absent, absent)}
 		}),
 		describeOptional(fields.Flag, func(flag bool) tables.Field { return tables.Bool(flag) }),
 		describeOptional(fields.Entries, describeEntries),
@@ -252,7 +252,12 @@ func readPoint(point presence.Point) (tables.Field, error) {
 		return nil, err
 	}
 
-	return tables.TableField{Nested: nested(tables.Float64(x), tables.Float64(y), z)}, nil
+	label, err := readOptional(point.Label, justString)
+	if err != nil {
+		return nil, err
+	}
+
+	return tables.TableField{Nested: nested(tables.Float64(x), tables.Float64(y), z, label)}, nil
 }
 
 // readEntry reads an entry through its getters

@@ -71,7 +71,7 @@ extension Draw {
             id: integer(),
             name: optional { $0.string(most: 8) },
             values: optional { $0.doubles(most: 4) },
-            origin: optional { PointFields(x: $0.double(), y: $0.double(), z: $0.double()) },
+            origin: optional { $0.presencePoint() },
             flag: optional { $0.bool() },
             entries: optional { $0.array(most: 3) { $0.presenceEntry() } },
             total: optional { $0.integer() },
@@ -82,6 +82,10 @@ extension Draw {
 
     mutating func presenceEntry() -> EntryFields {
         EntryFields(key: integer(), note: optional { $0.string(most: 6) }, weight: float())
+    }
+
+    mutating func presencePoint() -> PointFields {
+        PointFields(x: double(), y: double(), z: double(), label: optional { $0.string(most: 8) })
     }
 
     mutating func presenceExtent() -> Extent {
@@ -99,7 +103,7 @@ extension RecordFields {
         }
         var origin: PointFields?
         if let point = try record.origin {
-            origin = try PointFields(x: point.x, y: point.y, z: point.z)
+            origin = try PointFields(x: point.x, y: point.y, z: point.z, label: point.label)
         }
         var entries: [EntryFields]?
         if let view = try record.entries {
@@ -197,6 +201,7 @@ struct ReadPoint {
     var x: Double
     var y: Double
     var z: Held<Double>
+    var label: String?
 }
 
 struct ReadEntry {
@@ -213,7 +218,8 @@ extension ReadRecord {
         }
         var origin: ReadPoint?
         if let point = try record.origin {
-            origin = try ReadPoint(x: point.x, y: point.y, z: Held(value: point.z, held: point.hasZ))
+            let z = try Held(value: point.z, held: point.hasZ)
+            origin = try ReadPoint(x: point.x, y: point.y, z: z, label: point.label)
         }
         var entries: [ReadEntry]?
         if let view = try record.entries {
@@ -246,7 +252,9 @@ extension ReadRecord {
             id: fields.id,
             name: fields.name,
             values: fields.values,
-            origin: fields.origin.map { ReadPoint(x: $0.x, y: $0.y, z: Held(value: $0.z, held: true)) },
+            origin: fields.origin.map {
+                ReadPoint(x: $0.x, y: $0.y, z: Held(value: $0.z, held: true), label: $0.label)
+            },
             flag: Held(value: fields.flag ?? flagDefault, held: fields.flag != nil),
             entries: fields.entries?.map {
                 ReadEntry(key: $0.key, note: $0.note, weight: Held(value: $0.weight, held: true))
@@ -265,7 +273,9 @@ extension ReadRecord {
             id: fields.id,
             name: fields.name,
             values: fields.values,
-            origin: fields.origin.map { ReadPoint(x: $0.x, y: $0.y, z: Held(value: zDefault, held: false)) },
+            origin: fields.origin.map {
+                ReadPoint(x: $0.x, y: $0.y, z: Held(value: zDefault, held: false), label: nil)
+            },
             flag: Held(value: fields.flag ?? flagDefault, held: fields.flag != nil),
             entries: fields.entries?.map {
                 ReadEntry(key: $0.key, note: $0.note, weight: Held(value: weightDefault, held: false))

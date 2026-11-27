@@ -38,11 +38,18 @@ struct OwnedEntry {
     float weight;
 };
 
+struct OwnedPoint {
+    double x;
+    double y;
+    double z;
+    std::optional<std::string> label;
+};
+
 struct OwnedRecord {
     std::uint32_t id;
     std::optional<std::string> name;
     std::optional<std::vector<double>> values;
-    std::optional<presence::PointFields> origin;
+    std::optional<OwnedPoint> origin;
     std::optional<bool> flag;
     std::optional<std::vector<OwnedEntry>> entries;
     std::optional<std::int64_t> total;
@@ -66,8 +73,10 @@ rc::Gen<OwnedEntry> entries() {
 rc::Gen<OwnedRecord> records() {
     return rc::gen::exec([] {
         const auto points = rc::gen::exec([] {
-            return presence::PointFields{
-                .x = *strategy::float64(), .y = *strategy::float64(), .z = *strategy::float64()};
+            return OwnedPoint{.x = *strategy::float64(),
+                              .y = *strategy::float64(),
+                              .z = *strategy::float64(),
+                              .label = *optional(values::strings())};
         });
         const auto extents = rc::gen::exec(
             [] { return presence::Extent{.width = *strategy::float32(), .height = *strategy::float32()}; });
@@ -93,6 +102,10 @@ std::optional<std::string_view> view_of(const std::optional<std::string>& string
     return std::nullopt;
 }
 
+presence::PointFields point_fields_of(const OwnedPoint& point) {
+    return {.x = point.x, .y = point.y, .z = point.z, .label = view_of(point.label)};
+}
+
 presence::EntryFields entry_fields_of(const OwnedEntry& entry) {
     return {.key = entry.key, .note = view_of(entry.note), .weight = entry.weight};
 }
@@ -108,11 +121,16 @@ presence::RecordFields fields_of(const OwnedRecord& record, std::vector<presence
         entry_fields = entries;
     }
 
+    std::optional<presence::PointFields> origin;
+    if (record.origin) {
+        origin = point_fields_of(*record.origin);
+    }
+
     return {
         .id = record.id,
         .name = view_of(record.name),
         .values = record.values,
-        .origin = record.origin,
+        .origin = origin,
         .flag = record.flag,
         .entries = entry_fields,
         .total = record.total,
@@ -199,7 +217,9 @@ Table describe(const presence::RecordFields& fields) {
                               return Field{std::vector<double>(values.begin(), values.end())};
                           }),
                 described(fields.origin,
-                          [](const presence::PointFields& point) { return nested({{point.x}, {point.y}, {point.z}}); }),
+                          [](const presence::PointFields& point) {
+                              return nested({{point.x}, {point.y}, {point.z}, described(point.label, string_field)});
+                          }),
                 described(fields.flag, [](bool flag) { return Field{Bool{flag}}; }),
                 described(fields.entries, entries),
                 described(fields.total, [](std::int64_t total) { return Field{total}; }),
@@ -240,6 +260,8 @@ Table describe(const presence::RecordV1Fields& fields) {
 Table as_second_version(Table table) {
     auto& fields = table.fields;
     if (auto* origin = std::get_if<TableField>(&fields[3].value)) {
+        // The point's `z` and `label`, which its second revision appended
+        origin->nested.table.fields.push_back(absent());
         origin->nested.table.fields.push_back(absent());
     }
     if (auto* entries = std::get_if<VectorField>(&fields[5].value)) {
@@ -269,7 +291,10 @@ Field scalar_read(Field value, bool held, const Field& default_value) {
 }
 
 Field point_read(const presence::Point& point) {
-    return nested({{point.x()}, {point.y()}, scalar_read({point.z()}, point.has_z(), {-0.5})});
+    return nested({{point.x()},
+                   {point.y()},
+                   scalar_read({point.z()}, point.has_z(), {-0.5}),
+                   described(point.label(), string_field)});
 }
 
 Field entries_read(const presence::EntryVector& entries) {

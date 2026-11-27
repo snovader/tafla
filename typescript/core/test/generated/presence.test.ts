@@ -29,7 +29,12 @@ const UINT16S = fc.integer({ min: 0, max: 0xffff });
 const UINT32S = fc.integer({ min: 0, max: 0xffff_ffff });
 const FLOAT32S = fc.float();
 
-const POINT_FIELDS = fc.record({ x: fc.double(), y: fc.double(), z: fc.double() });
+const POINT_FIELDS = fc.record({
+    x: fc.double(),
+    y: fc.double(),
+    z: fc.double(),
+    label: optional(fc.string())
+});
 const ENTRY_FIELDS = fc.record({ key: UINT16S, note: optional(fc.string()), weight: FLOAT32S });
 
 const RECORD_FIELDS: fc.Arbitrary<typescript.RecordFields> = fc.record({
@@ -102,7 +107,14 @@ function readFirstVersion(record: Record | RecordV1): object {
 }
 
 function readPoint(point: typescript.Point | javascript.Point | undefined): unknown {
-    return point && { x: point.x(), y: point.y(), z: [point.z(), point.hasZ()] };
+    return (
+        point && {
+            x: point.x(),
+            y: point.y(),
+            z: [point.z(), point.hasZ()],
+            label: point.label()
+        }
+    );
 }
 
 function readEntries(
@@ -178,7 +190,7 @@ function expectedFirstVersion(fields: typescript.RecordV1Fields): object {
 function expectedFromFirstVersion(fields: typescript.RecordV1Fields): unknown {
     return {
         ...expectedFirstVersion(fields),
-        origin: fields.origin && { ...fields.origin, z: [Z_DEFAULT, false] },
+        origin: fields.origin && { ...fields.origin, z: [Z_DEFAULT, false], label: undefined },
         entries: fields.entries?.map(({ key, note }) => ({
             key,
             note,

@@ -50,12 +50,32 @@ struct OwnedRecord {
     id: u32,
     name: Option<String>,
     values: Option<Vec<f64>>,
-    origin: Option<PointFields>,
+    origin: Option<OwnedPoint>,
     flag: Option<bool>,
     entries: Option<Vec<OwnedEntry>>,
     total: Option<i64>,
     label: String,
     extent: Option<Extent>,
+}
+
+/// The values of a `Point`'s fields, which `PointFields` borrows
+#[derive(Clone, Debug)]
+struct OwnedPoint {
+    x: f64,
+    y: f64,
+    z: f64,
+    label: Option<String>,
+}
+
+impl OwnedPoint {
+    fn fields(&self) -> PointFields<'_> {
+        PointFields {
+            x: self.x,
+            y: self.y,
+            z: self.z,
+            label: self.label.as_deref(),
+        }
+    }
 }
 
 /// The values of an `Entry`'s fields, whose references convert into the
@@ -93,7 +113,7 @@ impl OwnedRecord {
             id: self.id,
             name: self.name.as_deref(),
             values: self.values.as_deref(),
-            origin: self.origin.clone(),
+            origin: self.origin.as_ref().map(OwnedPoint::fields),
             flag: self.flag,
             entries: self.entries.as_deref(),
             total: self.total,
@@ -135,6 +155,7 @@ impl OwnedRecord {
                 x: Bits(origin.x),
                 y: Bits(origin.y),
                 z: Some((Bits(origin.z), true)),
+                label: origin.label.clone(),
             }),
             entries: self
                 .entries
@@ -171,6 +192,7 @@ impl OwnedRecord {
                 x: Bits(origin.x),
                 y: Bits(origin.y),
                 z: Some((Bits(Z_DEFAULT), false)),
+                label: None,
             }),
             flag: self.flag.map_or((FLAG_DEFAULT, false), |flag| (flag, true)),
             entries: self
@@ -199,10 +221,14 @@ impl OwnedRecord {
             None => builder.set_absent()?,
         }
         match &self.origin {
-            Some(origin) => builder.set_table_with(3, |point| {
+            Some(origin) => builder.set_table_with(4, |point| {
                 point.set_f64(origin.x)?;
                 point.set_f64(origin.y)?;
-                point.set_f64(origin.z)
+                point.set_f64(origin.z)?;
+                match &origin.label {
+                    Some(label) => point.set_str(label.as_str()),
+                    None => point.set_absent(),
+                }
             })?,
             None => builder.set_absent()?,
         }
@@ -260,6 +286,7 @@ impl ReadRecord {
     fn of_first_reader(mut self) -> Self {
         if let Some(point) = &mut self.origin {
             point.z = None;
+            point.label = None;
         }
         for entry in self.entries.iter_mut().flatten() {
             entry.weight = None;
@@ -274,6 +301,7 @@ struct ReadPoint {
     x: Bits<f64>,
     y: Bits<f64>,
     z: Option<(Bits<f64>, bool)>,
+    label: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -326,6 +354,7 @@ fn read_point(point: &Point<'_>) -> Result<ReadPoint, DecodeError> {
         x: Bits(point.x()?),
         y: Bits(point.y()?),
         z: Some((Bits(point.z()?), point.has_z()?)),
+        label: point.label()?.map(str::to_owned),
     })
 }
 
@@ -345,6 +374,7 @@ fn read_record_v1(record: &RecordV1<'_>) -> Result<ReadRecord, DecodeError> {
             x: Bits(point.x()?),
             y: Bits(point.y()?),
             z: None,
+            label: None,
         })
     };
     let read_entry = |entry: Result<EntryV1<'_>, DecodeError>| {
@@ -397,6 +427,7 @@ fn every_getter(record: &Record<'_>) -> Vec<Result<String, DecodeError>> {
             point.y().map(|y| format!("{:?}", Bits(y))),
             point.z().map(|z| format!("{:?}", Bits(z))),
             point.has_z().map(|has| format!("{has}")),
+            point.label().map(|label| format!("{label:?}")),
         ]);
     }
 
@@ -431,8 +462,9 @@ fn entries() -> impl Strategy<Value = OwnedEntry> {
         .prop_map(|(key, note, weight)| OwnedEntry { key, note, weight })
 }
 
-fn points() -> impl Strategy<Value = PointFields> {
-    (float64s(), float64s(), float64s()).prop_map(|(x, y, z)| PointFields { x, y, z })
+fn points() -> impl Strategy<Value = OwnedPoint> {
+    (float64s(), float64s(), float64s(), optional(strings()))
+        .prop_map(|(x, y, z, label)| OwnedPoint { x, y, z, label })
 }
 
 fn records() -> impl Strategy<Value = OwnedRecord> {
@@ -654,9 +686,10 @@ fn a_field_of_a_later_revision_is_missing_from_a_nested_table_where_its_offset_i
     builder.set_absent().unwrap();
     builder.set_absent().unwrap();
     builder
-        .set_table_with(3, |point| {
+        .set_table_with(4, |point| {
             point.set_f64(2.0)?;
             point.set_f64(3.0)?;
+            point.set_absent()?;
             point.set_absent()
         })
         .unwrap();
@@ -676,6 +709,7 @@ fn a_field_of_a_later_revision_is_missing_from_a_nested_table_where_its_offset_i
     let record = Record::new(&bytes).unwrap();
     let point = record.origin().unwrap().unwrap();
     assert_eq!((point.z(), point.has_z()), (Ok(Z_DEFAULT), Ok(false)));
+    assert_eq!(point.label(), Ok(None));
     let entry = record.entries().unwrap().unwrap().get(0).unwrap().unwrap();
     assert_eq!(
         (entry.weight(), entry.has_weight()),

@@ -115,7 +115,12 @@ final class PresenceTables {
     }
 
     private static TableField readPoint(Point point) {
-        return table(float64(point.x()), float64(point.y()), scalar(point.hasZ(), float64(point.z()), Z_DEFAULT));
+        return table(
+            float64(point.x()),
+            float64(point.y()),
+            scalar(point.hasZ(), float64(point.z()), Z_DEFAULT),
+            nullable(point.label(), GeneratedDescriptions::string)
+        );
     }
 
     private static NestedTable readEntry(Entry entry) {
@@ -165,12 +170,21 @@ final class PresenceTables {
             uint32(record.id()),
             nullable(record.name(), GeneratedDescriptions::string),
             nullable(record.values(), GeneratedDescriptions::float64Array),
-            origin == null ? ABSENT : table(float64(origin.x()), float64(origin.y()), float64(origin.z())),
+            origin == null ? ABSENT : describePoint(origin),
             nullable(record.flag(), BoolField::new),
             entries == null ? ABSENT : vector(entries.stream().map(PresenceTables::describeEntry).toList()),
             nullable(record.total(), GeneratedDescriptions::int64),
             string(record.label()),
             nullable(record.extent(), PresenceTables::describeExtent)
+        );
+    }
+
+    private static TableField describePoint(Point.Fields point) {
+        return table(
+            float64(point.x()),
+            float64(point.y()),
+            float64(point.z()),
+            nullable(point.label(), GeneratedDescriptions::string)
         );
     }
 
@@ -216,7 +230,7 @@ final class PresenceTables {
         var entries = record.entries();
 
         var fields = new ArrayList<>(describeRecordV1(record).fields());
-        fields.set(3, origin == null ? ABSENT : table(float64(origin.x()), float64(origin.y()), ABSENT));
+        fields.set(3, origin == null ? ABSENT : table(float64(origin.x()), float64(origin.y()), ABSENT, ABSENT));
         fields.set(5, entries == null ? ABSENT : vector(entries.stream().map(PresenceTables::describeEntryFromV1).toList()));
         fields.add(ABSENT);
         fields.add(ABSENT);
@@ -247,7 +261,7 @@ final class PresenceTables {
     // Arbitrary values of the fields, each of those that may be left out null half the time
 
     static Arbitrary<Record.Fields> recordFields() {
-        var points = Combinators.combine(float64s(), float64s(), float64s()).as(Point.Fields::new);
+        var points = Combinators.combine(float64s(), float64s(), float64s(), optional(strings())).as(Point.Fields::new);
         var entries = Combinators.combine(uint16s(), optional(strings()), float32s()).as(Entry.Fields::new);
         var extents = Combinators.combine(float32s(), float32s()).as(Extent::new);
 

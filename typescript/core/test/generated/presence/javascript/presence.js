@@ -14,7 +14,7 @@ import {
     TableWriter
 } from 'tafla';
 
-/** A point whose second revision appends `z` */
+/** A point whose second revision appends `z` and `label` */
 export class Point {
     /**
      * The alignment that a parent pads a `Point` to: the largest
@@ -23,12 +23,6 @@ export class Point {
      * @type {1}
      */
     static ALIGNMENT = 1;
-
-    /**
-     * The byte length of a `Point`: its offsets and its fields, whose sizes
-     * the schema fixes, so that its parent writes it whole
-     */
-    static SIZE = 36;
 
     /**
      * Reads the table at `position`, as its parent's getter finds it
@@ -46,56 +40,39 @@ export class Point {
      * vector that holds it
      *
      * @param {TableSizer} sizer
-     * @param {PointFields} _fields
+     * @param {PointFields} fields
      * @returns {void}
      */
-    static size(sizer, _fields) {
-        sizer.addTableBytes(1, Point.SIZE);
+    static size(sizer, fields) {
+        const parent = sizer.startTable(4);
+        sizer.addFloat64();
+        sizer.addFloat64();
+        sizer.addFloat64();
+        if (fields.label != null) {
+            sizer.addString(fields.label);
+        }
+        sizer.endTable(parent);
     }
 
     /**
      * Writes a `Point` where its parent's writer is, after the
-     * field that holds it
+     * field or vector that holds it
      *
      * @param {TableWriter} writer
      * @param {PointFields} fields
      * @returns {void}
      */
     static write(writer, fields) {
-        Point.writeAt(
-            writer.target(),
-            writer.reserveTableBytes(Point.SIZE),
-            fields
-        );
-    }
-
-    /**
-     * Writes a `Point` at `offset` in `bytes`, as its parent holds it: its
-     * offsets, and then its fields at them
-     *
-     * @param {Uint8Array} bytes
-     * @param {number} offset
-     * @param {PointFields} fields
-     * @returns {void}
-     * @throws {RangeError} If `bytes` end before the `Point` does.
-     */
-    static writeAt(bytes, offset, fields) {
-        bytes[offset] = 12;
-        bytes[offset + 1] = 0;
-        bytes[offset + 2] = 0;
-        bytes[offset + 3] = 0;
-        bytes[offset + 4] = 20;
-        bytes[offset + 5] = 0;
-        bytes[offset + 6] = 0;
-        bytes[offset + 7] = 0;
-        bytes[offset + 8] = 28;
-        bytes[offset + 9] = 0;
-        bytes[offset + 10] = 0;
-        bytes[offset + 11] = 0;
-
-        writeFloat64(bytes, offset + 12, fields.x);
-        writeFloat64(bytes, offset + 20, fields.y);
-        writeFloat64(bytes, offset + 28, fields.z);
+        const parent = writer.startTable(4);
+        writer.setFloat64(0, fields.x);
+        writer.setFloat64(1, fields.y);
+        writer.setFloat64(2, fields.z);
+        if (fields.label == null) {
+            writer.setAbsent(3);
+        } else {
+            writer.setString(3, fields.label);
+        }
+        writer.endTable(parent);
     }
 
     /** @returns {number} */
@@ -142,6 +119,25 @@ export class Point {
 
         return this._reader.fieldOffset(this._position, 2) !== this._position;
     }
+
+    /**
+     * An optional field of a nested table, which its reader finds absent at
+     * the table's position rather than at 0
+     *
+     * @returns {string | undefined}
+     */
+    label() {
+        if (this._reader.fieldOffset(this._position, 0) - this._position < 16) {
+            return undefined;
+        }
+
+        const offset = this._reader.fieldOffset(this._position, 3);
+        if (offset === this._position) {
+            return undefined;
+        }
+
+        return this._reader.getString(offset);
+    }
 }
 
 /**
@@ -151,6 +147,7 @@ export class Point {
  * @property {number} x
  * @property {number} y
  * @property {number} z
+ * @property {string} [label] An optional field of a nested table, which its reader finds absent at the table's position rather than at 0
  */
 
 /**

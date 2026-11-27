@@ -33,7 +33,8 @@ public class PresenceTests
         Float64s,
         Float64s,
         Float64s,
-        (x, y, z) => new PointFields { X = x, Y = y, Z = z }
+        Optional(Strings),
+        (x, y, z, label) => new PointFields { X = x, Y = y, Z = z, Label = label }
     );
 
     private static readonly Gen<EntryFields> Entries = Gen.Select(
@@ -289,7 +290,7 @@ public class PresenceTests
             Of(fields.Id),
             Optional(fields.Name),
             Optional(fields.Values, values => Of(values.Span)),
-            Optional(fields.Origin, origin => Nested(Of(origin.X), Of(origin.Y), Of(origin.Z))),
+            Optional(fields.Origin, origin => Nested(Of(origin.X), Of(origin.Y), Of(origin.Z), Optional(origin.Label))),
             Optional(fields.Flag, Of),
             Optional(fields.Entries, entries => Vector(entries.ToArray().Select(DescribeEntry))),
             Optional(fields.Total, Of),
@@ -321,7 +322,7 @@ public class PresenceTests
             Of(fields.Id),
             Optional(fields.Name),
             Optional(fields.Values, values => Of(values.Span)),
-            Optional(fields.Origin, origin => Nested(Of(origin.X), Of(origin.Y), Absent)),
+            Optional(fields.Origin, origin => Nested(Of(origin.X), Of(origin.Y), Absent, Absent)),
             Optional(fields.Flag, Of),
             Optional(fields.Entries, entries => Vector(entries.ToArray().Select(entry => Nested(Of(entry.Key), Optional(entry.Note), Absent)))),
             Optional(fields.Total, Of),
@@ -389,7 +390,12 @@ public class PresenceTests
     }
 
     private static TableField Describe(Point point) =>
-        Nested(Of(point.X), Of(point.Y), point.HasZ ? Of(point.Z) : Missing(Of(point.Z), Of(ZDefault)));
+        Nested(
+            Of(point.X),
+            Of(point.Y),
+            point.HasZ ? Of(point.Z) : Missing(Of(point.Z), Of(ZDefault)),
+            Optional(point.Label)
+        );
 
     private static List<TableField> DescribeEntries(EntryVector entries)
     {

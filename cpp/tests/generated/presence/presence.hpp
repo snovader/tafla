@@ -80,7 +80,7 @@ using EntryVector = ::tafla::TableVector<Entry>;
 /** A vector of `EntryV1`s, which reads each item when it's asked for */
 using EntryV1Vector = ::tafla::TableVector<EntryV1>;
 
-/** A point whose second revision appends `z` */
+/** A point whose second revision appends `z` and `label` */
 class Point {
 public:
     /**
@@ -111,6 +111,15 @@ public:
     /** Whether the table holds `z`, which throws a `tafla::DecodeError` as `z()` does */
     [[nodiscard]] TAFLA_ALWAYS_INLINE bool has_z() const;
 
+    /**
+     * An optional field of a nested table, which its reader finds absent at
+     * the table's position rather than at 0
+     *
+     * `std::nullopt` when the table doesn't hold the field. Throws a `tafla::DecodeError` if the field lies outside the
+     * bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::optional<std::string_view> label() const;
+
 private:
     std::span<const std::uint8_t> bytes_;
 };
@@ -120,6 +129,11 @@ struct PointFields {
     double x{};
     double y{};
     double z{};
+    /**
+     * An optional field of a nested table, which its reader finds absent at
+     * the table's position rather than at 0
+     */
+    std::optional<std::string_view> label{};
 
     /** The alignment that a parent pads a `Point` to: the largest alignment of its arrays and nested tables, or 1 */
     static constexpr ::tafla::Alignment ALIGNMENT = ::tafla::Alignment::one;
@@ -129,15 +143,6 @@ struct PointFields {
 
     /** Writes a `Point` where its parent's writer is, after the field or vector that holds it */
     TAFLA_ALWAYS_INLINE void write(::tafla::TableWriter& writer_) const;
-
-    /** The byte length of a `Point` written whole: its offsets and its fields */
-    static constexpr std::size_t SIZE = 36;
-
-    /**
-     * Writes the `SIZE` bytes of a `Point`, its offsets and its fields, at `bytes_`, as its parent's writer would after
-     * its offset
-     */
-    void to_bytes(std::uint8_t* bytes_) const noexcept;
 };
 
 /** A record in its second version, which reads the first too */
@@ -696,29 +701,42 @@ inline bool Point::has_z() const {
     return reader.field_offset(0, 2) != 0;
 }
 
+inline std::optional<std::string_view> Point::label() const {
+    const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());
+    if (reader.field_offset(0, 0) < 16) {
+        return std::nullopt;
+    }
+
+    const auto position = reader.field_offset(0, 3);
+    if (position == 0) {
+        return std::nullopt;
+    }
+
+    return reader.get_string(position);
+}
+
 inline void PointFields::size(::tafla::TableSizer& sizer_) const {
-    const auto parent_ = sizer_.start_table(3);
+    const auto parent_ = sizer_.start_table(4);
     sizer_.add_float64();
     sizer_.add_float64();
     sizer_.add_float64();
+    if (label.has_value()) {
+        sizer_.add_string(*label);
+    }
     sizer_.end_table(parent_);
 }
 
 inline void PointFields::write(::tafla::TableWriter& writer_) const {
-    const auto parent_ = writer_.start_table(3);
+    const auto parent_ = writer_.start_table(4);
     writer_.set_float64(0, x);
     writer_.set_float64(1, y);
     writer_.set_float64(2, z);
+    if (label.has_value()) {
+        writer_.set_string(3, *label);
+    } else {
+        writer_.set_absent(3);
+    }
     writer_.end_table(parent_);
-}
-
-inline void PointFields::to_bytes(std::uint8_t* bytes_) const noexcept {
-    ::tafla::store_le(bytes_, std::uint32_t{12});
-    ::tafla::store_le(bytes_ + 4, std::uint32_t{20});
-    ::tafla::store_le(bytes_ + 8, std::uint32_t{28});
-    ::tafla::store_le(bytes_ + 12, x);
-    ::tafla::store_le(bytes_ + 20, y);
-    ::tafla::store_le(bytes_ + 28, z);
 }
 
 inline Record::Record(std::span<const std::uint8_t> bytes) : bytes_(bytes), version_(version_of(bytes)) {

@@ -94,7 +94,12 @@ def _read_point(point: Point | None) -> dict[str, object] | None:
     if point is None:
         return None
 
-    return {"x": point.x(), "y": point.y(), "z": (point.z(), point.has_z())}
+    return {
+        "x": point.x(),
+        "y": point.y(),
+        "z": (point.z(), point.has_z()),
+        "label": point.label(),
+    }
 
 
 def _read_entries(entries: EntryVector | None) -> list[dict[str, object]] | None:
@@ -145,7 +150,12 @@ def expected_from_first_version(fields: RecordV1Fields) -> dict[str, object]:
 
     first = _expected_first_version(fields)
     if origin is not None:
-        first["origin"] = {"x": origin["x"], "y": origin["y"], "z": (Z_DEFAULT, False)}
+        first["origin"] = {
+            "x": origin["x"],
+            "y": origin["y"],
+            "z": (Z_DEFAULT, False),
+            "label": None,
+        }
     if entries is not None:
         first["entries"] = [
             {
@@ -187,7 +197,12 @@ def _elements(values: Buffer | Iterable[float]) -> Sequence[float]:
 
 
 def _expected_point(point: PointFields) -> dict[str, object]:
-    return {"x": point["x"], "y": point["y"], "z": (point["z"], True)}
+    return {
+        "x": point["x"],
+        "y": point["y"],
+        "z": (point["z"], True),
+        "label": point.get("label"),
+    }
 
 
 def _expected_entry(entry: EntryFields) -> dict[str, object]:
@@ -261,7 +276,12 @@ def describe_record(fields: RecordFields) -> Description:
 
 
 def _describe_point(point: PointFields) -> list[Description]:
-    return [scalar("float64", point[key]) for key in ("x", "y", "z")]
+    label = point.get("label")
+
+    return [
+        *(scalar("float64", point[key]) for key in ("x", "y", "z")),
+        ABSENT if label is None else string(label),
+    ]
 
 
 def _describe_entry(entry: EntryFields) -> list[Description]:
@@ -291,9 +311,18 @@ def _optional[T](values: SearchStrategy[T]) -> SearchStrategy[T | None]:
 _FLOAT32S = scalar_values("float32")
 _FLOAT64S = scalar_values("float64")
 
-_point_fields: SearchStrategy[PointFields] = builds(
-    PointFields, x=_FLOAT64S, y=_FLOAT64S, z=_FLOAT64S
-)
+
+@composite
+def _point_fields(draw: DrawFn) -> PointFields:
+    fields: PointFields = {
+        "x": draw(_FLOAT64S),
+        "y": draw(_FLOAT64S),
+        "z": draw(_FLOAT64S),
+    }
+    if draw(booleans()):
+        fields["label"] = draw(_optional(STRINGS))
+
+    return fields
 
 
 @composite
@@ -324,7 +353,7 @@ def record_fields(draw: DrawFn) -> RecordFields:
     if draw(booleans()):
         fields["values"] = draw(_optional(lists(_FLOAT64S, max_size=4)))
     if draw(booleans()):
-        fields["origin"] = draw(_optional(_point_fields))
+        fields["origin"] = draw(_optional(_point_fields()))
     if draw(booleans()):
         fields["flag"] = draw(_optional(booleans()))
     if draw(booleans()):

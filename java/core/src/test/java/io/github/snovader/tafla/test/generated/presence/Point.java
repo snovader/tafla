@@ -5,7 +5,9 @@ import io.github.snovader.tafla.TableReader;
 import io.github.snovader.tafla.TableSizer;
 import io.github.snovader.tafla.TableWriter;
 
-/** A point whose second revision appends {@code z} */
+import org.jspecify.annotations.Nullable;
+
+/** A point whose second revision appends {@code z} and {@code label} */
 public final class Point {
     /**
      * The alignment that a parent pads a {@code Point} to: the largest
@@ -26,10 +28,13 @@ public final class Point {
      * vector that holds it
      */
     public static void size(TableSizer sizer, Fields fields) {
-        var parent = sizer.startTable(3);
+        var parent = sizer.startTable(4);
         sizer.addFloat64();
         sizer.addFloat64();
         sizer.addFloat64();
+        if (fields.label() != null) {
+            sizer.addString(fields.label());
+        }
         sizer.endTable(parent);
     }
 
@@ -38,10 +43,15 @@ public final class Point {
      * field or vector that holds it
      */
     public static void write(TableWriter writer, Fields fields) {
-        var parent = writer.startTable(3);
+        var parent = writer.startTable(4);
         writer.setFloat64(0, fields.x());
         writer.setFloat64(1, fields.y());
         writer.setFloat64(2, fields.z());
+        if (fields.label() == null) {
+            writer.setAbsent(3);
+        } else {
+            writer.setString(3, fields.label());
+        }
         writer.endTable(parent);
     }
 
@@ -76,6 +86,23 @@ public final class Point {
         return reader.fieldOffset(position, 2) != position;
     }
 
+    /**
+     * An optional field of a nested table, which its reader finds absent at
+     * the table's position rather than at 0
+     */
+    public @Nullable String label() {
+        if (reader.fieldOffset(position, 0) - position < 16) {
+            return null;
+        }
+
+        var offset = reader.fieldOffset(position, 3);
+        if (offset == position) {
+            return null;
+        }
+
+        return reader.getString(offset);
+    }
+
     /** The fields of a {@code Point}, to write */
-    public record Fields(double x, double y, double z) {}
+    public record Fields(double x, double y, double z, @Nullable String label) {}
 }

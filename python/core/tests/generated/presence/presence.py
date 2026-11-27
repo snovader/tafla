@@ -343,7 +343,7 @@ class RecordV1Fields(TypedDict):
 
 
 class Point:
-    """A point whose second revision appends ``z``"""
+    """A point whose second revision appends ``z`` and ``label``"""
 
     __slots__ = ("_position", "_reader")
 
@@ -352,7 +352,7 @@ class Point:
     alignment of its arrays and nested tables, or 1
     """
 
-    _FIXED_FIELDS: Final = FixedFields(3, "d", "d", "d")
+    _FIXED_FIELDS: Final = FixedFields(4, "d", "d", "d")
 
     def __init__(self, reader: TableReader, position: int) -> None:
         """Reads the table at ``position``, as its parent's getter finds it"""
@@ -364,7 +364,14 @@ class Point:
         """Writes a ``Point`` where its parent's writer is, after the
         field or vector that holds it
         """
-        writer.write_table(Point._FIXED_FIELDS, (fields["x"], fields["y"], fields["z"]))
+        parent = writer.start_table(4)
+        writer.set_fields(Point._FIXED_FIELDS, (fields["x"], fields["y"], fields["z"]))
+        value = fields.get("label")
+        if value is None:
+            writer.set_absent(3)
+        else:
+            writer.set_string(3, value)
+        writer.end_table(parent)
 
     def x(self) -> float:
         return self._reader.get_float64(self._reader.field_offset(self._position, 0))
@@ -390,6 +397,19 @@ class Point:
 
         return self._reader.field_offset(self._position, 2) != self._position
 
+    def label(self) -> str | None:
+        """An optional field of a nested table, which its reader finds absent at
+        the table's position rather than at 0
+        """
+        if self._reader.field_offset(self._position, 0) - self._position < 16:
+            return None
+
+        offset = self._reader.field_offset(self._position, 3)
+        if offset == self._position:
+            return None
+
+        return self._reader.get_string(offset)
+
 
 class PointFields(TypedDict):
     """The fields of a ``Point``, to write"""
@@ -397,6 +417,10 @@ class PointFields(TypedDict):
     x: float
     y: float
     z: float
+    label: NotRequired[str | None]
+    """An optional field of a nested table, which its reader finds absent at
+    the table's position rather than at 0
+    """
 
 
 class PointV1:

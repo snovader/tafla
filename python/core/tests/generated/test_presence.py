@@ -120,6 +120,7 @@ class TestOptionalFields(unittest.TestCase):
         assert origin is not None
         self.assertEqual(origin.z(), 3)
         self.assertTrue(origin.has_z())
+        self.assertIsNone(origin.label())
 
 
 class TestVersions(unittest.TestCase):
@@ -216,6 +217,7 @@ class TestUntrustedBytes(unittest.TestCase):
                 _check_default, self, entry.weight, entry.has_weight, WEIGHT_DEFAULT
             )
         )
+        assert_values_or_decode_error(point.label)
         assert_values_or_decode_error(entry.note)
 
 

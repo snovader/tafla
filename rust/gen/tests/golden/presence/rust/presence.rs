@@ -217,7 +217,7 @@ pub struct RecordFields<'a, T = EntryFields<'a>> {
     pub id: u32,
     pub name: Option<&'a str>,
     pub values: Option<&'a [f64]>,
-    pub origin: Option<PointFields>,
+    pub origin: Option<PointFields<'a>>,
     pub flag: Option<bool>,
     /// [`EntryFields`], or items of any type `T` whose reference converts into them
     pub entries: Option<&'a [T]>,
@@ -571,7 +571,7 @@ where
     }
 }
 
-/// A point whose second revision appends `z`
+/// A point whose second revision appends `z` and `label`
 #[derive(Clone, Copy, Debug)]
 pub struct Point<'a> {
     bytes: &'a [u8],
@@ -635,49 +635,68 @@ impl<'a> Point<'a> {
         let position = reader.field_offset(self.position, 2)?;
         Ok(position != self.position)
     }
+
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn label(&self) -> Result<Option<&'a str>, DecodeError> {
+        let reader = TableReader::new(self.bytes, TableLayout::DEFAULT);
+        if reader.field_offset(self.position, 0)? - self.position < 16 {
+            return Ok(None);
+        }
+
+        let position = reader.field_offset(self.position, 3)?;
+        if position == self.position {
+            return Ok(None);
+        }
+
+        reader.get_str(position).map(Some)
+    }
 }
 
 /// The fields of a [`Point`], to write
 #[derive(Clone, Debug)]
-pub struct PointFields {
+pub struct PointFields<'a> {
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    pub label: Option<&'a str>,
 }
 
-impl PointFields {
+impl PointFields<'_> {
     /// The alignment that a parent pads a [`Point`] to: the largest alignment of its
     /// arrays and nested tables, or 1
     pub const ALIGNMENT: Alignment = Alignment::One;
 
-    /// The byte length of a [`Point`]: its offsets and its fields, whose sizes the
-    /// schema fixes, so that its parent writes it whole
-    pub const SIZE: usize = 36;
-
     /// Adds a [`Point`] to its parent's sizer, after the field or vector that holds it
-    #[allow(clippy::unused_self)]
     pub fn size(&self, sizer: &mut TableSizer) {
-        sizer.add_table_bytes(1, Self::SIZE);
+        let parent = sizer.start_table(4);
+        sizer.add_f64();
+        sizer.add_f64();
+        sizer.add_f64();
+        if let Some(value) = self.label {
+            sizer.add_str(value);
+        }
+        sizer.end_table(parent);
     }
 
     /// Writes a [`Point`] where its parent's writer is, after the field or vector that holds it
     pub fn write(&self, writer: &mut TableWriter) {
-        writer.copy_table(&self.to_bytes());
-    }
-
-    /// The bytes of a [`Point`], as its parent holds it: its offsets, and then its
-    /// fields at them
-    #[must_use]
-    pub fn to_bytes(&self) -> [u8; 36] {
-        let mut bytes = [0; Self::SIZE];
-        bytes[0..4].copy_from_slice(&12_u32.to_le_bytes());
-        bytes[4..8].copy_from_slice(&20_u32.to_le_bytes());
-        bytes[8..12].copy_from_slice(&28_u32.to_le_bytes());
-        bytes[12..20].copy_from_slice(&self.x.to_le_bytes());
-        bytes[20..28].copy_from_slice(&self.y.to_le_bytes());
-        bytes[28..36].copy_from_slice(&self.z.to_le_bytes());
-
-        bytes
+        let parent = writer.start_table(4);
+        writer.set_f64(0, self.x);
+        writer.set_f64(1, self.y);
+        writer.set_f64(2, self.z);
+        if let Some(value) = self.label {
+            writer.set_str(3, value);
+        } else {
+            writer.set_absent(3);
+        }
+        writer.end_table(parent);
     }
 }
 

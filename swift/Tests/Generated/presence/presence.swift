@@ -555,7 +555,7 @@ public struct RecordV1Fields: Hashable, Sendable {
     }
 }
 
-/// A point whose second revision appends `z`
+/// A point whose second revision appends `z` and `label`
 @frozen
 public struct Point: ~Escapable {
     @usableFromInline
@@ -615,6 +615,26 @@ public struct Point: ~Escapable {
             return try _reader.fieldOffset(2, inTableAt: _position) != _position
         }
     }
+
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var label: String? {
+        get throws(DecodeError) {
+            guard try _reader.fieldOffset(0, inTableAt: _position) - _position >= 16 else {
+                return nil
+            }
+
+            let field = try _reader.fieldOffset(3, inTableAt: _position)
+            guard field != _position else {
+                return nil
+            }
+
+            return try _reader.string(at: field)
+        }
+    }
 }
 
 /// The fields of a `Point`, to write
@@ -626,28 +646,40 @@ public struct PointFields: Hashable, Sendable {
     public var x: Double
     public var y: Double
     public var z: Double
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    public var label: String?
 
-    public init(x: Double, y: Double, z: Double) {
+    public init(x: Double, y: Double, z: Double, label: String? = nil) {
         self.x = x
         self.y = y
         self.z = z
+        self.label = label
     }
 
     /// Adds a `Point` to its parent's sizer, after the field or vector that holds it
     public func add(to sizer: inout TableSizer) {
-        let parent = sizer.startTable(fields: 3)
+        let parent = sizer.startTable(fields: 4)
         sizer.addFloat64()
         sizer.addFloat64()
         sizer.addFloat64()
+        if let value = self.label {
+            sizer.addString(value)
+        }
         sizer.endTable(parent)
     }
 
     /// Writes a `Point` where its parent's writer is, after the field or vector that holds it
     public func write(to writer: inout TableWriter) {
-        let parent = writer.startTable(fields: 3)
+        let parent = writer.startTable(fields: 4)
         writer.setFloat64(0, self.x)
         writer.setFloat64(1, self.y)
         writer.setFloat64(2, self.z)
+        if let value = self.label {
+            writer.setString(3, value)
+        } else {
+            writer.setAbsent(3)
+        }
         writer.endTable(parent)
     }
 }

@@ -273,9 +273,9 @@ func (f RecordFields) AppendBinary(bytes []byte) ([]byte, error) {
 	} else {
 		sizer.AddAbsent()
 	}
-	if _, ok := f.Origin.Get(); ok {
+	if value, ok := f.Origin.Get(); ok {
 		sizer.AddTable(tafla.Align1)
-		sizer.AddTableBytes(1, 36)
+		value.size(&sizer)
 	} else {
 		sizer.AddAbsent()
 	}
@@ -321,7 +321,7 @@ func (f RecordFields) AppendBinary(bytes []byte) ([]byte, error) {
 	}
 	if value, ok := f.Origin.Get(); ok {
 		writer.SetTable(3, tafla.Align1)
-		value.put(writer.ReserveTableBytes(36))
+		value.write(&writer)
 	} else {
 		writer.SetAbsent(3)
 	}
@@ -641,7 +641,7 @@ func (f RecordV1Fields) AppendBinary(bytes []byte) ([]byte, error) {
 	return writer.Bytes()
 }
 
-// A point whose second revision appends `z`
+// A point whose second revision appends `z` and `label`
 type Point struct {
 	bytes    []byte
 	position int
@@ -708,24 +708,77 @@ func (t Point) HasZ() (bool, error) {
 	return position != t.position, nil
 }
 
+// An optional field of a nested table, which its reader finds absent at
+// the table's position rather than at 0
+//
+// It returns the zero value and false when the table doesn't hold it. It fails
+// with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Point) Label() (string, bool, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	first, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return "", false, err
+	}
+	if first-t.position < 16 {
+		return "", false, nil
+	}
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+12)
+	if err != nil {
+		return "", false, err
+	}
+	if position == t.position {
+		return "", false, nil
+	}
+
+	value, err := reader.GetString(position)
+	if err != nil {
+		return "", false, err
+	}
+	return value, true, nil
+}
+
 // PointFields are the fields of a [Point], to write.
 type PointFields struct {
 	X float64
 	Y float64
 	Z float64
+	// An optional field of a nested table, which its reader finds absent at
+	// the table's position rather than at 0
+	Label tafla.Optional[string]
 }
 
-// put writes a [Point] whole, its offsets and its fields, into the start of
-// bytes, which hold at least its 36 bytes, where its parent's writer reserved
-// them
-func (f *PointFields) put(bytes []byte) {
-	_ = bytes[35]
-	binary.LittleEndian.PutUint32(bytes, 12)
-	binary.LittleEndian.PutUint32(bytes[4:], 20)
-	binary.LittleEndian.PutUint32(bytes[8:], 28)
-	binary.LittleEndian.PutUint64(bytes[12:], math.Float64bits(f.X))
-	binary.LittleEndian.PutUint64(bytes[20:], math.Float64bits(f.Y))
-	binary.LittleEndian.PutUint64(bytes[28:], math.Float64bits(f.Z))
+// size adds a [Point] to its parent's sizer, after the field or vector that
+// holds it
+func (f *PointFields) size(sizer *tafla.TableSizer) {
+	parent := sizer.StartTable(4)
+	sizer.AddFields(3, 24)
+	if value, ok := f.Label.Get(); ok {
+		sizer.AddString(value)
+	} else {
+		sizer.AddAbsent()
+	}
+	sizer.EndTable(parent)
+}
+
+// write writes a [Point] where its parent's writer is, after the field or
+// vector that holds it
+func (f *PointFields) write(writer *tafla.TableWriter) {
+	parent := writer.StartTable(4)
+	fixed := writer.ReserveFields(24)
+	_ = fixed[39]
+	binary.LittleEndian.PutUint32(fixed, 16)
+	binary.LittleEndian.PutUint32(fixed[4:], 24)
+	binary.LittleEndian.PutUint32(fixed[8:], 32)
+	binary.LittleEndian.PutUint64(fixed[16:], math.Float64bits(f.X))
+	binary.LittleEndian.PutUint64(fixed[24:], math.Float64bits(f.Y))
+	binary.LittleEndian.PutUint64(fixed[32:], math.Float64bits(f.Z))
+	if value, ok := f.Label.Get(); ok {
+		writer.SetString(3, value)
+	} else {
+		writer.SetAbsent(3)
+	}
+	writer.EndTable(parent)
 }
 
 type PointV1 struct {

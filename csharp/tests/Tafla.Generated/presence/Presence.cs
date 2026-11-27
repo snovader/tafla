@@ -267,7 +267,7 @@ public readonly record struct RecordFields
         if (Origin is not null)
         {
             sizer.AddTable(alignment: 1);
-            sizer.AddTableBytes(1, size: 36);
+            Origin.GetValueOrDefault().AddTo(ref sizer);
         }
         if (Flag is not null)
         {
@@ -316,7 +316,7 @@ public readonly record struct RecordFields
         else
         {
             writer.SetTable(3, alignment: 1);
-            Origin.GetValueOrDefault().PutTo(writer.ReserveTableBytes(36));
+            Origin.GetValueOrDefault().WriteTo(ref writer);
         }
         if (Flag is null)
         {
@@ -385,7 +385,7 @@ public readonly record struct RecordFields
         if (Origin is not null)
         {
             sizer.AddTable(alignment: 1);
-            sizer.AddTableBytes(1, size: 36);
+            Origin.GetValueOrDefault().AddTo(ref sizer);
         }
         if (Flag is not null)
         {
@@ -434,7 +434,7 @@ public readonly record struct RecordFields
         else
         {
             writer.SetTable(3, alignment: 1);
-            Origin.GetValueOrDefault().PutTo(writer.ReserveTableBytes(36));
+            Origin.GetValueOrDefault().WriteTo(ref writer);
         }
         if (Flag is null)
         {
@@ -852,7 +852,7 @@ public readonly record struct RecordV1Fields
     }
 }
 
-/// <summary>A point whose second revision appends <c>z</c></summary>
+/// <summary>A point whose second revision appends <c>z</c> and <c>label</c></summary>
 public readonly ref struct Point
 {
     private readonly global::Tafla.TableReader _reader;
@@ -891,6 +891,34 @@ public readonly ref struct Point
     /// <summary>Whether the table holds <see cref="Z"/>.</summary>
     public bool HasZ =>
         _reader.FieldOffset(_position, 0) - _position >= 12 && _reader.FieldOffset(_position, 2) != _position;
+
+    /// <summary>
+    /// <para>
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    /// </para>
+    /// <para>
+    /// Null when the table doesn't hold it.
+    /// </para>
+    /// </summary>
+    public string? Label
+    {
+        get
+        {
+            if (_reader.FieldOffset(_position, 0) - _position < 16)
+            {
+                return null;
+            }
+
+            var offset = _reader.FieldOffset(_position, 3);
+            if (offset == _position)
+            {
+                return null;
+            }
+
+            return _reader.GetString(offset);
+        }
+    }
 }
 
 /// <summary>The fields of a <see cref="Point"/>, to write.</summary>
@@ -902,15 +930,47 @@ public readonly record struct PointFields
 
     public required double Z { get; init; }
 
-    /// <summary>Writes a <see cref="Point"/> whole, its offsets and its fields, into the start of <paramref name="bytes"/>, which hold its 36 bytes, where its parent's writer reserved them.</summary>
-    internal void PutTo(global::System.Span<byte> bytes)
+    /// <summary>
+    /// <para>
+    /// An optional field of a nested table, which its reader finds absent at
+    /// the table's position rather than at 0
+    /// </para>
+    /// <para>
+    /// Left out of the table when it's null.
+    /// </para>
+    /// </summary>
+    public string? Label { get; init; }
+
+    /// <summary>Adds a <see cref="Point"/> to its parent's sizer, after the field or vector that holds it.</summary>
+    internal void AddTo(ref global::Tafla.TableSizer sizer)
     {
-        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes, 12);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[4..], 20);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes[8..], 28);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[12..], X);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[20..], Y);
-        global::System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(bytes[28..], Z);
+        var parent = sizer.StartTable(4);
+        sizer.AddFloat64();
+        sizer.AddFloat64();
+        sizer.AddFloat64();
+        if (Label is not null)
+        {
+            sizer.AddString(Label);
+        }
+        sizer.EndTable(parent);
+    }
+
+    /// <summary>Writes a <see cref="Point"/> where its parent's writer is, after the field or vector that holds it.</summary>
+    internal void WriteTo(ref global::Tafla.TableWriter writer)
+    {
+        var parent = writer.StartTable(4);
+        writer.SetFloat64(0, X);
+        writer.SetFloat64(1, Y);
+        writer.SetFloat64(2, Z);
+        if (Label is null)
+        {
+            writer.SetAbsent(3);
+        }
+        else
+        {
+            writer.SetString(3, Label);
+        }
+        writer.EndTable(parent);
     }
 }
 
