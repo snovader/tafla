@@ -15,15 +15,21 @@ import Tafla
 //
 // Every array is read element by element, copied, and in place where its
 // span is, and the three must agree.
+//
+// A field described as absent must have the offset 0, from its table's
+// start, and isn't read. A table that describes how many fields a reader of
+// a later revision knows after its own, its `missing`, reads as the number of
+// them that it finds missing, as SPEC.md's Revisions describes.
 
 /// The error of bytes that read without a decode error, but otherwise than
 /// their description: a sized table whose header holds another length, a
-/// vector of another number of items, or ways of reading that disagree, which
-/// no bytes may cause
+/// vector of another number of items, a field described as absent whose
+/// offset isn't 0, or ways of reading that disagree, which no bytes may cause
 struct Mismatch: Error, CustomStringConvertible {
     enum Kind {
         case size
         case itemCount
+        case presence
         case disagreement
     }
 
@@ -57,18 +63,67 @@ func readTable(_ bytes: RawSpan, _ table: Table) throws -> Table {
     for (index, field) in table.fields.enumerated() {
         read.fields.append(try readRootField(reader, index, field))
     }
+    if table.missing != nil {
+        read.missing = try countMissing(reader, table, nestedAt: nil)
+    }
 
     return read
 }
 
 /// Reads root field `index` of a table as `field`, without reading the header
 func readRootField(_ reader: TableReader, _ index: Int, _ field: Field) throws -> Field {
-    try readField(reader, at: reader.rootOffset(index), field)
+    let position = try reader.rootOffset(index)
+    if field == .absent {
+        return try readAbsent(offset: position)
+    }
+
+    return try readField(reader, at: position, field)
+}
+
+/// Reads a field described as absent, whose offset must be 0
+func readAbsent(offset: Int) throws -> Field {
+    guard offset == 0 else {
+        throw Mismatch(.presence, "A field described as absent has the offset \(offset)")
+    }
+
+    return .absent
+}
+
+/// Counts the fields after the table's own that it doesn't hold, of the
+/// `missing` fields that a reader of a later revision knows there: a field
+/// whose offset would end after the table's first value starts, which isn't
+/// read, or whose offset is 0, as an absent field's is, and as padding before
+/// the first value reads. A table that holds one of them counts fewer than
+/// `missing`. The root's offsets follow its header, and those of a table
+/// nested at a position count from its own start, where it has no header.
+func countMissing(_ reader: TableReader, _ table: Table, nestedAt position: Int?) throws -> Int {
+    func offset(_ index: Int) throws -> Int {
+        guard let position else {
+            return try reader.rootOffset(index)
+        }
+        return try reader.fieldOffset(index, inTableAt: position) - position
+    }
+
+    let headerSize = position == nil ? table.layout.headerSize : 0
+    let width = table.layout.offsetSize
+    let firstValue = try offset(0)
+
+    var count = 0
+    for index in table.fields.count..<table.fields.count + (table.missing ?? 0) {
+        if headerSize + (index + 1) * width > firstValue {
+            count += 1
+        } else if try offset(index) == 0 {
+            count += 1
+        }
+    }
+
+    return count
 }
 
 /// Reads the field at `position` of the table that `reader` reads
 func readField(_ reader: TableReader, at position: Int, _ field: Field) throws -> Field {
     switch field {
+    case .absent: preconditionFailure("A field described as absent is read from its offset")
     case .int8: .int8(try reader.int8(at: position))
     case .uint8: .uint8(try reader.uint8(at: position))
     case .int16: .int16(try reader.int16(at: position))
@@ -217,7 +272,16 @@ func readInPlace(_ reader: TableReader, at position: Int, _ table: Table) throws
     var read = Table(layout: table.layout, version: nil, fields: [])
     for (index, field) in table.fields.enumerated() {
         let offset = try reader.fieldOffset(index, inTableAt: position)
-        read.fields.append(try readField(reader, at: offset, field))
+
+        // A nested table's offsets count from its own start
+        if field == .absent {
+            read.fields.append(try readAbsent(offset: offset - position))
+        } else {
+            read.fields.append(try readField(reader, at: offset, field))
+        }
+    }
+    if table.missing != nil {
+        read.missing = try countMissing(reader, table, nestedAt: position)
     }
 
     return read

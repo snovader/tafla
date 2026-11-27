@@ -26,8 +26,9 @@ final class DescriptionJson {
         var fields = table.getJsonArray("fields").stream()
             .map(field -> readField(field.asJsonObject()))
             .toList();
+        var missing = table.containsKey("missing") ? OptionalInt.of(table.getInt("missing")) : OptionalInt.empty();
 
-        return new TableDescription(layout, version, fields);
+        return new TableDescription(layout, version, fields, missing);
     }
 
     private static LayoutDescription readLayout(JsonObject layout) {
@@ -50,6 +51,7 @@ final class DescriptionJson {
         var type = field.getString("type");
 
         return switch (type) {
+            case "absent" -> new AbsentField();
             case "bool" -> new BoolField(field.getBoolean("value"));
             case "string" -> new StringField(field.getString("value"));
             case "struct" -> new StructField(
@@ -177,8 +179,10 @@ final class DescriptionJson {
         for (var field : table.fields()) {
             fields.add(write(field));
         }
+        json.add("fields", fields);
+        table.missing().ifPresent(missing -> json.add("missing", missing));
 
-        return json.add("fields", fields).build();
+        return json.build();
     }
 
     static JsonObject write(LayoutDescription layout) {
@@ -211,6 +215,7 @@ final class DescriptionJson {
             case StructArrayField array -> writeStructArray(array);
             case TableField table -> writeTableField(table);
             case VectorField vector -> writeVector(vector);
+            case AbsentField ignored -> Json.createObjectBuilder().add("type", "absent").build();
         };
     }
 

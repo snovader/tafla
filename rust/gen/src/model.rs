@@ -78,7 +78,19 @@ pub struct StructLayout {
 pub struct Layout {
     pub sized: bool,
     pub version: Option<u32>,
+    /// The first version that the message's reader reads, which its `since`
+    /// attribute names, when it reads more versions than its own
+    pub since: Option<u32>,
     pub offset_type: OffsetType,
+}
+
+impl Layout {
+    /// The versions that the message's reader reads, from the first to its
+    /// own, when it has a version
+    pub fn versions(&self) -> Option<(u32, u32)> {
+        self.version
+            .map(|version| (self.since.unwrap_or(version), version))
+    }
 }
 
 /// The offset type of a message, which its `offset_type` attribute names
@@ -126,11 +138,40 @@ pub struct Field {
     pub name: String,
     pub docs: Vec<String>,
     pub field_type: FieldType,
+    /// Whether a writer may leave the field out, with an offset of 0, which
+    /// its reader checks for
+    pub optional: bool,
+    /// The version of its message, or the revision of its table, that added
+    /// the field: a reader finds it missing from a table written before
+    pub since: Option<u32>,
+    /// The value that the getter of a scalar that may be missing returns
+    /// when the table lacks it, which the schema gives after `=`, or zero,
+    /// or false, and `None` for every other field
+    pub default: Option<ScalarValue>,
     /// The enum that names the values of a scalar or of an array's elements,
     /// by its index in [`Schema::enums`]. The field's type is the enum's
     /// underlying integer, so code that doesn't name the enum reads and
     /// writes the field as it is.
     pub enumeration: Option<usize>,
+}
+
+/// A scalar's value, as a default: an integer of any scalar integer type, a
+/// float, which a `float32`'s default holds as the `float32` nearest to it,
+/// or a bool
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScalarValue {
+    Integer(i128),
+    Float(f64),
+    Bool(bool),
+}
+
+impl Field {
+    /// Whether the field's getter returns the target's missing value for a
+    /// table that doesn't hold it: an optional field left out, or a field
+    /// that a later version or revision added
+    pub const fn may_be_missing(&self) -> bool {
+        self.optional || self.since.is_some()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -364,6 +405,12 @@ fn alignment_within(definitions: &[Definition], index: usize, alignments: &mut [
 }
 
 impl Definition {
+    /// Whether any field may be missing from a table, so that the table's
+    /// length and what its reader reads depend on which fields it holds
+    pub fn has_missing_fields(&self) -> bool {
+        self.fields.iter().any(Field::may_be_missing)
+    }
+
     pub const fn layout(&self) -> Option<Layout> {
         match self.kind {
             Kind::Message(layout) => Some(layout),

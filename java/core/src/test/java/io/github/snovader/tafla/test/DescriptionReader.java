@@ -23,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * its own bytes, the root or a vector item, must hold their length in its size slot. A lenient
  * reader, for corrupted bytes, reads them without checking, and reads as many of a vector's items
  * as both the bytes and the description hold.</p>
+ *
+ * <p>The cases of presence describe absent fields, whose offsets a strict reader checks are 0, and
+ * tables read by a reader of a later revision, which counts the fields that it finds missing, as
+ * {@code conformance/README.md} describes.</p>
  */
 final class DescriptionReader {
     private final TableReader reader;
@@ -43,10 +47,13 @@ final class DescriptionReader {
         return new DescriptionReader(bytes, layout, false);
     }
 
-    /** Reads the header and every field of the table, which must have the reader's layout */
+    /**
+     * Reads the header and every field of the table, which must have the reader's layout, and
+     * counts the fields that it's missing when it describes some
+     */
     TableDescription readTable(TableDescription table) {
         var version = readHeader();
-        return new TableDescription(layout, version, readRootFields(table.fields()));
+        return new TableDescription(layout, version, readRootFields(table.fields()), countMissing(0, table));
     }
 
     /** Reads the header's slots, checking a strict reader's size, and returns the version */
@@ -62,7 +69,7 @@ final class DescriptionReader {
     }
 
     FieldDescription readRootField(int index, FieldDescription field) {
-        return readField(reader.rootOffset(index), field);
+        return readField(0, reader.rootOffset(index), field);
     }
 
     private OptionalLong readVersion() {
@@ -78,8 +85,13 @@ final class DescriptionReader {
         return read;
     }
 
-    private FieldDescription readField(int position, FieldDescription field) {
+    /**
+     * Reads the field at {@code position} of the table at {@code tablePosition}, whose offsets count
+     * from there, which is 0 for the root
+     */
+    private FieldDescription readField(int tablePosition, int position, FieldDescription field) {
         return switch (field) {
+            case AbsentField absent -> readAbsent(position - tablePosition, absent);
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
             case BoolField ignored -> new BoolField(reader.getUint8(position) != 0);
             case ArrayField array -> new ArrayField(array.type(), array.type().readArray(reader, position));
@@ -89,6 +101,55 @@ final class DescriptionReader {
             case TableField table -> new TableField(table.from(), readNested(position, table.table()), table.alignment());
             case VectorField vector -> new VectorField(readVector(position, vector.items()));
         };
+    }
+
+    /**
+     * Reads a field described as absent, whose offset from its table's start a strict reader
+     * checks is 0, as the format writes it. A lenient reader reads the offset alone.
+     */
+    private AbsentField readAbsent(int offset, AbsentField field) {
+        if (strict) {
+            assertEquals(0, offset, "The offset of a field described as absent");
+        }
+
+        return field;
+    }
+
+    /**
+     * Counts the fields after the table's own that it doesn't hold, of those that a reader of a
+     * later revision knows there, when the description has them: a field whose offset would end
+     * after the table's first value starts, which the first field's offset gives, or whose offset
+     * is 0, as the padding before an aligned first value reads. A table that holds one of them
+     * counts fewer than the description's.
+     *
+     * @param position the table's position, 0 for the root, whose offsets follow its header, and
+     *     otherwise that of a table read in place, whose offsets count from its start
+     */
+    private OptionalInt countMissing(int position, TableDescription table) {
+        if (table.missing().isEmpty()) {
+            return OptionalInt.empty();
+        }
+
+        var root = position == 0;
+        var headerSize = root ? layout.headerSize() : 0;
+        var firstValue = root ? reader.rootOffset(0) : reader.fieldOffset(position, 0) - position;
+
+        var fields = table.fields().size();
+        var count = 0;
+        for (int index = fields; index < fields + table.missing().getAsInt(); index++) {
+            // An offset that would end after the first value starts is never read
+            var holdsOffset = headerSize + (index + 1L) * layout.width() <= firstValue;
+            if (!holdsOffset || relativeOffset(position, index) == 0) {
+                count++;
+            }
+        }
+
+        return OptionalInt.of(count);
+    }
+
+    /** {@return the offset of field {@code index} of the table at {@code position}, from its start} */
+    private int relativeOffset(int position, int index) {
+        return position == 0 ? reader.rootOffset(index) : reader.fieldOffset(position, index) - position;
     }
 
     /** Reads a table nested with {@link TableBuilder#setTable} */
@@ -107,7 +168,7 @@ final class DescriptionReader {
         var version = nestedReader.readVersion();
         var fields = nestedReader.readRootFields(table.fields());
 
-        return new TableDescription(table.layout(), version, fields);
+        return new TableDescription(table.layout(), version, fields, nestedReader.countMissing(0, table));
     }
 
     private List<NestedTable> readVector(int position, List<NestedTable> items) {
@@ -151,9 +212,9 @@ final class DescriptionReader {
 
         var read = new ArrayList<FieldDescription>(fields.size());
         for (int index = 0; index < fields.size(); index++) {
-            read.add(readField(reader.fieldOffset(position, index), fields.get(index)));
+            read.add(readField(position, reader.fieldOffset(position, index), fields.get(index)));
         }
 
-        return new TableDescription(table.layout(), OptionalLong.empty(), read);
+        return new TableDescription(table.layout(), OptionalLong.empty(), read, countMissing(position, table));
     }
 }

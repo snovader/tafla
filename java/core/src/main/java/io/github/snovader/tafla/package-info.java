@@ -66,6 +66,10 @@
  *   <li>A vector starts with its item count, then the end of each item, counted from the vector's
  *     position, and then the items, one after another. {@code getVectorOffset()} finds any item
  *     from two ends, without reading the items before it.</li>
+ *   <li>A field that the format lets be absent may have the offset 0 and no bytes, which
+ *     {@code setAbsent()} writes. Its reader compares the offset from {@code rootOffset()} with 0,
+ *     or the one from {@code fieldOffset()} with the nested table's position, before reading the
+ *     field, which no other field's reader does.</li>
  * </ul>
  *
  * <p>Java has no unsigned types, so unsigned values are read into the next wider type, such as a

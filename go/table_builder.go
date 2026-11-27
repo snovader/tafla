@@ -227,6 +227,16 @@ func (b *TableBuilder) SetString(value string) error {
 	})
 }
 
+// SetAbsent sets the next field as absent: an offset of 0 and no value. A
+// reader finds it by comparing the field's offset, from
+// [TableReader.RootOffset], with 0, or one from [TableReader.FieldOffset]
+// with the nested table's position, before it reads the field, so only a
+// format whose readers make that check for the field can leave it out. It
+// fails with TooManyFields if the table holds all its fields already.
+func (b *TableBuilder) SetAbsent() error {
+	return b.addField(field{kind: absentField})
+}
+
 // SetStruct sets a struct field from its bytes: its scalars, little-endian,
 // one after another, which are written as they are, without padding. The
 // builder keeps the bytes until the table is written. It fails as
@@ -765,6 +775,8 @@ const (
 	bytesField
 	// data and length hold the items, a []NestedTable
 	vectorField
+	// A field left out, which takes an offset of 0 and no bytes
+	absentField
 
 	// The tables recorded in place come last, which writeFields tells from
 	// the others in one comparison.
@@ -895,6 +907,8 @@ func (f *field) write(writer *TableWriter, index int, offsetType OffsetType) {
 			writeNestedTable(writer, table, offsetType)
 			writer.SetItemEnd(vector, item)
 		}
+	case absentField:
+		writer.SetAbsent(index)
 	case tableInPlaceField, vectorInPlaceField:
 		// Of no fields, when writeValues writes every field
 		f.writeInPlace(writer, index, nil, 0, offsetType)

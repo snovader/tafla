@@ -286,6 +286,9 @@ struct DecodeErrorTests {
         #expect(
             "\(DecodeError.unsupportedVersion(version: 2, supported: 1))"
                 == "Unsupported format version 2; the reader reads version 1")
+        #expect(
+            "\(DecodeError.versionOutsideRange(version: 3, supported: 1...2))"
+                == "Unsupported format version 3; the reader reads versions 1 to 2")
     }
 
     @Test func stopsTheProgramForAMistakeOfTheCaller() async {

@@ -27,20 +27,29 @@
 //! fields and a string after them, which the generated code writes into the
 //! bytes that `tafla.AppendTable()` returns, without a sizer and a writer.
 //!
+//! A field that may be missing from a table, optional or added `since` a
+//! version, is read after checks that find it there. A scalar's getter
+//! returns its default where the table lacks it, and its `Has<Field>()`
+//! tells whether the table holds it; any other field's getter returns
+//! whether the table holds it after its value, as Go's comma-ok reads do, so
+//! that no caller takes the zero value of a nested table, which reads nothing,
+//! for one that the table holds. An optional field is written from a
+//! `tafla.Optional`, whose zero value is absent.
+//!
 //! Everything that a schema names is exported, in `PascalCase`, beside the
-//! functions and constants of messages, `New<Message>`, `<Message>VersionOf`
-//! and `<Message>FormatVersion`, and of structs, `Read<Struct>`, which the
-//! checker keeps declarations from taking, as it keeps the constant of an
-//! enum's value from taking any name of the package. The generated code's
-//! own helpers are unexported methods, and each struct's `read<Struct>()`,
-//! which can't clash with them.
+//! functions and constants of messages, `New<Message>`, `<Message>VersionOf`,
+//! `<Message>FormatVersion` and `<Message>FirstVersion`, and of structs,
+//! `Read<Struct>`, which the checker keeps declarations from taking, as it
+//! keeps the constant of an enum's value from taking any name of the
+//! package. The generated code's own helpers are unexported methods, and
+//! each struct's `read<Struct>()`, which can't clash with them.
 
 use super::fixed::{FixedSizes, NESTED_OFFSET_SIZE, offset_size};
 use super::prose::indefinite_article;
 use super::writer::CodeWriter;
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
     strongly_connected_components,
 };
 
@@ -239,6 +248,16 @@ impl Plan {
     }
 }
 
+/// The locals of the generated code that writes a table's fields, which the
+/// first field that needs each declares: a bool's byte, the bytes of an
+/// array of structs and a vector's position
+#[derive(Default)]
+struct Locals {
+    boolean: bool,
+    structs: bool,
+    vector: bool,
+}
+
 impl<'a> Generator<'a> {
     fn new(schema: &'a Schema) -> Self {
         Generator {
@@ -273,6 +292,10 @@ impl<'a> Generator<'a> {
         let mut fixed = 0;
         let mut bytes = 0_usize;
         for field in &definition.fields {
+            // A field that a writer may leave out has no position of its own
+            if field.optional {
+                break;
+            }
             let Some(size) = self.fixed_size(field.field_type) else {
                 break;
             };
@@ -287,7 +310,10 @@ impl<'a> Generator<'a> {
         let rest = &definition.fields[fixed..];
         let whole = matches!(definition.kind, Kind::Message(_))
             && fits
-            && (rest.is_empty() || (rest.len() == 1 && rest[0].field_type == FieldType::String));
+            && (rest.is_empty()
+                || (rest.len() == 1
+                    && rest[0].field_type == FieldType::String
+                    && !rest[0].optional));
 
         // Fewer than two fields together save no call
         let laid_out = whole || (fits && fixed >= 2);
@@ -328,7 +354,16 @@ impl<'a> Generator<'a> {
         if (0..definitions.len()).any(|index| self.schema.is_item(index)) {
             standard.push("iter");
         }
-        if scalars().any(|scalar| matches!(scalar, Scalar::Float32 | Scalar::Float64)) {
+        // A float's negative zero, which Go's constants don't have, is a
+        // default from its bits
+        let negative_zero = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .filter_map(|field| field.default)
+            .any(|default| matches!(default, ScalarValue::Float(value) if is_negative_zero(value)));
+        if negative_zero
+            || scalars().any(|scalar| matches!(scalar, Scalar::Float32 | Scalar::Float64))
+        {
             standard.push("math");
         }
 
@@ -383,7 +418,14 @@ impl<'a> Generator<'a> {
         writer.blank();
         writer.lines(&go_doc(&definition.docs));
         writer.open(format!("type {name} struct {{"));
-        writer.line("bytes []byte");
+        // A message that reads several versions holds the one that it read,
+        // which the getters of the fields that later versions added compare
+        if layout.since.is_some() {
+            writer.line("bytes   []byte");
+            writer.line("version uint32");
+        } else {
+            writer.line("bytes []byte");
+        }
         writer.close("}");
 
         if let Some(version) = layout.version {
@@ -394,28 +436,17 @@ impl<'a> Generator<'a> {
             ]));
             writer.line(format!("const {name}FormatVersion uint32 = {version}"));
 
-            writer.blank();
-            writer.lines(&prose(&[
-                format!(
-                    "New{name} reads {} from bytes, which it keeps rather",
-                    article(name)
-                ),
-                format!("than copying them. It fails with a {DECODE_ERROR} if bytes are"),
-                "in another format version.".to_owned(),
-            ]));
-            writer.open(format!("func New{name}(bytes []byte) ({name}, error) {{"));
-            writer.line(format!("version, err := {name}VersionOf(bytes)"));
-            writer.open("if err != nil {");
-            writer.line(format!("return {name}{{}}, err"));
-            writer.close("}");
-            writer.open(format!("if version != {name}FormatVersion {{"));
-            writer.line(format!(
-                "return {name}{{}}, tafla.NewUnsupportedVersionError(version, {name}FormatVersion)"
-            ));
-            writer.close("}");
-            writer.blank();
-            writer.line(format!("return {name}{{bytes: bytes}}, nil"));
-            writer.close("}");
+            if let Some(since) = layout.since {
+                writer.blank();
+                writer.lines(&prose(&[
+                    format!("{name}FirstVersion is the first version of the format that"),
+                    format!("[New{name}] reads, whose getters find the fields that later versions"),
+                    "added missing.".to_owned(),
+                ]));
+                writer.line(format!("const {name}FirstVersion uint32 = {since}"));
+            }
+
+            constructor(writer, name, layout.since);
 
             writer.blank();
             writer.lines(&prose(&[
@@ -476,11 +507,18 @@ impl<'a> Generator<'a> {
         let name = &definition.name;
 
         for (index, field) in definition.fields.iter().enumerate() {
+            // A field that may be missing is read after the checks that find
+            // it in the table, and every other as before, without them
+            if field.may_be_missing() {
+                self.missing_getter(writer, definition, index, layout);
+                continue;
+            }
+
             let getter = exported(&field.name);
             let value_type = self.value_type(field);
 
             writer.blank();
-            writer.lines(&go_doc(&getter_docs(&getter, field)));
+            writer.lines(&go_doc(&getter_docs(&getter, field, None)));
             writer.open(format!(
                 "func ({READER} {name}) {getter}() ({value_type}, error) {{"
             ));
@@ -491,20 +529,9 @@ impl<'a> Generator<'a> {
             find_field(writer, &offset, &zero_value(field.field_type, &value_type));
 
             match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => {
-                    writer.line("value, err := reader.GetUint8(position)");
-                    writer.line("return value != 0, err");
+                FieldType::Scalar(scalar) => {
+                    read_scalar_value(writer, scalar, self.enumeration(field));
                 }
-                FieldType::Scalar(scalar) => match self.enumeration(field) {
-                    Some(enumeration) => {
-                        writer.line(format!(
-                            "value, err := reader.Get{}(position)",
-                            method(scalar)
-                        ));
-                        writer.line(format!("return {}(value), err", enumeration.name));
-                    }
-                    None => writer.line(format!("return reader.Get{}(position)", method(scalar))),
-                },
                 FieldType::Array(scalar) => {
                     writer.line(format!(
                         "return reader.Get{}Array(position)",
@@ -540,6 +567,109 @@ impl<'a> Generator<'a> {
                 }
             }
             writer.close("}");
+        }
+    }
+
+    /// The getter of field `index`, which may be missing from a table, and
+    /// is read once the checks find it there. A scalar's returns its default
+    /// where the table doesn't hold it, and its `Has<Field>()` tells whether
+    /// the table does; any other field's returns whether the table holds it
+    /// after its value, which is the zero value where it doesn't.
+    fn missing_getter(
+        &self,
+        writer: &mut CodeWriter,
+        definition: &Definition,
+        index: usize,
+        layout: Option<Layout>,
+    ) {
+        let name = &definition.name;
+        let field = &definition.fields[index];
+        let getter = exported(&field.name);
+        let value_type = self.value_type(field);
+        let zero = zero_value(field.field_type, &value_type);
+
+        // What the getter returns when the table doesn't hold the field, and
+        // with the error of a read that fails
+        let (results, missing, failed, docs) = match field.field_type {
+            FieldType::Scalar(scalar) => {
+                let Some(default) = field.default else {
+                    unreachable!("the checker gives a scalar that may be missing a default")
+                };
+                let presence = exported(&format!("has_{}", field.name));
+                let docs = format!(
+                    "returns {} when the table doesn't hold it, as [{name}.{presence}] tells",
+                    doc_literal(default, scalar)
+                );
+                let missing = format!("{}, nil", default_literal(default, scalar));
+                (
+                    format!("({value_type}, error)"),
+                    missing,
+                    zero.clone(),
+                    docs,
+                )
+            }
+            _ => (
+                format!("({value_type}, bool, error)"),
+                format!("{zero}, false, nil"),
+                format!("{zero}, false"),
+                "returns the zero value and false when the table doesn't hold it".to_owned(),
+            ),
+        };
+
+        writer.blank();
+        writer.lines(&go_doc(&getter_docs(&getter, field, Some(&docs))));
+        writer.open(format!("func ({READER} {name}) {getter}() {results} {{"));
+        let offset = field_offset(layout, index);
+        let reader = reads_with_reader(&offset, field.field_type);
+        missing_checks(writer, definition, index, layout, reader, &missing, &failed);
+        if checks_offset(definition, field) {
+            writer.open(format!("if position == {} {{", absent_position(layout)));
+            writer.line(format!("return {missing}"));
+            writer.close("}");
+            writer.blank();
+        }
+
+        match field.field_type {
+            FieldType::Scalar(scalar) => {
+                read_scalar_value(writer, scalar, self.enumeration(field));
+            }
+            FieldType::Array(scalar) => {
+                let read = format!("reader.Get{}Array(position)", method(scalar));
+                declare_read(writer, "value", &read, &failed);
+                writer.line("return value, true, nil");
+            }
+            FieldType::String => {
+                declare_read(writer, "value", "reader.GetString(position)", &failed);
+                writer.line("return value, true, nil");
+            }
+            FieldType::Struct(index) => {
+                let structure = self.schema.definition(index);
+                let size = structure.struct_layout().size;
+                let read = format!("reader.GetStruct(position, {size})");
+                declare_read(writer, "bytes", &read, &failed);
+                writer.line(format!("return read{}(bytes), true, nil", structure.name));
+            }
+            FieldType::StructArray(index) => {
+                let size = self.schema.definition(index).struct_layout().size;
+                let read = format!("reader.GetStructArray(position, {size})");
+                declare_read(writer, "bytes", &read, &failed);
+                writer.line(format!("return {value_type}{{bytes: bytes}}, true, nil"));
+            }
+            FieldType::Table(index) => {
+                let table = &self.schema.definition(index).name;
+                writer.line(format!(
+                    "return {table}{{bytes: {READER}.bytes, position: position}}, true, nil"
+                ));
+            }
+            FieldType::Vector(_) => {
+                declare_read(writer, "vector", "reader.GetVector(position)", &failed);
+                writer.line(format!("return {value_type}{{vector: vector}}, true, nil"));
+            }
+        }
+        writer.close("}");
+
+        if matches!(field.field_type, FieldType::Scalar(_)) {
+            presence_method(writer, definition, index, layout);
         }
     }
 
@@ -891,15 +1021,18 @@ impl<'a> Generator<'a> {
             article(name)
         )]));
         writer.open(format!("type {name}Fields struct {{"));
+        // An optional field is absent unless it's set
         let fields: Vec<(&[String], String, String)> = definition
             .fields
             .iter()
             .map(|field| {
-                (
-                    field.docs.as_slice(),
-                    exported(&field.name),
-                    self.input_type(field),
-                )
+                let input_type = self.input_type(field);
+                let field_type = if field.optional {
+                    format!("tafla.Optional[{input_type}]")
+                } else {
+                    input_type
+                };
+                (field.docs.as_slice(), exported(&field.name), field_type)
             })
             .collect();
         aligned_members(writer, &fields);
@@ -921,10 +1054,16 @@ impl<'a> Generator<'a> {
         let name = &definition.name;
         let fields = definition.fields.len();
 
+        // An absent optional field has an offset of 0, and no value
+        let every_field = if definition.fields.iter().any(|field| field.optional) {
+            "with every field but the absent optional ones, whose offsets are 0"
+        } else {
+            "with every field"
+        };
         writer.blank();
         writer.lines(&prose(&[
             format!(
-                "MarshalBinary writes {} with every field. It fails with a",
+                "MarshalBinary writes {} {every_field}. It fails with a",
                 article(name)
             ),
             format!(
@@ -1153,45 +1292,82 @@ impl<'a> Generator<'a> {
 
         for field in &definition.fields[plan.fixed..] {
             let value = format!("{FIELDS}.{}", exported(&field.name));
-            match field.field_type {
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!("sizer.Add{}()", method(scalar.stored())));
-                }
-                FieldType::Array(scalar) => {
-                    writer.line(format!("sizer.Add{}Array(len({value}))", method(scalar)));
-                }
-                FieldType::String => writer.line(format!("sizer.AddString({value})")),
-                FieldType::Struct(index) => {
-                    let size = self.schema.definition(index).struct_layout().size;
-                    writer.line(format!("sizer.AddStruct({size})"));
-                }
-                FieldType::StructArray(index) => {
-                    let layout = self.schema.definition(index).struct_layout();
-                    writer.line(format!(
-                        "sizer.AddStructArray(len({value}), {}, {})",
-                        layout.size,
-                        alignment_constant(layout.alignment)
-                    ));
-                }
-                FieldType::Table(index) => {
-                    let alignment = self.schema.table_alignment(index);
-                    writer.line(format!("sizer.AddTable({})", alignment_constant(alignment)));
-                    match self.fixed.table(index) {
-                        Some(size) => writer.line(format!("sizer.AddTableBytes(1, {size})")),
-                        None => writer.line(format!("{value}.size({sizer})")),
-                    }
-                }
-                FieldType::Vector(index) => {
-                    writer.line(format!("sizer.AddVector(len({value}))"));
-                    if let Some(size) = self.fixed.table(index) {
-                        writer.line(format!("sizer.AddTableBytes(len({value}), {size})"));
-                    } else {
-                        writer.open(format!("for index := range {value} {{"));
-                        writer.line(format!("{value}[index].size({sizer})"));
-                        writer.close("}");
-                    }
+            if !field.optional {
+                self.size(writer, field.field_type, &value, sizer);
+                continue;
+            }
+
+            // An absent field takes no bytes but its offset, which the sizer
+            // counts the field with
+            let local = if self.sized_by_value(field.field_type) {
+                "value"
+            } else {
+                "_"
+            };
+            writer.open(format!("if {local}, ok := {value}.Get(); ok {{"));
+            self.size(writer, field.field_type, "value", sizer);
+            writer.close("} else {");
+            writer.indent();
+            writer.line("sizer.AddAbsent()");
+            writer.close("}");
+        }
+    }
+
+    /// The calls that add a field of `field_type`, whose value is `value`,
+    /// to its table's sizer
+    fn size(&self, writer: &mut CodeWriter, field_type: FieldType, value: &str, sizer: &str) {
+        match field_type {
+            FieldType::Scalar(scalar) => {
+                writer.line(format!("sizer.Add{}()", method(scalar.stored())));
+            }
+            FieldType::Array(scalar) => {
+                writer.line(format!("sizer.Add{}Array(len({value}))", method(scalar)));
+            }
+            FieldType::String => writer.line(format!("sizer.AddString({value})")),
+            FieldType::Struct(index) => {
+                let size = self.schema.definition(index).struct_layout().size;
+                writer.line(format!("sizer.AddStruct({size})"));
+            }
+            FieldType::StructArray(index) => {
+                let layout = self.schema.definition(index).struct_layout();
+                writer.line(format!(
+                    "sizer.AddStructArray(len({value}), {}, {})",
+                    layout.size,
+                    alignment_constant(layout.alignment)
+                ));
+            }
+            FieldType::Table(index) => {
+                let alignment = self.schema.table_alignment(index);
+                writer.line(format!("sizer.AddTable({})", alignment_constant(alignment)));
+                match self.fixed.table(index) {
+                    Some(size) => writer.line(format!("sizer.AddTableBytes(1, {size})")),
+                    None => writer.line(format!("{value}.size({sizer})")),
                 }
             }
+            FieldType::Vector(index) => {
+                writer.line(format!("sizer.AddVector(len({value}))"));
+                if let Some(size) = self.fixed.table(index) {
+                    writer.line(format!("sizer.AddTableBytes(len({value}), {size})"));
+                } else {
+                    writer.open(format!("for index := range {value} {{"));
+                    writer.line(format!("{value}[index].size({sizer})"));
+                    writer.close("}");
+                }
+            }
+        }
+    }
+
+    /// Whether `size()` adds a field of `field_type` from its value, rather
+    /// than from its type alone, as a scalar, a struct and a table of fixed
+    /// size are
+    fn sized_by_value(&self, field_type: FieldType) -> bool {
+        match field_type {
+            FieldType::Scalar(_) | FieldType::Struct(_) => false,
+            FieldType::Table(index) => self.fixed.table(index).is_none(),
+            FieldType::Array(_)
+            | FieldType::String
+            | FieldType::StructArray(_)
+            | FieldType::Vector(_) => true,
         }
     }
 
@@ -1199,10 +1375,7 @@ impl<'a> Generator<'a> {
     /// order that `sizes()` added them, with `table_writer`, the expression of
     /// the writer that nested tables take
     fn writes(&self, writer: &mut CodeWriter, definition: &Definition, table_writer: &str) {
-        // The locals that a field needs, declared by the first that does
-        let mut declared_boolean = false;
-        let mut declared_structs = false;
-        let mut declared_vector = false;
+        let mut locals = Locals::default();
 
         let plan = self.plan(definition);
         if plan.fixed > 0 {
@@ -1212,85 +1385,111 @@ impl<'a> Generator<'a> {
 
         for (index, field) in definition.fields.iter().enumerate().skip(plan.fixed) {
             let value = format!("{FIELDS}.{}", exported(&field.name));
-            match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => {
-                    if declared_boolean {
-                        writer.line("boolean = 0");
-                    } else {
-                        writer.line("var boolean uint8");
-                        declared_boolean = true;
+            if !field.optional {
+                self.write(writer, index, field, &value, table_writer, &mut locals);
+                continue;
+            }
+
+            // In a block of its own, whose locals are its own
+            writer.open(format!("if value, ok := {value}.Get(); ok {{"));
+            let mut block = Locals::default();
+            self.write(writer, index, field, "value", table_writer, &mut block);
+            writer.close("} else {");
+            writer.indent();
+            writer.line(format!("writer.SetAbsent({index})"));
+            writer.close("}");
+        }
+    }
+
+    /// The calls that write field `index`, whose value is `value`,
+    /// declaring the `locals` that it's the first to need
+    fn write(
+        &self,
+        writer: &mut CodeWriter,
+        index: usize,
+        field: &Field,
+        value: &str,
+        table_writer: &str,
+        locals: &mut Locals,
+    ) {
+        match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => {
+                if locals.boolean {
+                    writer.line("boolean = 0");
+                } else {
+                    writer.line("var boolean uint8");
+                    locals.boolean = true;
+                }
+                writer.open(format!("if {value} {{"));
+                writer.line("boolean = 1");
+                writer.close("}");
+                writer.line(format!("writer.SetUint8({index}, boolean)"));
+            }
+            FieldType::Scalar(scalar) => {
+                // The setter takes an enum as its integer type
+                let value = if field.enumeration.is_some() {
+                    format!("{}({value})", scalar_type(scalar))
+                } else {
+                    value.to_owned()
+                };
+                writer.line(format!("writer.Set{}({index}, {value})", method(scalar)));
+            }
+            FieldType::Array(scalar) => {
+                writer.line(format!(
+                    "writer.Set{}Array({index}, {value})",
+                    method(scalar)
+                ));
+            }
+            FieldType::String => writer.line(format!("writer.SetString({index}, {value})")),
+            FieldType::Struct(struct_index) => {
+                let size = self.schema.definition(struct_index).struct_layout().size;
+                writer.line(format!(
+                    "{value}.put(writer.ReserveStruct({index}, {size}))"
+                ));
+            }
+            // The structs are written into the bytes that the writer
+            // reserves for them, without collecting them first
+            FieldType::StructArray(struct_index) => {
+                let layout = self.schema.definition(struct_index).struct_layout();
+                let assign = if locals.structs { "=" } else { ":=" };
+                locals.structs = true;
+                writer.line(format!(
+                    "structs {assign} writer.ReserveStructArray({index}, len({value}), {}, {})",
+                    layout.size,
+                    alignment_constant(layout.alignment)
+                ));
+                writer.open(format!("for item := range {value} {{"));
+                writer.line(format!("{value}[item].put(structs[item*{}:])", layout.size));
+                writer.close("}");
+            }
+            FieldType::Table(table_index) => {
+                let alignment = self.schema.table_alignment(table_index);
+                writer.line(format!(
+                    "writer.SetTable({index}, {})",
+                    alignment_constant(alignment)
+                ));
+                match self.fixed.table(table_index) {
+                    Some(size) => {
+                        writer.line(format!("{value}.put(writer.ReserveTableBytes({size}))"));
                     }
-                    writer.open(format!("if {value} {{"));
-                    writer.line("boolean = 1");
-                    writer.close("}");
-                    writer.line(format!("writer.SetUint8({index}, boolean)"));
+                    None => writer.line(format!("{value}.write({table_writer})")),
                 }
-                FieldType::Scalar(scalar) => {
-                    // The setter takes an enum as its integer type
-                    let value = if field.enumeration.is_some() {
-                        format!("{}({value})", scalar_type(scalar))
-                    } else {
-                        value
-                    };
-                    writer.line(format!("writer.Set{}({index}, {value})", method(scalar)));
+            }
+            FieldType::Vector(item_index) => {
+                let assign = if locals.vector { "=" } else { ":=" };
+                locals.vector = true;
+                writer.line(format!(
+                    "vector {assign} writer.SetVector({index}, len({value}))"
+                ));
+                writer.open(format!("for item := range {value} {{"));
+                match self.fixed.table(item_index) {
+                    Some(size) => writer.line(format!(
+                        "{value}[item].put(writer.ReserveTableBytes({size}))"
+                    )),
+                    None => writer.line(format!("{value}[item].write({table_writer})")),
                 }
-                FieldType::Array(scalar) => {
-                    writer.line(format!(
-                        "writer.Set{}Array({index}, {value})",
-                        method(scalar)
-                    ));
-                }
-                FieldType::String => writer.line(format!("writer.SetString({index}, {value})")),
-                FieldType::Struct(struct_index) => {
-                    let size = self.schema.definition(struct_index).struct_layout().size;
-                    writer.line(format!(
-                        "{value}.put(writer.ReserveStruct({index}, {size}))"
-                    ));
-                }
-                // The structs are written into the bytes that the writer
-                // reserves for them, without collecting them first
-                FieldType::StructArray(struct_index) => {
-                    let layout = self.schema.definition(struct_index).struct_layout();
-                    let assign = if declared_structs { "=" } else { ":=" };
-                    declared_structs = true;
-                    writer.line(format!(
-                        "structs {assign} writer.ReserveStructArray({index}, len({value}), {}, {})",
-                        layout.size,
-                        alignment_constant(layout.alignment)
-                    ));
-                    writer.open(format!("for item := range {value} {{"));
-                    writer.line(format!("{value}[item].put(structs[item*{}:])", layout.size));
-                    writer.close("}");
-                }
-                FieldType::Table(table_index) => {
-                    let alignment = self.schema.table_alignment(table_index);
-                    writer.line(format!(
-                        "writer.SetTable({index}, {})",
-                        alignment_constant(alignment)
-                    ));
-                    match self.fixed.table(table_index) {
-                        Some(size) => {
-                            writer.line(format!("{value}.put(writer.ReserveTableBytes({size}))"));
-                        }
-                        None => writer.line(format!("{value}.write({table_writer})")),
-                    }
-                }
-                FieldType::Vector(item_index) => {
-                    let assign = if declared_vector { "=" } else { ":=" };
-                    declared_vector = true;
-                    writer.line(format!(
-                        "vector {assign} writer.SetVector({index}, len({value}))"
-                    ));
-                    writer.open(format!("for item := range {value} {{"));
-                    match self.fixed.table(item_index) {
-                        Some(size) => writer.line(format!(
-                            "{value}[item].put(writer.ReserveTableBytes({size}))"
-                        )),
-                        None => writer.line(format!("{value}[item].write({table_writer})")),
-                    }
-                    writer.line("writer.SetItemEnd(vector, item)");
-                    writer.close("}");
-                }
+                writer.line("writer.SetItemEnd(vector, item)");
+                writer.close("}");
             }
         }
     }
@@ -1387,8 +1586,11 @@ fn reader_line(layout: Option<Layout>) -> String {
 
 /// Whether each definition is a message or table that `Fields()` reads
 /// whole: one whose nested tables have `Fields()` too, and whose vectors hold
-/// tables that allocate nothing when they're read whole, so that what
+/// tables that do and allocate nothing when they're read whole, so that what
 /// reading it allocates stays in proportion to its bytes, however corrupted.
+/// A table with a field that may be missing has no `Fields()` yet, and
+/// neither has a table that holds it, since `Fields()` reads every field
+/// without the checks that find such a field in the table.
 /// An item could otherwise allocate an array, or a vector, that corrupted
 /// offsets lead every item to, as many times as there are items, and a
 /// table that holds itself, which only a vector can, could be read as deep
@@ -1438,14 +1640,15 @@ fn readable_whole(schema: &Schema) -> Vec<bool> {
                 FieldType::Table(nested) => allocates_nothing[nested],
                 FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => false,
             });
-        whole[index] = definition
-            .fields
-            .iter()
-            .all(|field| match field.field_type {
-                FieldType::Table(nested) => whole[nested],
-                FieldType::Vector(item) => allocates_nothing[item],
-                _ => true,
-            });
+        whole[index] = !definition.has_missing_fields()
+            && definition
+                .fields
+                .iter()
+                .all(|field| match field.field_type {
+                    FieldType::Table(nested) => whole[nested],
+                    FieldType::Vector(item) => allocates_nothing[item] && whole[item],
+                    _ => true,
+                });
     }
 
     whole
@@ -1488,6 +1691,244 @@ fn lies_in_place(schema: &Schema, index: usize) -> bool {
     layout.size.is_multiple_of(usize::from(layout.alignment))
 }
 
+/// A versioned message's `New<Message>`, which reads its version and
+/// checks it: that it's the message's own, or from its first version,
+/// `since`, to its own, which it then holds
+fn constructor(writer: &mut CodeWriter, name: &str, since: Option<u32>) {
+    let mut docs = vec![
+        format!(
+            "New{name} reads {} from bytes, which it keeps rather",
+            article(name)
+        ),
+        format!("than copying them. It fails with a {DECODE_ERROR} if bytes are"),
+    ];
+    if since.is_some() {
+        docs.push(format!(
+            "in a format version before [{name}FirstVersion] or after [{name}FormatVersion]."
+        ));
+    } else {
+        docs.push("in another format version.".to_owned());
+    }
+    writer.blank();
+    writer.lines(&prose(&docs));
+
+    writer.open(format!("func New{name}(bytes []byte) ({name}, error) {{"));
+    writer.line(format!("version, err := {name}VersionOf(bytes)"));
+    writer.open("if err != nil {");
+    writer.line(format!("return {name}{{}}, err"));
+    writer.close("}");
+    // A first version of 0 leaves no version before it, whose unsigned
+    // comparison staticcheck would find always false
+    let rejected = match since {
+        Some(0) => format!("version > {name}FormatVersion"),
+        Some(_) => format!("version < {name}FirstVersion || version > {name}FormatVersion"),
+        None => format!("version != {name}FormatVersion"),
+    };
+    writer.open(format!("if {rejected} {{"));
+    writer.line(format!(
+        "return {name}{{}}, tafla.NewUnsupportedVersionError(version, {name}FormatVersion)"
+    ));
+    writer.close("}");
+    writer.blank();
+    if since.is_some() {
+        writer.line(format!(
+            "return {name}{{bytes: bytes, version: version}}, nil"
+        ));
+    } else {
+        writer.line(format!("return {name}{{bytes: bytes}}, nil"));
+    }
+    writer.close("}");
+}
+
+/// The `Has<Field>()` of field `index`, a scalar that may be missing,
+/// which tells whether the table holds it, as the checks of its getter
+/// find it
+fn presence_method(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    index: usize,
+    layout: Option<Layout>,
+) {
+    let name = &definition.name;
+    let field = &definition.fields[index];
+    let getter = exported(&field.name);
+    let presence = exported(&format!("has_{}", field.name));
+
+    // A field that a later version added is missing from a table of an
+    // earlier one, which the message's version alone tells
+    let by_version = !checks_offset(definition, field);
+    let docs = match field.since {
+        Some(since) if by_version => format!(
+            "{presence} returns whether the table holds [{name}.{getter}], which a table of a \
+             version before {since} doesn't. It never fails."
+        ),
+        _ => format!(
+            "{presence} returns whether the table holds [{name}.{getter}]. It fails with a \
+             {DECODE_ERROR} if the field's offset lies outside the bytes."
+        ),
+    };
+
+    writer.blank();
+    writer.lines(&go_doc(&wrap(&docs)));
+    writer.open(format!(
+        "func ({READER} {name}) {presence}() (bool, error) {{"
+    ));
+    match field.since {
+        Some(since) if by_version => {
+            writer.line(format!("return {READER}.version >= {since}, nil"));
+        }
+        _ => {
+            let offset = field_offset(layout, index);
+            let reader = offset.starts_with("reader.");
+            missing_checks(
+                writer,
+                definition,
+                index,
+                layout,
+                reader,
+                "false, nil",
+                "false",
+            );
+            writer.line(format!(
+                "return position != {}, nil",
+                absent_position(layout)
+            ));
+        }
+    }
+    writer.close("}");
+}
+
+/// The lines that find field `index` of a table, which may be missing from
+/// it, as `SPEC.md` describes, returning `missing` when it is, and `failed`
+/// and the error of a read that fails, and then read its offset into
+/// `position`, with the reader that `reader` says that they need:
+///
+/// - A field that a later version of a message added is missing from a
+///   table of an earlier version, which the reader holds.
+/// - A field that a later revision of any other table added is missing when
+///   its offset would end after the table's first value starts, which its
+///   first field's offset gives, and its offset is then read, which is 0
+///   when it lies in the padding before an aligned first value, as
+///   `checks_offset()` finds.
+fn missing_checks(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    index: usize,
+    layout: Option<Layout>,
+    reader: bool,
+    missing: &str,
+    failed: &str,
+) {
+    let field = &definition.fields[index];
+    let versioned = layout.is_some_and(|layout| layout.version.is_some());
+
+    if let Some(since) = field.since
+        && versioned
+    {
+        writer.open(format!("if {READER}.version < {since} {{"));
+        writer.line(format!("return {missing}"));
+        writer.close("}");
+        writer.blank();
+    }
+
+    if reader {
+        writer.line(reader_line(layout));
+    }
+    if field.since.is_some() && !versioned {
+        // The offsets that the first value follows end after the header of
+        // a message, and from a nested table's start
+        let (first, end) = match layout {
+            Some(layout) => {
+                let width = offset_size(layout.offset_type);
+                let header = usize::from(layout.sized) * width;
+                ("first".to_owned(), header + (index + 1) * width)
+            }
+            None => (
+                format!("first-{READER}.position"),
+                (index + 1) * NESTED_OFFSET_SIZE,
+            ),
+        };
+        declare_read(writer, "first", &field_offset(layout, 0), failed);
+        writer.open(format!("if {first} < {end} {{"));
+        writer.line(format!("return {missing}"));
+        writer.close("}");
+        writer.blank();
+    }
+
+    find_field(writer, &field_offset(layout, index), failed);
+}
+
+/// Whether a field that may be missing is read after comparing its offset
+/// with that of an absent field: an optional field, and a field that a later
+/// revision of a table without a version added, whose offset may lie in the
+/// padding before the first value
+fn checks_offset(definition: &Definition, field: &Field) -> bool {
+    let versioned = definition
+        .layout()
+        .is_some_and(|layout| layout.version.is_some());
+    field.optional || (field.since.is_some() && !versioned)
+}
+
+/// The position that the offset of an absent field leads to: 0 at the root,
+/// of a message, and a nested table's own position, which its offsets count
+/// from
+fn absent_position(layout: Option<Layout>) -> String {
+    match layout {
+        Some(_) => "0".to_owned(),
+        None => format!("{READER}.position"),
+    }
+}
+
+/// The lines that read and return a scalar at `position`, with its error
+fn read_scalar_value(writer: &mut CodeWriter, scalar: Scalar, enumeration: Option<&Enum>) {
+    if scalar == Scalar::Bool {
+        writer.line("value, err := reader.GetUint8(position)");
+        writer.line("return value != 0, err");
+    } else if let Some(enumeration) = enumeration {
+        // The getter returns the enum, which the runtime reads as its integer
+        writer.line(format!(
+            "value, err := reader.Get{}(position)",
+            method(scalar)
+        ));
+        writer.line(format!("return {}(value), err", enumeration.name));
+    } else {
+        writer.line(format!("return reader.Get{}(position)", method(scalar)));
+    }
+}
+
+/// A scalar's default as a Go expression of its type: a constant, but for a
+/// float's negative zero, which Go's constants don't have, and which is read
+/// from its bits. A `float32`'s is the shortest decimal that rounds to it.
+fn default_literal(value: ScalarValue, scalar: Scalar) -> String {
+    match value {
+        ScalarValue::Float(value) if is_negative_zero(value) => {
+            if scalar == Scalar::Float32 {
+                "math.Float32frombits(0x8000_0000)".to_owned()
+            } else {
+                "math.Float64frombits(0x8000_0000_0000_0000)".to_owned()
+            }
+        }
+        _ => doc_literal(value, scalar),
+    }
+}
+
+/// A scalar's default as its documentation gives it
+fn doc_literal(value: ScalarValue, scalar: Scalar) -> String {
+    match value {
+        ScalarValue::Bool(value) => value.to_string(),
+        ScalarValue::Integer(value) => value.to_string(),
+        ScalarValue::Float(value) if is_negative_zero(value) => "-0".to_owned(),
+        // The checker holds a float32's default as the float32 nearest to it
+        #[allow(clippy::cast_possible_truncation)]
+        ScalarValue::Float(value) if scalar == Scalar::Float32 => format!("{:?}", value as f32),
+        ScalarValue::Float(value) => format!("{value:?}"),
+    }
+}
+
+fn is_negative_zero(value: f64) -> bool {
+    value == 0.0 && value.is_sign_negative()
+}
+
 /// The lines that find a field's position from `offset`, a call that returns
 /// it and an error, returning `zero` and the error if it fails
 fn find_field(writer: &mut CodeWriter, offset: &str, zero: &str) {
@@ -1517,9 +1958,11 @@ fn return_on_error(writer: &mut CodeWriter, zero: &str) {
 }
 
 /// The documentation of a field's getter: the field's own, and what the
-/// getter returns and when it fails. The getter of a vector or an array
-/// of structs returns a view, which reads each item when it's asked for.
-fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
+/// getter returns, when the table doesn't hold the field too, which
+/// `missing` tells after its subject, and when it fails. The getter of a
+/// vector or an array of structs returns a view, which reads each item when
+/// it's asked for.
+fn getter_docs(getter: &str, field: &Field, missing: Option<&str>) -> Vec<String> {
     let (views, condition) = match field.field_type {
         FieldType::Vector(_) => (
             Some("the vector's items"),
@@ -1537,15 +1980,20 @@ fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
     if !lines.is_empty() {
         lines.push(String::new());
     }
-    let subject = if lines.is_empty() { getter } else { "It" };
-    let text = match views {
-        Some(items) => format!(
-            "{subject} views {items}, reading each one when it's asked for. It fails \
-             with a {DECODE_ERROR} {condition}"
-        ),
-        None => format!("{subject} fails with a {DECODE_ERROR} {condition}"),
-    };
-    lines.extend(wrap(&text));
+    let mut subject = if lines.is_empty() { getter } else { "It" };
+    let mut sentences = Vec::new();
+    if let Some(items) = views {
+        sentences.push(format!(
+            "{subject} views {items}, reading each one when it's asked for."
+        ));
+        subject = "It";
+    }
+    if let Some(missing) = missing {
+        sentences.push(format!("{subject} {missing}."));
+        subject = "It";
+    }
+    sentences.push(format!("{subject} fails with a {DECODE_ERROR} {condition}"));
+    lines.extend(wrap(&sentences.join(" ")));
     lines
 }
 

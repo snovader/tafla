@@ -2,8 +2,8 @@ import Foundation
 import Tafla
 import Testing
 
-// The examples of README.md, which write a table and read it back, and record
-// nested tables in place
+// The examples of README.md, which write a table and read it back, record
+// nested tables in place, and leave a field out
 
 @Suite("Example")
 struct ExampleTests {
@@ -71,6 +71,21 @@ struct ExampleTests {
         }
 
         #expect(try builder.bytes() == write())
+    }
+
+    @Test func leavesAFieldOut() throws {
+        var builder = try TableBuilder(fields: 2)
+        try builder.setFloat64(59.3293)
+        try builder.setAbsent()  // the time zone, left out
+        let data = Data(try builder.bytes())
+
+        let reader = TableReader(data.bytes)
+        let field = try reader.rootOffset(1)  // 0
+        let timeZone = try field == 0 ? nil : reader.string(at: field)  // nil
+
+        #expect(field == 0)
+        #expect(timeZone == nil)
+        #expect(try reader.float64(at: reader.rootOffset(0)) == 59.3293)
     }
 
     @Test func recordsAVectorInPlace() throws {

@@ -1,0 +1,92 @@
+// The tables of the presence suite: the same fields as required fields
+// alone, with optional fields after them, in a message that reads only its
+// own version and in one that reads two, and in a nested table of one
+// revision and of two. Each `z` that may be missing reads as 1.5 then, a
+// default that V8 can't hold as a small integer.
+
+/// Four required fields, as every table has them today
+message Plain {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+}
+
+/// The same fields, and two optional ones after them
+message Optional {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+    z: float64? = 1.5;
+    label: string?;
+}
+
+/// The same fields as `Optional`, all required
+message Full {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+    z: float64;
+    label: string;
+}
+
+/// The same fields and `z`, in a message that reads its own version alone
+message Exact (version: 2) {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+    z: float64;
+}
+
+/// The same fields in a message that reads versions 1 and 2, the second of
+/// which appended `z`
+message Ranged (version: 2, since: 1) {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+    z: float64 = 1.5 (since: 2);
+}
+
+/// The first version of `Ranged`
+message RangedV1 (version: 1) {
+    x: float64;
+    id: uint32;
+    name: string;
+    y: float64;
+}
+
+/// A table of three required fields, nested
+message HolderExact {
+    point: PointExact;
+}
+
+table PointExact {
+    x: float64;
+    y: float64;
+    z: float64;
+}
+
+/// A nested table whose second revision appended `z`
+message Holder {
+    point: Point;
+}
+
+table Point {
+    x: float64;
+    y: float64;
+    z: float64 = 1.5 (since: 2);
+}
+
+/// The first revision of `Holder`
+message HolderV1 {
+    point: PointV1;
+}
+
+table PointV1 {
+    x: float64;
+    y: float64;
+}

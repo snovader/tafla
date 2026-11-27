@@ -11,6 +11,10 @@
 //! of its parent, since its length isn't written, and a vector item from the
 //! bytes that `Vector` iterates over. The scalars of structs are read at their
 //! offsets in the bytes that `get_struct()` and `get_struct_array()` return.
+//!
+//! A field described as absent must have the offset 0, from its table's
+//! start, and a table described with `missing` fields has its count of the
+//! fields that a reader of a later revision finds missing in its place.
 
 use tafla::{DecodeError, TableLayout, TableReader};
 
@@ -33,6 +37,9 @@ pub enum ReadError {
     /// `Vector::get()` or `Vector::get_in_place()` found item `index` other
     /// than iterating did
     Get { index: usize },
+    /// A field described as absent has `offset` from its table's start,
+    /// rather than 0
+    Present { offset: usize },
 }
 
 impl From<DecodeError> for ReadError {
@@ -62,23 +69,21 @@ macro_rules! with_reader {
 pub fn read_table(bytes: &[u8], table: &Table) -> Result<Table, ReadError> {
     let layout = table.layout.unversioned();
 
-    let (version, fields) = if table.layout.versioned {
+    let (version, (fields, missing)) = if table.layout.versioned {
         let reader = Reader(TableReader::new(bytes, layout.with_version(0)));
         reader.check_size(table.layout)?;
-        (
-            Some(reader.0.version()?),
-            reader.read_root_fields(&table.fields)?,
-        )
+        (Some(reader.0.version()?), reader.read_root(table)?)
     } else {
         let reader = Reader(TableReader::new(bytes, layout));
         reader.check_size(table.layout)?;
-        (None, reader.read_root_fields(&table.fields)?)
+        (None, reader.read_root(table)?)
     };
 
     Ok(Table {
         layout: table.layout,
         version,
         fields,
+        missing,
     })
 }
 
@@ -118,21 +123,32 @@ impl<const V: bool> Reader<'_, V> {
         Ok(())
     }
 
-    fn read_root_fields(&self, fields: &[Field]) -> Result<Vec<Field>, ReadError> {
-        let fields = fields.iter().enumerate();
-        fields
+    /// Reads the root's fields, and counts the fields of a later revision
+    /// that it lacks when the description has them
+    fn read_root(&self, table: &Table) -> Result<(Vec<Field>, Option<usize>), ReadError> {
+        let fields = table.fields.iter().enumerate();
+        let fields = fields
             .map(|(index, field)| self.read_root_field(index, field))
-            .collect()
+            .collect::<Result<_, _>>()?;
+
+        let header_size = table.layout.header_size();
+        let count = |missing| self.count_missing(None, header_size, table.fields.len(), missing);
+        let missing = table.missing.map(count).transpose()?;
+
+        Ok((fields, missing))
     }
 
     fn read_root_field(&self, index: usize, field: &Field) -> Result<Field, ReadError> {
         self.read_field(self.0.root_offset(index)?, field)
     }
 
+    /// Reads `field` at `position`, which for an absent field is its offset,
+    /// as it is for a field of the root
     fn read_field(&self, position: usize, field: &Field) -> Result<Field, ReadError> {
         let reader = &self.0;
 
         Ok(match field {
+            Field::Absent => read_absent(position)?,
             Field::I8(_) => Field::I8(reader.get_i8(position)?),
             Field::U8(_) => Field::U8(reader.get_u8(position)?),
             Field::I16(_) => Field::I16(reader.get_i16(position)?),
@@ -257,16 +273,69 @@ impl<const V: bool> Reader<'_, V> {
     /// Reads the fields of a table nested at `position`, from offsets counted
     /// from its start, within its parent's bytes
     fn read_in_place(&self, position: usize, table: &Table) -> Result<Table, ReadError> {
+        let read_field = |(index, field): (usize, &Field)| {
+            let offset = self.0.field_offset(position, index)?;
+
+            // A nested table's offsets count from its own start
+            match field {
+                Field::Absent => read_absent(offset - position),
+                _ => self.read_field(offset, field),
+            }
+        };
         let fields = table.fields.iter().enumerate();
-        let fields = fields
-            .map(|(index, field)| self.read_field(self.0.field_offset(position, index)?, field))
-            .collect::<Result<_, _>>()?;
+        let fields = fields.map(read_field).collect::<Result<_, _>>()?;
+
+        let count = |missing| self.count_missing(Some(position), 0, table.fields.len(), missing);
+        let missing = table.missing.map(count).transpose()?;
 
         Ok(Table {
             layout: table.layout,
             version: None,
             fields,
+            missing,
         })
+    }
+
+    /// Counts the `missing` fields after a table's `fields` that a reader of
+    /// a later revision of it knows, which the table lacks: a field whose
+    /// offset would end after the table's first value starts, which its
+    /// first field's offset gives, or whose offset is 0, as padding before
+    /// that value reads. A table that holds one of them counts fewer than
+    /// `missing`. The table is nested in place at `table`, or is the root,
+    /// whose offsets follow its `header_size` bytes of header.
+    fn count_missing(
+        &self,
+        table: Option<usize>,
+        header_size: usize,
+        fields: usize,
+        missing: usize,
+    ) -> Result<usize, ReadError> {
+        let offset_size = self.0.offset_type().size();
+        let offset = |index| match table {
+            Some(position) => Ok(self.0.field_offset(position, index)? - position),
+            None => self.0.root_offset(index),
+        };
+
+        let first_value = offset(0)?;
+        let mut count = 0;
+        for index in fields..fields + missing {
+            let holds_offset = header_size + (index + 1) * offset_size <= first_value;
+            if !holds_offset || offset(index)? == 0 {
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+}
+
+/// Reads a field described as absent, whose `offset` from its table's start
+/// must be 0
+const fn read_absent(offset: usize) -> Result<Field, ReadError> {
+    if offset == 0 {
+        Ok(Field::Absent)
+    } else {
+        Err(ReadError::Present { offset })
     }
 }
 

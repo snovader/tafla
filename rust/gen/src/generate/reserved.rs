@@ -51,6 +51,7 @@ const PYTHON: &[&str] = &[
     "Iterator",
     "Literal",
     "None",
+    "NotRequired",
     "OverflowError",
     "Protocol",
     "Self",
@@ -67,22 +68,28 @@ const PYTHON: &[&str] = &[
 ];
 
 /// The names that Java imports from the runtime, `java.util`,
-/// `java.lang.invoke` and `java.nio`, the classes of `java.lang` that it
-/// names, which a class of its package would hide, and `Fields`, the record
-/// nested in each message and table, which would hide a declaration of that
-/// name. It names `java.util.Arrays` in full instead, since a schema may well
-/// declare `Arrays`.
+/// `java.lang.invoke`, `java.nio` and `JSpecify`, whose `Nullable` annotates
+/// what may be missing, the classes of `java.lang` that it names, which a
+/// class of its package would hide, such as the boxes of optional scalars,
+/// and `Fields`, the record nested in each message and table, which would
+/// hide a declaration of that name. It names `java.util.Arrays` in full
+/// instead, since a schema may well declare `Arrays`.
 const JAVA: &[&str] = &[
     "AbstractList",
+    "Boolean",
     "Byte",
     "ByteBuffer",
     "ByteOrder",
     "DecodeException",
+    "Double",
     "Fields",
+    "Float",
     "IndexOutOfBoundsException",
     "Integer",
     "List",
+    "Long",
     "MethodHandles",
+    "Nullable",
     "Objects",
     "OffsetType",
     "Override",
@@ -179,14 +186,16 @@ const SWIFT: &[&str] = &[
 /// a type of the same name can't declare: a struct's `Size`, `Write()`,
 /// `Serialize()` and `SerializeArray()` and the members that a record
 /// declares, `Equals()`, `GetHashCode()`, `ToString()` and `PrintMembers()`,
-/// and a versioned message's `FormatVersion` and `VersionOf()`, `To`, whose
-/// array's view, `ToArray`, declares `ToArray()`, and `Enumerator`, which each
-/// view of a vector or an array of structs nests, and which would hide a
-/// declaration of that name within it. C# names the runtime and the standard
-/// library in full, from `global::`, so nothing else would clash.
+/// a versioned message's `FormatVersion` and `VersionOf()`, and the
+/// `FirstVersion` of one that reads earlier versions, `To`, whose array's
+/// view, `ToArray`, declares `ToArray()`, and `Enumerator`, which each view of
+/// a vector or an array of structs nests, and which would hide a declaration
+/// of that name within it. C# names the runtime and the standard library in
+/// full, from `global::`, so nothing else would clash.
 const CSHARP: &[&str] = &[
     "Enumerator",
     "Equals",
+    "FirstVersion",
     "FormatVersion",
     "GetHashCode",
     "PrintMembers",

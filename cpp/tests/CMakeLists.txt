@@ -51,6 +51,7 @@ set(TAFLA_TESTS
     layout_test
     macros_test
     nesting_test
+    presence_test
     round_trip_test
     table_builder_test
     table_reader_test

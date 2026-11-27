@@ -418,3 +418,24 @@ fn test_describe_unsupported_version() {
     );
     assert!(error.source().is_none());
 }
+
+#[test]
+fn test_describe_version_outside_range() {
+    let layout = TableLayout::DEFAULT.sized().with_version(4);
+    let mut builder = TableBuilder::new(1, layout).unwrap();
+    builder.set_u8(42).unwrap();
+    let bytes = builder.to_bytes().unwrap();
+
+    let version = TableReader::new(&bytes, layout).version().unwrap();
+    let error = DecodeError::VersionOutsideRange {
+        version,
+        first: 1,
+        last: 3,
+    };
+
+    assert_eq!(
+        error.to_string(),
+        "Unsupported format version 4; the reader reads versions 1 to 3"
+    );
+    assert!(error.source().is_none());
+}

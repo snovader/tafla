@@ -80,6 +80,12 @@ then the fields in the order they were set:
   4 GiB.
 - Offsets count from the table's start. A table nested with ``set_table()`` has
   no header, and its offsets count from its own start.
+- A field that the format lets be absent is left out with ``set_absent()``:
+  its offset is 0, and it takes no bytes, nor padding. A reader of such a
+  field compares its offset from ``root_offset()`` with 0, or one from
+  ``field_offset()`` with the nested table's position, before it reads it,
+  as the code that tafla-gen generates for an optional field does. A reader
+  of any other field reads its value at its offset, whatever it is.
 - Arrays and strings start with their element count. Typed arrays are padded so
   that their elements are aligned to their size from the table's start.
 - A struct is its scalars, one after another without padding, and isn't
@@ -262,8 +268,9 @@ TableWriter's contract
 ``TableWriter`` is the target of the generated code, whose calls follow from
 the schema, so it doesn't check them again. Its contract:
 
-- Every field is set, in index order, each once, and each vector item is
-  followed by its ``set_item_end()``.
+- Every field is set, in index order, each once, an absent one with
+  ``set_absent()``, and each vector item is followed by its
+  ``set_item_end()``.
 - ``set_fields()`` and ``write_table()`` take the ``FixedFields`` of the
   table's leading fields, and those fields' values in order, with a nested
   table's in place of it.

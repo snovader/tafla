@@ -174,6 +174,9 @@ Field field_of(const nlohmann::json& field) {
         }
         return {vector};
     }
+    if (type == "absent") {
+        return {Absent{}};
+    }
     return scalar_of(scalar_type_of(type), value);
 }
 
@@ -181,6 +184,10 @@ Field field_of(const nlohmann::json& field) {
 
 std::filesystem::path conformance_directory() {
     return TAFLA_CONFORMANCE;
+}
+
+std::filesystem::path presence_directory() {
+    return conformance_directory() / "presence";
 }
 
 std::vector<std::uint8_t> read_file(const std::filesystem::path& path) {
@@ -248,15 +255,18 @@ Table table_of(const nlohmann::json& table) {
     for (const auto& field : table.at("fields")) {
         result.fields.push_back(field_of(field));
     }
+    if (table.contains("missing")) {
+        result.missing = table.at("missing").get<std::size_t>();
+    }
     return result;
 }
 
-std::vector<ValidCase> valid_cases(const nlohmann::json& suite) {
+std::vector<ValidCase> valid_cases(const nlohmann::json& suite, const std::filesystem::path& directory) {
     std::vector<ValidCase> cases;
     for (const auto& valid : suite.at("valid")) {
         cases.push_back({
             valid.at("name").get<std::string>(),
-            read_file(conformance_directory() / valid.at("file").get<std::string>()),
+            read_file(directory / valid.at("file").get<std::string>()),
             table_of(valid.at("table")),
         });
     }

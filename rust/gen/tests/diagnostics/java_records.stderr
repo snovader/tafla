@@ -1,11 +1,11 @@
 error: `OneOver` has too many fields for a Java record
-  --> java_records.tafla:35:8
+  --> java_records.tafla:36:8
    |
-35 | struct OneOver {
+36 | struct OneOver {
    |        ^^^^^^^ its fields take 255 of a Java constructor's 254 parameter slots
 
 error: `Counts` has too many fields for a Java record
-  --> java_records.tafla:64:9
+  --> java_records.tafla:65:9
    |
-64 | message Counts {
+65 | message Counts {
    |         ^^^^^^ its fields take 256 of a Java constructor's 254 parameter slots

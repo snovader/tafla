@@ -1,5 +1,7 @@
 //! The fields whose sizes the schema fixes: scalars, structs, and nested
-//! tables of only such fields, which have no padding. Generated code that
+//! tables of only such fields, which have no padding. An optional field has
+//! no fixed size, since a writer may leave it out, so a table with one isn't
+//! of fixed size, and neither is a field that holds it. Generated code that
 //! lays them out itself, at positions that the generator works out, writes
 //! them without the runtime's sizer and writer, as Go's, Rust's, C++'s and
 //! TypeScript's do.
@@ -69,7 +71,8 @@ fn fixed_table_size(
 
     let definition = schema.definition(index);
     let mut size = Some(definition.fields.len().saturating_mul(NESTED_OFFSET_SIZE));
-    if definition.kind != Kind::Table {
+    // A table that may leave a field out has no length of its own
+    if definition.kind != Kind::Table || definition.fields.iter().any(|field| field.optional) {
         size = None;
     }
     for field in &definition.fields {

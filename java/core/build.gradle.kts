@@ -57,6 +57,14 @@ tasks.withType<JavaCompile>().configureEach {
     }
 }
 
+tasks.named<JavaCompile>("compileTestJava") {
+    options.errorprone {
+        // The schema of absent fields and versions that the tests compile the generated Java of,
+        // typescript/core/test/presence.tafla, declares a Record, as java.lang does
+        disable("AvoidCommonTypeNames")
+    }
+}
+
 tasks.named<Test>("test") {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = providers.gradleProperty("testJavaVersion")

@@ -2,4 +2,4 @@ error: unknown attribute `compressed`
  --> unknown_attribute.tafla:1:23
   |
 1 | message Point (sized, compressed) {
-  |                       ^^^^^^^^^^ expected `sized`, `version` or `offset_type`
+  |                       ^^^^^^^^^^ expected `sized`, `version`, `since` or `offset_type`

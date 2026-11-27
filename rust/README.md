@@ -84,7 +84,8 @@ on nightly Rust. A panic, a hang or a run out of memory is a finding:
   the bytes that lie where the format puts them, exactly when they lie
   within the input, and the decode error otherwise.
 - `conformance` mutates the conformance suite's tables and reads them as
-  every valid case's description, as the conformance test reads them.
+  every valid case's description, its cases of presence too, as the
+  conformance test reads them.
 - `gen` parses and checks arbitrary text as a schema, and generates every
   target's code from each schema that it accepts.
 
@@ -99,6 +100,7 @@ cargo +nightly fuzz run table_reader fuzz/corpus/table_reader \
     -- -max_total_time=300
 cargo +nightly fuzz run conformance fuzz/corpus/conformance \
     ../conformance/valid ../conformance/equivalent ../conformance/invalid \
+    ../conformance/presence/valid ../conformance/presence/invalid \
     -- -max_total_time=300
 cargo +nightly fuzz run gen fuzz/corpus/gen ../schemas gen/tests/diagnostics \
     -- -dict=fuzz/gen.dict -max_total_time=300

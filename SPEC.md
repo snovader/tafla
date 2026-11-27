@@ -42,10 +42,11 @@ A table is its header, then one offset per field, then the fields' values:
 - **Version**, present when the layout is versioned, is an unsigned integer
   chosen by the format, so that readers can reject versions they don't read.
 - **Offset `i`** is the position of field `i`'s value, counted from the start
-  of the table. The offsets of a table of `n` fields start right after the
-  header, so field `i`'s offset is at `headerSize + i × offsetSize`, where
-  `offsetSize` is the offset size and the header is 0, 1 or 2 slots of the
-  offset type.
+  of the table, or 0 when the field is absent, as [absent
+  fields](#absent-fields) describes. The offsets of a table of `n` fields
+  start right after the header, so field `i`'s offset is at
+  `headerSize + i × offsetSize`, where `offsetSize` is the offset size and
+  the header is 0, 1 or 2 slots of the offset type.
 
 Writers write the values in field order, each after the previous one, with
 only the padding described below between them. Padding bytes are zero, and
@@ -87,12 +88,37 @@ Counts, lengths and item ends are of the offset type, as offsets are.
   aligned to the largest alignment of its arrays and of its own nested
   tables, or 1 if it has neither; a nested table given as bytes is aligned to
   4 unless the writer passes another alignment. A nested table has no length
-  prefix, so its own offsets lead to its fields.
+  prefix, so its own offsets lead to its fields. Code generated from a schema
+  aligns a nested table to the alignment that the schema gives it, which
+  counts its arrays and nested tables that may be absent too, so a builder
+  that leaves one out writes the same bytes by passing that alignment.
 - **Vectors** hold tables of any layout. Each item's end is its offset from
   the vector's position, which is that of its count. Item `i` starts where
   item `i - 1` ends, and item 0 right after the last end, so readers find any
   item from at most two ends, without reading the items before it. Items
   aren't padded, so their arrays may be unaligned.
+
+### Absent fields
+
+A format may let a field be absent: a table that doesn't hold it has the
+offset 0 for it, and no value, padding or bytes of any kind. No value can
+lie at position 0, where a table's header or first offset lies, so 0 is
+never the offset of a value in a table of at least one field. The values of
+the other fields follow one another as usual, the absent field taking no
+room between them, and an array after it is padded from where the previous
+value ends.
+
+A reader reads a field that may be absent by comparing its offset with 0
+first, and returns the missing value of its language, or a scalar's default
+that the format gives, rather than reading a value at position 0. A nested table read in place is absent when its offset
+is 0 in its parent, and a field of it when its offset is 0 from the nested
+table's start. A vector holds every item; an item's fields may be absent.
+
+Only the format decides which fields may be absent. Its readers of every
+other field read it as before, without the comparison, so a field that the
+format requires, but whose offset is 0, reads the bytes at position 0 as its
+value, as [Validation](#validation) describes. A struct's scalars lie at
+fixed offsets, and are never absent.
 
 ### Reading nested tables
 
@@ -113,22 +139,53 @@ it, which its parent reads within.
 ## Evolution
 
 A table carries no count of its fields: the reader knows `n` from its
-format, and a reader that expects more fields than a table holds would read
-the extra offsets from the first value's bytes. So a format fixes its tables'
-fields, and a format whose fields change, such as that of messages that are
-stored or sent, gives each set of fields a version of its own in the header:
+format. A format whose fields change, such as that of messages that are
+stored or sent, appends fields, so that each field keeps its index and type
+in every version that has it, and a reader that knows more fields than a
+table holds finds which of them it lacks in one of two ways.
 
-- A versioned table's reader rejects every version but its own with its
-  decode error, even a newer version that only appends fields. An
-  application that reads several versions reads the version first, and then
-  reads the table with the reader of that version.
+### Versions
+
+A versioned table's version names its set of fields:
+
+- A reader reads the versions from the first that its format names to its
+  own, and rejects every other version with its decode error. A field that a
+  later version appended is missing from a table of an earlier one, and the
+  reader returns its language's missing value for it, or a scalar's default,
+  from the version alone, without reading its offset. A reader that reads only its own version
+  rejects every other, even a newer version that only appends fields.
+- A reader rejects a version newer than its own, although it would read the
+  fields that it knows from such a table alike, since a newer version may
+  change what a table means without changing its fields' types, which only
+  its format can say. An application that reads newer tables reads their
+  version first, and then the fields that it knows with a reader of the same
+  layout that doesn't check the version.
 - Every version should keep the same layout, so that the version lies in the
   same slot, with the same width, in each of them, and an application can
   read it before it knows which version a table holds.
-- A new version should only append fields to the previous version's, so that
-  each field keeps its index and type in every version that has it. A reader
-  that doesn't check the version then reads the fields that it knows from a
-  newer table's bytes alike.
+- Writers write their own version, with every field that it has, but those
+  that the format lets be absent.
+
+### Revisions
+
+A table without a version, such as a nested table, has revisions, each of
+which appends fields to the one before it. Its first field is in every
+revision, and isn't absent, so its value is the table's first, and its
+offset is where the table's offsets end, or where the padding after them
+ends, before an aligned array or nested table. A reader of a later revision
+finds field `i` missing from a table of an earlier one:
+
+- when the field's offset would end after the first field's value starts,
+  `headerSize + (i + 1) × offsetSize > offset[0]`, without reading it, or
+- when the field's offset is 0, as it is when it lies in the padding before
+  the first value, which is zero, or when the field is absent.
+
+A reader reads a field's offset only when it ends no later than the first
+value starts, so it never reads a value's bytes as an offset. A reader of an earlier revision reads
+the fields that it knows from a later revision's table alike, and ignores
+the fields after them. A reader that reads a field that a later revision
+appended, from a table that holds it, makes one more comparison than it
+makes for the fields of every revision, which it reads as before.
 
 ## Validation
 
@@ -145,7 +202,16 @@ Readers decode untrusted bytes. An implementation:
 
 Checks can't tell a value corrupted within range from a real one, such as an
 offset that points at another field, or one of a vector item's offsets that
-points past the item's end, at bytes that the item reads in place.
+points past the item's end, at bytes that the item reads in place. Nor can
+they tell an absent field from a present one whose offset was corrupted to
+0, or the other way about, nor a required field whose offset is 0 from one
+whose value lies at position 0: a reader of a required field doesn't compare
+its offset with 0, so it reads the header or first offset there as the
+field's value, within the bytes it was given, and fails with its decode
+error where those bytes can't hold it. Likewise, a reader of a later
+revision takes the first field's offset as given, so a corrupted one makes
+fields of the table missing or present, and those present read as any
+offset does.
 
 Nor do readers check that a vector item lies after the vector's count and
 ends. Item `i` is found from the ends of items `i - 1` and `i` alone, so when
@@ -168,7 +234,10 @@ an item without the items before it, bounds how deep it walks.
 ## Writers
 
 Writers produce the same bytes for the same fields in every implementation:
-header, offsets, values in field order, the padding above and nothing else. A
+header, offsets, values in field order, the padding above and nothing else.
+An absent field has the offset 0 and no bytes; a writer leaves out only the
+fields that its format lets be absent, and writes 0 for each of them, even
+into bytes that aren't zero. A
 writer rejects a table longer than its offset type addresses, and a version
 that doesn't fit in it, rather than writing a table that readers would misread.
 It converts a value to its field's type as its language converts it, which
@@ -179,4 +248,6 @@ each runtime documents, and rejects what it can't write.
 `conformance/cases.json` describes valid tables of every part of the format
 and corrupted ones, and `conformance/README.md` describes how implementations
 check themselves against them. A change to the bytes of an existing case is a
-change to this format.
+change to this format. The cases of absent fields and of later revisions
+lie in `conformance/presence/`, beside the others, which every implementation reads
+too.

@@ -742,6 +742,19 @@ export class TableWriter {
     }
 
     /**
+     * Writes field `index` as absent: an offset of 0 and no value, which a
+     * reader finds by comparing the field's offset, from
+     * `TableReader.rootOffset()`, with 0, or one from `fieldOffset()` with
+     * the nested table's position, before it reads the field. The sizer adds
+     * nothing for it. Only a format whose readers make that check for the
+     * field, such as code generated from a schema that declares it optional,
+     * can leave it out.
+     */
+    setAbsent(index: number): void {
+        this.#setLength(this._slots + index * this._size, 0);
+    }
+
+    /**
      * Writes the offset of a nested table, padded to start at a multiple of
      * `alignment`, whose fields then follow between `startTable()` and
      * `endTable()`

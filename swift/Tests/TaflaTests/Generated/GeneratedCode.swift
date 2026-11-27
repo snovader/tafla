@@ -8,9 +8,9 @@ import Testing
 // TableBuilder writes each message from its fields' struct, as the tests'
 // `build()` walks it with `Mirror`: each field by its Swift type, an enum as
 // its integer, a struct from its scalars' bytes, a nested table from its
-// fields' struct and a vector from an array of them. Values read back compare
-// with those written by their bits, so that -0 and NaN count, and strings by
-// their UTF-8.
+// fields' struct and a vector from an array of them, and an optional field
+// that's `nil` as absent. Values read back compare with those written by
+// their bits, so that -0 and NaN count, and strings by their UTF-8.
 
 /// A message of an example schema, with its generated code
 struct Message: Sendable, CustomTestStringConvertible {
@@ -20,6 +20,9 @@ struct Message: Sendable, CustomTestStringConvertible {
     /// The version that its writer writes and its reader reads, when it's
     /// versioned
     let version: UInt32?
+    /// The first version that its reader reads, when it reads the versions
+    /// from it to its own
+    let firstVersion: UInt32?
     /// Draws the values of its fields, into their struct
     let draw: @Sendable (inout Draw) -> any Sendable
     /// Writes the fields' struct with the generated code
@@ -36,6 +39,7 @@ struct Message: Sendable, CustomTestStringConvertible {
         _ name: String,
         layout: TableLayout,
         version: UInt32? = nil,
+        firstVersion: UInt32? = nil,
         draw: @escaping @Sendable (inout Draw) -> Fields,
         read: @escaping @Sendable (RawSpan) throws(DecodeError) -> Fields,
         versionOf: (@Sendable (RawSpan) throws(DecodeError) -> UInt32)? = nil
@@ -43,6 +47,7 @@ struct Message: Sendable, CustomTestStringConvertible {
         self.name = name
         self.layout = layout
         self.version = version
+        self.firstVersion = firstVersion
         self.draw = { draw(&$0) }
         self.serialize = { fields throws(BuildError) in try (fields as! Fields).serialize() }
         self.read = { bytes throws(DecodeError) in try read(bytes) }
@@ -147,10 +152,21 @@ func builder(of fields: Any, layout: TableLayout, version: UInt32? = nil) throws
 
 extension TableBuilder {
     /// Sets a field of a generated fields' struct, by its type: a bool as
-    /// the `uint8` 0 or 1, an enum as its integer, and a struct of fields as
-    /// a table nested from its builder, which it's padded to the alignment
-    /// of, as a fields' struct is
+    /// the `uint8` 0 or 1, an enum as its integer, a struct of fields as a
+    /// table nested from its builder, which it's padded to the alignment of,
+    /// as a fields' struct is, and an optional field that's `nil` as absent
     mutating func set(value: Any) throws(BuildError) {
+        let parts = Mirror(reflecting: value)
+        if parts.displayStyle == .optional {
+            guard let wrapped = parts.children.first?.value else {
+                try setAbsent()
+                return
+            }
+
+            try set(value: wrapped)
+            return
+        }
+
         switch value {
         case let value as Int8: try setInt8(value)
         case let value as UInt8: try setUInt8(value)

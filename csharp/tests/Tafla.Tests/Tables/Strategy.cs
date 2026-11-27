@@ -248,6 +248,7 @@ public static class Strategy
             StructArray array => Scalars.StructAlignment(array.Types) - 1 + width + array.Items.Count * (long)Scalars.StructSize(array.Types),
             TableField table => 7 + LongestTable(table.Nested.Table),
             VectorField vector => width + vector.Items.Sum(item => width + LongestTable(item.Table)),
+            Absent => 0,
             _ => throw new ArgumentException($"Unknown field {field}", nameof(field)),
         };
     }

@@ -10,10 +10,23 @@ import java.util.*;
  *
  * @param version the version in the header, present exactly when the layout is versioned
  * @param fields the fields in the order that they're set, which is the order of their offsets
+ * @param missing how many fields a reader of a later revision of the table knows after
+ *     {@code fields}, each of which it must find missing from the table. Only the cases of
+ *     presence have it.
  */
-record TableDescription(LayoutDescription layout, OptionalLong version, List<FieldDescription> fields) {
+record TableDescription(
+    LayoutDescription layout,
+    OptionalLong version,
+    List<FieldDescription> fields,
+    OptionalInt missing
+) {
     TableDescription {
         fields = List.copyOf(fields);
+    }
+
+    /** A table that a reader of its own revision reads, as every table but a case of presence */
+    TableDescription(LayoutDescription layout, OptionalLong version, List<FieldDescription> fields) {
+        this(layout, version, fields, OptionalInt.empty());
     }
 
     /**
@@ -35,12 +48,17 @@ record TableDescription(LayoutDescription layout, OptionalLong version, List<Fie
         var withField = new ArrayList<>(fields);
         withField.add(field);
 
-        return new TableDescription(layout, version, withField);
+        return new TableDescription(layout, version, withField, missing);
     }
 
     /** {@return this table with {@code version} in its header, which its layout must have a slot for} */
     TableDescription withVersion(long version) {
-        return new TableDescription(layout, OptionalLong.of(version), fields);
+        return new TableDescription(layout, OptionalLong.of(version), fields, missing);
+    }
+
+    /** {@return this table read by a reader of a later revision, which knows {@code missing} more fields} */
+    TableDescription withMissing(int missing) {
+        return new TableDescription(layout, version, fields, OptionalInt.of(missing));
     }
 
     @Override

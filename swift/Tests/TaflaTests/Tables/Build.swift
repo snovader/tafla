@@ -69,7 +69,8 @@ extension Table {
     /// the items of each vector cut to the fields of the shortest
     func recordedInPlace() -> Table {
         let nested = headerless(layout.offsetType)
-        return Table(layout: layout, version: version, fields: fields.map { $0.recordedInPlace(nested) })
+        return Table(
+            layout: layout, version: version, fields: fields.map { $0.recordedInPlace(nested) }, missing: missing)
     }
 }
 
@@ -127,6 +128,7 @@ protocol FieldTarget: ~Copyable {
     mutating func setFloat32Array(_ values: [Float]) throws(BuildError)
     mutating func setFloat64Array(_ values: [Double]) throws(BuildError)
     mutating func setString(_ value: String) throws(BuildError)
+    mutating func setAbsent() throws(BuildError)
     mutating func setStruct(_ bytes: [UInt8]) throws(BuildError)
     mutating func setStructArray(_ bytes: [UInt8], size: Int, alignment: Alignment) throws(BuildError)
     mutating func setTable(_ table: NestedTable, alignment: Alignment?) throws(BuildError)
@@ -147,6 +149,7 @@ extension FieldTarget where Self: ~Copyable {
     /// `Table.bytesInPlace()` does
     mutating func set(_ field: Field, inPlace: (Nested) -> Bool = { _ in false }) throws(BuildError) {
         switch field {
+        case .absent: try setAbsent()
         case .int8(let value): try setInt8(value)
         case .uint8(let value): try setUInt8(value)
         case .int16(let value): try setInt16(value)

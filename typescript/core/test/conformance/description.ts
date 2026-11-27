@@ -41,6 +41,20 @@ export interface TableDescription {
     /** The version in the header, present when the layout is versioned */
     version?: number;
     fields: FieldDescription[];
+    /**
+     * How many fields a reader of a later revision of the table knows after
+     * `fields`, each of which it must find missing from the table. Only the
+     * cases of presence have it.
+     */
+    missing?: number;
+}
+
+/**
+ * A field left out of its table, whose offset is 0. Only the cases of
+ * presence have it.
+ */
+export interface AbsentField {
+    type: 'absent';
 }
 
 /** A table nested from its builder or from the bytes that its builder writes */
@@ -79,7 +93,8 @@ export type FieldDescription =
     | { type: 'struct'; fields: StructScalar[] }
     | StructArrayField
     | TableField
-    | { type: 'vector'; items: NestedTable[] };
+    | { type: 'vector'; items: NestedTable[] }
+    | AbsentField;
 
 /**
  * A bool, which the runtimes write as the uint8 1 or 0 and read as true when

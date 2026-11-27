@@ -90,7 +90,9 @@ public static class Write
     private static Nested InPlace(Nested nested, OffsetType offsetType)
     {
         var fields = nested.Table.Fields.Select(field => InPlace(field, offsetType));
-        return new Nested(Source.Builder, new Table(Layout.Headerless(offsetType), 0, new Seq<Field>(fields)));
+        var table = new Table(Layout.Headerless(offsetType), 0, new Seq<Field>(fields)) { Missing = nested.Table.Missing };
+
+        return new Nested(Source.Builder, table);
     }
 
     /// <summary>Adds the field to the sizer with the method of its type, and then a nested table's fields.</summary>
@@ -112,6 +114,10 @@ public static class Write
 
             case StringField value:
                 sizer.AddString(value.Value);
+                break;
+
+            // An absent field takes no bytes but its offset
+            case Absent:
                 break;
 
             case StructField value:
@@ -171,6 +177,10 @@ public static class Write
 
             case StringField value:
                 writer.SetString(index, value.Value);
+                break;
+
+            case Absent:
+                writer.SetAbsent(index);
                 break;
 
             case StructField value:

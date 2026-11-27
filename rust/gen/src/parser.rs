@@ -5,8 +5,9 @@
 //! declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 //! attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 //! attribute   = NAME (":" (INTEGER | NAME))?
-//! field       = doc* NAME ":" type ";"
+//! field       = doc* NAME ":" type "?"? ("=" literal)? attributes? ";"
 //! type        = NAME | "[" NAME "]"
+//! literal     = "-"? (INTEGER | DECIMAL) | NAME
 //! enum        = doc* "enum" NAME ":" NAME "{" value* "}"
 //! value       = doc* NAME "=" "-"? INTEGER ";"
 //! ```
@@ -68,6 +69,27 @@ pub struct FieldDeclaration {
     pub docs: Vec<String>,
     pub type_name: Name,
     pub is_array: bool,
+    /// The `?` after the type of a field that may be absent
+    pub optional: Option<Span>,
+    /// The value that a scalar's getter returns when the table lacks it
+    pub default: Option<Literal>,
+    pub attributes: Vec<Attribute>,
+}
+
+/// A field's default, as written: a number, with its sign, or a name, such as
+/// `true`
+#[derive(Debug)]
+pub struct Literal {
+    pub text: String,
+    pub kind: LiteralKind,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiteralKind {
+    Integer,
+    Decimal,
+    Name,
 }
 
 /// An enum, whose values name integers of its underlying type
@@ -216,6 +238,19 @@ impl Parser<'_> {
         if is_array {
             self.expect(TokenKind::RightBracket, "`]`")?;
         }
+
+        let optional = (self.peek().kind == TokenKind::Question).then(|| self.advance().span);
+        let default = if self.peek().kind == TokenKind::Equals {
+            self.advance();
+            Some(self.literal()?)
+        } else {
+            None
+        };
+        let attributes = if self.peek().kind == TokenKind::LeftParenthesis {
+            self.attributes()?
+        } else {
+            Vec::new()
+        };
         self.expect(TokenKind::Semicolon, "`;`")?;
 
         Ok(FieldDeclaration {
@@ -223,6 +258,36 @@ impl Parser<'_> {
             docs,
             type_name,
             is_array,
+            optional,
+            default,
+            attributes,
+        })
+    }
+
+    fn literal(&mut self) -> Result<Literal, Diagnostic> {
+        let minus = (self.peek().kind == TokenKind::Minus).then(|| self.advance());
+        let token = self.peek();
+        let kind = match token.kind {
+            TokenKind::Integer => LiteralKind::Integer,
+            TokenKind::Decimal => LiteralKind::Decimal,
+            TokenKind::Identifier if minus.is_none() => LiteralKind::Name,
+            _ => {
+                self.expect(TokenKind::Integer, "a number, `true` or `false`")?;
+                unreachable!("expect() fails on any other token");
+            }
+        };
+        self.advance();
+
+        let start = minus.map_or(token.span.start, |minus| minus.span.start);
+        let span = Span {
+            start,
+            end: token.span.end,
+        };
+        let sign = if minus.is_some() { "-" } else { "" };
+        Ok(Literal {
+            text: format!("{sign}{}", self.text(token)),
+            kind,
+            span,
         })
     }
 

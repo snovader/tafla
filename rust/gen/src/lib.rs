@@ -37,5 +37,6 @@ pub fn compile(
     options: &Options,
 ) -> Result<Vec<GeneratedFile>, Vec<Diagnostic>> {
     let schema = parse(source)?;
+
     Ok(generate::generate(&schema, file_name, target, options))
 }

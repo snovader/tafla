@@ -82,6 +82,10 @@ public static class Build
                 target.SetString(value.Value);
                 break;
 
+            case Absent:
+                target.SetAbsent();
+                break;
+
             case StructField value:
                 target.SetStruct(Scalars.StructBytes(value.Scalars));
                 break;

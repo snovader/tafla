@@ -140,6 +140,7 @@ final class Descriptions {
             case VectorField vector -> width + vector.items().stream()
                 .mapToLong(item -> width + maxLength(item.table()))
                 .sum();
+            case AbsentField ignored -> 0;
         };
     }
 

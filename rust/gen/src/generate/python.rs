@@ -10,13 +10,23 @@
 //! structs of scalars are also written from tuples of their values. An enum
 //! is an `IntEnum` of the values that it names, and a field of it is an
 //! `int`, as a field of its integer type is, which any integer reads as.
+//!
+//! A field that may be missing, optional or added `since` a version, is read
+//! by its getter after checks that find whether the table holds it, and is
+//! `None` otherwise, or a scalar's default, which `has_<field>()` tells
+//! apart. A table with such a field, and one that holds such a table, has
+//! none of the methods that read its fields at once, which would read them
+//! without those checks.
 
 use std::collections::HashSet;
 
+use super::fixed;
 use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
-use crate::model::{Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema};
+use crate::model::{
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+};
 
 /// The runtime's package, unless [`Options::runtime`] names another
 const RUNTIME: &str = "tafla";
@@ -93,8 +103,11 @@ pub fn generate(
             fields_protocol(&mut writer, schema, definition);
         } else {
             fields_type(&mut writer, schema, definition);
-            writer.blanks(2);
-            values_type(&mut writer, schema, definition);
+            // The tuple of values that only field_values() reads
+            if !holds_missing_fields(schema, index) {
+                writer.blanks(2);
+                values_type(&mut writer, schema, definition);
+            }
         }
 
         if schema.is_item(index) {
@@ -133,6 +146,12 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
         matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
     });
     let has_sequence = has_struct || has_view;
+    // A TypedDict's optional fields are NotRequired
+    let has_optional = schema
+        .definitions
+        .iter()
+        .flat_map(|definition| &definition.fields)
+        .any(|field| field.optional);
     let versioned = has(|definition| {
         matches!(
             definition.kind,
@@ -166,6 +185,11 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     }
     if has_struct {
         typing.push("Literal");
+    }
+    if has_optional {
+        typing.push("NotRequired");
+    }
+    if has_struct {
         typing.push("Protocol");
         typing.push("Self");
     }
@@ -282,7 +306,13 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     writer.open(format!("class {name}:"));
     docstring(writer, &definition.docs);
     writer.blank();
-    writer.line("__slots__ = (\"_reader\",)");
+    // A message that reads several versions holds the one that it read, for
+    // the getters of the fields that later versions added
+    if layout.since.is_some() {
+        writer.line("__slots__ = (\"_reader\", \"_version\")");
+    } else {
+        writer.line("__slots__ = (\"_reader\",)");
+    }
     writer.blank();
 
     if let Some(version) = layout.version {
@@ -297,6 +327,20 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
         );
         writer.blank();
     }
+    if let Some(since) = layout.since {
+        writer.line(format!("FIRST_VERSION: Final = {since}"));
+        docstring(
+            writer,
+            &[
+                "The first version of the format that the constructor reads. The getters of"
+                    .to_owned(),
+                "the fields that later versions added return `None`, or a scalar's default,"
+                    .to_owned(),
+                "for the tables of earlier versions".to_owned(),
+            ],
+        );
+        writer.blank();
+    }
     writer.statement(&STYLE, "_LAYOUT: Final = ", &layout_expression(layout), "");
     let fixed = fixed_fields(schema, index);
     if fixed > 0 {
@@ -305,38 +349,7 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     }
     writer.blank();
 
-    writer.open("def __init__(self, data: Buffer) -> None:");
-    if layout.version.is_some() {
-        docstring(
-            writer,
-            &[
-                "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` if".to_owned(),
-                "it's in another format version.".to_owned(),
-            ],
-        );
-    } else {
-        docstring(
-            writer,
-            &["Raises `TypeError` if `data` isn't C-contiguous.".to_owned()],
-        );
-    }
-    writer.line("self._reader = TableReader(data, self._LAYOUT)");
-    if layout.version.is_some() {
-        writer.blank();
-        writer.line("version = self._reader.get_version()");
-        writer.open("if version != self.FORMAT_VERSION:");
-        let message = format!(
-            "f\"Expected format version {{self.FORMAT_VERSION}} of {name}, got {{version}}\""
-        );
-        writer.statement(
-            &STYLE,
-            "raise ",
-            &call("DecodeError", vec![text(message)]),
-            "",
-        );
-        writer.dedent();
-    }
-    writer.dedent();
+    constructor(writer, name, layout);
     writer.blank();
 
     if layout.version.is_some() {
@@ -354,12 +367,82 @@ fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layou
     if has_fields(schema, index) {
         field_reader(writer, schema, index, true, Form::Fields);
     }
-    field_reader(writer, schema, index, true, Form::Values);
-    if fixed > 0 && fixed == definition.fields.len() {
-        read_values(writer, schema, definition, layout);
-    } else {
-        read_values_by_reader(writer, schema, index, layout);
+    if !holds_missing_fields(schema, index) {
+        field_reader(writer, schema, index, true, Form::Values);
+        if fixed > 0 && fixed == definition.fields.len() {
+            read_values(writer, schema, definition, layout);
+        } else {
+            read_values_by_reader(writer, schema, index, layout);
+        }
     }
+    writer.dedent();
+}
+
+/// A message's constructor, which checks a versioned message's version:
+/// that it's the message's own, or within the versions that it reads when
+/// it has a first version, which it then holds for the getters of the
+/// fields that later versions added
+fn constructor(writer: &mut CodeWriter, name: &str, layout: Layout) {
+    writer.open("def __init__(self, data: Buffer) -> None:");
+    if layout.since.is_some() {
+        docstring(
+            writer,
+            &[
+                "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` if".to_owned(),
+                "it's in a format version before `FIRST_VERSION` or after".to_owned(),
+                "`FORMAT_VERSION`.".to_owned(),
+            ],
+        );
+    } else if layout.version.is_some() {
+        docstring(
+            writer,
+            &[
+                "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` if".to_owned(),
+                "it's in another format version.".to_owned(),
+            ],
+        );
+    } else {
+        docstring(
+            writer,
+            &["Raises `TypeError` if `data` isn't C-contiguous.".to_owned()],
+        );
+    }
+    writer.line("self._reader = TableReader(data, self._LAYOUT)");
+    if layout.version.is_some() {
+        writer.blank();
+        writer.line("version = self._reader.get_version()");
+        version_check(writer, name, layout, "self");
+        if layout.since.is_some() {
+            writer.line("self._version = version");
+        }
+    }
+    writer.dedent();
+}
+
+/// Raises `DecodeError` for a `version` that the versioned message `name`
+/// doesn't read: another than its own, or one outside the versions that it
+/// reads when it has a first version. `owner` is the instance or the class.
+fn version_check(writer: &mut CodeWriter, name: &str, layout: Layout, owner: &str) {
+    let message = if layout.since.is_some() {
+        writer.open(format!(
+            "if not {owner}.FIRST_VERSION <= version <= {owner}.FORMAT_VERSION:"
+        ));
+        format!(
+            "f\"Expected format versions {{{owner}.FIRST_VERSION}} to \
+             {{{owner}.FORMAT_VERSION}} of {name}, got {{version}}\""
+        )
+    } else {
+        writer.open(format!("if version != {owner}.FORMAT_VERSION:"));
+        format!(
+            "f\"Expected format version {{{owner}.FORMAT_VERSION}} of {name}, got {{version}}\""
+        )
+    };
+    writer.statement(
+        &STYLE,
+        "raise ",
+        &call("DecodeError", vec![text(message)]),
+        "",
+    );
     writer.dedent();
 }
 
@@ -386,32 +469,18 @@ fn read_values_by_reader(writer: &mut CodeWriter, schema: &Schema, index: usize,
         &values_alias(definition),
     );
     writer.indent();
-    let mut docs = vec![
+    let docs = vec![
         "Reads every field's value from `data` as `field_values()` reads them,".to_owned(),
         format!("without creating {}.", article(name)),
         String::new(),
         "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
+        decode_error_docs(layout).to_owned(),
     ];
-    docs.push(if layout.version.is_some() {
-        "bytes that the getters can't read or of another format version.".to_owned()
-    } else {
-        "bytes that the getters can't read.".to_owned()
-    });
     docstring(writer, &docs);
     writer.line("reader = TableReader(data, cls._LAYOUT)");
     if layout.version.is_some() {
         writer.line("version = reader.get_version()");
-        writer.open("if version != cls.FORMAT_VERSION:");
-        let message = format!(
-            "f\"Expected format version {{cls.FORMAT_VERSION}} of {name}, got {{version}}\""
-        );
-        writer.statement(
-            &STYLE,
-            "raise ",
-            &call("DecodeError", vec![text(message)]),
-            "",
-        );
-        writer.dedent();
+        version_check(writer, name, layout, "cls");
     }
     if fixed > 0 {
         writer.line("values = reader.get_fields(0, cls._FIXED_FIELDS)");
@@ -424,11 +493,24 @@ fn read_values_by_reader(writer: &mut CodeWriter, schema: &Schema, index: usize,
     writer.dedent();
 }
 
+/// The end of the docstring of a message's `read_values()`: the bytes that
+/// it raises `DecodeError` for, which its constructor would raise for too
+const fn decode_error_docs(layout: Layout) -> &'static str {
+    if layout.since.is_some() {
+        "bytes that the getters can't read or of a version that it doesn't read."
+    } else if layout.version.is_some() {
+        "bytes that the getters can't read or of another format version."
+    } else {
+        "bytes that the getters can't read."
+    }
+}
+
 /// A message of only fixed fields' `read_values()`, which reads their values
 /// as `field_values()` reads them, in one call and without an instance of
 /// the message, or through an instance's getters when the message's offsets
 /// aren't the ones that its writer writes, or its version isn't the
-/// message's, which the instance raises for
+/// message's, which the instance raises for, or reads when it's an earlier
+/// one of the versions that the message reads
 fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, layout: Layout) {
     let versioned = layout.version.is_some();
 
@@ -438,7 +520,7 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
     let parameters = ["cls", "data: Buffer"].map(str::to_owned);
     def_line(writer, "read_values", &parameters, &alias);
     writer.indent();
-    let mut docs = vec![
+    let docs = vec![
         "Reads every field's value from `data` at once, as `field_values()`".to_owned(),
         format!(
             "reads them, without creating {}.",
@@ -446,12 +528,8 @@ fn read_values(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
         ),
         String::new(),
         "Raises `TypeError` if `data` isn't C-contiguous, and `DecodeError` for".to_owned(),
+        decode_error_docs(layout).to_owned(),
     ];
-    if versioned {
-        docs.push("bytes that the getters can't read or of another format version.".to_owned());
-    } else {
-        docs.push("bytes that the getters can't read.".to_owned());
-    }
     docstring(writer, &docs);
     let mut arguments = vec![text("data"), text("cls._FIXED_FIELDS")];
     if versioned {
@@ -637,7 +715,9 @@ fn table(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     if has_fields(schema, index) {
         field_reader(writer, schema, index, false, Form::Fields);
     }
-    field_reader(writer, schema, index, false, Form::Values);
+    if !holds_missing_fields(schema, index) {
+        field_reader(writer, schema, index, false, Form::Values);
+    }
     writer.dedent();
 }
 
@@ -1012,7 +1092,9 @@ fn vector_view(writer: &mut CodeWriter, schema: &Schema, index: usize) {
     writer.dedent();
     writer.dedent();
 
-    vector_readers(writer, schema, index);
+    if !holds_missing_fields(schema, index) {
+        vector_readers(writer, schema, index);
+    }
     writer.dedent();
 }
 
@@ -1312,91 +1394,119 @@ fn fields_type(writer: &mut CodeWriter, schema: &Schema, definition: &Definition
     );
     writer.blank();
     for field in &definition.fields {
-        writer.line(format!(
-            "{}: {}",
-            identifier(&field.name),
-            input_type(field.field_type, schema)
-        ));
+        // An optional field may be left out, or `None`, as its getter
+        // returns it for a table without it
+        let input = input_type(field.field_type, schema);
+        writer.line(if field.optional {
+            format!("{}: NotRequired[{input} | None]", identifier(&field.name))
+        } else {
+            format!("{}: {input}", identifier(&field.name))
+        });
         docstring(writer, &field.docs);
     }
     writer.dedent();
 }
 
-/// The calls that write a table's fields, in order, each with its index
 /// The calls that write a table's fields, from its field `first`, after the
-/// fields that `FixedFields` packs
+/// fields that `FixedFields` packs, each with its index. An optional field
+/// that `fields` leaves out, or holds as `None`, is written as absent.
 fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, first: usize) {
     for (index, field) in definition.fields.iter().enumerate().skip(first) {
-        let value = format!("fields[\"{}\"]", identifier(&field.name));
-        let position = text(index.to_string());
-        let (method, arguments) = match field.field_type {
-            FieldType::Scalar(Scalar::Bool) => (
-                "set_uint8".to_owned(),
-                vec![position, text(format!("1 if {value} else 0"))],
-            ),
-            FieldType::Scalar(scalar) => (
-                format!("set_{}", scalar.name()),
-                vec![position, text(value)],
-            ),
-            FieldType::Array(scalar) => (
-                format!("set_{}_array", scalar.name()),
-                vec![position, text(value)],
-            ),
-            FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
-            FieldType::Struct(_) => (
-                "set_struct".to_owned(),
-                vec![position, call(format!("{value}.serialize"), vec![])],
-            ),
-            FieldType::StructArray(struct_index) => {
-                let structure = &schema.definition(struct_index).name;
-                (
-                    "set_struct_array".to_owned(),
-                    vec![
-                        position,
-                        call(format!("{structure}.serialize_array"), vec![text(value)]),
-                        text(format!("{structure}.SIZE")),
-                        text(format!("{structure}.ALIGNMENT")),
-                    ],
-                )
-            }
-            FieldType::Table(table_index) => {
-                let table = &schema.definition(table_index).name;
-                writer.line(format!("writer.set_table({index}, {table}.ALIGNMENT)"));
-                writer.statement(
-                    &STYLE,
-                    "",
-                    &call(format!("{table}.write"), vec![text("writer"), text(value)]),
-                    "",
-                );
-                continue;
-            }
-            FieldType::Vector(table_index)
-                if fixed_fields(schema, table_index)
-                    == schema.definition(table_index).fields.len() =>
-            {
-                vector_tables(writer, schema, table_index, position, &value);
-                continue;
-            }
-            FieldType::Vector(table_index) => {
-                let table = &schema.definition(table_index).name;
-                writer.statement(
-                    &STYLE,
-                    "vector = ",
-                    &call(
-                        "writer.set_vector",
-                        vec![position, text(format!("len({value})"))],
-                    ),
-                    "",
-                );
-                writer.open(format!("for i, item in enumerate({value}):"));
-                writer.line(format!("{table}.write(writer, item)"));
-                writer.line("writer.set_item_end(vector, i)");
-                writer.dedent();
-                continue;
-            }
-        };
-        writer.statement(&STYLE, "", &call(format!("writer.{method}"), arguments), "");
+        let key = identifier(&field.name);
+        if !field.optional {
+            let value = format!("fields[\"{key}\"]");
+            write(writer, schema, index, field.field_type, &value);
+            continue;
+        }
+
+        // A local of the value, which a type checker narrows from `None`,
+        // and which no other local of the method takes
+        writer.line(format!("value = fields.get(\"{key}\")"));
+        writer.open("if value is None:");
+        writer.line(format!("writer.set_absent({index})"));
+        writer.dedent();
+        writer.open("else:");
+        write(writer, schema, index, field.field_type, "value");
+        writer.dedent();
     }
+}
+
+/// The calls that write field `index` of a table, of `field_type`, from
+/// `value`
+fn write(
+    writer: &mut CodeWriter,
+    schema: &Schema,
+    index: usize,
+    field_type: FieldType,
+    value: &str,
+) {
+    let position = text(index.to_string());
+    let (method, arguments) = match field_type {
+        FieldType::Scalar(Scalar::Bool) => (
+            "set_uint8".to_owned(),
+            vec![position, text(format!("1 if {value} else 0"))],
+        ),
+        FieldType::Scalar(scalar) => (
+            format!("set_{}", scalar.name()),
+            vec![position, text(value)],
+        ),
+        FieldType::Array(scalar) => (
+            format!("set_{}_array", scalar.name()),
+            vec![position, text(value)],
+        ),
+        FieldType::String => ("set_string".to_owned(), vec![position, text(value)]),
+        FieldType::Struct(_) => (
+            "set_struct".to_owned(),
+            vec![position, call(format!("{value}.serialize"), vec![])],
+        ),
+        FieldType::StructArray(struct_index) => {
+            let structure = &schema.definition(struct_index).name;
+            (
+                "set_struct_array".to_owned(),
+                vec![
+                    position,
+                    call(format!("{structure}.serialize_array"), vec![text(value)]),
+                    text(format!("{structure}.SIZE")),
+                    text(format!("{structure}.ALIGNMENT")),
+                ],
+            )
+        }
+        FieldType::Table(table_index) => {
+            let table = &schema.definition(table_index).name;
+            writer.line(format!("writer.set_table({index}, {table}.ALIGNMENT)"));
+            writer.statement(
+                &STYLE,
+                "",
+                &call(format!("{table}.write"), vec![text("writer"), text(value)]),
+                "",
+            );
+            return;
+        }
+        FieldType::Vector(table_index)
+            if fixed_fields(schema, table_index) == schema.definition(table_index).fields.len() =>
+        {
+            vector_tables(writer, schema, table_index, position, value);
+            return;
+        }
+        FieldType::Vector(table_index) => {
+            let table = &schema.definition(table_index).name;
+            writer.statement(
+                &STYLE,
+                "vector = ",
+                &call(
+                    "writer.set_vector",
+                    vec![position, text(format!("len({value})"))],
+                ),
+                "",
+            );
+            writer.open(format!("for i, item in enumerate({value}):"));
+            writer.line(format!("{table}.write(writer, item)"));
+            writer.line("writer.set_item_end(vector, i)");
+            writer.dedent();
+            return;
+        }
+    };
+    writer.statement(&STYLE, "", &call(format!("writer.{method}"), arguments), "");
 }
 
 /// Writes a vector of tables that `FixedFields` describes whole, from
@@ -1454,7 +1564,7 @@ fn fixed_fields(schema: &Schema, index: usize) -> usize {
     let mut budget = MAX_FIXED_FIELDS;
     let mut packed = 0;
     for field in &definition.fields {
-        let Some(count) = fixed_count(schema, field.field_type, budget) else {
+        let Some(count) = fixed_count(schema, field, budget) else {
             break;
         };
         budget -= count;
@@ -1462,6 +1572,7 @@ fn fixed_fields(schema: &Schema, index: usize) -> usize {
     }
     if let Some(field) = definition.fields.get(packed)
         && field.field_type == FieldType::String
+        && !field.optional
         && budget > 0
     {
         packed += 1;
@@ -1478,19 +1589,22 @@ fn fixed_fields(schema: &Schema, index: usize) -> usize {
 /// The number of fields that a field adds to a `FixedFields`, itself and a
 /// nested table's fields, when its bytes are of a size that the schema fixes
 /// and they're at most `budget`: a scalar's, a struct's, or a nested table's
-/// whose fields all are, which has no arrays to align. Each step spends some
-/// of the budget or ends, so this ends soon, however tables nest.
-fn fixed_count(schema: &Schema, field_type: FieldType, budget: usize) -> Option<usize> {
-    if budget == 0 {
+/// whose fields all are, which has no arrays to align. An optional field's
+/// aren't, since a writer may leave it out. A field added `since` a version
+/// is, since writers write every field, and only readers check for it. Each
+/// step spends some of the budget or ends, so this ends soon, however tables
+/// nest.
+fn fixed_count(schema: &Schema, field: &Field, budget: usize) -> Option<usize> {
+    if budget == 0 || field.optional {
         return None;
     }
 
-    match field_type {
+    match field.field_type {
         FieldType::Scalar(_) | FieldType::Struct(_) => Some(1),
         FieldType::Table(index) => {
             let mut count = 1;
             for field in &schema.definition(index).fields {
-                count += fixed_count(schema, field.field_type, budget - count)?;
+                count += fixed_count(schema, field, budget - count)?;
             }
             Some(count)
         }
@@ -1616,10 +1730,12 @@ fn push_fixed_values(
 /// structs, whose items' values its vectors' views read into the tuples that
 /// `TableWriter.set_vector_tables()` writes, as `TableReader.get_fields()`
 /// reads them. A struct's value would be its bytes there, and a nested
-/// table's values would be written by code of its own.
+/// table's values would be written by code of its own. A message that holds
+/// fields that may be missing has no `field_values()` to write from.
 fn has_serialize_values(schema: &Schema, index: usize) -> bool {
     let definition = schema.definition(index);
     matches!(definition.kind, Kind::Message(_))
+        && !holds_missing_fields(schema, index)
         && definition
             .fields
             .iter()
@@ -2008,8 +2124,13 @@ fn is_fixed(schema: &Schema, index: usize) -> bool {
 /// the items of others could read without end, since corrupted bytes can
 /// make an item hold the vector that holds it, or read more items than the
 /// bytes hold, since the items of a vector can hold the same vector. Those
-/// tables have `field_values()` alone, which returns views of vectors.
+/// tables have `field_values()` alone, which returns views of vectors. A
+/// table that holds fields that may be missing has neither.
 fn has_fields(schema: &Schema, index: usize) -> bool {
+    if holds_missing_fields(schema, index) {
+        return false;
+    }
+
     // Each nested table once, since tables may nest the same one in many
     // fields of each other
     let mut tables = vec![index];
@@ -2025,6 +2146,36 @@ fn has_fields(schema: &Schema, index: usize) -> bool {
         }
     }
     true
+}
+
+/// Whether the message or table at `index` may lack a field, optional or
+/// added `since` a version, or holds a table that may, nested in it or as a
+/// vector's item, at any depth. Its getters read such a field once checks
+/// find it in the table, which `field_values()`, `fields()`,
+/// `read_values()` and a vector's readers of every item would read without,
+/// as `TableReader.get_fields()` reads, so such a table has none of them,
+/// and neither has `serialize_values()`, which writes what `field_values()`
+/// reads, nor the `FieldValues` alias of their tuple. Its vector's view reads
+/// each item when it's asked for, through the item's getters.
+fn holds_missing_fields(schema: &Schema, index: usize) -> bool {
+    // Each table once, since tables may nest the same one in many fields of
+    // each other, and a vector's item may hold the vector
+    let mut tables = vec![index];
+    let mut seen = HashSet::from([index]);
+    while let Some(table) = tables.pop() {
+        let definition = schema.definition(table);
+        if definition.has_missing_fields() {
+            return true;
+        }
+        for field in &definition.fields {
+            if let FieldType::Table(nested) | FieldType::Vector(nested) = field.field_type
+                && seen.insert(nested)
+            {
+                tables.push(nested);
+            }
+        }
+    }
+    false
 }
 
 /// The annotation of the values of the fields of `definition`, as
@@ -2945,15 +3096,45 @@ fn dict_lines(writer: &mut CodeWriter, prefix: &str, value: &DictValue, suffix: 
 
 fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is_root: bool) {
     for (index, field) in definition.fields.iter().enumerate() {
-        let offset = offset_expression(is_root, index);
+        // A scalar that may be missing returns its default rather than None,
+        // so that its type stays the scalar's
+        let default = match field.field_type {
+            FieldType::Scalar(_) => field.default.map(python_literal),
+            _ => None,
+        };
+        let read_type = value_type(field.field_type, schema);
+        let returned = if field.may_be_missing() && default.is_none() {
+            format!("{read_type} | None")
+        } else {
+            read_type
+        };
+        let mut docs = field.docs.clone();
+        if let Some(default) = &default {
+            if !docs.is_empty() {
+                docs.push(String::new());
+            }
+            docs.extend(wrap(&format!(
+                "`{default}` when the table doesn't hold it, as `{}()` tells",
+                presence_method_name(field)
+            )));
+        }
 
         writer.blank();
         writer.open(format!(
-            "def {}(self) -> {}:",
-            identifier(&field.name),
-            value_type(field.field_type, schema)
+            "def {}(self) -> {returned}:",
+            identifier(&field.name)
         ));
-        docstring(writer, &field.docs);
+        docstring(writer, &docs);
+
+        // A field that may be missing is read from its offset once the
+        // checks find it in the table; every other field as before
+        let offset = offset_expression(is_root, index);
+        let offset = if field.may_be_missing() {
+            let missing = default.as_deref().unwrap_or("None");
+            missing_checks(writer, definition, index, field, is_root, offset, missing)
+        } else {
+            offset
+        };
 
         match field.field_type {
             FieldType::Scalar(Scalar::Bool) => {
@@ -3001,6 +3182,160 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
         }
         writer.dedent();
+
+        if default.is_some() {
+            presence_method(writer, definition, index, field, is_root);
+        }
+    }
+}
+
+/// The name of the method that tells whether a table holds a scalar that may
+/// be missing, `has_<field>()`, which the checker keeps every field from
+fn presence_method_name(field: &Field) -> String {
+    identifier(&format!("has_{}", field.name))
+}
+
+/// The method that tells whether the table holds a scalar that may be
+/// missing, `has_<field>()`, whose getter returns its default otherwise
+fn presence_method(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    index: usize,
+    field: &Field,
+    is_root: bool,
+) {
+    writer.blank();
+    writer.open(format!(
+        "def {}(self) -> bool:",
+        presence_method_name(field)
+    ));
+    docstring(
+        writer,
+        &[format!(
+            "Whether the table holds `{}`",
+            identifier(&field.name)
+        )],
+    );
+
+    let since = since_condition(definition, index, field);
+    match (since, checks_offset(definition, field)) {
+        (Some(since), false) => writer.line(format!("return {}", since.present)),
+        (since, true) => {
+            if let Some(since) = since {
+                writer.open(format!("if {}:", since.missing));
+                writer.line("return False");
+                writer.dedent();
+                writer.blank();
+            }
+            let absent = if is_root { "0" } else { "self._position" };
+            let offset = offset_expression(is_root, index);
+            writer.statement(&STYLE, "return ", &offset, &format!(" != {absent}"));
+        }
+        (None, false) => unreachable!("a field that may be missing has a check"),
+    }
+    writer.dedent();
+}
+
+/// The checks before the read of a field that may be missing, which return
+/// `missing` when the table doesn't hold it:
+///
+/// - A field added since a version of a message with a version is missing
+///   from a table of an earlier version, which the reader holds.
+/// - A field added since a revision of any other table is missing when its
+///   offset would end after the table's first value starts, which its first
+///   field's offset gives, and when its offset lies in the padding before an
+///   aligned first value, which reads as 0.
+/// - An optional field is absent when its offset is 0, which a nested
+///   table's reader finds at the table's own position.
+///
+/// Returns the expression of the field's position after them: `offset`, the
+/// read of it, or the local that a check read it into.
+fn missing_checks(
+    writer: &mut CodeWriter,
+    definition: &Definition,
+    index: usize,
+    field: &Field,
+    is_root: bool,
+    offset: Expr,
+    missing: &str,
+) -> Expr {
+    if let Some(since) = since_condition(definition, index, field) {
+        writer.open(format!("if {}:", since.missing));
+        writer.line(format!("return {missing}"));
+        writer.dedent();
+        writer.blank();
+    }
+
+    if !checks_offset(definition, field) {
+        return offset;
+    }
+
+    writer.statement(&STYLE, "offset = ", &offset, "");
+    let absent = if is_root { "0" } else { "self._position" };
+    writer.open(format!("if offset == {absent}:"));
+    writer.line(format!("return {missing}"));
+    writer.dedent();
+    writer.blank();
+
+    text("offset")
+}
+
+/// The conditions on which a field that a later version or revision added
+/// is missing from a table, and present, as `missing_checks()` describes
+struct SinceCondition {
+    missing: String,
+    present: String,
+}
+
+fn since_condition(definition: &Definition, index: usize, field: &Field) -> Option<SinceCondition> {
+    let since = field.since?;
+
+    // A message's fields follow its header, and a nested table's offsets
+    // count from its own start, where it has none
+    let (first, end) = match definition.layout() {
+        Some(layout) if layout.version.is_some() => {
+            return Some(SinceCondition {
+                missing: format!("self._version < {since}"),
+                present: format!("self._version >= {since}"),
+            });
+        }
+        Some(layout) => {
+            let width = fixed::offset_size(layout.offset_type);
+            let header = usize::from(layout.sized) * width;
+            ("self._reader.root_offset(0)", header + (index + 1) * width)
+        }
+        None => (
+            "self._reader.field_offset(self._position, 0) - self._position",
+            (index + 1) * fixed::NESTED_OFFSET_SIZE,
+        ),
+    };
+
+    Some(SinceCondition {
+        missing: format!("{first} < {end}"),
+        present: format!("{first} >= {end}"),
+    })
+}
+
+/// Whether a field that may be missing is read after comparing its offset
+/// with 0: an optional field, and a field that a later revision of a table
+/// without a version added, whose offset may lie in padding
+fn checks_offset(definition: &Definition, field: &Field) -> bool {
+    let versioned = definition
+        .layout()
+        .is_some_and(|layout| layout.version.is_some());
+    field.optional || (field.since.is_some() && !versioned)
+}
+
+/// A scalar's default as a Python literal: `True` or `False`, an integer,
+/// or a float as `repr()` writes it but for an exponent's `+`, with a `.0`
+/// where it has neither a fraction nor an exponent, so that it's a float
+fn python_literal(value: ScalarValue) -> String {
+    match value {
+        ScalarValue::Bool(true) => "True".to_owned(),
+        ScalarValue::Bool(false) => "False".to_owned(),
+        ScalarValue::Integer(value) => value.to_string(),
+        // The shortest digits that read back as the value, as repr()'s
+        ScalarValue::Float(value) => format!("{value:?}"),
     }
 }
 

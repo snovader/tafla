@@ -3,7 +3,8 @@
 //! and version, offsets lie within the table, values follow each other in
 //! field order with only the padding that aligns arrays and nested tables,
 //! multi-byte values are little-endian, and nested tables and vector items
-//! hold the bytes of their tables.
+//! hold the bytes of their tables. Absent fields have the offset 0 and no
+//! bytes, so that the values of the others follow one another as usual.
 
 mod common;
 
@@ -18,7 +19,7 @@ proptest! {
     #![proptest_config(common::config())]
 
     #[test]
-    fn test_sized_tables_hold_their_length_in_the_header(table in strategy::table()) {
+    fn test_sized_tables_hold_their_length_in_the_header(table in strategy::any_table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
@@ -31,7 +32,7 @@ proptest! {
     }
 
     #[test]
-    fn test_versioned_tables_hold_their_version_in_the_header(table in strategy::table()) {
+    fn test_versioned_tables_hold_their_version_in_the_header(table in strategy::any_table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
@@ -51,7 +52,7 @@ proptest! {
     /// its field ends within the table. A table nested with no fields is
     /// empty, and can end its parent.
     #[test]
-    fn test_offsets_lie_within_their_table(table in strategy::table()) {
+    fn test_offsets_lie_within_their_table(table in strategy::any_table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
@@ -72,7 +73,7 @@ proptest! {
     /// turn when it's nested: an array of scalars at a multiple of their
     /// size, and an array of structs of their largest scalar's
     #[test]
-    fn test_arrays_start_at_a_multiple_of_their_alignment(table in strategy::table()) {
+    fn test_arrays_start_at_a_multiple_of_their_alignment(table in strategy::any_table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
@@ -92,7 +93,7 @@ proptest! {
     /// their counts' and their items' ends', which count from the vector's
     /// position, after the ends
     #[test]
-    fn test_values_are_little_endian(table in strategy::table()) {
+    fn test_values_are_little_endian(table in strategy::any_table()) {
         let bytes = table.to_bytes().unwrap();
 
         for found in tables_in(&bytes, &table) {
@@ -131,7 +132,7 @@ proptest! {
     /// last one ends the table
     #[test]
     fn test_values_follow_each_other_with_only_zeroed_padding_to_align_them(
-        table in strategy::table(),
+        table in strategy::any_table(),
     ) {
         let bytes = table.to_bytes().unwrap();
 
@@ -155,7 +156,7 @@ proptest! {
     /// as on their own
     #[test]
     fn test_nested_tables_and_vector_items_hold_the_bytes_of_their_tables(
-        table in strategy::table(),
+        table in strategy::any_table(),
     ) {
         let bytes = table.to_bytes().unwrap();
 
@@ -172,6 +173,7 @@ proptest! {
 struct TableIn<'a> {
     bytes: &'a [u8],
     table: &'a Table,
+    /// The fields that it holds, without those that are absent
     fields: Vec<FieldIn<'a>>,
     /// The bytes that the builder of a table in another writes on its own
     own_bytes: Option<Vec<u8>>,
@@ -188,14 +190,14 @@ impl TableIn<'_> {
     /// The length of the header and offsets, where the values start
     const fn offsets_end(&self) -> usize {
         let layout = self.table.layout;
-        layout.header_size() + self.fields.len() * layout.offset_type.size()
+        layout.header_size() + self.table.fields.len() * layout.offset_type.size()
     }
 }
 
 /// Finds every table in `bytes`, which hold `table`, and the fields of each.
 /// Fields lie at the positions that their offsets hold, and are as long as
 /// the values that the description gives, and as the tables that their
-/// builders write on their own.
+/// builders write on their own. An absent field's offset must be 0.
 fn tables_in<'a>(bytes: &'a [u8], table: &'a Table) -> Vec<TableIn<'a>> {
     let mut tables = Vec::new();
     find_tables(bytes, table, None, &mut tables);
@@ -216,6 +218,10 @@ fn find_tables<'a>(
     for (index, field) in table.fields.iter().enumerate() {
         let position = slot(bytes, offsets + index * width, width);
         let length = match field {
+            Field::Absent => {
+                assert_eq!(position, 0, "The offset of absent field {index}");
+                continue;
+            }
             Field::Table { nested, .. } => find_nested(bytes, position, nested, tables),
             Field::Vector(items) => {
                 // The items follow the count and the ends
@@ -315,7 +321,7 @@ impl Value {
                     .flat_map(|scalars| struct_bytes(scalars))
                     .collect(),
             },
-            Field::Table { .. } | Field::Vector(_) => return None,
+            Field::Table { .. } | Field::Vector(_) | Field::Absent => return None,
         })
     }
 

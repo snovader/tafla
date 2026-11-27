@@ -412,6 +412,17 @@ public final class TableWriter {
     }
 
     /**
+     * Writes field {@code index} as absent: an offset of 0 and no value, which a reader finds by
+     * comparing the field's offset, from {@link TableReader#rootOffset}, with 0, or one from
+     * {@link TableReader#fieldOffset} with the nested table's position, before it reads the field.
+     * The sizer adds nothing for it. Only a format whose readers make that check for the field,
+     * such as code generated from a schema that declares it optional, can leave it out.
+     */
+    public void setAbsent(int index) {
+        setLength(slots + index * offsetSize, 0);
+    }
+
+    /**
      * Writes the offset of a nested table, padded to start at a multiple of {@code alignment},
      * whose fields then follow between {@link #startTable} and {@link #endTable}
      *

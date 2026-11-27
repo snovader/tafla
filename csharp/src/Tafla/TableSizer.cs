@@ -12,7 +12,9 @@ namespace Tafla;
 /// <remarks>
 /// <para>
 /// The fields are added in order, each with its type's method, which takes what decides its length:
-/// nothing for a scalar, the count of an array, the string itself. A nested table is added with
+/// nothing for a scalar, the count of an array, the string itself. An absent field, which
+/// <see cref="TableWriter.SetAbsent"/> writes, isn't added at all: its offset is counted with the
+/// table's others. A nested table is added with
 /// <see cref="AddTable"/>, and a vector with <see cref="AddVector"/>, and the fields of each such table
 /// then follow between <see cref="StartTable"/> and <see cref="EndTable"/>. The sizer pads arrays and
 /// nested tables as <see cref="TableBuilder"/> does, so a writer that takes the same fields in the

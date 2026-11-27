@@ -70,6 +70,7 @@ macro_rules! set_field_on {
                 in_place: Option<OffsetType>,
             ) -> Result<(), BuildError> {
                 match self {
+                    Self::Absent => target.set_absent(),
                     Self::I8(value) => target.set_i8(*value),
                     Self::U8(value) => target.set_u8(*value),
                     Self::I16(value) => target.set_i16(*value),

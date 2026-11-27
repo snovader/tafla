@@ -7,6 +7,12 @@ export const SUITE_DIRECTORY = new URL(
     import.meta.url
 );
 
+/**
+ * The directory of the cases of presence, which only the implementations
+ * that read absent and missing fields read
+ */
+export const PRESENCE_DIRECTORY = new URL('presence/', SUITE_DIRECTORY);
+
 export interface SuiteFiles {
     /** The text of `cases.json` */
     json: string;

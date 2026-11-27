@@ -242,6 +242,11 @@ function expectLittleEndian(
         return;
     }
 
+    // An absent field has no bytes; presence.test.ts checks its offset
+    if (field.type === 'absent') {
+        return;
+    }
+
     expect(readScalar(bytes, field.type, position)).toBe(field.value);
 }
 

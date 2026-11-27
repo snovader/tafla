@@ -1086,6 +1086,7 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         ),
     ),
     tuples(just("set_struct"), tuples(INDICES, STRUCTS)),
+    tuples(just("set_absent"), tuples(INDICES)),
     tuples(
         just("set_struct_array"),
         tuples(INDICES, STRUCTS, one_of(integers(-1, 4), INTEGERS), ALIGNMENTS),

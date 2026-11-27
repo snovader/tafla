@@ -126,6 +126,9 @@ impl TableSizer {
     /// offset type: longer than 255 bytes, 64 KiB or 4 GiB. It names the root
     /// field that made it too long, and the length that the root's fields up
     /// to it make the table, as `TableBuilder`'s setter of the field returns.
+    /// It counts only the fields that were added, so the root's absent
+    /// fields before it, which aren't added, make the index it names that
+    /// many fewer than `TableBuilder`'s.
     /// [`BuildError::NotWholeStructs`] if an array of 0-byte structs was
     /// added, unless a field before it made the table too long.
     pub fn byte_length(&self) -> Result<usize, BuildError> {
@@ -686,6 +689,52 @@ impl TableWriter {
         } else {
             self.fail();
         }
+    }
+
+    /// Writes field `index` as absent: an offset of 0 and no value, which a
+    /// reader finds by comparing the field's offset, from
+    /// `TableReader::root_offset()`, with 0, or one from
+    /// `TableReader::field_offset()` with the nested table's position,
+    /// before it reads the field. The sizer adds nothing for it. Only a
+    /// format whose readers make that check for the field, such as code
+    /// generated from a schema that declares it optional, can leave it out.
+    ///
+    /// ```
+    /// use tafla::{TableLayout, TableReader, TableSizer};
+    ///
+    /// let name: Option<&str> = None;
+    ///
+    /// let mut sizer = TableSizer::new(2, TableLayout::DEFAULT)?;
+    /// sizer.add_u32();
+    /// if let Some(name) = name {
+    ///     sizer.add_str(name);
+    /// }
+    ///
+    /// let mut writer = sizer.writer()?;
+    /// writer.set_u32(0, 7);
+    /// match name {
+    ///     Some(name) => writer.set_str(1, name),
+    ///     None => writer.set_absent(1),
+    /// }
+    /// let bytes = writer.into_bytes()?;
+    ///
+    /// let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    /// assert_eq!(reader.root_offset(1)?, 0);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[inline]
+    pub fn set_absent(&mut self, index: usize) {
+        if index >= self.fields {
+            self.error.get_or_insert(BuildError::TooManyFields {
+                fields: self.fields,
+            });
+            return;
+        }
+
+        // The slot is 0 since the table started, but the writer writes the
+        // offset as it writes every other
+        let slot = self.slots + index * self.offset_type.size();
+        self.set_slot(slot, 0);
     }
 
     /// Writes the offset of nested table field `index`, padded to start at a

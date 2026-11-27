@@ -19,6 +19,11 @@ type Table struct {
 	// The version in the header, present only when the layout is versioned
 	Version uint32
 	Fields  []Field
+	// How many fields a reader of a later revision of the table knows after
+	// Fields, each of which it must find missing from the table, as
+	// conformance/README.md describes the cases of presence. A reader counts
+	// those that it finds missing in its place.
+	Missing int
 }
 
 // Layout is a table's layout, as a description gives it.
@@ -76,6 +81,9 @@ type (
 		Alignment tafla.Alignment
 	}
 	Vector []Nested
+	// Absent is a field left out of its table, whose offset is 0, which
+	// SetAbsent sets. Only the cases of presence hold it.
+	Absent struct{}
 )
 
 func (Int8) isField()         {}
@@ -104,6 +112,7 @@ func (Struct) isField()       {}
 func (StructArray) isField()  {}
 func (TableField) isField()   {}
 func (Vector) isField()       {}
+func (Absent) isField()       {}
 
 // Nested is a table nested from its builder or from the bytes that its
 // builder writes.
@@ -311,7 +320,7 @@ func (l Layout) HeaderSize() int {
 // Equal reports whether two tables are the same, with floats compared by
 // their bits.
 func Equal(a, b Table) bool {
-	if a.Layout != b.Layout || a.Version != b.Version || len(a.Fields) != len(b.Fields) {
+	if a.Layout != b.Layout || a.Version != b.Version || a.Missing != b.Missing || len(a.Fields) != len(b.Fields) {
 		return false
 	}
 

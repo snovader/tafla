@@ -62,5 +62,11 @@ The first release.
   structs that tafla-gen generates, fails as the runtime's reads do.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- `TableBuilder.SetAbsent()`, `TableBuilder.Item.SetAbsent()` and
+  `TableWriter.SetAbsent()`, which leave a field out of a table with the
+  offset 0 and no value, for a format that lets it be absent, as
+  [SPEC.md](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+  describes. The runtime reads and rebuilds the cases of absent fields and of
+  tables of later revisions in `conformance/presence/` too.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/csharp

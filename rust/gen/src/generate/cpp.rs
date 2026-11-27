@@ -21,6 +21,13 @@
 //! a sizer and a writer, and a nested table of only such fields has a
 //! `to_bytes()` with which such a message writes it.
 //!
+//! A field that may be missing, an optional one or one that a later version
+//! or revision added, is read after the checks that find it in the table:
+//! its getter returns a `std::optional` of what it reads otherwise, or a
+//! scalar's default, which `has_<field>()` tells apart. A fields struct holds
+//! an optional field in a `std::optional`, whose `std::nullopt` writes it as
+//! absent, so a message with one is never written whole.
+//!
 //! A header declares its classes before any of their members' definitions,
 //! which follow them, so that tables can name each other in any order,
 //! including through vectors that hold their own table. Structs, and the
@@ -34,7 +41,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, comment_text, escape_outside_code_spans};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
     strongly_connected_components,
 };
 
@@ -397,10 +404,12 @@ impl Whole<'_> {
 
 impl Generator<'_> {
     /// The standard headers that the code includes, and the runtime's.
-    /// `std::memcpy()` copies the string of a message written whole, and
-    /// `std::ranges::size()` counts the items of a generic fields struct's
-    /// views. A schema of only enums includes only `<cstdint>`, of their
-    /// integer types.
+    /// `std::memcpy()` copies the string of a message written whole,
+    /// `std::optional` holds an optional field to write and a field that a
+    /// getter may find missing, but for a scalar, which reads as its default,
+    /// and `std::ranges::size()` counts the items of a generic fields
+    /// struct's views. A schema of only enums includes only `<cstdint>`, of
+    /// their integer types.
     fn includes(&self, writer: &mut CodeWriter, runtime: &str) {
         if self.schema.definitions.is_empty() {
             writer.line("#include <cstdint>");
@@ -408,11 +417,20 @@ impl Generator<'_> {
         }
 
         let copies_strings = self.writes_whole_strings();
+        let any_optional = self
+            .schema
+            .definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| {
+                field.optional || matches!(self.missing_of(field), Some(Missing::Nullopt))
+            });
         let any_generic = (0..self.schema.definitions.len()).any(|index| self.is_generic(index));
         for include in [
             "cstddef",
             "cstdint",
             "cstring",
+            "optional",
             "ranges",
             "span",
             "string_view",
@@ -420,6 +438,7 @@ impl Generator<'_> {
         ] {
             let included = match include {
                 "cstring" => copies_strings,
+                "optional" => any_optional,
                 "ranges" => any_generic,
                 _ => true,
             };
@@ -472,6 +491,19 @@ impl Generator<'_> {
             ));
             writer.blank();
         }
+        if let Some(since) = layout.since {
+            cpp_doc(
+                writer,
+                &["The first version of the format that the constructor reads, whose getters \
+                   return `std::nullopt`, or a scalar's default, for the fields that later versions \
+                   added"
+                    .to_owned()],
+            );
+            writer.line(format!(
+                "static constexpr std::uint32_t FIRST_VERSION = {since};"
+            ));
+            writer.blank();
+        }
 
         cpp_doc(
             writer,
@@ -485,11 +517,16 @@ impl Generator<'_> {
         writer.blank();
 
         if layout.version.is_some() {
+            let versions = if layout.since.is_some() {
+                "a format version before `FIRST_VERSION` or after `FORMAT_VERSION`"
+            } else {
+                "another format version"
+            };
             cpp_doc(
                 writer,
                 &[format!(
                     "Reads {} from `bytes`, which it views, or throws a `tafla::DecodeError` if \
-                     they're in another format version",
+                     they're in {versions}",
                     article(name)
                 )],
             );
@@ -528,6 +565,12 @@ impl Generator<'_> {
         writer.line("private:");
         writer.indent();
         writer.line("std::span<const std::uint8_t> bytes_;");
+        if layout.since.is_some() {
+            let doc = "The version that the constructor read, from which the getters of the \
+                       fields that later versions added find them missing";
+            cpp_doc(writer, &[doc.to_owned()]);
+            writer.line("std::uint32_t version_;");
+        }
         writer.dedent();
         writer.line("};");
     }
@@ -580,11 +623,23 @@ impl Generator<'_> {
     fn getter_declarations(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let name = identifier(&field.name);
+            let missing = self.missing_of(field);
             let mut docs = self.member_docs(field);
             if !docs.is_empty() {
                 docs.push(String::new());
             }
-            docs.push(getter_doc(field.field_type).to_owned());
+            let getter_doc = getter_doc(field.field_type);
+            docs.push(match &missing {
+                None => getter_doc.to_owned(),
+                Some(Missing::Nullopt) => {
+                    format!("`std::nullopt` when the table doesn't hold the field. {getter_doc}")
+                }
+                Some(Missing::Default(default)) => format!(
+                    "`{default}` when the table doesn't hold the field, as `{}()` tells. \
+                     {getter_doc}",
+                    presence_method(field)
+                ),
+            });
 
             // Inlined where they're called, as `TableReader`'s getters are, so
             // that the reader stays in registers and its layout's constants
@@ -595,8 +650,23 @@ impl Generator<'_> {
             cpp_doc(writer, &docs);
             writer.line(format!(
                 "[[nodiscard]] TAFLA_ALWAYS_INLINE {} {name}() const;",
-                self.value_type(field)
+                self.getter_type(field)
             ));
+
+            if let Some(Missing::Default(_)) = missing {
+                writer.blank();
+                cpp_doc(
+                    writer,
+                    &[format!(
+                        "Whether the table holds `{name}`, which throws a `tafla::DecodeError` as \
+                         `{name}()` does"
+                    )],
+                );
+                writer.line(format!(
+                    "[[nodiscard]] TAFLA_ALWAYS_INLINE bool {}() const;",
+                    presence_method(field)
+                ));
+            }
         }
     }
 
@@ -612,11 +682,10 @@ impl Generator<'_> {
             "const ::tafla::TableReader reader(bytes_, ::tafla::TableLayout());"
         };
 
-        if let Kind::Message(Layout {
-            version: Some(_), ..
-        }) = definition.kind
+        if let Kind::Message(layout) = definition.kind
+            && layout.version.is_some()
         {
-            version_definitions(writer, class);
+            version_definitions(writer, class, layout);
         }
 
         for (index, field) in definition.fields.iter().enumerate() {
@@ -630,11 +699,22 @@ impl Generator<'_> {
             writer.blank();
             writer.line(format!(
                 "inline {} {class}::{name}() const {{",
-                self.value_type(field)
+                self.getter_type(field)
             ));
             writer.indent();
-            writer.line(reader);
-            writer.line(format!("const auto position = {offset};"));
+            // A field that may be missing is read once the checks find it in
+            // the table; every other field as before
+            if let Some(missing) = self.missing_of(field) {
+                let checks = MissingChecks::of(definition, index, field, missing.value());
+                checks.before_reader(writer);
+                writer.line(reader);
+                checks.before_offset(writer);
+                writer.line(format!("const auto position = {offset};"));
+                checks.of_offset(writer, "position");
+            } else {
+                writer.line(reader);
+                writer.line(format!("const auto position = {offset};"));
+            }
             let read = match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
                 FieldType::Scalar(scalar) => {
@@ -669,6 +749,19 @@ impl Generator<'_> {
             writer.line(format!("return {read};"));
             writer.dedent();
             writer.line("}");
+
+            if let Some(Missing::Default(_)) = self.missing_of(field) {
+                let checks = MissingChecks::of(definition, index, field, "false");
+                writer.blank();
+                writer.line(format!(
+                    "inline bool {class}::{}() const {{",
+                    presence_method(field)
+                ));
+                writer.indent();
+                checks.presence(writer, reader, &offset);
+                writer.dedent();
+                writer.line("}");
+            }
         }
     }
 
@@ -859,12 +952,12 @@ impl Generator<'_> {
         for (position, field) in definition.fields.iter().enumerate() {
             // A nested table's fields struct initializes its own fields, so
             // it takes no `{}`, which Clang checks again for each struct
-            // that holds it, in time that doubled with each level of nesting
-            let initializer = if matches!(field.field_type, FieldType::Table(_)) {
-                ""
-            } else {
-                "{}"
-            };
+            // that holds it, in time that doubled with each level of nesting.
+            // An optional one's `std::optional` takes it, which starts empty
+            // without the table's fields, so that a caller may leave it out
+            // without GCC's `-Wmissing-field-initializers`.
+            let required_table = matches!(field.field_type, FieldType::Table(_)) && !field.optional;
+            let initializer = if required_table { "" } else { "{}" };
             let field_type =
                 if let Some(generic_field) = self.generic_field(index, position, in_generic) {
                     let mut docs = field.docs.clone();
@@ -878,6 +971,12 @@ impl Generator<'_> {
                     cpp_doc(writer, &self.member_docs(field));
                     self.input_type(field, in_generic)
                 };
+            // `std::nullopt` writes an optional field as absent
+            let field_type = if field.optional {
+                format!("std::optional<{field_type}>")
+            } else {
+                field_type
+            };
             writer.line(format!(
                 "{field_type} {}{initializer};",
                 identifier(&field.name)
@@ -1174,6 +1273,12 @@ impl Generator<'_> {
     /// are all fixed but for a string after them, and they fit in its offset
     /// type with the string's count
     fn whole<'a>(&self, definition: &'a Definition, layout: Layout) -> Option<Whole<'a>> {
+        // A field that may be left out has no position of its own. A field
+        // added since a version is written as any other.
+        if definition.fields.iter().any(|field| field.optional) {
+            return None;
+        }
+
         let width = offset_size(layout.offset_type);
         let slots = usize::from(layout.sized) + usize::from(layout.version.is_some());
         let (fixed, string) = match definition.fields.split_last() {
@@ -1287,141 +1392,192 @@ impl Generator<'_> {
 
     /// The calls that add a table's fields to `sizer_`, in order, from its
     /// plain fields struct or, `in_generic`, its generic one. The locals and
-    /// parameters end with a `_`, which no field's name does. A generic
-    /// field's view is counted with `std::ranges::size()`, and each of its
-    /// items converted into the vector's table's fields as it's sized, by a
-    /// reference of its own rather than the loop's, which GCC's
-    /// `-Wrange-loop-construct` warns of when it binds a converted item.
+    /// parameters end with a `_`, which no field's name does. An optional
+    /// field is added when it holds a value; an absent one takes no bytes
+    /// but its offset, which the table's others are counted with.
     fn sizes(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
         let definition = self.schema.definition(index);
         for (position, field) in definition.fields.iter().enumerate() {
             let generic = self.generic_field(index, position, in_generic);
-            let value = identifier(&field.name);
-            match field.field_type {
-                FieldType::Scalar(scalar) => {
-                    writer.line(format!("sizer_.add_{}();", scalar.stored().name()));
-                }
-                FieldType::Array(scalar) => {
+            let value = Value::of(field);
+            if !field.optional {
+                self.size(writer, field, (generic, in_generic), &value);
+                continue;
+            }
+
+            writer.line(format!("if ({}.has_value()) {{", value.name));
+            writer.indent();
+            self.size(writer, field, (generic, in_generic), &value);
+            writer.dedent();
+            writer.line("}");
+        }
+    }
+
+    /// The calls that add a field to `sizer_`. A generic field's view is
+    /// counted with `std::ranges::size()`, and each of its items converted
+    /// into the vector's table's fields as it's sized, by a reference of its
+    /// own rather than the loop's, which GCC's `-Wrange-loop-construct` warns
+    /// of when it binds a converted item.
+    fn size(
+        &self,
+        writer: &mut CodeWriter,
+        field: &Field,
+        (generic, in_generic): (Option<&GenericField>, bool),
+        value: &Value,
+    ) {
+        match field.field_type {
+            FieldType::Scalar(scalar) => {
+                writer.line(format!("sizer_.add_{}();", scalar.stored().name()));
+            }
+            FieldType::Array(scalar) => {
+                writer.line(format!(
+                    "sizer_.add_{}_array({});",
+                    scalar.name(),
+                    value.member("size()")
+                ));
+            }
+            FieldType::String => writer.line(format!("sizer_.add_string({});", value.get())),
+            FieldType::Struct(structure) => {
+                let structure = &type_name(&self.schema.definition(structure).name);
+                writer.line(format!("sizer_.add_struct({structure}::SIZE);"));
+            }
+            FieldType::StructArray(structure) => {
+                let structure = &type_name(&self.schema.definition(structure).name);
+                let count = if generic.is_some() {
+                    format!("std::ranges::size({})", value.get())
+                } else {
+                    value.member("size()")
+                };
+                writer.line(format!(
+                    "sizer_.add_struct_array({count}, {structure}::SIZE, {structure}::ALIGNMENT);"
+                ));
+            }
+            FieldType::Table(table) => {
+                let table = self.fields_type(table, in_generic);
+                writer.line(format!("sizer_.add_table({table}::ALIGNMENT);"));
+                writer.line(format!("{};", value.member("size(sizer_)")));
+            }
+            FieldType::Vector(_) => {
+                if let Some(generic) = generic {
                     writer.line(format!(
-                        "sizer_.add_{}_array({value}.size());",
-                        scalar.name()
+                        "sizer_.add_vector(std::ranges::size({}));",
+                        value.get()
                     ));
+                    writer.line(format!("for (const auto& element_ : {}) {{", value.get()));
+                    writer.line(format!("{INDENT}const {}& item_ = element_;", generic.item));
+                } else {
+                    writer.line(format!("sizer_.add_vector({});", value.member("size()")));
+                    writer.line(format!("for (const auto& item_ : {}) {{", value.get()));
                 }
-                FieldType::String => writer.line(format!("sizer_.add_string({value});")),
-                FieldType::Struct(structure) => {
-                    let structure = &type_name(&self.schema.definition(structure).name);
-                    writer.line(format!("sizer_.add_struct({structure}::SIZE);"));
-                }
-                FieldType::StructArray(structure) => {
-                    let structure = &type_name(&self.schema.definition(structure).name);
-                    let count = if generic.is_some() {
-                        format!("std::ranges::size({value})")
-                    } else {
-                        format!("{value}.size()")
-                    };
-                    writer.line(format!(
-                        "sizer_.add_struct_array({count}, {structure}::SIZE, {structure}::ALIGNMENT);"
-                    ));
-                }
-                FieldType::Table(table) => {
-                    let table = self.fields_type(table, in_generic);
-                    writer.line(format!("sizer_.add_table({table}::ALIGNMENT);"));
-                    writer.line(format!("{value}.size(sizer_);"));
-                }
-                FieldType::Vector(_) => {
-                    if let Some(generic) = generic {
-                        writer.line(format!("sizer_.add_vector(std::ranges::size({value}));"));
-                        writer.line(format!("for (const auto& element_ : {value}) {{"));
-                        writer.line(format!("{INDENT}const {}& item_ = element_;", generic.item));
-                    } else {
-                        writer.line(format!("sizer_.add_vector({value}.size());"));
-                        writer.line(format!("for (const auto& item_ : {value}) {{"));
-                    }
-                    writer.line(format!("{INDENT}item_.size(sizer_);"));
-                    writer.line("}");
-                }
+                writer.line(format!("{INDENT}item_.size(sizer_);"));
+                writer.line("}");
             }
         }
     }
 
     /// The calls that write a table's fields with `writer_`, each with its
     /// index, in the order that `sizes()` added them, from its plain fields
-    /// struct or, `in_generic`, its generic one. A generic field's view is
-    /// iterated rather than indexed, with the items' index beside it, so that
-    /// any view that can be iterated more than once will do.
+    /// struct or, `in_generic`, its generic one. An optional field without a
+    /// value is written as absent.
     fn writes(&self, writer: &mut CodeWriter, index: usize, in_generic: bool) {
         let definition = self.schema.definition(index);
         for (position, field) in definition.fields.iter().enumerate() {
             let generic = self.generic_field(index, position, in_generic);
-            let value = identifier(&field.name);
-            match field.field_type {
-                FieldType::Scalar(Scalar::Bool) => writer.line(format!(
-                    "writer_.set_uint8({position}, static_cast<std::uint8_t>({value}));"
-                )),
-                FieldType::Scalar(scalar) => {
+            let value = Value::of(field);
+            if !field.optional {
+                self.write(writer, position, field, (generic, in_generic), &value);
+                continue;
+            }
+
+            writer.line(format!("if ({}.has_value()) {{", value.name));
+            writer.indent();
+            self.write(writer, position, field, (generic, in_generic), &value);
+            writer.dedent();
+            writer.line("} else {");
+            writer.line(format!("{INDENT}writer_.set_absent({position});"));
+            writer.line("}");
+        }
+    }
+
+    /// The calls that write field `position` with `writer_`. A generic
+    /// field's view is iterated rather than indexed, with the items' index
+    /// beside it, so that any view that can be iterated more than once will
+    /// do.
+    fn write(
+        &self,
+        writer: &mut CodeWriter,
+        position: usize,
+        field: &Field,
+        (generic, in_generic): (Option<&GenericField>, bool),
+        value: &Value,
+    ) {
+        let get = value.get();
+        match field.field_type {
+            FieldType::Scalar(Scalar::Bool) => writer.line(format!(
+                "writer_.set_uint8({position}, static_cast<std::uint8_t>({get}));"
+            )),
+            FieldType::Scalar(scalar) => writer.line(format!(
+                "writer_.set_{}({position}, {});",
+                scalar.name(),
+                as_integer(field, scalar, &get)
+            )),
+            FieldType::Array(scalar) => writer.line(format!(
+                "writer_.set_{}_array({position}, {get});",
+                scalar.name()
+            )),
+            FieldType::String => {
+                writer.line(format!("writer_.set_string({position}, {get});"));
+            }
+            FieldType::Struct(_) => {
+                writer.line(format!("writer_.set_struct({position}, {get});"));
+            }
+            FieldType::StructArray(structure) => {
+                if generic.is_some() {
+                    let structure = &type_name(&self.schema.definition(structure).name);
                     writer.line(format!(
-                        "writer_.set_{}({position}, {});",
-                        scalar.name(),
-                        as_integer(field, scalar, &value)
+                        "writer_.set_structs<{structure}>({position}, {get});"
                     ));
+                } else {
+                    writer.line(format!("writer_.set_structs({position}, {get});"));
                 }
-                FieldType::Array(scalar) => writer.line(format!(
-                    "writer_.set_{}_array({position}, {value});",
-                    scalar.name()
-                )),
-                FieldType::String => {
-                    writer.line(format!("writer_.set_string({position}, {value});"));
-                }
-                FieldType::Struct(_) => {
-                    writer.line(format!("writer_.set_struct({position}, {value});"));
-                }
-                FieldType::StructArray(structure) => {
-                    if generic.is_some() {
-                        let structure = &type_name(&self.schema.definition(structure).name);
-                        writer.line(format!(
-                            "writer_.set_structs<{structure}>({position}, {value});"
-                        ));
-                    } else {
-                        writer.line(format!("writer_.set_structs({position}, {value});"));
-                    }
-                }
-                FieldType::Table(table) => {
-                    let table = self.fields_type(table, in_generic);
+            }
+            FieldType::Table(table) => {
+                let table = self.fields_type(table, in_generic);
+                writer.line(format!(
+                    "writer_.set_table({position}, {table}::ALIGNMENT);"
+                ));
+                writer.line(format!("{};", value.member("write(writer_)")));
+            }
+            FieldType::Vector(_) => {
+                // Named by the field's position, so that the vectors of a
+                // table don't clash
+                let vector = format!("vector{position}_");
+                if let Some(generic) = generic {
                     writer.line(format!(
-                        "writer_.set_table({position}, {table}::ALIGNMENT);"
+                        "const auto {vector} = writer_.set_vector({position}, std::ranges::size({get}));"
                     ));
-                    writer.line(format!("{value}.write(writer_);"));
+                    writer.line(format!(
+                        "for (std::size_t index_ = 0; const auto& element_ : {get}) {{"
+                    ));
+                    writer.indent();
+                    writer.line(format!("const {}& item_ = element_;", generic.item));
+                    writer.line("item_.write(writer_);");
+                    writer.line(format!("writer_.set_item_end({vector}, index_);"));
+                    writer.line("++index_;");
+                } else {
+                    let size = value.member("size()");
+                    writer.line(format!(
+                        "const auto {vector} = writer_.set_vector({position}, {size});"
+                    ));
+                    writer.line(format!(
+                        "for (std::size_t index_ = 0; index_ < {size}; ++index_) {{"
+                    ));
+                    writer.indent();
+                    writer.line(format!("{}[index_].write(writer_);", value.indexed()));
+                    writer.line(format!("writer_.set_item_end({vector}, index_);"));
                 }
-                FieldType::Vector(_) => {
-                    // Named by the field's position, so that the vectors of a
-                    // table don't clash
-                    let vector = format!("vector{position}_");
-                    if let Some(generic) = generic {
-                        writer.line(format!(
-                            "const auto {vector} = writer_.set_vector({position}, std::ranges::size({value}));"
-                        ));
-                        writer.line(format!(
-                            "for (std::size_t index_ = 0; const auto& element_ : {value}) {{"
-                        ));
-                        writer.indent();
-                        writer.line(format!("const {}& item_ = element_;", generic.item));
-                        writer.line("item_.write(writer_);");
-                        writer.line(format!("writer_.set_item_end({vector}, index_);"));
-                        writer.line("++index_;");
-                    } else {
-                        writer.line(format!(
-                            "const auto {vector} = writer_.set_vector({position}, {value}.size());"
-                        ));
-                        writer.line(format!(
-                            "for (std::size_t index_ = 0; index_ < {value}.size(); ++index_) {{"
-                        ));
-                        writer.indent();
-                        writer.line(format!("{value}[index_].write(writer_);"));
-                        writer.line(format!("writer_.set_item_end({vector}, index_);"));
-                    }
-                    writer.dedent();
-                    writer.line("}");
-                }
+                writer.dedent();
+                writer.line("}");
             }
         }
     }
@@ -1434,7 +1590,18 @@ impl Generator<'_> {
         }
     }
 
-    /// The type that a getter returns
+    /// The type that a field's getter returns: what it reads, or a
+    /// `std::optional` of it when the field may be missing, but for a scalar,
+    /// which reads as its default
+    fn getter_type(&self, field: &Field) -> String {
+        let value = self.value_type(field);
+        match self.missing_of(field) {
+            Some(Missing::Nullopt) => format!("std::optional<{value}>"),
+            Some(Missing::Default(_)) | None => value,
+        }
+    }
+
+    /// The type that a getter reads
     fn value_type(&self, field: &Field) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
 
@@ -1498,6 +1665,32 @@ impl Generator<'_> {
     /// A field's documentation, as its member and its getter carry it, with
     /// the enum of an array of enums, whose type names their integer type
     /// alone
+    /// What the getter of a field returns for a table that doesn't hold it,
+    /// when it may be missing: an optional field, or one that a later version
+    /// or revision added. An enum's default is a value of the enum.
+    fn missing_of(&self, field: &Field) -> Option<Missing> {
+        if !field.may_be_missing() {
+            return None;
+        }
+
+        Some(match field.field_type {
+            FieldType::Scalar(scalar) => {
+                let default = field
+                    .default
+                    .expect("a scalar that may be missing has a default");
+                let literal = cpp_literal(default, scalar);
+                Missing::Default(match field.enumeration {
+                    Some(index) => format!(
+                        "static_cast<{}>({literal})",
+                        type_name(&self.schema.enumeration(index).name)
+                    ),
+                    None => literal,
+                })
+            }
+            _ => Missing::Nullopt,
+        })
+    }
+
     fn member_docs(&self, field: &Field) -> Vec<String> {
         let mut docs = field.docs.clone();
         if let (FieldType::Array(scalar), Some(index)) = (field.field_type, field.enumeration) {
@@ -1620,6 +1813,153 @@ const fn getter_doc(field_type: FieldType) -> &'static str {
     }
 }
 
+/// What the getter of a field that may be missing returns for a table that
+/// doesn't hold it
+enum Missing {
+    /// `std::nullopt`, of a getter that returns a `std::optional` of what it
+    /// returns otherwise: a string, an array, a struct, a nested table, a
+    /// vector or an array of structs
+    Nullopt,
+    /// A scalar's default, as a literal of C++, where `has_<field>()` tells
+    /// whether the table holds it. A getter that returned a
+    /// `std::optional` would make every caller check it, where a default
+    /// reads as any value.
+    Default(String),
+}
+
+impl Missing {
+    fn value(&self) -> &str {
+        match self {
+            Self::Nullopt => "std::nullopt",
+            Self::Default(default) => default,
+        }
+    }
+}
+
+/// The name of the method that tells whether a table holds a scalar that may
+/// be missing, `has_<field>`, which the checker keeps from every field's name
+fn presence_method(field: &Field) -> String {
+    identifier(&format!("has_{}", field.name))
+}
+
+/// How a getter finds a field that a later version or revision of its table
+/// added missing
+enum Added {
+    /// From the version that a message's constructor read, without reading
+    /// the field's offset
+    Version(u32),
+    /// From where the table's first value starts, at `first`, before which
+    /// the field's offset ends at `end` when the table holds it
+    Revision { first: &'static str, end: usize },
+}
+
+/// The checks with which a getter finds a field that may be missing before
+/// it reads it, returning what it returns for a table that doesn't hold it:
+///
+/// - A field added since a version of a message with a version is missing
+///   from a table of an earlier version, which the constructor read.
+/// - A field added since a revision of any other table is missing when its
+///   offset would end after the table's first value starts, which its first
+///   field's offset gives, and when its offset lies in the padding before an
+///   aligned first value, which reads as 0.
+/// - An optional field is absent when its offset is 0, from the start of
+///   its table, where a nested table's bytes start too.
+///
+/// Each check that returns is followed by a blank line.
+struct MissingChecks<'a> {
+    added: Option<Added>,
+    checks_offset: bool,
+    missing: &'a str,
+}
+
+impl<'a> MissingChecks<'a> {
+    fn of(definition: &Definition, index: usize, field: &Field, missing: &'a str) -> Self {
+        let layout = definition.layout();
+        let versioned = layout.is_some_and(|layout| layout.version.is_some());
+        let added = field.since.map(|since| match layout {
+            _ if versioned => Added::Version(since),
+            Some(layout) => Added::Revision {
+                first: "reader.root_offset(0)",
+                end: (usize::from(layout.sized) + index + 1) * offset_size(layout.offset_type),
+            },
+            None => Added::Revision {
+                first: "reader.field_offset(0, 0)",
+                end: (index + 1) * NESTED_OFFSET_SIZE,
+            },
+        });
+
+        Self {
+            added,
+            checks_offset: field.optional || (field.since.is_some() && !versioned),
+            missing,
+        }
+    }
+
+    /// The check of the version, before the getter's reader
+    fn before_reader(&self, writer: &mut CodeWriter) {
+        if let Some(Added::Version(since)) = self.added {
+            self.return_if(writer, &format!("version_ < {since}"));
+        }
+    }
+
+    /// The check of where the table's first value starts, before the field's
+    /// offset is read
+    fn before_offset(&self, writer: &mut CodeWriter) {
+        if let Some(Added::Revision { first, end }) = self.added {
+            self.return_if(writer, &format!("{first} < {end}"));
+        }
+    }
+
+    /// The check of the field's offset, the local `position`
+    fn of_offset(&self, writer: &mut CodeWriter, position: &str) {
+        if self.checks_offset {
+            self.return_if(writer, &format!("{position} == 0"));
+        }
+    }
+
+    fn return_if(&self, writer: &mut CodeWriter, condition: &str) {
+        writer.line(format!("if ({condition}) {{"));
+        writer.line(format!("{INDENT}return {};", self.missing));
+        writer.line("}");
+        writer.blank();
+    }
+
+    /// The body of `has_<field>()`, whose checks return `false`, with
+    /// `reader` and the expression of the field's `offset`
+    fn presence(&self, writer: &mut CodeWriter, reader: &str, offset: &str) {
+        if let (Some(Added::Version(since)), false) = (&self.added, self.checks_offset) {
+            writer.line(format!("return version_ >= {since};"));
+            return;
+        }
+
+        self.before_reader(writer);
+        writer.line(reader);
+        self.before_offset(writer);
+        writer.line(format!("return {offset} != 0;"));
+    }
+}
+
+/// A scalar's default as a literal of C++: an unsigned integer's with a `U`,
+/// which a `uint64` past the largest `long long` needs, the least `int64` as
+/// `INT64_MIN`, whose digits alone no literal holds, and a float's in the
+/// fewest digits that read back as it, which a `float32`'s `F` reads as that
+/// `float32`
+fn cpp_literal(value: ScalarValue, scalar: Scalar) -> String {
+    match value {
+        ScalarValue::Bool(value) => value.to_string(),
+        ScalarValue::Integer(value) if value == i128::from(i64::MIN) => "INT64_MIN".to_owned(),
+        ScalarValue::Integer(value) => match scalar {
+            Scalar::Uint8 | Scalar::Uint16 | Scalar::Uint32 | Scalar::Uint64 => format!("{value}U"),
+            _ => value.to_string(),
+        },
+        // The checker holds a `float32`'s default as the `float32` nearest
+        // to it, which converts exactly
+        #[allow(clippy::cast_possible_truncation)]
+        ScalarValue::Float(value) if scalar == Scalar::Float32 => format!("{:?}F", value as f32),
+        ScalarValue::Float(value) => format!("{value:?}"),
+    }
+}
+
 /// Where a message's `serialize()` or `serialize_into()` writes it
 #[derive(Clone, Copy)]
 enum Output {
@@ -1628,6 +1968,50 @@ enum Output {
     /// The start of the caller's `bytes_`, whose length `serialize_into()`
     /// returns
     GivenBytes,
+}
+
+/// How the code that sizes and writes a field names its value: a member of
+/// the fields struct, or the value that an optional one holds, which its
+/// check found
+struct Value {
+    name: String,
+    optional: bool,
+}
+
+impl Value {
+    fn of(field: &Field) -> Self {
+        Self {
+            name: identifier(&field.name),
+            optional: field.optional,
+        }
+    }
+
+    /// The value, as an argument or a range
+    fn get(&self) -> String {
+        if self.optional {
+            format!("*{}", self.name)
+        } else {
+            self.name.clone()
+        }
+    }
+
+    /// A member of the value
+    fn member(&self, member: &str) -> String {
+        if self.optional {
+            format!("{}->{member}", self.name)
+        } else {
+            format!("{}.{member}", self.name)
+        }
+    }
+
+    /// The value, to index
+    fn indexed(&self) -> String {
+        if self.optional {
+            format!("(*{})", self.name)
+        } else {
+            self.name.clone()
+        }
+    }
 }
 
 /// The declarations of the `SIZE` and `to_bytes()` of a nested table of
@@ -1906,18 +2290,38 @@ fn enumerator_value(value: i128) -> String {
 }
 
 /// The definitions of a versioned message's constructor, which checks the
-/// version, and of `version_of()`
-fn version_definitions(writer: &mut CodeWriter, class: &str) {
+/// version: that it's the message's own, or within the versions that it
+/// reads when it has a first version, which it then holds for the getters of
+/// the fields that later versions added; and of `version_of()`
+fn version_definitions(writer: &mut CodeWriter, class: &str, layout: Layout) {
     writer.blank();
-    writer.line(format!(
-        "inline {class}::{class}(std::span<const std::uint8_t> bytes) : bytes_(bytes) {{"
-    ));
-    writer.indent();
-    writer.line("const auto version = version_of(bytes);");
-    writer.line("if (version != FORMAT_VERSION) {");
-    writer.line(format!(
-        "{INDENT}throw ::tafla::DecodeError::unsupported_version(version, FORMAT_VERSION);"
-    ));
+    if layout.since.is_some() {
+        // Broken before the initializers when it's too long, as clang-format
+        // breaks it
+        let signature = format!("inline {class}::{class}(std::span<const std::uint8_t> bytes)");
+        let initializers = ": bytes_(bytes), version_(version_of(bytes)) {";
+        if signature.len() + 1 + initializers.len() <= WIDTH {
+            writer.line(format!("{signature} {initializers}"));
+        } else {
+            writer.line(signature);
+            writer.line(format!("{INDENT}{initializers}"));
+        }
+        writer.indent();
+        writer.line("if (version_ < FIRST_VERSION || version_ > FORMAT_VERSION) {");
+        writer.line(format!(
+            "{INDENT}throw ::tafla::DecodeError::unsupported_version(version_, FIRST_VERSION, FORMAT_VERSION);"
+        ));
+    } else {
+        writer.line(format!(
+            "inline {class}::{class}(std::span<const std::uint8_t> bytes) : bytes_(bytes) {{"
+        ));
+        writer.indent();
+        writer.line("const auto version = version_of(bytes);");
+        writer.line("if (version != FORMAT_VERSION) {");
+        writer.line(format!(
+            "{INDENT}throw ::tafla::DecodeError::unsupported_version(version, FORMAT_VERSION);"
+        ));
+    }
     writer.line("}");
     writer.dedent();
     writer.line("}");

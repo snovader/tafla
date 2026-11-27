@@ -22,6 +22,7 @@ import {
     fromJsonNumber,
     isArrayField,
     toJsonNumber,
+    type AbsentField,
     type Alignment,
     type FieldDescription,
     type JsonNumber,
@@ -33,6 +34,7 @@ import {
     type TableDescription,
     type TableField
 } from './description.ts';
+import { headerSizeOf, OFFSET_SIZES } from './format.ts';
 
 /** The byte size of each scalar type, which its arrays are aligned to */
 export const ELEMENT_SIZES: Readonly<Record<ScalarType, Alignment>> = {
@@ -180,6 +182,10 @@ export function createBuilder(table: TableDescription): TableBuilder {
  */
 export function setField(builder: TableItem, field: FieldDescription): void {
     switch (field.type) {
+        case 'absent':
+            builder.setAbsent();
+            break;
+
         case 'int8':
             builder.setInt8(fromJsonNumber(field.value));
             break;
@@ -449,10 +455,14 @@ function itemLength(items: readonly NestedTable[]): number | undefined {
  */
 export function nestedInPlace(table: TableDescription): TableDescription {
     const { offsetType } = table.layout;
-    const inPlace = (nested: TableDescription): TableDescription => ({
-        layout: { sized: false, versioned: false, offsetType },
-        fields: nested.fields.map(field)
-    });
+    const inPlace = (nested: TableDescription): TableDescription => {
+        const layout = { sized: false, versioned: false, offsetType };
+        const fields = nested.fields.map(field);
+
+        return nested.missing == null
+            ? { layout, fields }
+            : { layout, fields, missing: nested.missing };
+    };
     const field = (description: FieldDescription): FieldDescription => {
         switch (description.type) {
             case 'table':
@@ -499,6 +509,10 @@ function writeFields(writer: TableWriter, table: TableDescription): Uint8Array {
 /** Adds a field to the sizer as its description sets it out */
 function addField(sizer: TableSizer, field: FieldDescription): void {
     switch (field.type) {
+        // An absent field takes no bytes but its offset
+        case 'absent':
+            break;
+
         case 'int8':
             sizer.addInt8();
             break;
@@ -628,6 +642,10 @@ function writeField(
     field: FieldDescription
 ): void {
     switch (field.type) {
+        case 'absent':
+            writer.setAbsent(index);
+            break;
+
         case 'int8':
             writer.setInt8(index, fromJsonNumber(field.value));
             break;
@@ -999,17 +1017,74 @@ export class DescriptionReader {
         const fields = table.fields.map((field, index) =>
             this.readRootField(index, field)
         );
+        const read: TableDescription =
+            version == null ? { layout, fields } : { layout, version, fields };
 
-        return version == null
-            ? { layout, fields }
-            : { layout, version, fields };
+        if (table.missing != null) {
+            read.missing = this.#countMissing(0, table);
+        }
+
+        return read;
     }
 
+    /**
+     * @throws {DescriptionMismatch} If the field is described as absent and
+     * its offset isn't 0.
+     */
     readRootField(index: number, field: FieldDescription): FieldDescription {
-        return this.#readField(this.#reader.rootOffset(index), field);
+        const position = this.#reader.rootOffset(index);
+
+        return field.type === 'absent'
+            ? readAbsent(position, field)
+            : this.#readField(position, field);
     }
 
-    #readField(position: number, field: FieldDescription): FieldDescription {
+    /**
+     * Counts the fields after the table's own that it doesn't hold, of the
+     * `missing` fields that a reader of a later revision knows there: a
+     * field whose offset would end after the table's first value starts, or
+     * whose offset is 0, as padding before the first value reads. A table
+     * that holds one of them counts fewer than `missing`.
+     */
+    #countMissing(position: number, table: TableDescription): number {
+        const reader = this.#reader;
+        const { fields, missing = 0 } = table;
+
+        // The root's offsets follow its header, and a nested table's count
+        // from its own start, where it has no header
+        const headerSize = position === 0 ? headerSizeOf(this.#layout) : 0;
+        const offsetSize = OFFSET_SIZES[this.#layout.offsetType];
+        const firstValue =
+            position === 0
+                ? reader.rootOffset(0)
+                : reader.fieldOffset(position, 0) - position;
+
+        let count = 0;
+        for (
+            let index = fields.length;
+            index < fields.length + missing;
+            index++
+        ) {
+            const holdsOffset =
+                headerSize + (index + 1) * offsetSize <= firstValue;
+            const offset = holdsOffset
+                ? position === 0
+                    ? reader.rootOffset(index)
+                    : reader.fieldOffset(position, index) - position
+                : 0;
+
+            if (offset === 0) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    #readField(
+        position: number,
+        field: Exclude<FieldDescription, AbsentField>
+    ): FieldDescription {
         const reader = this.#reader;
 
         switch (field.type) {
@@ -1223,13 +1298,39 @@ export class DescriptionReader {
     #readInPlace(position: number, table: TableDescription): TableDescription {
         const reader = this.#reader;
 
-        return {
+        const read: TableDescription = {
             layout: table.layout,
-            fields: table.fields.map((field, index) =>
-                this.#readField(reader.fieldOffset(position, index), field)
-            )
+            fields: table.fields.map((field, index) => {
+                const offset = reader.fieldOffset(position, index);
+
+                // A nested table's offsets count from its own start
+                return field.type === 'absent'
+                    ? readAbsent(offset - position, field)
+                    : this.#readField(offset, field);
+            })
         };
+
+        if (table.missing != null) {
+            read.missing = this.#countMissing(position, table);
+        }
+
+        return read;
     }
+}
+
+/**
+ * Reads a field described as absent, whose offset must be 0.
+ *
+ * @throws {DescriptionMismatch} If the table holds the field.
+ */
+function readAbsent(offset: number, field: AbsentField): AbsentField {
+    if (offset !== 0) {
+        throw new DescriptionMismatch(
+            `A field described as absent has the offset ${offset}`
+        );
+    }
+
+    return field;
 }
 
 /** Reads a table from its own bytes, as {@link DescriptionReader.readTable} does */

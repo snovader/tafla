@@ -1481,6 +1481,26 @@ impl TableWriter {
         with_bytes(encoded, |bytes| self.set_string_at(py, &index, bytes))
     }
 
+    /// Writes field ``index`` as absent: an offset of 0 and no value, which
+    /// a reader finds by comparing the field's offset, from
+    /// ``TableReader.root_offset()``, with 0, or one from ``field_offset()``
+    /// with the nested table's position, before it reads the field. Only a
+    /// format whose readers make that check for the field, such as code that
+    /// tafla-gen generates from a schema that declares it optional, can leave
+    /// it out.
+    fn set_absent(&mut self, py: Python<'_>, index: &Bound<'_, PyAny>) -> PyResult<()> {
+        // The slots are zeros until they're written, but 0 is written as any
+        // offset is, so that an index outside the table raises as it does
+        // for the other setters
+        let position = self.slot_of(py, &Int::new(index)?)?;
+        let absent = Int::from(0);
+
+        if self.pack_slot(&position, &absent).is_err() {
+            return Err(self.slot_error(py, &position, &absent));
+        }
+        Ok(())
+    }
+
     /// Writes a struct field from its bytes: its scalars, little-endian, one
     /// after another, without padding. A ``struct.Struct`` with a ``<`` format
     /// packs them.

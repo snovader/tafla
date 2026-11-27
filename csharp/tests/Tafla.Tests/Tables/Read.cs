@@ -5,8 +5,8 @@ namespace Tafla.Tests.Tables;
 
 /// <summary>
 /// The error of bytes that read without a decode error, but otherwise than their description: a
-/// sized table whose header holds another length, or a vector of another number of items. Bytes
-/// other than a description's cause it.
+/// sized table whose header holds another length, a vector of another number of items, or a field
+/// described as absent whose offset isn't 0. Bytes other than a description's cause it.
 /// </summary>
 public sealed class MismatchException(string message) : Exception(message);
 
@@ -29,7 +29,9 @@ public sealed class InconsistentReadException(string message) : Exception(messag
 /// <see cref="Vector.ItemsInPlace"/> returns, which end where its parent's do. Any other is read as a
 /// table of its own: a field from its position to the end of its parent, since its length isn't
 /// written, and a vector item from the bytes that <see cref="Vector.Items"/> returns. The scalars of
-/// structs are read at their offsets in the bytes that GetStruct and GetStructArray return.
+/// structs are read at their offsets in the bytes that GetStruct and GetStructArray return. A field
+/// described as absent is read as its offset, which must be 0, and a table that a reader of a later
+/// revision reads counts the fields after its own that it finds missing.
 /// </remarks>
 public static class Read
 {
@@ -51,20 +53,27 @@ public static class Read
         var fields = new List<Field>();
         for (var index = 0; index < table.Fields.Count; index++)
         {
-            fields.Add(Field(reader, reader.RootOffset(index), table.Fields[index]));
+            fields.Add(RootField(reader, index, table.Fields[index]));
         }
 
-        return new Table(table.Layout, version, fields);
+        var missing = table.Missing is { } known ? CountMissing(reader, null, table, known) : (int?)null;
+        return new Table(table.Layout, version, fields) { Missing = missing };
     }
 
     /// <summary>Reads root field <paramref name="index"/> of a table of a layout as the field, without reading the header.</summary>
-    public static Field RootField(ReadOnlySpan<byte> bytes, Layout layout, int index, Field field)
+    public static Field RootField(ReadOnlySpan<byte> bytes, Layout layout, int index, Field field) =>
+        RootField(new TableReader(bytes, layout.ToTableLayout()), index, field);
+
+    private static Field RootField(TableReader reader, int index, Field field)
     {
-        var reader = new TableReader(bytes, layout.ToTableLayout());
-        return Field(reader, reader.RootOffset(index), field);
+        var position = reader.RootOffset(index);
+        return field is Absent ? ReadAbsent(position) : Field(reader, position, field);
     }
 
-    /// <summary>Reads a field at a position of a table as the field describes it.</summary>
+    /// <summary>
+    /// Reads a field at a position of a table as the field describes it. A field described as absent
+    /// has no position, and is read from its offset instead.
+    /// </summary>
     public static Field Field(TableReader reader, int position, Field field) =>
         field switch
         {
@@ -76,6 +85,7 @@ public static class Read
             StructArray array => StructArray(reader, position, array),
             TableField table => new TableField(new Nested(table.Nested.From, NestedTable(reader, position, table.Nested.Table)), table.Alignment),
             VectorField vector => Vector(reader, position, vector),
+            Absent => throw new ArgumentException("An absent field is read from its offset", nameof(field)),
             _ => throw new ArgumentException($"Unknown field {field}", nameof(field)),
         };
 
@@ -241,9 +251,50 @@ public static class Read
         var fields = new List<Field>();
         for (var index = 0; index < table.Fields.Count; index++)
         {
-            fields.Add(Field(reader, reader.FieldOffset(position, index), table.Fields[index]));
+            var field = table.Fields[index];
+            var offset = reader.FieldOffset(position, index);
+
+            // A nested table's offsets count from its own start
+            fields.Add(field is Absent ? ReadAbsent(offset - position) : Field(reader, offset, field));
         }
 
-        return new Table(table.Layout, 0, fields);
+        var missing = table.Missing is { } known ? CountMissing(reader, position, table, known) : (int?)null;
+        return new Table(table.Layout, 0, fields) { Missing = missing };
     }
+
+    /// <summary>Reads a field described as absent, whose offset must be 0</summary>
+    private static Absent ReadAbsent(int offset) =>
+        offset == 0 ? new Absent() : throw new MismatchException($"A field described as absent has the offset {offset}");
+
+    /// <summary>
+    /// Counts the fields after the table's own that it doesn't hold, of the <paramref name="known"/>
+    /// fields that a reader of a later revision knows there: a field whose offset would end after the
+    /// table's first value starts, which its first offset gives, or whose offset is 0, as the padding
+    /// before an aligned first value reads. A table that holds one of them counts fewer. The table is
+    /// the root, or one nested in place at <paramref name="nested"/>.
+    /// </summary>
+    private static int CountMissing(TableReader reader, int? nested, Table table, int known)
+    {
+        // The root's offsets follow its header, and a nested table's count from its own start, where it
+        // has no header
+        long headerSize = nested is null ? table.Layout.ToTableLayout().HeaderSize : 0;
+        long offsetSize = reader.OffsetType.Size;
+        var firstValue = OffsetOf(reader, nested, 0);
+
+        var count = 0;
+        for (var index = table.Fields.Count; index < table.Fields.Count + known; index++)
+        {
+            var holdsOffset = headerSize + (index + 1) * offsetSize <= firstValue;
+            if (!holdsOffset || OffsetOf(reader, nested, index) == 0)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>The offset of field <paramref name="index"/>, of the root or of a table nested in place at <paramref name="nested"/></summary>
+    private static int OffsetOf(TableReader reader, int? nested, int index) =>
+        nested is { } position ? reader.FieldOffset(position, index) - position : reader.RootOffset(index);
 }

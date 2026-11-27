@@ -230,6 +230,16 @@ public final class TableBuilder {
     }
 
     /**
+     * Sets the next field as absent: an offset of 0 and no value. A reader finds it by comparing
+     * the field's offset, from {@link TableReader#rootOffset}, with 0, or one from
+     * {@link TableReader#fieldOffset} with the nested table's position, before it reads the field,
+     * so only a format whose readers make that check for the field can leave it out.
+     */
+    public void setAbsent() {
+        addField(0, 0, TableWriter::setAbsent);
+    }
+
+    /**
      * Sets a struct field from its bytes: its scalars, little-endian, one after another, which are
      * written as they are, without padding. {@link TableReader#getStruct} reads them back.
      */
@@ -794,6 +804,10 @@ public final class TableBuilder {
 
         public void setString(String string) {
             TableBuilder.this.setString(string);
+        }
+
+        public void setAbsent() {
+            TableBuilder.this.setAbsent();
         }
 
         public void setStruct(byte[] bytes) {

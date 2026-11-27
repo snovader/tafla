@@ -69,6 +69,7 @@ public class GeneratedMessageTests
         .. EnumsTests.Messages,
         .. LayoutsTests.Messages,
         .. FixedFieldsTests.Messages,
+        .. PresenceTests.Messages,
     ];
 
     public static TheoryData<string> Names => [.. Messages.Select(message => message.Name)];

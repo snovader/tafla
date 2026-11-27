@@ -26,7 +26,7 @@ void write_nested(const Table& table, TableWriter& writer) {
 Field field_in_place(const Field& field, const Layout& layout);
 
 Nested in_place(const Nested& nested, const Layout& layout) {
-    Nested result{Source::builder, {layout, std::nullopt, {}}};
+    Nested result{Source::builder, {layout, std::nullopt, {}, nested.table.missing}};
     for (const auto& field : nested.table.fields) {
         result.table.fields.push_back(field_in_place(field, layout));
     }
@@ -108,7 +108,7 @@ std::size_t write_into(const Table& table, std::span<std::uint8_t> bytes) {
 
 Table nested_in_place(const Table& table) {
     const auto layout = Layout::headerless(table.layout.offset_type);
-    Table result{table.layout, table.version, {}};
+    Table result{table.layout, table.version, {}, table.missing};
     for (const auto& field : table.fields) {
         result.fields.push_back(field_in_place(field, layout));
     }
@@ -165,6 +165,8 @@ void add_field(const Field& field, TableSizer& sizer) {
                 sizer.add_struct(struct_size(struct_types(value.scalars)));
             } else if constexpr (std::is_same_v<T, StructArray>) {
                 sizer.add_struct_array(value.items.size(), struct_size(value.types), struct_alignment(value.types));
+            } else if constexpr (std::is_same_v<T, Absent>) {
+                // An absent field takes no bytes but its offset
             } else if constexpr (std::is_same_v<T, TableField>) {
                 sizer.add_table(field.alignment());
                 add_nested(value.nested.table, sizer);
@@ -232,6 +234,8 @@ void write_field(const Field& field, TableWriter& writer, std::size_t index) {
             } else if constexpr (std::is_same_v<T, StructArray>) {
                 writer.set_struct_array(index, struct_array_bytes(value), struct_size(value.types),
                                         struct_alignment(value.types));
+            } else if constexpr (std::is_same_v<T, Absent>) {
+                writer.set_absent(index);
             } else if constexpr (std::is_same_v<T, TableField>) {
                 writer.set_table(index, field.alignment());
                 write_nested(value.nested.table, writer);

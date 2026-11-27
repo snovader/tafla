@@ -38,6 +38,10 @@
 //   - A vector starts with its item count, then the end of each item, counted
 //     from the vector's start, and then the items, so [Vector.Get] finds any
 //     item from two ends without reading the others.
+//   - A field that the format lets be absent is left out with
+//     [TableBuilder.SetAbsent]: its offset is 0, and it takes no bytes. Its
+//     reader compares its offset with 0, or a nested table's with the
+//     table's position, before it reads it.
 //
 // SPEC.md, at the root of the repository, describes the format in full.
 //

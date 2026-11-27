@@ -320,6 +320,17 @@ public struct TableWriter
     }
 
     /// <summary>
+    /// Writes field <paramref name="index"/> as absent: an offset of 0 and no value, which a reader finds
+    /// by comparing the field's offset, from <see cref="TableReader.RootOffset"/>, with 0, or one from
+    /// <see cref="TableReader.FieldOffset"/> with the nested table's position, before it reads the
+    /// field. The sizer adds nothing for it. Only a format whose readers make that check for the field,
+    /// such as code generated from a schema that declares it optional, can leave it out.
+    /// </summary>
+    /// <remarks>It writes the 0, so the bytes that the writer was given needn't be zero there.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The field's offset lies outside the bytes.</exception>
+    public readonly void SetAbsent(int index) => WriteSlot(_slots + index * Width, 0);
+
+    /// <summary>
     /// Writes field <paramref name="index"/>, a struct, from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding.
     /// </summary>

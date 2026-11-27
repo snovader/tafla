@@ -98,6 +98,9 @@ public sealed partial class TableBuilder
         /// <inheritdoc cref="TableBuilder.SetString"/>
         public void SetString(string value) => _builder.SetString(value);
 
+        /// <inheritdoc cref="TableBuilder.SetAbsent"/>
+        public void SetAbsent() => _builder.SetAbsent();
+
         /// <inheritdoc cref="TableBuilder.SetStruct"/>
         public void SetStruct(ReadOnlySpan<byte> bytes) => _builder.SetStruct(bytes);
 

@@ -59,7 +59,8 @@ a `TableWriter` too, so the two write the same bytes, and the sizer's
 the schema, so it doesn't check them again. Its contract:
 
 - Fields are set in index order, each once, as the sizer added them, and
-  each vector item is followed by its `set_item_end()`.
+  each vector item is followed by its `set_item_end()`. An absent field,
+  which the sizer adds nothing for, is set with `set_absent()`.
 - A field index outside its table, or an item outside its vector, writes an
   offset or item end over another slot or field, so the table's bytes are
   undefined. Every write still stays within the writer's bytes: one whose
@@ -98,6 +99,13 @@ and then the fields in the order they were set:
   4 GiB.
 - Offsets count from the table's start. A table nested with `set_table()` has
   no header, and its offsets count from its own start.
+- A field that a format lets be absent has the offset 0 and no bytes, so
+  that the values of the others follow one another as usual.
+  `TableBuilder::set_absent()`, and `InPlaceTable`'s and `TableWriter`'s,
+  write it, and a reader of the field compares its offset with 0, or a
+  nested table's field offset with the table's position, before it reads
+  the field. Only the format decides which fields may be absent: a field
+  read without the comparison reads the bytes at the table's start.
 - A struct is its scalars, one after another without padding, which
   `set_struct()` writes from their bytes and `get_struct()` returns.
 - Arrays, strings and arrays of structs start with their count. Arrays are
@@ -230,7 +238,10 @@ Validation is always on:
   `DecodeError::ItemEndsBeforeStart`.
 - `TableReader` doesn't compare versions. A reader returns
   `DecodeError::UnsupportedVersion` when `version()` isn't one it reads, as
-  the example does, so that every decoding failure is a `DecodeError`.
+  the example does, so that every decoding failure is a `DecodeError`. A
+  reader of a format whose later versions append fields, which reads its
+  earlier versions too, returns `DecodeError::VersionOutsideRange` for a
+  version before its first or after its own.
 - Checks can't tell a value that was corrupted within range from a real one,
   such as an offset that points at another field. A format that needs that
   guarantee can add a checksum.

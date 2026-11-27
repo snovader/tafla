@@ -12,7 +12,9 @@
 /// then follow between ``startTable(fields:)`` and ``endTable(_:)``. The
 /// sizer pads arrays and nested tables as `TableBuilder` does, so a writer
 /// that takes the same fields in the same order writes each where the sizer
-/// counted it.
+/// counted it. A field left out, which `TableWriter.setAbsent(_:)` writes,
+/// isn't added: it takes no bytes but its offset, which the table's number
+/// of fields counts.
 ///
 /// Adding a field doesn't throw: ``byteLength`` and ``bytes(_:)`` throw the
 /// error of a table too long for its layout's offset type, or of an array of
@@ -83,6 +85,9 @@ public struct TableSizer: Sendable {
     /// 64 KiB or 4 GiB, or than an `Int` on a 32-bit host. It names the root
     /// field that made it too long, and the length that the root's fields up
     /// to it make the table, as `TableBuilder`'s setter of the field throws.
+    /// It counts only the fields that were added, so the root's absent fields
+    /// before it, which aren't added, make the index that it names that many
+    /// fewer than `TableBuilder`'s.
     /// Throws ``BuildError/notWholeStructs(length:size:)`` if an array of
     /// 0-byte structs was added, unless a field before it made the table too
     /// long.

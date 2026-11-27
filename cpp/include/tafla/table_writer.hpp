@@ -831,6 +831,22 @@ public:
         }
     }
 
+    /// Writes field `index` as absent: the offset 0 and no value, which a
+    /// reader finds by comparing the field's offset, from
+    /// `TableReader::root_offset()`, with 0, or one from `field_offset()` with
+    /// the nested table's position, before it reads the field. The sizer adds
+    /// nothing for it. Only a format whose readers make that check for the
+    /// field, such as tafla-gen's code of a field that its schema declares
+    /// optional, can leave it out.
+    TAFLA_ALWAYS_INLINE void set_absent(std::size_t index) noexcept {
+        if (Checked && index >= fields_) [[unlikely]] {
+            record({BuildError::Kind::too_many_fields, OffsetType::uint32, fields_, 0});
+            return;
+        }
+
+        set_slot(slots_ + index * offset_size(offset_type_), 0);
+    }
+
     /// Writes the offset of nested table field `index`, padded to start at a
     /// multiple of `alignment`, whose fields then follow between
     /// `start_table()` and `end_table()`

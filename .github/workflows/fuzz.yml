@@ -42,7 +42,9 @@ jobs:
             options: ""
           # The suite's tables, mutated and read as its descriptions
           - target: conformance
-            seeds: ../conformance/valid ../conformance/equivalent ../conformance/invalid
+            seeds: >-
+              ../conformance/valid ../conformance/equivalent ../conformance/invalid
+              ../conformance/presence/valid ../conformance/presence/invalid
             options: ""
           # Arbitrary text, parsed, checked and generated from
           - target: gen

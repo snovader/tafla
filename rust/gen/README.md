@@ -101,14 +101,35 @@ the format, so it's given rather than counted, and a value that's renamed
 keeps its integer. The generated code declares each value as a constant, in
 each language's form, as [enums](#enums) describes.
 
-Every field is required, and is read by its index, so its position is part of
-the format: a message that changes its fields needs another version, which
-should only append fields to the previous version's, as the format's
+A field is read by its index, so its position is part of the format. A
+field is required unless its type ends with `?`, as `name: string?`: an
+optional field, which a writer may leave out, with the offset 0, as the
+format's
+[absent fields](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+describe, and whose getter returns the language's missing value for it.
+A message that changes its fields appends them in a later version, each
+with the version that added it, as `label: string (since: 2)`, and a table
+in a later revision, from 2, as the format's
 [evolution](https://github.com/snovader/tafla/blob/main/SPEC.md#evolution)
-describes. A versioned message's reader rejects every other version, so an
-application that reads several versions declares a message for each, reads
-the version first with any of them, and then constructs the message of that
-version, as [versions](#versions) shows.
+describes: the getter of such a field returns the missing value for a table
+written before. A message's reader reads the versions from its `since`
+attribute to its own, and rejects every other, as [versions](#versions)
+shows.
+
+A scalar that may be missing, optional or added `since` a version, reads as
+its default where the table lacks it, rather than as the missing value:
+zero, false, or the value after `=`, as `weight: float32? = 1;`, and
+`has_<field>()`, in each target's case, tells whether the table holds it.
+A field of an enum reads its default as a value of the enum. A string, an
+array, a table or a struct reads as the missing value. In
+JavaScript, a getter that returned a number or `undefined` took 1.5 times as
+long as one of a required number, since V8 boxes a number that it merges
+with another type, and one that returns a literal default as long. A field
+that's always written, such as a count, reads its default as any value; a
+caller that needs to know reads `has_<field>()` too.
+
+Each target reads and writes them in its language's idiom, as
+[optional fields](#optional-fields) shows.
 
 `///` comments document the declaration or field after them, and the
 generated code carries them, with Markdown's code spans in each language's
@@ -123,15 +144,18 @@ A schema is UTF-8. It may start with a byte-order mark, which is skipped, and
 its lines may end with `\r\n`.
 
 The grammar, where `NAME` is ASCII letters, digits and `_` that don't start
-with a digit, and `INTEGER` is decimal digits:
+with a digit, `INTEGER` is decimal digits, and `DECIMAL` is decimal digits
+with a fraction, `.` and digits, or an exponent, `e` or `E`, a sign and
+digits, or both:
 
 ```text
 schema      = (declaration | enum)*
 declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 attribute   = NAME (":" (INTEGER | NAME))?
-field       = doc* NAME ":" type ";"
+field       = doc* NAME ":" type "?"? ("=" literal)? attributes? ";"
 type        = NAME | "[" NAME "]"
+literal     = "-"? (INTEGER | DECIMAL) | NAME
 enum        = doc* "enum" NAME ":" NAME "{" value* "}"
 value       = doc* NAME "=" "-"? INTEGER ";"
 ```
@@ -149,15 +173,18 @@ or read its tables, or a target couldn't generate its code:
   schema generates code for every target. These are the runtime's classes,
   such as `TableReader` and `TableWriter`, the names of each language's
   standard library that the code names, such as `Number` in TypeScript,
-  `TypedDict` in Python, `List`, `String` and `Override` in Java, `Option`
-  in Rust and `Int`, `RawSpan`, `Hashable` and `RawRepresentable` in Swift,
-  `Fields`, the record of a Java class's fields, keywords, such as `None` in
-  Python and `Self` in Rust and Swift, the macros of the C standard library
-  that a C++ header may define, such as `NULL` and `EOF`, and the members
-  that C#'s generated types declare, which a type of the same name can't,
-  such as a struct's `Size` and `Write()`, a record's `ToString()` and the
-  `ToArray()` of the view of an array of `To`s, and `Enumerator`, which its
-  views nest; C++ and C# name everything else in full, and Swift names
+  `TypedDict` and `NotRequired` in Python, `List`, `String`, `Override`,
+  the boxes `Boolean`, `Long`, `Float` and `Double`, and `JSpecify`'s
+  `Nullable` in Java, `Option` in Rust and `Int`, `RawSpan`, `Hashable` and
+  `RawRepresentable` in Swift, `Fields`, the record of a Java class's
+  fields, keywords, such as `None` in Python and `Self` in Rust and Swift,
+  the macros of the C standard library that a C++ header may define, such
+  as `NULL` and `EOF`, and the members that C#'s generated types declare,
+  which a type of the same name can't, such as a struct's `Size` and
+  `Write()`, a record's `ToString()` and the `ToArray()` of the view of an
+  array of `To`s, `FirstVersion`, which a message that reads earlier
+  versions declares, and `Enumerator`, which its views nest; C++ and C#
+  name everything else in full, and Swift names
   `Swift.Range`, so that a schema can declare `Range`.
   `src/generate/reserved.rs` lists them.
 - A definition's fields have distinct names in `camelCase` too, which
@@ -180,8 +207,24 @@ or read its tables, or a target couldn't generate its code:
   for `high` of `Priority`, where a declaration, a function or constant of
   the generated Go, or a value of another enum takes it.
 - Only messages have attributes, each at most once.
-- A message's attributes are `sized`, `version: INTEGER` and
-  `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
+- A message's attributes are `sized`, `version: INTEGER`, `since: INTEGER`
+  and `offset_type: NAME`, where the name is `uint8`, `uint16` or `uint32`.
+  `since` is the first version that the reader reads, and needs a `version`
+  no earlier than it.
+- A field's only attribute is `since: INTEGER`, the version of its message
+  that added it, after the message's `since` and up to its `version`, or the
+  revision of a table or a message without a version, from 2. Every field
+  after one with `since` has one too, no earlier, so that versions only
+  append fields, and the first field has none. A struct's fields have no
+  attributes and aren't optional, since a struct holds each scalar at a
+  fixed offset. In a table with fields added `since` a revision, and no
+  version, the first field isn't optional either, since a reader finds which
+  fields the table holds from its first field's offset.
+- Only a scalar that may be missing has a default, after `=`: `true` or
+  `false` for a `bool`, an integer within an integer type's range, or a
+  number that's finite as a float of the field's type, which a `float32`
+  rounds to the nearest. No field takes the name of the method that tells
+  whether such a scalar is there, `has_<field>`, in `camelCase` too.
 - A version fits in the message's offset type: 255 for `uint8`, 65,535 for
   `uint16` and 4,294,967,295 for `uint32`.
 - Messages can't be nested; declare a table to nest it.
@@ -196,7 +239,8 @@ or read its tables, or a target couldn't generate its code:
   slots of parameters, since the generated Java reads a struct into a record
   of its fields and writes a message or table from a record of them. A
   `uint32`, `int64`, `uint64` or `float64` takes two slots, as a `long` or
-  `double`, and every other field one.
+  `double`, and every other field one, an optional scalar too, which the
+  record holds boxed.
 - A struct takes at most 65,536 bytes, since the generated code reads and
   writes each of its scalars in place.
 - The paths from a struct to its scalars take at most 1,024 fields in all: a
@@ -216,8 +260,9 @@ or read its tables, or a target couldn't generate its code:
   tables without a limit.
 - A declaration can't take the name of a function or constant that the
   generated Go declares beside a message, in the package of the schema's
-  declarations: `New<Message>`, which reads it, and a versioned message's
-  `<Message>VersionOf` and `<Message>FormatVersion`.
+  declarations: `New<Message>`, which reads it, a versioned message's
+  `<Message>VersionOf` and `<Message>FormatVersion`, and the
+  `<Message>FirstVersion` of one that reads earlier versions.
 - A field can't take the name of the view of a vector or an array of structs
   beside it, `<field>_view`, in `camelCase` too, nor that of the view of an
   array of scalars, which Java declares, and a declaration can't take
@@ -329,6 +374,10 @@ arrays of
 them are read into a struct each, and written from them into one run of
 bytes. A versioned message's reader fails with the runtime's decode error
 when the bytes are in another version.
+
+A table with an optional field is written field by field, and a table with
+a field that may be missing isn't read whole, as
+[optional fields](#optional-fields) describes.
 
 | Target     | Files                                    | Messages and tables                                                      | Structs                                              |
 | ---------- | ---------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
@@ -857,6 +906,40 @@ var bytes = Triples.serialize(items.size(), (index, bytes, offset) -> {
 });
 ```
 
+### Optional fields
+
+The getter of an optional field, or of one that a later version or revision
+added, returns the language's missing value where the table lacks it, or a
+scalar's default, beside a method that tells whether the table holds the
+scalar. The fields that a message is written from hold an optional field in
+the language's idiom, and a missing value writes it as absent, with the
+runtime's `setAbsent()`; a field added `since` a version is required there,
+since a writer writes its own version:
+
+| Target                 | A missing string, array, table or struct                                    | A scalar that may be missing    | An optional field to write              |
+| ---------------------- | --------------------------------------------------------------------------- | ------------------------------- | --------------------------------------- |
+| TypeScript, JavaScript | `undefined`                                                                 | Its default, and `hasX()`       | `x?: T \| undefined`                    |
+| Python                 | `None`                                                                      | Its default, and `has_x()`      | `NotRequired[T \| None]`                |
+| Java                   | `null`, `@Nullable`, and so does an array's `xView()`                       | Its default, and `hasX()`       | `@Nullable`, a scalar boxed             |
+| Rust                   | `Ok(None)`, of a `Result<Option<T>, DecodeError>`                           | `Ok` of its default, `has_x()`  | `Option<T>`                             |
+| Go                     | `false` in a comma-ok `(T, bool, error)`                                    | Its default, and `HasX()`       | `tafla.Optional[T]`, as `tafla.Some(v)` |
+| C++                    | `std::nullopt`, of a `std::optional<T>`                                     | Its default, and `has_x()`      | `std::optional<T>`                      |
+| Swift                  | `nil`, of a `T?`, the nonescapable views too                                | Its default, and `hasX`         | `T?`, `nil` by default                  |
+| C#                     | `null` for a string or struct; an empty span or view, or a default reader, which `HasX` tells apart | Its default, and `HasX` | `T?`, not `required`                    |
+
+A message that reads earlier versions has `FIRST_VERSION`, as
+[versions](#versions) describes, `<Message>FirstVersion` in Go and
+`FirstVersion` in C# and `firstVersion` in Swift. A version outside them
+fails with the runtime's decode error, which names the versions that the
+reader reads in Rust, C++ and Swift. A table that holds an optional field isn't of fixed
+size, since its writer may leave the field out, so no target writes it, or a
+message that holds it, whole at constant positions; a field added `since` a
+version leaves a table of fixed size, since writers write every field. And
+no target reads such a table's fields all at once, as TypeScript's and
+JavaScript's `fields()`, Python's `field_values()`, `read_values()` and
+`fields()`, and Go's `Fields()` do, nor a table or a view that holds it,
+since those reads skip the getters' checks.
+
 ### Versions
 
 A versioned message has a `FORMAT_VERSION`, which its writer writes and its
@@ -875,11 +958,33 @@ bytes don't hold the header:
 | Swift                  | `Document.version(of: bytes)`, a `UInt32` that throws        |
 | C#                     | `Document.VersionOf(bytes)`, a `uint`                        |
 
-An application that reads two versions of a document, declared with the same
-header as `message DocumentV1 (sized, version: 1)` and
-`message Document (sized, version: 2)`, so that their versions lie in the
-same slot, dispatches on the version without constructing a reader of the
-wrong fields:
+A message with a `since` attribute reads every version from it to its own:
+its `FIRST_VERSION` is the first, its constructor rejects a version before it
+or after `FORMAT_VERSION`, and the getter of a field that a later version
+added returns the missing value for a table of an earlier version, from the
+version that the constructor read. So one message reads both versions of a
+document, without a message for each:
+
+```text
+message Document (sized, version: 2, since: 1) {
+    x: float64;
+    y: float64;
+    name: string;
+    /// Added by version 2
+    label: string (since: 2);
+}
+```
+
+```ts
+const document = new Document(bytes); // reads version 1 or 2
+document.label(); // undefined in version 1
+```
+
+An application whose versions differ in other ways than appended fields,
+declared with the same header as `message DocumentV1 (sized, version: 1)`
+and `message Document (sized, version: 2)`, so that their versions lie in
+the same slot, dispatches on the version without constructing a reader of
+the wrong fields:
 
 ```ts
 switch (Document.versionOf(bytes)) {
@@ -891,6 +996,11 @@ switch (Document.versionOf(bytes)) {
         throw new Error('Unknown document version');
 }
 ```
+
+A table that a field or a vector nests has no version, so a later revision
+of it appends fields with `since: 2` and later, and its reader finds them
+missing from the offset of its first field, which every revision holds. A
+message without a version does the same.
 
 ## Command
 
@@ -1023,7 +1133,7 @@ cargo build -p tafla-gen --lib --target wasm32-unknown-unknown --profile wasm
 ```
 
 The build writes `target/wasm32-unknown-unknown/wasm/tafla_gen.wasm`, of
-about 590 KB. It has no imports, so any host runs it with an empty import
+about 740 KB. It has no imports, so any host runs it with an empty import
 object, without WASI or bindings. The `wasm` profile in the workspace's
 `Cargo.toml` optimizes for size and aborts on a panic.
 

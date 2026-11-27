@@ -171,6 +171,7 @@ public class FormatTest {
             case StructArrayField array -> Optional.of(littleEndian(array, width));
             case TableField ignored -> Optional.empty();
             case VectorField ignored -> Optional.empty();
+            case AbsentField ignored -> Optional.empty();
         };
     }
 

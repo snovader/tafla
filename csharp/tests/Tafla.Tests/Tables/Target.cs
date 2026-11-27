@@ -49,6 +49,8 @@ public interface ITarget
 
     void SetString(string value);
 
+    void SetAbsent();
+
     void SetStruct(ReadOnlySpan<byte> bytes);
 
     void SetStructArray(ReadOnlySpan<byte> bytes, int size, int alignment);
@@ -110,6 +112,8 @@ public readonly struct BuilderTarget(TableBuilder builder) : ITarget
     public void SetFloat64Array(ReadOnlySpan<double> values) => builder.SetFloat64Array(values);
 
     public void SetString(string value) => builder.SetString(value);
+
+    public void SetAbsent() => builder.SetAbsent();
 
     public void SetStruct(ReadOnlySpan<byte> bytes) => builder.SetStruct(bytes);
 
@@ -182,6 +186,8 @@ public readonly ref struct ItemTarget : ITarget
     public void SetFloat64Array(ReadOnlySpan<double> values) => _item.SetFloat64Array(values);
 
     public void SetString(string value) => _item.SetString(value);
+
+    public void SetAbsent() => _item.SetAbsent();
 
     public void SetStruct(ReadOnlySpan<byte> bytes) => _item.SetStruct(bytes);
 

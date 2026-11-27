@@ -1,0 +1,39 @@
+struct Pair {
+    first: float32?;
+    second: float32 (since: 2);
+}
+
+message Unversioned (since: 1) {
+    x: uint8;
+}
+
+message Ahead (version: 2, since: 3) {
+    x: uint8;
+}
+
+message Versions (version: 3, since: 1) {
+    x: uint8;
+    early: uint8 (since: 1);
+    late: uint8 (since: 4);
+    next: uint8 (since: 3);
+    back: uint8 (since: 2);
+    after: uint8;
+}
+
+message Single (version: 2) {
+    x: uint8;
+    y: uint8 (since: 2);
+}
+
+table Revised {
+    first: uint8?;
+    second: uint8 (since: 1);
+    third: uint8 (since: two);
+    fourth: uint8 (since);
+    fifth: uint8 (added: 3);
+    sixth: uint8 (since: 3, since: 4);
+}
+
+table Leading {
+    first: uint8 (since: 2);
+}

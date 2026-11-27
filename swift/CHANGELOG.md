@@ -63,5 +63,18 @@ The first release.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.
+- Absent fields, which the format's
+  [absent fields](https://github.com/snovader/tafla/blob/main/SPEC.md#absent-fields)
+  describe: `TableBuilder.setAbsent()` and `TableBuilder.Item.setAbsent()`
+  set the next field as absent, with the offset 0 and no bytes, and
+  `TableWriter.setAbsent(_:)` writes field `index` so, for which the sizer
+  adds nothing. The sizer counts only the fields added, so the index that its
+  `BuildError.tooLong` names after absent root fields is that many fewer than
+  `TableBuilder`'s.
+- `DecodeError.versionOutsideRange(version:supported:)`, which a reader of a
+  range of versions throws for a version outside them, as the code that
+  tafla-gen generates from a message with a `since` attribute does.
+- The runtime reads and rebuilds the cases of presence of tafla's
+  conformance suite, `conformance/presence`, byte for byte.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift

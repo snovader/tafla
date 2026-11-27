@@ -6,13 +6,13 @@ use std::collections::{HashMap, HashSet};
 use crate::diagnostic::{Diagnostic, Span};
 use crate::generate::reserved::{self, Declared};
 use crate::model::{
-    Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, Schema,
-    StructLayout, strongly_connected_components,
+    Definition, Enum, EnumValue, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue,
+    Schema, StructLayout, strongly_connected_components,
 };
 use crate::naming::{camel_case, pascal_case};
 use crate::parser::{
     Attribute, AttributeValue, Declaration, Declarations, EnumDeclaration, FieldDeclaration,
-    Keyword, Name,
+    Keyword, Literal, LiteralKind, Name,
 };
 
 /// What a schema declares by each name: a message, table or struct, by its
@@ -416,6 +416,8 @@ fn check_declaration(
     check_field_names(declaration, errors);
 
     let mut fields = Vec::with_capacity(declaration.fields.len());
+    let mut presence = Presence::of(declaration, kind);
+    presence.check_optional(errors);
 
     for field in &declaration.fields {
         if let Some((field_type, enumeration)) = resolve_type(field, declarations, names, errors) {
@@ -433,10 +435,14 @@ fn check_declaration(
                 docs: field.docs.clone(),
                 field_type,
                 enumeration,
+                optional: field.optional.is_some(),
+                since: presence.since(field, errors),
+                default: check_default(field, field_type, errors),
             });
         }
     }
 
+    check_presence_names(declaration, &fields, errors);
     check_view_names(declaration, &fields, errors);
     check_java_parameters(declaration, &fields, errors);
 
@@ -543,7 +549,9 @@ pub const MAX_JAVA_PARAMETER_SLOTS: usize = 254;
 
 /// Checks that Java can declare a record of a definition's fields: it reads a
 /// struct into a record of its fields, and writes a message or table from a
-/// `Fields` record of them, whose constructors take every field
+/// `Fields` record of them, whose constructors take every field. An optional
+/// scalar is boxed there, so that `null` leaves it out, which takes one slot,
+/// as every reference does.
 fn check_java_parameters(
     declaration: &Declaration,
     fields: &[Field],
@@ -551,7 +559,13 @@ fn check_java_parameters(
 ) {
     let slots: usize = fields
         .iter()
-        .map(|field| java_parameter_slots(field.field_type))
+        .map(|field| {
+            if field.optional {
+                1
+            } else {
+                java_parameter_slots(field.field_type)
+            }
+        })
         .sum();
 
     if slots > MAX_JAVA_PARAMETER_SLOTS {
@@ -666,7 +680,8 @@ fn check_view_declarations(
 /// the code generated for Go declares beside a message or a struct, in the
 /// package of the schema's declarations: `New<Message>`, which reads a
 /// message, a versioned message's `<Message>VersionOf` and
-/// `<Message>FormatVersion`, and `Read<Struct>`, which reads a struct
+/// `<Message>FormatVersion`, the `<Message>FirstVersion` of a message that
+/// reads versions since another, and `Read<Struct>`, which reads a struct
 fn check_go_functions(definitions: &[Definition], names: &Names, errors: &mut Vec<Diagnostic>) {
     for definition in definitions {
         let name = &definition.name;
@@ -699,6 +714,12 @@ fn go_functions(definition: &Definition) -> Vec<(String, &'static str)> {
             if layout.version.is_some() {
                 functions.push((format!("{name}VersionOf"), "read the version of"));
                 functions.push((format!("{name}FormatVersion"), "hold the version of"));
+            }
+            if layout.since.is_some() {
+                functions.push((
+                    format!("{name}FirstVersion"),
+                    "hold the first readable version of",
+                ));
             }
             functions
         }
@@ -805,9 +826,11 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
     let mut layout = Layout {
         sized: false,
         version: None,
+        since: None,
         offset_type: OffsetType::Uint32,
     };
     let mut version = None;
+    let mut since = None;
     let mut given = HashSet::new();
 
     for attribute in attributes {
@@ -824,6 +847,9 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
             ("sized", None) => layout.sized = true,
             ("version", Some(AttributeValue::Integer(value, span))) => {
                 version = Some((*value, *span));
+            }
+            ("since", Some(AttributeValue::Integer(value, span))) => {
+                since = Some((*value, *span));
             }
             ("offset_type", Some(value)) => {
                 layout.offset_type = offset_type(value).unwrap_or_else(|error| {
@@ -842,6 +868,14 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
                 Diagnostic::new("`version` needs a value", attribute.name.span)
                     .with_help("such as `version: 1`"),
             ),
+            ("since", Some(AttributeValue::Name(value))) => errors.push(
+                Diagnostic::new("`since` takes an integer", value.span)
+                    .with_help("such as `since: 1`"),
+            ),
+            ("since", None) => errors.push(
+                Diagnostic::new("`since` needs a value", attribute.name.span)
+                    .with_help("such as `since: 1`"),
+            ),
             ("offset_type", None) => errors.push(
                 Diagnostic::new("`offset_type` needs a value", attribute.name.span)
                     .with_help("such as `offset_type: uint16`"),
@@ -852,7 +886,7 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
             ),
             (other, _) => errors.push(
                 Diagnostic::new(format!("unknown attribute `{other}`"), attribute.name.span)
-                    .with_help("expected `sized`, `version` or `offset_type`"),
+                    .with_help("expected `sized`, `version`, `since` or `offset_type`"),
             ),
         }
     }
@@ -875,7 +909,398 @@ fn check_layout(attributes: &[Attribute], errors: &mut Vec<Diagnostic>) -> Layou
         }
     }
 
+    // Checked once the version is known, whichever attribute comes first
+    if let Some((value, span)) = since {
+        layout.since = check_since(value, span, version.is_some(), layout.version, errors);
+    }
+
     layout
+}
+
+/// The first version that a message's reader reads, from its `since`
+/// attribute, which needs a `version` that's no earlier. `given` is whether
+/// the message has a `version` attribute, and `version` its value, if it has
+/// no error of its own.
+fn check_since(
+    value: u64,
+    span: Span,
+    given: bool,
+    version: Option<u32>,
+    errors: &mut Vec<Diagnostic>,
+) -> Option<u32> {
+    match (given, version) {
+        (false, _) => {
+            errors.push(
+                Diagnostic::new("`since` needs a `version`", span).with_help(
+                    "it's the first version that the message's reader reads, such as \
+                     `version: 2, since: 1`",
+                ),
+            );
+            None
+        }
+        (true, Some(version)) if value > u64::from(version) => {
+            errors.push(
+                Diagnostic::new(
+                    format!("`since: {value}` is after the message's version, {version}"),
+                    span,
+                )
+                .with_help("it's the first version that the message's reader reads"),
+            );
+            None
+        }
+        // No larger than the version, which is a u32
+        (true, Some(_)) => u32::try_from(value).ok(),
+        // The version has an error of its own
+        (true, None) => None,
+    }
+}
+
+/// The rules of a declaration's optional fields and of the fields that its
+/// versions or revisions added, which are checked field by field, in order
+struct Presence<'a> {
+    declaration: &'a Declaration,
+    kind: Kind,
+    /// The latest `since` of the fields so far
+    latest: Option<u64>,
+}
+
+impl<'a> Presence<'a> {
+    const fn of(declaration: &'a Declaration, kind: Kind) -> Self {
+        Self {
+            declaration,
+            kind,
+            latest: None,
+        }
+    }
+
+    /// Checks the fields' `?`s: a struct's fields are never optional, and
+    /// neither is the first field of a table whose readers find the fields
+    /// that it holds from that field's offset
+    fn check_optional(&self, errors: &mut Vec<Diagnostic>) {
+        let fields = &self.declaration.fields;
+
+        if matches!(self.kind, Kind::Struct(_)) {
+            for span in fields.iter().filter_map(|field| field.optional) {
+                errors.push(
+                    Diagnostic::new("a struct's fields can't be optional", span)
+                        .with_help("a struct holds each of its scalars at a fixed offset"),
+                );
+            }
+            return;
+        }
+
+        if let Some(attribute) = fields.first().and_then(|field| field.attributes.first()) {
+            errors.push(
+                Diagnostic::new(
+                    "the first field can't be added `since` a later version",
+                    attribute.name.span,
+                )
+                .with_help("every version or revision of a table holds its first field"),
+            );
+        }
+
+        let versioned = matches!(self.kind, Kind::Message(layout) if layout.version.is_some());
+        let adds_fields = fields.iter().any(|field| !field.attributes.is_empty());
+        if let Some(span) = fields.first().and_then(|field| field.optional)
+            && adds_fields
+            && !versioned
+        {
+            errors.push(
+                Diagnostic::new(
+                    "the first field can't be optional in a table with fields added `since` a \
+                     revision",
+                    span,
+                )
+                .with_help(
+                    "a reader finds which fields such a table holds from its first field's \
+                     offset",
+                ),
+            );
+        }
+    }
+
+    /// The version or revision that added a field, from its `since`
+    /// attribute, which is the field's only one. A message with a version
+    /// adds fields after the first version that it reads, up to its own,
+    /// and any other table from its second revision, and each appends them,
+    /// so that no field comes after one that a later version added.
+    fn since(&mut self, field: &FieldDeclaration, errors: &mut Vec<Diagnostic>) -> Option<u32> {
+        let mut since = None;
+
+        for attribute in &field.attributes {
+            let name = attribute.name.text.as_str();
+            match (name, &attribute.value) {
+                _ if matches!(self.kind, Kind::Struct(_)) => errors.push(Diagnostic::new(
+                    "a struct's fields have no attributes",
+                    attribute.name.span,
+                )),
+                ("since", Some(AttributeValue::Integer(_, span))) if since.is_some() => {
+                    errors.push(Diagnostic::new("`since` is given twice", *span));
+                }
+                ("since", Some(AttributeValue::Integer(value, span))) => {
+                    since = Some((*value, *span));
+                }
+                ("since", Some(AttributeValue::Name(value))) => errors.push(
+                    Diagnostic::new("`since` takes an integer", value.span)
+                        .with_help("such as `since: 2`"),
+                ),
+                ("since", None) => errors.push(
+                    Diagnostic::new("`since` needs a value", attribute.name.span)
+                        .with_help("such as `since: 2`"),
+                ),
+                (other, _) => errors.push(
+                    Diagnostic::new(format!("unknown attribute `{other}`"), attribute.name.span)
+                        .with_help("a field's only attribute is `since`, such as `since: 2`"),
+                ),
+            }
+        }
+
+        let Some((value, span)) = since else {
+            if let Some(latest) = self.latest {
+                errors.push(
+                    Diagnostic::new(
+                        format!(
+                            "`{}` comes after a field added since {latest}",
+                            field.name.text
+                        ),
+                        field.name.span,
+                    )
+                    .with_help(
+                        "a version only appends fields, so every field after one with `since` \
+                         has a `since` too",
+                    ),
+                );
+            }
+            return None;
+        };
+
+        if let Some(error) = self.range_error(value, span) {
+            errors.push(error);
+            return None;
+        }
+        if let Some(latest) = self.latest.filter(|&latest| value < latest) {
+            errors.push(
+                Diagnostic::new(
+                    format!("`since: {value}` comes after a field added since {latest}"),
+                    span,
+                )
+                .with_help("a version appends its fields to those of the versions before it"),
+            );
+            return None;
+        }
+
+        self.latest = Some(value);
+        u32::try_from(value).ok()
+    }
+
+    /// The error of a `since` outside the versions or revisions that can add
+    /// a field
+    fn range_error(&self, value: u64, span: Span) -> Option<Diagnostic> {
+        let name = &self.declaration.name.text;
+
+        let Some((first, version)) = self.layout().and_then(|layout| layout.versions()) else {
+            return (value < 2).then(|| {
+                Diagnostic::new(
+                    format!("`since: {value}` isn't a later revision of `{name}`"),
+                    span,
+                )
+                .with_help(
+                    "a table without a version counts its revisions from 1, so the fields \
+                     that it adds are `since: 2` or later",
+                )
+            });
+        };
+
+        if value > u64::from(version) {
+            return Some(
+                Diagnostic::new(
+                    format!("`since: {value}` is after the version of `{name}`, {version}"),
+                    span,
+                )
+                .with_help("a field is added by the message's version or one before it"),
+            );
+        }
+        if value <= u64::from(first) {
+            let error = Diagnostic::new(
+                format!(
+                    "`since: {value}` isn't after the first version that `{name}` reads, {first}"
+                ),
+                span,
+            );
+            return Some(if value > 0 && first == version {
+                error.with_help(format!(
+                    "name the first version with the message's `since`, such as \
+                     `version: {version}, since: {}`",
+                    value - 1
+                ))
+            } else {
+                error.with_help("every version that the message reads has the field")
+            });
+        }
+
+        None
+    }
+
+    const fn layout(&self) -> Option<Layout> {
+        match self.kind {
+            Kind::Message(layout) => Some(layout),
+            Kind::Table | Kind::Struct(_) => None,
+        }
+    }
+}
+
+/// The default of a scalar field that may be missing, which its getter
+/// returns when the table lacks it: the value after `=`, which must be of the
+/// field's type, or zero or false. Only such a field has one: a required
+/// field is always there, and a missing string, array, table or struct reads
+/// as the language's missing value, which costs nothing more, while a number
+/// merged with one is boxed in JavaScript.
+fn check_default(
+    field: &FieldDeclaration,
+    field_type: FieldType,
+    errors: &mut Vec<Diagnostic>,
+) -> Option<ScalarValue> {
+    // Syntactically, so that an error in `since` doesn't add one here
+    let may_be_missing = field.optional.is_some() || !field.attributes.is_empty();
+
+    let FieldType::Scalar(scalar) = field_type else {
+        if let Some(literal) = &field.default {
+            errors.push(
+                Diagnostic::new("only a scalar has a default", literal.span).with_help(
+                    "a missing string, array, table or struct reads as the language's \
+                     missing value",
+                ),
+            );
+        }
+        return None;
+    };
+
+    let Some(literal) = &field.default else {
+        return may_be_missing.then_some(zero_of(scalar));
+    };
+    if !may_be_missing {
+        errors.push(
+            Diagnostic::new(
+                "only a field that may be missing has a default",
+                literal.span,
+            )
+            .with_help("declare it optional with `?`, or added `since` a version"),
+        );
+        return None;
+    }
+
+    match scalar_value(scalar, literal) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            errors.push(error);
+            None
+        }
+    }
+}
+
+const fn zero_of(scalar: Scalar) -> ScalarValue {
+    match scalar {
+        Scalar::Bool => ScalarValue::Bool(false),
+        Scalar::Float32 | Scalar::Float64 => ScalarValue::Float(0.0),
+        _ => ScalarValue::Integer(0),
+    }
+}
+
+/// The value of a default of a scalar type: `true` or `false` for a bool,
+/// an integer within an integer type's range, or a finite float, of which a
+/// `float32` takes the nearest `float32`
+fn scalar_value(scalar: Scalar, literal: &Literal) -> Result<ScalarValue, Diagnostic> {
+    let text = literal.text.as_str();
+    let span = literal.span;
+    let name = scalar.name();
+
+    match (scalar, literal.kind) {
+        (Scalar::Bool, LiteralKind::Name) if text == "true" || text == "false" => {
+            Ok(ScalarValue::Bool(text == "true"))
+        }
+        (Scalar::Bool, _) => Err(Diagnostic::new(format!("`{text}` isn't a `bool`"), span)
+            .with_help("a bool's default is `true` or `false`")),
+        (Scalar::Float32 | Scalar::Float64, LiteralKind::Integer | LiteralKind::Decimal) => {
+            let value: f64 = text
+                .parse()
+                .map_err(|_| Diagnostic::new(format!("`{text}` isn't a number"), span))?;
+            #[allow(clippy::cast_possible_truncation)]
+            let value = if scalar == Scalar::Float32 {
+                f64::from(value as f32)
+            } else {
+                value
+            };
+            if value.is_finite() {
+                Ok(ScalarValue::Float(value))
+            } else {
+                Err(Diagnostic::new(
+                    format!("`{text}` isn't a finite `{name}`"),
+                    span,
+                ))
+            }
+        }
+        (_, LiteralKind::Integer) if scalar != Scalar::Float32 && scalar != Scalar::Float64 => {
+            let (min, max) = integer_range(scalar);
+            match text.parse::<i128>() {
+                Ok(value) if (min..=max).contains(&value) => Ok(ScalarValue::Integer(value)),
+                _ => Err(
+                    Diagnostic::new(format!("`{text}` doesn't fit in `{name}`"), span)
+                        .with_help(format!("from {min} to {max}")),
+                ),
+            }
+        }
+        _ => Err(
+            Diagnostic::new(format!("`{text}` isn't a `{name}`"), span).with_help(
+                if matches!(scalar, Scalar::Float32 | Scalar::Float64) {
+                    "a float's default is a number, such as `0.5` or `-1e3`"
+                } else {
+                    "an integer's default is an integer, such as `0` or `-1`"
+                },
+            ),
+        ),
+    }
+}
+
+/// The smallest and largest value of an integer type
+fn integer_range(scalar: Scalar) -> (i128, i128) {
+    let bits = u32::from(scalar.size()) * 8;
+    match scalar {
+        Scalar::Int8 | Scalar::Int16 | Scalar::Int32 | Scalar::Int64 => {
+            (-(1 << (bits - 1)), (1 << (bits - 1)) - 1)
+        }
+        _ => (0, (1 << bits) - 1),
+    }
+}
+
+/// Checks that no field takes the name of the method that tells whether a
+/// scalar that may be missing is there, `has_<field>`, in `camelCase` too,
+/// which every target declares beside its getter
+fn check_presence_names(declaration: &Declaration, fields: &[Field], errors: &mut Vec<Diagnostic>) {
+    let methods: HashMap<String, &str> = fields
+        .iter()
+        .filter(|field| field.default.is_some())
+        .map(|field| {
+            (
+                camel_case(&format!("has_{}", field.name)),
+                field.name.as_str(),
+            )
+        })
+        .collect();
+
+    for field in &declaration.fields {
+        if let Some(scalar) = methods.get(&camel_case(&field.name.text)) {
+            errors.push(
+                Diagnostic::new(
+                    format!(
+                        "`{}` clashes with the method that tells whether `{scalar}` is there",
+                        field.name.text
+                    ),
+                    field.name.span,
+                )
+                .with_help(format!("rename it, or `{scalar}`")),
+            );
+        }
+    }
 }
 
 /// The offset type that an `offset_type` attribute's value names

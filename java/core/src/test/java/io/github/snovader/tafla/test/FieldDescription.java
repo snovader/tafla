@@ -122,6 +122,17 @@ sealed interface FieldDescription {
         }
     }
 
+    /**
+     * A field left out of its table with {@code setAbsent()}, whose offset is 0 and which has no
+     * bytes. Only the cases of presence have it.
+     */
+    record AbsentField() implements FieldDescription {
+        @Override
+        public String toString() {
+            return DescriptionJson.write(this).toString();
+        }
+    }
+
     /** A table nested from its builder or from the bytes that its builder writes */
     record NestedTable(Source from, TableDescription table) {
         @Override

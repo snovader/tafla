@@ -27,6 +27,9 @@ Each language's CI runs its test when this directory changes.
 - `valid/<name>.bin`: the table of each valid case
 - `equivalent/<name>.bin`: the changed table of each equivalent case
 - `invalid/<name>.bin`: the corrupted table of each invalid case
+- `presence/`: the cases of absent fields and of tables read by a later
+  revision of their format, described below, which every implementation
+  reads too
 - `generated/`: the tables that the code generated from the example schema
   `schemas/shapes.tafla` writes in every language, which
   [`generated/README.md`](generated/README.md) describes
@@ -185,6 +188,23 @@ checked. `corruption` records how the bytes differ from the valid case's: cut
 to `length` bytes with `"kind": "truncate"`, or with `bytes` written at `at`
 with `"kind": "overwrite"`. Readers read the file rather than apply it.
 
+### Cases of presence
+
+`presence/cases.json` describes tables with absent fields and tables that a
+later revision reads, as `SPEC.md` describes them, with the files of its
+valid and invalid cases under `presence/`, as the suite's own. They lie
+apart from it, in a description of their own, since only they hold absent
+fields and missing counts; `test/conformance/presence-cases.ts` holds them,
+and `yarn conformance:generate` writes them. Their descriptions add:
+
+- A field of `"type": "absent"`, whose offset must be 0, and which is set
+  with `setAbsent()`. A nested table or vector item may hold one too.
+- A table's `missing`: how many fields a reader of a later revision knows
+  after `fields`. Reading the table counts those of them that it finds
+  missing, from its first field's offset and their offsets, as `SPEC.md`'s
+  Revisions describes, and the count must equal `missing`. A nested table or
+  vector item may have one too.
+
 ## Tests
 
 An implementation's test loads `cases.json` and:
@@ -223,6 +243,8 @@ An implementation's test loads `cases.json` and:
 | Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
 | A vector item that ends before it starts                   | `vector-item-ends-before-start`                                                                     |
 | Invalid UTF-8                                              | `invalid-utf8-continuation`, `invalid-utf8-overlong`, `invalid-utf8-surrogate`                      |
+| Absent fields, of every kind and in nested tables           | `presence/absent-*`                                                                                 |
+| Fields that a later revision appends, missing from a table | `presence/missing-fields*`                                                                          |
 
 It doesn't cover:
 
