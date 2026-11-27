@@ -50,7 +50,9 @@ first commits, for code built from its source before the release.
   version's.
 - A `bool` scalar, one byte that writers write as 0 or 1 and readers read as
   true when it isn't 0, in tables and structs, which tafla-gen generates as
-  each language's boolean. Arrays of bools aren't supported.
+  each language's boolean, and arrays of bools, `[bool]`, which are `uint8`
+  arrays of 0 and 1, whose getter returns the bytes and whose fields hold
+  the language's bools.
 - Enums, such as `enum Priority: int8 { low = -1; high = 1; }`, which name
   integers of an integer type, `int8` to `uint64`, and are stored as it, in
   fields, structs and arrays, without changing the format. A field of an
