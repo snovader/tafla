@@ -56,6 +56,7 @@ const PYTHON: &[&str] = &[
     "Protocol",
     "Self",
     "Sequence",
+    "StringVector",
     "Struct",
     "TableLayout",
     "TableReader",
