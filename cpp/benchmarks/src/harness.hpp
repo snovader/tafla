@@ -53,6 +53,13 @@ Variant variant(std::string name, Call call) {
             }};
 }
 
+/// A benchmark: the variants that are timed against each other, the first of
+/// which the others' ratios compare with
+struct Benchmark {
+    std::string name;
+    std::vector<Variant> variants;
+};
+
 struct Options {
     std::size_t rounds = 30;
     std::size_t warmup_rounds = 5;
