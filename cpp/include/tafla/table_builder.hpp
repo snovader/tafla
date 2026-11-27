@@ -21,6 +21,7 @@
 #include <variant>
 #include <vector>
 
+#include "bools.hpp"
 #include "bytes.hpp"
 #include "element.hpp"
 #include "errors.hpp"
@@ -303,6 +304,25 @@ public:
 
     template <detail::Temporary Values>
     void set_float64_array(Values&& values) = delete;
+
+    /// Sets an array field of bools, written as a `uint8` array of 1 for each
+    /// true value and 0 for each false one, from a span that the builder
+    /// borrows or `Bools` that it owns, as those that
+    /// `TableReader::get_bool_array()` reads.
+    ///
+    /// Throws a `BuildError` as the scalars' setters do.
+    void set_bool_array(std::span<const bool> values) {
+        set_array(values);
+    }
+
+    void set_bool_array(Bools&& values) {
+        const auto length = check_array(values.size(), sizeof(bool));
+        const auto& owned = own(std::move(values));
+        commit(array_field(owned.data(), owned.size()), length);
+    }
+
+    template <detail::Temporary Values>
+    void set_bool_array(Values&& values) = delete;
 
     /// Sets a string field, from its UTF-8 bytes, which the builder borrows
     /// from a view or owns of a string.
@@ -1208,6 +1228,17 @@ public:
     template <detail::Temporary Values>
     void set_float64_array(Values&& values) = delete;
 
+    void set_bool_array(std::span<const bool> values) {
+        builder_->set_bool_array(values);
+    }
+
+    void set_bool_array(Bools&& values) {
+        builder_->set_bool_array(std::move(values));
+    }
+
+    template <detail::Temporary Values>
+    void set_bool_array(Values&& values) = delete;
+
     void set_string(std::string_view string) {
         builder_->set_string(string);
     }
@@ -1579,6 +1610,9 @@ TAFLA_ALWAYS_INLINE void TableBuilder::write_field(Writer& writer, std::size_t i
 
 TAFLA_ALWAYS_INLINE void TableBuilder::write_elements(Writer& writer, const Field& field) noexcept {
     const std::size_t byte_length = std::size_t{field.count} * field.size;
+
+    // Elements of a byte are copied as they are, bools among them, as
+    // `BasicTableWriter::set_bool_array()` copies them
     if (detail::kHostOrder || field.size == 1) {
         writer.push(field.data, byte_length);
         return;

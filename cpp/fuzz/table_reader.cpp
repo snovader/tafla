@@ -355,6 +355,19 @@ void check_position(const TableReader<false>& reader, std::size_t position, std:
 
     const auto string_bytes = array(bytes, offset_type, position, 1);
     check_view(bytes, [&] { return reader.get_uint8_array(position); }, string_bytes);
+
+    // The same bytes as bools, each true where it isn't 0
+    try {
+        const auto bools = reader.get_bool_array(position);
+        CHECK(string_bytes.has_value());
+        CHECK(bools.size() == string_bytes->size());
+        for (std::size_t element = 0; element < bools.size(); ++element) {
+            CHECK(bools[element] == ((*string_bytes)[element] != 0));
+        }
+    } catch (const DecodeError& error) {
+        check_error(bytes, error, !string_bytes.has_value());
+    }
+
     try {
         const auto string = reader.get_string(position);
         CHECK(string_bytes.has_value());

@@ -105,6 +105,13 @@ Field field_of(const nlohmann::json& field) {
     if (type == "bool") {
         return {Bool{value.get<bool>()}};
     }
+    if (type == "bool[]") {
+        Bools bools(value.size());
+        for (std::size_t index = 0; index < bools.size(); ++index) {
+            bools[index] = value.at(index).get<bool>();
+        }
+        return {std::move(bools)};
+    }
     if (type == "int8[]") {
         return {plain_array_of<std::int8_t>(value)};
     }

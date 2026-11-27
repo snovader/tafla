@@ -114,6 +114,8 @@ public:
                     return {reader.get_float32_array(position).to_vector()};
                 } else if constexpr (std::is_same_v<T, std::vector<double>>) {
                     return {reader.get_float64_array(position).to_vector()};
+                } else if constexpr (std::is_same_v<T, Bools>) {
+                    return {reader.get_bool_array(position)};
                 } else if constexpr (std::is_same_v<T, std::string>) {
                     return {std::string(reader.get_string(position))};
                 } else if constexpr (std::is_same_v<T, Struct>) {

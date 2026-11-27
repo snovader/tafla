@@ -14,6 +14,11 @@
 //! of enums is read and written as an array of their integer type, since a
 //! view or a span of integers can't be read as one of enums without a copy.
 //!
+//! An array of bools is read as its bytes in place, as a `uint8` array is,
+//! since a byte other than 0 or 1 is no `bool`, which
+//! `tafla::Bools::from_bytes()` reads as bools. It's written from a span of
+//! bools.
+//!
 //! The fields whose sizes the schema fixes, scalars, structs and nested
 //! tables of only such fields, the generated code lays out itself, as Go's
 //! does: a message of only such fields, and a string after them, is written
@@ -581,6 +586,12 @@ impl Generator<'_> {
         for field in &definition.fields {
             let name = identifier(&field.name);
             let mut docs = self.member_docs(field);
+            if field.field_type == FieldType::Array(Scalar::Bool) {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+            }
             if !docs.is_empty() {
                 docs.push(String::new());
             }
@@ -640,6 +651,9 @@ impl Generator<'_> {
                 FieldType::Scalar(scalar) => {
                     self.as_enum(field, format!("reader.get_{}(position)", scalar.name()))
                 }
+                // An array of bools as its bytes, in place, since a byte
+                // other than 0 or 1 is no `bool`
+                FieldType::Array(Scalar::Bool) => "reader.get_uint8_array(position)".to_owned(),
                 FieldType::Array(scalar) => format!("reader.get_{}_array(position)", scalar.name()),
                 FieldType::String => "reader.get_string(position)".to_owned(),
                 FieldType::Struct(structure) => {
@@ -1440,7 +1454,10 @@ impl Generator<'_> {
 
         match field.field_type {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
-            FieldType::Array(Scalar::Uint8) => "std::span<const std::uint8_t>".to_owned(),
+            // Bytes in place, and an array of bools as its bytes
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => {
+                "std::span<const std::uint8_t>".to_owned()
+            }
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => name(index),

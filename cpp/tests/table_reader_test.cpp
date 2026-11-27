@@ -84,6 +84,24 @@ void check_array(const std::vector<std::uint8_t>& bytes, std::size_t position, s
     }
 }
 
+/// An array of bools holds a count and a byte for each bool, which reads as
+/// true where it isn't 0
+template <class Get>
+void check_bool_array(const std::vector<std::uint8_t>& bytes, std::size_t position, std::uint64_t width, Get get) {
+    const auto count = little_endian(bytes, position, width);
+    const auto start = plus(position, width);
+    const bool fits = count && little_endian(bytes, start, 0).has_value() && *count <= bytes.size() - start;
+
+    const auto read = try_read([&] { return get(position); });
+    RC_ASSERT(read.has_value() == fits);
+    if (read) {
+        RC_ASSERT(read->size() == *count);
+        for (std::size_t index = 0; index < read->size(); ++index) {
+            RC_ASSERT((*read)[index] == (bytes[static_cast<std::size_t>(start) + index] != 0));
+        }
+    }
+}
+
 template <bool Versioned>
 void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> reader, std::size_t position) {
     const std::uint64_t width = reader.layout().offset_size();
@@ -109,6 +127,7 @@ void check_reads(const std::vector<std::uint8_t>& bytes, TableReader<Versioned> 
     check_array<std::uint64_t>(bytes, position, width, [&](std::size_t at) { return reader.get_uint64_array(at); });
     check_array<float>(bytes, position, width, [&](std::size_t at) { return reader.get_float32_array(at); });
     check_array<double>(bytes, position, width, [&](std::size_t at) { return reader.get_float64_array(at); });
+    check_bool_array(bytes, position, width, [&](std::size_t at) { return reader.get_bool_array(at); });
 
     // Offsets lie where the header and the earlier offsets end
     const std::uint64_t header = reader.layout().header_size();

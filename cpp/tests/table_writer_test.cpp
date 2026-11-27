@@ -330,7 +330,7 @@ RC_GTEST_PROP(TableWriter, NoCallsMakeAWriterCrash, ()) {
     const auto calls = *rc::gen::resize(
         rc::kNominalSize, rc::gen::mapcat(rc::gen::inRange<std::size_t>(0, 25), [=](std::size_t count) {
             return rc::gen::container<std::vector<std::tuple<int, std::size_t, std::size_t, Alignment>>>(
-                count, rc::gen::tuple(rc::gen::inRange(0, 10), small, small, alignments));
+                count, rc::gen::tuple(rc::gen::inRange(0, 11), small, small, alignments));
         }));
 
     std::optional<TableSizer> sizer;
@@ -385,6 +385,9 @@ RC_GTEST_PROP(TableWriter, NoCallsMakeAWriterCrash, ()) {
                 break;
             case 8:
                 vectors.push_back(writer.set_vector(index, count));
+                break;
+            case 9:
+                writer.set_bool_array(index, Bools(few));
                 break;
             default:
                 if (!vectors.empty()) {
@@ -693,6 +696,33 @@ TEST(TableWriter, FailsForAStringLongerThanTheOneSized) {
     writer.set_string(0, "ab");
 
     // The offset and length were written before the string didn't fit
+    EXPECT_TRUE(
+        same_details(build_error_of([&] { static_cast<void>(writer.finish()); }), BuildError::not_as_sized(8, 9)));
+}
+
+TEST(TableWriter, WritesAnArrayOfBoolsAsTableBuilderDoes) {
+    const bool values[] = {false, true, true};
+
+    TableSizer sizer(2, TableLayout());
+    sizer.add_bool_array(3);
+    sizer.add_bool_array(0);
+    auto writer = sizer.writer();
+    writer.set_bool_array(0, values);
+    writer.set_bool_array(1, {});
+
+    TableBuilder builder(2, TableLayout());
+    builder.set_uint8_array(std::vector<std::uint8_t>{0, 1, 1});
+    builder.set_uint8_array(std::vector<std::uint8_t>());
+    EXPECT_EQ(writer.finish(), builder.to_bytes());
+}
+
+TEST(TableWriter, FailsForMoreBoolsThanThoseSized) {
+    TableSizer sizer(1, TableLayout());
+    sizer.add_bool_array(1);
+    auto writer = sizer.writer();
+    writer.set_bool_array(0, Bools{true, false});
+
+    // The offset and count were written before the bools didn't fit
     EXPECT_TRUE(
         same_details(build_error_of([&] { static_cast<void>(writer.finish()); }), BuildError::not_as_sized(8, 9)));
 }

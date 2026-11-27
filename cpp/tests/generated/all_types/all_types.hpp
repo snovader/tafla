@@ -561,7 +561,7 @@ struct ScalarsFields {
     [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
 };
 
-/** An array of every scalar type but bool, which has none */
+/** An array of every scalar type, and of bools, which are bytes of 0 and 1 */
 class Arrays {
 public:
     /** The layout of the table, which its writer writes and its reader reads */
@@ -600,6 +600,13 @@ public:
     /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
     [[nodiscard]] TAFLA_ALWAYS_INLINE ::tafla::ArrayView<double> float64() const;
 
+    /**
+     * A byte for each bool, which is true where it isn't 0
+     *
+     * Throws a `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::span<const std::uint8_t> bool_() const;
+
 private:
     std::span<const std::uint8_t> bytes_;
 };
@@ -616,6 +623,7 @@ struct ArraysFields {
     std::span<const std::uint64_t> uint64{};
     std::span<const float> float32{};
     std::span<const double> float64{};
+    std::span<const bool> bool_{};
 
     /**
      * Writes an `Arrays` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
@@ -1638,8 +1646,14 @@ inline ::tafla::ArrayView<double> Arrays::float64() const {
     return reader.get_float64_array(position);
 }
 
+inline std::span<const std::uint8_t> Arrays::bool_() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(10);
+    return reader.get_uint8_array(position);
+}
+
 inline ::tafla::Bytes ArraysFields::serialize() const {
-    ::tafla::TableSizer sizer_(10, Arrays::LAYOUT);
+    ::tafla::TableSizer sizer_(11, Arrays::LAYOUT);
     sizer_.add_int8_array(int8.size());
     sizer_.add_uint8_array(uint8.size());
     sizer_.add_int16_array(int16.size());
@@ -1650,6 +1664,7 @@ inline ::tafla::Bytes ArraysFields::serialize() const {
     sizer_.add_uint64_array(uint64.size());
     sizer_.add_float32_array(float32.size());
     sizer_.add_float64_array(float64.size());
+    sizer_.add_bool_array(bool_.size());
 
     auto writer_ = sizer_.writer();
     writer_.set_int8_array(0, int8);
@@ -1662,12 +1677,13 @@ inline ::tafla::Bytes ArraysFields::serialize() const {
     writer_.set_uint64_array(7, uint64);
     writer_.set_float32_array(8, float32);
     writer_.set_float64_array(9, float64);
+    writer_.set_bool_array(10, bool_);
 
     return writer_.finish();
 }
 
 inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) const {
-    ::tafla::TableSizer sizer_(10, Arrays::LAYOUT);
+    ::tafla::TableSizer sizer_(11, Arrays::LAYOUT);
     sizer_.add_int8_array(int8.size());
     sizer_.add_uint8_array(uint8.size());
     sizer_.add_int16_array(int16.size());
@@ -1678,6 +1694,7 @@ inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) 
     sizer_.add_uint64_array(uint64.size());
     sizer_.add_float32_array(float32.size());
     sizer_.add_float64_array(float64.size());
+    sizer_.add_bool_array(bool_.size());
 
     auto writer_ = sizer_.writer(bytes_);
     writer_.set_int8_array(0, int8);
@@ -1690,6 +1707,7 @@ inline std::size_t ArraysFields::serialize_into(std::span<std::uint8_t> bytes_) 
     writer_.set_uint64_array(7, uint64);
     writer_.set_float32_array(8, float32);
     writer_.set_float64_array(9, float64);
+    writer_.set_bool_array(10, bool_);
 
     return writer_.finish_into();
 }

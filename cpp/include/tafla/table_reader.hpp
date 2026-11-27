@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "array_view.hpp"
+#include "bools.hpp"
 #include "element.hpp"
 #include "errors.hpp"
 #include "layout.hpp"
@@ -29,10 +30,12 @@ namespace tafla {
 ///
 /// Arrays, strings, structs and vector items are read in place, as views of
 /// the bytes rather than copies, so they're valid for as long as the bytes
-/// are. A `TableReader` is two pointers and its layout, which is cheap to
-/// make for each read: with a layout that's a constant, as tafla-gen's code
-/// makes it, the compiler reads offsets of that type without branching on
-/// it.
+/// are. Arrays of bools are the exception: `get_bool_array()` reads them
+/// into `Bools`, and `get_uint8_array()` views their bytes.
+///
+/// A `TableReader` is two pointers and its layout, which is cheap to make
+/// for each read: with a layout that's a constant, as tafla-gen's code makes
+/// it, the compiler reads offsets of that type without branching on it.
 template <bool Versioned = false>
 class TableReader {
 public:
@@ -180,6 +183,15 @@ public:
 
     [[nodiscard]] TAFLA_ALWAYS_INLINE ArrayView<double> get_float64_array(std::size_t position) const {
         return get_array<double>(position);
+    }
+
+    /// Reads the array of bools at `position` into new `Bools`, each true
+    /// where its byte isn't 0. `get_uint8_array()` reads the same bytes in
+    /// place.
+    ///
+    /// Throws a `DecodeError` if the array doesn't lie within the bytes.
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Bools get_bool_array(std::size_t position) const {
+        return Bools::from_bytes(get_uint8_array(position));
     }
 
     /// Reads the string at `position`, which must be valid UTF-8. A leading

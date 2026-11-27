@@ -6,6 +6,7 @@
 #define TAFLA_TAFLA_HPP
 
 #include "array_view.hpp"
+#include "bools.hpp"
 #include "bytes.hpp"
 #include "element.hpp"
 #include "errors.hpp"

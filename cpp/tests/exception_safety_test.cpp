@@ -132,6 +132,11 @@ const std::vector<Setter> setters{
         parent.set_uint16_array(std::move(values));
     },
     [](TableBuilder& parent, const Arm& arm) {
+        Bools values{true, false, true};
+        arm();
+        parent.set_bool_array(std::move(values));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
         std::vector<std::uint8_t> bytes{1, 2, 3, 4};
         arm();
         parent.set_struct_array(std::move(bytes), 2, Alignment::two);

@@ -697,9 +697,30 @@ TEST(TableBuilder, OwnsStringsAndArraysGivenAsRvalues) {
 TEST(TableBuilder, LeavesAnRvalueItRejectsWithTheCaller) {
     TableBuilder builder(1, TableLayout().with_offset_type(OffsetType::uint8));
     std::vector<std::uint8_t> values(300, 1);
+    Bools bools(300);
 
     EXPECT_THROW(builder.set_uint8_array(std::move(values)), BuildError);
     EXPECT_EQ(values.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
+    EXPECT_THROW(builder.set_bool_array(std::move(bools)), BuildError);
+    EXPECT_EQ(bools.size(), 300U);  // NOLINT(bugprone-use-after-move): rejected, so not moved
+}
+
+/// A byte of 1 or 0 for each bool, as a `uint8` array of those bytes, from
+/// bools that the builder borrows or owns, and in a table recorded in place
+TEST(TableBuilder, WritesArraysOfBoolsAsBytesOf1And0) {
+    const std::array<bool, 3> borrowed{true, false, true};
+    const std::vector<std::uint8_t> bytes{1, 0, 1};
+
+    TableBuilder expected(3, TableLayout());
+    expected.set_uint8_array(bytes);
+    expected.set_uint8_array(bytes);
+    expected.set_table(1, [&](TableBuilder::Item& item) { item.set_uint8_array(bytes); });
+
+    TableBuilder builder(3, TableLayout());
+    builder.set_bool_array(borrowed);
+    builder.set_bool_array(Bools(borrowed));
+    builder.set_table(1, [&](TableBuilder::Item& item) { item.set_bool_array(Bools{true, false, true}); });
+    EXPECT_EQ(builder.to_bytes(), expected.to_bytes());
 }
 
 TEST(TableBuilder, WritesAnEmptyArrayOfStructsOfAnySize) {
@@ -739,6 +760,10 @@ concept SetsInt32Array =
     requires(TableBuilder& builder, Value&& value) { builder.set_int32_array(std::forward<Value>(value)); };
 
 template <class Value>
+concept SetsBoolArray =
+    requires(TableBuilder& builder, Value&& value) { builder.set_bool_array(std::forward<Value>(value)); };
+
+template <class Value>
 concept SetsString = requires(TableBuilder& builder, Value&& value) { builder.set_string(std::forward<Value>(value)); };
 
 template <class Value>
@@ -765,6 +790,18 @@ static_assert(SetsInt32Array<std::span<const std::int32_t>>);
 static_assert(!SetsInt32Array<Int32s>);
 static_assert(!SetsInt32Array<const Int32s>);
 static_assert(!SetsInt32Array<const std::vector<std::int32_t>>);
+
+// Bools that `TableReader::get_bool_array()` reads are owned or borrowed as
+// another array's vector is. A `std::vector<bool>` packs its bools into bits,
+// which no span of bools views.
+static_assert(SetsBoolArray<std::array<bool, 3>&>);
+static_assert(SetsBoolArray<Bools&>);
+static_assert(SetsBoolArray<const Bools&>);
+static_assert(SetsBoolArray<Bools>);
+static_assert(SetsBoolArray<std::span<const bool>>);
+static_assert(!SetsBoolArray<std::array<bool, 3>>);
+static_assert(!SetsBoolArray<const Bools>);
+static_assert(!SetsBoolArray<std::vector<bool>&>);
 
 static_assert(SetsString<std::string&>);
 static_assert(SetsString<std::string>);
