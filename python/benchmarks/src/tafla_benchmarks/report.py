@@ -1,6 +1,8 @@
 """Prints the fastest value of each benchmark in pyperf's results, and its ratio
 to tafla's, as a Markdown table, after the machine and load they were measured
-with. Run it with ``python -m tafla_benchmarks.report results.json``."""
+with. Run it with ``python -m tafla_benchmarks.report results.json``, and with
+``--lists`` for the lists suite's results, whose ratios are to the vector of
+strings'."""
 
 import argparse
 from dataclasses import dataclass
@@ -10,7 +12,8 @@ import pyperf
 
 from tafla_benchmarks.codecs import CODEC_NAMES, STRUCT, TAFLA
 from tafla_benchmarks.item_access import ACCESSES
-from tafla_benchmarks.suite import groups
+from tafla_benchmarks.lists import LIST_CODECS, STRINGS, list_groups
+from tafla_benchmarks.suite import Group, groups
 
 # The codecs, protobuf's pure-Python implementation included, which runs in
 # processes of its own, and the ways of reading tafla's items that aren't codecs
@@ -30,6 +33,9 @@ class Timing:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results", help="pyperf's JSON results")
+    parser.add_argument(
+        "--lists", action="store_true", help="report the lists suite's results"
+    )
     args = parser.parse_args()
 
     suite = pyperf.BenchmarkSuite.load(args.results)
@@ -37,7 +43,11 @@ def main() -> None:
 
     _print_environment(suite)
     print()
-    _print_table(timings)
+    if args.lists:
+        codecs = [codec.name for codec in LIST_CODECS]
+        _print_table(timings, list_groups(), codecs, STRINGS.name)
+    else:
+        _print_table(timings, groups(), _CODEC_NAMES, TAFLA.name)
     print()
     _print_mean_spread(timings)
 
@@ -72,15 +82,20 @@ def _print_environment(suite: pyperf.BenchmarkSuite) -> None:
     )
 
 
-def _print_table(timings: dict[tuple[str, str], Timing]) -> None:
-    """Prints the fastest value of each benchmark in µs, and its ratio to
-    tafla's"""
-    codecs = [name for name in _CODEC_NAMES if any(c == name for _, c in timings)]
+def _print_table(
+    timings: dict[tuple[str, str], Timing],
+    suite_groups: list[Group],
+    codec_names: list[str],
+    reference_name: str,
+) -> None:
+    """Prints the fastest value of each benchmark in µs, and its ratio to the
+    reference codec's"""
+    codecs = [name for name in codec_names if any(c == name for _, c in timings)]
     print("| Benchmark | " + " | ".join(codecs) + " |")
     print("| --- | " + " | ".join("---:" for _ in codecs) + " |")
 
-    for group in groups():
-        reference = timings.get((group.name, TAFLA.name))
+    for group in suite_groups:
+        reference = timings.get((group.name, reference_name))
         if not any((group.name, codec) in timings for codec in codecs):
             continue
 
