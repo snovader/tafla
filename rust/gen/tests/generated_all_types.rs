@@ -4,6 +4,8 @@
 //! decode errors without panicking. Its structs are written and read at
 //! their fixed sizes, as fields and in arrays. Its enums are written and read
 //! as the integers that store them, whether the schema names them or not.
+//! tafla-gen decodes every table that it writes as JSON, which encodes back
+//! into the same bytes.
 
 #[path = "golden/all_types/rust/all_types.rs"]
 mod all_types;
@@ -25,14 +27,16 @@ use proptest::array::uniform5;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tables::{
-    CASES, Fields, Header, MAX_LENGTH, Value, arbitrary_bytes, arrays, build, check_truncated,
-    expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes, table,
-    to_vec, truncations, vector,
+    CASES, Fields, Header, MAX_LENGTH, Value, arbitrary_bytes, arrays, build,
+    check_json_round_trip, check_truncated, expected, float32s, float64s, integers, overwrites,
+    placements, strings, struct_bytes, table, to_vec, truncations, vector,
 };
 use tafla::{Alignment, BuildError, DecodeError, TableLayout, TableReader};
 
 /// The header of every message, none of which has attributes
 const MESSAGE: Header = Header::new(TableLayout::DEFAULT);
+
+const SCHEMA: &str = include_str!("../../../schemas/all_types.tafla");
 
 // Reading every field with the generated getters, including those after one
 // that fails
@@ -1182,6 +1186,7 @@ proptest! {
     #[test]
     fn scalars_are_written_as_table_builder_writes_them(fields in scalars()) {
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_scalars(&fields)));
+        check_json_round_trip(SCHEMA, "Scalars", &fields.serialize()?)?;
     }
 
     #[test]
@@ -1189,13 +1194,14 @@ proptest! {
         let fields = arrays.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_arrays(&fields)));
+        check_json_round_trip(SCHEMA, "Arrays", &fields.serialize()?)?;
     }
 
     #[test]
     fn nested_is_written_as_table_builder_writes_it(nested in owned_nested()) {
         nested.with_fields(|fields| -> Result<(), TestCaseError> {
             prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_nested(fields)));
-            Ok(())
+            check_json_round_trip(SCHEMA, "Nested", &fields.serialize()?)
         })?;
     }
 
@@ -1204,6 +1210,7 @@ proptest! {
         let fields = keywords.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_reserved(&fields)));
+        check_json_round_trip(SCHEMA, "Reserved", &fields.serialize()?)?;
     }
 
     #[test]
@@ -1211,6 +1218,7 @@ proptest! {
         let fields = structs.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_structs(&fields)));
+        check_json_round_trip(SCHEMA, "Structs", &fields.serialize()?)?;
     }
 
     #[test]
@@ -1218,6 +1226,7 @@ proptest! {
         let fields = enums.fields();
 
         prop_assert_eq!(fields.serialize(), build(MESSAGE, &describe_enums(&fields)));
+        check_json_round_trip(SCHEMA, "Enums", &fields.serialize()?)?;
     }
 
     // Decode errors
@@ -1397,6 +1406,7 @@ proptest! {
         let bytes = packed.to_bytes();
         prop_assert_eq!(Packed::SIZE, 43);
         prop_assert_eq!(bytes.to_vec(), packed_bytes(&packed));
+        check_json_round_trip(SCHEMA, "Packed", &bytes)?;
 
         let read = Packed::read(placement.place(&bytes).bytes())?;
         prop_assert_eq!(describe_packed(&read), describe_packed(&packed));

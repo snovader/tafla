@@ -2,7 +2,8 @@
 //! `TableBuilder` writes by hand, reads back what it writes, and reads
 //! corrupted and arbitrary bytes as values or decode errors without
 //! panicking. `typescript/core/test/generated/shapes.test.ts` checks the
-//! generated TypeScript and JavaScript alike.
+//! generated TypeScript and JavaScript alike. tafla-gen decodes every table
+//! that it writes as JSON, which encodes back into the same bytes.
 
 mod shapes;
 mod tables;
@@ -18,12 +19,15 @@ use shapes::{
     describe_step, describe_task, read_document, read_item, read_item_list, read_point, read_task,
 };
 use tables::{
-    CASES, Header, arbitrary_bytes, arrays, build, check_truncated, expected, float32s, float64s,
-    integers, overwrites, placements, strings, struct_bytes, truncations,
+    CASES, Header, arbitrary_bytes, arrays, build, check_json_round_trip, check_truncated,
+    expected, float32s, float64s, integers, overwrites, placements, strings, struct_bytes,
+    truncations,
 };
 use tafla::{Alignment, DecodeError, TableLayout};
 
 // The headers of the messages, from their attributes in the schema
+const SCHEMA: &str = include_str!("../../../schemas/shapes.tafla");
+
 const POINT: Header = Header::new(TableLayout::DEFAULT);
 const DOCUMENT: Header = Header::versioned(TableLayout::DEFAULT.sized(), 1);
 const ITEM_LIST: Header = Header::new(TableLayout::DEFAULT);
@@ -264,6 +268,7 @@ proptest! {
         let fields = point.fields();
 
         prop_assert_eq!(fields.serialize(), build(POINT, &describe_point(&fields)));
+        check_json_round_trip(SCHEMA, "Point", &fields.serialize()?)?;
     }
 
     #[test]
@@ -273,6 +278,7 @@ proptest! {
         let fields = document.fields();
 
         prop_assert_eq!(fields.serialize(), build(DOCUMENT, &describe_document(&fields)));
+        check_json_round_trip(SCHEMA, "Document", &fields.serialize()?)?;
     }
 
     #[test]
@@ -280,6 +286,7 @@ proptest! {
         let fields = ItemListFields { items: &items };
 
         prop_assert_eq!(fields.serialize(), build(ITEM_LIST, &describe_item_list(&fields)));
+        check_json_round_trip(SCHEMA, "ItemList", &fields.serialize()?)?;
     }
 
     #[test]
@@ -287,6 +294,7 @@ proptest! {
         let fields = task.fields();
 
         prop_assert_eq!(fields.serialize(), build(TASK, &describe_task(&fields)));
+        check_json_round_trip(SCHEMA, "Task", &fields.serialize()?)?;
     }
 
     // Versions

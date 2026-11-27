@@ -3,7 +3,8 @@
 //! writes by hand, or fails as it fails, reads back what it writes, reads the
 //! version of tables of any version and rejects those of other versions, and
 //! reads corrupted and arbitrary bytes as values or decode errors without
-//! panicking.
+//! panicking. tafla-gen decodes every table that it writes as JSON, which
+//! encodes back into the same bytes.
 
 #[path = "golden/layouts/rust/layouts.rs"]
 mod layouts;
@@ -21,8 +22,8 @@ use layouts::{
 use proptest::collection::vec;
 use proptest::prelude::*;
 use tables::{
-    CASES, Fields, Header, Value, arbitrary_bytes, build, check_truncated, expected, integers,
-    overwrites, placements, strings_up_to, to_vec, truncations,
+    CASES, Fields, Header, Value, arbitrary_bytes, build, check_json_round_trip, check_truncated,
+    expected, integers, overwrites, placements, strings_up_to, to_vec, truncations,
 };
 use tafla::{BuildError, DecodeError, OffsetType, TableLayout};
 
@@ -181,6 +182,8 @@ fn describe(owned: &Owned) -> Vec<Value> {
 /// offsets about half the time
 const MAX_LENGTH: usize = 96;
 
+const SCHEMA: &str = include_str!("../../../schemas/layouts.tafla");
+
 fn owned() -> impl Strategy<Value = Owned> {
     let values = vec(integers(0, u16::MAX), 0..=MAX_LENGTH);
 
@@ -226,6 +229,9 @@ proptest! {
         for message in messages() {
             let by_hand = build(message.header, &describe(&owned));
             prop_assert_eq!((message.serialize)(&owned), by_hand, "{}", message.name);
+            if let Ok(bytes) = (message.serialize)(&owned) {
+                check_json_round_trip(SCHEMA, message.name, &bytes)?;
+            }
         }
     }
 

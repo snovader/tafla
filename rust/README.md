@@ -87,6 +87,11 @@ on nightly Rust. A panic, a hang or a run out of memory is a finding:
   every valid case's description, as the conformance test reads them.
 - `gen` parses and checks arbitrary text as a schema, and generates every
   target's code from each schema that it accepts.
+- `json` decodes arbitrary bytes as every message and struct of the example
+  schemas, as JSON and as a layout, and encodes them as the JSON of each.
+  A table that decodes must encode back into bytes that decode as the same
+  JSON, unless the bytes that its offsets share make it too long for its
+  offset type.
 
 Run each from this directory, with the suite's tables or the schemas as
 seeds after the corpus that libFuzzer grows, and stop it with Ctrl-C or
@@ -102,6 +107,8 @@ cargo +nightly fuzz run conformance fuzz/corpus/conformance \
     -- -max_total_time=300
 cargo +nightly fuzz run gen fuzz/corpus/gen ../schemas gen/tests/diagnostics \
     -- -dict=fuzz/gen.dict -max_total_time=300
+cargo +nightly fuzz run json fuzz/corpus/json \
+    ../conformance/generated/shapes ../conformance/generated -- -max_total_time=300
 ```
 
 libFuzzer writes an input that fails to `fuzz/artifacts/<target>/`, which

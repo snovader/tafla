@@ -24,6 +24,14 @@ first commits, for code built from its source before the release.
   JavaScript, Python, Java, Rust, Go, C++, Swift and C#, with lazy views of vectors and
   arrays of structs, views in place of arrays of scalars in Java, whose
   getters copy them, and a WebAssembly module of it for other hosts.
+- `tafla-gen decode <schema> <name> [<file>]`, which reads a table of a
+  message or struct, from a file or stdin, through the Rust runtime and
+  prints it as JSON that loses no value, or with `--layout` where each of its
+  header slots, offsets, values and runs of padding lies, and
+  `tafla-gen encode`, which writes the table from that JSON as the generated
+  code writes it, with errors that name each field's path. Decoding bounds
+  how deep tables nest and how often their bytes are read. The `json`
+  feature, a default one, adds them, and the Rust runtime as a dependency.
 - `@tafla/gen` on npm, which runs the command, as `npx @tafla/gen` or the
   `tafla-gen` of a project that depends on it, and generates a schema's files
   with `compile()`, through the WebAssembly module and without a Rust

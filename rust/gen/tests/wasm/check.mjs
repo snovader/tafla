@@ -4,7 +4,8 @@
 // invalid schema in tests/diagnostics, as the native library does. Its
 // `tafla_command` and `tafla_generate` exports run the command for a host
 // that reads the schemas and writes the files, as tests/cli.rs checks of the
-// native command.
+// native command, and its `decode` and `encode` convert the tables of
+// conformance/generated to JSON and back byte for byte.
 //
 // node gen/tests/wasm/check.mjs <tafla_gen.wasm>
 
@@ -85,7 +86,7 @@ const decoder = new TextDecoder();
  * @param {'tafla_compile' | 'tafla_command' | 'tafla_generate'} operation
  * @param {Array<number | string | Uint8Array>} parts the request's `u32`
  * counts, and its strings, of which bytes needn't be UTF-8
- * @param {(status: number, response: { count: () => number, string: () => string }) => Result} read
+ * @param {(status: number, response: { count: () => number, string: () => string, bytes: () => Uint8Array }) => Result} read
  * @returns {Result}
  */
 function send(instance, operation, parts, read) {
@@ -123,15 +124,16 @@ function send(instance, operation, parts, read) {
         offset += 4;
         return value;
     };
-    const string = () => {
+    const bytes = () => {
         const byteLength = count();
-        const bytes = new Uint8Array(memory.buffer, offset, byteLength);
+        const copy = new Uint8Array(memory.buffer, offset, byteLength).slice();
         offset += byteLength;
-        return decoder.decode(bytes);
+        return copy;
     };
+    const string = () => decoder.decode(bytes());
 
     try {
-        return read(status, { count, string });
+        return read(status, { count, string, bytes });
     } finally {
         tafla_free(response, responseLength);
     }
@@ -384,7 +386,9 @@ function expectEqual(what, actual, expected) {
 const POINT = 'message Point { x: uint8; }\n';
 const USAGE =
     'usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... ' +
-    '[--out <dir>] [--runtime <module>] [--package <package>]';
+    '[--out <dir>] [--runtime <module>] [--package <package>]\n' +
+    '       tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version] [--ascii]\n' +
+    '       tafla-gen encode <schema> <name> [<file>]';
 
 // The directory to write under and the schemas to read, each once
 expectEqual(
@@ -513,6 +517,65 @@ expectEqual(
             status,
             ...readOutput(response)
         })
+    ),
+    malformedCommand
+);
+
+// Decoding and encoding: the host reads the schema and the table, from stdin
+// for `-`, and prints the response's stdout as bytes
+expectEqual(
+    'the files of a conversion',
+    command(instance, ['decode', 'shapes.tafla', 'Point']),
+    { status: 0, out: '.', schemas: ['shapes.tafla', '-'] }
+);
+
+/**
+ * Decodes or encodes through `tafla_generate`, with the schema and the
+ * table that a host read
+ *
+ * @param {string[]} commandArguments
+ * @param {string} schema
+ * @param {Uint8Array | string} input
+ */
+function convert(commandArguments, schema, input) {
+    const parts = [commandArguments.length, ...commandArguments, 0, schema, 0, input];
+    return send(instance, 'tafla_generate', parts, (status, response) => ({
+        status,
+        code: response.count(),
+        stdout: response.bytes(),
+        stderr: response.string()
+    }));
+}
+
+const shapes = readFileSync(join(SCHEMAS, 'shapes.tafla'), 'utf8');
+const GENERATED = join(REPOSITORY, 'conformance', 'generated');
+const { cases } = JSON.parse(readFileSync(join(GENERATED, 'shapes.json'), 'utf8'));
+for (const { name, type, file, fields } of cases) {
+    const table = readFileSync(join(GENERATED, file));
+    const decoded = convert(['decode', 'shapes.tafla', type, file], shapes, table);
+    const json = decoder.decode(decoded.stdout);
+    if (decoded.code !== 0 || JSON.stringify(JSON.parse(json)) !== JSON.stringify(fields)) {
+        fail(`decoding ${name}: ${JSON.stringify(decoded)} ${json}`);
+    }
+
+    const encoded = convert(['encode', 'shapes.tafla', type], shapes, json);
+    if (encoded.code !== 0 || !Buffer.from(encoded.stdout).equals(table)) {
+        fail(`encoding ${name}: ${encoded.stderr}`);
+    }
+}
+
+const truncated = convert(['decode', 'shapes.tafla', 'Point'], shapes, new Uint8Array(3));
+expectEqual('a table that fails to decode', [truncated.code, truncated.stderr], [
+    1,
+    "error: <stdin> isn't a `Point`: `x`: Read exceeds the supplied buffer: 4 bytes at 0 of 3\n"
+]);
+expectEqual(
+    'a conversion without its table',
+    send(
+        instance,
+        'tafla_generate',
+        [3, 'decode', 'shapes.tafla', 'Point', 0, shapes],
+        (status, response) => ({ status, ...readOutput(response) })
     ),
     malformedCommand
 );

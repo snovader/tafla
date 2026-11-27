@@ -1,11 +1,13 @@
 //! The `tafla-gen` binary: it writes the generated files under `--out`,
 //! prints errors as the library renders them, and fails on wrong arguments
-//! with exit code 2 and on a schema's errors with 1.
+//! with exit code 2 and on a schema's errors with 1. `decode` and `encode`
+//! read a table from a file or stdin and print its JSON or its bytes.
 
 mod common;
 
+use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 use common::{DIAGNOSTICS, Golden, REPOSITORY, read_tree, targets};
 
@@ -15,6 +17,20 @@ fn tafla_gen(directory: &str, arguments: &[&str]) -> Output {
         .args(arguments)
         .output()
         .unwrap()
+}
+
+/// Runs the command with `stdin` as its standard input
+fn tafla_gen_with_stdin(directory: &str, arguments: &[&str], stdin: &[u8]) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tafla-gen"))
+        .current_dir(directory)
+        .args(arguments)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    child.wait_with_output().unwrap()
 }
 
 fn stderr(output: &Output) -> String {
@@ -314,8 +330,11 @@ fn prints_its_version_to_stdout() {
     }
 }
 
-const USAGE: &str = "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... \
-                     [--out <dir>] [--runtime <module>] [--package <package>]";
+const USAGE: &str =
+    "usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... \
+                     [--out <dir>] [--runtime <module>] [--package <package>]
+       tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version] [--ascii]
+       tafla-gen encode <schema> <name> [<file>]";
 
 /// Fails as wrong arguments do: with the error, the usage and exit code 2,
 /// without writing a file
@@ -370,9 +389,247 @@ fn rejects_wrong_arguments() {
             ],
             "`--runtime` is given twice",
         ),
+        (
+            &["rust", "-"],
+            "a schema is read from a file, not from stdin, `-`",
+        ),
+        (
+            &["rust", "schemas/shapes.tafla", "--layout"],
+            "`--layout` is an option of `decode`",
+        ),
     ] {
         assert_usage_error(REPOSITORY, arguments, error);
     }
+}
+
+#[test]
+fn rejects_wrong_arguments_of_decode_and_encode() {
+    for (arguments, error) in [
+        (&["decode"][..], "no schema is given"),
+        (
+            &["decode", "schemas/shapes.tafla"],
+            "no message or struct is given, by its name in the schema",
+        ),
+        (
+            &[
+                "encode",
+                "schemas/shapes.tafla",
+                "Point",
+                "a.json",
+                "b.json",
+            ],
+            "`encode` reads one file, `a.json`, and `b.json` is another",
+        ),
+        (
+            &["decode", "schemas/shapes.tafla", "Point", "--out", "out"],
+            "`decode` doesn't take `--out`",
+        ),
+        (
+            &["encode", "schemas/shapes.tafla", "Point", "--ascii"],
+            "`encode` doesn't take `--ascii`",
+        ),
+        (
+            &["decode", "-", "Point", "point.bin"],
+            "a schema is read from a file, not from stdin, `-`",
+        ),
+        (
+            &["decode", "--layout", "--layout"],
+            "`--layout` is given twice",
+        ),
+    ] {
+        let output = tafla_gen(REPOSITORY, arguments);
+
+        assert_eq!(output.status.code(), Some(2), "{arguments:?}");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+        assert_eq!(
+            stderr(&output),
+            format!("error: {error}\n{USAGE}\nRun `tafla-gen --help` for more.\n"),
+            "{arguments:?}"
+        );
+    }
+}
+
+const POINT: &str = "../conformance/generated/shapes/point.bin";
+
+#[test]
+fn decodes_a_table_from_a_file_or_stdin_and_encodes_it_back() {
+    let bytes = std::fs::read(Path::new(REPOSITORY).join(&POINT[3..])).unwrap();
+    let directory = format!("{REPOSITORY}/schemas");
+
+    let from_file = tafla_gen(&directory, &["decode", "shapes.tafla", "Point", POINT]);
+    let from_stdin = tafla_gen_with_stdin(&directory, &["decode", "shapes.tafla", "Point"], &bytes);
+    let from_dash = tafla_gen_with_stdin(
+        &directory,
+        &["decode", "shapes.tafla", "Point", "-"],
+        &bytes,
+    );
+
+    assert!(from_file.status.success(), "{}", stderr(&from_file));
+    assert_eq!(stderr(&from_file), "");
+    let json = String::from_utf8(from_file.stdout).unwrap();
+    assert_eq!(
+        json,
+        "{\n    \"x\": \"-0\",\n    \"y\": \"NaN\",\n    \"id\": \"-9223372036854775808\",\n    \
+         \"name\": \"a\u{e5}\u{4e16}\u{1f980}\"\n}\n"
+    );
+    assert_eq!(from_stdin.stdout, json.as_bytes());
+    assert_eq!(from_dash.stdout, json.as_bytes());
+
+    let encoded = tafla_gen_with_stdin(
+        &directory,
+        &["encode", "shapes.tafla", "Point"],
+        json.as_bytes(),
+    );
+    assert!(encoded.status.success(), "{}", stderr(&encoded));
+    assert_eq!(encoded.stdout, bytes);
+
+    let ascii = tafla_gen(
+        &directory,
+        &["decode", "--ascii", "shapes.tafla", "Point", POINT],
+    );
+    assert!(
+        String::from_utf8(ascii.stdout)
+            .unwrap()
+            .contains("\"a\\u00e5\\u4e16\\ud83e\\udd80\"")
+    );
+}
+
+#[test]
+fn prints_the_layout_of_a_table() {
+    let output = tafla_gen(
+        REPOSITORY,
+        &[
+            "decode",
+            "schemas/shapes.tafla",
+            "Sample",
+            "conformance/generated/shapes/sample.bin",
+            "--layout",
+        ],
+    );
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let layout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        layout.starts_with(
+            "position    length  bytes                      field  value\n       \
+             0         4  "
+        ),
+        "{layout}"
+    );
+    assert!(layout.contains("  key    uint32 "), "{layout}");
+}
+
+#[test]
+fn fails_on_a_table_that_isnt_the_message_and_prints_its_layout_up_to_the_failure() {
+    let truncated = &std::fs::read(Path::new(REPOSITORY).join(&POINT[3..])).unwrap()[..30];
+    let arguments = ["decode", "schemas/shapes.tafla", "Point"];
+
+    let output = tafla_gen_with_stdin(REPOSITORY, &arguments, truncated);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    assert_eq!(
+        stderr(&output),
+        "error: <stdin> isn't a `Point`: `y`: Read exceeds the supplied buffer: 8 bytes at 24 of 30\n"
+    );
+
+    let output = tafla_gen_with_stdin(
+        REPOSITORY,
+        &[&arguments[..], &["--layout"]].concat(),
+        truncated,
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8(output.stdout.clone())
+            .unwrap()
+            .contains("  x      float64 -0\n")
+    );
+    assert!(stderr(&output).starts_with("error: <stdin> isn't a `Point`: `y`: "));
+}
+
+#[test]
+fn reads_another_version_only_with_any_version() {
+    let mut bytes =
+        std::fs::read(Path::new(REPOSITORY).join("conformance/generated/shapes/document.bin"))
+            .unwrap();
+    bytes[4] = 2;
+    let arguments = ["decode", "schemas/shapes.tafla", "Document"];
+
+    let output = tafla_gen_with_stdin(REPOSITORY, &arguments, &bytes);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        "error: <stdin> isn't a `Document`: Unsupported format version 2; the reader reads \
+         version 1\n  = help: `--any-version` reads it whatever its version\n"
+    );
+
+    let output = tafla_gen_with_stdin(
+        REPOSITORY,
+        &[&arguments[..], &["--any-version"]].concat(),
+        &bytes,
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+}
+
+#[test]
+fn prints_the_errors_of_json_that_doesnt_encode() {
+    let directory = tempfile::tempdir().unwrap();
+    std::fs::write(
+        directory.path().join("point.json"),
+        r#"{"x": 1, "y": true}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("latin1.json"),
+        b"{\"name\": \"caf\xe9\"}",
+    )
+    .unwrap();
+    let schema = format!("{REPOSITORY}/schemas/shapes.tafla");
+    let directory = directory.path().to_str().unwrap();
+
+    let output = tafla_gen(directory, &["encode", &schema, "Point", "point.json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    assert_eq!(
+        stderr(&output),
+        "\
+error: `y` isn't a float64
+ --> point.json:1:15
+  |
+1 | {\"x\": 1, \"y\": true}
+  |               ^^^^ a float64 is a number within its range, or \"NaN\", \"Infinity\", \"-Infinity\" or \"-0\"
+
+error: missing the fields `id` and `name`
+ --> point.json:1:1
+  |
+1 | {\"x\": 1, \"y\": true}
+  | ^ every field is required
+"
+    );
+
+    let output = tafla_gen(directory, &["encode", &schema, "Point", "latin1.json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).starts_with("error: the JSON isn't UTF-8\n --> latin1.json:1:14\n"));
+
+    let output = tafla_gen(directory, &["encode", &schema, "Point", "missing.json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).starts_with("missing.json: "));
+}
+
+#[test]
+fn names_the_messages_and_structs_of_a_schema_for_another_name() {
+    let output = tafla_gen_with_stdin(
+        REPOSITORY,
+        &["decode", "schemas/shapes.tafla", "Columns"],
+        b"",
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        stderr(&output),
+        "error: `Columns` is a table, which is read within a message, not on its own\n \
+         --> schemas/shapes.tafla\n  = help: the schema's messages and structs are `Point`, \
+         `Document`, `ItemList`, `Sample`, `Task` and `Step`\n"
+    );
 }
 
 #[test]

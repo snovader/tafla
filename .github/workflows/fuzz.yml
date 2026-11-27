@@ -48,6 +48,11 @@ jobs:
           - target: gen
             seeds: ../schemas gen/tests/diagnostics
             options: -dict=fuzz/gen.dict
+          # Arbitrary bytes, decoded and encoded as the example schemas'
+          # messages and structs
+          - target: json
+            seeds: ../conformance/generated/shapes ../conformance/generated
+            options: ""
     steps:
       - name: Checkout GitHub repo
         uses: actions/checkout@v7

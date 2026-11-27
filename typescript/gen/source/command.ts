@@ -6,12 +6,17 @@ import { Request, type Response } from './wasm-module.ts';
 
 /** What the command prints, and its exit code */
 export interface CommandOutput {
-    readonly stdout: string;
+    /** Text, or the bytes of a table that `encode` wrote */
+    readonly stdout: string | Uint8Array;
     readonly stderr: string;
     readonly code: number;
 }
 
-/** The schemas that the arguments ask to generate code from, and where to */
+/**
+ * The files that the arguments ask to read, with `-` as stdin: the schemas to
+ * generate code from, or the schema and the table to decode or encode, and
+ * the directory to write the generated files under
+ */
 interface Generation {
     readonly out: string;
     readonly schemas: string[];
@@ -26,11 +31,15 @@ interface Generated {
 
 const FAILURE = 1;
 
+/** The file descriptor of stdin, which `readFileSync()` reads to its end */
+const STDIN = 0;
+
 /**
  * Runs the `tafla-gen` command with its arguments, without the command's own
- * name: reads the schemas, writes the generated files, and returns what to
- * print. The generator's module decides everything else, as it does for the
- * command's native binary, so that the two agree.
+ * name: reads the schemas, and the table that `decode` or `encode` converts,
+ * writes the generated files, and returns what to print. The generator's
+ * module decides everything else, as it does for the command's native
+ * binary, so that the two agree.
  */
 export function runCommand(commandArguments: readonly string[]): CommandOutput {
     const generation = parse(commandArguments);
@@ -97,11 +106,11 @@ function generate(
     );
 }
 
-/** Adds a schema's bytes to the request, or why it can't be read */
-function addSource(request: Request, schema: string): void {
+/** Adds a file's bytes to the request, from stdin for `-`, or why it can't be read */
+function addSource(request: Request, path: string): void {
     let bytes: Uint8Array;
     try {
-        bytes = readFileSync(schema);
+        bytes = readFileSync(path === '-' ? STDIN : path);
     } catch (error) {
         request.count(1).string(reasonOf(error));
         return;
@@ -109,11 +118,11 @@ function addSource(request: Request, schema: string): void {
     request.count(0).bytes(bytes);
 }
 
-/** The response of a command that's over */
+/** The response of a command that's over, whose stdout may be a table's bytes */
 function readOutput(response: Response): CommandOutput {
     return {
         code: response.count(),
-        stdout: response.string(),
+        stdout: response.bytes(),
         stderr: response.string()
     };
 }

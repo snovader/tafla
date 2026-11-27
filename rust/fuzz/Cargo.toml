@@ -43,6 +43,13 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "json"
+path = "fuzz_targets/json.rs"
+test = false
+doc = false
+bench = false
+
 # Line tables, so that a crash's backtrace names its lines
 [profile.release]
 debug = 1

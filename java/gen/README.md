@@ -15,7 +15,14 @@ describes the schema language, the generated code and the command.
 
 ```sh
 java -jar tafla-gen-0.1.0.jar java shapes.tafla --package com.example.shapes --out src/main/java
+java -jar tafla-gen-0.1.0.jar decode shapes.tafla Document document.bin > document.json
+java -jar tafla-gen-0.1.0.jar encode shapes.tafla Document document.json > document.bin
 ```
+
+`decode` prints a table's values as JSON, and `encode` prints the table's
+bytes from that JSON, each reading the table from stdin without a file, as
+the generator's README describes in
+[Tables as JSON](https://github.com/snovader/tafla/tree/main/rust/gen#tables-as-json).
 
 It takes the arguments, prints the errors and exits with the codes of the
 `tafla-gen` that `cargo install tafla-gen` installs, since the generator's

@@ -2,12 +2,15 @@
 //! describe it.
 //!
 //! The library's `cli` module decides what the arguments ask for and what
-//! the schemas generate, and this binary reads the schemas, writes the files
-//! and prints. It exits with 0 when every schema generated its files, 1 when
-//! a schema has errors or a file couldn't be read or written, and 2 when the
-//! arguments are wrong. Errors go to stderr, and only `--help` and
-//! `--version` print to stdout.
+//! the schemas generate, or the tables decode and encode as, and this binary
+//! reads the schemas and tables, writes the files and prints. It exits with
+//! 0 when every schema generated its files or the table converted, 1 when a
+//! schema has errors, a file couldn't be read or written, or the table or
+//! its JSON couldn't be converted, and 2 when the arguments are wrong.
+//! Errors go to stderr, and `--help`, `--version`, `decode` and `encode`
+//! print to stdout.
 
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -18,9 +21,13 @@ fn main() -> ExitCode {
     let output = match Command::parse(std::env::args_os().skip(1)) {
         Command::Print(output) => output,
         Command::Generate(generation) => run(&generation),
+        #[cfg(feature = "json")]
+        Command::Convert(conversion) => conversion.convert(read),
     };
 
-    print!("{}", output.stdout);
+    // A pipe that the reader closed, as `head` does, isn't an error of the
+    // command, which has nothing else to do
+    let _ = std::io::stdout().write_all(&output.stdout);
     eprint!("{}", output.stderr);
     ExitCode::from(output.code)
 }
@@ -41,14 +48,24 @@ fn run(generation: &Generation) -> Output {
     }
 
     Output {
-        stdout: String::new(),
+        stdout: Vec::new(),
         stderr: errors.join("\n"),
         code: if errors.is_empty() { SUCCESS } else { FAILURE },
     }
 }
 
-fn read(schema: &str) -> Result<Vec<u8>, String> {
-    std::fs::read(schema).map_err(|error| error.to_string())
+/// Reads a file, or stdin for `-`, which the arguments reject but as the
+/// table to convert
+fn read(path: &str) -> Result<Vec<u8>, String> {
+    if path == "-" {
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        return Ok(bytes);
+    }
+
+    std::fs::read(path).map_err(|error| error.to_string())
 }
 
 /// Writes a schema's files under `out`, up to the first that fails

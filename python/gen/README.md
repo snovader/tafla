@@ -21,6 +21,8 @@ uv run tafla-gen python shapes.tafla --out generated
 
 ```text
 tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]
+tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version] [--ascii]
+tafla-gen encode <schema> <name> [<file>]
 ```
 
 The generator's

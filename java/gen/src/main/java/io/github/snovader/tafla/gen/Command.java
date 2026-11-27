@@ -13,12 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Runs the {@code tafla-gen} command: reads the schemas, writes the generated files, and
- * returns what to print. The generator's module decides everything else, as it does for the
- * command's native binary, so that the two agree.
+ * Runs the {@code tafla-gen} command: reads the schemas, and the table that {@code decode} or
+ * {@code encode} converts, from stdin for {@code -}, writes the generated files, and returns what
+ * to print. The generator's module decides everything else, as it does for the command's native
+ * binary, so that the two agree.
  */
 final class Command {
     private static final int FAILURE = 1;
+    /** The path that stands for stdin */
+    private static final String STDIN = "-";
 
     private final GeneratorModule module = new GeneratorModule();
     private final String[] arguments;
@@ -49,7 +52,8 @@ final class Command {
         List<String> errors = writeFileSets(out, generated);
         errors.addAll(0, generated.strings());
 
-        return new CommandOutput(errors.isEmpty() ? 0 : FAILURE, "", String.join("\n", errors));
+        return new CommandOutput(
+                errors.isEmpty() ? 0 : FAILURE, new byte[0], String.join("\n", errors));
     }
 
     private Request argumentsOf(Request request) {
@@ -59,13 +63,19 @@ final class Command {
         return request;
     }
 
-    /** The request to generate: the arguments, and each schema's bytes or why it can't be read */
-    private Request generation(List<String> schemas) {
+    /**
+     * The request to generate or convert: the arguments, and each file's bytes, from stdin for
+     * {@code -}, or why it can't be read
+     */
+    private Request generation(List<String> paths) {
         Request request = argumentsOf(new Request().count(arguments.length));
 
-        for (String schema : schemas) {
+        for (String path : paths) {
             try {
-                byte[] source = Files.readAllBytes(Path.of(schema));
+                byte[] source =
+                        path.equals(STDIN)
+                                ? System.in.readAllBytes()
+                                : Files.readAllBytes(Path.of(path));
                 request.count(0).bytes(source);
             } catch (IOException | InvalidPathException error) {
                 request.count(1).string(describe(error));

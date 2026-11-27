@@ -96,10 +96,20 @@ export class Response {
     }
 
     public string(): string {
+        return decoder.decode(this.#stringBytes());
+    }
+
+    /** A string's bytes, which needn't be UTF-8, such as a table's, copied out of the memory */
+    public bytes(): Uint8Array {
+        return this.#stringBytes().slice();
+    }
+
+    /** A string's bytes in the memory */
+    #stringBytes(): Uint8Array {
         const length = this.count();
         const bytes = new Uint8Array(this.#memory, this.#offset, length);
         this.#offset += length;
-        return decoder.decode(bytes);
+        return bytes;
     }
 
     /** A count and that many strings */

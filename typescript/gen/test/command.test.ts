@@ -1,7 +1,8 @@
 // The `tafla-gen` command of the package's build, which runs the generator's
 // WebAssembly module, with the cases of the native command's tests in
 // rust/gen/tests/cli.rs that a host could get wrong: the files it reads and
-// writes, what it prints, and its exit codes.
+// writes, stdin that `decode` and `encode` read, what it prints, bytes
+// included, and its exit codes.
 import { spawnSync } from 'node:child_process';
 import {
     existsSync,
@@ -27,7 +28,12 @@ const VERSION = (
 
 const USAGE =
     'usage: tafla-gen <typescript|javascript|python|java|rust|go|cpp|swift|csharp> <schema>... ' +
-    '[--out <dir>] [--runtime <module>] [--package <package>]';
+    '[--out <dir>] [--runtime <module>] [--package <package>]\n' +
+    '       tafla-gen decode <schema> <name> [<file>] [--layout] [--any-version] [--ascii]\n' +
+    '       tafla-gen encode <schema> <name> [<file>]';
+
+/** A table of `conformance/generated`, which the code generated from `schemas/shapes.tafla` writes */
+const POINT = 'conformance/generated/shapes/point.bin';
 
 /** The directories of the golden files that tafla-gen generates from `schemas/shapes.tafla` */
 const GOLDEN: Array<[target: string, directory: string]> = [
@@ -48,6 +54,19 @@ function taflaGen(directory: string, commandArguments: readonly string[]): Outpu
         cwd: directory,
         encoding: 'utf8'
     });
+}
+
+/** Runs the command with `input` as its stdin, and its stdout as bytes */
+function taflaGenBytes(
+    directory: string,
+    commandArguments: readonly string[],
+    input: Uint8Array | string = ''
+): { status: number | null; stdout: Buffer; stderr: string } {
+    const output = spawnSync(process.execPath, [BIN, ...commandArguments], {
+        cwd: directory,
+        input
+    });
+    return { status: output.status, stdout: output.stdout, stderr: output.stderr.toString() };
 }
 
 function temporaryDirectory(): string {
@@ -282,4 +301,51 @@ describe('tafla-gen', () => {
             expect(Object.keys(readTree(directory))).toStrictEqual(['point.tafla']);
         }
     );
+    it('should decode a table from a file or stdin, and encode its JSON back into its bytes', () => {
+        const table = readFileSync(join(REPOSITORY, POINT));
+        const decode = ['decode', 'schemas/shapes.tafla', 'Point'];
+
+        const fromFile = taflaGenBytes(REPOSITORY, [...decode, POINT]);
+        const fromStdin = taflaGenBytes(REPOSITORY, decode, table);
+
+        expect(fromFile).toMatchObject({ status: 0, stderr: '' });
+        const json = fromFile.stdout.toString();
+        expect(JSON.parse(json)).toStrictEqual({
+            x: '-0',
+            y: 'NaN',
+            id: '-9223372036854775808',
+            name: 'a\u00e5\u4e16\ud83e\udd80'
+        });
+        expect(fromStdin.stdout.toString()).toBe(json);
+
+        const encoded = taflaGenBytes(
+            REPOSITORY,
+            ['encode', 'schemas/shapes.tafla', 'Point', '-'],
+            json
+        );
+        expect(encoded).toMatchObject({ status: 0, stderr: '' });
+        expect(encoded.stdout.equals(table)).toBe(true);
+    });
+
+    it('should print the errors of a table that fails to decode and of JSON that fails to encode', () => {
+        const decoded = taflaGenBytes(
+            REPOSITORY,
+            ['decode', 'schemas/shapes.tafla', 'Point'],
+            new Uint8Array(3)
+        );
+        expect(decoded.status).toBe(1);
+        expect(decoded.stderr).toBe(
+            "error: <stdin> isn't a `Point`: `x`: Read exceeds the supplied buffer: 4 bytes at 0 of 3\n"
+        );
+
+        const encoded = taflaGenBytes(REPOSITORY, [
+            'encode',
+            'schemas/shapes.tafla',
+            'Point',
+            'missing.json'
+        ]);
+        expect(encoded.status).toBe(1);
+        expect(encoded.stdout).toHaveLength(0);
+        expect(encoded.stderr).toBe('missing.json: ENOENT: no such file or directory\n');
+    });
 });

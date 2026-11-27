@@ -21,17 +21,18 @@
 //!
 //! - `tafla_command`'s request is the command's arguments, each a string, up
 //!   to its end. For status 0, the response is the directory to write under,
-//!   a `u32` count of schemas and each schema's path, which the host reads.
-//!   For status 1, the command is over: a `u32` exit code, and what to print
-//!   to stdout and to stderr.
+//!   a `u32` count of files and each file's path, which the host reads, with
+//!   `-` as stdin: the schemas, or of `decode` and `encode` the schema and
+//!   the table. For status 1, the command is over: a `u32` exit code, and
+//!   what to print to stdout, as bytes, and to stderr.
 //! - `tafla_generate`'s request is a `u32` count of arguments and the same
-//!   arguments, and then each of those schemas, in their order: a `u32` of 0
+//!   arguments, and then each of those files, in their order: a `u32` of 0
 //!   and its bytes, which needn't be UTF-8, or of 1 and why it can't be read.
 //!   For status 0, the response is a `u32` count of schemas with files to
 //!   write, for each a `u32` count of files and each file's path and
 //!   contents, and then a `u32` count of errors and each error. For status 1,
-//!   it's as `tafla_command`'s, for arguments that don't generate, or a
-//!   malformed request.
+//!   it's as `tafla_command`'s, for `decode` and `encode`, for arguments that
+//!   don't generate, or a malformed request.
 
 use std::ffi::OsString;
 
@@ -167,6 +168,16 @@ fn respond_to_command(request: &[u8]) -> Vec<u8> {
             }
             response
         }
+        #[cfg(feature = "json")]
+        Command::Convert(conversion) => {
+            // The directory, which a conversion doesn't write under
+            let mut response = started(0);
+            push_string(&mut response, ".");
+            push_length(&mut response, 2);
+            push_string(&mut response, conversion.schema());
+            push_string(&mut response, conversion.input());
+            response
+        }
     }
 }
 
@@ -179,6 +190,8 @@ fn respond_to_generate(request: &[u8]) -> Vec<u8> {
     let generation = match Command::parse(arguments.into_iter().map(OsString::from)) {
         Command::Print(output) => return printed(&output),
         Command::Generate(generation) => generation,
+        #[cfg(feature = "json")]
+        Command::Convert(conversion) => return convert(&conversion, &mut reader),
     };
     let Some(generated) = generate(&generation, &mut reader) else {
         return printed(&malformed_request());
@@ -219,9 +232,31 @@ fn generate(generation: &Generation, reader: &mut Reader) -> Option<Generated> {
     }))
 }
 
+/// Converts the schema and the table that the host read, which follow the
+/// arguments in the request
+#[cfg(feature = "json")]
+fn convert(conversion: &crate::cli::Conversion, reader: &mut Reader) -> Vec<u8> {
+    let (Some(schema), Some(input)) = (reader.source(), reader.source()) else {
+        return printed(&malformed_request());
+    };
+    if !reader.is_at_end() {
+        return printed(&malformed_request());
+    }
+
+    let mut sources = [schema, input].into_iter();
+    let output = conversion.convert(|_path| {
+        sources
+            .next()
+            .expect("the schema and the table")
+            .map(<[u8]>::to_vec)
+            .map_err(str::to_owned)
+    });
+    printed(&output)
+}
+
 fn malformed_request() -> Output {
     Output {
-        stdout: String::new(),
+        stdout: Vec::new(),
         stderr: "malformed request\n".to_owned(),
         code: USAGE_ERROR,
     }
@@ -231,7 +266,7 @@ fn malformed_request() -> Output {
 fn printed(output: &Output) -> Vec<u8> {
     let mut response = started(1);
     response.extend_from_slice(&u32::from(output.code).to_le_bytes());
-    push_string(&mut response, &output.stdout);
+    push_bytes(&mut response, &output.stdout);
     push_string(&mut response, &output.stderr);
     response
 }
@@ -306,6 +341,11 @@ fn push_files(bytes: &mut Vec<u8>, files: &[GeneratedFile]) {
 }
 
 fn push_string(bytes: &mut Vec<u8>, string: &str) {
+    push_bytes(bytes, string.as_bytes());
+}
+
+/// A string's length and its bytes, which needn't be UTF-8, such as a table
+fn push_bytes(bytes: &mut Vec<u8>, string: &[u8]) {
     push_length(bytes, string.len());
-    bytes.extend_from_slice(string.as_bytes());
+    bytes.extend_from_slice(string);
 }

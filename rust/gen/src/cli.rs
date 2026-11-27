@@ -1,5 +1,6 @@
 //! The `tafla-gen` command without its files: what its arguments ask for,
-//! and what it generates from the schemas that its caller reads.
+//! and what it generates from the schemas that its caller reads, or the
+//! tables that it decodes and encodes.
 //!
 //! The command's binary and the hosts of the WebAssembly module both run
 //! it, so that each of them only reads schemas, writes files and prints,
@@ -28,10 +29,16 @@ use std::fmt::Write;
 
 use crate::{Diagnostic, GeneratedFile, JavaPackage, Options, Span, Target, compile};
 
+#[cfg(feature = "json")]
+mod convert;
+
+#[cfg(feature = "json")]
+pub use convert::Conversion;
+
 /// The exit code of a command whose schemas all generated their files
 pub const SUCCESS: u8 = 0;
-/// The exit code of a schema with errors, or a file that can't be read or
-/// written
+/// The exit code of a schema with errors, a file that can't be read or
+/// written, or a table or JSON that can't be decoded or encoded
 pub const FAILURE: u8 = 1;
 /// The exit code of wrong arguments, as of most commands
 pub const USAGE_ERROR: u8 = 2;
@@ -42,11 +49,15 @@ pub enum Command {
     /// or what's wrong with the arguments
     Print(Output),
     Generate(Generation),
+    /// To decode a table's bytes as JSON, or encode JSON as its bytes
+    #[cfg(feature = "json")]
+    Convert(Conversion),
 }
 
 /// What a command prints before it exits
 pub struct Output {
-    pub stdout: String,
+    /// Bytes, since `encode` prints a table's
+    pub stdout: Vec<u8>,
     pub stderr: String,
     pub code: u8,
 }
@@ -79,18 +90,20 @@ impl Command {
     pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Self {
         match parse(arguments) {
             Ok(Parsed::Help) => Self::Print(Output {
-                stdout: help(),
+                stdout: help().into_bytes(),
                 stderr: String::new(),
                 code: SUCCESS,
             }),
             Ok(Parsed::Version) => Self::Print(Output {
-                stdout: format!("tafla-gen {}\n", env!("CARGO_PKG_VERSION")),
+                stdout: format!("tafla-gen {}\n", env!("CARGO_PKG_VERSION")).into_bytes(),
                 stderr: String::new(),
                 code: SUCCESS,
             }),
             Ok(Parsed::Generate(generation)) => Self::Generate(generation),
+            #[cfg(feature = "json")]
+            Ok(Parsed::Convert(conversion)) => Self::Convert(conversion),
             Err(message) => Self::Print(Output {
-                stdout: String::new(),
+                stdout: Vec::new(),
                 stderr: format!(
                     "error: {message}\n{}\nRun `tafla-gen --help` for more.\n",
                     usage()
@@ -105,15 +118,45 @@ enum Parsed {
     Help,
     Version,
     Generate(Generation),
+    #[cfg(feature = "json")]
+    Convert(Conversion),
+}
+
+/// The options that take no value, each of which is an option of `decode`
+#[derive(Default)]
+struct Flags {
+    layout: bool,
+    any_version: bool,
+    ascii: bool,
+}
+
+impl Flags {
+    /// The first flag given, as it was spelled
+    fn first(&self) -> Option<&'static str> {
+        [
+            (self.layout, "--layout"),
+            (self.any_version, "--any-version"),
+            (self.ascii, "--ascii"),
+        ]
+        .into_iter()
+        .find_map(|(given, name)| given.then_some(name))
+    }
+}
+
+/// The options that take a value, each of which is an option of the targets
+#[derive(Default)]
+struct Values {
+    out: Option<String>,
+    runtime: Option<String>,
+    package: Option<String>,
 }
 
 /// Parses the arguments, or fails with a message of what's wrong with them
 fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String> {
     let mut arguments = arguments.into_iter();
     let mut positional = Vec::new();
-    let mut out = None;
-    let mut runtime = None;
-    let mut package = None;
+    let mut values = Values::default();
+    let mut flags = Flags::default();
     let mut options_ended = false;
 
     while let Some(argument) = arguments.next() {
@@ -130,9 +173,21 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String
                 options_ended = true;
                 continue;
             }
-            "--out" => &mut out,
-            "--runtime" => &mut runtime,
-            "--package" => &mut package,
+            "--out" => &mut values.out,
+            "--runtime" => &mut values.runtime,
+            "--package" => &mut values.package,
+            "--layout" | "--any-version" | "--ascii" => {
+                let flag = match argument.as_str() {
+                    "--layout" => &mut flags.layout,
+                    "--any-version" => &mut flags.any_version,
+                    _ => &mut flags.ascii,
+                };
+                if *flag {
+                    return Err(format!("`{argument}` is given twice"));
+                }
+                *flag = true;
+                continue;
+            }
             _ => return Err(format!("unknown option `{argument}`")),
         };
         if slot.is_some() {
@@ -146,6 +201,14 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String
 
     let mut positional = positional.into_iter();
     let target_name = positional.next().ok_or("no target is given")?;
+    #[cfg(feature = "json")]
+    if let Some(conversion) = Conversion::parse(&target_name, &mut positional, &flags, &values)? {
+        return Ok(Parsed::Convert(conversion));
+    }
+    if let Some(flag) = flags.first() {
+        return Err(format!("`{flag}` is an option of `decode`"));
+    }
+
     let target = Target::from_name(&target_name).ok_or_else(|| {
         let targets: Vec<_> = Target::names().collect();
         format!(
@@ -158,6 +221,7 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String
     // once
     let mut schemas: Vec<String> = Vec::new();
     for schema in positional {
+        check_schema_path(&schema)?;
         if !schemas.contains(&schema) {
             schemas.push(schema);
         }
@@ -176,6 +240,11 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String
         );
     }
 
+    let Values {
+        out,
+        runtime,
+        package,
+    } = values;
     let package = package
         .map(|name| name.parse::<JavaPackage>())
         .transpose()
@@ -188,6 +257,16 @@ fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Parsed, String
     }))
 }
 
+/// Rejects `-` as a schema, which is stdin to `decode` and `encode`, whose
+/// input it is, since a schema is read from a file, whose path names it in
+/// errors and in the generated files
+fn check_schema_path(schema: &str) -> Result<(), String> {
+    if schema == "-" {
+        return Err("a schema is read from a file, not from stdin, `-`".to_owned());
+    }
+    Ok(())
+}
+
 /// An argument as UTF-8, which schemas' paths are, since they name the
 /// generated files and are printed in them
 fn utf8(argument: OsString) -> Result<String, String> {
@@ -198,10 +277,14 @@ fn utf8(argument: OsString) -> Result<String, String> {
 
 fn usage() -> String {
     let targets: Vec<_> = Target::names().collect();
-    format!(
+    let generate = format!(
         "usage: tafla-gen <{}> <schema>... [--out <dir>] [--runtime <module>] [--package <package>]",
         targets.join("|")
-    )
+    );
+
+    #[cfg(feature = "json")]
+    let generate = format!("{generate}\n{}", convert::USAGE);
+    generate
 }
 
 /// The help's text after its list of targets
@@ -225,26 +308,37 @@ Options:
 
 The command prints errors to stderr, and writes no file of a schema that has
 errors.
+";
 
+const EXIT_STATUS: &str = "
 Exit status:
-  0  Every schema generated its files
-  1  A schema has errors, or a file couldn't be read or written
+  0  Every schema generated its files, or the table was decoded or encoded
+  1  A schema has errors, a file couldn't be read or written, or the table or
+     its JSON couldn't be decoded or encoded
   2  The arguments are wrong
 ";
 
 fn help() -> String {
     let mut help = format!(
         "tafla-gen {}\n\
-         Generates the code that writes and reads the tables of tafla schemas.\n\n\
+         Generates the code that writes and reads the tables of tafla schemas{}.\n\n\
          {}\n\n\
          Targets:\n",
         env!("CARGO_PKG_VERSION"),
+        if cfg!(feature = "json") {
+            ",\nand decodes a table's bytes as JSON and encodes them from JSON"
+        } else {
+            ""
+        },
         usage()
     );
     for names in Target::names_and_abbreviations() {
         let _ = writeln!(help, "  {}", names.join(", "));
     }
     help.push_str(OPTIONS);
+    #[cfg(feature = "json")]
+    help.push_str(convert::OPTIONS);
+    help.push_str(EXIT_STATUS);
     help
 }
 
@@ -307,16 +401,17 @@ impl Generation {
         read: &mut impl FnMut(&str) -> Result<Vec<u8>, String>,
     ) -> Result<Vec<GeneratedFile>, String> {
         let bytes = read(schema).map_err(|error| format!("{schema}: {error}\n"))?;
-        let source = decode(schema, bytes)?;
+        let source = source_of(schema, bytes, "schema")?;
 
         compile(schema, &source, self.target, &self.options)
             .map_err(|diagnostics| Diagnostic::render_all(&diagnostics, schema, &source))
     }
 }
 
-/// A schema's source from its bytes, or an error that points at the first
-/// bytes that aren't UTF-8, as the library points at a schema's errors
-fn decode(schema: &str, bytes: Vec<u8>) -> Result<String, String> {
+/// A schema's source from its bytes, or that of another `kind` of text, such
+/// as JSON, or an error that points at the first bytes that aren't UTF-8, as
+/// the library points at a schema's errors
+fn source_of(path: &str, bytes: Vec<u8>, kind: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|error| {
         // The invalid bytes are a replacement character in the line printed
         let valid = error.utf8_error().valid_up_to();
@@ -326,9 +421,9 @@ fn decode(schema: &str, bytes: Vec<u8>) -> Result<String, String> {
             end: valid + char::REPLACEMENT_CHARACTER.len_utf8(),
         };
 
-        Diagnostic::new("the schema isn't UTF-8", span)
+        Diagnostic::new(format!("the {kind} isn't UTF-8"), span)
             .with_help("this isn't a character in UTF-8")
-            .render(schema, &source)
+            .render(path, &source)
     })
 }
 
