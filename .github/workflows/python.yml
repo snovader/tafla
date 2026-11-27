@@ -284,6 +284,9 @@ jobs:
       - name: Run benchmarks briefly
         run: uv run --locked python -m tafla_benchmarks --debug-single-value --quiet
 
+      - name: Run the lists suite briefly
+        run: uv run --locked python -m tafla_benchmarks.lists --debug-single-value --quiet
+
       # protobuf's implementation is chosen when a process first imports it, so
       # its pure-Python implementation runs in a process of its own. The
       # round-trip test runs it in one too.

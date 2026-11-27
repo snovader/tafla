@@ -8,13 +8,11 @@ from pathlib import Path
 
 from tafla import DecodeError
 from tests.tables import (
-    STRING_VECTORS,
     Description,
     DescriptionReader,
     build_table,
     comparable_field,
     comparable_table,
-    holds_string_vectors,
     read_table,
 )
 
@@ -31,17 +29,10 @@ def read_bytes(file: str) -> bytes:
 
 
 class TestConformance(unittest.TestCase):
-    def skip_unless_readable(self, table: Description) -> None:
-        """Skips the subtest of a table with a vector of strings, which the
-        native classes don't read or write yet"""
-        if not STRING_VECTORS and holds_string_vectors(table):
-            self.skipTest("the native classes don't read vectors of strings yet")
-
     def test_reads_every_valid_table(self) -> None:
         for case in SUITE["valid"]:
             with self.subTest(case["name"]):
                 table = case["table"]
-                self.skip_unless_readable(table)
                 read = read_table(read_bytes(case["file"]), table)
 
                 self.assertEqual(comparable_table(read), comparable_table(table))
@@ -49,7 +40,6 @@ class TestConformance(unittest.TestCase):
     def test_rebuilds_every_valid_table_byte_for_byte(self) -> None:
         for case in SUITE["valid"]:
             with self.subTest(case["name"]):
-                self.skip_unless_readable(case["table"])
                 built = bytes(build_table(case["table"]).bytes())
                 self.assertEqual(built, read_bytes(case["file"]))
 
@@ -59,7 +49,6 @@ class TestConformance(unittest.TestCase):
         for case in SUITE["equivalent"]:
             with self.subTest(case["name"]):
                 table = VALID_CASES[case["case"]]["table"]
-                self.skip_unless_readable(table)
                 read = read_table(read_bytes(case["file"]), table)
 
                 self.assertEqual(comparable_table(read), comparable_table(table))
@@ -67,7 +56,6 @@ class TestConformance(unittest.TestCase):
     def test_reads_invalid_tables_up_to_the_field_that_raises(self) -> None:
         for case in SUITE["invalid"]:
             with self.subTest(case["name"]):
-                self.skip_unless_readable(VALID_CASES[case["case"]]["table"])
                 fields = VALID_CASES[case["case"]]["table"]["fields"]
                 layout = VALID_CASES[case["case"]]["table"]["layout"]
                 reader = DescriptionReader(read_bytes(case["file"]), layout)

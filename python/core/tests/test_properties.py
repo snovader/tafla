@@ -42,7 +42,6 @@ from tests.tables import (
     ELEMENT_SIZES,
     FORMATS,
     LONGEST,
-    STRING_VECTORS,
     Description,
     DescriptionReader,
     MismatchError,
@@ -339,10 +338,9 @@ _GETTERS: dict[str, _Getter] = {
     "get_struct": lambda reader, position: reader.get_struct(position, 9),
     "get_struct_array": lambda reader, position: reader.get_struct_array(position, 3),
     "get_vector_offset": _last_vector_item,
+    "get_string_vector": TableReader.get_string_vector,
+    "get_string_vector_item": _last_string,
 }
-if STRING_VECTORS:
-    _GETTERS["get_string_vector"] = TableReader.get_string_vector
-    _GETTERS["get_string_vector_item"] = _last_string
 
 # Positions and indices that a caller gives: around the bytes, around the
 # limits of the C ssize_t that struct takes positions as, of more digits than
@@ -505,14 +503,17 @@ def growing_fields(draw: DrawFn, offset_type: OffsetType) -> GrowingField:
     time, and vectors of tables and of strings that grow by an empty item,
     for tables of the offset type ``offset_type``. Nested tables have uint32
     offsets, so that they fit any length that their parent does."""
-    kinds = ["array", "struct array", "string", "table", "vector item"]
-    if STRING_VECTORS:
-        kinds.append("string vector item")
+    kinds = [
+        "array",
+        "struct array",
+        "string",
+        "string vector item",
+        "table",
+        "vector item",
+    ]
     if offset_type == "uint8":
         # A vector of thousands of items would take most of the suite's time
-        kinds.append("vector count")
-        if STRING_VECTORS:
-            kinds.append("string vector count")
+        kinds += ["vector count", "string vector count"]
 
     match draw(sampled_from(kinds)):
         case "array":

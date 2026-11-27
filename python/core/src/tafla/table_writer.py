@@ -564,9 +564,15 @@ class TableWriter:
         # 10 to 10,000 of them take 0.58 to 0.88 times as long, in CPython
         # 3.14, and joining those of 3-byte characters first 1.07 to 1.17
         # times, which checking the first string spares them.
+        # An item that isn't a str leaves them to be encoded one by one, which
+        # raises the error of the first item that can't be, as the native
+        # writer does.
         if not strings or str.isascii(strings[0]):
-            joined = "".join(strings)
-            if joined.isascii():
+            try:
+                joined = "".join(strings)
+            except TypeError:
+                joined = None
+            if joined is not None and joined.isascii():
                 lengths = map(len, strings)
                 self.__set_strings(index, len(strings), lengths, joined.encode())
                 return

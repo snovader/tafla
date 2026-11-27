@@ -741,6 +741,10 @@ class TableReader:
             start = self.__get_size(position + index * size)
         end = self.__get_size(position + (index + 1) * size)
         offset = self.__item_offset(position, start, end)
+        # A negative position, which a caller may give, can leave the string
+        # before the bytes
+        if offset < 0:
+            raise DecodeError.out_of_range(offset, end - start, self.__length)
 
         try:
             return str(self.__view[offset : position + end], "utf-8")

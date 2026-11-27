@@ -273,10 +273,14 @@ class TableBuilder:
         # Strings of ASCII are as long as their UTF-8, so the writer encodes
         # them, from a tuple that the builder owns. Any others are encoded
         # here, to count their bytes, and written as they are, as
-        # set_string() writes a string.
+        # set_string() writes a string, which raises the error of the first
+        # item that can't be encoded, as the writer does.
         items = tuple(strings)
-        joined = "".join(items)
-        if joined.isascii():
+        try:
+            joined = "".join(items)
+        except TypeError:
+            joined = None
+        if joined is not None and joined.isascii():
             byte_length = self.__size * (1 + len(items)) + len(joined)
             self.__add_field(TableWriter.set_string_vector, items, byte_length)
         else:

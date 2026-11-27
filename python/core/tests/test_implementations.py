@@ -41,7 +41,7 @@ from hypothesis.strategies import (
 
 import tafla
 from tafla import fixed_fields, layout, table_reader, table_writer
-from tests.tables import FORMATS, NATIVE_STRING_VECTORS
+from tests.tables import FORMATS
 from tests.test_fixed_fields import Misreported
 
 try:
@@ -372,8 +372,6 @@ class TestImplementations(unittest.TestCase):
                 for attribute in dir(pure)
                 if not attribute.startswith("_") or attribute in BUILDER_METHODS
             }
-            if not NATIVE_STRING_VECTORS:
-                names -= STRING_VECTOR_METHODS
             for attribute in sorted(names):
                 with self.subTest(cls=name, attribute=attribute):
                     self.assertTrue(hasattr(native, attribute))
@@ -967,15 +965,6 @@ BUILDER_METHODS = {
     "_set_encoded_string_vector",
 }
 
-# The methods of vectors of strings, which the native classes have once they
-# bind the Rust runtime's, and which the comparisons leave out until then
-STRING_VECTOR_METHODS = {
-    "get_string_vector",
-    "get_string_vector_item",
-    "set_string_vector",
-    "_set_encoded_string_vector",
-}
-
 
 def parameters(method: Callable[..., object]) -> list[str]:
     """The names of a method's parameters, without ``self``"""
@@ -1002,12 +991,12 @@ READS = [
     "get_fields",
     "get_vector_fields",
     "iter_vector_fields",
+    "get_string_vector",
+    "get_string_vector_item",
     "get_size",
     "get_version",
     "bytes",
 ]
-if NATIVE_STRING_VECTORS:
-    READS += ["get_string_vector", "get_string_vector_item"]
 
 POSITIONS = INTEGERS
 SIZES = one_of(integers(-2, 20), INTEGERS)
@@ -1162,17 +1151,13 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
             one_of(just(0), sampled_from([-1, 1])),
         ),
     ),
+    tuples(just("set_string_vector"), tuples(INDICES, STRING_VECTOR_VALUES)),
+    # Bytes, which needn't be UTF-8, since TableBuilder encodes them
+    tuples(
+        just("_set_encoded_string_vector"),
+        tuples(INDICES, lists(binary(max_size=300), max_size=4)),
+    ),
 )
-if NATIVE_STRING_VECTORS:
-    WRITES = one_of(
-        WRITES,
-        tuples(just("set_string_vector"), tuples(INDICES, STRING_VECTOR_VALUES)),
-        # Bytes, which needn't be UTF-8, since TableBuilder encodes them
-        tuples(
-            just("_set_encoded_string_vector"),
-            tuples(INDICES, lists(binary(max_size=300), max_size=4)),
-        ),
-    )
 
 
 # The views of each writer that the calls hold, by the writer's id, until a
