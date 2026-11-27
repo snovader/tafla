@@ -545,50 +545,62 @@ pauses, and the quick run 10 seconds.
 
 ### Results
 
-One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+One full run on 2026-11-28, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
 with .NET 10.0.15 and the workstation GC, through the machine's benchmark
-lock. It took 88 seconds. Other processes kept the 1-minute load average at
-2.36 when it started and 1.89 when it ended, on the 10 cores. The median
-round was within 5% of the fastest for 75 of the 81 variants' runs, with a
-median of 1.4% and a largest of 14%. The A/A pair agreed within 4%.
+lock. It took 91 seconds. Other processes kept the 1-minute load average at
+1.76 when it started and 2.23 when it ended, on the 10 cores. The median
+round was within 5% of the fastest for 73 of the 81 variants' runs, with a
+median of 2.1%. The 8 others were the reads of every string of the lists
+of 10,000, which allocate up to 5.4 MB a call, at 5% to 12%, and 62% and
+79% for the vector of strings' 256 characters of ASCII. The A/A pair agreed
+within 2.1%, but for 10,000 × 16 chars of ASCII: deserialize, at 0.93×.
 
 Fastest round in µs per call, its ratio to the vector of strings', and the
 bytes that each call allocates:
 
 | Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A | Allocated by [string], [Name] |
 | --- | ---: | ---: | ---: | ---: |
-| 10 × 16 chars of ASCII: serialize | 0.118 | 0.144 (1.22×) | 0.117 (0.99×) | 232 B, 416 B |
-| 10 × 16 chars of ASCII: deserialize | 0.153 | 0.208 (1.36×) | 0.153 (1.00×) | 664 B, 664 B |
-| 10 × 16 chars of ASCII: read the last string | 0.0195 | 0.0244 (1.25×) | 0.0195 (1.00×) | 56 B, 56 B |
-| 10 × 256 chars of ASCII: serialize | 0.337 | 0.376 (1.12×) | 0.337 (1.00×) | 2,632 B, 2,816 B |
-| 10 × 256 chars of ASCII: deserialize | 0.444 | 0.527 (1.19×) | 0.445 (1.00×) | 5,464 B, 5,464 B |
-| 10 × 256 chars of ASCII: read the last string | 0.0497 | 0.0554 (1.11×) | 0.0502 (1.01×) | 536 B, 536 B |
-| 10 × 8 chars of 3 bytes: serialize | 0.24 | 0.237 (0.99×) | 0.24 (1.00×) | 312 B, 496 B |
-| 10 × 8 chars of 3 bytes: deserialize | 0.386 | 0.474 (1.23×) | 0.385 (1.00×) | 504 B, 504 B |
-| 10 × 8 chars of 3 bytes: read the last string | 0.0393 | 0.0454 (1.16×) | 0.0393 (1.00×) | 40 B, 40 B |
+| 10 × 16 chars of ASCII: serialize | 0.117 | 0.143 (1.22×) | 0.117 (1.00×) | 232 B, 416 B |
+| 10 × 16 chars of ASCII: deserialize | 0.144 | 0.193 (1.34×) | 0.143 (0.99×) | 664 B, 664 B |
+| 10 × 16 chars of ASCII: read the last string | 0.0192 | 0.0228 (1.19×) | 0.0195 (1.01×) | 56 B, 56 B |
+| 10 × 256 chars of ASCII: serialize | 0.338 | 0.374 (1.11×) | 0.333 (0.98×) | 2,632 B, 2,816 B |
+| 10 × 256 chars of ASCII: deserialize | 0.341 | 0.404 (1.19×) | 0.341 (1.00×) | 5,464 B, 5,464 B |
+| 10 × 256 chars of ASCII: read the last string | 0.0382 | 0.0421 (1.10×) | 0.039 (1.02×) | 536 B, 536 B |
+| 10 × 8 chars of 3 bytes: serialize | 0.236 | 0.234 (0.99×) | 0.24 (1.01×) | 312 B, 496 B |
+| 10 × 8 chars of 3 bytes: deserialize | 0.269 | 0.321 (1.19×) | 0.269 (1.00×) | 504 B, 504 B |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0305 | 0.0351 (1.15×) | 0.0307 (1.01×) | 40 B, 40 B |
 | 100 × 16 chars of ASCII: serialize | 1.1 | 1.34 (1.22×) | 1.09 (0.99×) | 2,032 B, 3,656 B |
-| 100 × 16 chars of ASCII: deserialize | 1.36 | 1.78 (1.31×) | 1.36 (1.00×) | 6,424 B, 6,424 B |
-| 100 × 16 chars of ASCII: read the last string | 0.0195 | 0.0244 (1.25×) | 0.0195 (1.00×) | 56 B, 56 B |
-| 100 × 256 chars of ASCII: serialize | 3.13 | 3.44 (1.10×) | 3.13 (1.00×) | 26,032 B, 27,656 B |
-| 100 × 256 chars of ASCII: deserialize | 4.28 | 5.02 (1.17×) | 4.29 (1.00×) | 54,424 B, 54,424 B |
-| 100 × 256 chars of ASCII: read the last string | 0.049 | 0.0551 (1.12×) | 0.0487 (0.99×) | 536 B, 536 B |
-| 100 × 8 chars of 3 bytes: serialize | 1.84 | 2.18 (1.18×) | 1.84 (1.00×) | 2,832 B, 4,456 B |
-| 100 × 8 chars of 3 bytes: deserialize | 3.3 | 3.82 (1.16×) | 3.33 (1.01×) | 4,824 B, 4,824 B |
-| 100 × 8 chars of 3 bytes: read the last string | 0.0391 | 0.0452 (1.16×) | 0.0391 (1.00×) | 40 B, 40 B |
-| 10,000 × 16 chars of ASCII: serialize | 112 | 144 (1.28×) | 116 (1.03×) | 200,032 B, 360,056 B |
-| 10,000 × 16 chars of ASCII: deserialize | 158 | 192 (1.21×) | 151 (0.96×) | 640,024 B, 640,024 B |
-| 10,000 × 16 chars of ASCII: read the last string | 0.0198 | 0.0243 (1.23×) | 0.0195 (0.98×) | 56 B, 56 B |
-| 10,000 × 256 chars of ASCII: serialize | 427 | 451 (1.06×) | 419 (0.98×) | 2,600,032 B, 2,760,056 B |
-| 10,000 × 256 chars of ASCII: deserialize | 431 | 485 (1.12×) | 435 (1.01×) | 5,440,024 B, 5,440,024 B |
-| 10,000 × 256 chars of ASCII: read the last string | 0.0506 | 0.0556 (1.10×) | 0.0507 (1.00×) | 536 B, 536 B |
-| 10,000 × 8 chars of 3 bytes: serialize | 190 | 222 (1.17×) | 188 (0.99×) | 280,032 B, 440,056 B |
-| 10,000 × 8 chars of 3 bytes: deserialize | 336 | 382 (1.14×) | 338 (1.01×) | 480,024 B, 480,024 B |
-| 10,000 × 8 chars of 3 bytes: read the last string | 0.0388 | 0.0448 (1.15×) | 0.0388 (1.00×) | 40 B, 40 B |
+| 100 × 16 chars of ASCII: deserialize | 1.31 | 1.73 (1.33×) | 1.3 (1.00×) | 6,424 B, 6,424 B |
+| 100 × 16 chars of ASCII: read the last string | 0.0196 | 0.0234 (1.19×) | 0.0197 (1.01×) | 56 B, 56 B |
+| 100 × 256 chars of ASCII: serialize | 3.18 | 3.47 (1.09×) | 3.14 (0.99×) | 26,032 B, 27,656 B |
+| 100 × 256 chars of ASCII: deserialize | 3.36 | 3.94 (1.17×) | 3.39 (1.01×) | 54,424 B, 54,424 B |
+| 100 × 256 chars of ASCII: read the last string | 0.0381 | 0.0424 (1.11×) | 0.0387 (1.02×) | 536 B, 536 B |
+| 100 × 8 chars of 3 bytes: serialize | 1.83 | 2.16 (1.18×) | 1.84 (1.00×) | 2,832 B, 4,456 B |
+| 100 × 8 chars of 3 bytes: deserialize | 2.57 | 2.92 (1.14×) | 2.55 (0.99×) | 4,824 B, 4,824 B |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0306 | 0.0348 (1.14×) | 0.0307 (1.00×) | 40 B, 40 B |
+| 10,000 × 16 chars of ASCII: serialize | 119 | 144 (1.21×) | 117 (0.98×) | 200,032 B, 360,056 B |
+| 10,000 × 16 chars of ASCII: deserialize | 148 | 184 (1.24×) | 138 (0.93×) | 640,024 B, 640,024 B |
+| 10,000 × 16 chars of ASCII: read the last string | 0.0193 | 0.0231 (1.19×) | 0.0193 (1.00×) | 56 B, 56 B |
+| 10,000 × 256 chars of ASCII: serialize | 431 | 463 (1.07×) | 428 (0.99×) | 2,600,032 B, 2,760,056 B |
+| 10,000 × 256 chars of ASCII: deserialize | 326 | 388 (1.19×) | 329 (1.01×) | 5,440,024 B, 5,440,024 B |
+| 10,000 × 256 chars of ASCII: read the last string | 0.0382 | 0.0425 (1.11×) | 0.0384 (1.00×) | 536 B, 536 B |
+| 10,000 × 8 chars of 3 bytes: serialize | 191 | 225 (1.18×) | 189 (0.99×) | 280,032 B, 440,056 B |
+| 10,000 × 8 chars of 3 bytes: deserialize | 270 | 301 (1.12×) | 269 (1.00×) | 480,024 B, 480,024 B |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0303 | 0.0345 (1.14×) | 0.0301 (0.99×) | 40 B, 40 B |
 
-- The vector of strings is written in 0.78–0.95 times the time of the
+- The vector of strings is written in 0.82–0.93 times the time of the
   vector of tables for lists of ASCII, and in 0.85–1.01 times for strings
   of 3 bytes, allocating only the table, where the vector of tables
   allocates the fields of each table too.
-- Every string is read in 0.74–0.89 times the time, each a new `string`
-  decoded on its own in either layout.
-- The last string is found in 0.80–0.91 times the time.
+- Every string is read in 0.75–0.85 times the time for ASCII, and in
+  0.84–0.90 times for strings of 3 bytes. Both layouts decode each string
+  as `GetString()` decodes a string, in one pass up to 1,024 bytes, so the
+  difference is the layout's: the vector of tables reads each table's
+  header and its field's offset besides the string's ends. It weighs most
+  beside the 16 characters of ASCII, which decode fastest.
+- The last string is found in 0.84–0.91 times the time.
+- Before PR 359 and the vector's decode in one pass, both layouts decoded
+  each string in two passes, counting its characters first. Against that
+  code, run on 2026-11-27, both read 256 characters of ASCII and 8 of 3
+  bytes in 0.68–0.80 of the time, and 16 of ASCII in 0.93–1.00, and the
+  ratios above moved by at most 0.05.
