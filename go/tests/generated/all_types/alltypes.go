@@ -1266,6 +1266,409 @@ func (f ReservedFields) AppendBinary(bytes []byte) ([]byte, error) {
 	return writer.Bytes()
 }
 
+// Vectors of strings beside other fields, in a nested table and in the
+// items of a vector
+type StringVectors struct {
+	bytes []byte
+}
+
+// NewStringVectors reads a [StringVectors] from bytes, which it keeps rather
+// than copying them.
+func NewStringVectors(bytes []byte) StringVectors {
+	return StringVectors{bytes: bytes}
+}
+
+// layout returns the layout of a [StringVectors], which its getters read it in
+func (StringVectors) layout() tafla.TableLayout {
+	return tafla.TableLayout{}
+}
+
+// Id fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t StringVectors) Id() (uint32, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint32(position)
+}
+
+// A vector of strings, whose getter reads each string when it's asked
+// for
+//
+// It views the vector's strings, reading each one when it's asked for. It fails
+// with a [*tafla.DecodeError] if the field, or the vector's count or the ends
+// of its strings, lie outside the bytes. A string fails with one when it's read
+// if it lies outside the bytes or isn't valid UTF-8.
+func (t StringVectors) Tags() (tafla.StringVector, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
+	if err != nil {
+		return tafla.StringVector{}, err
+	}
+	return reader.GetStringVector(position)
+}
+
+// Labels fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t StringVectors) Labels() (Labels, error) {
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
+	if err != nil {
+		return Labels{}, err
+	}
+	return Labels{bytes: t.bytes, position: position}, nil
+}
+
+// Entries views the vector's items, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its items, lie outside the bytes. An item fails with one when it's
+// read if its own bytes are corrupt.
+func (t StringVectors) Entries() (EntryVector, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
+	if err != nil {
+		return EntryVector{}, err
+	}
+	vector, err := reader.GetVector(position)
+	return EntryVector{vector: vector}, err
+}
+
+// StringVectorsFields are the fields of a [StringVectors], to write.
+type StringVectorsFields struct {
+	Id uint32
+	// A vector of strings, whose getter reads each string when it's asked
+	// for
+	Tags    []string
+	Labels  LabelsFields
+	Entries []EntryFields
+}
+
+// MarshalBinary writes a [StringVectors] with every field. It fails with a
+// [*tafla.BuildError] if it's longer than its offset type, uint32, addresses.
+func (f StringVectorsFields) MarshalBinary() ([]byte, error) {
+	return f.AppendBinary(nil)
+}
+
+// AppendBinary appends a [StringVectors] with every field to bytes, as
+// [StringVectorsFields.MarshalBinary] writes it, and returns the extended
+// bytes, into their capacity when they have room. It fails as MarshalBinary
+// does.
+func (f StringVectorsFields) AppendBinary(bytes []byte) ([]byte, error) {
+	sizer, err := tafla.NewTableSizer(4, StringVectors{}.layout())
+	if err != nil {
+		return nil, err
+	}
+	sizer.AddUint32()
+	sizer.AddStringVector(f.Tags)
+	sizer.AddTable(tafla.Align1)
+	f.Labels.size(&sizer)
+	sizer.AddVector(len(f.Entries))
+	for index := range f.Entries {
+		f.Entries[index].size(&sizer)
+	}
+
+	writer, err := sizer.AppendWriter(bytes)
+	if err != nil {
+		return nil, err
+	}
+	writer.SetUint32(0, f.Id)
+	writer.SetStringVector(1, f.Tags)
+	writer.SetTable(2, tafla.Align1)
+	f.Labels.write(&writer)
+	vector := writer.SetVector(3, len(f.Entries))
+	for item := range f.Entries {
+		f.Entries[item].write(&writer)
+		writer.SetItemEnd(vector, item)
+	}
+
+	return writer.Bytes()
+}
+
+// A nested table whose only field is a vector of strings
+type Labels struct {
+	bytes    []byte
+	position int
+}
+
+// Values views the vector's strings, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its strings, lie outside the bytes. A string fails with one when it's
+// read if it lies outside the bytes or isn't valid UTF-8.
+func (t Labels) Values() (tafla.StringVector, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return tafla.StringVector{}, err
+	}
+	return reader.GetStringVector(position)
+}
+
+// Fields reads every field of a [Labels] at once, into the [LabelsFields] that
+// it's written from, as its getters read them, and its nested tables and the
+// items of its vectors as their Fields() reads them. Its strings, and its
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
+func (t Labels) Fields() (LabelsFields, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	var fields LabelsFields
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return LabelsFields{}, err
+	}
+	strings0, err := reader.GetStringVector(position)
+	if err != nil {
+		return LabelsFields{}, err
+	}
+	if fields.Values, err = strings0.Strings(); err != nil {
+		return LabelsFields{}, err
+	}
+
+	return fields, nil
+}
+
+// LabelsFields are the fields of a [Labels], to write.
+type LabelsFields struct {
+	Values []string
+}
+
+// size adds a [Labels] to its parent's sizer, after the field or vector that
+// holds it
+func (f *LabelsFields) size(sizer *tafla.TableSizer) {
+	parent := sizer.StartTable(1)
+	sizer.AddStringVector(f.Values)
+	sizer.EndTable(parent)
+}
+
+// write writes a [Labels] where its parent's writer is, after the field or
+// vector that holds it
+func (f *LabelsFields) write(writer *tafla.TableWriter) {
+	parent := writer.StartTable(1)
+	writer.SetStringVector(0, f.Values)
+	writer.EndTable(parent)
+}
+
+// An item of a vector, which holds a string and a vector of strings
+type Entry struct {
+	bytes    []byte
+	position int
+}
+
+// Key fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Entry) Key() (string, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return "", err
+	}
+	return reader.GetString(position)
+}
+
+// Aliases views the vector's strings, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its strings, lie outside the bytes. A string fails with one when it's
+// read if it lies outside the bytes or isn't valid UTF-8.
+func (t Entry) Aliases() (tafla.StringVector, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4)
+	if err != nil {
+		return tafla.StringVector{}, err
+	}
+	return reader.GetStringVector(position)
+}
+
+// Fields reads every field of an [Entry] at once, into the [EntryFields] that
+// it's written from, as its getters read them, and its nested tables and the
+// items of its vectors as their Fields() reads them. Its strings, and its
+// arrays and arrays of structs as their Slice() returns them, share the bytes.
+// It fails with a [*tafla.DecodeError] if a field lies outside the bytes.
+func (t Entry) Fields() (EntryFields, error) {
+	reader := tafla.NewTableReader(t.bytes, tafla.TableLayout{})
+	var fields EntryFields
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, t.position, t.position)
+	if err != nil {
+		return EntryFields{}, err
+	}
+	if fields.Key, err = reader.GetString(position); err != nil {
+		return EntryFields{}, err
+	}
+
+	if position, err = tafla.Uint32FieldOffset(t.bytes, t.position, t.position+4); err != nil {
+		return EntryFields{}, err
+	}
+	strings1, err := reader.GetStringVector(position)
+	if err != nil {
+		return EntryFields{}, err
+	}
+	if fields.Aliases, err = strings1.Strings(); err != nil {
+		return EntryFields{}, err
+	}
+
+	return fields, nil
+}
+
+// EntryFields are the fields of an [Entry], to write.
+type EntryFields struct {
+	Key     string
+	Aliases []string
+}
+
+// size adds an [Entry] to its parent's sizer, after the field or vector that
+// holds it
+func (f *EntryFields) size(sizer *tafla.TableSizer) {
+	parent := sizer.StartTable(2)
+	sizer.AddString(f.Key)
+	sizer.AddStringVector(f.Aliases)
+	sizer.EndTable(parent)
+}
+
+// write writes an [Entry] where its parent's writer is, after the field or
+// vector that holds it
+func (f *EntryFields) write(writer *tafla.TableWriter) {
+	parent := writer.StartTable(2)
+	writer.SetString(0, f.Key)
+	writer.SetStringVector(1, f.Aliases)
+	writer.EndTable(parent)
+}
+
+// EntryVector is a vector of [Entry]s, which reads each item when it's asked
+// for.
+type EntryVector struct {
+	vector tafla.Vector
+}
+
+// Len returns the number of items.
+func (v EntryVector) Len() int {
+	return v.vector.Len()
+}
+
+// Get reads item index, without reading the others. It fails with a
+// [*tafla.DecodeError] if the item lies outside the bytes, and panics if index
+// is out of range, as indexing a slice does.
+func (v EntryVector) Get(index int) (Entry, error) {
+	bytes, err := v.vector.GetInPlace(index)
+	return Entry{bytes: bytes}, err
+}
+
+// All returns an iterator over the items, which reads each item's end once. An
+// item that fails doesn't keep the others from being read.
+func (v EntryVector) All() iter.Seq2[Entry, error] {
+	return func(yield func(Entry, error) bool) {
+		for bytes, err := range v.vector.ItemsInPlace() {
+			if !yield(Entry{bytes: bytes}, err) {
+				return
+			}
+		}
+	}
+}
+
+// A vector of strings in a message of `uint16` offsets, before a scalar
+type NarrowStringVectors struct {
+	bytes []byte
+}
+
+// NewNarrowStringVectors reads a [NarrowStringVectors] from bytes, which it
+// keeps rather than copying them.
+func NewNarrowStringVectors(bytes []byte) NarrowStringVectors {
+	return NarrowStringVectors{bytes: bytes}
+}
+
+// layout returns the layout of a [NarrowStringVectors], which its getters read
+// it in
+func (NarrowStringVectors) layout() tafla.TableLayout {
+	return tafla.TableLayout{}.WithOffsetType(tafla.Uint16)
+}
+
+// Names views the vector's strings, reading each one when it's asked for. It
+// fails with a [*tafla.DecodeError] if the field, or the vector's count or the
+// ends of its strings, lie outside the bytes. A string fails with one when it's
+// read if it lies outside the bytes or isn't valid UTF-8.
+func (t NarrowStringVectors) Names() (tafla.StringVector, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := reader.RootOffset(0)
+	if err != nil {
+		return tafla.StringVector{}, err
+	}
+	return reader.GetStringVector(position)
+}
+
+// Count fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t NarrowStringVectors) Count() (uint8, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := reader.RootOffset(1)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint8(position)
+}
+
+// Fields reads every field of a [NarrowStringVectors] at once, into the
+// [NarrowStringVectorsFields] that it's written from, as its getters read them,
+// and its nested tables and the items of its vectors as their Fields() reads
+// them. Its strings, and its arrays and arrays of structs as their Slice()
+// returns them, share the bytes. It fails with a [*tafla.DecodeError] if a
+// field lies outside the bytes.
+func (t NarrowStringVectors) Fields() (NarrowStringVectorsFields, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	var fields NarrowStringVectorsFields
+
+	position, err := reader.RootOffset(0)
+	if err != nil {
+		return NarrowStringVectorsFields{}, err
+	}
+	strings0, err := reader.GetStringVector(position)
+	if err != nil {
+		return NarrowStringVectorsFields{}, err
+	}
+	if fields.Names, err = strings0.Strings(); err != nil {
+		return NarrowStringVectorsFields{}, err
+	}
+
+	if position, err = reader.RootOffset(1); err != nil {
+		return NarrowStringVectorsFields{}, err
+	}
+	if fields.Count, err = reader.GetUint8(position); err != nil {
+		return NarrowStringVectorsFields{}, err
+	}
+
+	return fields, nil
+}
+
+// NarrowStringVectorsFields are the fields of a [NarrowStringVectors], to
+// write.
+type NarrowStringVectorsFields struct {
+	Names []string
+	Count uint8
+}
+
+// MarshalBinary writes a [NarrowStringVectors] with every field. It fails with
+// a [*tafla.BuildError] if it's longer than its offset type, uint16, addresses.
+func (f NarrowStringVectorsFields) MarshalBinary() ([]byte, error) {
+	return f.AppendBinary(nil)
+}
+
+// AppendBinary appends a [NarrowStringVectors] with every field to bytes, as
+// [NarrowStringVectorsFields.MarshalBinary] writes it, and returns the extended
+// bytes, into their capacity when they have room. It fails as MarshalBinary
+// does.
+func (f NarrowStringVectorsFields) AppendBinary(bytes []byte) ([]byte, error) {
+	sizer, err := tafla.NewTableSizer(2, NarrowStringVectors{}.layout())
+	if err != nil {
+		return nil, err
+	}
+	sizer.AddStringVector(f.Names)
+	sizer.AddUint8()
+
+	writer, err := sizer.AppendWriter(bytes)
+	if err != nil {
+		return nil, err
+	}
+	writer.SetStringVector(0, f.Names)
+	writer.SetUint8(1, f.Count)
+
+	return writer.Bytes()
+}
+
 // Structs as fields, in place like scalars, and in arrays, which are aligned
 // to their structs' largest scalar
 type Structs struct {

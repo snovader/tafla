@@ -19,12 +19,16 @@ import (
 // read as a table of its own: a field from its position to the end of its
 // parent, since its length isn't written, and a vector item from the bytes
 // that Vector.Items returns. The scalars of structs are read at their
-// offsets in the bytes that GetStruct and GetStructArray return.
+// offsets in the bytes that GetStruct and GetStructArray return. A vector of
+// strings is read whole with StringVector.Strings, and each of its strings
+// from its ends with StringVector.Get, which must find the same strings, and
+// fail where Strings fails.
 
 // ErrMismatch is the error of bytes that read without a decode error, but
 // otherwise than their description: a sized table whose header holds
 // another length, a vector of another number of items, or one whose items
-// Get finds otherwise than iterating does.
+// Get finds otherwise than iterating does, or whose strings it finds
+// otherwise than reading every string does.
 var ErrMismatch = errors.New("the bytes don't read as described")
 
 // ReadTable reads a table from its own bytes, as the root or a vector item is
@@ -159,6 +163,8 @@ func (r descriptionReader) readField(position int, field Field) (Field, error) {
 	case String:
 		value, err := reader.GetString(position)
 		return String(value), err
+	case StringVector:
+		return r.readStringVector(position)
 	case Struct:
 		types := StructTypes(field)
 		bytes, err := reader.GetStruct(position, StructSize(types))
@@ -285,6 +291,41 @@ func sameItem(a, b item) bool {
 	}
 
 	return len(a.bytes) == len(b.bytes) && (len(a.bytes) == 0 || &a.bytes[0] == &b.bytes[0])
+}
+
+// readStringVector reads every string of a vector of strings, after checking
+// that finding each from its ends alone finds what reading every string
+// finds, and fails where reading any of them fails, with the error of the
+// first that does
+func (r descriptionReader) readStringVector(position int) (Field, error) {
+	vector, err := r.reader.GetStringVector(position)
+	if err != nil {
+		return nil, err
+	}
+
+	strings, err := vector.Strings()
+	if len(strings) != vector.Len() && err == nil {
+		return nil, fmt.Errorf("%w: a vector of %d strings reads %d", ErrMismatch, vector.Len(), len(strings))
+	}
+
+	var firstErr error
+	for index := range vector.Len() {
+		value, valueErr := vector.Get(index)
+		if valueErr != nil && firstErr == nil {
+			firstErr = valueErr
+		}
+		if valueErr == nil && err == nil && value != strings[index] {
+			return nil, fmt.Errorf("%w: Get finds string %d otherwise than Strings", ErrMismatch, index)
+		}
+	}
+	if !sameItem(item{err: err}, item{err: firstErr}) {
+		return nil, fmt.Errorf("%w: Get finds the strings failing with %v where Strings fails with %v", ErrMismatch, firstErr, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return StringVector(strings), nil
 }
 
 // readsInPlace reports whether a nested table is read in place: it has no

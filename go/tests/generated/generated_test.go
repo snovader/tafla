@@ -139,6 +139,10 @@ var messages = []message{
 	unversioned[alltypes.Reserved, alltypes.ReservedFields]("all_types.Reserved", tafla.Uint32, false, alltypes.NewReserved),
 	unversioned[alltypes.Structs, alltypes.StructsFields]("all_types.Structs", tafla.Uint32, false, alltypes.NewStructs),
 	unversioned[alltypes.Enums, alltypes.EnumsFields]("all_types.Enums", tafla.Uint32, false, alltypes.NewEnums),
+	unversioned[alltypes.StringVectors, alltypes.StringVectorsFields](
+		"all_types.StringVectors", tafla.Uint32, false, alltypes.NewStringVectors),
+	unversioned[alltypes.NarrowStringVectors, alltypes.NarrowStringVectorsFields](
+		"all_types.NarrowStringVectors", tafla.Uint16, false, alltypes.NewNarrowStringVectors),
 
 	// Fixed fields, which the generated code lays out itself. Overflow, which
 	// is always too long, has a test of its own.

@@ -248,6 +248,12 @@ pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
         directory: "java/benchmarks/src/main/java",
         package: Some("io.github.snovader.tafla.benchmarks.generated.lists"),
     },
+    BenchmarkSchema {
+        target: "go",
+        schema: "go/benchmarks/lists.tafla",
+        directory: "go/benchmarks/generated/lists",
+        package: None,
+    },
 ];
 
 impl BenchmarkSchema {

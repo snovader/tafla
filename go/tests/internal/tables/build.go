@@ -87,6 +87,7 @@ type Target interface {
 	SetFloat32Array(values []float32) error
 	SetFloat64Array(values []float64) error
 	SetString(value string) error
+	SetStringVector(values []string) error
 	SetStruct(bytes []byte) error
 	SetStructArray(bytes []byte, size int, alignment tafla.Alignment) error
 	SetTable(table tafla.NestedTable) error
@@ -155,6 +156,8 @@ func set(target Target, field Field, inPlace func(Nested) bool) error {
 		return target.SetFloat64Array(value)
 	case String:
 		return target.SetString(string(value))
+	case StringVector:
+		return target.SetStringVector(value)
 	case Struct:
 		return target.SetStruct(StructBytes(value))
 	case StructArray:

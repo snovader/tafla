@@ -38,6 +38,15 @@ first commits, for code built from its source before the release.
   in place, where they're aligned to the struct in memory on a little-endian
   host, for the code that tafla-gen generates, which calls it only for
   structs that lie in memory as their bytes do.
+- Vectors of strings, which `SPEC.md` adds to the format, and which a
+  schema declares as `[string]`. `TableReader.GetStringVector()` returns a
+  `StringVector`, whose `Get()` reads one string from its ends without
+  reading the others, and whose `Strings()` reads every string into a
+  `[]string`, checking them as one run of UTF-8. Both return strings that
+  share the bytes, and fail with a `*DecodeError` for a string that isn't
+  valid UTF-8 on its own. `TableBuilder.SetStringVector()`,
+  `Item.SetStringVector()`, `TableSizer.AddStringVector()` and
+  `TableWriter.SetStringVector()` write one from a `[]string`.
 
 ### Changed
 
