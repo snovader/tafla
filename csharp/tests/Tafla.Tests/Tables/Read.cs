@@ -13,8 +13,9 @@ public sealed class MismatchException(string message) : Exception(message);
 /// <summary>
 /// The error of a reader that reads the same bytes two ways and disagrees with itself: a vector whose
 /// items, read in order, are more or fewer than its count, or whose item <see cref="Vector.Get"/>
-/// finds otherwise than reading the items in order does. No bytes cause it, so it's a bug of the
-/// reader.
+/// finds otherwise than reading the items in order does, or a vector of strings whose strings, read
+/// each from its ends, in order or all at once, differ, or fail otherwise. No bytes cause it, so it's
+/// a bug of the reader.
 /// </summary>
 public sealed class InconsistentReadException(string message) : Exception(message);
 
@@ -72,6 +73,7 @@ public static class Read
             Bool => new Bool(reader.GetUInt8(position) != 0),
             ArrayField array => Scalars.ReadArray(reader, array.Type, position),
             StringField => new StringField(reader.GetString(position)),
+            StringVectorField => new StringVectorField(StringVector(reader.GetStringVector(position))),
             StructField value => new StructField(Struct(reader, position, value)),
             StructArray array => StructArray(reader, position, array),
             TableField table => new TableField(new Nested(table.Nested.From, NestedTable(reader, position, table.Nested.Table)), table.Alignment),
@@ -223,13 +225,113 @@ public static class Read
     {
         if (a.Error is not null || b.Error is not null)
         {
-            return a.Error is { } x
-                && b.Error is { } y
-                && (x.Kind, x.Position, x.ByteLength, x.Available, x.End) == (y.Kind, y.Position, y.ByteLength, y.Available, y.End);
+            return a.Error is { } x && b.Error is { } y && SameError(x, y);
         }
 
         return a.Length == b.Length && (a.Length == 0 || a.Start == b.Start);
     }
+
+    /// <summary>A string of a vector of strings, or the error of reading it, since a lambda can't capture the vector</summary>
+    private readonly record struct Text(string? Value, DecodeException? Error);
+
+    /// <summary>
+    /// Reads every string of a vector of strings, after checking that each string found from its ends
+    /// alone, each read in order, and all of them read at once, are the same strings, or that they
+    /// fail alike: reading every string fails with the error of the first string that fails
+    /// </summary>
+    private static Seq<string> StringVector(StringVector vector)
+    {
+        var found = new List<Text>();
+        for (var index = 0; index < vector.Count; index++)
+        {
+            found.Add(FindString(vector, index));
+        }
+
+        var inOrder = Strings(vector.GetEnumerator());
+        if (inOrder.Count != vector.Count)
+        {
+            throw new InconsistentReadException($"A vector of {vector.Count} strings reads {inOrder.Count} in order");
+        }
+
+        for (var index = 0; index < vector.Count; index++)
+        {
+            if (!SameText(found[index], inOrder[index]))
+            {
+                throw new InconsistentReadException($"The indexer reads string {index} otherwise than reading in order does");
+            }
+        }
+
+        var all = AllStrings(vector);
+        var error = found.Select(text => text.Error).FirstOrDefault(error => error is not null);
+        var same = error is null
+            ? all.Values is { } values && values.SequenceEqual(found.Select(text => text.Value))
+            : all.Error is { } allError && SameError(allError, error);
+        if (!same)
+        {
+            throw new InconsistentReadException("Reading every string reads otherwise than reading each does");
+        }
+
+        if (error is not null)
+        {
+            throw error;
+        }
+
+        return new Seq<string>(found.Select(text => text.Value!));
+    }
+
+    private static Text FindString(StringVector vector, int index)
+    {
+        try
+        {
+            return new Text(vector[index], null);
+        }
+        catch (DecodeException error)
+        {
+            return new Text(null, error);
+        }
+    }
+
+    /// <summary>Reads the strings in order, each string or its error, as the enumerator moves on past a string that fails</summary>
+    private static List<Text> Strings(StringVector.Enumerator enumerator)
+    {
+        var all = new List<Text>();
+        while (true)
+        {
+            try
+            {
+                if (!enumerator.MoveNext())
+                {
+                    return all;
+                }
+
+                all.Add(new Text(enumerator.Current, null));
+            }
+            catch (DecodeException error)
+            {
+                all.Add(new Text(null, error));
+            }
+        }
+    }
+
+    private static (string[]? Values, DecodeException? Error) AllStrings(StringVector vector)
+    {
+        try
+        {
+            return (vector.ToArray(), null);
+        }
+        catch (DecodeException error)
+        {
+            return (null, error);
+        }
+    }
+
+    private static bool SameText(Text a, Text b) =>
+        a.Error is not null || b.Error is not null
+            ? a.Error is { } x && b.Error is { } y && SameError(x, y)
+            : a.Value == b.Value;
+
+    private static bool SameError(DecodeException x, DecodeException y) =>
+        (x.Kind, x.Position, x.ByteLength, x.Available, x.End) == (y.Kind, y.Position, y.ByteLength, y.Available, y.End);
 
     /// <summary>Whether a nested table is read in place: it has no header, and its parent's offset type</summary>
     private static bool ReadsInPlace(TableReader reader, Table table) =>

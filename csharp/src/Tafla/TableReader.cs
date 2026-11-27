@@ -21,7 +21,7 @@ namespace Tafla;
 /// Arrays, structs and vector items are read in place, as spans of the bytes rather than copies, so
 /// they show changes made to the bytes later. On a big-endian host, and on 32-bit Arm, arrays of
 /// elements wider than a byte are copied instead, since their bytes can't be read in place there. A
-/// string is decoded into a new <see cref="string"/>.
+/// string, and each string of a vector of strings, is decoded into a new <see cref="string"/>.
 /// </para>
 /// <para>
 /// A <see cref="TableReader"/> is a <c>ref struct</c> over a span of the bytes, which can be those of
@@ -329,6 +329,40 @@ public readonly ref struct TableReader
         Range(bytes, (long)position + width, (long)count * width);
 
         return new Vector(_bytes, position, (int)count, _layout.OffsetType);
+    }
+
+    /// <summary>
+    /// Reads the vector of strings at <paramref name="position"/>, after checking that its count and the
+    /// ends of its strings lie within the bytes, as <see cref="GetVector"/> checks a vector's. Each
+    /// string is read, and checked as UTF-8, when it's asked for.
+    /// </summary>
+    /// <exception cref="DecodeException">The count or the ends don't lie within the bytes.</exception>
+    public StringVector GetStringVector(int position) => new(GetVector(position));
+
+    /// <summary>
+    /// Decodes <paramref name="bytes"/>, a string of a vector of strings that starts at
+    /// <paramref name="position"/>, which must be valid UTF-8, into a new <see cref="string"/>, as
+    /// <see cref="GetString"/> decodes a string's bytes after its count
+    /// </summary>
+    /// <remarks>
+    /// GetString keeps its own copy rather than calling this, which would change the code that the
+    /// generated getters inline or call, and needs a measurement of them
+    /// </remarks>
+    internal static string DecodeString(ReadOnlySpan<byte> bytes, int position)
+    {
+        try
+        {
+            if (bytes.Length > MaxStringLength && Utf8.GetCharCount(bytes) > MaxStringLength)
+            {
+                throw DecodeException.StringTooLong(position, bytes.Length);
+            }
+
+            return Utf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw DecodeException.InvalidUtf8(position, exception);
+        }
     }
 
     /// <summary>Returns the <paramref name="size"/> bytes of a scalar at <paramref name="position"/>.</summary>
