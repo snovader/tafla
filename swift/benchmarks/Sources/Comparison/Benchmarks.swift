@@ -1,13 +1,7 @@
 import Codecs
 import Harness
+import Reporting
 import Workloads
-
-/// A row of the report: a workload's operation, and each library's variant of
-/// it
-struct Benchmark {
-    let name: String
-    var variants: [Variant]
-}
 
 /// Every benchmark, in the order that the report lists them, each with the
 /// variants of the libraries in the order that it lists them. Adding a codec
@@ -154,11 +148,6 @@ struct Benchmarks {
     /// Adds a variant to the benchmark of that name, which the first variant
     /// of the name appends
     private mutating func add(_ benchmark: String, _ variant: String, _ loop: @escaping (Int) throws -> Void) {
-        let variant = Variant(name: variant, loop: loop)
-        if let index = all.firstIndex(where: { $0.name == benchmark }) {
-            all[index].variants.append(variant)
-        } else {
-            all.append(Benchmark(name: benchmark, variants: [variant]))
-        }
+        all.add(benchmark, variant, loop)
     }
 }

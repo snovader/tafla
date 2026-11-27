@@ -224,10 +224,11 @@ jobs:
       - name: Run formatting check
         run: |
           swift format lint --strict --recursive Package.swift Tests Sources/Workloads Sources/Codecs \
-              Sources/Harness Sources/Comparison Sources/Encoding Sources/GeneratedTafla
+              Sources/Harness Sources/Reporting Sources/Comparison Sources/Lists Sources/Encoding \
+              Sources/GeneratedTafla Sources/GeneratedLists
 
-      # The workloads' values, and that every codec reads back what it wrote,
-      # built as the comparison is
+      # The workloads' values and the lists' strings, and that every codec
+      # reads back what it wrote, built as the comparison is
       - name: Run tests optimized
         run: swift test -c release
 
