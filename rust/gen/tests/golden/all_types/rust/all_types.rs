@@ -289,7 +289,7 @@ impl ScalarsFields {
     }
 }
 
-/// An array of every scalar type but bool, which has none
+/// An array of every scalar type, and of bools, which are bytes of 0 and 1
 #[derive(Clone, Copy, Debug)]
 pub struct Arrays<'a> {
     bytes: &'a [u8],
@@ -392,6 +392,17 @@ impl<'a> Arrays<'a> {
         let position = reader.root_offset(9)?;
         reader.get_f64_array(position)
     }
+
+    /// A byte for each bool, which is true where it isn't 0
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn bool(&self) -> Result<&'a [u8], DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(10)?;
+        reader.get_u8_array(position)
+    }
 }
 
 /// The fields of an [`Arrays`], to write
@@ -407,6 +418,7 @@ pub struct ArraysFields<'a> {
     pub uint64: &'a [u64],
     pub float32: &'a [f32],
     pub float64: &'a [f64],
+    pub bool: &'a [bool],
 }
 
 impl ArraysFields<'_> {
@@ -416,7 +428,7 @@ impl ArraysFields<'_> {
     ///
     /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
     pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
-        let mut sizer = TableSizer::new(10, Arrays::LAYOUT)?;
+        let mut sizer = TableSizer::new(11, Arrays::LAYOUT)?;
         sizer.add_i8_array(self.int8.len());
         sizer.add_u8_array(self.uint8.len());
         sizer.add_i16_array(self.int16.len());
@@ -427,6 +439,7 @@ impl ArraysFields<'_> {
         sizer.add_u64_array(self.uint64.len());
         sizer.add_f32_array(self.float32.len());
         sizer.add_f64_array(self.float64.len());
+        sizer.add_bool_array(self.bool.len());
 
         let mut writer = sizer.writer()?;
         writer.set_i8_array(0, self.int8);
@@ -439,6 +452,7 @@ impl ArraysFields<'_> {
         writer.set_u64_array(7, self.uint64);
         writer.set_f32_array(8, self.float32);
         writer.set_f64_array(9, self.float64);
+        writer.set_bool_array(10, self.bool);
 
         writer.into_bytes()
     }
