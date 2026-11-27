@@ -82,7 +82,25 @@ getter returns the runtime's view of the strings, which reads one string
 from its ends, without reading the others, or every string, and the
 generated code writes it from a list of strings:
 
-<!-- STRING_VECTOR_TABLE -->
+| Target                 | Getter                                                                                    | Every string                                     | Written from                         |
+| ---------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------ |
+| TypeScript, JavaScript | `StringVector`, with `length()` and `get(i)`                                              | `toArray()`, and a `string[]` in `fields()`      | `readonly string[]`                  |
+| Python                 | `StringVector`, with `len()` and `view[i]`                                                | `tolist()`, and a `list[str]` in `fields()`      | `Sequence[str]`                      |
+| Java                   | `StringVector`, a random-access, unmodifiable `List<String>`                              | Its iterator, which reads each string's end once | `List<String>`                       |
+| Rust                   | `Result<StringVector<'a>, DecodeError>`, with `len()`, `get(i)` and `iter()`              | `to_vec()`, a `Vec<&'a str>`                     | `&'a [&'a str]`                      |
+| Go                     | `(tafla.StringVector, error)`, with `Len()` and `Get(i)`                                  | `Strings()`, and a `[]string` in `Fields()`      | `[]string`                           |
+| C++                    | `::tafla::StringVector`, with `size()`, `get(i)` and iteration                            | `to_vector()`, a `std::vector<std::string_view>` | `std::span<const std::string_view>`  |
+| Swift                  | `StringVector`, a nonescapable view that throws, with `count` and a throwing subscript    | `Array(view)`, a `[String]`                      | `[String]`                           |
+| C#                     | `global::Tafla.StringVector`, a `ref struct` with `Count`, an indexer and an enumerator    | `ToArray()`, a `string[]`                        | `ReadOnlyMemory<string>`             |
+
+Reading every string returns what reading each string returns, and fails
+where any of them fails. Rust, Go and C++ check the strings' run of bytes
+as UTF-8 once and then that each end falls between characters, TypeScript
+and Python decode runs of ASCII at once, and the others decode each string
+on its own. The strings borrow the bytes in Rust, Go and C++, and are
+copies elsewhere. As with strings and arrays, `fields()` doesn't read a
+table whole when its vector's items hold a `[string]`, since corrupted ends
+could point every item at the same vector.
 
 An enum gives its integer type after its name, and an integer to each of
 its values:
@@ -1183,7 +1201,16 @@ The suites of lists of strings, which compare vectors of strings with
 vectors of tables of one string each, have a schema of their own too, and
 `LISTS_SCHEMAS` lists where:
 
-<!-- LISTS_SCHEMA_TABLE -->
+| Target     | Schema and generated code, from the root of the repository                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `typescript/benchmarks/strings/lists/lists.tafla`, `typescript/benchmarks/strings/lists/generated/`                  |
+| Python     | `python/benchmarks/src/tafla_benchmarks/generated/lists.tafla`, `python/benchmarks/src/tafla_benchmarks/generated/lists/` |
+| Java       | `java/benchmarks/src/main/tafla/lists.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/lists/` |
+| Rust       | `rust/benchmarks/lists.tafla`, `rust/benchmarks/src/lists/generated/`                                                |
+| Go         | `go/benchmarks/lists.tafla`, `go/benchmarks/generated/lists/`                                                        |
+| C++        | `cpp/benchmarks/lists.tafla`, `cpp/benchmarks/generated/lists/`                                                      |
+| Swift      | `swift/benchmarks/lists.tafla`, `swift/benchmarks/Sources/GeneratedLists/`, a module                                 |
+| C#         | `csharp/benchmarks/lists.tafla`, `csharp/benchmarks/Tafla.Benchmarks/Generated/Lists/`                               |
 
 After a change to the generator or the schemas, rewrite the golden files,
 the suites' generated code and the expected errors, review their diff, and
