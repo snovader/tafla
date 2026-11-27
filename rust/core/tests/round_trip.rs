@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use common::{at_byte_offset, read::read_table, strategy};
 use proptest::prelude::*;
-use tafla::{Alignment, TableBuilder, TableLayout, TableReader};
+use tafla::{Alignment, TableBuilder, TableLayout, TableReader, TableSizer};
 
 proptest! {
     #![proptest_config(common::config())]
@@ -54,6 +54,51 @@ fn test_round_trip_owned_values() {
         vector.iter().collect::<Vec<_>>(),
         [Ok(&[1, 2][..]), Ok(&[3])]
     );
+}
+
+#[test]
+fn test_round_trip_bool_arrays() {
+    let mut builder = TableBuilder::new(3, TableLayout::DEFAULT).unwrap();
+    builder.set_bool_array(&[true, false, true]).unwrap();
+    builder.set_bool_array(Vec::new()).unwrap();
+    builder.set_bool_array(vec![false]).unwrap();
+    let bytes = builder.to_bytes().unwrap();
+
+    // Each is a uint8 array of 1 and 0, unpadded, after the three offsets:
+    // a count of 3 and its bytes at 12, of 0 at 19, and of 1 at 23
+    let arrays = [3, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0];
+    assert_eq!(bytes[12..], arrays);
+
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+    let at = |index| reader.root_offset(index).unwrap();
+    assert_eq!(reader.get_bool_array(at(0)), Ok(vec![true, false, true]));
+    assert_eq!(reader.get_bool_array(at(1)), Ok(vec![]));
+    assert_eq!(reader.get_bool_array(at(2)), Ok(vec![false]));
+    assert_eq!(reader.get_u8_array(at(0)), Ok(&[1, 0, 1][..]));
+
+    let mut sizer = TableSizer::new(3, TableLayout::DEFAULT).unwrap();
+    sizer.add_bool_array(3);
+    sizer.add_bool_array(0);
+    sizer.add_bool_array(1);
+    let mut writer = sizer.writer().unwrap();
+    writer.set_bool_array(0, &[true, false, true]);
+    writer.set_bool_array(1, &[]);
+    writer.set_bool_array(2, &[false]);
+    assert_eq!(writer.into_bytes(), Ok(bytes));
+}
+
+/// Bytes other than 0 and 1, which no writer writes, read as true, as a
+/// bool field's do
+#[test]
+fn test_bool_arrays_read_every_byte_but_0_as_true() {
+    let bytes = [5, 0, 0, 0, 2, 0, 0x80, 0xff, 1];
+    let reader = TableReader::new(&bytes, TableLayout::DEFAULT);
+
+    assert_eq!(
+        reader.get_bool_array(0),
+        Ok(vec![true, false, true, true, true])
+    );
+    assert_eq!(reader.get_u8_array(0), Ok(&bytes[4..]));
 }
 
 #[test]

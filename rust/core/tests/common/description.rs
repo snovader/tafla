@@ -51,6 +51,9 @@ pub enum Field {
     U64Array(Vec<u64>),
     F32Array(Vec<f32>),
     F64Array(Vec<f64>),
+    /// An array of bools, which is the uint8 array of their bytes, 1 and 0,
+    /// and is read as true where a byte isn't 0
+    BoolArray(Vec<bool>),
     String(String),
     /// A struct of scalar fields, one after another
     Struct(Vec<Self>),
@@ -241,6 +244,7 @@ impl PartialEq for Field {
             (Self::U32Array(a), Self::U32Array(b)) => a == b,
             (Self::I64Array(a), Self::I64Array(b)) => a == b,
             (Self::U64Array(a), Self::U64Array(b)) => a == b,
+            (Self::BoolArray(a), Self::BoolArray(b)) => a == b,
             (Self::String(a), Self::String(b)) => a == b,
             (Self::Struct(a), Self::Struct(b)) => a == b,
             (

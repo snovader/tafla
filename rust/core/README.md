@@ -105,6 +105,11 @@ and then the fields in the order they were set:
   start, and arrays of structs to the size of their largest scalar.
   `set_table()` aligns a nested table to the largest alignment of its arrays
   when given its builder, and to 4 bytes by default when given bytes.
+- An array of bools is a `u8` array of 1 and 0, which `set_bool_array()`
+  writes from bools and `get_bool_array()` reads into a new `Vec<bool>`,
+  true where a byte isn't 0. `get_u8_array()` reads its bytes in place,
+  which aren't viewed as bools, since a `bool` of any byte but 0 or 1 is
+  undefined behavior.
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector::get()` finds any
   item from two ends without reading the others. An item without a header

@@ -202,7 +202,8 @@ fn value(limits: Limits) -> BoxedStrategy<Field> {
         1 => vec(int64(), elements.clone()).prop_map(Field::I64Array),
         1 => vec(uint64(), elements.clone()).prop_map(Field::U64Array),
         1 => vec(float32(), elements.clone()).prop_map(Field::F32Array),
-        1 => vec(float64(), elements).prop_map(Field::F64Array),
+        1 => vec(float64(), elements.clone()).prop_map(Field::F64Array),
+        1 => vec(any::<bool>(), elements).prop_map(Field::BoolArray),
         // Each as likely as three types of number
         3 => string(limits.characters).prop_map(Field::String),
         3 => struct_field(),
@@ -431,6 +432,7 @@ fn longest(field: &Field, width: u64) -> u64 {
         Field::I64Array(values) => array(values.len(), 8),
         Field::U64Array(values) => array(values.len(), 8),
         Field::F64Array(values) => array(values.len(), 8),
+        Field::BoolArray(values) => array(values.len(), 1),
         Field::String(string) => width + string.len() as u64,
         Field::Struct(scalars) => struct_size(struct_types(scalars)) as u64,
         Field::StructArray { types, items } => {

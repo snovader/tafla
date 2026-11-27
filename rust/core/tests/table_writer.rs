@@ -383,6 +383,10 @@ enum Call {
         index: usize,
         count: usize,
     },
+    BoolArray {
+        index: usize,
+        count: usize,
+    },
     Str {
         index: usize,
         length: usize,
@@ -429,6 +433,7 @@ fn call() -> impl Strategy<Value = Call> {
     prop_oneof![
         small().prop_map(|index| Call::U8 { index }),
         (small(), 0..8_usize).prop_map(|(index, count)| Call::F64Array { index, count }),
+        (small(), 0..8_usize).prop_map(|(index, count)| Call::BoolArray { index, count }),
         (small(), 0..8_usize).prop_map(|(index, length)| Call::Str { index, length }),
         (small(), 0..12_usize, 0..4_usize).prop_map(|(index, length, size)| Call::StructArray {
             index,
@@ -455,6 +460,7 @@ impl Call {
         match self {
             Self::U8 { index } => writer.set_u8(index, 1),
             Self::F64Array { index, count } => writer.set_f64_array(index, &vec![-0.0; count]),
+            Self::BoolArray { index, count } => writer.set_bool_array(index, &vec![true; count]),
             Self::Str { index, length } => writer.set_str(index, &"🦀".repeat(length)),
             Self::StructArray {
                 index,

@@ -181,6 +181,20 @@ impl<'a> TableBuilder<'a> {
         set_f32_array(f32) => F32, set_f64_array(f64) => F64
     );
 
+    /// Sets an array field of bools, written as a `u8` array of 1 for each
+    /// true value and 0 for each false one, from a slice that the builder
+    /// borrows or a `Vec` that it owns until the table is written
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    #[inline]
+    pub fn set_bool_array(&mut self, values: impl Into<Cow<'a, [bool]>>) -> Result<(), BuildError> {
+        self.add_field(Field::Array(Array::Bool(values.into())))
+    }
+
     /// Sets a string field, from a `&str` that the builder borrows or a
     /// `String` that it owns until the table is written
     ///
@@ -758,6 +772,7 @@ impl<'a> InPlaceTable<'_, 'a> {
         set_u64_array(values: impl Into<Cow<'a, [u64]>>),
         set_f32_array(values: impl Into<Cow<'a, [f32]>>),
         set_f64_array(values: impl Into<Cow<'a, [f64]>>),
+        set_bool_array(values: impl Into<Cow<'a, [bool]>>),
         set_str(string: impl Into<Cow<'a, str>>),
         set_struct(bytes: impl Into<Cow<'a, [u8]>>),
         set_struct_array(bytes: impl Into<Cow<'a, [u8]>>, size: usize, alignment: Alignment),
@@ -1077,12 +1092,19 @@ enum Array<'a> {
     U64(Cow<'a, [u64]>),
     F32(Cow<'a, [f32]>),
     F64(Cow<'a, [f64]>),
+    /// Bools, which the writer writes as bytes of 1 and 0
+    Bool(Cow<'a, [bool]>),
 }
 
 /// Evaluates `$expression` with `$values` bound to the elements of `$array`,
-/// whatever their type
+/// whatever their type, or `$bool_expression` with `$bools` bound to an
+/// array of bools, which aren't an `Element`
 macro_rules! with_elements {
-    ($array:expr, $values:ident => $expression:expr) => {
+    (
+        $array:expr,
+        $values:ident => $expression:expr,
+        $bools:pat => $bool_expression:expr $(,)?
+    ) => {
         match $array {
             Array::I8($values) => $expression,
             Array::U8($values) => $expression,
@@ -1094,21 +1116,26 @@ macro_rules! with_elements {
             Array::U64($values) => $expression,
             Array::F32($values) => $expression,
             Array::F64($values) => $expression,
+            Array::Bool($bools) => $bool_expression,
         }
     };
 }
 
 impl Array<'_> {
     fn alignment(&self) -> Alignment {
-        with_elements!(self, values => alignment_of(values))
+        with_elements!(self, values => alignment_of(values), _ => Alignment::One)
     }
 
     fn byte_length(&self) -> usize {
-        with_elements!(self, values => size_of_val::<[_]>(values))
+        with_elements!(self, values => size_of_val::<[_]>(values), bools => bools.len())
     }
 
     fn write(&self, writer: &mut TableWriter, index: usize) {
-        with_elements!(self, values => writer.set_elements(index, values));
+        with_elements!(
+            self,
+            values => writer.set_elements(index, values),
+            bools => writer.set_bool_array(index, bools),
+        );
     }
 }
 
