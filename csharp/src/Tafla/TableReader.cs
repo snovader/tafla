@@ -304,7 +304,7 @@ public readonly ref struct TableReader
         var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
         if (status != OperationStatus.Done)
         {
-            throw DecodeException.InvalidUtf8(position);
+            throw InvalidUtf8(bytes, position);
         }
 
         return new string(chars[..length]);
@@ -329,7 +329,7 @@ public readonly ref struct TableReader
         var value = status == OperationStatus.Done ? new string(chars, 0, length) : null;
         pool.Return(chars);
 
-        return value ?? throw DecodeException.InvalidUtf8(position);
+        return value ?? throw InvalidUtf8(bytes, position);
     }
 
     /// <summary>Decodes a string of any length, whose chars the BCL counts and then decodes.</summary>
@@ -350,6 +350,27 @@ public readonly ref struct TableReader
         {
             throw DecodeException.InvalidUtf8(position, exception);
         }
+    }
+
+    /// <summary>
+    /// The decode error for the string at <paramref name="position"/>, whose <paramref name="bytes"/>
+    /// a one-pass decode found invalid, with the strict decoder's exception within it, as a long
+    /// string's has, which names the bytes that it couldn't decode and where. Only a read that fails
+    /// decodes them again for it.
+    /// </summary>
+    private static DecodeException InvalidUtf8(ReadOnlySpan<byte> bytes, int position)
+    {
+        try
+        {
+            StrictUtf8.GetCharCount(bytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            return DecodeException.InvalidUtf8(position, exception);
+        }
+
+        // Utf8.ToUtf16 and the strict decoder accept the same UTF-8, so this is never reached
+        return DecodeException.InvalidUtf8(position);
     }
 
     /// <summary>

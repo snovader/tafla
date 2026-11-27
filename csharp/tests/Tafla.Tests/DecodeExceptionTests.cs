@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using CsCheck;
 using Tafla.Tests.Tables;
 
@@ -250,7 +251,10 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => new TableReader(bytes).FieldOffset(int.MaxValue, 0));
     }
 
-    /// <summary>Invalid UTF-8 throws in a string of any length, short or long, after any valid UTF-8</summary>
+    /// <summary>
+    /// Invalid UTF-8 throws in a string of any length, short or long, after any valid UTF-8, with the
+    /// BCL's exception within it, which names the bytes that it couldn't decode
+    /// </summary>
     [Fact]
     public void RejectsInvalidUtf8()
     {
@@ -277,6 +281,7 @@ public class DecodeExceptionTests
                 var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
                 Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
                 Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+                Assert.IsType<DecoderFallbackException>(error.InnerException);
             }
         }
     }
