@@ -680,13 +680,16 @@ Four rounds on 2026-11-27 and 28, on the Apple M2 Pro with 32 GB in macOS
 0.8.2, flatbuffers 25.12.19, prost 0.14.6, rmp-serde 1.3.1, and rkyv 0.8.18
 with bytecheck 0.8.3 and simdutf8 0.1.5. Each round took 9 minutes, and they
 ran each group's codecs in alternating order: forward, reverse, forward,
-reverse. The 1-minute load average was between 1.31 and 2.83 at the rounds'
-starts and ends, on the 10 cores, and below 3 as each started. The four
-rounds' fastest samples were within 5% of each other for 286 of the 308
-benchmarks, and within 7.3% for all of them, and the median of the four
+reverse. The six shapes that take the C++ suite's seeds, and the two of
+1,023 characters, were timed again on 2026-11-28 with the strings that they
+now hold, in four rounds of their own of 3 minutes each, in the same order.
+The 1-minute load average was between 1.31 and 2.83 at the rounds' starts and
+ends, on the 10 cores, and below 3 as each started. The four
+rounds' fastest samples were within 5% of each other for 288 of the 308
+benchmarks, and within 10.3% for all of them, and the median of the four
 rounds' samples was within 5% of the fastest for 276, and at most 10.9% above
 it. tafla's A/A pair was within 2.5% of tafla's in every benchmark, and
-within 2% in 41 of the 44. Some rows moved between rounds with their A/A
+within 2% in 42 of the 44. Some rows moved between rounds with their A/A
 pair: tafla's read of 16 characters with two of 2 bytes took 231 ns in the
 first two rounds and 217 ns in the last two, which had less load, and its
 A/A pair's did the same. Whether the load moved them or the modes that a
@@ -707,19 +710,19 @@ with the length of each string in bytes:
 | 15 chars, one of 4 bytes      |    18 | 0.220 | 0.0847 (0.39×) | 0.444 (2.02×) |  0.398 (1.81×) | 0.265 (1.21×) |  0.229 (1.04×) |
 | 8 chars of 3 bytes            |    24 | 0.223 | 0.0912 (0.41×) | 0.508 (2.27×) |  0.404 (1.81×) | 0.275 (1.23×) |  0.235 (1.05×) |
 | 64 chars of ASCII             |    64 | 0.206 | 0.0777 (0.38×) | 0.603 (2.93×) |  0.394 (1.92×) | 0.292 (1.42×) |  0.285 (1.39×) |
-| 32 chars of 2 bytes           |    64 | 0.208 | 0.0774 (0.37×) | 0.592 (2.84×) |  0.392 (1.88×) | 0.286 (1.37×) |  0.287 (1.38×) |
-| 16 chars of 4 bytes           |    64 | 0.204 | 0.0776 (0.38×) | 0.601 (2.94×) |  0.399 (1.95×) | 0.292 (1.43×) |  0.288 (1.41×) |
+| 32 chars of 2 bytes           |    64 | 0.203 | 0.0756 (0.37×) | 0.587 (2.89×) |  0.389 (1.92×) | 0.286 (1.41×) |  0.274 (1.35×) |
+| 16 chars of 4 bytes           |    64 | 0.203 | 0.0756 (0.37×) | 0.591 (2.91×) |  0.392 (1.93×) | 0.283 (1.39×) |  0.278 (1.37×) |
 | 22 chars of 3 bytes           |    66 | 0.209 | 0.0769 (0.37×) | 0.603 (2.89×) |  0.404 (1.93×) | 0.291 (1.39×) |  0.253 (1.21×) |
 | 32 chars of 3 bytes           |    96 | 0.207 | 0.0806 (0.39×) | 0.595 (2.88×) |  0.409 (1.98×) | 0.306 (1.48×) |  0.250 (1.21×) |
 | 256 chars of ASCII            |   256 | 0.258 |  0.112 (0.44×) | 0.996 (3.87×) |  0.474 (1.84×) | 0.379 (1.47×) |  0.412 (1.60×) |
-| 255 chars, first of 2 bytes   |   256 | 0.258 |  0.113 (0.44×) | 0.996 (3.86×) |  0.479 (1.85×) | 0.376 (1.46×) |  0.410 (1.59×) |
-| 255 chars, last of 2 bytes    |   256 | 0.260 |  0.115 (0.44×) | 0.969 (3.73×) |  0.483 (1.86×) | 0.375 (1.44×) |  0.411 (1.58×) |
+| 255 chars, first of 2 bytes   |   256 | 0.261 |  0.112 (0.43×) | 0.978 (3.75×) |  0.480 (1.84×) | 0.378 (1.45×) |  0.399 (1.53×) |
+| 255 chars, last of 2 bytes    |   256 | 0.257 |  0.113 (0.44×) | 0.975 (3.80×) |  0.482 (1.88×) | 0.373 (1.45×) |  0.400 (1.56×) |
 | 256 chars of 3 bytes          |   768 | 0.358 |  0.199 (0.56×) | 1.534 (4.28×) |  0.785 (2.19×) | 0.613 (1.71×) |  0.582 (1.63×) |
 | 1,024 chars of ASCII          | 1,024 | 0.396 |  0.259 (0.65×) | 2.330 (5.89×) |  0.930 (2.35×) | 0.715 (1.81×) |  0.933 (2.36×) |
-| 1,023 chars, first of 2 bytes | 1,024 | 0.396 |  0.249 (0.63×) | 2.404 (6.06×) |  0.931 (2.35×) | 0.724 (1.83×) |  0.950 (2.40×) |
-| 1,023 chars, last of 2 bytes  | 1,024 | 0.401 |  0.248 (0.62×) | 2.346 (5.84×) |  0.924 (2.30×) | 0.727 (1.81×) |  0.967 (2.41×) |
-| 512 chars of 2 bytes          | 1,024 | 0.393 |  0.249 (0.63×) | 2.349 (5.97×) |  0.916 (2.33×) | 0.716 (1.82×) |  0.963 (2.45×) |
-| 256 chars of 4 bytes          | 1,024 | 0.399 |  0.244 (0.61×) | 2.308 (5.79×) |  0.925 (2.32×) | 0.724 (1.82×) |  0.915 (2.30×) |
+| 1,023 chars, first of 2 bytes | 1,024 | 0.399 |  0.244 (0.61×) | 2.343 (5.87×) |  0.920 (2.30×) | 0.732 (1.83×) |  0.961 (2.41×) |
+| 1,023 chars, last of 2 bytes  | 1,024 | 0.400 |  0.249 (0.62×) | 2.299 (5.75×) |  0.912 (2.28×) | 0.737 (1.84×) |  0.962 (2.41×) |
+| 512 chars of 2 bytes          | 1,024 | 0.393 |  0.247 (0.63×) | 2.299 (5.86×) |  0.912 (2.32×) | 0.721 (1.84×) |  0.961 (2.45×) |
+| 256 chars of 4 bytes          | 1,024 | 0.397 |  0.242 (0.61×) | 2.289 (5.76×) |  0.913 (2.30×) | 0.715 (1.80×) |  0.963 (2.43×) |
 | 342 chars of 3 bytes          | 1,026 | 0.395 |  0.244 (0.62×) | 2.388 (6.04×) |  0.852 (2.15×) | 0.742 (1.88×) |  0.906 (2.29×) |
 
 | Deserialize 16 strings of     | Bytes |  tafla |      tafla-gen |   flatbuffers |         prost |      rmp-serde |           rkyv |
@@ -732,19 +735,19 @@ with the length of each string in bytes:
 | 15 chars, one of 4 bytes      |    18 |  0.207 |  0.214 (1.03×) | 0.316 (1.53×) | 0.718 (3.46×) |  0.252 (1.22×) |  0.253 (1.22×) |
 | 8 chars of 3 bytes            |    24 |  0.257 |  0.257 (1.00×) | 0.349 (1.36×) | 0.831 (3.24×) |  0.285 (1.11×) |  0.293 (1.14×) |
 | 64 chars of ASCII             |    64 | 0.0487 | 0.0534 (1.10×) | 0.273 (5.62×) | 0.585 (12.0×) |  0.221 (4.55×) | 0.0698 (1.43×) |
-| 32 chars of 2 bytes           |    64 |  0.562 |  0.551 (0.98×) | 0.645 (1.15×) | 1.101 (1.96×) |  0.590 (1.05×) |  0.158 (0.28×) |
-| 16 chars of 4 bytes           |    64 |  0.490 |  0.505 (1.03×) | 0.584 (1.19×) | 0.996 (2.03×) |  0.531 (1.09×) |  0.159 (0.32×) |
+| 32 chars of 2 bytes           |    64 |  0.563 |  0.550 (0.98×) | 0.644 (1.14×) | 1.097 (1.95×) |  0.590 (1.05×) |  0.158 (0.28×) |
+| 16 chars of 4 bytes           |    64 |  0.490 |  0.505 (1.03×) | 0.584 (1.19×) | 1.000 (2.04×) |  0.531 (1.08×) |  0.158 (0.32×) |
 | 22 chars of 3 bytes           |    66 |  0.685 |  0.688 (1.00×) | 0.844 (1.23×) | 1.288 (1.88×) |  0.751 (1.10×) |  0.261 (0.38×) |
 | 32 chars of 3 bytes           |    96 |  0.935 |  0.938 (1.00×) | 1.095 (1.17×) | 1.544 (1.65×) |  1.024 (1.09×) |  0.257 (0.27×) |
 | 256 chars of ASCII            |   256 | 0.0769 | 0.0737 (0.96×) | 0.328 (4.27×) | 0.881 (11.5×) |  0.266 (3.46×) |  0.102 (1.32×) |
-| 255 chars, first of 2 bytes   |   256 |  0.232 |  0.244 (1.05×) | 0.332 (1.43×) | 0.898 (3.87×) |  0.275 (1.18×) |  0.191 (0.82×) |
-| 255 chars, last of 2 bytes    |   256 |  0.281 |  0.297 (1.06×) | 0.350 (1.24×) | 0.963 (3.42×) |  0.301 (1.07×) |  0.208 (0.74×) |
+| 255 chars, first of 2 bytes   |   256 |  0.232 |  0.243 (1.05×) | 0.327 (1.41×) | 0.885 (3.81×) |  0.271 (1.17×) |  0.190 (0.82×) |
+| 255 chars, last of 2 bytes    |   256 |  0.275 |  0.292 (1.06×) | 0.347 (1.27×) | 0.955 (3.48×) |  0.298 (1.08×) |  0.205 (0.75×) |
 | 256 chars of 3 bytes          |   768 |  6.570 |  6.574 (1.00×) | 6.724 (1.02×) | 7.384 (1.12×) |  6.662 (1.01×) |  1.091 (0.17×) |
 | 1,024 chars of ASCII          | 1,024 |  0.168 |  0.162 (0.96×) | 0.615 (3.67×) | 1.335 (7.96×) |  0.543 (3.23×) |  0.180 (1.07×) |
-| 1,023 chars, first of 2 bytes | 1,024 |  0.473 |  0.471 (1.00×) | 0.612 (1.30×) | 1.369 (2.90×) |  0.546 (1.16×) |  0.316 (0.67×) |
-| 1,023 chars, last of 2 bytes  | 1,024 |  0.593 |  0.593 (1.00×) | 0.629 (1.06×) | 1.377 (2.32×) |  0.555 (0.94×) |  0.383 (0.64×) |
-| 512 chars of 2 bytes          | 1,024 |  8.310 |  8.312 (1.00×) | 8.484 (1.02×) | 9.208 (1.11×) |  8.405 (1.01×) |  1.429 (0.17×) |
-| 256 chars of 4 bytes          | 1,024 |  7.067 |  7.083 (1.00×) | 7.164 (1.01×) | 7.848 (1.11×) |  7.130 (1.01×) |  1.429 (0.20×) |
+| 1,023 chars, first of 2 bytes | 1,024 |  0.470 |  0.471 (1.00×) | 0.613 (1.30×) | 1.371 (2.92×) |  0.545 (1.16×) |  0.315 (0.67×) |
+| 1,023 chars, last of 2 bytes  | 1,024 |  0.590 |  0.589 (1.00×) | 0.629 (1.07×) | 1.370 (2.32×) |  0.553 (0.94×) |  0.383 (0.65×) |
+| 512 chars of 2 bytes          | 1,024 |  8.311 |  8.314 (1.00×) | 8.486 (1.02×) | 9.206 (1.11×) |  8.406 (1.01×) |  1.429 (0.17×) |
+| 256 chars of 4 bytes          | 1,024 |  7.068 |  7.081 (1.00×) | 7.165 (1.01×) | 7.847 (1.11×) |  7.127 (1.01×) |  1.429 (0.20×) |
 | 342 chars of 3 bytes          | 1,026 |  8.725 |  8.730 (1.00×) | 8.885 (1.02×) | 9.551 (1.09×) |  8.821 (1.01×) |  1.531 (0.18×) |
 
 Reads:
@@ -766,11 +769,11 @@ Reads:
   ASCII only two words at a time and they have more of their own work: for
   16 empty strings, tafla takes 39 ns, rkyv 51 ns, rmp-serde 93 ns,
   flatbuffers' verification 151 ns and prost 180 ns.
-- A character of 2 bytes last in 1,023 bytes of ASCII adds 0.43 µs to tafla's
-  read, where one first adds 0.31 µs: `is_ascii()` reads to the last
+- A character of 2 bytes last in 1,023 bytes of ASCII adds 0.42 µs to tafla's
+  read, where one first adds 0.30 µs: `is_ascii()` reads to the last
   character, and `str::from_utf8()` then checks the string from its start.
   rmp-serde, which checks it once, reads that shape in 0.94 of tafla's time.
-  At 256 bytes, one last adds 49 ns more than one first.
+  At 256 bytes, one last adds 43 ns more than one first.
 - tafla-gen's getters read in 0.96 to 1.19 of the time that tafla's
   `get_str()` by hand takes, and more slowly for short strings: 46.5 ns
   against 39.1 ns for 16 empty strings, and 53.4 ns against 48.7 ns for 64
@@ -794,7 +797,7 @@ Writes:
 - prost copies each string into its message, in 18 allocations, and takes
   1.69 to 2.35 times tafla's time, but 0.47 times for empty strings.
   rmp-serde takes 1.15 to 1.88 times, in 6 allocations, but 0.58 times for
-  empty strings, and flatbuffers 1.99 to 6.06 times, as its builder doubles
+  empty strings, and flatbuffers 1.99 to 6.04 times, as its builder doubles
   from empty by copying: 65,576 bytes in 15 allocations for strings of 1,024
   bytes.
 - What the strings hold doesn't change a write, and a longer string doesn't
