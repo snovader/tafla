@@ -450,4 +450,66 @@ CI does.
 
 ### Results
 
-Not yet run on a quiet machine.
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+with Go 1.27.4, through the machine's benchmark lock. It took 1 minute 1
+second. Other processes kept the 1-minute load average at 2.73 when it
+started and 3.31 when it ended, on the 10 cores. The median round was within
+5% of the fastest for 75 of the 81 benchmarks' variants, and within 10% for
+80, with a median of 2.2% and a largest of 12.9%. The A/A pair agreed within
+1.4%, but for one write of 10,000 strings of 16 characters, at 0.94 times.
+
+Fastest round in µs per call, and its ratio to the vector of strings':
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.0836 | 0.209 (2.505×) | 0.0835 (0.999×) |
+| 10 × 16 chars of ASCII: deserialize | 0.0763 | 0.212 (2.775×) | 0.0762 (0.999×) |
+| 10 × 16 chars of ASCII: read the last string | 0.0253 | 0.0283 (1.117×) | 0.0251 (0.991×) |
+| 10 × 256 chars of ASCII: serialize | 0.337 | 0.443 (1.315×) | 0.340 (1.009×) |
+| 10 × 256 chars of ASCII: deserialize | 0.114 | 0.252 (2.206×) | 0.115 (1.004×) |
+| 10 × 256 chars of ASCII: read the last string | 0.0290 | 0.0322 (1.112×) | 0.0288 (0.994×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.0926 | 0.216 (2.332×) | 0.0918 (0.991×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.188 | 0.270 (1.434×) | 0.188 (0.999×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0304 | 0.0340 (1.117×) | 0.0307 (1.008×) |
+| 100 × 16 chars of ASCII: serialize | 0.507 | 1.535 (3.025×) | 0.513 (1.011×) |
+| 100 × 16 chars of ASCII: deserialize | 0.416 | 1.790 (4.303×) | 0.411 (0.989×) |
+| 100 × 16 chars of ASCII: read the last string | 0.0246 | 0.0290 (1.176×) | 0.0247 (1.001×) |
+| 100 × 256 chars of ASCII: serialize | 2.382 | 3.146 (1.321×) | 2.387 (1.002×) |
+| 100 × 256 chars of ASCII: deserialize | 0.758 | 2.172 (2.866×) | 0.768 (1.014×) |
+| 100 × 256 chars of ASCII: read the last string | 0.0290 | 0.0322 (1.109×) | 0.0289 (0.996×) |
+| 100 × 8 chars of 3 bytes: serialize | 0.549 | 1.610 (2.935×) | 0.551 (1.005×) |
+| 100 × 8 chars of 3 bytes: deserialize | 1.572 | 2.368 (1.506×) | 1.563 (0.994×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0308 | 0.0338 (1.100×) | 0.0308 (1.001×) |
+| 10,000 × 16 chars of ASCII: serialize | 42.96 | 130.3 (3.033×) | 40.39 (0.940×) |
+| 10,000 × 16 chars of ASCII: deserialize | 33.76 | 167.4 (4.958×) | 33.74 (1.000×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.0247 | 0.0282 (1.138×) | 0.0246 (0.994×) |
+| 10,000 × 256 chars of ASCII: serialize | 149.2 | 214.7 (1.440×) | 147.8 (0.991×) |
+| 10,000 × 256 chars of ASCII: deserialize | 62.70 | 206.6 (3.295×) | 62.68 (1.000×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.0288 | 0.0319 (1.106×) | 0.0290 (1.004×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 47.60 | 128.3 (2.696×) | 47.03 (0.988×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 142.6 | 220.1 (1.543×) | 143.9 (1.009×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0306 | 0.0339 (1.108×) | 0.0305 (0.997×) |
+
+- The vector of strings is written in 0.33–0.76 times the time of the
+  vector of tables, which creates and writes a table for each string.
+- Every string is read in 0.20–0.70 times the time: 0.20–0.45 for lists of
+  ASCII, whose strings `Strings()` checks as one run of UTF-8 and slices
+  without a copy, and 0.65–0.70 for strings of 3 bytes, whose run takes
+  longer to check.
+- The last string is found in 0.85–0.91 times the time, without a reader
+  of a table around it.
+
+Encoded size in bytes: the vector of strings takes 4 bytes for each string
+beside its UTF-8, and the vector of tables 12.
+
+| List | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII | 208 | 288 | 208 |
+| 10 × 256 chars of ASCII | 2,608 | 2,688 | 2,608 |
+| 10 × 8 chars of 3 bytes | 288 | 368 | 288 |
+| 100 × 16 chars of ASCII | 2,008 | 2,808 | 2,008 |
+| 100 × 256 chars of ASCII | 26,008 | 26,808 | 26,008 |
+| 100 × 8 chars of 3 bytes | 2,808 | 3,608 | 2,808 |
+| 10,000 × 16 chars of ASCII | 200,008 | 280,008 | 200,008 |
+| 10,000 × 256 chars of ASCII | 2,600,008 | 2,680,008 | 2,600,008 |
+| 10,000 × 8 chars of 3 bytes | 280,008 | 360,008 | 280,008 |
