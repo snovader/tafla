@@ -161,6 +161,8 @@ void add_field(const Field& field, TableSizer& sizer) {
                 sizer.add_float64_array(value.size());
             } else if constexpr (std::is_same_v<T, std::string>) {
                 sizer.add_string(value);
+            } else if constexpr (std::is_same_v<T, StringVectorField>) {
+                sizer.add_string_vector(value.views());
             } else if constexpr (std::is_same_v<T, Struct>) {
                 sizer.add_struct(struct_size(struct_types(value.scalars)));
             } else if constexpr (std::is_same_v<T, StructArray>) {
@@ -227,6 +229,8 @@ void write_field(const Field& field, TableWriter& writer, std::size_t index) {
                 writer.set_float64_array(index, value);
             } else if constexpr (std::is_same_v<T, std::string>) {
                 writer.set_string(index, value);
+            } else if constexpr (std::is_same_v<T, StringVectorField>) {
+                writer.set_string_vector(index, value.views());
             } else if constexpr (std::is_same_v<T, Struct>) {
                 writer.set_struct(index, struct_bytes(value.scalars));
             } else if constexpr (std::is_same_v<T, StructArray>) {

@@ -18,10 +18,11 @@ tafla::TableBuilder series(2, tafla::TableLayout());
 series.set_uint32_array(timestamps);  // a std::span, which the builder views
 series.set_float32_array(std::move(values));  // a std::vector, which it owns
 
-tafla::TableBuilder builder(3, layout);
+tafla::TableBuilder builder(4, layout);
 builder.set_float64(59.3293);
 builder.set_string("Europe/Stockholm");
 builder.set_table(std::move(series));  // written straight into the table
+builder.set_string_vector({"sensor", "outdoor"});  // a std::vector<std::string>, which it owns
 const tafla::Bytes bytes = builder.to_bytes();
 
 const tafla::TableReader reader(bytes, layout);
@@ -33,6 +34,8 @@ const double latitude = reader.get_float64(reader.root_offset(0));
 const std::string_view time_zone = reader.get_string(reader.root_offset(1));
 const auto table = reader.root_offset(2);
 const tafla::ArrayView<float> read = reader.get_float32_array(reader.field_offset(table, 1));
+const tafla::StringVector tags = reader.get_string_vector(reader.root_offset(3));
+const std::string_view last_tag = tags.get(tags.size() - 1);  // from its ends alone
 ```
 
 The names are the other runtimes' in C++'s case: table, field, layout, offset
@@ -52,6 +55,7 @@ type, offset size, vector, builder and decode error.
 | `bytes.hpp`            | `Bytes`, the bytes of a written table                                         |
 | `structs.hpp`          | The `Struct` concept and `StructArray<T>`, a view of an array of structs      |
 | `table_vector.hpp`     | `TableVector<T>`, a view of a vector of the tables that `T` reads             |
+| `string_vector.hpp`    | `StringVector`, a view of a vector of strings                                 |
 | `element.hpp`          | The `Element` concept, and `load_le()` and `store_le()` of records' scalars   |
 
 ## Design
@@ -70,10 +74,12 @@ type, offset size, vector, builder and decode error.
   bytes for one. A layout is a `constexpr` value, and a `TableReader` made
   with a constant layout reads its offsets without branching on their type.
 - **Views borrow, and owners own.** A getter returns a `std::string_view`, an
-  `ArrayView`, a `std::span` of bytes or a `Vector` of the bytes it was given,
-  which must outlive them. A setter that takes a `std::span` or a
-  `std::string_view` views it until `to_bytes()`, and one that takes a
-  `std::vector`, a `std::string`, `Bytes` or a builder by rvalue owns it. A
+  `ArrayView`, a `std::span` of bytes, a `Vector` or a `StringVector` of the
+  bytes it was given, which must outlive them. A setter that takes a
+  `std::span` or a `std::string_view` views it until `to_bytes()`, and one
+  that takes a `std::vector`, a `std::string`, `Bytes` or a builder by rvalue
+  owns it: `set_string_vector()` views a span of `std::string_view`s and the
+  strings that they view, or owns a `std::vector<std::string>`. A
   temporary that a setter can't own, such as a `std::array` returned by
   value, doesn't compile, rather than leaving the builder a view of it. A
   builder nested by `const` reference is recorded when it's set: the parent
@@ -194,6 +200,15 @@ type, offset size, vector, builder and decode error.
   took as long or up to 55% less time. A string whose first byte isn't
   ASCII, which a branch tests on its own, took up to 0.8 ns longer, such as
   6-byte strings of 2- and 3-byte characters, 14 to 17% longer.
+- **A vector of strings is checked as one run.** Its strings lie one after
+  another, without counts, between the ends that delimit them, and each must
+  be valid UTF-8 on its own. `StringVector::get()` finds a string from its
+  two ends and checks it alone. `to_vector()` checks the strings' bytes as
+  one run, from the end of the ends to the last string's end, and that each
+  end within the run doesn't fall on a continuation byte, which, for ends in
+  order within the bytes, is what checking each string finds. Otherwise it
+  reads each string with `get()`, and throws the error of the first that
+  fails.
 
 Structs are the generated code's, or any type that the `Struct` concept
 accepts: a `SIZE`, an `ALIGNMENT`, `from_bytes()` and `to_bytes()`. The
@@ -268,6 +283,11 @@ and a failure prints the `RC_PARAMS` that reproduces it.
   `compatibility_test`: every getter at every position of arbitrary bytes,
   views at every alignment, UTF-8 at its limits, layouts, and tables that the
   TypeScript runtime wrote.
+- `string_vector_test`: vectors of strings read back every string, at once
+  and each from its ends alone, take the bytes of a vector of tables whose
+  bytes are the strings' UTF-8, are written alike by every writer, and read
+  corrupted bytes as reading each string reads them, failing with the error
+  of the first string that fails.
 - `exception_safety_test`: each allocation of each setter fails in turn,
   through a replaced `operator new`, and leaves its builder as it was.
 - `nesting_test` and `macros_test`: the C++ that tafla-gen generates from the
@@ -295,9 +315,10 @@ is a finding:
 
 - `fuzz_table_reader` reads the rest of its input with every getter of
   `TableReader` at a position, in an offset type and header, which the input's
-  first four bytes choose, and reads every array, struct array and vector
-  there. Each read must return the bytes that lie where the format puts them,
-  exactly when they lie within the input, and the decode error otherwise.
+  first four bytes choose, and reads every array, struct array, vector and
+  vector of strings there. Each read must return the bytes that lie where the
+  format puts them, exactly when they lie within the input, and are valid
+  UTF-8 for a string, and the decode error otherwise.
   Rust's target reads at every position of every input instead, which ran 6
   inputs a second in C++, where most reads of arbitrary bytes throw.
 - `fuzz_conformance` reads its input as every valid case of the conformance

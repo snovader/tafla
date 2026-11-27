@@ -1,8 +1,10 @@
 //! C++ for `tafla`'s header-only runtime, in a header of C++20. Messages and
 //! tables are views that read fields lazily from bytes that the caller owns,
-//! as `std::string_view`s and `tafla::ArrayView`s of strings and arrays;
-//! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Beside the fields
+//! as `std::string_view`s, `tafla::ArrayView`s and `tafla::StringVector`s of
+//! strings, arrays and vectors of strings; they're written from structs of
+//! their fields, which hold a vector of strings as a span of
+//! `std::string_view`s, and which a `TableSizer` sizes and a `TableWriter`
+//! writes, nested tables in place. Beside the fields
 //! struct of a table with vectors or arrays of structs, a template in the
 //! namespace `generic` takes them as views of any items that convert into
 //! theirs, rather than as spans of their own.
@@ -636,9 +638,7 @@ impl Generator<'_> {
             writer.line(reader);
             writer.line(format!("const auto position = {offset};"));
             let read = match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
+                FieldType::StringVector => "reader.get_string_vector(position)".to_owned(),
                 FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
                 FieldType::Scalar(scalar) => {
                     self.as_enum(field, format!("reader.get_{}(position)", scalar.name()))
@@ -1302,7 +1302,7 @@ impl Generator<'_> {
             let value = identifier(&field.name);
             match field.field_type {
                 FieldType::StringVector => {
-                    todo!("[string] in this target")
+                    writer.line(format!("sizer_.add_string_vector({value});"));
                 }
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer_.add_{}();", scalar.stored().name()));
@@ -1362,7 +1362,7 @@ impl Generator<'_> {
             let value = identifier(&field.name);
             match field.field_type {
                 FieldType::StringVector => {
-                    todo!("[string] in this target")
+                    writer.line(format!("writer_.set_string_vector({position}, {value});"));
                 }
                 FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                     "writer_.set_uint8({position}, static_cast<std::uint8_t>({value}));"
@@ -1448,9 +1448,7 @@ impl Generator<'_> {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
 
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            FieldType::StringVector => "::tafla::StringVector".to_owned(),
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "std::span<const std::uint8_t>".to_owned(),
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
@@ -1476,9 +1474,7 @@ impl Generator<'_> {
         };
 
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            FieldType::StringVector => "std::span<const std::string_view>".to_owned(),
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("std::span<const {}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
@@ -1630,6 +1626,12 @@ const fn getter_doc(field_type: FieldType) -> &'static str {
             "Views the structs, reading each one when it's asked for, and `to_vector()` reads \
              every struct. Throws a `tafla::DecodeError` if the field or its structs lie outside \
              the bytes."
+        }
+        FieldType::StringVector => {
+            "Views the strings, reading each one when it's asked for, which throws a \
+             `tafla::DecodeError` if it lies outside the bytes or isn't valid UTF-8, and \
+             `to_vector()` reads every string. Throws a `tafla::DecodeError` if the field, or the \
+             vector's count or the ends of its strings, lie outside the bytes."
         }
         _ => "Throws a `tafla::DecodeError` if the field lies outside the bytes",
     }

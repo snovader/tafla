@@ -51,6 +51,17 @@ struct OwnedValue final : Owned {
     T value;
 };
 
+/// Strings that a builder owns, and views of them, from which it writes a
+/// vector of strings. Moving them keeps each string where it is, within the
+/// vector's storage, so the views stay valid.
+struct OwnedStrings {
+    explicit OwnedStrings(std::vector<std::string>&& owned)
+        : strings(std::move(owned)), views(strings.begin(), strings.end()) {}
+
+    std::vector<std::string> strings;
+    std::vector<std::string_view> views;
+};
+
 /// A container that a setter would view after the call that it's given to
 /// ends, such as a `std::array` or a `const std::vector` returned by value,
 /// which the builder can't own. A setter that borrows its value deletes the
@@ -365,6 +376,28 @@ public:
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
+    /// Sets a vector of strings, from their UTF-8 bytes, after the end of
+    /// each, which lets readers find any string without reading the others.
+    /// It takes no more bytes for each string than its end, where a vector of
+    /// tables of one string takes each table's offset and the string's count
+    /// too. The builder borrows the views of a span, and the strings that
+    /// they view, or owns the strings of a vector.
+    ///
+    /// Throws a `BuildError` as the scalars' setters do.
+    void set_string_vector(std::span<const std::string_view> strings) {
+        const auto length = check_field(detail::string_vector_bytes(strings, width()));
+        commit(string_vector_field(strings.data(), strings.size()), length);
+    }
+
+    void set_string_vector(std::vector<std::string>&& strings) {
+        const auto length = check_field(detail::string_vector_bytes(strings, width()));
+        const auto& owned = own(detail::OwnedStrings(std::move(strings)));
+        commit(string_vector_field(owned.views.data(), owned.views.size()), length);
+    }
+
+    template <detail::Temporary Strings>
+    void set_string_vector(Strings&& strings) = delete;
+
     /// Embeds a table, from its builder or its bytes, without a length
     /// prefix. Readers find its fields with `TableReader::field_offset()` from
     /// the field's position, which reads offsets of the parent's offset type,
@@ -455,6 +488,8 @@ private:
         table_bytes,
         /// A vector, whose items follow it
         vector,
+        /// A vector of strings, from the `std::string_view`s of its strings
+        string_vector,
     };
 
     /// A field that the builder records, to write it with the others. A table
@@ -467,16 +502,17 @@ private:
         std::uint8_t size = 0;
         /// The alignment that the field needs from its table's start
         Alignment alignment = Alignment::one;
-        /// The number of an array's elements, a vector's items or the fields
-        /// of a table in place, or the byte length of a string, a struct, the
-        /// structs of an array or a table's bytes, which the table's length
-        /// limits to 32 bits
+        /// The number of an array's elements, a vector's items or strings or
+        /// the fields of a table in place, or the byte length of a string, a
+        /// struct, the structs of an array or a table's bytes, which the
+        /// table's length limits to 32 bits
         std::uint32_t count = 0;
         /// The number of an array's structs
         std::uint32_t structs = 0;
         /// A scalar's bits
         std::uint64_t bits = 0;
-        /// The bytes of an array, string, struct or table
+        /// The bytes of an array, string, struct or table, or the views of a
+        /// vector's strings
         const void* data = nullptr;
     };
 
@@ -685,6 +721,12 @@ private:
                 static_cast<std::uint32_t>(length / size),
                 0,
                 data};
+    }
+
+    /// A field of a vector of the `count` strings that `strings` view, whose
+    /// number the table's length check limits, since each takes an end
+    static Field string_vector_field(const std::string_view* strings, std::size_t count) noexcept {
+        return {Kind::string_vector, 0, Alignment::one, static_cast<std::uint32_t>(count), 0, 0, strings};
     }
 
     template <class T>
@@ -1245,6 +1287,17 @@ public:
     template <detail::Temporary Range>
     void set_struct_array(Range&& bytes, std::size_t size, Alignment alignment) = delete;
 
+    void set_string_vector(std::span<const std::string_view> strings) {
+        builder_->set_string_vector(strings);
+    }
+
+    void set_string_vector(std::vector<std::string>&& strings) {
+        builder_->set_string_vector(std::move(strings));
+    }
+
+    template <detail::Temporary Strings>
+    void set_string_vector(Strings&& strings) = delete;
+
     void set_table(NestedTable table) {
         builder_->set_table(std::move(table));
     }
@@ -1573,6 +1626,9 @@ TAFLA_ALWAYS_INLINE void TableBuilder::write_field(Writer& writer, std::size_t i
         case Kind::table:
         case Kind::vector:
             // `write_fields()` writes them, with the tables they nest
+            return;
+        case Kind::string_vector:
+            writer.set_string_vector(index, {static_cast<const std::string_view*>(field.data), field.count});
             return;
     }
 }

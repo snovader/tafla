@@ -30,7 +30,7 @@ namespace tafla::test {
 /// Thrown when bytes read otherwise than the runtime's reads would: a sized
 /// table's size isn't its length, a vector holds another number of items
 /// than described, or finding an item from its ends finds another than
-/// iterating does
+/// iterating does, or than reading every string of a vector of strings
 class ReadMismatch : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;

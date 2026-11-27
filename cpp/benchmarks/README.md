@@ -4,7 +4,9 @@
 encode small tables and numeric columns. It runs the workloads of the
 TypeScript comparison in `typescript/benchmarks/`, with the same values, so
 that the languages' numbers compare. Build it from `cpp/` with
-`-DTAFLA_BUILD_BENCHMARKS=ON`, as [Running](#running) shows.
+`-DTAFLA_BUILD_BENCHMARKS=ON`, as [Running](#running) shows. `tafla_lists`
+times how tafla writes and reads lists of strings, as
+[Lists of strings](#lists-of-strings) describes.
 
 ## Workloads
 
@@ -424,3 +426,49 @@ within 0.7% of each other.
   generated reader holds the item's bytes and its position, 24 bytes, which
   a call passes in memory, and its getters add that position to every
   offset, checking the sum.
+
+## Lists of strings
+
+`tafla_lists` times how the code that tafla-gen generates from
+`lists.tafla`, a copy of the TypeScript suite's schema, into
+`generated/lists/` writes and reads lists of 10, 100 and 10,000 distinct
+strings of 16 and 256 characters of ASCII and of 8 characters of 3 bytes in
+UTF-8. `src/lists.hpp` makes them as the TypeScript suite of lists does, from
+its xorshift with the same seeds, which `tests/benchmarks_test.cpp` checks
+against values that the TypeScript suite printed. Each list is written two
+ways:
+
+- **tafla-gen [string]**, `StringList`, a vector of strings, whose items are
+  the strings' UTF-8, written from a span of `std::string_view`s and read
+  through its getter's `tafla::StringVector`: every string at once with
+  `to_vector()`, which checks the strings' UTF-8 as one run, and the last
+  string from its ends alone with `get()`. The suite checks that it writes the
+  bytes that `TableBuilder::set_string_vector()` writes.
+- **tafla-gen [Name]**, `NameList`, a vector of tables of one string each,
+  which is how a schema holds a list of strings without vectors of strings.
+  Its generic fields write a `std::views::transform()` of the strings into
+  each table's fields as they're written, without allocating them, and each
+  string is read through a reader of its table: every string by iterating
+  the items, which reads each item's end once, and the last with `get()`.
+
+**tafla-gen [string] A/A** times the vector of strings again, an A/A pair
+whose ratio shows the harness's noise. Each list is serialized, deserialized
+into a `std::vector<std::string_view>` of its strings, viewed in the bytes,
+and read for its last string. Before timing, every variant must read back
+every string, and the last one. The method is the comparison's, and the
+program takes its arguments. After the timings, it prints each list's
+encoded size: a vector of strings takes 4 bytes for each string beside the
+strings' UTF-8, and 8 for the table's offset and the vector's count, and a
+vector of tables of one string each takes 12 for each string.
+
+```sh
+cmake --build build --target tafla_lists
+uptime
+build/benchmarks/tafla_lists --markdown
+```
+
+The full run takes about 30 seconds, and `--quick` under a second.
+
+### Results
+
+Not timed yet: the figures follow a full run on a quiet machine.

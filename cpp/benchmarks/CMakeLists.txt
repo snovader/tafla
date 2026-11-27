@@ -32,7 +32,7 @@ target_compile_definitions(tafla_benchmarks_common INTERFACE MSGPACK_NO_BOOST)
 target_link_libraries(tafla_benchmarks_common INTERFACE tafla::tafla tafla_warnings tafla_benchmarks_protobuf
                                                         flatbuffers::flatbuffers msgpack-cxx)
 
-foreach(program comparison encoding allocation)
+foreach(program comparison encoding allocation lists)
     add_executable(tafla_${program} src/${program}.cpp)
     target_link_libraries(tafla_${program} PRIVATE tafla_benchmarks_common)
 endforeach()
