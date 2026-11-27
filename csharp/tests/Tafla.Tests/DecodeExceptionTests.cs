@@ -269,9 +269,15 @@ public class DecodeExceptionTests
             [0xff],
         ];
 
+        int[] limits = [128, 129, 1024, 1025];
+
         foreach (var value in strings)
         {
-            foreach (var valid in new[] { 0, 1, 127, 300, 1100 })
+            // After some valid bytes, and as the end of a string of exactly as many bytes as the
+            // reader decodes in each of its ways, 128 and 1,024, and of one byte more
+            int[] valids = [0, 1, 127, 300, 1100, .. limits.Select(limit => limit - value.Length)];
+
+            foreach (var valid in valids)
             {
                 var bytes = new byte[sizeof(uint) + valid + value.Length];
                 BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)(valid + value.Length));

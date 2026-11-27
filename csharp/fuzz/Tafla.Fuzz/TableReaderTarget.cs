@@ -76,7 +76,7 @@ internal static class TableReaderTarget
     /// <summary>
     /// Whether the reads' allocations are checked, which the static constructor sets once the target
     /// has warmed up, since the runtime and .NET allocate some things once, such as the reader's UTF-8
-    /// decoder and an exception's resources
+    /// decoders and an exception's resources
     /// </summary>
     private static readonly bool ChecksAllocations;
 

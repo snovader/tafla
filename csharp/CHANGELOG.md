@@ -71,8 +71,8 @@ commits, for code built from its source before the release.
   on the stack, and a longer one, if it's ASCII, widened into the string by
   `Encoding.Latin1`, or else decoded into 1,024 characters that each thread
   allocates once. Longer strings are counted and then decoded, as before.
-  Tables of 16 strings were read in 0.65 to 0.84 of the time, but for ASCII
-  strings of 8, 42 and 43 bytes, at 0.90 to 1.00, and the benchmarks'
+  Tables of 16 strings were read in 0.68 to 0.84 of the time, but for ASCII
+  strings of 8 and 42 bytes, at 0.90 to 1.00, and the benchmarks'
   record, whose 16-byte name is ASCII, in 23.4 ns rather than 24.4 ns. Its
   values and errors are unchanged.
 
