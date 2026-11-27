@@ -367,9 +367,16 @@ fn imports(
             .iter()
             .any(|field| predicate(field.field_type))
     };
-    let has_vector = has(|field_type| matches!(field_type, FieldType::Vector(_)));
-    let has_view =
-        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
+    // A vector of tables or of strings, which a `Fields` record holds in a `List`
+    let has_list =
+        has(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StringVector));
+    let has_string_vector = has(|field_type| field_type == FieldType::StringVector);
+    let has_view = has(|field_type| {
+        matches!(
+            field_type,
+            FieldType::Vector(_) | FieldType::StructArray(_) | FieldType::StringVector
+        )
+    });
 
     let mut names = Vec::new();
     // A versioned message's constructor throws it, and the getters of views
@@ -379,6 +386,10 @@ fn imports(
     }
     if layout.is_some_and(|layout| layout.offset_type != OffsetType::Uint32) {
         names.push("OffsetType");
+    }
+    // The getter of a vector of strings returns the runtime's view
+    if has_string_vector {
+        names.push("StringVector");
     }
     // Messages make a sizer, and tables take a sizer and a writer
     if layout.is_some() {
@@ -395,7 +406,7 @@ fn imports(
         writer.line(format!("import {runtime}.{name};"));
     }
 
-    if has_vector {
+    if has_list {
         writer.blank();
         writer.line("import java.util.List;");
     }
@@ -997,9 +1008,7 @@ fn sizes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
     for field in &definition.fields {
         let value = format!("fields.{}()", identifier(&field.name));
         let (method, arguments) = match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            FieldType::StringVector => ("addStringVector".to_owned(), vec![text(value)]),
             FieldType::Scalar(scalar) => (format!("add{}", method_name(scalar)), vec![]),
             FieldType::Array(scalar) => (
                 format!("add{}Array", method_name(scalar)),
@@ -1054,9 +1063,7 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields.{}()", identifier(&field.name));
         let position = text(index.to_string());
         let (method, arguments) = match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            FieldType::StringVector => ("setStringVector".to_owned(), vec![position, text(value)]),
             FieldType::Scalar(Scalar::Bool) => (
                 "setUint8".to_owned(),
                 vec![position, text(format!("(short) ({value} ? 1 : 0)"))],
@@ -1151,8 +1158,10 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name)
         ));
         match field.field_type {
+            // The runtime's view, which reads each string when it's asked for,
+            // as the views of vectors of tables read their items
             FieldType::StringVector => {
-                todo!("[string] in this target")
+                writer.line(format!("return new StringVector(reader, {offset});"));
             }
             FieldType::Scalar(Scalar::Bool) => {
                 writer.line(format!("return reader.getUint8({offset}) != 0;"));
@@ -1216,25 +1225,36 @@ fn getter_docs(field: &Field, schema: &Schema) -> Vec<String> {
         });
     }
 
-    let items = match field.field_type {
-        FieldType::Vector(_) => "the items' ends",
-        FieldType::StructArray(_) => "the structs",
+    let (view, items) = match field.field_type {
+        FieldType::Vector(_) => (ITEMS_VIEW, "the items' ends"),
+        FieldType::StructArray(_) => (ITEMS_VIEW, "the structs"),
+        FieldType::StringVector => (STRINGS_VIEW, "the strings' ends"),
         _ => return docs,
     };
 
     if !docs.is_empty() {
         docs.push(String::new());
     }
+    docs.extend(view.iter().map(|&line| line.to_owned()));
     docs.extend([
-        "Views the items, reading each one when it's asked for, so that an item whose bytes are"
-            .to_owned(),
-        "corrupt throws a `DecodeException` when it's read, rather than here".to_owned(),
         String::new(),
         format!("@throws DecodeException if the count or {items} aren't within the bytes"),
     ]);
 
     docs
 }
+
+/// What the getter of a vector or an array of structs says of its view
+const ITEMS_VIEW: [&str; 2] = [
+    "Views the items, reading each one when it's asked for, so that an item whose bytes are",
+    "corrupt throws a `DecodeException` when it's read, rather than here",
+];
+
+/// What the getter of a vector of strings says of its view
+const STRINGS_VIEW: [&str; 2] = [
+    "Views the strings, reading each one when it's asked for, so that a string whose bytes are",
+    "corrupt throws a `DecodeException` when it's read, rather than here",
+];
 
 /// Writes the getter of the view of an array of scalars, `<field>View()`,
 /// beside its getter, which copies them
@@ -1365,9 +1385,7 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
-        FieldType::StringVector => {
-            todo!("[string] in this target")
-        }
+        FieldType::StringVector => "StringVector".to_owned(),
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
         FieldType::Array(scalar) => format!("{}[]", scalar_type(scalar)),
         FieldType::String => "String".to_owned(),
@@ -1380,6 +1398,7 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
+        FieldType::StringVector => "List<String>".to_owned(),
         FieldType::StructArray(index) => format!("{}[]", schema.definition(index).name),
         FieldType::Table(index) => format!("{}.Fields", schema.definition(index).name),
         FieldType::Vector(index) => format!("List<{}.Fields>", schema.definition(index).name),

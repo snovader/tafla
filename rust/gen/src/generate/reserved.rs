@@ -90,6 +90,7 @@ const JAVA: &[&str] = &[
     "RandomAccess",
     "Short",
     "String",
+    "StringVector",
     "SuppressWarnings",
     "TableLayout",
     "TableReader",
