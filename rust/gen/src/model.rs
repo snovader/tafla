@@ -136,6 +136,8 @@ pub struct Field {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldType {
     Scalar(Scalar),
+    /// An array of a scalar. An array of bools is a `uint8` array of 0 and
+    /// 1, whose bytes read as true where they aren't 0.
     Array(Scalar),
     String,
     /// A struct, in place, by its index in [`Schema::definitions`]

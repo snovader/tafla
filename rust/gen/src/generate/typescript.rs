@@ -1113,6 +1113,10 @@ impl Generator<'_> {
                         format!("{reader}.get{}", scalar_method(scalar)),
                         vec![offset],
                     ),
+                    // A bool for each byte, true where it isn't 0
+                    FieldType::Array(Scalar::Bool) => {
+                        call(format!("{reader}.getBoolArray"), vec![offset])
+                    }
                     FieldType::Array(scalar) => call(
                         format!("{reader}.get{}Array", scalar_method(scalar)),
                         vec![offset],
@@ -2182,6 +2186,10 @@ impl Generator<'_> {
             let value = format!("fields.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
                 FieldType::Scalar(scalar) => (format!("add{}", scalar_method(scalar)), vec![]),
+                FieldType::Array(Scalar::Bool) => (
+                    "addBoolArray".to_owned(),
+                    vec![text(format!("{value}.length"))],
+                ),
                 FieldType::Array(scalar) => (
                     format!("add{}Array", scalar_method(scalar)),
                     vec![text(format!("{value}.length"))],
@@ -2248,6 +2256,9 @@ impl Generator<'_> {
                     format!("set{}", scalar_method(scalar)),
                     vec![position, stored_value(scalar, &value)],
                 ),
+                FieldType::Array(Scalar::Bool) => {
+                    ("setBoolArray".to_owned(), vec![position, text(value)])
+                }
                 FieldType::Array(scalar) => (
                     format!("set{}Array", scalar_method(scalar)),
                     vec![position, text(value)],
@@ -2344,9 +2355,16 @@ impl Generator<'_> {
                 )
             };
             let return_type = value_type(field, self.schema);
+            let mut docs = schema_docs(&field.docs);
+            if field.field_type == FieldType::Array(Scalar::Bool) {
+                if !docs.is_empty() {
+                    docs.push(String::new());
+                }
+                docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+            }
 
             writer.blank();
-            self.getter_doc(writer, &schema_docs(&field.docs), &return_type);
+            self.getter_doc(writer, &docs, &return_type);
             writer.open(format!(
                 "{}(){} {{",
                 identifier(&field.name),
@@ -2794,6 +2812,7 @@ fn assign_bool(writer: &mut CodeWriter, target: &str, read: &Expr, suffix: &str)
 fn value_type(field: &Field, schema: &Schema) -> String {
     match field.field_type {
         FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // The bytes of an array of bools, read in place
         FieldType::Array(scalar) => typed_array(scalar).to_owned(),
         FieldType::String => "string".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
@@ -2807,6 +2826,8 @@ fn value_type(field: &Field, schema: &Schema) -> String {
 fn input_type(field: &Field, schema: &Schema) -> String {
     match field.field_type {
         FieldType::Scalar(scalar) => element_type(field, scalar, schema).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "readonly boolean[]".to_owned(),
         FieldType::Array(scalar) => {
             format!(
                 "ArrayLike<{}> | {}",
@@ -2843,9 +2864,9 @@ const fn scalar_type(scalar: Scalar) -> &'static str {
 
 const fn typed_array(scalar: Scalar) -> &'static str {
     match scalar {
-        Scalar::Bool => panic!("the checker rejects arrays of bools"),
         Scalar::Int8 => "Int8Array",
-        Scalar::Uint8 => "Uint8Array",
+        // A byte for each bool
+        Scalar::Bool | Scalar::Uint8 => "Uint8Array",
         Scalar::Int16 => "Int16Array",
         Scalar::Uint16 => "Uint16Array",
         Scalar::Int32 => "Int32Array",

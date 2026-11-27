@@ -101,6 +101,7 @@ Each field has a `type`:
 | `int64`, `uint64`                                     | `value`: a decimal string                                              | `setInt64()`, `setUint64()`    |
 | `float32`, `float64`                                  | `value`: a number, or `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`   | `setFloat32()`, `setFloat64()` |
 | `bool`                                                | `value`: `true` or `false`                                             | `setUint8()`, with 1 or 0      |
+| `bool[]`                                              | `value`: an array of `true` and `false`                                | `setBoolArray()`               |
 | `int8[]`, `uint8[]`, ..., `float64[]`                 | `value`: an array of values as the scalar type holds them              | `setInt8Array()`, ...          |
 | `string`                                              | `value`: a string                                                      | `setString()`                  |
 | `struct`                                              | `fields`: `{ "type", "value" }` for each scalar, as a scalar field     | `setStruct()`                  |
@@ -111,7 +112,10 @@ Each field has a `type`:
 - A bool is the uint8 1 or 0, since the runtimes have no getters or setters
   of bools; the code that tafla-gen generates writes and reads them so. Its
   value is true when the byte read isn't 0. It's a field only, and never a
-  struct's scalar or an array's element.
+  struct's scalar.
+- A `bool[]` is the uint8 array of its bools' bytes, 1 and 0, which
+  `setBoolArray()` writes as `setUint8Array()` would write those bytes, and
+  `getBoolArray()` reads each byte as true when it isn't 0.
 - 64-bit integers are strings, since JSON numbers lose precision past 2^53 in
   JavaScript and in other parsers.
 - Floats that JSON has no number for are named. Their bytes are what
@@ -208,6 +212,7 @@ An implementation's test loads `cases.json` and:
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Every element type as a scalar                             | `integer-scalars`, `float-scalars`                                                                  |
 | Bools, and bytes other than 0 and 1 that read as true      | `bools`, `bool-nonzero`                                                                             |
+| Arrays of bools, empty and unpadded, and bytes other than 0 and 1 | `bool-arrays`, `bool-array-nonzero`                                                          |
 | Every element type as an array, and empty                  | `integer-arrays`, `float-arrays`, `empty-arrays`                                                    |
 | Offset types, without and with each header slot            | `offset-type-{uint8,uint16,uint32}`, with `-sized`, `-versioned` and `-sized-versioned`             |
 | Values of 128 and more in `uint8` offsets and lengths      | `offset-type-uint8-full`                                                                            |
@@ -220,7 +225,7 @@ An implementation's test loads `cases.json` and:
 | Empty, multi-byte UTF-8 and leading U+FEFF strings         | `strings`                                                                                           |
 | Tables of no fields                                        | `empty-table`, `empty-table-sized-versioned`                                                        |
 | Truncated tables                                           | `truncated-*`, `struct-past-end`                                                                    |
-| Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
+| Offsets, lengths, counts and item ends past the end        | `offset-past-end`, `array-length-*`, `bool-array-length-past-end`, `string-length-past-end`, `struct-array-count-*`, `vector-*`, `nested-offset-past-end` |
 | A vector item that ends before it starts                   | `vector-item-ends-before-start`                                                                     |
 | Invalid UTF-8                                              | `invalid-utf8-continuation`, `invalid-utf8-overlong`, `invalid-utf8-surrogate`                      |
 

@@ -161,6 +161,11 @@ const stringFields = STRINGS.map((value): FieldDescription => ({
     value
 }));
 
+/** Arrays of bools, empty too */
+const boolArrayFields = fc
+    .array(fc.boolean())
+    .map((value): FieldDescription => ({ type: 'bool[]', value }));
+
 const ITEMS_PER_STRUCT_ARRAY = 4;
 
 /** The scalar types of a struct, of one to four scalars */
@@ -250,6 +255,7 @@ export const FIELDS: fc.Arbitrary<FieldDescription> = fc.letrec<{
             arbitrary: fc.oneof(
                 scalarFields,
                 ARRAY_FIELDS,
+                boolArrayFields,
                 stringFields,
                 structFields,
                 STRUCT_ARRAY_FIELDS

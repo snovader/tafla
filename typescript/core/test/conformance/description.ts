@@ -75,6 +75,7 @@ export type FieldDescription =
     | { type: ScalarType; value: JsonNumber }
     | BoolField
     | { type: ArrayType; value: JsonNumber[] }
+    | BoolArrayField
     | { type: 'string'; value: string }
     | { type: 'struct'; fields: StructScalar[] }
     | StructArrayField
@@ -90,11 +91,27 @@ export interface BoolField {
     value: boolean;
 }
 
+/**
+ * An array of bools, which the runtimes write as a uint8[] of 1 and 0 and
+ * read as true where a byte isn't 0
+ */
+export interface BoolArrayField {
+    type: 'bool[]';
+    value: boolean[];
+}
+
 export type ArrayField = Extract<FieldDescription, { type: ArrayType }>;
 
-/** Whether a field is an array of scalars, rather than of structs */
+/**
+ * Whether a field is an array of integers or floats, rather than of structs
+ * or bools
+ */
 export function isArrayField(field: FieldDescription): field is ArrayField {
-    return field.type !== 'struct[]' && field.type.endsWith('[]');
+    return (
+        field.type !== 'struct[]' &&
+        field.type !== 'bool[]' &&
+        field.type.endsWith('[]')
+    );
 }
 
 /** The element type of an array type */

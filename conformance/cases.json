@@ -75,6 +75,20 @@
             }
         },
         {
+            "name": "bool-arrays",
+            "description": "Arrays of bools, a byte each, 1 for true and 0 for false, which need no padding: of five, empty, and of one after a uint8. bool-array-nonzero changes the bytes of the first.",
+            "file": "valid/bool-arrays.bin",
+            "table": {
+                "layout": { "sized": false, "versioned": false, "offsetType": "uint32" },
+                "fields": [
+                    { "type": "bool[]", "value": [true, false, true, true, false] },
+                    { "type": "bool[]", "value": [] },
+                    { "type": "uint8", "value": 7 },
+                    { "type": "bool[]", "value": [true] }
+                ]
+            }
+        },
+        {
             "name": "integer-arrays",
             "description": "An array of every integer type, of its extremes, -1, 0, 1 and a value of distinct bytes",
             "file": "valid/integer-arrays.bin",
@@ -1330,6 +1344,13 @@
             "file": "equivalent/bool-nonzero.bin",
             "case": "bools",
             "corruption": { "kind": "overwrite", "at": 18, "bytes": [2, 128] }
+        },
+        {
+            "name": "bool-array-nonzero",
+            "description": "The bytes of the first array of bool-arrays are 2, 0, 0x80, 0xff and 0, whose bytes other than 0 read as true, like 1",
+            "file": "equivalent/bool-array-nonzero.bin",
+            "case": "bool-arrays",
+            "corruption": { "kind": "overwrite", "at": 20, "bytes": [2, 0, 128, 255] }
         }
     ],
     "invalid": [
@@ -1380,6 +1401,14 @@
             "case": "float-arrays",
             "corruption": { "kind": "overwrite", "at": 52, "bytes": [10, 0, 0, 0] },
             "field": 1
+        },
+        {
+            "name": "bool-array-length-past-end",
+            "description": "The count of the last array of bools counts one bool more than the table holds",
+            "file": "invalid/bool-array-length-past-end.bin",
+            "case": "bool-arrays",
+            "corruption": { "kind": "overwrite", "at": 30, "bytes": [2, 0, 0, 0] },
+            "field": 3
         },
         {
             "name": "array-length-max",

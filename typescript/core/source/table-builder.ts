@@ -59,6 +59,8 @@ const STRUCT_ARRAY = 24;
 const TABLE_IN_PLACE = 25;
 /** A vector recorded in place, whose items' fields' records follow its own */
 const VECTOR_IN_PLACE = 26;
+/** An array of bools, written as a `uint8` array of 1 and 0 */
+const BOOL_ARRAY = 28;
 
 /** The size of a scalar of each kind, INT8 to FLOAT64 */
 const SIZES: readonly ElementSize[] = [1, 1, 2, 2, 4, 4, 8, 8, 4, 8];
@@ -374,6 +376,14 @@ export class TableBuilder {
             values.length * SIZEOF_64,
             SIZEOF_64
         );
+    }
+
+    /**
+     * Sets an array of bools, which is written as a `uint8` array, 1 for
+     * each true value and 0 for each false one
+     */
+    setBoolArray(values: ArrayLike<boolean>): void {
+        this.#addArray(BOOL_ARRAY, values, values.length, SIZEOF_8);
     }
 
     /** Writes `string` as UTF-8, with lone surrogates replaced by U+FFFD */
@@ -1045,6 +1055,11 @@ function writeField(
             writer.setStructArray(index, bytes, size, alignment);
             break;
         }
+
+        // Last, so that the kinds before it are written as they were
+        case BOOL_ARRAY:
+            writer.setBoolArray(index, value as ArrayLike<boolean>);
+            break;
     }
 }
 

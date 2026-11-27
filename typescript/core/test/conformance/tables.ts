@@ -224,6 +224,10 @@ export function setField(builder: TableItem, field: FieldDescription): void {
             builder.setUint8(field.value ? 1 : 0);
             break;
 
+        case 'bool[]':
+            builder.setBoolArray(field.value);
+            break;
+
         case 'int8[]':
             builder.setInt8Array(field.value.map(fromJsonNumber));
             break;
@@ -543,6 +547,10 @@ function addField(sizer: TableSizer, field: FieldDescription): void {
             sizer.addUint8();
             break;
 
+        case 'bool[]':
+            sizer.addBoolArray(field.value.length);
+            break;
+
         case 'int8[]':
             sizer.addInt8Array(field.value.length);
             break;
@@ -670,6 +678,10 @@ function writeField(
 
         case 'bool':
             writer.setUint8(index, field.value ? 1 : 0);
+            break;
+
+        case 'bool[]':
+            writer.setBoolArray(index, field.value);
             break;
 
         case 'int8[]':
@@ -942,7 +954,7 @@ function alignmentWithin(field: FieldDescription): Alignment {
         return structAlignment(field.fields);
     }
 
-    // Scalars, strings, structs and vectors aren't padded
+    // Scalars, arrays of bools, strings, structs and vectors aren't padded
     return field.type === 'table' ? alignmentOf(field) : 1;
 }
 
@@ -1051,6 +1063,9 @@ export class DescriptionReader {
 
             case 'bool':
                 return { ...field, value: reader.getUint8(position) !== 0 };
+
+            case 'bool[]':
+                return { ...field, value: reader.getBoolArray(position) };
 
             case 'int8[]':
                 return {

@@ -153,6 +153,16 @@ const VALID_CASES: ValidCase[] = [
         table([bool(false), bool(true), bool(true), bool(true)])
     ),
     validCase(
+        'bool-arrays',
+        'Arrays of bools, a byte each, 1 for true and 0 for false, which need no padding: of five, empty, and of one after a uint8. bool-array-nonzero changes the bytes of the first.',
+        table([
+            boolArray([true, false, true, true, false]),
+            boolArray([]),
+            scalar('uint8', 7),
+            boolArray([true])
+        ])
+    ),
+    validCase(
         'integer-arrays',
         'An array of every integer type, of its extremes, -1, 0, 1 and a value of distinct bytes',
         table(
@@ -406,6 +416,7 @@ export const SUITE: Suite = {
 
 function equivalentCases(): EquivalentCase[] {
     const bools = inspect('bools');
+    const boolArrays = inspect('bool-arrays');
 
     return [
         equivalentCase(
@@ -413,6 +424,16 @@ function equivalentCases(): EquivalentCase[] {
             'The bytes of the last two bools of bools are 2 and 0x80, which read as true, like 1',
             bools,
             overwrite(bools.reader.rootOffset(2), [0x02, 0x80])
+        ),
+        equivalentCase(
+            'bool-array-nonzero',
+            'The bytes of the first array of bool-arrays are 2, 0, 0x80, 0xff and 0, whose bytes other than 0 read as true, like 1',
+            boolArrays,
+            // The elements, after the array's count
+            overwrite(
+                boolArrays.reader.rootOffset(0) + 4,
+                [0x02, 0x00, 0x80, 0xff]
+            )
         )
     ];
 }
@@ -421,6 +442,7 @@ function invalidCases(): InvalidCase[] {
     const integerScalars = inspect('integer-scalars');
     const integerArrays = inspect('integer-arrays');
     const floatArrays = inspect('float-arrays');
+    const boolArrays = inspect('bool-arrays');
     const strings = inspect('strings');
     const full = inspect('offset-type-uint8-full');
     const uint16Offsets = inspect('offset-type-uint16');
@@ -476,6 +498,13 @@ function invalidCases(): InvalidCase[] {
             floatArrays,
             lengthenByOne(floatArrays, floatArrays.reader.rootOffset(1)),
             1
+        ),
+        invalidCase(
+            'bool-array-length-past-end',
+            'The count of the last array of bools counts one bool more than the table holds',
+            boolArrays,
+            lengthenByOne(boolArrays, boolArrays.reader.rootOffset(3)),
+            3
         ),
         invalidCase(
             'array-length-max',
@@ -856,6 +885,10 @@ function structArray(
             values.map((value, index) => toJson(types[index], value))
         )
     };
+}
+
+function boolArray(value: boolean[]): FieldDescription {
+    return { type: 'bool[]', value };
 }
 
 function string(value: string): FieldDescription {

@@ -26,7 +26,7 @@ const MAX_SCALAR_PATHS: usize = 1_024;
 /// another, the outermost included
 const MAX_NESTING_DEPTH: usize = 64;
 
-/// The scalar types, each of which but `bool` makes arrays too
+/// The scalar types, each of which makes arrays too
 const SCALARS: [&str; 11] = [
     "bool", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float32",
     "float64",
@@ -819,14 +819,14 @@ impl Schema {
 
         match field_type {
             FieldType::Scalar(scalar) => scalar_name(scalar).to_owned(),
-            FieldType::Array(scalar) => format!("[{}]", element_name(scalar)),
+            FieldType::Array(scalar) => format!("[{}]", scalar_name(scalar)),
             FieldType::Struct(chosen) => self
                 .nested_struct(index, chosen)
                 .map_or_else(|| scalar_name(chosen).to_owned(), name),
             FieldType::StructArray(chosen) => {
                 let element = self
                     .nested_struct(index, chosen)
-                    .map_or_else(|| element_name(chosen).to_owned(), name);
+                    .map_or_else(|| scalar_name(chosen).to_owned(), name);
                 format!("[{element}]")
             }
             FieldType::Table(table) if holds_tables && !later_tables.is_empty() => {
@@ -841,7 +841,7 @@ impl Schema {
             FieldType::EnumArray(chosen) => {
                 let element = self
                     .chosen_enum(chosen)
-                    .map_or_else(|| element_name(chosen).to_owned(), enum_name);
+                    .map_or_else(|| scalar_name(chosen).to_owned(), enum_name);
                 format!("[{element}]")
             }
             FieldType::Table(_) => "float64".to_owned(),
@@ -895,12 +895,6 @@ impl Schema {
 
 fn scalar_name(scalar: Index) -> &'static str {
     SCALARS[scalar.index(SCALARS.len())]
-}
-
-/// The element type of an array of scalars, which can't be `bool`
-fn element_name(scalar: Index) -> &'static str {
-    let elements = &SCALARS[1..];
-    elements[scalar.index(elements.len())]
 }
 
 /// Unique names, which mix letters and digits as `PascalCase` allows

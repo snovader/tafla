@@ -948,13 +948,6 @@ fn resolve_definition(
     let name = &field.type_name;
 
     if let Some(scalar) = Scalar::from_name(&name.text) {
-        if scalar == Scalar::Bool && field.is_array {
-            errors.push(
-                Diagnostic::new("arrays of bools aren't supported", name.span)
-                    .with_help("use `[uint8]` of 0 and 1"),
-            );
-            return None;
-        }
         return Some(if field.is_array {
             FieldType::Array(scalar)
         } else {

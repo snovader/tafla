@@ -225,6 +225,17 @@ function expectLittleEndian(
         return;
     }
 
+    if (field.type === 'bool[]') {
+        const start = position + offsetSize;
+        const count = field.value.length;
+
+        expect(readUnsigned(bytes, position, offsetSize)).toBe(count);
+        expect(Array.from(bytes.subarray(start, start + count))).toStrictEqual(
+            field.value.map(Number)
+        );
+        return;
+    }
+
     if (isArrayField(field)) {
         const type = elementTypeOf(field.type);
         const start = position + offsetSize;
@@ -267,6 +278,7 @@ const GETTERS = {
     getUint64Array: (reader, position) => reader.getUint64Array(position),
     getFloat32Array: (reader, position) => reader.getFloat32Array(position),
     getFloat64Array: (reader, position) => reader.getFloat64Array(position),
+    getBoolArray: (reader, position) => reader.getBoolArray(position),
     getString: (reader, position) => reader.getString(position),
     getStruct: (reader, position) => reader.getStruct(position, 9),
     getStructArray: (reader, position) => reader.getStructArray(position, 3),

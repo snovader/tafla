@@ -378,7 +378,7 @@ export class Scalars {
  * @property {boolean} bool
  */
 
-/** An array of every scalar type but bool, which has none */
+/** An array of every scalar type, and of bools, which are bytes of 0 and 1 */
 export class Arrays {
     static #LAYOUT = TableLayout.DEFAULT;
 
@@ -394,7 +394,7 @@ export class Arrays {
      * @returns {Uint8Array}
      */
     static serialize(fields) {
-        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        const sizer = new TableSizer(11, Arrays.#LAYOUT);
         sizer.addInt8Array(fields.int8.length);
         sizer.addUint8Array(fields.uint8.length);
         sizer.addInt16Array(fields.int16.length);
@@ -405,6 +405,7 @@ export class Arrays {
         sizer.addUint64Array(fields.uint64.length);
         sizer.addFloat32Array(fields.float32.length);
         sizer.addFloat64Array(fields.float64.length);
+        sizer.addBoolArray(fields.bool.length);
 
         const writer = sizer.writer();
         writer.setInt8Array(0, fields.int8);
@@ -417,6 +418,7 @@ export class Arrays {
         writer.setUint64Array(7, fields.uint64);
         writer.setFloat32Array(8, fields.float32);
         writer.setFloat64Array(9, fields.float64);
+        writer.setBoolArray(10, fields.bool);
 
         return writer.bytes();
     }
@@ -435,7 +437,7 @@ export class Arrays {
      * any of them is written.
      */
     static serializeInto(fields, bytes) {
-        const sizer = new TableSizer(10, Arrays.#LAYOUT);
+        const sizer = new TableSizer(11, Arrays.#LAYOUT);
         sizer.addInt8Array(fields.int8.length);
         sizer.addUint8Array(fields.uint8.length);
         sizer.addInt16Array(fields.int16.length);
@@ -446,6 +448,7 @@ export class Arrays {
         sizer.addUint64Array(fields.uint64.length);
         sizer.addFloat32Array(fields.float32.length);
         sizer.addFloat64Array(fields.float64.length);
+        sizer.addBoolArray(fields.bool.length);
 
         const writer = sizer.writer(bytes);
         writer.setInt8Array(0, fields.int8);
@@ -458,6 +461,7 @@ export class Arrays {
         writer.setUint64Array(7, fields.uint64);
         writer.setFloat32Array(8, fields.float32);
         writer.setFloat64Array(9, fields.float64);
+        writer.setBoolArray(10, fields.bool);
 
         return writer.bytes();
     }
@@ -513,6 +517,15 @@ export class Arrays {
     }
 
     /**
+     * A byte for each bool, which is true where it isn't 0
+     *
+     * @returns {Uint8Array}
+     */
+    bool() {
+        return this._reader.getUint8Array(this._reader.rootOffset(10));
+    }
+
+    /**
      * Reads every field into the `ArraysFields` that writes it, nested
      * tables and the items of vectors and arrays of structs included
      *
@@ -529,7 +542,8 @@ export class Arrays {
             int64: this._reader.getInt64Array(this._reader.rootOffset(6)),
             uint64: this._reader.getUint64Array(this._reader.rootOffset(7)),
             float32: this._reader.getFloat32Array(this._reader.rootOffset(8)),
-            float64: this._reader.getFloat64Array(this._reader.rootOffset(9))
+            float64: this._reader.getFloat64Array(this._reader.rootOffset(9)),
+            bool: this._reader.getBoolArray(this._reader.rootOffset(10))
         };
     }
 }
@@ -548,6 +562,7 @@ export class Arrays {
  * @property {ArrayLike<bigint> | BigUint64Array} uint64
  * @property {ArrayLike<number> | Float32Array} float32
  * @property {ArrayLike<number> | Float64Array} float64
+ * @property {readonly boolean[]} bool
  */
 
 export class Inner {
