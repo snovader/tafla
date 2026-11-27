@@ -50,6 +50,20 @@ repository's first commits, for code built from its source before the release.
   leave the builder as it was if the fill throws or leaves fields unset. The
   benchmarks' vector of 100 nested tables took 3.8 µs so, against 4.3 µs
   from a builder per item, and allocated 13.0 KB rather than 29.1 KB.
+- Vectors of strings, which the format now has: a count, the end of each
+  string and the strings' UTF-8, one after another.
+  `TableReader.getStringVector()` reads every string into a `String[]`, and
+  `getStringVectorItem()` reads one from its ends and the count that
+  `getVectorLength()` read, without reading the others. `StringVector`
+  views the strings as a random-access, unmodifiable `List`, whose `get()`
+  reads a string from its ends and whose iterator reads each string's end
+  once. Each string is decoded and checked as UTF-8 on its own, so an end
+  that splits a character fails the strings on both sides of it.
+  `TableSizer.addStringVector()`, `TableWriter.setStringVector()` and
+  `TableBuilder.setStringVector()` write them from a `List<String>`, with
+  lone surrogates replaced by U+FFFD, and encode the strings of 64 `char`s
+  or more once, as they do a string field. tafla-gen's `[string]` fields
+  read and write them.
 
 ### Changed
 
