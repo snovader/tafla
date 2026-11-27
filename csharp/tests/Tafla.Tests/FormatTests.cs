@@ -251,6 +251,8 @@ public class FormatTests
             Scalar scalar => new Value(false, 1, 1, Scalars.StructBytes([scalar])),
             Bool value => new Value(false, 1, 1, [value.Value ? (byte)1 : (byte)0]),
             ArrayField array => new Value(true, array.Type.Size(), array.Bits.Count, Scalars.StructBytes(array.Bits.Select(bits => new Scalar(array.Type, bits)))),
+            // A byte of 1 or 0 for each bool, unpadded
+            BoolArray array => new Value(true, 1, array.Values.Count, [.. array.Values.Select(value => value ? (byte)1 : (byte)0)]),
             StringField value => new Value(true, 1, Encoding.UTF8.GetByteCount(value.Value), Encoding.UTF8.GetBytes(value.Value)),
             StructField value => new Value(false, 1, 1, Scalars.StructBytes(value.Scalars)),
             StructArray array => new Value(true, Scalars.StructAlignment(array.Types), array.Items.Count, [.. array.Items.SelectMany(item => Scalars.StructBytes(item))]),

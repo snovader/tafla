@@ -177,7 +177,7 @@ public class RoundTripTests
     {
         var table = new Table(
             Layout.Headerless(OffsetType.UInt32),
-            [.. Scalars.All.Select(type => (Field)new ArrayField(type, Array.Empty<ulong>())), new StringField(""), new StructArray(new[] { ScalarType.Int64 }, Array.Empty<Seq<Scalar>>())]
+            [.. Scalars.All.Select(type => (Field)new ArrayField(type, Array.Empty<ulong>())), new BoolArray(Array.Empty<bool>()), new StringField(""), new StructArray(new[] { ScalarType.Int64 }, Array.Empty<Seq<Scalar>>())]
         );
 
         for (var byteOffset = 0; byteOffset < 8; byteOffset++)
@@ -186,6 +186,44 @@ public class RoundTripTests
             Assert.Equal(table, Read.Table(bytes.Span, table));
         }
     }
+
+    /// <summary>
+    /// An array of bools is a uint8 array of 1 and 0, unpadded, which reads back as bools, and in place
+    /// as its bytes
+    /// </summary>
+    [Fact]
+    public void WritesAnArrayOfBoolsAsBytesOf1And0()
+    {
+        var builder = new TableBuilder(2);
+        builder.SetUInt8(7);
+        builder.SetBoolArray([true, false, true, true, false]);
+        var bytes = builder.ToArray();
+
+        Assert.Equal([5, 0, 0, 0, 1, 0, 1, 1, 0], bytes[9..]);
+
+        var reader = new TableReader(bytes);
+        Assert.Equal([true, false, true, true, false], reader.GetBoolArray(reader.RootOffset(1)));
+        Assert.Equal([1, 0, 1, 1, 0], reader.GetUInt8Array(reader.RootOffset(1)).ToArray());
+    }
+
+    /// <summary>
+    /// Any byte but 0 reads as true, and each bool read is the byte 1 or 0, as C# makes them, so that
+    /// it compares equal to true, at lengths that the reader reads one byte at a time, and 16 at a
+    /// time, with a last 16 that overlap those before them or not
+    /// </summary>
+    [Fact]
+    public void ReadsAnyByteBut0OfAnArrayOfBoolsAsTrue() =>
+        Gen.Frequency<byte>((1, Gen.Const((byte)0)), (1, Gen.Const((byte)1)), (2, Gen.Byte)).Array[0, 70].Check(values =>
+        {
+            var builder = new TableBuilder(1);
+            builder.SetUInt8Array(values);
+            var reader = new TableReader(builder.ToArray());
+
+            var bools = reader.GetBoolArray(reader.RootOffset(0));
+
+            Assert.Equal(values.Select(value => value != 0), bools);
+            Assert.All(MemoryMarshal.AsBytes(bools.AsSpan()).ToArray(), value => Assert.InRange(value, 0, 1));
+        });
 
     /// <summary>Strings outside the Basic Multilingual Plane are their UTF-8, of four bytes a character, from their surrogate pairs</summary>
     [Fact]

@@ -259,7 +259,7 @@ public readonly record struct ScalarsFields
     }
 }
 
-/// <summary>An array of every scalar type but bool, which has none</summary>
+/// <summary>An array of every scalar type, and of bools, which are bytes of 0 and 1</summary>
 public readonly ref struct Arrays
 {
     internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
@@ -291,6 +291,9 @@ public readonly ref struct Arrays
     public global::System.ReadOnlySpan<float> Float32 => _reader.GetFloat32Array(_reader.RootOffset(8));
 
     public global::System.ReadOnlySpan<double> Float64 => _reader.GetFloat64Array(_reader.RootOffset(9));
+
+    /// <summary>A byte for each bool, which is true where it isn't 0</summary>
+    public global::System.ReadOnlySpan<byte> Bool => _reader.GetUInt8Array(_reader.RootOffset(10));
 }
 
 /// <summary>The fields of an <see cref="Arrays"/>, to write.</summary>
@@ -316,11 +319,13 @@ public readonly record struct ArraysFields
 
     public required global::System.ReadOnlyMemory<double> Float64 { get; init; }
 
+    public required global::System.ReadOnlyMemory<bool> Bool { get; init; }
+
     /// <summary>Writes an <see cref="Arrays"/> with every field into new bytes of its length.</summary>
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public byte[] Serialize()
     {
-        var sizer = new global::Tafla.TableSizer(10, Arrays.TableLayout);
+        var sizer = new global::Tafla.TableSizer(11, Arrays.TableLayout);
         sizer.AddInt8Array(Int8.Length);
         sizer.AddUInt8Array(Uint8.Length);
         sizer.AddInt16Array(Int16.Length);
@@ -331,6 +336,7 @@ public readonly record struct ArraysFields
         sizer.AddUInt64Array(Uint64.Length);
         sizer.AddFloat32Array(Float32.Length);
         sizer.AddFloat64Array(Float64.Length);
+        sizer.AddBoolArray(Bool.Length);
 
         var writer = sizer.CreateWriter();
         writer.SetInt8Array(0, Int8.Span);
@@ -343,6 +349,7 @@ public readonly record struct ArraysFields
         writer.SetUInt64Array(7, Uint64.Span);
         writer.SetFloat32Array(8, Float32.Span);
         writer.SetFloat64Array(9, Float64.Span);
+        writer.SetBoolArray(10, Bool.Span);
 
         return writer.Bytes;
     }
@@ -358,7 +365,7 @@ public readonly record struct ArraysFields
     /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
     public int SerializeInto(byte[] bytes)
     {
-        var sizer = new global::Tafla.TableSizer(10, Arrays.TableLayout);
+        var sizer = new global::Tafla.TableSizer(11, Arrays.TableLayout);
         sizer.AddInt8Array(Int8.Length);
         sizer.AddUInt8Array(Uint8.Length);
         sizer.AddInt16Array(Int16.Length);
@@ -369,6 +376,7 @@ public readonly record struct ArraysFields
         sizer.AddUInt64Array(Uint64.Length);
         sizer.AddFloat32Array(Float32.Length);
         sizer.AddFloat64Array(Float64.Length);
+        sizer.AddBoolArray(Bool.Length);
 
         var writer = sizer.CreateWriter(bytes);
         writer.SetInt8Array(0, Int8.Span);
@@ -381,6 +389,7 @@ public readonly record struct ArraysFields
         writer.SetUInt64Array(7, Uint64.Span);
         writer.SetFloat32Array(8, Float32.Span);
         writer.SetFloat64Array(9, Float64.Span);
+        writer.SetBoolArray(10, Bool.Span);
 
         return writer.ByteLength;
     }

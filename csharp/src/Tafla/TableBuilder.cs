@@ -199,6 +199,14 @@ public sealed partial class TableBuilder
     public void SetFloat64Array(ReadOnlySpan<double> values) => SetArray(values);
 
     /// <summary>
+    /// Sets an array field of bools, which is written as a <c>uint8</c> array, 1 for each true value
+    /// and 0 for each false one.
+    /// </summary>
+    /// <exception cref="BuildException">As <see cref="SetInt8"/> throws it.</exception>
+    public void SetBoolArray(ReadOnlySpan<bool> values) =>
+        Elements.WriteBools(values, AddCounted(values.Length, sizeof(byte), sizeof(byte)));
+
+    /// <summary>
     /// Sets a string field, of the string's UTF-8. A lone surrogate, which UTF-8 can't encode, is
     /// written as U+FFFD, as <see cref="Encoding.UTF8"/> writes it.
     /// </summary>

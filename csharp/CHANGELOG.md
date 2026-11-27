@@ -57,6 +57,10 @@ The first release.
   and nested tables in the bytes that the writer reserves for them, and a
   message of such fields and a string after them in new bytes with its
   header, without a sizer and a writer.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.SetBoolArray()`, `TableSizer.AddBoolArray()`,
+  `TableWriter.SetBoolArray()` and `TableReader.GetBoolArray()`, which reads
+  them into a new `bool[]`, true where a byte isn't 0.
 - A public `DecodeException.OutOfRange()`, beside `UnsupportedVersion()`,
   with which code that reads bytes without a `TableReader`, such as the
   structs that tafla-gen generates, fails as the runtime's reads do.

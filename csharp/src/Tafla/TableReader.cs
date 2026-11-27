@@ -21,7 +21,7 @@ namespace Tafla;
 /// Arrays, structs and vector items are read in place, as spans of the bytes rather than copies, so
 /// they show changes made to the bytes later. On a big-endian host, and on 32-bit Arm, arrays of
 /// elements wider than a byte are copied instead, since their bytes can't be read in place there. A
-/// string is decoded into a new <see cref="string"/>.
+/// string is decoded into a new <see cref="string"/>, and an array of bools into a new array.
 /// </para>
 /// <para>
 /// A <see cref="TableReader"/> is a <c>ref struct</c> over a span of the bytes, which can be those of
@@ -257,6 +257,14 @@ public readonly ref struct TableReader
     /// <exception cref="DecodeException">The array doesn't lie within the bytes.</exception>
     public ReadOnlySpan<double> GetFloat64Array(int position) =>
         Elements.Read<double>(ArrayBytes(position, sizeof(double)));
+
+    /// <summary>
+    /// Reads the array of bools at <paramref name="position"/>, a <c>uint8</c> array whose bytes are
+    /// true where they aren't 0, into a new array. <see cref="GetUInt8Array"/> reads the same bytes in
+    /// place.
+    /// </summary>
+    /// <exception cref="DecodeException">The array doesn't lie within the bytes.</exception>
+    public bool[] GetBoolArray(int position) => Elements.ReadBools(ArrayBytes(position, sizeof(byte)));
 
     /// <summary>
     /// Reads the string at <paramref name="position"/>, whose bytes must be valid UTF-8, into a new

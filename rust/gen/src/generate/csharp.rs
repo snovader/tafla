@@ -443,20 +443,25 @@ impl Generator<'_> {
 
     /// A getter's documentation: the field's, and for a vector or an array of
     /// structs, that the getter returns a view whose items are read when
-    /// they're asked for
+    /// they're asked for, and for an array of bools, that it returns their
+    /// bytes
     fn getter_docs(&self, writer: &mut CodeWriter, field: &Field) {
         let mut docs = schema_docs(&field.docs);
-        let (view, exception) = match field.field_type {
+        let (note, exception) = match field.field_type {
             FieldType::Vector(_) => (
                 format!(
                     "Views the items, reading each one when it's asked for, so that an item whose bytes are corrupt throws a {} when it's read, rather than here.",
                     cref(&self.runtime_type("DecodeException"))
                 ),
-                "The vector's count or the ends of its items don't lie within the bytes.",
+                Some("The vector's count or the ends of its items don't lie within the bytes."),
             ),
             FieldType::StructArray(_) => (
                 "Views the structs in place, reading each one when it's asked for.".to_owned(),
-                "The array's count or its structs don't lie within the bytes.",
+                Some("The array's count or its structs don't lie within the bytes."),
+            ),
+            FieldType::Array(Scalar::Bool) => (
+                "A byte for each bool, which is true where it isn't 0".to_owned(),
+                None,
             ),
             _ => {
                 summary(writer, &docs);
@@ -467,12 +472,14 @@ impl Generator<'_> {
         if !docs.is_empty() {
             docs.push(String::new());
         }
-        docs.push(view);
+        docs.push(note);
         summary(writer, &docs);
-        writer.line(format!(
-            "/// <exception cref=\"{}\">{exception}</exception>",
-            self.runtime_type("DecodeException")
-        ));
+        if let Some(exception) = exception {
+            writer.line(format!(
+                "/// <exception cref=\"{}\">{exception}</exception>",
+                self.runtime_type("DecodeException")
+            ));
+        }
     }
 
     /// The fields of a message or table, a `readonly record struct` with a
@@ -844,6 +851,7 @@ impl Generator<'_> {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
                 FieldType::Scalar(scalar) => format!("sizer.Add{}();", method_name(scalar)),
+                FieldType::Array(Scalar::Bool) => format!("sizer.AddBoolArray({value}.Length);"),
                 FieldType::Array(scalar) => {
                     format!("sizer.Add{}Array({value}.Length);", method_name(scalar))
                 }
@@ -902,6 +910,10 @@ impl Generator<'_> {
                     method_name(scalar),
                     from_enum(scalar, field.enumeration.is_some(), &value)
                 ),
+                // Bools, which the writer writes as bytes of 1 and 0
+                FieldType::Array(Scalar::Bool) => {
+                    format!("writer.SetBoolArray({index}, {value}.Span);")
+                }
                 FieldType::Array(scalar) => {
                     format!(
                         "writer.Set{}Array({index}, {value}.Span);",
@@ -1244,7 +1256,9 @@ impl Generator<'_> {
     }
 
     /// The type of a field's getter. An array of enums reads as a span of
-    /// their integer type, in place, as an array of that type does.
+    /// their integer type, in place, as an array of that type does, and an
+    /// array of bools as a span of its bytes, as a `[uint8]` does, since a
+    /// .NET bool of a byte other than 1 or 0 misbehaves.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Scalar(scalar) => self
@@ -1252,7 +1266,10 @@ impl Generator<'_> {
                 .unwrap_or(scalar_type(scalar))
                 .to_owned(),
             FieldType::Array(scalar) => {
-                format!("global::System.ReadOnlySpan<{}>", scalar_type(scalar))
+                format!(
+                    "global::System.ReadOnlySpan<{}>",
+                    scalar_type(scalar.stored())
+                )
             }
             FieldType::String => "string".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => {
@@ -1871,6 +1888,41 @@ mod tests {
         assert_eq!(namespace_name("event"), "@event");
         assert_eq!(namespace_name("global"), "@global");
         assert_eq!(namespace_name("a$b"), "a_b");
+    }
+
+    /// An array of bools reads as its bytes, in place, with a note after the
+    /// field's own documentation, and is written from bools
+    #[test]
+    fn test_arrays_of_bools_read_their_bytes_and_write_bools() {
+        let source = "message Flags {\n    /// Set ones\n    set: [bool];\n    other: [bool];\n}\n";
+        let schema = crate::parse(source).unwrap();
+        let code = &generate(&schema, "flags", "header", &Options::default())[0].contents;
+
+        let documented = "    /// <summary>
+    /// <para>
+    /// Set ones
+    /// </para>
+    /// <para>
+    /// A byte for each bool, which is true where it isn't 0
+    /// </para>
+    /// </summary>
+    public global::System.ReadOnlySpan<byte> Set => _reader.GetUInt8Array(_reader.RootOffset(0));
+";
+        let undocumented =
+            "    /// <summary>A byte for each bool, which is true where it isn't 0</summary>
+    public global::System.ReadOnlySpan<byte> Other => _reader.GetUInt8Array(_reader.RootOffset(1));
+";
+        assert!(code.contains(documented), "{code}");
+        assert!(code.contains(undocumented), "{code}");
+        assert!(
+            code.contains("public required global::System.ReadOnlyMemory<bool> Set { get; init; }"),
+            "{code}"
+        );
+        assert!(code.contains("sizer.AddBoolArray(Set.Length);"), "{code}");
+        assert!(
+            code.contains("writer.SetBoolArray(1, Other.Span);"),
+            "{code}"
+        );
     }
 
     #[test]

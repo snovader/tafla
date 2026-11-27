@@ -62,6 +62,20 @@ public static class GeneratedDescriptions
 
     public static ArrayField Of(ReadOnlySpan<double> values) => ArrayOf(ScalarType.Float64, values, Of);
 
+    public static BoolArray Of(ReadOnlySpan<bool> values) => new(values.ToArray());
+
+    /// <summary>An array of bools from the bytes that the generated getter reads in place, each true where it isn't 0.</summary>
+    public static BoolArray BoolsOf(ReadOnlySpan<byte> bytes)
+    {
+        var values = new bool[bytes.Length];
+        for (var index = 0; index < bytes.Length; index++)
+        {
+            values[index] = bytes[index] != 0;
+        }
+
+        return new BoolArray(values);
+    }
+
     /// <summary>A struct of its scalars, in the order of their offsets, as generated code writes its bytes.</summary>
     public static StructField Struct(params Scalar[] scalars) => new(scalars);
 

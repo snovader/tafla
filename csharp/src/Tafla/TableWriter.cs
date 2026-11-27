@@ -288,6 +288,14 @@ public struct TableWriter
     public void SetFloat64Array(int index, ReadOnlySpan<double> values) => SetArray(index, values);
 
     /// <summary>
+    /// Writes field <paramref name="index"/>, an array of bools, as a <c>uint8</c> array, 1 for each
+    /// true value and 0 for each false one.
+    /// </summary>
+    /// <exception cref="BuildException">The field ends past the table.</exception>
+    public void SetBoolArray(int index, ReadOnlySpan<bool> values) =>
+        Elements.WriteBools(values, StartCounted(index, values.Length, sizeof(byte), sizeof(byte)));
+
+    /// <summary>
     /// Writes field <paramref name="index"/>, a string, of the string's UTF-8, encoded straight into
     /// the table, with each lone surrogate as U+FFFD, as <see cref="TableBuilder.SetString"/> writes it.
     /// </summary>
