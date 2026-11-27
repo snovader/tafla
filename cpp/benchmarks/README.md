@@ -467,8 +467,10 @@ blocks of 16 bytes with SIMD, as protobuf's does.
 The codecs are the comparison's, each with an overload for the table of
 strings:
 
-- tafla has no vector of strings, so **tafla** writes a table of 16 string
-  fields with a `TableBuilder` and reads it with `get_string()`, and
+- The suite times string fields, so **tafla** writes a table of 16 string
+  fields, rather than a vector of strings, which
+  [Lists of strings](#lists-of-strings) times, with a `TableBuilder` and
+  reads it with `get_string()`, and
   **tafla-gen**'s code of `strings.tafla`, in `generated/strings/`, writes
   the same table from its generated fields, which view the strings, and
   reads each with its getter. `strings.tafla` is a copy of the TypeScript

@@ -376,8 +376,10 @@ The characters of 2 bytes are Latin-1 letters, which V8 stores in a byte, the
 characters of 3 bytes CJK ideographs, and those of 4 bytes emoji. Each string
 is flat, as a decoder returns it, rather than a concatenation.
 
-tafla has no vector of strings, so tafla writes a table of 16 string fields
-with a `TableBuilder` and reads it with `getString()`, and tafla-gen's code,
+The suite times string fields, so tafla writes a table of 16 string fields,
+rather than a vector of strings, which [Lists of strings](#lists-of-strings)
+times, with a `TableBuilder` and reads it with `getString()`, and tafla-gen's
+code,
 generated from `strings/strings.tafla` into `strings/generated/tafla/`,
 counts it with a `TableSizer`, writes it with a `TableWriter`, and reads it
 with its getters. Both write the same bytes, which the suite checks. The

@@ -529,7 +529,8 @@ character in two bytes, as UTF-16, so `64-last-3-byte` is a string of UTF-16
 and `64-last-2-byte` one of Latin-1.
 
 Each library writes the 16 strings as it would an array of them, except
-tafla, which has no vector of strings:
+tafla, whose string fields the suite times, rather than a vector of strings,
+which [Lists of strings](#lists-of-strings) times:
 
 - **tafla** writes a table of 16 string fields with a `TableBuilder`'s
   `setString()`, and reads them with `TableReader.getString()`, which decodes
