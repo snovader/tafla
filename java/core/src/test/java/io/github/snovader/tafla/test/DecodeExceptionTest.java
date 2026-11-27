@@ -270,8 +270,44 @@ public class DecodeExceptionTest {
         getters.add(new Getter("vector offsets", TableReader::getVectorOffsets));
         getters.add(new Getter("last vector offset", DecodeExceptionTest::getLastVectorOffset));
         getters.add(new Getter("vector offsets from the count", DecodeExceptionTest::getEachVectorItemOffset));
+        getters.add(new Getter("vector of strings", TableReader::getStringVector));
+        getters.add(new Getter("last string of a vector", DecodeExceptionTest::getLastStringVectorItem));
+        getters.add(new Getter("strings of a vector from the count", DecodeExceptionTest::getEachStringVectorItem));
+        getters.add(new Getter("strings of a vector in order", DecodeExceptionTest::iterateStringVector));
 
         return Arbitraries.of(getters);
+    }
+
+    /** Reads the last string of a vector of strings, from the ends before and after it, if it has any */
+    private static void getLastStringVectorItem(TableReader reader, int position) {
+        var length = reader.getVectorLength(position);
+        if (length > 0) {
+            reader.getStringVectorItem(position, length, length - 1);
+        }
+    }
+
+    /**
+     * Reads each string of a vector of strings from its count, read once, as a
+     * {@link StringVector}'s {@code get()} does, and each on its own, so that a string that throws
+     * leaves the others to read
+     */
+    private static void getEachStringVectorItem(TableReader reader, int position) {
+        var count = reader.getVectorLength(position);
+        for (int index = 0; index < count; index++) {
+            var itemIndex = index;
+            assertValuesOrDecodeException(() -> reader.getStringVectorItem(position, count, itemIndex));
+        }
+    }
+
+    /**
+     * Reads each string of a vector of strings in order, through a {@link StringVector}'s iterator,
+     * and goes on after a string that throws
+     */
+    private static void iterateStringVector(TableReader reader, int position) {
+        var strings = new StringVector(reader, position).iterator();
+        while (strings.hasNext()) {
+            assertValuesOrDecodeException(strings::next);
+        }
     }
 
     /** Finds the last item of a vector, which reads the ends before and after it, if it has any */

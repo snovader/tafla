@@ -27,6 +27,9 @@ public class TableReaderTest {
         @ForAll("layouts") LayoutDescription layout,
         @ForAll @IntRange(max = 9) int start
     ) {
+        // A vector of strings' ends count its bytes, which may be more than uint8 holds
+        Assume.that(Descriptions.maxLength(field, layout.width()) <= layout.offsetType().maxValue());
+
         assertReadsBack(field, layout, start);
     }
 
@@ -52,7 +55,10 @@ public class TableReaderTest {
         }
     }
 
-    /** {@return the scalar, array, string, struct or array of structs of the field's type at {@code position}} */
+    /**
+     * {@return the scalar, array, string, struct, array of structs or vector of strings of the
+     * field's type at {@code position}}
+     */
     private static FieldDescription readAt(TableReader reader, int position, FieldDescription field) {
         return switch (field) {
             case ScalarField scalar -> new ScalarField(scalar.type(), scalar.type().read(reader, position));
@@ -60,6 +66,7 @@ public class TableReaderTest {
             case StringField ignored -> new StringField(reader.getString(position));
             case StructField struct -> StructBytes.read(reader, position, struct.types());
             case StructArrayField array -> StructBytes.readArray(reader, position, array.fields());
+            case StringVectorField ignored -> new StringVectorField(List.of(reader.getStringVector(position)));
             default -> throw new IllegalArgumentException("Not a value: " + field);
         };
     }
@@ -103,7 +110,7 @@ public class TableReaderTest {
         return java.nio.ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
     }
 
-    /** Puts a scalar, array, string, struct or array of structs */
+    /** Puts a scalar, array, string, struct, array of structs or vector of strings */
     private static void put(java.nio.ByteBuffer bytes, FieldDescription field, int width) {
         switch (field) {
             case ScalarField scalar -> scalar.type().put(bytes, scalar.value());
@@ -123,6 +130,11 @@ public class TableReaderTest {
                 putUnsigned(bytes, array.items().size(), width);
                 bytes.put(StructBytes.pack(array.fields(), array.items()));
             }
+            case StringVectorField vector -> putVector(
+                bytes,
+                vector.values().stream().map(string -> string.getBytes(StandardCharsets.UTF_8)).toList(),
+                width
+            );
             default -> throw new IllegalArgumentException("Not a value: " + field);
         }
     }

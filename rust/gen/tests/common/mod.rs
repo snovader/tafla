@@ -235,12 +235,20 @@ pub const STRINGS_SCHEMAS: [BenchmarkSchema; 2] = [
 /// The schemas of the suites of lists of strings, which are copies of one
 /// schema, since the suites write and read the same lists. Each directory
 /// holds the generated code and nothing else.
-pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[BenchmarkSchema {
-    target: "typescript",
-    schema: "typescript/benchmarks/strings/lists/lists.tafla",
-    directory: "typescript/benchmarks/strings/lists/generated",
-    package: None,
-}];
+pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
+    BenchmarkSchema {
+        target: "typescript",
+        schema: "typescript/benchmarks/strings/lists/lists.tafla",
+        directory: "typescript/benchmarks/strings/lists/generated",
+        package: None,
+    },
+    BenchmarkSchema {
+        target: "java",
+        schema: "java/benchmarks/src/main/tafla/lists.tafla",
+        directory: "java/benchmarks/src/main/java",
+        package: Some("io.github.snovader.tafla.benchmarks.generated.lists"),
+    },
+];
 
 impl BenchmarkSchema {
     pub fn source(&self) -> String {

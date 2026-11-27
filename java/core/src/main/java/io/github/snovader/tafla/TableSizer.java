@@ -11,11 +11,12 @@ import java.util.*;
  * tables without recording their fields as {@link TableBuilder} does.
  *
  * <p>The fields are added in order, each with its type's method, which takes what decides its
- * length: nothing for a scalar, the count of an array, the string itself. A nested table is added
- * with {@link #addTable}, and a vector with {@link #addVector}, and the fields of each such table
- * then follow between {@link #startTable} and {@link #endTable}. The sizer pads arrays and nested
- * tables as {@code TableBuilder} does, so a writer that takes the same fields in the same order
- * writes each where the sizer counted it.</p>
+ * length: nothing for a scalar, the count of an array, the string itself, or the strings of a
+ * vector of strings. A nested table is added with {@link #addTable}, and a vector with
+ * {@link #addVector}, and the fields of each such table then follow between {@link #startTable}
+ * and {@link #endTable}. The sizer pads arrays and nested tables as {@code TableBuilder} does, so
+ * a writer that takes the same fields in the same order writes each where the sizer counted
+ * it.</p>
  *
  * {@snippet :
  * var sizer = new TableSizer(2);
@@ -255,12 +256,38 @@ public final class TableSizer {
             return;
         }
 
+        position += offsetSize + encode(string);
+    }
+
+    /**
+     * Adds a vector of strings: its count, the end of each string, and each string as UTF-8, with
+     * lone surrogates replaced by U+FFFD, one after another. Each string is counted or encoded as
+     * {@link #addString} counts or encodes a string, and its writer copies the long strings that
+     * were encoded here when it's given the same strings.
+     */
+    public void addStringVector(List<String> strings) {
+        var length = (strings.size() + 1L) * offsetSize;
+        for (var string : strings) {
+            length += string.length() < Utf8.SHORT_LENGTH ? Utf8.length(string) : encode(string);
+        }
+
+        position += length;
+    }
+
+    /**
+     * Encodes a string of at least {@link Utf8#SHORT_LENGTH} {@code char}s, which takes less time
+     * than counting its bytes a {@code char} at a time, and keeps its bytes for the writer to copy
+     *
+     * @return their length
+     */
+    private int encode(String string) {
         var utf8 = Utf8.encode(string);
         if (encodedStrings == null) {
             encodedStrings = new ArrayList<>();
         }
         encodedStrings.add(new EncodedString(string, utf8));
-        position += offsetSize + utf8.length;
+
+        return utf8.length;
     }
 
     /**

@@ -519,6 +519,71 @@ public final class TableReader {
         return vector;
     }
 
+    // A vector of strings is laid out as a vector of tables is: its count, the end of each string,
+    // counted from the vector's position, and then the strings' UTF-8, one after another, without
+    // a count of their own. Each string is decoded on its own, from its own ends, as getString()
+    // decodes a string, so an end that splits a character fails the strings on both sides of it.
+
+    /**
+     * Reads every string of the vector of strings at {@code position}, in order, each as
+     * {@link #getStringVectorItem} reads it on its own, reading each string's end once, as the
+     * next string's start.
+     *
+     * @throws DecodeException if the count or the ends aren't within the bytes, a string ends
+     *     before it starts or past the bytes, or one isn't valid UTF-8
+     */
+    public String[] getStringVector(int position) {
+        // Checking the ends bounds the count before allocating for it
+        var count = getVectorLength(position);
+        var strings = new String[count];
+
+        var start = firstItemStart(count);
+        for (int i = 0; i < count; i++) {
+            var end = itemEnd(position, i);
+            strings[i] = itemString(itemOffset(position, start, end), (int) (end - start));
+            start = end;
+        }
+
+        return strings;
+    }
+
+    /**
+     * Reads string {@code index} of the vector of strings at {@code position}, from its end and the
+     * end of the string before it, without reading any other string. It takes the {@code count}
+     * that {@link #getVectorLength} returned for the vector, as {@link #getVectorItemOffset} does,
+     * so that a reader of several strings, such as a {@link StringVector}, reads and checks the
+     * count once.
+     *
+     * <p>Another count reads other bytes as the string's ends, which still stay within the bytes,
+     * and return a string or throw a {@code DecodeException}.</p>
+     *
+     * @throws DecodeException if the string's ends aren't within the bytes, it ends before it
+     *     starts or past the bytes, or it isn't valid UTF-8
+     * @throws IndexOutOfBoundsException if {@code index} is negative or not below {@code count}
+     */
+    public String getStringVectorItem(int position, int count, int index) {
+        var start = getVectorItemOffset(position, count, index);
+        // The end that getVectorItemOffset() read, and checked against the start and the bytes
+        var end = (int) (position + itemEnd(position, index));
+
+        return itemString(start, end - start);
+    }
+
+    /**
+     * Decodes the {@code length} bytes of UTF-8 at {@code offset}, which lie within the bytes, as a
+     * string of a vector of strings, as {@link #getString} decodes a string's bytes after its
+     * count. {@link StringVector}'s iterator decodes each string with it.
+     *
+     * @throws DecodeException if they aren't valid UTF-8
+     */
+    String itemString(int offset, int length) {
+        try {
+            return Utf8.decode(bytes, offset, length);
+        } catch (CharacterCodingException ex) {
+            throw new DecodeException(String.format("The string at %d isn't valid UTF-8", offset), ex);
+        }
+    }
+
     /**
      * {@return where item 0 of a vector of {@code count} items starts, counted from the vector's
      * position}
