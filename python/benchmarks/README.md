@@ -610,4 +610,55 @@ uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
 
 ### Results
 
-To be measured.
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+with Homebrew's CPython 3.14.10, built with the GIL, and the native classes,
+through the machine's benchmark lock. Its 972 worker runs took 13 minutes,
+while other processes kept the 1-minute load average between 1.2 and 2.5 on
+the 10 cores, with a median of 1.6. pyperf's mean was within 5% of the
+fastest value for 79 of the 81 benchmarks, and at most 8% above it. The A/A
+pair agreed within 2%, but for reading every string of 10,000 of 256
+characters, at 1.05 times.
+
+Fastest value in µs per call, and its ratio to the vector of strings':
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.610 | 0.804 (1.32×) | 0.614 (1.01×) |
+| 10 × 16 chars of ASCII: deserialize | 0.463 | 0.914 (1.97×) | 0.463 (1.00×) |
+| 10 × 16 chars of ASCII: read the last string | 0.346 | 0.475 (1.37×) | 0.346 (1.00×) |
+| 10 × 256 chars of ASCII: serialize | 0.653 | 1.082 (1.66×) | 0.653 (1.00×) |
+| 10 × 256 chars of ASCII: deserialize | 0.574 | 1.026 (1.79×) | 0.573 (1.00×) |
+| 10 × 256 chars of ASCII: read the last string | 0.368 | 0.494 (1.34×) | 0.371 (1.01×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.626 | 0.813 (1.30×) | 0.625 (1.00×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.875 | 1.357 (1.55×) | 0.880 (1.00×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.403 | 0.523 (1.30×) | 0.399 (0.99×) |
+| 100 × 16 chars of ASCII: serialize | 2.407 | 4.655 (1.93×) | 2.397 (1.00×) |
+| 100 × 16 chars of ASCII: deserialize | 1.722 | 4.634 (2.69×) | 1.683 (0.98×) |
+| 100 × 16 chars of ASCII: read the last string | 0.347 | 0.481 (1.39×) | 0.350 (1.01×) |
+| 100 × 256 chars of ASCII: serialize | 2.553 | 7.035 (2.76×) | 2.556 (1.00×) |
+| 100 × 256 chars of ASCII: deserialize | 2.715 | 5.863 (2.16×) | 2.712 (1.00×) |
+| 100 × 256 chars of ASCII: read the last string | 0.368 | 0.494 (1.34×) | 0.373 (1.01×) |
+| 100 × 8 chars of 3 bytes: serialize | 2.484 | 4.913 (1.98×) | 2.490 (1.00×) |
+| 100 × 8 chars of 3 bytes: deserialize | 5.646 | 8.880 (1.57×) | 5.643 (1.00×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.404 | 0.525 (1.30×) | 0.408 (1.01×) |
+| 10,000 × 16 chars of ASCII: serialize | 168.0 | 460.0 (2.74×) | 168.7 (1.00×) |
+| 10,000 × 16 chars of ASCII: deserialize | 151.2 | 663.1 (4.39×) | 151.0 (1.00×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.353 | 0.487 (1.38×) | 0.352 (1.00×) |
+| 10,000 × 256 chars of ASCII: serialize | 210.8 | 543.8 (2.58×) | 213.1 (1.01×) |
+| 10,000 × 256 chars of ASCII: deserialize | 365.9 | 840.2 (2.30×) | 384.8 (1.05×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.369 | 0.506 (1.37×) | 0.370 (1.00×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 176.6 | 483.7 (2.74×) | 174.8 (0.99×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 534.7 | 1029.8 (1.93×) | 532.4 (1.00×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.403 | 0.533 (1.32×) | 0.405 (1.00×) |
+
+- The vector of strings is written in 0.36–0.77 times the time of the
+  vector of tables, whose tables `serialize_values()` writes one by one.
+- Every string is read in 0.23–0.65 times the time: 0.23–0.56 for lists of
+  ASCII and 0.52–0.65 for strings of 3 bytes, decoded by CPython from the
+  native reader's bytes, a string at a time.
+- The last string is found in 0.72–0.77 times the time.
+
+The pure-Python classes weren't timed in a full run: in shorter runs, their
+`get_string_vector()`, which decodes a list of ASCII as one run, read the
+lists in 0.45–0.73 times the time of reading each string for ASCII, and in
+0.63–0.82 times for strings of 3 bytes.
