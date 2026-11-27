@@ -491,9 +491,8 @@ impl<'a> Generator<'a> {
             find_field(writer, &offset, &zero_value(field.field_type, &value_type));
 
             match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
+                // A view, which reads each string when it's asked for
+                FieldType::StringVector => writer.line("return reader.GetStringVector(position)"),
                 FieldType::Scalar(Scalar::Bool) => {
                     writer.line("value, err := reader.GetUint8(position)");
                     writer.line("return value != 0, err");
@@ -799,7 +798,9 @@ impl<'a> Generator<'a> {
 
         match field.field_type {
             FieldType::StringVector => {
-                todo!("[string] in this target")
+                let local = format!("strings{index}");
+                declare_read(writer, &local, "reader.GetStringVector(position)", zero);
+                assign_read(writer, &member, &format!("{local}.Strings()"), zero);
             }
             FieldType::Scalar(Scalar::Bool) => {
                 if !*declared_boolean {
@@ -1160,9 +1161,7 @@ impl<'a> Generator<'a> {
         for field in &definition.fields[plan.fixed..] {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
+                FieldType::StringVector => writer.line(format!("sizer.AddStringVector({value})")),
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.Add{}()", method(scalar.stored())));
                 }
@@ -1223,7 +1222,7 @@ impl<'a> Generator<'a> {
             let value = format!("{FIELDS}.{}", exported(&field.name));
             match field.field_type {
                 FieldType::StringVector => {
-                    todo!("[string] in this target")
+                    writer.line(format!("writer.SetStringVector({index}, {value})"));
                 }
                 FieldType::Scalar(Scalar::Bool) => {
                     if declared_boolean {
@@ -1326,9 +1325,8 @@ impl<'a> Generator<'a> {
     /// of their integer type, as it lies in the bytes.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            // A view of the strings, which reads each one when it's asked for
+            FieldType::StringVector => "tafla.StringVector".to_owned(),
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("tafla.ArrayView[{}]", scalar_type(scalar)),
@@ -1345,9 +1343,7 @@ impl<'a> Generator<'a> {
     /// is a slice of their integer type, which is written in bulk.
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            FieldType::StringVector => "[]string".to_owned(),
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
             FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("[]{}", scalar_type(scalar)),
@@ -1449,15 +1445,16 @@ fn readable_whole(schema: &Schema) -> Vec<bool> {
             .fields
             .iter()
             .all(|field| match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
                 FieldType::Scalar(_)
                 | FieldType::String
                 | FieldType::Array(Scalar::Uint8)
                 | FieldType::Struct(_) => true,
                 FieldType::Table(nested) => allocates_nothing[nested],
-                FieldType::Array(_) | FieldType::StructArray(_) | FieldType::Vector(_) => false,
+                // A vector of strings allocates a slice of its strings
+                FieldType::Array(_)
+                | FieldType::StringVector
+                | FieldType::StructArray(_)
+                | FieldType::Vector(_) => false,
             });
         whole[index] = definition
             .fields
@@ -1538,8 +1535,9 @@ fn return_on_error(writer: &mut CodeWriter, zero: &str) {
 }
 
 /// The documentation of a field's getter: the field's own, and what the
-/// getter returns and when it fails. The getter of a vector or an array
-/// of structs returns a view, which reads each item when it's asked for.
+/// getter returns and when it fails. The getter of a vector, a vector of
+/// strings or an array of structs returns a view, which reads each item when
+/// it's asked for.
 fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
     let (views, condition) = match field.field_type {
         FieldType::Vector(_) => (
@@ -1550,6 +1548,12 @@ fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
         FieldType::StructArray(_) => (
             Some("the array's structs"),
             "if the field or its structs lie outside the bytes.",
+        ),
+        FieldType::StringVector => (
+            Some("the vector's strings"),
+            "if the field, or the vector's count or the ends of its strings, lie outside \
+             the bytes. A string fails with one when it's read if it lies outside the bytes \
+             or isn't valid UTF-8.",
         ),
         _ => (None, "if the field lies outside the bytes."),
     };
@@ -1952,14 +1956,12 @@ fn layout_expression(layout: Layout, name: &str) -> String {
 /// which it returns with an error. An enum's is its integer type's.
 fn zero_value(field_type: FieldType, value_type: &str) -> String {
     match field_type {
-        FieldType::StringVector => {
-            todo!("[string] in this target")
-        }
         FieldType::Scalar(Scalar::Bool) => "false".to_owned(),
         FieldType::Scalar(_) => "0".to_owned(),
         FieldType::String => "\"\"".to_owned(),
         FieldType::Array(Scalar::Uint8) => "nil".to_owned(),
         FieldType::Array(_)
+        | FieldType::StringVector
         | FieldType::Struct(_)
         | FieldType::StructArray(_)
         | FieldType::Table(_)
