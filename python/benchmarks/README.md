@@ -601,7 +601,7 @@ uv run --python 3.14+gil python -m tafla_benchmarks.report --lists lists.json
 The full run takes about 15 to 20 minutes, which the workers of the lists of
 10,000 strings of 256 characters lengthen, since each makes its strings first,
 in about 2 seconds. A quick run of one worker per benchmark checks that every
-benchmark works in about 45 seconds:
+benchmark works in about 20 seconds:
 
 ```sh
 TAFLA_PUREPYTHON=1 uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
