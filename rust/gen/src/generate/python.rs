@@ -128,6 +128,10 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
             .any(|field| predicate(field.field_type))
     };
     let has_array = has_field(|field_type| matches!(field_type, FieldType::Array(_)));
+    // Arrays of integers and floats, which their writers take as buffers too
+    let has_typed_array = has_field(
+        |field_type| matches!(field_type, FieldType::Array(scalar) if scalar != Scalar::Bool),
+    );
     // Vectors and arrays of structs have views, which iterate their items
     let has_view = has_field(|field_type| {
         matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_))
@@ -144,7 +148,7 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     });
 
     let mut abc = Vec::new();
-    if has_message || has_array || has_struct {
+    if has_message || has_typed_array || has_struct {
         abc.push("Buffer");
     }
     if has_array {
@@ -2046,6 +2050,11 @@ fn push_value_types(schema: &Schema, definition: &Definition, types: &mut Vec<An
                 push_value_types(schema, schema.definition(index), types);
             }
             FieldType::Table(index) => types.push(values_alias(schema.definition(index))),
+            // The bools that get_bool_array() reads, rather than the bytes
+            // that the getter returns
+            FieldType::Array(Scalar::Bool) => {
+                types.push(Annotation::Name("list[bool]".to_owned()));
+            }
             field_type => types.push(Annotation::Name(value_type(field_type, schema))),
         }
     }
@@ -2228,6 +2237,12 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
     let items =
         holds(|field_type| matches!(field_type, FieldType::Vector(_) | FieldType::StructArray(_)));
     let vectors = holds(|field_type| matches!(field_type, FieldType::Vector(_)));
+    // Whose getters return their bytes, which these read as bools
+    let bools = if holds(|field_type| field_type == FieldType::Array(Scalar::Bool)) {
+        "an array of bools' as a list of its bools"
+    } else {
+        ""
+    };
 
     let mut docs: Vec<String> = match form {
         // The values that serialize_values() takes, but for a vector's view
@@ -2235,12 +2250,22 @@ fn reader_docs(schema: &Schema, index: usize, is_root: bool, form: Form) -> Vec<
             "Reads every field's value at once into a tuple, in the fields' order, as".to_owned(),
             "`serialize_values()` takes them, as `fields()` reads them into a dict.".to_owned(),
         ],
-        Form::Values if tables => vec![
-            "Reads every field's value into a tuple, in the fields' order, as its getter"
-                .to_owned(),
-            "returns it, but a nested table's: its values, in place of it when they're".to_owned(),
-            "all of fixed size, and in a tuple of their own otherwise.".to_owned(),
-        ],
+        Form::Values if tables => {
+            let bools = if bools.is_empty() {
+                String::new()
+            } else {
+                format!("{bools}, and ")
+            };
+            wrap(&format!(
+                "Reads every field's value into a tuple, in the fields' order, as its getter \
+                 returns it, but {bools}a nested table's: its values, in place of it when \
+                 they're all of fixed size, and in a tuple of their own otherwise."
+            ))
+        }
+        Form::Values if !bools.is_empty() => wrap(&format!(
+            "Reads every field's value into a tuple, in the fields' order, as its getter \
+             returns it, but {bools}."
+        )),
         Form::Values => vec![
             "Reads every field's value into a tuple, in the fields' order, as its getter"
                 .to_owned(),
@@ -2953,7 +2978,7 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             identifier(&field.name),
             value_type(field.field_type, schema)
         ));
-        docstring(writer, &field.docs);
+        docstring(writer, &getter_docs(field));
 
         match field.field_type {
             FieldType::Scalar(Scalar::Bool) => {
@@ -2961,6 +2986,12 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
             }
             FieldType::Scalar(scalar) => {
                 let get = call(format!("self._reader.get_{}", scalar.name()), vec![offset]);
+                writer.statement(&STYLE, "return ", &get, "");
+            }
+            // The bytes of an array of bools, in place, as an array of
+            // uint8s' getter reads them
+            FieldType::Array(Scalar::Bool) => {
+                let get = call("self._reader.get_uint8_array", vec![offset]);
                 writer.statement(&STYLE, "return ", &get, "");
             }
             FieldType::Array(scalar) => {
@@ -3002,6 +3033,20 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
         }
         writer.dedent();
     }
+}
+
+/// The docstring of a field's getter: the schema's, and for an array of bools,
+/// whose getter returns its bytes, what those hold, after a blank line when
+/// the schema has one
+fn getter_docs(field: &Field) -> Vec<String> {
+    let mut docs = field.docs.clone();
+    if field.field_type == FieldType::Array(Scalar::Bool) {
+        if !docs.is_empty() {
+            docs.push(String::new());
+        }
+        docs.push("A byte for each bool, which is true where it isn't 0".to_owned());
+    }
+    docs
 }
 
 /// The position of field `index`, in the root table or a nested one
@@ -3074,6 +3119,8 @@ fn identifier(name: &str) -> String {
 fn value_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // The bytes of an array of bools, which its getter reads in place
+        FieldType::Array(Scalar::Bool) => "memoryview[int]".to_owned(),
         FieldType::Array(scalar) => format!("memoryview[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
         FieldType::Struct(index) | FieldType::Table(index) => schema.definition(index).name.clone(),
@@ -3086,6 +3133,8 @@ fn value_type(field_type: FieldType, schema: &Schema) -> String {
 fn input_type(field_type: FieldType, schema: &Schema) -> String {
     match field_type {
         FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        // Bools, which the writer writes as bytes of 1 and 0
+        FieldType::Array(Scalar::Bool) => "Iterable[bool]".to_owned(),
         FieldType::Array(scalar) => format!("Buffer | Iterable[{}]", scalar_type(scalar)),
         FieldType::String => "str".to_owned(),
         // Structs are written from their dataclasses

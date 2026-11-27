@@ -82,6 +82,10 @@ then the fields in the order they were set:
   no header, and its offsets count from its own start.
 - Arrays and strings start with their element count. Typed arrays are padded so
   that their elements are aligned to their size from the table's start.
+- An array of bools is a ``uint8`` array of 1 and 0, which
+  ``set_bool_array()`` writes from bools and ``get_bool_array()`` reads into
+  a list of bools, true wherever a byte isn't 0. ``get_uint8_array()`` reads
+  its bytes in place.
 - A struct is its scalars, one after another without padding, and isn't
   aligned. An array of structs starts with their count, and is padded so that
   the structs are aligned to the size of their largest scalar.
@@ -196,6 +200,10 @@ A float too large for a float32             ``ValueError`` from a scalar, and
                                             float32.
 A lone surrogate in a string                ``UnicodeEncodeError``, a
                                             ``ValueError``
+A value in an array of bools                1 if it's true, as ``bool()``
+                                            takes it, and 0 if it's false,
+                                            or its error from the setter if
+                                            its truth raises
 A value whose ``__index__()`` or            Its error from an array and from
 ``__float__()`` raises                      an integer scalar, but
                                             ``ValueError`` from a float scalar,

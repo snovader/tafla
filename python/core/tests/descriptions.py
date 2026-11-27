@@ -5,9 +5,10 @@ They cover every layout, element type and kind of field: integers at their
 limits, 64-bit ones included; floats of both widths with -0.0, NaN and the
 infinities, and float32s that are exact; strings with characters outside the
 Basic Multilingual Plane and U+FEFF, but no lone surrogates, which
-``set_string()`` rejects; structs of one to four scalars of any type, alone and
-in arrays, empty too; nested tables from builders and from bytes, with and
-without an alignment; and vectors of tables of any layout.
+``set_string()`` rejects; arrays of bools, empty too; structs of one to four
+scalars of any type, alone and in arrays, empty too; nested tables from
+builders and from bytes, with and without an alignment; and vectors of tables
+of any layout.
 
 They follow the format's rules: a table nested with ``set_table()`` has no
 header, as the builder's docstring asks, and is read in place when it has its
@@ -139,6 +140,11 @@ ARRAY_FIELDS: SearchStrategy[Description] = one_of(
     ]
 )
 
+# Arrays of bools, empty too
+BOOL_ARRAY_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
+    {"type": just("bool[]"), "value": lists(booleans(), max_size=MAX_ELEMENTS)}
+)
+
 STRING_FIELDS: SearchStrategy[Description] = fixed_dictionaries(
     {"type": just("string"), "value": STRINGS}
 )
@@ -248,6 +254,7 @@ def _field_lists(
     kinds = [
         SCALAR_FIELDS,
         ARRAY_FIELDS,
+        BOOL_ARRAY_FIELDS,
         STRING_FIELDS,
         STRUCT_FIELDS,
         STRUCT_ARRAY_FIELDS,
@@ -319,6 +326,9 @@ def _longest_field_length(field: Description, offset_size: int) -> int:
 
     if kind == "string":
         return offset_size + len(field["value"].encode())
+
+    if kind == "bool[]":
+        return offset_size + len(field["value"])
 
     if kind == "struct":
         return struct_of(scalar["type"] for scalar in field["fields"]).size

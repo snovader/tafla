@@ -47,6 +47,11 @@ repository's first commits, for code built from its source before the release.
   the benchmarks' vector of 100 nested tables took 28% to 30% less time so
   with the native classes, and 23% less with the pure-Python ones, holding
   half the memory at its peak.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.set_bool_array()` and `TableWriter.set_bool_array()` write
+  each value's truth, as `bool()` takes it, and `TableReader.get_bool_array()`
+  reads a list of bools, true wherever a byte isn't 0. The native writer
+  converts an exact `list` or `tuple` of bools itself.
 
 ### Changed
 

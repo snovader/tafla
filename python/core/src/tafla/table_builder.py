@@ -2,7 +2,7 @@ from collections.abc import Buffer, Callable, Collection, Iterable, Sequence
 from typing import Any
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, byte_view, struct_count
+from .elements import as_elements, bool_bytes, byte_view, struct_count
 from .implementation import TableLayout, TableReader, TableWriter
 from .layout import MAX_LENGTHS, header_length, padding_to
 from .types import ElementSize, OffsetSize, TypeCode
@@ -239,6 +239,14 @@ class TableBuilder:
         such as a list, is converted as ``array("d", values)`` would, which
         takes several times as long."""
         self.__add_array("d", SIZEOF_64, TableWriter.set_float64_array, values)
+
+    def set_bool_array(self, values: Iterable[bool]) -> None:
+        """Sets an array of bools, which is written as a ``uint8`` array: 1 for
+        each value that's true, as ``bool()`` takes it, and 0 for each that's
+        false. They're converted to those bytes when they're set, so a value
+        whose truth can't be taken raises its error from here."""
+        elements = bool_bytes(values)
+        self.__add_array("B", SIZEOF_8, TableWriter.set_uint8_array, elements)
 
     def set_string(self, string: str) -> None:
         """Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a

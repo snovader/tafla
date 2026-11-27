@@ -35,7 +35,8 @@ impl Drop for Held {
 /// Reads a table within the supplied bytes, in the table layout it was
 /// written in, whose multi-byte values are little-endian. Array reads return
 /// views of the bytes on a little-endian host, whatever their alignment, and
-/// copies in the host's byte order on a big-endian host.
+/// copies in the host's byte order on a big-endian host, but
+/// ``get_bool_array()``, which reads bools into a list.
 ///
 /// Every read checks that it stays within the bytes and raises ``DecodeError``
 /// otherwise, at any position, however large. The bytes must be C-contiguous,
@@ -495,6 +496,45 @@ impl TableReader {
         let start = self.offset_of(bytes);
 
         self.slice(py, start, start + bytes.len())
+    }
+
+    /// Reads the array of bools at ``position``, a ``uint8`` array whose
+    /// bytes are true when they aren't 0, into a new list.
+    /// ``get_uint8_array()`` reads the same bytes in place.
+    fn get_bool_array<'py>(
+        &self,
+        py: Python<'py>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let at = self.position(position, self.size())?;
+        let (start, length) = self
+            .core()
+            .get_u8_array(at)
+            .map(|bytes| (self.offset_of(bytes), bytes.len()))
+            .map_err(|error| core_error(py, &error))?;
+
+        // A loop fills the list with True and False, which took 1.0 µs for
+        // 1,000 bools, where a Struct's unpack of the bytes' view took 3.3 µs
+        // and list(map(bool, view)) 17.6 µs, in CPython 3.15. The list is
+        // created before the bytes are read, since creating it may run the
+        // garbage collector, and with it Python code, and True and False
+        // create no objects.
+        let list = unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(length.cast_signed()))?
+                .cast_into_unchecked::<PyList>()
+        };
+        for (index, &byte) in self.bytes_slice()[start..start + length].iter().enumerate() {
+            let bool = unsafe {
+                if byte == 0 {
+                    ffi::Py_False()
+                } else {
+                    ffi::Py_True()
+                }
+            };
+            list_set(&list, index, bool)?;
+        }
+
+        Ok(list)
     }
 
     /// Returns a view of the ``size`` bytes of the struct at ``position``,
@@ -988,6 +1028,23 @@ fn tuple_set(tuple: &Bound<'_, PyAny>, index: usize, value: Bound<'_, PyAny>) ->
     #[cfg(Py_LIMITED_API)]
     if unsafe { ffi::PyTuple_SetItem(tuple.as_ptr(), index.cast_signed(), value.into_ptr()) } != 0 {
         return Err(PyErr::fetch(tuple.py()));
+    }
+    Ok(())
+}
+
+/// Sets item `index` of a list that was just created to `True` or `False`,
+/// borrowed from the interpreter
+#[inline]
+fn list_set(list: &Bound<'_, PyList>, index: usize, bool: *mut ffi::PyObject) -> PyResult<()> {
+    // The list holds a reference of its own, which these calls steal
+    let bool = unsafe { ffi::Py_NewRef(bool) };
+    #[cfg(not(Py_LIMITED_API))]
+    unsafe {
+        ffi::PyList_SET_ITEM(list.as_ptr(), index.cast_signed(), bool);
+    }
+    #[cfg(Py_LIMITED_API)]
+    if unsafe { ffi::PyList_SetItem(list.as_ptr(), index.cast_signed(), bool) } != 0 {
+        return Err(PyErr::fetch(list.py()));
     }
     Ok(())
 }

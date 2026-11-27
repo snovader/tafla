@@ -295,7 +295,7 @@ type ScalarsFieldValues = tuple[
 
 
 class Arrays:
-    """An array of every scalar type but bool, which has none"""
+    """An array of every scalar type, and of bools, which are bytes of 0 and 1"""
 
     __slots__ = ("_reader",)
 
@@ -308,7 +308,7 @@ class Arrays:
     @classmethod
     def serialize(cls, **fields: Unpack[ArraysFields]) -> memoryview:
         """Writes an ``Arrays`` with every field"""
-        writer = TableWriter(10, cls._LAYOUT)
+        writer = TableWriter(11, cls._LAYOUT)
         writer.set_int8_array(0, fields["int8"])
         writer.set_uint8_array(1, fields["uint8"])
         writer.set_int16_array(2, fields["int16"])
@@ -319,6 +319,7 @@ class Arrays:
         writer.set_uint64_array(7, fields["uint64"])
         writer.set_float32_array(8, fields["float32"])
         writer.set_float64_array(9, fields["float64"])
+        writer.set_bool_array(10, fields["bool_"])
 
         return writer.bytes()
 
@@ -335,12 +336,13 @@ class Arrays:
         uint64: Buffer | Iterable[int],
         float32: Buffer | Iterable[float],
         float64: Buffer | Iterable[float],
+        bool_: Iterable[bool],
         /,
     ) -> memoryview:
         """Writes an ``Arrays`` from every field's value, in their order, as
         ``field_values()`` returns them
         """
-        writer = TableWriter(10, cls._LAYOUT)
+        writer = TableWriter(11, cls._LAYOUT)
         writer.set_int8_array(0, int8)
         writer.set_uint8_array(1, uint8)
         writer.set_int16_array(2, int16)
@@ -351,6 +353,7 @@ class Arrays:
         writer.set_uint64_array(7, uint64)
         writer.set_float32_array(8, float32)
         writer.set_float64_array(9, float64)
+        writer.set_bool_array(10, bool_)
 
         return writer.bytes()
 
@@ -384,6 +387,10 @@ class Arrays:
     def float64(self) -> memoryview[float]:
         return self._reader.get_float64_array(self._reader.root_offset(9))
 
+    def bool_(self) -> memoryview[int]:
+        """A byte for each bool, which is true where it isn't 0"""
+        return self._reader.get_uint8_array(self._reader.root_offset(10))
+
     def fields(self) -> ArraysFields:
         """Reads every field at once, as ``serialize()`` takes them.
 
@@ -401,6 +408,7 @@ class Arrays:
             "uint64": reader.get_uint64_array(reader.root_offset(7)),
             "float32": reader.get_float32_array(reader.root_offset(8)),
             "float64": reader.get_float64_array(reader.root_offset(9)),
+            "bool_": reader.get_bool_array(reader.root_offset(10)),
         }
 
     def field_values(self) -> ArraysFieldValues:
@@ -421,6 +429,7 @@ class Arrays:
             reader.get_uint64_array(reader.root_offset(7)),
             reader.get_float32_array(reader.root_offset(8)),
             reader.get_float64_array(reader.root_offset(9)),
+            reader.get_bool_array(reader.root_offset(10)),
         )
 
     @classmethod
@@ -443,6 +452,7 @@ class Arrays:
             reader.get_uint64_array(reader.root_offset(7)),
             reader.get_float32_array(reader.root_offset(8)),
             reader.get_float64_array(reader.root_offset(9)),
+            reader.get_bool_array(reader.root_offset(10)),
         )
 
 
@@ -459,6 +469,7 @@ class ArraysFields(TypedDict):
     uint64: Buffer | Iterable[int]
     float32: Buffer | Iterable[float]
     float64: Buffer | Iterable[float]
+    bool_: Iterable[bool]
 
 
 type ArraysFieldValues = tuple[
@@ -472,6 +483,7 @@ type ArraysFieldValues = tuple[
     memoryview[int],
     memoryview[float],
     memoryview[float],
+    list[bool],
 ]
 
 

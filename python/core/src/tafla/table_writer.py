@@ -5,7 +5,7 @@ from typing import Any, Self, cast
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, little_endian_bytes, struct_count
+from .elements import as_elements, bool_bytes, little_endian_bytes, struct_count
 from .errors import describe_int
 from .fixed_fields import FixedFields
 from .layout import (
@@ -519,6 +519,16 @@ class TableWriter:
 
     def set_float64_array(self, index: int, values: Buffer | Iterable[float]) -> None:
         self.__set_array(index, "d", SIZEOF_64, values)
+
+    def set_bool_array(self, index: int, values: Iterable[bool]) -> None:
+        """Writes an array of bools as a ``uint8`` array: 1 for each value
+        that's true, as ``bool()`` takes it, and 0 for each that's false. A
+        value whose truth can't be taken raises its error, before anything
+        is written."""
+        elements = bool_bytes(values)
+
+        self.__start_array(index, len(elements), len(elements), SIZEOF_8)
+        self.__data += elements
 
     def set_string(self, index: int, string: str) -> None:
         """Writes ``string`` as UTF-8. Raises ``UnicodeEncodeError``, a
