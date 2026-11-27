@@ -9,7 +9,7 @@ from .elements import check_struct_size, from_little_endian, not_contiguous
 from .errors import DecodeError, describe_int
 from .fixed_fields import FixedFields
 from .layout import TableLayout
-from .structs import OFFSET_STRUCTS
+from .structs import OFFSET_CODES, OFFSET_STRUCTS
 from .types import FloatTypeCode, IntTypeCode, OffsetSize, TypeCode
 
 # The scalars' Structs, assigned rather than imported. Python 3.14 compiles a
@@ -23,13 +23,6 @@ int32, uint32 = structs.int32, structs.uint32
 int64, uint64 = structs.int64, structs.uint64
 float32, float64 = structs.float32, structs.float64
 
-# The array type codes of the offset sizes' unsigned integers, which the ends
-# of a vector's items are read as
-_SIZE_CODES: dict[OffsetSize, IntTypeCode] = {
-    SIZEOF_8: "B",
-    SIZEOF_16: "H",
-    SIZEOF_32: "I",
-}
 # One 64-bit item position, which get_vector_offsets() repeats for every item
 # and then fills in. Repeating it, rather than array("Q", bytes(8 * count)),
 # doesn't hold the count's zeros as bytes too while they're copied.
@@ -629,6 +622,117 @@ class TableReader:
 
             yield read(offset)
 
+    def get_string_vector(self, position: int) -> list[str]:
+        """Reads every string of the vector of strings at ``position``, in
+        order.
+
+        A vector of strings is laid out as a vector of tables is: its count,
+        the end of each string from the vector's position, and then the
+        strings' UTF-8, one after another, so the ends are read and checked
+        as ``get_vector()`` reads a vector's. Each string reads as reading it
+        on its own with ``get_string_vector_item()`` would.
+
+        Raises ``DecodeError`` if the count, the ends or the strings don't
+        lie within the buffer, a string ends before it starts, or one isn't
+        valid UTF-8: the error that reading the strings one after another
+        with ``get_string_vector_item()`` raises first.
+        """
+        ends = self.__get_item_ends(position)
+        count = len(ends)
+        if not count:
+            return []
+
+        # The strings lie one after another, from the end of the ends to the
+        # last string's end, so their bytes are copied as one run. A run of
+        # ASCII is decoded once and sliced at every end, since its strings'
+        # characters are a byte each, and any other run is decoded a string
+        # at a time, each on its own, as get_string_vector_item() decodes
+        # it. Ends out of order, a run past the buffer and a string that
+        # isn't valid UTF-8 leave the strings to __read_each_string(), which
+        # raises their error.
+        first = (count + 1) * self.__size
+        last = ends[-1]
+        if first <= last and position + last <= self.__length:
+            run = bytes(self.__view[position + first : position + last])
+            strings: list[str] = []
+            start = 0
+            if run.isascii():
+                text = run.decode("ascii")
+                for end in ends:
+                    stop = end - first
+                    if start > stop:
+                        break
+                    strings.append(text[start:stop])
+                    start = stop
+                else:
+                    return strings
+            else:
+                for end in ends:
+                    stop = end - first
+                    if start > stop:
+                        break
+                    try:
+                        strings.append(run[start:stop].decode())
+                    except UnicodeDecodeError:
+                        break
+                    start = stop
+                else:
+                    return strings
+
+        return self.__read_each_string(position, ends)
+
+    def __read_each_string(self, position: int, ends: memoryview[int]) -> list[str]:
+        """Reads every string of the vector of strings at ``position``, whose
+        ``ends`` lie within the buffer, one after another, each as
+        ``get_string_vector_item()`` reads it, which raises the error of the
+        first string that doesn't read"""
+        view = self.__view
+        strings: list[str] = []
+        start = (len(ends) + 1) * self.__size
+        for end in ends:
+            offset = self.__item_offset(position, start, end)
+            try:
+                strings.append(str(view[offset : position + end], "utf-8"))
+            except UnicodeDecodeError as error:
+                raise _string_error(offset) from error
+            start = end
+
+        return strings
+
+    def get_string_vector_item(self, position: int, count: int, index: int) -> str:
+        """Reads string ``index`` of the vector of strings at ``position``,
+        from its end and the end of the string before it, without reading
+        any other string. It takes the vector's ``count``, which
+        ``get_vector_length()`` returned, and doesn't read or check it again,
+        as ``get_vector_item_offset()`` does, so that reading many strings,
+        as a ``StringVector`` does, reads and checks the count once.
+
+        Raises ``IndexError`` if ``index`` isn't below ``count``, and
+        ``DecodeError`` if the string's ends or the string don't lie within
+        the buffer, it ends before it starts, or it isn't valid UTF-8.
+        """
+        # get_vector_item_offset()'s checks, repeated rather than called, as
+        # it repeats get_vector_offset()'s, since the call would add to
+        # every string's read
+        if not 0 <= index < count:
+            raise IndexError(
+                f"Item {describe_int(index)} is outside the vector of {count} "
+                f"at {position}"
+            )
+
+        size = self.__size
+        if index == 0:
+            start = (count + 1) * size
+        else:
+            start = self.__get_size(position + index * size)
+        end = self.__get_size(position + (index + 1) * size)
+        offset = self.__item_offset(position, start, end)
+
+        try:
+            return str(self.__view[offset : position + end], "utf-8")
+        except UnicodeDecodeError as error:
+            raise _string_error(offset) from error
+
     def __get_item_ends(self, position: int) -> memoryview[int]:
         """Returns the item ends of the vector at ``position``, once they're
         checked to lie within the buffer, before anything is allocated for
@@ -638,7 +742,7 @@ class TableReader:
         byte_length = self.get_vector_length(position) * size
 
         return from_little_endian(
-            _SIZE_CODES[size], self.__view[start : start + byte_length]
+            OFFSET_CODES[size], self.__view[start : start + byte_length]
         )
 
     def __item_offset(self, position: int, start: int, end: int) -> int:
@@ -677,3 +781,9 @@ class TableReader:
         except StructError, OverflowError:
             pass
         raise DecodeError.out_of_range(position, self.__size, self.__length)
+
+
+def _string_error(start: int) -> DecodeError:
+    """The error of a string of a vector of strings, at ``start``, that isn't
+    valid UTF-8, whose ``UnicodeDecodeError`` is its cause"""
+    return DecodeError(f"The string at {start} isn't valid UTF-8")

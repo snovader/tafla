@@ -1,11 +1,12 @@
 import builtins
 from collections.abc import Buffer, Iterable, Iterator, Sequence
-from struct import error as StructError
+from itertools import accumulate
+from struct import error as StructError, pack
 from typing import Any, Self, cast
 
 from . import structs
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32, SIZEOF_64
-from .elements import as_elements, little_endian_bytes, struct_count
+from .elements import as_elements, little_endian_bytes, str_vector_error, struct_count
 from .errors import describe_int
 from .fixed_fields import FixedFields
 from .layout import (
@@ -16,7 +17,7 @@ from .layout import (
     alignment_error,
     header_length,
 )
-from .structs import OFFSET_STRUCTS
+from .structs import OFFSET_CODES, OFFSET_STRUCTS
 from .types import ElementSize, OffsetSize, TypeCode
 
 # The scalars' Structs, assigned rather than imported, as in table_reader.py,
@@ -539,6 +540,77 @@ class TableWriter:
         self.__set_offset(index)
         self.__set_count(len(encoded), len(encoded))
         self.__data += encoded
+
+    def set_string_vector(self, index: int, strings: Sequence[str]) -> None:
+        """Writes a vector of strings: its count, the end of each string from
+        the vector's position, and then each string as UTF-8, one after
+        another, which lets readers find any string without reading the
+        others.
+
+        Raises ``UnicodeEncodeError``, a ``ValueError``, if a string has a
+        lone surrogate, which UTF-8 can't encode, ``TypeError`` for a
+        ``str``, which is a sequence of its characters, and ``ValueError`` if
+        iterating ``strings`` gives more or fewer than their ``len()``, each
+        having written nothing.
+        """
+        if isinstance(strings, str):
+            raise str_vector_error()
+
+        # The joined strings are ASCII only when each string is, whose UTF-8
+        # is then as long as it is, and they're encoded at once. Any other
+        # strings are encoded one by one, for their lengths. Encoding the
+        # strings of ASCII at once made writing lists of 10 to 10,000 of them
+        # take 0.56 to 0.72 times as long, and the others 1.04 to 1.14.
+        joined = "".join(strings)
+        if joined.isascii():
+            lengths: Iterable[int] = map(len, strings)
+            encoded = joined.encode()
+        else:
+            each = list(map(str.encode, strings))
+            lengths = map(len, each)
+            encoded = b"".join(each)
+
+        self.__set_strings(index, len(strings), lengths, encoded)
+
+    def _set_encoded_string_vector(
+        self, index: int, strings: list[builtins.bytes]
+    ) -> None:
+        """Writes a vector of strings that are encoded as UTF-8 already, as
+        ``set_string_vector()`` writes it. ``TableBuilder`` encodes strings
+        outside ASCII when they're set, to count their bytes, and writes them
+        with it, as ``_set_encoded_string()`` writes a string. Generated code
+        writes vectors of strings with ``set_string_vector()``, so it isn't
+        public."""
+        self.__set_strings(index, len(strings), map(len, strings), b"".join(strings))
+
+    def __set_strings(
+        self,
+        index: int,
+        count: int,
+        lengths: Iterable[int],
+        encoded: builtins.bytes,
+    ) -> None:
+        """Writes a vector of ``count`` strings of these UTF-8 ``lengths``,
+        whose bytes ``encoded`` holds one after another: its offset, its count
+        and ends, packed in one call, and the strings. A count or an end that
+        doesn't fit raises before anything is written."""
+        size = self.__size
+        # The ends, after the count in place of the first string's start,
+        # which they count from
+        head = list(accumulate(lengths, initial=(count + 1) * size))
+        if len(head) != count + 1:
+            raise _items_error(count, len(head) - 1)
+        head[0] = count
+        try:
+            packed = pack(f"<{count + 1}{OFFSET_CODES[size]}", *head)
+        except StructError as error:
+            length = len(self.__data) + (count + 1) * size + len(encoded)
+            raise self.__too_long(length) from error
+
+        self.__set_offset(index)
+        data = self.__data
+        data += packed
+        data += encoded
 
     def set_struct(self, index: int, data: Buffer) -> None:
         """Writes a struct field from its bytes: its scalars, little-endian, one

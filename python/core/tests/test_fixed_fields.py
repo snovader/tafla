@@ -601,10 +601,10 @@ class TestVectorTables(unittest.TestCase):
                 TableWriter(1).set_vector_tables(0, fields, Misreported(items, length))
 
 
-class Misreported(Sequence[tuple[Any, ...]]):
+class Misreported[T](Sequence[T]):
     """Items whose ``len()`` is ``length``, whatever their number"""
 
-    def __init__(self, items: list[tuple[Any, ...]], length: int) -> None:
+    def __init__(self, items: list[T], length: int) -> None:
         self.items = items
         self.length = length
 
@@ -613,19 +613,17 @@ class Misreported(Sequence[tuple[Any, ...]]):
         return self.length
 
     @overload
-    def __getitem__(self, index: int) -> tuple[Any, ...]: ...
+    def __getitem__(self, index: int) -> T: ...
 
     @overload
-    def __getitem__(self, index: slice) -> Sequence[tuple[Any, ...]]: ...
+    def __getitem__(self, index: slice) -> Sequence[T]: ...
 
     @override
-    def __getitem__(
-        self, index: int | slice
-    ) -> tuple[Any, ...] | Sequence[tuple[Any, ...]]:
+    def __getitem__(self, index: int | slice) -> T | Sequence[T]:
         return self.items[index]
 
     @override
-    def __iter__(self) -> Iterator[tuple[Any, ...]]:
+    def __iter__(self) -> Iterator[T]:
         return iter(self.items)
 
 

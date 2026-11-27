@@ -41,7 +41,7 @@ from hypothesis.strategies import (
 
 import tafla
 from tafla import fixed_fields, layout, table_reader, table_writer
-from tests.tables import FORMATS
+from tests.tables import FORMATS, NATIVE_STRING_VECTORS
 from tests.test_fixed_fields import Misreported
 
 try:
@@ -372,6 +372,8 @@ class TestImplementations(unittest.TestCase):
                 for attribute in dir(pure)
                 if not attribute.startswith("_") or attribute in BUILDER_METHODS
             }
+            if not NATIVE_STRING_VECTORS:
+                names -= STRING_VECTOR_METHODS
             for attribute in sorted(names):
                 with self.subTest(cls=name, attribute=attribute):
                     self.assertTrue(hasattr(native, attribute))
@@ -958,7 +960,21 @@ def describe_call(method: str, args: tuple[Any, ...]) -> str:
 
 
 # The writer's private methods that TableBuilder calls
-BUILDER_METHODS = {"_checked", "_copy_table", "_set_encoded_string"}
+BUILDER_METHODS = {
+    "_checked",
+    "_copy_table",
+    "_set_encoded_string",
+    "_set_encoded_string_vector",
+}
+
+# The methods of vectors of strings, which the native classes have once they
+# bind the Rust runtime's, and which the comparisons leave out until then
+STRING_VECTOR_METHODS = {
+    "get_string_vector",
+    "get_string_vector_item",
+    "set_string_vector",
+    "_set_encoded_string_vector",
+}
 
 
 def parameters(method: Callable[..., object]) -> list[str]:
@@ -990,6 +1006,8 @@ READS = [
     "get_version",
     "bytes",
 ]
+if NATIVE_STRING_VECTORS:
+    READS += ["get_string_vector", "get_string_vector_item"]
 
 POSITIONS = INTEGERS
 SIZES = one_of(integers(-2, 20), INTEGERS)
@@ -1004,6 +1022,8 @@ READ_ARGUMENTS: dict[str, SearchStrategy[tuple[Any, ...]]] = {
     "get_vector_length": tuples(POSITIONS),
     "get_vector_offset": tuples(POSITIONS, POSITIONS),
     "get_vector_item_offset": tuples(POSITIONS, integers(0, 12), POSITIONS),
+    "get_string_vector": tuples(POSITIONS),
+    "get_string_vector_item": tuples(POSITIONS, integers(0, 12), POSITIONS),
     "get_vector_offsets": tuples(POSITIONS),
     "get_vector": tuples(POSITIONS),
     "get_fields": tuples(POSITIONS),
@@ -1069,6 +1089,21 @@ ALIGNMENTS: SearchStrategy[Any] = one_of(
 
 INDICES = one_of(integers(-6, 8), INTEGERS)
 
+# Strings as the writers take them, and a lone surrogate, which they reject
+WRITTEN_STRINGS: SearchStrategy[str] = one_of(
+    text(characters(codec="utf-8"), max_size=6), just("\ud800"), just("é" * 300)
+)
+
+# Vectors of strings: lists and tuples of strings, of their subclasses, a str,
+# which the writers reject, and sequences whose len() isn't their number
+STRING_VECTOR_VALUES: SearchStrategy[Any] = one_of(
+    sequences(WRITTEN_STRINGS, max_size=4),
+    WRITTEN_STRINGS,
+    tuples(lists(WRITTEN_STRINGS, max_size=3), sampled_from([-1, 1])).map(
+        lambda drawn: Misreported(drawn[0], max(len(drawn[0]) + drawn[1], 0))
+    ),
+)
+
 WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
     tuples(
         sampled_from([f"set_{kind}" for kind in sorted(FORMATS)]),
@@ -1128,6 +1163,16 @@ WRITES: SearchStrategy[tuple[str, tuple[Any, ...]]] = one_of(
         ),
     ),
 )
+if NATIVE_STRING_VECTORS:
+    WRITES = one_of(
+        WRITES,
+        tuples(just("set_string_vector"), tuples(INDICES, STRING_VECTOR_VALUES)),
+        # Bytes, which needn't be UTF-8, since TableBuilder encodes them
+        tuples(
+            just("_set_encoded_string_vector"),
+            tuples(INDICES, lists(binary(max_size=300), max_size=4)),
+        ),
+    )
 
 
 # The views of each writer that the calls hold, by the writer's id, until a

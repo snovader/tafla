@@ -54,7 +54,7 @@ def byte_swapped_arrays(data: memoryview[int], table: Description) -> bytes:
 
     def swap(placement: Placement) -> None:
         kind = placement.field["type"]
-        if not kind.endswith("[]") or kind == "struct[]":
+        if not kind.endswith("[]") or kind in {"struct[]", "string[]"}:
             return
 
         size = ELEMENT_SIZES[kind.removesuffix("[]")]
