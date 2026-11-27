@@ -81,6 +81,9 @@ and then the fields in the order they were set:
   start, and arrays of structs to the size of their largest scalar.
   `SetTable()` aligns a nested table to the largest alignment of its arrays
   when given its builder, and to 4 bytes by default when given bytes.
+- An array of bools is a `uint8` array of 1 and 0, which `SetBoolArray()`
+  writes from bools and `GetBoolArray()` reads into new bools, true where a
+  byte isn't 0. `GetUint8Array()` reads its bytes in place.
 - A vector starts with its item count, then the end of each item, counted
   from the vector's start, and then the items, so `Vector.Get()` finds any
   item from two ends without reading the others. An item without a header and

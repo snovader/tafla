@@ -263,6 +263,9 @@ func (s *TableSizer) AddFloat32Array(count int) { s.addArray(elements(count)*4, 
 // AddFloat64Array adds an array field of count float64s.
 func (s *TableSizer) AddFloat64Array(count int) { s.addArray(elements(count)*8, Align8) }
 
+// AddBoolArray adds an array field of count bools, a byte each.
+func (s *TableSizer) AddBoolArray(count int) { s.addArray(elements(count), Align1) }
+
 // AddString adds a string field, of its bytes, which are UTF-8 if it is.
 func (s *TableSizer) AddString(value string) {
 	s.add(min(s.width()+uint64(len(value)), past))
@@ -670,6 +673,12 @@ func (w *TableWriter) SetFloat32Array(index int, values []float32) {
 // SetFloat64Array writes array field index of float64s.
 func (w *TableWriter) SetFloat64Array(index int, values []float64) {
 	putElements(w.reserveArray(index, len(values), Align8), values)
+}
+
+// SetBoolArray writes array field index of bools, as a uint8 array of 1 for
+// each true value and 0 for each false one.
+func (w *TableWriter) SetBoolArray(index int, values []bool) {
+	w.SetUint8Array(index, boolBytes(values))
 }
 
 // SetString writes string field index, as its bytes, which are UTF-8 if it

@@ -38,6 +38,11 @@ first commits, for code built from its source before the release.
   in place, where they're aligned to the struct in memory on a little-endian
   host, for the code that tafla-gen generates, which calls it only for
   structs that lie in memory as their bytes do.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.SetBoolArray()`, `Item.SetBoolArray()`,
+  `TableSizer.AddBoolArray()`, `TableWriter.SetBoolArray()` and
+  `TableReader.GetBoolArray()`, which reads them into new bools, true where
+  a byte isn't 0.
 
 ### Changed
 

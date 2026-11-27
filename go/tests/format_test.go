@@ -313,6 +313,14 @@ func valueOf(field tables.Field) (value, bool) {
 		return arrayValue(field, 8, func(b []byte, v float64) []byte {
 			return binary.LittleEndian.AppendUint64(b, math.Float64bits(v))
 		})
+	case tables.BoolArray:
+		// A byte of 1 or 0 for each bool, unpadded
+		return arrayValue(field, 1, func(b []byte, v bool) []byte {
+			if v {
+				return append(b, 1)
+			}
+			return append(b, 0)
+		})
 	case tables.String:
 		return value{array: true, alignment: 1, count: len(field), bytes: []byte(field)}, true
 	case tables.Struct:

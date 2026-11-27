@@ -259,6 +259,32 @@ func checkArrays(t *testing.T, reader tafla.TableReader, position int) {
 	checkArray(t, reader, position, tafla.TableReader.GetUint64Array, func(v uint64) uint64 { return v })
 	checkArray(t, reader, position, tafla.TableReader.GetFloat32Array, func(v float32) uint64 { return uint64(math.Float32bits(v)) })
 	checkArray(t, reader, position, tafla.TableReader.GetFloat64Array, math.Float64bits)
+	checkBoolArray(t, reader, position)
+}
+
+// checkBoolArray checks that an array of bools reads a bool for each of its
+// bytes, true where the byte isn't 0. Every bool is compared, since the read
+// reads them all.
+func checkBoolArray(t *testing.T, reader tafla.TableReader, position int) {
+	bytes := reader.Bytes()
+	expected, ok := arrayAt(bytes, reader.Layout().OffsetType(), position, 1)
+
+	bools, err := reader.GetBoolArray(position)
+	switch {
+	case err != nil && ok:
+		t.Fatalf("failed with %v rather than reading % x", err, expected)
+	case err != nil:
+		checkError(t, bytes, err)
+		return
+	case !ok || len(bools) != len(expected):
+		t.Fatalf("read %d bools from % x", len(bools), expected)
+	}
+
+	for index, value := range expected {
+		if bools[index] != (value != 0) {
+			t.Fatalf("bool %d is %v, of the byte %d", index, bools[index], value)
+		}
+	}
 }
 
 // checkArray checks that every way of reading an array's elements reads the

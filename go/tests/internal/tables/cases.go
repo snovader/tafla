@@ -194,6 +194,10 @@ func (f *jsonField) field() (Field, error) {
 		var value bool
 		err := json.Unmarshal(f.Value, &value)
 		return Bool(value), err
+	case "bool[]":
+		var values []bool
+		err := json.Unmarshal(f.Value, &values)
+		return BoolArray(values), err
 	case "int8[]":
 		values, err := elements(f.Value, integer[int8])
 		return Int8Array(values), err

@@ -438,6 +438,7 @@ func TestRejectsAnArrayStringStructAndVectorItemOutsideTheBytes(t *testing.T) {
 	reader := tafla.NewTableReader(backing[4:12], tafla.TableLayout{})
 
 	expectError(t, second(reader.GetUint8Array(4)), outside(8, 13))
+	expectError(t, second(reader.GetBoolArray(4)), outside(8, 13))
 	expectError(t, second(reader.GetString(4)), outside(8, 13))
 	expectError(t, second(reader.GetFloat32Array(4)), outside(8, 52))
 	expectError(t, second(reader.GetStructArray(4, 2)), outside(8, 26))
