@@ -55,14 +55,16 @@ public final class StringVector extends AbstractList<String> implements RandomAc
      * {@return an iterator of the strings in order}, which reads each string's end once, as the
      * next string's start, where {@code get()} reads the ends of a string and the one before it.
      * Its {@code next()} throws a {@code DecodeException} if the string ends before it starts or
-     * past the bytes, or isn't valid UTF-8.
+     * past the bytes, or isn't valid UTF-8, and the {@code next()} after it then reads the next
+     * string, as {@code get()} reads it.
      */
     @Override
     public Iterator<String> iterator() {
         return new Iterator<>() {
             private int index = 0;
-            // Where string index starts, which is where the string before it ends
-            private int start = reader.getVectorItemsStart(position, size);
+            // Where string index starts, from the vector's position, which is where the string
+            // before it ends
+            private long start = reader.firstItemStart(size);
 
             @Override
             public boolean hasNext() {
@@ -76,11 +78,12 @@ public final class StringVector extends AbstractList<String> implements RandomAc
                 }
 
                 // The next string starts at this one's end, as get() finds it, even if this one
-                // isn't valid UTF-8
+                // ends before it starts or past the bytes, or isn't valid UTF-8, so the end is
+                // kept before it's checked
                 var string = start;
-                start = reader.getVectorItemEnd(position, index++, string);
+                start = reader.itemEnd(position, index++);
 
-                return reader.itemString(string, start - string);
+                return reader.vectorString(position, string, start);
             }
         };
     }

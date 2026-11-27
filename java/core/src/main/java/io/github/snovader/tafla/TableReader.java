@@ -540,7 +540,7 @@ public final class TableReader {
         var start = firstItemStart(count);
         for (int i = 0; i < count; i++) {
             var end = itemEnd(position, i);
-            strings[i] = itemString(itemOffset(position, start, end), (int) (end - start));
+            strings[i] = vectorString(position, start, end);
             start = end;
         }
 
@@ -570,13 +570,27 @@ public final class TableReader {
     }
 
     /**
+     * Reads the string from {@code start} to {@code end}, counted from the position of the vector
+     * of strings at {@code position}, after checking that it starts no later than it ends and lies
+     * within the bytes. A reader of the strings in order, such as {@link StringVector}'s iterator,
+     * reads each string's end once with {@link #itemEnd}, and keeps it as the next string's start
+     * whether or not this string reads.
+     *
+     * @throws DecodeException if the string ends before it starts or past the bytes, or isn't valid
+     *     UTF-8
+     */
+    String vectorString(int position, long start, long end) {
+        return itemString(itemOffset(position, start, end), (int) (end - start));
+    }
+
+    /**
      * Decodes the {@code length} bytes of UTF-8 at {@code offset}, which lie within the bytes, as a
      * string of a vector of strings, as {@link #getString} decodes a string's bytes after its
-     * count. {@link StringVector}'s iterator decodes each string with it.
+     * count
      *
      * @throws DecodeException if they aren't valid UTF-8
      */
-    String itemString(int offset, int length) {
+    private String itemString(int offset, int length) {
         try {
             return Utf8.decode(bytes, offset, length);
         } catch (CharacterCodingException ex) {
@@ -588,7 +602,7 @@ public final class TableReader {
      * {@return where item 0 of a vector of {@code count} items starts, counted from the vector's
      * position}
      */
-    private long firstItemStart(int count) {
+    long firstItemStart(int count) {
         return (count + 1L) * offsetSize;
     }
 
@@ -596,7 +610,7 @@ public final class TableReader {
      * Reads the end of item {@code index} of the vector at {@code position}, counted from that
      * position
      */
-    private long itemEnd(int position, int index) {
+    long itemEnd(int position, int index) {
         return getUnsigned(position + (index + 1L) * offsetSize);
     }
 

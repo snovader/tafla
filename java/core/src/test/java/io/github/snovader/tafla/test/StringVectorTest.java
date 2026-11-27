@@ -243,6 +243,33 @@ public class StringVectorTest {
         assertThrows(NoSuchElementException.class, strings::next);
     }
 
+    @Example
+    void should_iterate_from_the_end_of_a_string_that_ends_before_it_starts_or_past_the_bytes_as_get_does() {
+        var strings = List.of("ab", "cd", "ef", "gh");
+        // The end of the second string, after the table's offset, the count and the first end:
+        // a byte before the string starts, and then past the bytes
+        for (var end : new int[] {21, 127}) {
+            var bytes = tableOf(strings);
+            bytes[4 + 4 + 4] = (byte) end;
+            var view = viewOf(bytes);
+
+            var each = new ArrayList<>();
+            for (int index = 0; index < view.size(); index++) {
+                var item = index;
+                each.add(outcomeOf(() -> List.of(view.get(item))));
+            }
+            var iterated = new ArrayList<>();
+            for (var iterator = view.iterator(); iterator.hasNext();) {
+                iterated.add(outcomeOf(() -> List.of(iterator.next())));
+            }
+
+            assertEquals(List.of("ab"), each.get(0));
+            assertInstanceOf(String.class, each.get(1));
+            assertEquals(List.of("gh"), each.get(3));
+            assertEquals(each, iterated);
+        }
+    }
+
     @Property(generation = GenerationMode.EXHAUSTIVE)
     void should_name_the_position_of_a_string_that_isnt_valid_UTF_8(@ForAll @IntRange(min = 1, max = 70) int length) {
         var bytes = tableOf(List.of("a", "b".repeat(length)));
