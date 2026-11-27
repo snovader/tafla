@@ -509,3 +509,57 @@ What differs from the TypeScript suite:
   TypeScript's `getStringVector()` decodes runs of ASCII strings at once
   and slices them; Swift's `Array(_:)` reads each string from its ends, as
   the subscript does.
+
+### Results
+
+One full run on 2026-11-27, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+built by Apple Swift 6.4.2, through the machine's benchmark lock. It took a
+minute, while other processes kept the 1-minute load average at 1.46 when it
+started and 1.79 when it ended, on the 10 cores. The median call was within
+2% of the fastest for 78 of the 81 variants' runs, and within 4.4% for all
+of them. The A/A pair agreed within 1%.
+
+Fastest call in µs, and its ratio to the vector of strings':
+
+| Benchmark | tafla-gen [string] | tafla-gen [Name] | tafla-gen [string] A/A |
+| --- | ---: | ---: | ---: |
+| 10 × 16 chars of ASCII: serialize | 0.238 | 0.417 (1.754×) | 0.237 (0.999×) |
+| 10 × 16 chars of ASCII: deserialize | 0.612 | 1.134 (1.852×) | 0.614 (1.002×) |
+| 10 × 16 chars of ASCII: read the last string | 0.0606 | 0.114 (1.872×) | 0.0607 (1.001×) |
+| 10 × 256 chars of ASCII: serialize | 0.251 | 0.436 (1.737×) | 0.251 (0.999×) |
+| 10 × 256 chars of ASCII: deserialize | 0.764 | 1.289 (1.687×) | 0.765 (1.001×) |
+| 10 × 256 chars of ASCII: read the last string | 0.0765 | 0.130 (1.697×) | 0.0766 (1.001×) |
+| 10 × 8 chars of 3 bytes: serialize | 0.241 | 0.421 (1.748×) | 0.241 (0.998×) |
+| 10 × 8 chars of 3 bytes: deserialize | 0.768 | 1.290 (1.679×) | 0.767 (0.998×) |
+| 10 × 8 chars of 3 bytes: read the last string | 0.0761 | 0.129 (1.692×) | 0.0762 (1.001×) |
+| 100 × 16 chars of ASCII: serialize | 1.549 | 2.695 (1.739×) | 1.548 (0.999×) |
+| 100 × 16 chars of ASCII: deserialize | 5.478 | 10.72 (1.957×) | 5.468 (0.998×) |
+| 100 × 16 chars of ASCII: read the last string | 0.0608 | 0.114 (1.866×) | 0.0608 (1.000×) |
+| 100 × 256 chars of ASCII: serialize | 1.649 | 2.960 (1.795×) | 1.649 (1.000×) |
+| 100 × 256 chars of ASCII: deserialize | 7.269 | 12.48 (1.717×) | 7.261 (0.999×) |
+| 100 × 256 chars of ASCII: read the last string | 0.0769 | 0.130 (1.688×) | 0.0765 (0.995×) |
+| 100 × 8 chars of 3 bytes: serialize | 1.563 | 2.716 (1.738×) | 1.568 (1.003×) |
+| 100 × 8 chars of 3 bytes: deserialize | 7.027 | 12.21 (1.738×) | 6.994 (0.995×) |
+| 100 × 8 chars of 3 bytes: read the last string | 0.0756 | 0.128 (1.690×) | 0.0748 (0.990×) |
+| 10,000 × 16 chars of ASCII: serialize | 144.8 | 255.7 (1.766×) | 144.5 (0.998×) |
+| 10,000 × 16 chars of ASCII: deserialize | 544.1 | 1067.4 (1.962×) | 542.8 (0.998×) |
+| 10,000 × 16 chars of ASCII: read the last string | 0.0600 | 0.113 (1.889×) | 0.0602 (1.003×) |
+| 10,000 × 256 chars of ASCII: serialize | 157.0 | 287.4 (1.831×) | 157.1 (1.001×) |
+| 10,000 × 256 chars of ASCII: deserialize | 711.9 | 1239.2 (1.741×) | 718.6 (1.009×) |
+| 10,000 × 256 chars of ASCII: read the last string | 0.0763 | 0.130 (1.704×) | 0.0763 (1.001×) |
+| 10,000 × 8 chars of 3 bytes: serialize | 148.3 | 258.9 (1.746×) | 148.4 (1.001×) |
+| 10,000 × 8 chars of 3 bytes: deserialize | 700.6 | 1222.1 (1.744×) | 700.7 (1.000×) |
+| 10,000 × 8 chars of 3 bytes: read the last string | 0.0759 | 0.129 (1.697×) | 0.0754 (0.993×) |
+
+- The vector of strings is written in 0.55–0.58 times the time of the
+  vector of tables, in one allocation, the table's, where the vector of
+  tables also allocates an array of the tables' fields.
+- Every string is read in 0.51–0.60 times the time, and the last string
+  found in 0.53–0.59 times. Most of that is the decoder rather than the
+  layout: `StringVector` validates each string as a `UTF8Span` and copies
+  it, where `TableReader.string(at:)`, which reads the vector of tables'
+  strings, still validates with `String(validating:as:)`, which takes about
+  twice as long for each string. Read with the same decoder, the vector of
+  tables took 1.02–1.06 times as long as the vector of strings in shorter
+  runs, which a change of `string(at:)` of its own would bring to every
+  string field.
