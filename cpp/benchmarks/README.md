@@ -515,7 +515,7 @@ Fastest round in µs per call, and its ratio to the vector of strings':
   vector of tables of one string each.
 - Every string is read in 0.64–0.95 times the time: 0.64 for 100 and 10,000
   strings of 16 characters of ASCII, whose run `to_vector()` checks at once,
-  0.89–0.95 for strings of 3 bytes and of 256 characters, and 0.95 for any
+  0.88–0.95 for strings of 3 bytes and of 256 characters, and 0.95 for any
   list of 10.
 - The last string is found in 0.84–0.97 times the time, without a reader of
   a table around it.
