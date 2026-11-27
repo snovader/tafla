@@ -4,7 +4,9 @@
 encode small tables and numeric columns. It runs the workloads of the
 TypeScript comparison in `typescript/benchmarks/`, with the same values, so
 that the languages' numbers compare. Build it from `cpp/` with
-`-DTAFLA_BUILD_BENCHMARKS=ON`, as [Running](#running) shows.
+`-DTAFLA_BUILD_BENCHMARKS=ON`, as [Running](#running) shows. `tafla_strings`
+compares how the same libraries write and read strings, as
+[Strings](#strings) describes.
 
 ## Workloads
 
@@ -204,7 +206,7 @@ Every timing run waits until the machine is quiet: check `uptime` first.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTAFLA_BUILD_BENCHMARKS=ON
-cmake --build build --target tafla_comparison tafla_encoding tafla_allocation benchmarks_test
+cmake --build build --target tafla_comparison tafla_strings tafla_encoding tafla_allocation benchmarks_test
 uptime
 build/benchmarks/tafla_comparison --markdown
 build/benchmarks/tafla_encoding
@@ -424,3 +426,243 @@ within 0.7% of each other.
   generated reader holds the item's bytes and its position, 24 bytes, which
   a call passes in memory, and its getters add that position to every
   offset, checking the sum.
+
+## Strings
+
+`tafla_strings` compares how tafla and the comparison's libraries write and
+read strings, as the TypeScript suite's `yarn bench:strings` does. The
+comparison's workloads hold one string, of 16 bytes of ASCII, which reaches
+one branch of tafla's UTF-8 check. Each table here holds 16 distinct strings
+of one shape and nothing else, so that a call spends most of its time on
+their UTF-8. By the length of each string in bytes, they are:
+
+- 16 empty strings, which time what a call takes without any: the table, its
+  offsets and lengths, and the library's own work
+- ASCII of 3, 7, 8, 16, 17, 32 and 33 bytes, which reach every branch of
+  tafla's `valid_utf8()`: strings shorter than 4 bytes, of 4 to 7, of 8 to
+  16 and of 17 to 32, and longer ones in blocks of 32
+- ASCII of 22 and 23 bytes, either side of the longest string that libc++'s
+  `std::string` holds within itself, 22 bytes, which protobuf's strings are
+- 8 characters with one of 2 bytes, 16 with two of 2 bytes, 15 with one of 4
+  bytes, and 8, 32 and 256 characters of 3 bytes
+- 64 bytes of characters of 2, 3 and 4 bytes, and 1,024 bytes of them: 32
+  and 512 characters of 2 bytes, 21 and 341 of 3 bytes, which take 63 and
+  1,023 bytes, and 16 and 256 of 4 bytes
+- 256 bytes of ASCII with a character of 2 bytes first, and with one last
+- ASCII of 64, 256 and 1,024 bytes
+
+The characters of 2 bytes are Latin-1 letters, those of 3 bytes CJK
+ideographs, and those of 4 bytes emoji. `src/string_workloads.hpp` ports the
+TypeScript suite's generator, with its seeds, its alphabets and its lengths
+in characters, so that the shapes that both suites have hold the same bytes,
+which `tests/benchmarks_test.cpp` checks against a hash of the bytes that the
+TypeScript generator made of each shape. The TypeScript suite's 31 and 33
+characters with the last of 2 bytes sit on V8's limits, and are left out.
+The shapes of 64 and 1,024 bytes, and those with one character of 2 bytes
+first or last, part a check of UTF-8 that reads character by character, as
+tafla's does from the first byte that isn't ASCII, from one that reads
+blocks of 16 bytes with SIMD, as protobuf's does.
+
+The codecs are the comparison's, each with an overload for the table of
+strings:
+
+- tafla has no vector of strings, so **tafla** writes a table of 16 string
+  fields with a `TableBuilder` and reads it with `get_string()`, and
+  **tafla-gen**'s code of `strings.tafla`, in `generated/strings/`, writes
+  the same table from its generated fields, which view the strings, and
+  reads each with its getter. `strings.tafla` is a copy of the TypeScript
+  suite's schema. Both write the same bytes, which the suite checks.
+- **FlatBuffers** writes a vector of strings, of `schemas/strings.fbs`, with
+  `CreateString()`, and reads it after its `Verifier` verifies the message.
+- **protobuf** writes a repeated string, of `schemas/strings.proto`, with
+  `add_items()` and `SerializeAsString()`, and reads it with
+  `ParseFromArray()`.
+- **msgpack-cxx** packs an array of strings into an `sbuffer`, and unpacks
+  it, referencing the strings in the bytes.
+
+Each read returns the 16 strings in a `std::array` of the comparison's
+`Text`s. tafla, FlatBuffers and msgpack-cxx return views of the bytes, and
+protobuf owned `std::string`s, the copies that it made as it parsed the
+message, which the codec moves out of the message. The harness keeps every
+result alive and destroys it in its loop, alike for every codec, and nothing
+reads the strings' characters after a codec returns them. Before timing,
+every codec must read back every string, and each benchmark times tafla's
+codec again as an A/A pair.
+
+```sh
+cmake --build build --target tafla_strings tafla_allocation
+uptime
+build/benchmarks/tafla_strings --markdown
+build/benchmarks/tafla_allocation --strings
+```
+
+`tafla_strings` takes the comparison's options, and prints each codec's
+encoded sizes after the timings. `tafla_allocation --strings` counts the
+allocations of the strings suite's calls rather than the comparison's.
+
+### Limits of the comparison
+
+- The libraries don't do the same work to read a string. tafla checks that
+  each string is UTF-8 as `get_string()` reads it, and checks nothing when it
+  writes one. protobuf checks every string of a message as it parses the
+  message, whether it's read or not, with utf8_range, which tests 8 bytes at a
+  time for ASCII and then checks ranges of 16 bytes with NEON's table lookups,
+  and again as it writes one, though it writes a string that fails that check
+  anyway. FlatBuffers' `Verifier` checks only that each string lies within the
+  bytes and ends in its terminator, and msgpack-cxx checks nothing. So
+  FlatBuffers' and msgpack-cxx's reads show what checking costs tafla rather
+  than a reader that does the same work, and protobuf's include its parse, its
+  check and its copies.
+- protobuf copies each string, as it parses the message, into a `std::string`
+  that it allocates, and from 23 bytes into a buffer of the string's too.
+  The codec moves them out of the message rather than copying them again. An
+  arena, which the comparison doesn't use, would allocate them in blocks.
+- msgpack-cxx's zone allocates 8 KiB or more for each message it unpacks,
+  and its `sbuffer` starts at 8 KiB, as in the comparison, and FlatBuffers'
+  builder at 1 KiB, doubling by copying.
+- tafla's builder records up to 4 fields within itself, and the records of
+  more, here all 16, in a vector that it allocates, and then the table.
+  tafla-gen's code counts the table's length first and allocates it alone.
+
+### Results
+
+Two full runs on 2026-11-25, on an Apple M2 Pro with 32 GB in macOS 27.0.1,
+compiled by Apple clang 21.0.0 with `-O3 -DNDEBUG`, CMake's Release flags,
+without `-march=native`, with Homebrew's FlatBuffers 25.12.19, protobuf 36.2
+and msgpack-cxx 9.0.0. Each took 118 seconds. The 1-minute load average was
+between 2.27 and 2.72 at the runs' starts and ends, on the 10 cores. The
+median round was within 3% of the fastest for 575 of the 648 codecs' runs of
+a benchmark, and more than 5% above it only for FlatBuffers' and
+msgpack-cxx's writes of the longest strings, whose buffers grow by copying,
+up to 45% for msgpack-cxx's, and for one read of tafla-gen's, by 6%. The two
+runs' fastest rounds were within 2% of each other for 283 of the 324, and
+within 5% for all but three of msgpack-cxx's, by up to 7.1%. tafla's A/A
+pair was within 1.6% of tafla's in every benchmark.
+
+Fastest round of the two runs in µs per call, and its ratio to tafla's, with
+the length of each string in bytes:
+
+| Serialize 16 strings of     | Bytes | tafla | tafla-gen      | flatbuffers   | protobuf      | msgpack        |
+| --------------------------- | ----: | ----: | -------------: | ------------: | ------------: | -------------: |
+| empty                       |     0 | 0.151 | 0.0403 (0.27×) | 0.159 (1.05×) | 0.519 (3.44×) | 0.0701 (0.46×) |
+| 3 chars of ASCII            |     3 | 0.194 | 0.0815 (0.42×) | 0.179 (0.92×) | 0.591 (3.05×) |  0.120 (0.62×) |
+| 7 chars of ASCII            |     7 | 0.213 |  0.100 (0.47×) | 0.199 (0.93×) | 0.647 (3.04×) |  0.139 (0.65×) |
+| 8 chars of ASCII            |     8 | 0.179 | 0.0645 (0.36×) | 0.181 (1.01×) | 0.551 (3.08×) |  0.102 (0.57×) |
+| 8 chars, one of 2 bytes     |     9 | 0.177 | 0.0655 (0.37×) | 0.164 (0.93×) | 0.606 (3.42×) | 0.0989 (0.56×) |
+| 16 chars of ASCII           |    16 | 0.192 | 0.0781 (0.41×) | 0.196 (1.02×) | 0.572 (2.98×) |  0.115 (0.60×) |
+| 17 chars of ASCII           |    17 | 0.196 | 0.0831 (0.42×) | 0.186 (0.95×) | 0.581 (2.96×) |  0.121 (0.62×) |
+| 16 chars, two of 2 bytes    |    18 | 0.194 | 0.0788 (0.41×) | 0.178 (0.92×) | 0.611 (3.15×) |  0.116 (0.60×) |
+| 15 chars, one of 4 bytes    |    18 | 0.192 | 0.0782 (0.41×) | 0.178 (0.93×) | 0.676 (3.52×) |  0.116 (0.60×) |
+| 22 chars of ASCII           |    22 | 0.229 |  0.115 (0.50×) | 0.214 (0.93×) | 0.677 (2.96×) |  0.152 (0.66×) |
+| 23 chars of ASCII           |    23 | 0.233 |  0.121 (0.52×) | 0.217 (0.93×) | 0.961 (4.12×) |  0.157 (0.67×) |
+| 8 chars of 3 bytes          |    24 | 0.196 | 0.0832 (0.42×) | 0.199 (1.02×) | 0.943 (4.81×) |  0.120 (0.61×) |
+| 32 chars of ASCII           |    32 | 0.203 | 0.0909 (0.45×) | 0.204 (1.00×) | 0.880 (4.33×) |  0.130 (0.64×) |
+| 33 chars of ASCII           |    33 | 0.205 | 0.0959 (0.47×) | 0.194 (0.95×) | 0.889 (4.34×) |  0.134 (0.65×) |
+| 21 chars of 3 bytes         |    63 | 0.253 |  0.140 (0.55×) | 0.280 (1.11×) | 1.179 (4.66×) |  0.184 (0.73×) |
+| 64 chars of ASCII           |    64 | 0.173 | 0.0643 (0.37×) | 0.221 (1.28×) | 0.871 (5.03×) |  0.106 (0.61×) |
+| 32 chars of 2 bytes         |    64 | 0.172 | 0.0643 (0.37×) | 0.221 (1.28×) | 0.945 (5.49×) |  0.105 (0.61×) |
+| 16 chars of 4 bytes         |    64 | 0.173 | 0.0645 (0.37×) | 0.222 (1.28×) | 0.936 (5.41×) |  0.106 (0.61×) |
+| 32 chars of 3 bytes         |    96 | 0.170 | 0.0682 (0.40×) | 0.271 (1.59×) | 1.033 (6.08×) |  0.111 (0.65×) |
+| 256 chars of ASCII          |   256 | 0.227 |  0.105 (0.46×) | 0.460 (2.03×) | 1.112 (4.90×) |  0.152 (0.67×) |
+| 255 chars, first of 2 bytes |   256 | 0.226 |  0.104 (0.46×) | 0.459 (2.03×) | 1.339 (5.92×) |  0.151 (0.67×) |
+| 255 chars, last of 2 bytes  |   256 | 0.224 |  0.106 (0.47×) | 0.462 (2.06×) | 1.164 (5.20×) |  0.152 (0.68×) |
+| 256 chars of 3 bytes        |   768 | 0.303 |  0.202 (0.67×) | 0.808 (2.67×) | 2.446 (8.07×) |  0.404 (1.33×) |
+| 1,024 chars of ASCII        | 1,024 | 0.344 |  0.241 (0.70×) | 1.110 (3.23×) | 2.149 (6.25×) |  0.755 (2.19×) |
+| 341 chars of 3 bytes        | 1,023 | 0.343 |  0.243 (0.71×) | 0.986 (2.87×) | 3.037 (8.85×) |  0.727 (2.12×) |
+| 512 chars of 2 bytes        | 1,024 | 0.344 |  0.241 (0.70×) | 1.102 (3.20×) | 2.882 (8.38×) |  0.785 (2.28×) |
+| 256 chars of 4 bytes        | 1,024 | 0.343 |  0.241 (0.70×) | 1.081 (3.15×) | 2.860 (8.34×) |  0.773 (2.25×) |
+
+| Deserialize 16 strings of   | Bytes | tafla  | tafla-gen      | flatbuffers      | protobuf      | msgpack        |
+| --------------------------- | ----: | -----: | -------------: | ---------------: | ------------: | -------------: |
+| empty                       |     0 | 0.0287 | 0.0208 (0.72×) |   0.0395 (1.38×) | 0.591 (20.6×) |  0.180 (6.27×) |
+| 3 chars of ASCII            |     3 | 0.0308 | 0.0244 (0.79×) |   0.0396 (1.29×) | 0.655 (21.3×) |  0.210 (6.82×) |
+| 7 chars of ASCII            |     7 | 0.0286 | 0.0224 (0.78×) |   0.0394 (1.38×) | 0.687 (24.0×) |  0.211 (7.38×) |
+| 8 chars of ASCII            |     8 | 0.0286 | 0.0224 (0.78×) |   0.0393 (1.37×) | 0.622 (21.7×) |  0.210 (7.34×) |
+| 8 chars, one of 2 bytes     |     9 | 0.0851 | 0.0714 (0.84×) |   0.0394 (0.46×) | 0.699 (8.21×) |  0.210 (2.47×) |
+| 16 chars of ASCII           |    16 | 0.0287 | 0.0226 (0.79×) |   0.0397 (1.38×) | 0.628 (21.9×) |  0.213 (7.42×) |
+| 17 chars of ASCII           |    17 | 0.0305 | 0.0260 (0.85×) |   0.0395 (1.30×) | 0.627 (20.6×) |  0.213 (6.98×) |
+| 16 chars, two of 2 bytes    |    18 |  0.186 |  0.182 (0.98×) |   0.0394 (0.21×) | 0.663 (3.56×) |  0.213 (1.15×) |
+| 15 chars, one of 4 bytes    |    18 |  0.137 |  0.112 (0.82×) |   0.0395 (0.29×) | 0.756 (5.52×) |  0.210 (1.53×) |
+| 22 chars of ASCII           |    22 | 0.0307 | 0.0258 (0.84×) |   0.0394 (1.28×) | 0.701 (22.8×) |  0.211 (6.87×) |
+| 23 chars of ASCII           |    23 | 0.0305 | 0.0259 (0.85×) |   0.0394 (1.29×) | 1.026 (33.6×) |  0.210 (6.89×) |
+| 8 chars of 3 bytes          |    24 |  0.243 |  0.227 (0.93×) |   0.0393 (0.16×) | 1.048 (4.31×) |  0.211 (0.87×) |
+| 32 chars of ASCII           |    32 | 0.0307 | 0.0259 (0.84×) |   0.0394 (1.28×) | 0.974 (31.7×) |  0.269 (8.76×) |
+| 33 chars of ASCII           |    33 | 0.0390 | 0.0349 (0.89×) |   0.0393 (1.01×) | 0.980 (25.1×) |  0.268 (6.87×) |
+| 21 chars of 3 bytes         |    63 |  0.573 |  0.552 (0.96×) |  0.0395 (0.069×) | 1.249 (2.18×) |  0.268 (0.47×) |
+| 64 chars of ASCII           |    64 | 0.0389 | 0.0348 (0.89×) |   0.0395 (1.02×) | 0.994 (25.6×) |  0.269 (6.92×) |
+| 32 chars of 2 bytes         |    64 |  0.483 |  0.479 (0.99×) |  0.0392 (0.081×) | 1.068 (2.21×) |  0.267 (0.55×) |
+| 16 chars of 4 bytes         |    64 |  0.509 |  0.502 (0.99×) |  0.0393 (0.077×) | 1.049 (2.06×) |  0.267 (0.52×) |
+| 32 chars of 3 bytes         |    96 |  0.851 |  0.829 (0.97×) |  0.0395 (0.046×) | 1.137 (1.34×) |  0.267 (0.31×) |
+| 256 chars of ASCII          |   256 | 0.0933 | 0.0827 (0.89×) |   0.0394 (0.42×) | 1.247 (13.4×) |  0.267 (2.86×) |
+| 255 chars, first of 2 bytes |   256 |  0.252 |  0.258 (1.02×) |   0.0395 (0.16×) | 1.397 (5.54×) |  0.267 (1.06×) |
+| 255 chars, last of 2 bytes  |   256 |  0.117 |  0.111 (0.95×) |   0.0393 (0.34×) | 1.272 (10.9×) |  0.267 (2.28×) |
+| 256 chars of 3 bytes        |   768 |  6.590 |  6.537 (0.99×) |  0.0396 (0.006×) | 2.439 (0.37×) | 0.267 (0.041×) |
+| 1,024 chars of ASCII        | 1,024 |  0.285 |  0.275 (0.96×) |   0.0399 (0.14×) | 2.177 (7.64×) |  0.267 (0.94×) |
+| 341 chars of 3 bytes        | 1,023 |  8.770 |  8.661 (0.99×) | 0.0392 (0.0045×) | 3.011 (0.34×) | 0.268 (0.031×) |
+| 512 chars of 2 bytes        | 1,024 |  7.217 |  7.158 (0.99×) | 0.0398 (0.0055×) | 2.864 (0.40×) | 0.268 (0.037×) |
+| 256 chars of 4 bytes        | 1,024 |  7.595 |  7.709 (1.02×) | 0.0399 (0.0053×) | 2.857 (0.38×) | 0.267 (0.035×) |
+
+Reads:
+
+- tafla's read is slower than protobuf's only where the strings are long and
+  not ASCII: 2.70 times as long for 768 bytes of characters of 3 bytes,
+  6.59 µs against 2.44 µs, and 2.52 to 2.91 times for 1,024 bytes of
+  characters of 2, 3 and 4 bytes, 7.2 to 8.8 µs against 2.9 to 3.0 µs. Below
+  them protobuf's parse outweighs its check: it takes 0.59 µs for the 16
+  empty strings, and tafla reads strings of 18 to 96 bytes that aren't ASCII
+  in 0.18 to 0.75 of protobuf's time.
+- What text that isn't ASCII adds to a read, over ASCII of the same length,
+  is mostly what it costs to check, and it adds far more to tafla's than to
+  protobuf's. At 1,024 bytes, it adds 6.9 to 8.5 µs to tafla's read and 0.68
+  to 0.83 µs to protobuf's, 10 to 11 times as much: tafla's
+  `valid_utf8_from()` checks 0.85 ns a character of 2 bytes, 1.56 ns of 3
+  bytes and 1.78 ns of 4 bytes, about 2 GB a second, where it checks ASCII
+  at 64 GB a second. At 64 bytes it adds 0.44 to 0.53 µs to tafla's and 0.06
+  to 0.26 µs to protobuf's, 2.1 to 8.5 times as much, and at 24 bytes of
+  characters of 3 bytes, 0.21 µs to tafla's and 0.02 µs to protobuf's, within
+  protobuf's noise. 16 characters with two of 2 bytes, 18 bytes, add 0.16 µs
+  to tafla's read over 17 bytes of ASCII and 0.04 µs to protobuf's, since
+  `valid_utf8_from()` steps through ASCII byte by byte wherever the next 8
+  bytes hold a character that isn't ASCII. One character of 4 bytes among
+  15, and one of 2 bytes among 8, add about as much to both, 0.06 to
+  0.13 µs.
+- A character of 2 bytes first in 256 bytes of ASCII adds 0.16 µs to tafla's
+  read, which then checks the rest 8 bytes at a time rather than 32, and
+  0.15 µs to protobuf's. One last adds 0.02 µs to each.
+- tafla reads 16 strings of ASCII in 29 to 39 ns at every length to 64 bytes,
+  and 1,024 bytes in 0.29 µs. tafla-gen's getters read ASCII of up to 256
+  bytes in 0.72 to 0.89 of tafla's time, unrolled 16 times where the codec by
+  hand loops; at 768 bytes and more of characters that aren't ASCII the two
+  take the same time. FlatBuffers takes 39 to 40 ns whatever the strings, and
+  msgpack-cxx 0.18 to 0.27 µs, neither checking them. Past 22 bytes, protobuf
+  allocates each string's buffer, and its read of 23 bytes of ASCII takes
+  1.03 µs against 0.70 µs for 22.
+
+Writes:
+
+- tafla-gen writes the table in 0.27 to 0.71 of the time of tafla's
+  builder, in one allocation of the table's exact length. The builder
+  records only 4 fields within itself, so it also allocates a vector of 512
+  bytes for the records of the 16.
+- msgpack-cxx writes strings of up to 256 bytes in 0.46 to 0.73 of tafla's
+  time, into the 8 KiB `sbuffer` that it allocates for each message, and
+  longer ones in 1.33 to 2.28 of it, reallocating it. FlatBuffers writes in
+  0.92 to 1.05 of tafla's time up to 33 bytes, and in 1.11 to 3.23 of it
+  from 63 bytes, as its builder doubles from 1 KiB by copying: 67 KB in 8
+  allocations for strings of 1,024 bytes. protobuf takes 3.0 to 8.9 times as
+  long, copying each string into its message, in 18 allocations, or 34 past
+  22 bytes, and checking it again as it writes it.
+- Writes don't grow with the strings' length below 256 bytes: tafla,
+  tafla-gen and msgpack-cxx write strings of 64 bytes as fast as those of 8,
+  and those of 7, 22 and 23 bytes more slowly than either. This wasn't
+  investigated.
+
+`tafla_allocation --strings` counts no allocation in a read of tafla,
+tafla-gen or FlatBuffers. protobuf's allocates 20 times, or 36 times past 22
+bytes, and msgpack-cxx's zone 8,768 bytes in 4. A write allocates twice in
+tafla, once in tafla-gen, once to 8 times in FlatBuffers, 18 or 34 times in
+protobuf, and once to 3 times in msgpack-cxx. tafla writes 128 bytes for the
+16 empty strings, an offset and a length of 4 bytes each for every string,
+which its characters follow; FlatBuffers writes 216, protobuf 32 and
+msgpack-cxx 19. For strings of 1,024 bytes the four write 16,512, 16,600,
+16,432 and 16,435 bytes.

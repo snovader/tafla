@@ -1,0 +1,6 @@
+// The strings suite's table, a vector of strings, as the TypeScript strings
+// suite's, from which the build generates src/codecs/flatbuffers' code with
+// `flatc --cpp`
+namespace tafla_fbs;
+
+table Strings { items: [string]; }
