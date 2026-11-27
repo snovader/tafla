@@ -208,8 +208,10 @@ uptime
 ./gradlew :benchmarks:jmh
 ```
 
-The full run takes about 2 hours: 33 minutes for the workloads, and 90 for
-the [strings](#strings), which `--jmhArgs="-e Strings"` leaves out.
+The full run takes about 2 hours and a half: 33 minutes for the workloads, 90
+for the [strings](#strings), which `--jmhArgs="-e Strings"` leaves out, and
+30 for the [lists of strings](#lists-of-strings), which `-e StringLists`
+leaves out, and `-e String` with the strings.
 `--jmhArgs` passes JMH's own options, which override those in
 `build.gradle.kts`: a regular expression selects benchmarks, `-e` excludes
 them, and `-p` sets a parameter.
@@ -219,8 +221,9 @@ them, and `-p` sets a parameter.
 ```
 
 A quick run of one fork, with one warm-up and one measured iteration of
-100 ms, checks that every benchmark works in about 30 seconds, and the 240 of
-the strings in another 100. CI runs it after the round-trip test, on Java 25,
+100 ms, checks that every benchmark works in about 30 seconds, the 240 of
+the strings in another 100, and the 81 of the lists of strings in another 60.
+CI runs it after the round-trip test, on Java 25,
 with three of the strings' shapes, `-p shape=empty,15-one-4-byte,1024-ascii`,
 since the round-trip test checks every shape. Its numbers mean little.
 
@@ -788,3 +791,77 @@ Reading:
 
 tafla's table holds each string's offset and length in 4 bytes each, protobuf
 a tag and a varint of the length, and msgpack a header of 1 to 3 bytes.
+
+## Lists of strings
+
+`StringListsBenchmark` compares how the code that tafla-gen generates writes
+and reads a list of strings as a vector of strings, `[string]`, and as a
+vector of tables of one string each, `[Name]`. It's the counterpart of
+`yarn bench:lists` in `typescript/benchmarks/`, with three of its eight kinds
+of strings. Each table holds one list of 10, 100 or 10,000 distinct strings,
+which the benchmark's `count` parameter takes, of one kind, which its `kind`
+parameter takes:
+
+- `16-ascii`: 16 characters of ASCII
+- `256-ascii`: 256 characters of ASCII, which tafla encodes with
+  `String.getBytes` rather than a `char` at a time, as the strings suite
+  describes
+- `8-3-byte`: 8 characters of 3 bytes, CJK ideographs
+
+These are the TypeScript suite's strings of the same names, such as
+`10,000 × 16 chars of ASCII`. `ListShapes` generates them with its
+generator, seeds and alphabet, as `StringShapes` does the strings suite's,
+and `ListShapesTest` checks them against values that the TypeScript
+generator printed.
+
+The `codec` parameter takes the variants, which the code that tafla-gen
+generates from `src/main/tafla/lists.tafla`, a copy of the TypeScript
+suite's schema, writes and reads, in the package
+`io.github.snovader.tafla.benchmarks.generated.lists`:
+
+- `string-vector`: `StringList`, a vector of strings, whose items are the
+  strings' UTF-8. Its `TableSizer` counts the strings of fewer than 64
+  `char`s and encodes the longer ones, whose bytes its `TableWriter` copies,
+  as it writes string fields. It reads every string through its getter's
+  `StringVector`, whose iterator reads each string's end once, and the last
+  string with the view's `get()`, from its two ends. It writes the bytes of
+  `TableBuilder.setStringVector()`, which the round-trip test checks.
+- `name-vector`: `NameList`, a vector of tables of one string each, which is
+  how a schema holds a list of strings without a vector of strings. It
+  creates the generated `Name.Fields` of each string in each call, and reads
+  each string through the reader of its table that the view returns.
+- `string-vector-aa`: the code of `string-vector` again, an A/A pair, whose
+  times differ from it by the measurement's noise. JMH runs each variant in
+  forks of its own.
+
+Each list is serialized, deserialized into an array of its strings that
+`Arrays.asList()` wraps, and read for its last string, without reading the
+others: the benchmarks `serialize`, `deserialize` and `readLast`. Before
+timing, every variant must read back every string, and the last string,
+which the round-trip test checks too. JMH times the suite as it times the
+others, as Method describes.
+
+```sh
+uptime
+./gradlew :benchmarks:jmh --jmhArgs="StringLists"
+```
+
+The run of its 81 benchmarks takes about 30 minutes. `-pcount=10,100`
+selects counts, and `-pkind=16-ascii,8-3-byte` kinds, one or the other, since
+the JMH plugin keeps only the last `-p` of `--jmhArgs`.
+
+### Limitations
+
+- It doesn't compare the other libraries' lists, as the TypeScript suite
+  does; the strings suite compares how they write and read each string.
+- Java decodes each string with `new String(bytes, UTF_8)`, on its own, so
+  `TableReader.getStringVector()` reads every string as the view's iterator
+  does, and there's no counterpart of the TypeScript suite's
+  `tafla [string] each`. TypeScript's `getStringVector()` decodes runs of
+  ASCII at once, which saves calls of its `TextDecoder`.
+- JMH doesn't interleave the variants, as Method describes, so the A/A pair
+  shows how much load moved the times of forks run minutes apart.
+
+### Results
+
+None yet.
