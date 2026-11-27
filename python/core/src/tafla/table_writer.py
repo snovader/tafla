@@ -558,19 +558,21 @@ class TableWriter:
 
         # The joined strings are ASCII only when each string is, whose UTF-8
         # is then as long as it is, and they're encoded at once. Any other
-        # strings are encoded one by one, for their lengths. Encoding the
-        # strings of ASCII at once made writing lists of 10 to 10,000 of them
-        # take 0.56 to 0.72 times as long, and the others 1.04 to 1.14.
-        joined = "".join(strings)
-        if joined.isascii():
-            lengths: Iterable[int] = map(len, strings)
-            encoded = joined.encode()
-        else:
-            each = list(map(str.encode, strings))
-            lengths = map(len, each)
-            encoded = b"".join(each)
+        # strings are encoded one by one, for their lengths, and so are those
+        # whose first string isn't ASCII, without joining them first. Encoding
+        # the strings of ASCII at once made writing the benchmarks' lists of
+        # 10 to 10,000 of them take 0.58 to 0.88 times as long, in CPython
+        # 3.14, and joining those of 3-byte characters first 1.07 to 1.17
+        # times, which checking the first string spares them.
+        if not strings or str.isascii(strings[0]):
+            joined = "".join(strings)
+            if joined.isascii():
+                lengths = map(len, strings)
+                self.__set_strings(index, len(strings), lengths, joined.encode())
+                return
 
-        self.__set_strings(index, len(strings), lengths, encoded)
+        each = list(map(str.encode, strings))
+        self.__set_strings(index, len(strings), map(len, each), b"".join(each))
 
     def _set_encoded_string_vector(
         self, index: int, strings: list[builtins.bytes]

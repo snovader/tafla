@@ -171,6 +171,20 @@ class TestStringVector(unittest.TestCase):
         self.assertEqual(vector.tolist(), strings)
         self.assertEqual(vector[2], strings[2])
 
+    def test_reads_empty_strings_that_end_the_bytes(self) -> None:
+        """Strings of no bytes, whose run is empty and ends the table"""
+        for strings in [[""], ["", "", ""], ["é", ""], ["", "a"]]:
+            with self.subTest(strings=strings):
+                data = table_of(strings)
+
+                self.assertEqual(view_of(data).tolist(), strings)
+                self.assertEqual(each_string(view_of(data)), strings)
+
+    def test_reads_lists_whose_first_string_isnt_ascii_and_others_are(self) -> None:
+        strings = ["Zürich", "Oslo", "Stockholm", "東京", "a" * 40]
+
+        self.assertEqual(view_of(table_of(strings)).tolist(), strings)
+
     def test_writes_its_count_and_ends_little_endian_on_a_big_endian_host(
         self,
     ) -> None:
