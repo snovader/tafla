@@ -6,7 +6,9 @@ tables and numeric columns. It runs the workloads of the TypeScript comparison
 in `typescript/benchmarks/`, with the same values, so that the languages'
 numbers compare. It's a module of its own, which requires the runtime from
 `..`, so that the runtime's module needs none of the libraries. Run the
-commands below from this directory.
+commands below from this directory. `go run ./cmd/lists` times how
+tafla-gen's code writes and reads lists of strings, which
+[Lists of strings](#lists-of-strings) describes.
 
 ## Workloads
 
@@ -401,3 +403,51 @@ readers, and 1,280 bytes, a slice of the 100 structs.
 - The view of the array of structs reads the last struct in 10.4 ns, against
   9.7 ns by hand, and sums every struct in 133 ns, against 117 ns. The getter
   collects every struct into a slice first: 182 and 267 ns.
+
+## Lists of strings
+
+`go run ./cmd/lists` times how the code that tafla-gen generates writes and
+reads lists of 10, 100 and 10,000 distinct strings of 16 and 256 characters
+of ASCII and of 8 characters of 3 bytes in UTF-8, nine lists in all. They're
+three of the TypeScript suite's eight kinds of string, which every language
+times, with the strings of `typescript/benchmarks/strings/lists/shapes.ts`:
+`stringlists/` ports its generator, and its test checks the strings against
+those that the TypeScript suite generates. The code is generated from
+`lists.tafla`, a copy of the TypeScript suite's schema, into
+`generated/lists/`, and writes each list in two ways:
+
+- **tafla-gen `[string]`**, the vector of strings, whose items are the
+  strings' UTF-8. `StringListFields` holds the strings as they are, and its
+  `MarshalBinary()` sizes and writes them into bytes of the table's exact
+  length. The getter returns a `tafla.StringVector`, whose `Strings()` reads
+  every string into a slice, checking them as one run of UTF-8, and whose
+  `Get()` reads one string from its ends. Both return strings that share the
+  bytes, so reading every string allocates the slice alone.
+- **tafla-gen `[Name]`**, how a schema holds a list of strings without a
+  vector of strings: a vector of tables of one string each. The codec creates
+  the generated fields of each table in each call, as the TypeScript suite
+  does, and reads every string through the vector's view's `All()` and each
+  item's getter, and the last through the view's `Get()`.
+- **tafla-gen `[string]` A/A**, the vector of strings again, an A/A pair
+  that shows the harness's noise.
+
+Each list is serialized, deserialized into a slice of its strings, and read
+for its last string, which both layouts find without reading the others.
+Before timing, every way must read back every string of every list, in
+order, and its last string, and the tests check too that tafla-gen's vector
+of strings is the one that `TableBuilder.SetStringVector()` writes. The
+method is the comparison's, with its harness and its options, and the
+report is the comparison's tables, with each list's encoded size after them.
+
+```sh
+uptime
+go run ./cmd/lists
+go run ./cmd/lists -run '10,000 × '
+```
+
+The full run takes about a minute; `-quick` runs every benchmark briefly, as
+CI does.
+
+### Results
+
+Not yet run on a quiet machine.
