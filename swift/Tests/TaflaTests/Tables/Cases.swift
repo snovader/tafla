@@ -244,6 +244,8 @@ private func parseField(_ json: JSON, name: String) throws -> Field {
         return .table(try parseNested(json, name: name), alignment: alignment)
     case "vector":
         return .vector(try json["items"].array.map { try parseNested($0, name: name) })
+    case "string[]":
+        return .stringVector(try json["value"].array.map { try $0.string })
     default:
         throw ParseError(description: "\(name): a field of type \(type)")
     }

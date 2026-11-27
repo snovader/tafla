@@ -163,6 +163,7 @@ const SWIFT: &[&str] = &[
     "Self",
     "Sendable",
     "String",
+    "StringVector",
     "Swift",
     "TableLayout",
     "TableReader",

@@ -16,6 +16,31 @@ func decodeUTF8(_ bytes: UnsafeRawBufferPointer) -> String? {
     return String(decoding: bytes, as: UTF8.self)
 }
 
+/// Returns the string of UTF-8 `bytes`, or `nil` if they aren't valid UTF-8,
+/// as ``decodeUTF8(_:)`` does.
+///
+/// Where the standard library has `UTF8Span`, from Swift 6.2's runtime on,
+/// it validates the bytes as one, and copies them into a `String` without
+/// validating them again. `String(validating:as:)` takes about twice as long
+/// for each string: on an M2 Pro in macOS 27, 96 rather than 43 ns for a
+/// string of 16 bytes of ASCII, 113 rather than 61 ns for 256 bytes, and 112
+/// rather than 59 ns for 8 characters of 3 bytes. Validating a vector's
+/// strings as one run, and then checking that each string's end starts a
+/// character, saved 2 to 3 ns more a string, which didn't justify a second
+/// way of reading a string.
+@usableFromInline
+func validatedString(_ bytes: RawSpan) -> String? {
+    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {
+        guard let utf8 = try? UTF8Span(validating: Span<UInt8>(_bytes: bytes)) else {
+            return nil
+        }
+
+        return String(copying: utf8)
+    }
+
+    return bytes.withUnsafeBytes(decodeUTF8)
+}
+
 /// Returns whether `bytes` are valid UTF-8, as Unicode's table 3-7 of
 /// well-formed byte sequences defines it: without overlong encodings,
 /// surrogates, code points past U+10FFFF or truncated sequences.

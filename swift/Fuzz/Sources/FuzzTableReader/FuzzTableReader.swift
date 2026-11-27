@@ -2,8 +2,8 @@ import Tafla
 
 // Reads arbitrary bytes with every getter of TableReader, at every position
 // and past the end, in every offset type and header, and reads every array,
-// struct array and vector that it finds there, as Rust's table_reader and
-// Go's FuzzTableReader do.
+// struct array, vector and vector of strings that it finds there, as Rust's
+// table_reader and Go's FuzzTableReader do.
 //
 // A trap is a finding, and so is AddressSanitizer's report of a read outside
 // the bytes, and a read that disagrees with the bounds that SPEC.md gives it:
@@ -92,6 +92,7 @@ func checkPosition(_ reader: TableReader, _ input: Input, at position: Int) {
     checkStructs(reader, input, at: position)
     checkFieldOffsets(reader, input, at: position)
     checkVector(reader, input, at: position)
+    checkStringVector(reader, input, at: position)
 }
 
 func checkScalars(_ reader: TableReader, _ input: Input, at position: Int) {
@@ -340,5 +341,113 @@ func checkItem(_ vector: Vector, _ index: Int, _ reader: TableReader, _ input: I
         input.checkIn(inPlace, within: reader.bytes, expected.lowerBound..<input.count)
     } catch {
         require(error == itemError, "Item \(index) failed in place with \(error)")
+    }
+}
+
+/// Reads the vector of strings at `position`, whose count and ends lie as a
+/// vector's, and the first and last of its strings, each from its ends. A
+/// vector of few strings is read whole too, which must read what reading
+/// each string reads, or fail where the first string that fails does.
+func checkStringVector(_ reader: TableReader, _ input: Input, at position: Int) {
+    let offsetType = reader.layout.offsetType
+
+    // A count, and an end for each string after it, within the input
+    let count = input.position(at: position, offsetType)
+    let ends = count.flatMap { count in
+        input.range(at: position + offsetType.size, byteLength: UInt64(count) * UInt64(offsetType.size))
+    }
+
+    do {
+        let strings = try reader.stringVector(at: position)
+        guard let count, ends != nil else {
+            fatalError("Read a vector of \(strings.count) strings outside the input")
+        }
+
+        require(strings.count == count && strings.isEmpty == (count == 0) && strings.indices == 0..<count)
+        var read: [Result<String, DecodeError>] = []
+        for index in 0..<min(count, checked) {
+            read.append(checkStringOfVector(strings, index, reader, input, at: position))
+        }
+        if count > checked {
+            _ = checkStringOfVector(strings, count - 1, reader, input, at: position)
+        }
+
+        if count <= checked {
+            checkEveryString(strings, read)
+        }
+    } catch {
+        input.checkError(error, shouldFail: ends == nil)
+    }
+}
+
+/// Checks string `index` of a vector of strings at `position`, which starts
+/// where the one before it ends, and the first after the count and the ends,
+/// and returns what reading it returned
+func checkStringOfVector(
+    _ strings: StringVector,
+    _ index: Int,
+    _ reader: TableReader,
+    _ input: Input,
+    at position: Int
+) -> Result<String, DecodeError> {
+    let offsetType = reader.layout.offsetType
+
+    // The count and the ends lie within the input, from the vector's position
+    func stringEnd(_ index: Int) -> Int {
+        Int(input.slot(at: position + (index + 1) * offsetType.size, offsetType)!)
+    }
+    let start = index == 0 ? (strings.count + 1) * offsetType.size : stringEnd(index - 1)
+    let end = stringEnd(index)
+    let expected = start <= end ? input.range(at: position + start, byteLength: UInt64(end - start)) : nil
+
+    do {
+        let string = try strings[index]
+        guard let expected else {
+            fatalError("Read string \(index) outside the input")
+        }
+
+        // A String holds valid UTF-8, so the bytes are valid when it's theirs
+        require(string.utf8.elementsEqual(input.bytes[expected]), "Read \(string) from other bytes")
+        return .success(string)
+    } catch .itemEndsBeforeStart(let errorStart, let errorEnd) {
+        require(start > end, "String \(index) from \(start) to \(end) ends before it starts")
+        require(errorStart == position + start && errorEnd == position + end, "String \(index) at \(position)")
+        return .failure(.itemEndsBeforeStart(start: errorStart, end: errorEnd))
+    } catch .invalidUTF8(let errorPosition) {
+        guard let expected else {
+            fatalError("A string outside the input failed as invalid UTF-8")
+        }
+
+        // Each string on its own, from its own ends
+        let valid = String(validating: input.bytes[expected], as: UTF8.self) != nil
+        require(errorPosition == expected.lowerBound && !valid, "Valid UTF-8 failed at \(errorPosition)")
+        return .failure(.invalidUTF8(position: errorPosition))
+    } catch {
+        input.checkError(error, shouldFail: expected == nil)
+        return .failure(error)
+    }
+}
+
+/// Checks that reading every string of a vector of strings reads what reading
+/// each string read, by their UTF-8, or fails with the error of the first
+/// that failed
+func checkEveryString(_ strings: StringVector, _ read: [Result<String, DecodeError>]) {
+    let firstError = read.lazy.compactMap { result -> DecodeError? in
+        guard case .failure(let error) = result else {
+            return nil
+        }
+        return error
+    }.first
+
+    do {
+        let every: [String] = try Array(strings)
+        require(firstError == nil, "Read every string, though one fails with \(String(describing: firstError))")
+
+        let each = read.compactMap { try? $0.get() }
+        require(every.map { Array($0.utf8) } == each.map { Array($0.utf8) }, "Read every string otherwise")
+    } catch {
+        require(
+            error == firstError,
+            "Every string failed with \(error), the first string with \(String(describing: firstError))")
     }
 }
