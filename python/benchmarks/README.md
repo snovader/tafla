@@ -3,8 +3,10 @@
 `python -m tafla_benchmarks` compares `tafla` with other Python libraries
 that encode small tables and numeric columns, in pyperf benchmarks. It runs the
 workloads of the TypeScript comparison in `typescript/benchmarks/`, with the
-same values, so that the languages' numbers compare. Run the commands below
-from `python/`.
+same values, so that the languages' numbers compare.
+`python -m tafla_benchmarks.lists` times how tafla-gen's code writes and reads
+lists of strings, as [Lists of strings](#lists-of-strings) describes. Run the
+commands below from `python/`.
 
 ## Workloads
 
@@ -553,3 +555,58 @@ The most bytes that a call held at once, as tracemalloc traces them:
   save the list of them, so a call holds 1.7 KB at most against 6.6 KB for
   the vector, and 0.7 KB against 11.9 KB for the array. Reading the floats by
   hand takes 83.5 µs and 8.6 µs.
+
+## Lists of strings
+
+`python -m tafla_benchmarks.lists` times how the code that tafla-gen generates
+from `generated/lists.tafla`, a copy of the TypeScript suite's
+`strings/lists/lists.tafla`, into `generated/lists/` writes and reads lists of
+10, 100 and 10,000 distinct strings, of 16 and 256 characters of ASCII and of 8
+characters of 3 bytes. They're the TypeScript suite's strings of those kinds,
+from its seeded generator, which `tests/test_lists.py` checks, and
+`list_shapes.py` makes them. Each list is serialized, deserialized into a list
+of its strings, and read for its last string, by three variants:
+
+- **tafla-gen [string]**: `StringList`, a vector of strings. It's written from
+  the list as it is with `serialize_values()`, and read through the getter's
+  `StringVector`: every string with `tolist()`, which decodes a list of ASCII
+  as one run and slices it at each end, and the last string with `[-1]`, from
+  its two ends.
+- **tafla-gen [Name]**: `NameList`, a vector of tables of one string each,
+  which is how a schema holds a list of strings without a vector of strings.
+  It's written with `serialize_values()` from a tuple of each table's string,
+  which each call makes, and read with the view's `field_values()`, which
+  reads every table's string in one call, or `item_field_values(-1)` the last
+  one's.
+- **tafla-gen [string] A/A**: the vector of strings again, in functions of
+  their own, an A/A pair that shows the harness's noise.
+
+Before timing, each variant checks that it reads back every string and the
+last string, and `tests/test_lists.py` checks every variant on every list,
+and that `StringList` writes the bytes that `TableBuilder.set_string_vector()`
+writes. The suite runs as the comparison does, as [Method](#method)
+describes, and its options are the comparison's, with `--codec` choosing the
+variants. With `TAFLA_PUREPYTHON` set, the workers time the pure-Python
+classes: until the native classes read and write vectors of strings, the
+suite runs with the pure-Python ones alone.
+
+```sh
+uptime
+for order in "" --reverse; do
+    TAFLA_PUREPYTHON=1 uv run --python 3.14+gil python -m tafla_benchmarks.lists --processes 5 --append lists.json $order
+done
+uv run --python 3.14+gil python -m tafla_benchmarks.report --lists lists.json
+```
+
+The full run takes about 15 to 20 minutes, which the workers of the lists of
+10,000 strings of 256 characters lengthen, since each makes its strings first,
+in about 2 seconds. A quick run of one worker per benchmark checks that every
+benchmark works in about 20 seconds:
+
+```sh
+TAFLA_PUREPYTHON=1 uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
+```
+
+### Results
+
+To be measured.

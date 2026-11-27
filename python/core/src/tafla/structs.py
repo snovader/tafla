@@ -1,7 +1,7 @@
 import struct
 
 from .constants import SIZEOF_8, SIZEOF_16, SIZEOF_32
-from .types import OffsetSize
+from .types import IntTypeCode, OffsetSize
 
 int8 = struct.Struct("<b")
 uint8 = struct.Struct("<B")
@@ -24,4 +24,13 @@ OFFSET_STRUCTS: dict[OffsetSize, struct.Struct] = {
     SIZEOF_8: uint8,
     SIZEOF_16: uint16,
     SIZEOF_32: uint32,
+}
+
+# The format character of the unsigned integer of each offset size, which
+# arrays and memoryviews of a vector's ends take as their type code, and
+# struct as the format of each, in a format that repeats it
+OFFSET_CODES: dict[OffsetSize, IntTypeCode] = {
+    SIZEOF_8: "B",
+    SIZEOF_16: "H",
+    SIZEOF_32: "I",
 }

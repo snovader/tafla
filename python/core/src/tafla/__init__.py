@@ -63,6 +63,20 @@ rather than from a builder of its own:
 >>> [reader.get_float32(reader.field_offset(item, 1)) for item in items]
 [21.75, 18.5]
 
+A vector of strings holds each string's UTF-8 after the end of each, so a
+``StringVector`` reads any string without reading the others, or every string
+at once:
+
+>>> from tafla import StringVector
+>>> tags = TableBuilder(1)
+>>> tags.set_string_vector(["north", "Ö", "東"])
+>>> reader = tags.finalize()
+>>> vector = StringVector(reader, reader.root_offset(0))
+>>> len(vector), vector[1], vector[-1]
+(3, 'Ö', '東')
+>>> vector.tolist()
+['north', 'Ö', '東']
+
 Records at fixed offsets without a header or offsets, such as stream frames,
 are better written and read with ``struct`` alone.
 
@@ -90,6 +104,11 @@ then the fields in the order they were set:
 - A vector starts with its item count, then the end of each item, counted from
   the vector's start, and then the items. An item starts where the one before
   it ends, so ``get_vector_offset()`` finds any item from two ends.
+- A vector of strings lays out its count and ends as a vector of tables does,
+  and then each string's UTF-8, one after another, without a count of its
+  own. ``get_string_vector()`` reads every string, and
+  ``get_string_vector_item()`` one from its two ends, as a ``StringVector``
+  reads it.
 
 Implementations
 ---------------
@@ -105,7 +124,8 @@ is read once, at import. Native classes that are installed but fail to
 import, such as ones built for another Python, warn with ``RuntimeWarning``
 before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
 ``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
-``TableWriter``, so the implementations never mix.
+``TableWriter``, so the implementations never mix, and so is ``StringVector``,
+which reads through the ``TableReader`` that it's given.
 
 A native method does in one call what the pure-Python one does in several
 Python calls, so the tables that generated code writes and reads take about
@@ -212,9 +232,10 @@ Validation is always on:
 
 - Every read checks its range against the bytes the ``TableReader`` was given
   and raises ``DecodeError`` if it would leave them, at any position, however
-  large. Strings must be valid UTF-8, and vector items must start no later
-  than they end. A truncated or corrupted buffer therefore raises rather than
-  returning values from outside it.
+  large. Strings must be valid UTF-8, and so must each string of a vector of
+  strings, on its own, which is checked when it's read, and vector items must
+  start no later than they end. A truncated or corrupted buffer therefore
+  raises rather than returning values from outside it.
 - ``DecodeError`` is a ``ValueError``. Its message gives the read's position
   and length and the bytes available, and an invalid string's error has the
   ``UnicodeDecodeError`` as its cause. Positions, lengths and indices of more
@@ -253,7 +274,11 @@ Using the API wrongly raises other errors, whatever the bytes:
   ``set_struct_array()`` and ``get_struct_array()``, and so do bytes that
   aren't a whole number of structs from ``set_struct_array()``.
 - ``get_vector_offset()`` raises ``IndexError`` for an item outside the
-  vector.
+  vector, and so do ``get_vector_item_offset()`` and
+  ``get_string_vector_item()``, and a ``StringVector`` for a string outside
+  it.
+- ``set_string_vector()`` raises ``TypeError`` for a ``str``, which is a
+  sequence of its characters.
 - ``get_version()`` raises ``TypeError`` when the layout has no version.
 
 TableWriter's contract
@@ -293,6 +318,7 @@ from .implementation import (
     TableReader,
     TableWriter,
 )
+from .string_vector import StringVector
 from .table_builder import TableBuilder
 from .types import OffsetSize, OffsetType
 
@@ -303,6 +329,7 @@ __all__ = [
     "FixedFields",
     "OffsetSize",
     "OffsetType",
+    "StringVector",
     "TableBuilder",
     "TableLayout",
     "TableWriter",

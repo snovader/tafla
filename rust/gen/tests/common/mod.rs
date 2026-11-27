@@ -272,6 +272,12 @@ pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
         directory: "cpp/benchmarks/generated/lists",
         package: None,
     },
+    BenchmarkSchema {
+        target: "python",
+        schema: "python/benchmarks/src/tafla_benchmarks/generated/lists.tafla",
+        directory: "python/benchmarks/src/tafla_benchmarks/generated/lists",
+        package: None,
+    },
 ];
 
 impl BenchmarkSchema {

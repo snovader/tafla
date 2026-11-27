@@ -9,7 +9,8 @@ from array import array
 from collections.abc import Callable
 
 import tafla
-from tafla import TableBuilder, TableLayout, TableReader, TableWriter
+from tafla import StringVector, TableBuilder, TableLayout, TableReader, TableWriter
+from tests.tables import skip_without_string_vectors
 
 THREADS = 8
 
@@ -74,6 +75,28 @@ class TestThreads(unittest.TestCase):
         def read() -> None:
             for _ in range(2000):
                 assert reader.get_string(reader.root_offset(1)) == "Europe/Stockholm"
+
+        self.assertEqual(run_together(read), [])
+
+    @skip_without_string_vectors
+    @unittest.skipIf(
+        FREE_THREADED_MEMORYVIEWS and tafla.IMPLEMENTATION == "python",
+        "the pure-Python reader slices the strings' bytes from the buffer's "
+        f"memoryview, {MEMORYVIEW_RACE}",
+    )
+    def test_reads_the_same_vectors_of_strings_from_a_reader_that_threads_share(
+        self,
+    ) -> None:
+        strings = ["Stockholm", "Zürich", "東京", "a" * 40]
+        builder = TableBuilder(1)
+        builder.set_string_vector(strings)
+        reader = TableReader(builder.bytes())
+        vector = StringVector(reader, reader.root_offset(0))
+
+        def read() -> None:
+            for _ in range(500):
+                assert vector.tolist() == strings
+                assert vector[2] == "東京"
 
         self.assertEqual(run_together(read), [])
 
