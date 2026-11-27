@@ -97,6 +97,7 @@ extension TableSizer {
         case .uint64Array(let values): addUInt64Array(count: values.count)
         case .float32Array(let bits): addFloat32Array(count: bits.count)
         case .float64Array(let bits): addFloat64Array(count: bits.count)
+        case .boolArray(let values): addBoolArray(count: values.count)
         case .string(let utf8): addString(String(decoding: utf8, as: UTF8.self))
         case .struct(let scalars): addStruct(size: structBytes(scalars).count)
         case .structArray(let types, let items):
@@ -147,6 +148,7 @@ extension TableWriter {
         case .uint64Array(let values): setUInt64Array(index, values)
         case .float32Array(let bits): setFloat32Array(index, bits.map(Float.init(bitPattern:)))
         case .float64Array(let bits): setFloat64Array(index, bits.map(Double.init(bitPattern:)))
+        case .boolArray(let values): setBoolArray(index, values)
         case .string(let utf8): setString(index, String(decoding: utf8, as: UTF8.self))
         case .struct(let scalars):
             setStruct(index)

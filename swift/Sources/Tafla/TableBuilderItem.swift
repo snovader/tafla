@@ -137,6 +137,12 @@ extension TableBuilder {
             try builder.pointee.setFloat64Array(values)
         }
 
+        /// Sets an array field of bools, as
+        /// ``TableBuilder/setBoolArray(_:)`` does.
+        public mutating func setBoolArray(_ values: [Bool]) throws(BuildError) {
+            try builder.pointee.setBoolArray(values)
+        }
+
         /// Sets the array field of `T`, as ``TableBuilder/setArray(_:)``
         /// does.
         public mutating func setArray<T: ArrayElement>(_ values: [T]) throws(BuildError) {

@@ -457,6 +457,7 @@ final class SharedBuilder {
 /// A field whose byte length grows by a unit with each of its units
 enum LongField: CaseIterable, Sendable {
     case bytes
+    case bools
     case uint16s
     case uint64s
     case string
@@ -466,7 +467,7 @@ enum LongField: CaseIterable, Sendable {
     /// The bytes that each unit adds
     var unit: Int {
         switch self {
-        case .bytes, .string, .struct: 1
+        case .bytes, .bools, .string, .struct: 1
         case .uint16s: 2
         case .uint64s: 8
         case .structs: 3
@@ -476,6 +477,7 @@ enum LongField: CaseIterable, Sendable {
     func field(units: Int) -> Field {
         switch self {
         case .bytes: .uint8Array(Array(repeating: 0xab, count: units))
+        case .bools: .boolArray(Array(repeating: true, count: units))
         case .uint16s: .uint16Array(Array(repeating: 0xabcd, count: units))
         case .uint64s: .uint64Array(Array(repeating: .max, count: units))
         case .string: .string(utf8: Array(repeating: 0x61, count: units))

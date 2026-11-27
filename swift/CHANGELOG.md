@@ -63,5 +63,10 @@ The first release.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray(_:)`, `TableSizer.addBoolArray(count:)`,
+  `TableWriter.setBoolArray(_:_:)` and `TableReader.boolArray(at:)`, which
+  reads a new `[Bool]`, true where a byte isn't 0, without reading any byte
+  as a `Bool`. `uint8Array(at:)` reads the same bytes in place.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift

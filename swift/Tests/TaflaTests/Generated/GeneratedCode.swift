@@ -7,8 +7,9 @@ import Testing
 //
 // TableBuilder writes each message from its fields' struct, as the tests'
 // `build()` walks it with `Mirror`: each field by its Swift type, an enum as
-// its integer, a struct from its scalars' bytes, a nested table from its
-// fields' struct and a vector from an array of them. Values read back compare
+// its integer, an array of bools with `setBoolArray(_:)`, a struct from its
+// scalars' bytes, a nested table from its fields' struct and a vector from an
+// array of them. Values read back compare
 // with those written by their bits, so that -0 and NaN count, and strings by
 // their UTF-8.
 
@@ -84,6 +85,17 @@ protocol ScalarArray {
 extension Array: ScalarArray where Element: ArrayElement {
     func set(on builder: inout TableBuilder) throws(BuildError) {
         try builder.setArray(self)
+    }
+}
+
+/// An array of bools, which a fields' struct holds for an array of bools
+protocol BoolArray {
+    func set(on builder: inout TableBuilder) throws(BuildError)
+}
+
+extension Array: BoolArray where Element == Bool {
+    func set(on builder: inout TableBuilder) throws(BuildError) {
+        try builder.setBoolArray(self)
     }
 }
 
@@ -167,6 +179,7 @@ extension TableBuilder {
         // By the array's own type, since an empty array casts to an array of
         // any other type
         case let values as any ScalarArray: try values.set(on: &self)
+        case let values as any BoolArray: try values.set(on: &self)
         case let value as String: try setString(value)
         case let value as any GeneratedStruct: try setStruct(scalarBytes(of: value))
         case let values as any GeneratedStructArray:

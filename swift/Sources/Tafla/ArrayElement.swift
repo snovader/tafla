@@ -5,7 +5,9 @@
 /// size from the table's start.
 ///
 /// Only these ten types conform. Its requirements, which give an element's
-/// bits, are for the runtime.
+/// bits, are for the runtime. `Bool` doesn't, so that no `ArrayView` reads
+/// a byte other than 0 and 1 as a `Bool`, which is undefined behavior:
+/// `TableReader.boolArray(at:)` reads an array of bools.
 public protocol ArrayElement: BitwiseCopyable, Sendable {
     /// The unsigned integer as wide as the element, whose bits it is
     associatedtype _TaflaBits: FixedWidthInteger & UnsignedInteger & BitwiseCopyable

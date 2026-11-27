@@ -14,7 +14,8 @@ import Tafla
 // offsets in the bytes that struct(at:size:) and structArray(at:size:) return.
 //
 // Every array is read element by element, copied, and in place where its
-// span is, and the three must agree.
+// span is, and the three must agree. An array of bools is read as bools and
+// as its bytes, which must agree too.
 
 /// The error of bytes that read without a decode error, but otherwise than
 /// their description: a sized table whose header holds another length, a
@@ -92,6 +93,7 @@ func readField(_ reader: TableReader, at position: Int, _ field: Field) throws -
         .float32Array(bits: try elements(of: reader.float32Array(at: position)).map(\.bitPattern))
     case .float64Array:
         .float64Array(bits: try elements(of: reader.float64Array(at: position)).map(\.bitPattern))
+    case .boolArray: .boolArray(try readBools(reader, at: position))
     case .string: .string(try reader.string(at: position))
     case .struct(let scalars):
         try readStruct(reader, at: position, scalars.map { $0.scalarType! })
@@ -127,6 +129,19 @@ func elements<T: ArrayElement>(of view: ArrayView<T>) throws -> [T] {
     }
 
     return copy
+}
+
+/// Reads an array of bools, which must agree with its bytes read in place,
+/// true where they aren't 0
+func readBools(_ reader: TableReader, at position: Int) throws -> [Bool] {
+    let bools = try reader.boolArray(at: position)
+    let bytes = try elements(of: reader.uint8Array(at: position))
+
+    guard bools == bytes.map({ $0 != 0 }) else {
+        throw Mismatch(.disagreement, "The bools \(bools) read otherwise than their bytes \(bytes)")
+    }
+
+    return bools
 }
 
 /// Reads a table nested with setTable

@@ -389,7 +389,7 @@ public struct ScalarsFields: Hashable, Sendable {
     }
 }
 
-/// An array of every scalar type but bool, which has none
+/// An array of every scalar type, and of bools, which are bytes of 0 and 1
 @frozen
 public struct Arrays: ~Escapable {
     /// The layout that an `Arrays` is written and read in
@@ -475,6 +475,15 @@ public struct Arrays: ~Escapable {
         @_lifetime(copy self)
         get throws(DecodeError) { try _reader.float64Array(at: _reader.rootOffset(9)) }
     }
+
+    /// A byte for each bool, which is true where it isn't 0.
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var bool: ArrayView<UInt8> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint8Array(at: _reader.rootOffset(10)) }
+    }
 }
 
 /// The fields of an `Arrays`, to write
@@ -489,6 +498,7 @@ public struct ArraysFields: Hashable, Sendable {
     public var uint64: [UInt64]
     public var float32: [Float]
     public var float64: [Double]
+    public var bool: [Bool]
 
     public init(
         int8: [Int8],
@@ -500,7 +510,8 @@ public struct ArraysFields: Hashable, Sendable {
         int64: [Int64],
         uint64: [UInt64],
         float32: [Float],
-        float64: [Double]
+        float64: [Double],
+        bool: [Bool]
     ) {
         self.int8 = int8
         self.uint8 = uint8
@@ -512,13 +523,14 @@ public struct ArraysFields: Hashable, Sendable {
         self.uint64 = uint64
         self.float32 = float32
         self.float64 = float64
+        self.bool = bool
     }
 
     /// Writes an `Arrays` with every field.
     ///
     /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
     public func serialize() throws(BuildError) -> [UInt8] {
-        var sizer = try TableSizer(fields: 10, layout: Arrays.layout)
+        var sizer = try TableSizer(fields: 11, layout: Arrays.layout)
         sizer.addInt8Array(count: self.int8.count)
         sizer.addUInt8Array(count: self.uint8.count)
         sizer.addInt16Array(count: self.int16.count)
@@ -529,6 +541,7 @@ public struct ArraysFields: Hashable, Sendable {
         sizer.addUInt64Array(count: self.uint64.count)
         sizer.addFloat32Array(count: self.float32.count)
         sizer.addFloat64Array(count: self.float64.count)
+        sizer.addBoolArray(count: self.bool.count)
 
         return try sizer.bytes { writer in
             writer.setInt8Array(0, self.int8)
@@ -541,6 +554,7 @@ public struct ArraysFields: Hashable, Sendable {
             writer.setUInt64Array(7, self.uint64)
             writer.setFloat32Array(8, self.float32)
             writer.setFloat64Array(9, self.float64)
+            writer.setBoolArray(10, self.bool)
         }
     }
 }
