@@ -76,6 +76,16 @@ first commits, for code built from its source before the release.
   rather than 6.7 ns, and its document of 100 rows in 15.3 ns rather than
   16.5 ns. A table of 16 strings of 8 ASCII characters was read in 51 ns
   rather than 76 ns. Its values and errors are unchanged.
+- `TableReader::root_offset()` and `field_offset()`, and the reads of
+  lengths and offsets that they and the getters share, are inlined into
+  their callers. With several of them, as in a reader written by hand, LLVM
+  called them out of line, which `#[inline]` didn't change, and each read
+  the layout from memory and branched on its offset size. The comparison
+  suite's versioned document of 100 rows, read with `TableReader` by hand,
+  was read in 12.7 ns rather than 27.1 ns, its record in 5.4 ns rather than
+  6.8 ns, and the last table of its vector in 6.3 ns rather than 7.9 ns.
+  tafla-gen's code, whose reads were already inlined, is unchanged. Their
+  values and errors are unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a

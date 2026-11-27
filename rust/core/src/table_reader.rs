@@ -102,6 +102,17 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
     /// the bytes.
+    // Inlined into its callers, as are `field_offset()` and the reads of
+    // lengths and offsets that it and the getters share, so that a constant
+    // layout's offset type and header fold into each read. With several
+    // callers, LLVM called them out of line, which `#[inline]` didn't
+    // change, and each read the layout from memory and branched on its
+    // offset size: a versioned document of 100 rows read by hand took
+    // 27.1 ns rather than 12.7 ns. Inlining only this, `field_offset()` and
+    // `array_bytes()` called `get_slot()` out of line instead, and took as
+    // long.
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn root_offset(&self, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
@@ -120,6 +131,9 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     ///
     /// [`DecodeError::OutOfRange`] if the field's offset doesn't lie within
     /// the bytes.
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn field_offset(&self, table_position: usize, index: usize) -> Result<usize, DecodeError> {
         let slot = index
             .saturating_mul(self.offset_type().size())
@@ -252,13 +266,17 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     }
 
     /// Reads a length or offset at `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn get_size(&self, position: usize) -> Result<usize, DecodeError> {
         self.get_slot(position).map(|size| size as usize)
     }
 
     /// Reads a length, offset or header slot at `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn get_slot(&self, position: usize) -> Result<u32, DecodeError> {
         let offset_type = self.offset_type();
 
@@ -272,7 +290,9 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
 
     /// Returns the bytes of the elements after the length prefix at
     /// `position`
-    #[inline]
+    // Inlined, as `root_offset()` is
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     fn array_bytes(&self, position: usize, element_size: usize) -> Result<&'a [u8], DecodeError> {
         let length = self.get_size(position)?;
 
