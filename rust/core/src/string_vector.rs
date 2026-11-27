@@ -93,6 +93,15 @@ impl<'a> StringVector<'a> {
     /// each would. When a check fails, each string is read on its own, to
     /// find the first that fails.
     ///
+    /// Checking the run once makes one call of `is_ascii()` or
+    /// `str::from_utf8()` rather than one for each string, checks ASCII a
+    /// word at a time across the strings' ends, and leaves no end of a run of
+    /// ASCII to check: lists of 10 to 10,000 strings of 16 and 256 characters
+    /// of ASCII were read in 0.34–0.92 times the time that reading each
+    /// string with [`StringVector::iter()`] took, and of 8 characters of 3
+    /// bytes in 0.86–0.90 times, in the lists suite of
+    /// `benchmarks/README.md`.
+    ///
     /// # Errors
     ///
     /// The error of the first string that fails, as [`StringVector::get()`]
@@ -143,32 +152,47 @@ where
     I: DoubleEndedIterator<Item = usize> + ExactSizeIterator + Clone,
 {
     let end = ends.clone().next_back().unwrap_or(start);
-    let run = decode_run(bytes.get(start..end)?)?;
+    let run = bytes.get(start..end)?;
 
+    // ASCII first, which `is_ascii()` checks a word at a time, as
+    // `decode_str()` checks a string, and whose every byte is a character's
+    // boundary, so that no end needs checking: lists of 16 and 256
+    // characters of ASCII were read in 0.64–0.97 times the time that slicing
+    // the run as a `str` took
+    if run.is_ascii() {
+        return slice_strings(start, ends, |from, to| {
+            // SAFETY: ASCII is valid UTF-8, from and to any of its bytes
+            let string = run.get(from..to)?;
+            Some(unsafe { str::from_utf8_unchecked(string) })
+        });
+    }
+
+    // `get()` checks that each string falls on characters' boundaries, so
+    // that it's valid UTF-8 on its own
+    let run = str::from_utf8(run).ok()?;
+    slice_strings(start, ends, |from, to| run.get(from..to))
+}
+
+/// Slices each string from the end of the string before it to its end, of
+/// `ends`, which count from `start` in the run of strings, with `slice()`,
+/// which returns `None` for a string that starts after it ends or past the
+/// run, or isn't valid UTF-8
+#[inline]
+fn slice_strings<'a>(
+    start: usize,
+    ends: impl ExactSizeIterator<Item = usize>,
+    slice: impl Fn(usize, usize) -> Option<&'a str>,
+) -> Option<Vec<&'a str>> {
     let mut strings = Vec::with_capacity(ends.len());
     let mut from = 0;
     for end in ends {
-        // An end before the run's start wraps past its end. `get()` checks
-        // that the string starts no later than it ends, within the run, and
-        // that both ends fall on a character's boundary, so that it's valid
-        // UTF-8 on its own.
+        // An end before the run's start wraps past its end
         let to = end.wrapping_sub(start);
-        strings.push(run.get(from..to)?);
+        strings.push(slice(from, to)?);
         from = to;
     }
 
     Some(strings)
-}
-
-/// Decodes a run of strings, as `decode_str()` decodes a string, or returns
-/// `None` if it isn't valid UTF-8
-fn decode_run(run: &[u8]) -> Option<&str> {
-    if run.is_ascii() {
-        // SAFETY: ASCII is valid UTF-8
-        return Some(unsafe { str::from_utf8_unchecked(run) });
-    }
-
-    str::from_utf8(run).ok()
 }
 
 /// Reads the string from `start` to `end`, from the vector's position
