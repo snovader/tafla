@@ -386,8 +386,10 @@ The tests are:
   string that fails does, in overwritten and arbitrary bytes, with examples
   of each decode error, of an end that splits a character and of a string
   that starts within the ends.
-- `UTF8Tests.swift`: the validator of strings on Apple's systems before 2024,
-  whose standard library can't validate UTF-8, against the standard library's.
+- `UTF8Tests.swift`: the decoders of strings, as a `UTF8Span` where the
+  standard library has one, and through a validator of its own on Apple's
+  systems before 2024, whose standard library can't validate UTF-8, against
+  the standard library's `String(validating:as:)`.
 - `ExampleTests.swift`: the example above.
 - `Generated/`: the code that tafla-gen generates from the example schemas in
   `schemas/` at the root of the repository, which lies in `Tests/Generated`,

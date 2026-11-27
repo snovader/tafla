@@ -78,15 +78,3 @@ extension Array where Element == String {
         self = strings
     }
 }
-
-/// Returns the string of the UTF-8 `bytes` at `position`, which a reader's
-/// error names, or throws ``DecodeError/invalidUTF8(position:)`` if they
-/// aren't valid UTF-8
-@usableFromInline
-func decodeString(_ bytes: RawSpan, at position: Int) throws(DecodeError) -> String {
-    guard let string = validatedString(bytes) else {
-        throw .invalidUTF8(position: position)
-    }
-
-    return string
-}
