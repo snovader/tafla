@@ -134,9 +134,14 @@ internal static class TableReaderTarget
         _ = empty.GetInt64Array(0).Length + empty.GetUInt64Array(0).Length + empty.GetFloat64Array(0).Length;
     }
 
-    /// <summary>Reads <paramref name="utf8"/> as the string of a table of uint16 offsets, valid or not</summary>
+    /// <summary>
+    /// Reads <paramref name="utf8"/>, valid or not, as the string of a table of uint16 offsets, and as
+    /// the string of a vector of one, which is decoded as a string is
+    /// </summary>
     private static void WarmUpString(byte[] utf8)
     {
+        var layout = new TableLayout { OffsetType = OffsetType.UInt16 };
+
         var bytes = new byte[sizeof(ushort) + utf8.Length];
         bytes[0] = (byte)utf8.Length;
         bytes[1] = (byte)(utf8.Length >> 8);
@@ -144,7 +149,20 @@ internal static class TableReaderTarget
 
         try
         {
-            _ = new TableReader(bytes, new TableLayout { OffsetType = OffsetType.UInt16 }).GetString(0);
+            _ = new TableReader(bytes, layout).GetString(0);
+        }
+        catch (DecodeException) { }
+
+        // The vector's count, 1, and its string's end, from the vector's position, before its UTF-8
+        var vector = new byte[2 * sizeof(ushort) + utf8.Length];
+        vector[0] = 1;
+        vector[2] = (byte)vector.Length;
+        vector[3] = (byte)(vector.Length >> 8);
+        utf8.CopyTo(vector, 2 * sizeof(ushort));
+
+        try
+        {
+            _ = new TableReader(vector, layout).GetStringVector(0)[0];
         }
         catch (DecodeException) { }
     }

@@ -140,14 +140,14 @@ which covers the whole format, byte for byte.
   copied into the `string`. They hold the last such string that the thread
   read until it reads another, or ends, so a secret read as a string may
   stay in memory after the `string` itself is collected. Each read of a
-  string of a vector of strings checks and decodes it too, in two passes
-  whatever its length. `GetStringVector()` returns the vector as a
-  `StringVector`, a `ref struct` over the bytes, as a `Vector` is: its
-  indexer decodes one string from its two ends, and `ToArray()` and its
-  enumerator decode every string, in order. Each string is checked on its
-  own, so an end that splits a character fails both strings around it, and
-  reading every string fails where reading any one of them fails, with its
-  error. The setters take a `ReadOnlySpan<string>`, such as an array's.
+  string of a vector of strings checks and decodes it too, in the same way.
+  `GetStringVector()` returns the vector as a `StringVector`, a `ref struct`
+  over the bytes, as a `Vector` is: its indexer decodes one string from its
+  two ends, and `ToArray()` and its enumerator decode every string, in
+  order. Each string is checked on its own, so an end that splits a
+  character fails both strings around it, and reading every string fails
+  where reading any one of them fails, with its error. The setters take a
+  `ReadOnlySpan<string>`, such as an array's.
 
 ## Recording nested tables in place
 

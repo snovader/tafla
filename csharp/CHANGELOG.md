@@ -69,8 +69,8 @@ commits, for code built from its source before the release.
   `StringVector`, a `ref struct` over the bytes, as a `Vector` is, whose
   indexer reads one string from its two ends without reading the others, and
   whose `ToArray()` and enumerator read every string, in order. Each string
-  is checked as UTF-8 on its own, so an end that splits a character fails
-  both strings around it.
+  is decoded as `GetString()` decodes a string, and checked as UTF-8 on its
+  own, so an end that splits a character fails both strings around it.
 
 ### Changed
 

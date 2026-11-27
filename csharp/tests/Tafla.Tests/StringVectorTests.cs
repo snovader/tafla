@@ -138,6 +138,36 @@ public class StringVectorTests
     }
 
     /// <summary>
+    /// Strings of exactly as many bytes as the reader decodes in each of its ways, 128 and 1,024, and of
+    /// one byte more, read back however they're read: of characters of each width in UTF-8, with ASCII
+    /// before or after them where their width doesn't divide the length
+    /// </summary>
+    [Fact]
+    public void ReadsStringsAtTheLimitsOfEachDecode()
+    {
+        var strings = new List<string>();
+        foreach (var byteLength in (int[])[128, 129, 1024, 1025])
+        {
+            foreach (var character in (string[])["a", "é", "€", "😀"])
+            {
+                var width = Encoding.UTF8.GetByteCount(character);
+                var characters = string.Concat(Enumerable.Repeat(character, byteLength / width));
+                var ascii = new string('a', byteLength % width);
+
+                strings.Add(characters + ascii);
+                strings.Add(ascii + characters);
+            }
+        }
+
+        var bytes = TableOf([.. strings]);
+        var texts = strings.Select(value => new Text(value, null));
+
+        Assert.Equal(strings, ViewOf(bytes).ToArray());
+        Assert.Equal(texts, Each(ViewOf(bytes)));
+        Assert.Equal(texts, InOrder(ViewOf(bytes)));
+    }
+
+    /// <summary>
     /// Bytes overwritten after the table's offset read, as every string at once and in order, what
     /// reading each string from its ends reads, or fail where reading any one fails, with its error
     /// </summary>
@@ -239,20 +269,35 @@ public class StringVectorTests
         Assert.Equal([new("a", null), new(null, Of(second)), new(null, Of(third)), new("b", null)], InOrder(ViewOf(bytes)));
     }
 
+    /// <summary>
+    /// A string whose first or last byte isn't valid UTF-8 fails with its position, however it's read:
+    /// of 3 or 40 bytes, or of exactly as many as the reader decodes in each of its ways, 128 and
+    /// 1,024, or of one byte more
+    /// </summary>
     [Theory]
     [InlineData(3)]
     [InlineData(40)]
+    [InlineData(128)]
+    [InlineData(129)]
+    [InlineData(1024)]
+    [InlineData(1025)]
     public void NamesThePositionOfAStringThatIsntValidUtf8(int length)
     {
-        var bytes = TableOf(["a", new string('b', length)]);
-        // The second string starts after the table's offset, the count, two ends and the first string
-        bytes[17] = 0xff;
+        foreach (var invalid in (int[])[0, length - 1])
+        {
+            var bytes = TableOf(["a", new string('b', length)]);
+            // The second string starts after the table's offset, the count, two ends and the first string
+            bytes[17 + invalid] = 0xff;
 
-        Assert.Equal("a", ViewOf(bytes)[0]);
-        var error = Assert.Throws<DecodeException>(() => ViewOf(bytes)[1]);
-        Assert.Equal((DecodeErrorKind.InvalidUtf8, 17L), (error.Kind, error.Position));
-        Assert.Equal("The string at 17 isn't valid UTF-8", error.Message);
-        Assert.IsType<DecoderFallbackException>(error.InnerException);
+            Assert.Equal("a", ViewOf(bytes)[0]);
+            var error = Assert.Throws<DecodeException>(() => ViewOf(bytes)[1]);
+            Assert.Equal((DecodeErrorKind.InvalidUtf8, 17L), (error.Kind, error.Position));
+            Assert.Equal("The string at 17 isn't valid UTF-8", error.Message);
+            Assert.IsType<DecoderFallbackException>(error.InnerException);
+
+            Assert.Equal(Of(error), Attempt(ViewOf(bytes), view => view.ToArray()).Error);
+            Assert.Equal([new("a", null), new(null, Of(error))], InOrder(ViewOf(bytes)));
+        }
     }
 
     /// <summary>
