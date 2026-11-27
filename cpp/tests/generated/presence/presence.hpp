@@ -13,6 +13,17 @@
 #include <tafla/tafla.hpp>
 
 namespace presence {
+/**
+ * A level of a graded message
+ *
+ * A value of `Level`: one that it names, or any other `std::uint8_t`
+ */
+enum class Level : std::uint8_t {
+    low = 0,
+    /** The default of a graded message's level */
+    high = 2,
+};
+
 class Point;
 class Record;
 class PointV1;
@@ -21,6 +32,7 @@ class Entry;
 class EntryV1;
 class Sample;
 class SampleV1;
+class Graded;
 struct PointFields;
 struct RecordFields;
 struct PointV1Fields;
@@ -29,6 +41,7 @@ struct EntryFields;
 struct EntryV1Fields;
 struct SampleFields;
 struct SampleV1Fields;
+struct GradedFields;
 
 struct Extent {
     float width{};
@@ -660,6 +673,74 @@ struct SampleV1Fields {
 
     /**
      * Writes a `SampleV1` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
+     * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
+     * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
+     */
+    [[nodiscard]] std::size_t serialize_into(std::span<std::uint8_t> bytes_) const;
+};
+
+/**
+ * A message of an optional enum, an optional array of it, and an enum that
+ * its second revision appended, each of which reads as a value of the enum
+ * where the message lacks it
+ */
+class Graded {
+public:
+    /** The layout of the table, which its writer writes and its reader reads */
+    static constexpr auto LAYOUT = ::tafla::TableLayout();
+
+    /** Reads a `Graded` from `bytes`, which it views */
+    explicit constexpr Graded(std::span<const std::uint8_t> bytes) noexcept : bytes_(bytes) {}
+
+    /** Throws a `tafla::DecodeError` if the field lies outside the bytes */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::uint8_t grade() const;
+
+    /**
+     * `static_cast<Level>(2U)` when the table doesn't hold the field, as `has_level()` tells. Throws a
+     * `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level level() const;
+
+    /** Whether the table holds `level`, which throws a `tafla::DecodeError` as `level()` does */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE bool has_level() const;
+
+    /**
+     * `Level`s, as the `std::uint8_t`s that store them
+     *
+     * `std::nullopt` when the table doesn't hold the field. Throws a `tafla::DecodeError` if the field lies outside the
+     * bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE std::optional<std::span<const std::uint8_t>> levels() const;
+
+    /**
+     * `static_cast<Level>(0U)` when the table doesn't hold the field, as `has_floor()` tells. Throws a
+     * `tafla::DecodeError` if the field lies outside the bytes
+     */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE Level floor() const;
+
+    /** Whether the table holds `floor`, which throws a `tafla::DecodeError` as `floor()` does */
+    [[nodiscard]] TAFLA_ALWAYS_INLINE bool has_floor() const;
+
+private:
+    std::span<const std::uint8_t> bytes_;
+};
+
+/** The fields of a `Graded`, to write */
+struct GradedFields {
+    std::uint8_t grade{};
+    std::optional<Level> level{};
+    /** `Level`s, as the `std::uint8_t`s that store them */
+    std::optional<std::span<const std::uint8_t>> levels{};
+    Level floor{};
+
+    /**
+     * Writes a `Graded` with every field, or throws a `tafla::BuildError` if it's longer than its offset type,
+     * `uint32`, addresses
+     */
+    [[nodiscard]] ::tafla::Bytes serialize() const;
+
+    /**
+     * Writes a `Graded` as `serialize()` does, but into the start of `bytes_` rather than into new bytes, and returns
      * its length, the number of bytes that hold it, leaving the bytes after it as they were. Throws
      * `std::invalid_argument` if `bytes_` are shorter than it, before writing any of them.
      */
@@ -1741,6 +1822,116 @@ inline std::size_t SampleV1Fields::serialize_into(std::span<std::uint8_t> given_
     ::tafla::store_le(bytes_ + 4, key);
 
     return 8;
+}
+
+inline std::uint8_t Graded::grade() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(0);
+    return reader.get_uint8(position);
+}
+
+inline Level Graded::level() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(1);
+    if (position == 0) {
+        return static_cast<Level>(2U);
+    }
+
+    return static_cast<Level>(reader.get_uint8(position));
+}
+
+inline bool Graded::has_level() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    return reader.root_offset(1) != 0;
+}
+
+inline std::optional<std::span<const std::uint8_t>> Graded::levels() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    const auto position = reader.root_offset(2);
+    if (position == 0) {
+        return std::nullopt;
+    }
+
+    return reader.get_uint8_array(position);
+}
+
+inline Level Graded::floor() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    if (reader.root_offset(0) < 16) {
+        return static_cast<Level>(0U);
+    }
+
+    const auto position = reader.root_offset(3);
+    if (position == 0) {
+        return static_cast<Level>(0U);
+    }
+
+    return static_cast<Level>(reader.get_uint8(position));
+}
+
+inline bool Graded::has_floor() const {
+    const ::tafla::TableReader reader(bytes_, LAYOUT);
+    if (reader.root_offset(0) < 16) {
+        return false;
+    }
+
+    return reader.root_offset(3) != 0;
+}
+
+inline ::tafla::Bytes GradedFields::serialize() const {
+    ::tafla::TableSizer sizer_(4, Graded::LAYOUT);
+    sizer_.add_uint8();
+    if (level.has_value()) {
+        sizer_.add_uint8();
+    }
+    if (levels.has_value()) {
+        sizer_.add_uint8_array(levels->size());
+    }
+    sizer_.add_uint8();
+
+    auto writer_ = sizer_.writer();
+    writer_.set_uint8(0, grade);
+    if (level.has_value()) {
+        writer_.set_uint8(1, static_cast<std::uint8_t>(*level));
+    } else {
+        writer_.set_absent(1);
+    }
+    if (levels.has_value()) {
+        writer_.set_uint8_array(2, *levels);
+    } else {
+        writer_.set_absent(2);
+    }
+    writer_.set_uint8(3, static_cast<std::uint8_t>(floor));
+
+    return writer_.finish();
+}
+
+inline std::size_t GradedFields::serialize_into(std::span<std::uint8_t> bytes_) const {
+    ::tafla::TableSizer sizer_(4, Graded::LAYOUT);
+    sizer_.add_uint8();
+    if (level.has_value()) {
+        sizer_.add_uint8();
+    }
+    if (levels.has_value()) {
+        sizer_.add_uint8_array(levels->size());
+    }
+    sizer_.add_uint8();
+
+    auto writer_ = sizer_.writer(bytes_);
+    writer_.set_uint8(0, grade);
+    if (level.has_value()) {
+        writer_.set_uint8(1, static_cast<std::uint8_t>(*level));
+    } else {
+        writer_.set_absent(1);
+    }
+    if (levels.has_value()) {
+        writer_.set_uint8_array(2, *levels);
+    } else {
+        writer_.set_absent(2);
+    }
+    writer_.set_uint8(3, static_cast<std::uint8_t>(floor));
+
+    return writer_.finish_into();
 }
 
 }  // namespace presence

@@ -10,6 +10,17 @@ import (
 	tafla "github.com/snovader/tafla/go"
 )
 
+// A level of a graded message
+type Level uint8
+
+// The values of [Level] that the schema names. A field of it holds any uint8,
+// whether it's one of them or not.
+const (
+	LevelLow Level = 0
+	// The default of a graded message's level
+	LevelHigh Level = 2
+)
+
 // A record in its second version, which reads the first too
 type Record struct {
 	bytes   []byte
@@ -1322,4 +1333,175 @@ func (f SampleV1Fields) AppendBinary(bytes []byte) ([]byte, error) {
 	binary.LittleEndian.PutUint32(table[4:], f.Key)
 
 	return bytes, nil
+}
+
+// A message of an optional enum, an optional array of it, and an enum that
+// its second revision appended, each of which reads as a value of the enum
+// where the message lacks it
+type Graded struct {
+	bytes []byte
+}
+
+// NewGraded reads a [Graded] from bytes, which it keeps rather than copying
+// them.
+func NewGraded(bytes []byte) Graded {
+	return Graded{bytes: bytes}
+}
+
+// layout returns the layout of a [Graded], which its getters read it in
+func (Graded) layout() tafla.TableLayout {
+	return tafla.TableLayout{}
+}
+
+// Grade fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Graded) Grade() (uint8, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	return reader.GetUint8(position)
+}
+
+// Level returns 2 when the table doesn't hold it, as [Graded.HasLevel] tells.
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Graded) Level() (Level, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
+	if err != nil {
+		return 0, err
+	}
+	if position == 0 {
+		return 2, nil
+	}
+
+	value, err := reader.GetUint8(position)
+	return Level(value), err
+}
+
+// HasLevel returns whether the table holds [Graded.Level]. It fails with a
+// [*tafla.DecodeError] if the field's offset lies outside the bytes.
+func (t Graded) HasLevel() (bool, error) {
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 4)
+	if err != nil {
+		return false, err
+	}
+	return position != 0, nil
+}
+
+// Levels returns the zero value and false when the table doesn't hold it. It
+// fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Graded) Levels() ([]byte, bool, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 8)
+	if err != nil {
+		return nil, false, err
+	}
+	if position == 0 {
+		return nil, false, nil
+	}
+
+	value, err := reader.GetUint8Array(position)
+	if err != nil {
+		return nil, false, err
+	}
+	return value, true, nil
+}
+
+// Floor returns 0 when the table doesn't hold it, as [Graded.HasFloor] tells.
+// It fails with a [*tafla.DecodeError] if the field lies outside the bytes.
+func (t Graded) Floor() (Level, error) {
+	reader := tafla.NewTableReader(t.bytes, t.layout())
+	first, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return 0, err
+	}
+	if first < 16 {
+		return 0, nil
+	}
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
+	if err != nil {
+		return 0, err
+	}
+	if position == 0 {
+		return 0, nil
+	}
+
+	value, err := reader.GetUint8(position)
+	return Level(value), err
+}
+
+// HasFloor returns whether the table holds [Graded.Floor]. It fails with a
+// [*tafla.DecodeError] if the field's offset lies outside the bytes.
+func (t Graded) HasFloor() (bool, error) {
+	first, err := tafla.Uint32FieldOffset(t.bytes, 0, 0)
+	if err != nil {
+		return false, err
+	}
+	if first < 16 {
+		return false, nil
+	}
+
+	position, err := tafla.Uint32FieldOffset(t.bytes, 0, 12)
+	if err != nil {
+		return false, err
+	}
+	return position != 0, nil
+}
+
+// GradedFields are the fields of a [Graded], to write.
+type GradedFields struct {
+	Grade  uint8
+	Level  tafla.Optional[Level]
+	Levels tafla.Optional[[]byte]
+	Floor  Level
+}
+
+// MarshalBinary writes a [Graded] with every field but the absent optional
+// ones, whose offsets are 0. It fails with a [*tafla.BuildError] if it's longer
+// than its offset type, uint32, addresses.
+func (f GradedFields) MarshalBinary() ([]byte, error) {
+	return f.AppendBinary(nil)
+}
+
+// AppendBinary appends a [Graded] with every field to bytes, as
+// [GradedFields.MarshalBinary] writes it, and returns the extended bytes, into
+// their capacity when they have room. It fails as MarshalBinary does.
+func (f GradedFields) AppendBinary(bytes []byte) ([]byte, error) {
+	sizer, err := tafla.NewTableSizer(4, Graded{}.layout())
+	if err != nil {
+		return nil, err
+	}
+	sizer.AddUint8()
+	if _, ok := f.Level.Get(); ok {
+		sizer.AddUint8()
+	} else {
+		sizer.AddAbsent()
+	}
+	if value, ok := f.Levels.Get(); ok {
+		sizer.AddUint8Array(len(value))
+	} else {
+		sizer.AddAbsent()
+	}
+	sizer.AddUint8()
+
+	writer, err := sizer.AppendWriter(bytes)
+	if err != nil {
+		return nil, err
+	}
+	writer.SetUint8(0, f.Grade)
+	if value, ok := f.Level.Get(); ok {
+		writer.SetUint8(1, uint8(value))
+	} else {
+		writer.SetAbsent(1)
+	}
+	if value, ok := f.Levels.Get(); ok {
+		writer.SetUint8Array(2, value)
+	} else {
+		writer.SetAbsent(2)
+	}
+	writer.SetUint8(3, uint8(f.Floor))
+
+	return writer.Bytes()
 }

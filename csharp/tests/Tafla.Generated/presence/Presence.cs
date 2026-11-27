@@ -7,6 +7,15 @@
 
 namespace Presence;
 
+/// <summary>A level of a graded message</summary>
+public enum Level : byte
+{
+    Low = 0,
+
+    /// <summary>The default of a graded message's level</summary>
+    High = 2,
+}
+
 /// <summary>A record in its second version, which reads the first too</summary>
 public readonly ref struct Record
 {
@@ -1465,6 +1474,184 @@ public readonly record struct SampleV1Fields
 
         var writer = sizer.CreateWriter(bytes);
         writer.SetUInt32(0, Key);
+
+        return writer.ByteLength;
+    }
+}
+
+/// <summary>
+/// A message of an optional enum, an optional array of it, and an enum that
+/// its second revision appended, each of which reads as a value of the enum
+/// where the message lacks it
+/// </summary>
+public readonly ref struct Graded
+{
+    internal static readonly global::Tafla.TableLayout TableLayout = global::Tafla.TableLayout.Default;
+
+    private readonly global::Tafla.TableReader _reader;
+
+    /// <summary>Reads a <see cref="Graded"/> from <paramref name="bytes"/>, in place, rather than copying them.</summary>
+    public Graded(global::System.ReadOnlySpan<byte> bytes)
+    {
+        _reader = new global::Tafla.TableReader(bytes, TableLayout);
+    }
+
+    public byte Grade => _reader.GetUInt8(_reader.RootOffset(0));
+
+    /// <summary><c>(Level)(2)</c> when the table doesn't hold it, as <see cref="HasLevel"/> tells.</summary>
+    public Level Level
+    {
+        get
+        {
+            var offset = _reader.RootOffset(1);
+            if (offset == 0)
+            {
+                return (Level)(2);
+            }
+
+            return (Level)_reader.GetUInt8(offset);
+        }
+    }
+
+    /// <summary>Whether the table holds <see cref="Level"/>.</summary>
+    public bool HasLevel => _reader.RootOffset(1) != 0;
+
+    /// <summary>Empty when the table doesn't hold it, as <see cref="HasLevels"/> tells.</summary>
+    public global::System.ReadOnlySpan<byte> Levels
+    {
+        get
+        {
+            var offset = _reader.RootOffset(2);
+            if (offset == 0)
+            {
+                return default;
+            }
+
+            return _reader.GetUInt8Array(offset);
+        }
+    }
+
+    /// <summary>Whether the table holds <see cref="Levels"/>.</summary>
+    public bool HasLevels => _reader.RootOffset(2) != 0;
+
+    /// <summary><c>(Level)(0)</c> when the table doesn't hold it, as <see cref="HasFloor"/> tells.</summary>
+    public Level Floor
+    {
+        get
+        {
+            if (_reader.RootOffset(0) < 16)
+            {
+                return (Level)(0);
+            }
+
+            var offset = _reader.RootOffset(3);
+            if (offset == 0)
+            {
+                return (Level)(0);
+            }
+
+            return (Level)_reader.GetUInt8(offset);
+        }
+    }
+
+    /// <summary>Whether the table holds <see cref="Floor"/>.</summary>
+    public bool HasFloor => _reader.RootOffset(0) >= 16 && _reader.RootOffset(3) != 0;
+}
+
+/// <summary>The fields of a <see cref="Graded"/>, to write.</summary>
+public readonly record struct GradedFields
+{
+    public required byte Grade { get; init; }
+
+    /// <summary>Left out of the table when it's null.</summary>
+    public Level? Level { get; init; }
+
+    /// <summary>Left out of the table when it's null, rather than when it's empty.</summary>
+    public global::System.ReadOnlyMemory<byte>? Levels { get; init; }
+
+    public required Level Floor { get; init; }
+
+    /// <summary>Writes a <see cref="Graded"/> with every field into new bytes of its length.</summary>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public byte[] Serialize()
+    {
+        var sizer = new global::Tafla.TableSizer(4, Graded.TableLayout);
+        sizer.AddUInt8();
+        if (Level is not null)
+        {
+            sizer.AddUInt8();
+        }
+        if (Levels is not null)
+        {
+            sizer.AddUInt8Array(Levels.GetValueOrDefault().Length);
+        }
+        sizer.AddUInt8();
+
+        var writer = sizer.CreateWriter();
+        writer.SetUInt8(0, Grade);
+        if (Level is null)
+        {
+            writer.SetAbsent(1);
+        }
+        else
+        {
+            writer.SetUInt8(1, (byte)Level.GetValueOrDefault());
+        }
+        if (Levels is null)
+        {
+            writer.SetAbsent(2);
+        }
+        else
+        {
+            writer.SetUInt8Array(2, Levels.GetValueOrDefault().Span);
+        }
+        writer.SetUInt8(3, (byte)Floor);
+
+        return writer.Bytes;
+    }
+
+    /// <summary>
+    /// Writes a <see cref="Graded"/> with every field into the start of <paramref name="bytes"/>, as
+    /// <see cref="Serialize"/> writes it into new bytes, and returns its length. The bytes needn't be zero,
+    /// and those after the message keep their values. The caller owns them: writing into them again, as the
+    /// next message does, overwrites this one, and what a reader of them reads.
+    /// </summary>
+    /// <returns>The number of bytes that hold the message, from the start of <paramref name="bytes"/>.</returns>
+    /// <exception cref="global::System.ArgumentException">The bytes are shorter than the message, before any of them is written.</exception>
+    /// <exception cref="global::Tafla.BuildException">The message is longer than its offset type, uint32, addresses.</exception>
+    public int SerializeInto(byte[] bytes)
+    {
+        var sizer = new global::Tafla.TableSizer(4, Graded.TableLayout);
+        sizer.AddUInt8();
+        if (Level is not null)
+        {
+            sizer.AddUInt8();
+        }
+        if (Levels is not null)
+        {
+            sizer.AddUInt8Array(Levels.GetValueOrDefault().Length);
+        }
+        sizer.AddUInt8();
+
+        var writer = sizer.CreateWriter(bytes);
+        writer.SetUInt8(0, Grade);
+        if (Level is null)
+        {
+            writer.SetAbsent(1);
+        }
+        else
+        {
+            writer.SetUInt8(1, (byte)Level.GetValueOrDefault());
+        }
+        if (Levels is null)
+        {
+            writer.SetAbsent(2);
+        }
+        else
+        {
+            writer.SetUInt8Array(2, Levels.GetValueOrDefault().Span);
+        }
+        writer.SetUInt8(3, (byte)Floor);
 
         return writer.ByteLength;
     }

@@ -2,6 +2,26 @@
 
 import Tafla
 
+/// A level of a graded message
+@frozen
+public struct Level: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt8
+
+    /// The value of `rawValue`, which needn't be one that `Level` names, since a field of it holds any `UInt8`
+    @inlinable
+    public init(rawValue: UInt8) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var low: Self { Self(rawValue: 0) }
+
+    /// The default of a graded message's level
+    @inlinable
+    public static var high: Self { Self(rawValue: 2) }
+}
+
 /// A record in its second version, which reads the first too
 @frozen
 public struct Record: ~Escapable {
@@ -1182,6 +1202,147 @@ public struct SampleV1Fields: Hashable, Sendable {
 
         return try sizer.bytes { writer in
             writer.setUInt32(0, self.key)
+        }
+    }
+}
+
+/// A message of an optional enum, an optional array of it, and an enum that
+/// its second revision appended, each of which reads as a value of the enum
+/// where the message lacks it
+@frozen
+public struct Graded: ~Escapable {
+    /// The layout that a `Graded` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `Graded` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var grade: UInt8 {
+        get throws(DecodeError) { try _reader.uint8(at: _reader.rootOffset(0)) }
+    }
+
+    /// `Level(rawValue: 2)` when the table doesn't hold it, as `hasLevel` tells.
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var level: Level {
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(1)
+            guard field != 0 else {
+                return Level(rawValue: 2)
+            }
+
+            return try Level(rawValue: _reader.uint8(at: field))
+        }
+    }
+
+    /// Whether the table holds `level`.
+    ///
+    /// Throws a `DecodeError` if an offset that it reads lies outside the bytes.
+    @inlinable
+    public var hasLevel: Bool {
+        get throws(DecodeError) { try _reader.rootOffset(1) != 0 }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var levels: ArrayView<UInt8>? {
+        @_lifetime(copy self)
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(2)
+            guard field != 0 else {
+                return nil
+            }
+
+            return try _reader.uint8Array(at: field)
+        }
+    }
+
+    /// `Level(rawValue: 0)` when the table doesn't hold it, as `hasFloor` tells.
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var floor: Level {
+        get throws(DecodeError) {
+            guard try _reader.rootOffset(0) >= 16 else {
+                return Level(rawValue: 0)
+            }
+
+            let field = try _reader.rootOffset(3)
+            guard field != 0 else {
+                return Level(rawValue: 0)
+            }
+
+            return try Level(rawValue: _reader.uint8(at: field))
+        }
+    }
+
+    /// Whether the table holds `floor`.
+    ///
+    /// Throws a `DecodeError` if an offset that it reads lies outside the bytes.
+    @inlinable
+    public var hasFloor: Bool {
+        get throws(DecodeError) {
+            guard try _reader.rootOffset(0) >= 16 else {
+                return false
+            }
+
+            return try _reader.rootOffset(3) != 0
+        }
+    }
+}
+
+/// The fields of a `Graded`, to write
+public struct GradedFields: Hashable, Sendable {
+    public var grade: UInt8
+    public var level: Level?
+    public var levels: [UInt8]?
+    public var floor: Level
+
+    public init(grade: UInt8, level: Level? = nil, levels: [UInt8]? = nil, floor: Level) {
+        self.grade = grade
+        self.level = level
+        self.levels = levels
+        self.floor = floor
+    }
+
+    /// Writes a `Graded` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 4, layout: Graded.layout)
+        sizer.addUInt8()
+        if self.level != nil {
+            sizer.addUInt8()
+        }
+        if let value = self.levels {
+            sizer.addUInt8Array(count: value.count)
+        }
+        sizer.addUInt8()
+
+        return try sizer.bytes { writer in
+            writer.setUInt8(0, self.grade)
+            if let value = self.level {
+                writer.setUInt8(1, value.rawValue)
+            } else {
+                writer.setAbsent(1)
+            }
+            if let value = self.levels {
+                writer.setUInt8Array(2, value)
+            } else {
+                writer.setAbsent(2)
+            }
+            writer.setUInt8(3, self.floor.rawValue)
         }
     }
 }

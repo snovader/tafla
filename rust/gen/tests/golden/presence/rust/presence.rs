@@ -5,6 +5,18 @@ use tafla::{
     TableWriter, Vector,
 };
 
+/// A level of a graded message
+///
+/// A value is any `u8`: one that a constant of [`Level`] names, or any other
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Level(pub u8);
+
+impl Level {
+    pub const LOW: Self = Self(0);
+    /// The default of a graded message's level
+    pub const HIGH: Self = Self(2);
+}
+
 /// A record in its second version, which reads the first too
 #[derive(Clone, Copy, Debug)]
 pub struct Record<'a> {
@@ -1226,5 +1238,151 @@ impl SampleV1Fields {
         bytes.extend_from_slice(&fixed);
 
         Ok(bytes)
+    }
+}
+
+/// A message of an optional enum, an optional array of it, and an enum that
+/// its second revision appended, each of which reads as a value of the enum
+/// where the message lacks it
+#[derive(Clone, Copy, Debug)]
+pub struct Graded<'a> {
+    bytes: &'a [u8],
+}
+
+impl<'a> Graded<'a> {
+    const LAYOUT: TableLayout = TableLayout::DEFAULT;
+
+    /// Reads a [`Graded`] from `bytes`
+    pub const fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes }
+    }
+
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn grade(&self) -> Result<u8, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(0)?;
+        reader.get_u8(position)
+    }
+
+    /// `Level(2)` when the table doesn't hold it, as [`Self::has_level`] tells
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn level(&self) -> Result<Level, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(1)?;
+        if position == 0 {
+            return Ok(Level(2));
+        }
+
+        reader.get_u8(position).map(Level)
+    }
+
+    /// Whether the table holds `level`
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field's offset lies outside the bytes.
+    pub fn has_level(&self) -> Result<bool, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(1)?;
+        Ok(position != 0)
+    }
+
+    /// Each element is the `u8` of a [`Level`]
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn levels(&self) -> Result<Option<&'a [u8]>, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        let position = reader.root_offset(2)?;
+        if position == 0 {
+            return Ok(None);
+        }
+
+        reader.get_u8_array(position).map(Some)
+    }
+
+    /// `Level(0)` when the table doesn't hold it, as [`Self::has_floor`] tells
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field lies outside the bytes.
+    pub fn floor(&self) -> Result<Level, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        if reader.root_offset(0)? < 16 {
+            return Ok(Level(0));
+        }
+
+        let position = reader.root_offset(3)?;
+        if position == 0 {
+            return Ok(Level(0));
+        }
+
+        reader.get_u8(position).map(Level)
+    }
+
+    /// Whether the table holds `floor`
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] if the field's offset lies outside the bytes.
+    pub fn has_floor(&self) -> Result<bool, DecodeError> {
+        let reader = TableReader::new(self.bytes, Self::LAYOUT);
+        if reader.root_offset(0)? < 16 {
+            return Ok(false);
+        }
+
+        let position = reader.root_offset(3)?;
+        Ok(position != 0)
+    }
+}
+
+/// The fields of a [`Graded`], to write
+#[derive(Clone, Debug)]
+pub struct GradedFields<'a> {
+    pub grade: u8,
+    pub level: Option<Level>,
+    /// Each element is the `u8` of a [`Level`]
+    pub levels: Option<&'a [u8]>,
+    pub floor: Level,
+}
+
+impl GradedFields<'_> {
+    /// Writes a [`Graded`] with every field
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`BuildError`] if it's longer than its offset type, `uint32`, addresses.
+    pub fn serialize(&self) -> Result<Vec<u8>, BuildError> {
+        let mut sizer = TableSizer::new(4, Graded::LAYOUT)?;
+        sizer.add_u8();
+        if self.level.is_some() {
+            sizer.add_u8();
+        }
+        if let Some(value) = self.levels {
+            sizer.add_u8_array(value.len());
+        }
+        sizer.add_u8();
+
+        let mut writer = sizer.writer()?;
+        writer.set_u8(0, self.grade);
+        if let Some(value) = self.level {
+            writer.set_u8(1, value.0);
+        } else {
+            writer.set_absent(1);
+        }
+        if let Some(value) = self.levels {
+            writer.set_u8_array(2, value);
+        } else {
+            writer.set_absent(2);
+        }
+        writer.set_u8(3, self.floor.0);
+
+        writer.into_bytes()
     }
 }

@@ -14,6 +14,19 @@ import {
     TableWriter
 } from 'tafla';
 
+/** A level of a graded message */
+export const Level = globalThis.Object.freeze({
+    Low: 0,
+    /** The default of a graded message's level */
+    High: 2
+});
+
+/**
+ * A value of {@link Level}: one that it names, or any other `uint8`
+ *
+ * @typedef {number} Level
+ */
+
 /** A point whose second revision appends `z` and `label` */
 export class Point {
     /**
@@ -1500,4 +1513,172 @@ export class SampleV1 {
  *
  * @typedef {object} SampleV1Fields
  * @property {number} key
+ */
+
+/**
+ * A message of an optional enum, an optional array of it, and an enum that
+ * its second revision appended, each of which reads as a value of the enum
+ * where the message lacks it
+ */
+export class Graded {
+    static #LAYOUT = TableLayout.DEFAULT;
+
+    /** @param {Uint8Array} bytes */
+    constructor(bytes) {
+        this._reader = new TableReader(bytes, Graded.#LAYOUT);
+    }
+
+    /**
+     * Writes a `Graded` with every field
+     *
+     * @param {GradedFields} fields
+     * @returns {Uint8Array}
+     */
+    static serialize(fields) {
+        const sizer = new TableSizer(4, Graded.#LAYOUT);
+        sizer.addUint8();
+        if (fields.level != null) {
+            sizer.addUint8();
+        }
+        if (fields.levels != null) {
+            sizer.addUint8Array(fields.levels.length);
+        }
+        sizer.addUint8();
+
+        const writer = sizer.writer();
+        writer.setUint8(0, fields.grade);
+        if (fields.level == null) {
+            writer.setAbsent(1);
+        } else {
+            writer.setUint8(1, fields.level);
+        }
+        if (fields.levels == null) {
+            writer.setAbsent(2);
+        } else {
+            writer.setUint8Array(2, fields.levels);
+        }
+        writer.setUint8(3, fields.floor);
+
+        return writer.bytes();
+    }
+
+    /**
+     * Writes a `Graded` with every field into the start of `bytes`,
+     * rather than into new bytes, and returns the view of them that holds
+     * it. The view, and what's read from it, change when the bytes are
+     * written again. Reusing bytes saves allocating and zeroing new ones,
+     * which takes longest for large tables.
+     *
+     * @param {GradedFields} fields
+     * @param {Uint8Array} bytes
+     * @returns {Uint8Array}
+     * @throws {RangeError} If `bytes` are shorter than the table, before
+     * any of them is written.
+     */
+    static serializeInto(fields, bytes) {
+        const sizer = new TableSizer(4, Graded.#LAYOUT);
+        sizer.addUint8();
+        if (fields.level != null) {
+            sizer.addUint8();
+        }
+        if (fields.levels != null) {
+            sizer.addUint8Array(fields.levels.length);
+        }
+        sizer.addUint8();
+
+        const writer = sizer.writer(bytes);
+        writer.setUint8(0, fields.grade);
+        if (fields.level == null) {
+            writer.setAbsent(1);
+        } else {
+            writer.setUint8(1, fields.level);
+        }
+        if (fields.levels == null) {
+            writer.setAbsent(2);
+        } else {
+            writer.setUint8Array(2, fields.levels);
+        }
+        writer.setUint8(3, fields.floor);
+
+        return writer.bytes();
+    }
+
+    /** @returns {number} */
+    grade() {
+        return this._reader.getUint8(this._reader.rootOffset(0));
+    }
+
+    /**
+     * `2` when the table doesn't hold it, as `hasLevel()` tells
+     *
+     * @returns {Level}
+     */
+    level() {
+        const offset = this._reader.rootOffset(1);
+        if (offset === 0) {
+            return 2;
+        }
+
+        return this._reader.getUint8(offset);
+    }
+
+    /**
+     * Whether the table holds `level`
+     *
+     * @returns {boolean}
+     */
+    hasLevel() {
+        return this._reader.rootOffset(1) !== 0;
+    }
+
+    /** @returns {Uint8Array | undefined} */
+    levels() {
+        const offset = this._reader.rootOffset(2);
+        if (offset === 0) {
+            return undefined;
+        }
+
+        return this._reader.getUint8Array(offset);
+    }
+
+    /**
+     * `0` when the table doesn't hold it, as `hasFloor()` tells
+     *
+     * @returns {Level}
+     */
+    floor() {
+        if (this._reader.rootOffset(0) < 16) {
+            return 0;
+        }
+
+        const offset = this._reader.rootOffset(3);
+        if (offset === 0) {
+            return 0;
+        }
+
+        return this._reader.getUint8(offset);
+    }
+
+    /**
+     * Whether the table holds `floor`
+     *
+     * @returns {boolean}
+     */
+    hasFloor() {
+        if (this._reader.rootOffset(0) < 16) {
+            return false;
+        }
+
+        return this._reader.rootOffset(3) !== 0;
+    }
+}
+
+/**
+ * The fields of a `Graded`, to write
+ *
+ * @typedef {object} GradedFields
+ * @property {number} grade
+ * @property {Level} [level]
+ * @property {ArrayLike<Level> | Uint8Array} [levels]
+ * @property {Level} floor
  */

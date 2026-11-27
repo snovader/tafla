@@ -72,3 +72,20 @@ message Sample {
 message SampleV1 {
     key: uint32;
 }
+
+/// A level of a graded message
+enum Level: uint8 {
+    low = 0;
+    /// The default of a graded message's level
+    high = 2;
+}
+
+/// A message of an optional enum, an optional array of it, and an enum that
+/// its second revision appended, each of which reads as a value of the enum
+/// where the message lacks it
+message Graded {
+    grade: uint8;
+    level: Level? = 2;
+    levels: [Level]?;
+    floor: Level (since: 2);
+}
