@@ -2,8 +2,8 @@
 //! lazily, borrowing strings and arrays from the bytes, and vectors, vectors
 //! of strings and arrays of structs as views that read each item when it's
 //! asked for; they're written from structs of their fields, which a
-//! `TableSizer` sizes and a `TableWriter` writes, nested tables in place. Structs are plain
-//! structs read and written at fixed offsets. An enum is a `Copy` struct of
+//! `TableSizer` sizes and a `TableWriter` writes, nested tables in place.
+//! Structs are plain structs read and written at fixed offsets. An enum is a `Copy` struct of
 //! its integer, with a constant of each value that the schema names, so that
 //! a field of it holds any integer of its type; an array of an enum is an
 //! array of its integers.
@@ -998,7 +998,6 @@ impl Generator<'_> {
                     vec![text(format!("{value}.len()"))],
                 ),
                 FieldType::String => ("add_str".to_owned(), vec![text(value)]),
-                FieldType::StringVector => ("add_str_vector".to_owned(), vec![text(value)]),
                 FieldType::Struct(index) => {
                     let structure = &self.schema.definition(index).name;
                     (
@@ -1057,6 +1056,7 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => ("add_str_vector".to_owned(), vec![text(value)]),
             };
             writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
         }
@@ -1089,9 +1089,6 @@ impl Generator<'_> {
                     vec![position, text(value)],
                 ),
                 FieldType::String => ("set_str".to_owned(), vec![position, text(value)]),
-                FieldType::StringVector => {
-                    ("set_str_vector".to_owned(), vec![position, text(value)])
-                }
                 FieldType::Struct(_) => (
                     "set_struct".to_owned(),
                     vec![position, text(format!("&{value}.to_bytes()"))],
@@ -1152,6 +1149,9 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => {
+                    ("set_str_vector".to_owned(), vec![position, text(value)])
+                }
             };
             writer.statement(
                 &STYLE,
@@ -1206,7 +1206,6 @@ impl Generator<'_> {
                     ));
                 }
                 FieldType::String => writer.line("reader.get_str(position)"),
-                FieldType::StringVector => writer.line("reader.get_str_vector(position)"),
                 FieldType::Table(table) => {
                     let table = &self.schema.definition(table).name;
                     let read = format!("{table}::new(self.bytes, position)");
@@ -1256,6 +1255,7 @@ impl Generator<'_> {
                     writer.line("vector: reader.get_vector(position)?,");
                     writer.close("})");
                 }
+                FieldType::StringVector => writer.line("reader.get_str_vector(position)"),
             }
             writer.close("}");
         }
@@ -1351,13 +1351,13 @@ impl Generator<'_> {
             FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
-            FieldType::StringVector => "StringVector<'a>".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
             FieldType::StructArray(index) => {
                 format!("{}Array<'a>", self.schema.definition(index).name)
             }
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
             FieldType::Vector(index) => format!("{}Vector<'a>", self.schema.definition(index).name),
+            FieldType::StringVector => "StringVector<'a>".to_owned(),
         }
     }
 
@@ -1368,13 +1368,13 @@ impl Generator<'_> {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
-            FieldType::StringVector => "&'a [&'a str]".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
             FieldType::StructArray(index) => {
                 format!("&'a [{}]", self.schema.definition(index).name)
             }
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("&'a [{}]", fields(index)),
+            FieldType::StringVector => "&'a [&'a str]".to_owned(),
         }
     }
 }
@@ -1609,9 +1609,9 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                     FieldType::Scalar(_) | FieldType::Struct(_) => false,
                     FieldType::Array(_)
                     | FieldType::String
-                    | FieldType::StringVector
                     | FieldType::StructArray(_)
-                    | FieldType::Vector(_) => true,
+                    | FieldType::Vector(_)
+                    | FieldType::StringVector => true,
                     FieldType::Table(nested) => borrows[nested] == Some(true),
                 });
             borrows[index] = Some(borrowing);
