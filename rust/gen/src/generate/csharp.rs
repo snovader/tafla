@@ -406,9 +406,7 @@ impl Generator<'_> {
                 format!("_reader.FieldOffset(_position, {index})")
             };
             let value = match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
+                FieldType::StringVector => format!("_reader.GetStringVector({offset})"),
                 FieldType::Scalar(Scalar::Bool) => format!("_reader.GetUInt8({offset}) != 0"),
                 FieldType::Scalar(scalar) => to_enum(
                     self.enum_name(field),
@@ -460,6 +458,13 @@ impl Generator<'_> {
             FieldType::StructArray(_) => (
                 "Views the structs in place, reading each one when it's asked for.".to_owned(),
                 "The array's count or its structs don't lie within the bytes.",
+            ),
+            FieldType::StringVector => (
+                format!(
+                    "Views the strings, reading each one when it's asked for, so that a string whose bytes are corrupt throws a {} when it's read, rather than here.",
+                    cref(&self.runtime_type("DecodeException"))
+                ),
+                "The vector's count or the ends of its strings don't lie within the bytes.",
             ),
             _ => {
                 summary(writer, &docs);
@@ -846,9 +851,7 @@ impl Generator<'_> {
         for field in &definition.fields {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
+                FieldType::StringVector => format!("sizer.AddStringVector({value}.Span);"),
                 FieldType::Scalar(scalar) => format!("sizer.Add{}();", method_name(scalar)),
                 FieldType::Array(scalar) => {
                     format!("sizer.Add{}Array({value}.Length);", method_name(scalar))
@@ -901,7 +904,7 @@ impl Generator<'_> {
             let value = member(&field.name, &definition.name);
             let call = match field.field_type {
                 FieldType::StringVector => {
-                    todo!("[string] in this target")
+                    format!("writer.SetStringVector({index}, {value}.Span);")
                 }
                 FieldType::Scalar(Scalar::Bool) => {
                     format!("writer.SetUInt8({index}, {value} ? (byte)1 : (byte)0);")
@@ -1256,9 +1259,9 @@ impl Generator<'_> {
     /// their integer type, in place, as an array of that type does.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
+            // The runtime's view of the strings, which reads each one when it's
+            // asked for
+            FieldType::StringVector => self.runtime_type("StringVector"),
             FieldType::Scalar(scalar) => self
                 .enum_name(field)
                 .unwrap_or(scalar_type(scalar))
@@ -1277,12 +1280,14 @@ impl Generator<'_> {
     }
 
     /// The type of a field in its definition's fields, which hold arrays,
-    /// structs and items as ranges of memory that they don't copy
+    /// structs, items and strings of a vector as ranges of memory that they
+    /// don't copy
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Array(scalar) => {
                 format!("global::System.ReadOnlyMemory<{}>", scalar_type(scalar))
             }
+            FieldType::StringVector => "global::System.ReadOnlyMemory<string>".to_owned(),
             FieldType::StructArray(index) => format!(
                 "global::System.ReadOnlyMemory<{}>",
                 self.schema.definition(index).name
