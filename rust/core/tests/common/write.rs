@@ -129,6 +129,7 @@ impl Field {
                     item.table.add_nested(sizer);
                 }
             }
+            Self::StringVector(strings) => sizer.add_str_vector(strings),
         }
     }
 
@@ -176,6 +177,7 @@ impl Field {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::StringVector(strings) => writer.set_str_vector(index, strings),
         }
     }
 

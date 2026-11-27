@@ -1,9 +1,9 @@
 //! Rust for `tafla`. Messages and tables are `Copy` views that read fields
-//! lazily, borrowing strings and arrays from the bytes, and vectors and
-//! arrays of structs as views that read each item when it's asked for;
-//! they're written from structs of their fields, which a `TableSizer` sizes
-//! and a `TableWriter` writes, nested tables in place. Structs are plain
-//! structs read and written at fixed offsets. An enum is a `Copy` struct of
+//! lazily, borrowing strings and arrays from the bytes, and vectors, vectors
+//! of strings and arrays of structs as views that read each item when it's
+//! asked for; they're written from structs of their fields, which a
+//! `TableSizer` sizes and a `TableWriter` writes, nested tables in place.
+//! Structs are plain structs read and written at fixed offsets. An enum is a `Copy` struct of
 //! its integer, with a constant of each value that the schema names, so that
 //! a field of it holds any integer of its type; an array of an enum is an
 //! array of its integers.
@@ -192,6 +192,10 @@ impl Generator<'_> {
             .iter()
             .flat_map(|definition| &definition.fields)
             .any(|field| matches!(field.field_type, FieldType::Vector(_)));
+        let has_string_vector = definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| field.field_type == FieldType::StringVector);
 
         let mut names = Vec::new();
         // Arrays of structs and nested tables are padded to their alignment
@@ -207,6 +211,10 @@ impl Generator<'_> {
         names.push("DecodeError");
         if has_offset_type {
             names.push("OffsetType");
+        }
+        // Getters of vectors of strings return the runtime's view of them
+        if has_string_vector {
+            names.push("StringVector");
         }
         // Messages make sizers, or the bytes of a whole one, and tables take
         // sizers and writers
@@ -984,9 +992,6 @@ impl Generator<'_> {
         for (field, generic) in definition.fields.iter().zip(generic) {
             let value = format!("self.{}", identifier(&field.name));
             let (method, arguments) = match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
                 FieldType::Scalar(scalar) => (format!("add_{}", method_type(scalar)), vec![]),
                 FieldType::Array(scalar) => (
                     format!("add_{}_array", scalar_type(scalar)),
@@ -1051,6 +1056,7 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => ("add_str_vector".to_owned(), vec![text(value)]),
             };
             writer.statement(&STYLE, "", &call(format!("sizer.{method}"), arguments), ";");
         }
@@ -1070,9 +1076,6 @@ impl Generator<'_> {
             let value = format!("self.{}", identifier(&field.name));
             let position = text(integer(&index));
             let (method, arguments) = match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
                 FieldType::Scalar(Scalar::Bool) => (
                     "set_u8".to_owned(),
                     vec![position, text(format!("u8::from({value})"))],
@@ -1146,6 +1149,9 @@ impl Generator<'_> {
                     writer.close("}");
                     continue;
                 }
+                FieldType::StringVector => {
+                    ("set_str_vector".to_owned(), vec![position, text(value)])
+                }
             };
             writer.statement(
                 &STYLE,
@@ -1182,9 +1188,6 @@ impl Generator<'_> {
             writer.line(reader);
             writer.line(format!("let position = {offset};"));
             match field.field_type {
-                FieldType::StringVector => {
-                    todo!("[string] in this target")
-                }
                 FieldType::Scalar(Scalar::Bool) => writer.line("Ok(reader.get_u8(position)? != 0)"),
                 FieldType::Scalar(scalar) => {
                     let read = format!("get_{}(position)", scalar_type(scalar));
@@ -1252,6 +1255,7 @@ impl Generator<'_> {
                     writer.line("vector: reader.get_vector(position)?,");
                     writer.close("})");
                 }
+                FieldType::StringVector => writer.line("reader.get_str_vector(position)"),
             }
             writer.close("}");
         }
@@ -1279,6 +1283,14 @@ impl Generator<'_> {
                     name(index)
                 )],
                 "if the field or its structs lie outside the bytes",
+            ),
+            FieldType::StringVector => (
+                vec![
+                    "A view of the strings, which reads each string when it's asked for, and"
+                        .to_owned(),
+                    "fails then if its bytes are corrupt".to_owned(),
+                ],
+                "if the field, or the vector's count or the ends of its strings, lie outside the bytes",
             ),
             _ => (
                 self.integers_doc(field).into_iter().collect(),
@@ -1335,9 +1347,6 @@ impl Generator<'_> {
 
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "&'a [u8]".to_owned(),
             FieldType::Array(scalar) => format!("ArrayView<'a, {}>", scalar_type(scalar)),
@@ -1348,6 +1357,7 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => format!("{}<'a>", self.schema.definition(index).name),
             FieldType::Vector(index) => format!("{}Vector<'a>", self.schema.definition(index).name),
+            FieldType::StringVector => "StringVector<'a>".to_owned(),
         }
     }
 
@@ -1355,9 +1365,6 @@ impl Generator<'_> {
         let fields = |index: usize| self.fields_type(index, "'a");
 
         match field.field_type {
-            FieldType::StringVector => {
-                todo!("[string] in this target")
-            }
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("&'a [{}]", scalar_type(scalar)),
             FieldType::String => "&'a str".to_owned(),
@@ -1367,6 +1374,7 @@ impl Generator<'_> {
             }
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("&'a [{}]", fields(index)),
+            FieldType::StringVector => "&'a [&'a str]".to_owned(),
         }
     }
 }
@@ -1598,14 +1606,12 @@ fn borrowing(schema: &Schema) -> Vec<bool> {
                 .fields
                 .iter()
                 .any(|field| match field.field_type {
-                    FieldType::StringVector => {
-                        todo!("[string] in this target")
-                    }
                     FieldType::Scalar(_) | FieldType::Struct(_) => false,
                     FieldType::Array(_)
                     | FieldType::String
                     | FieldType::StructArray(_)
-                    | FieldType::Vector(_) => true,
+                    | FieldType::Vector(_)
+                    | FieldType::StringVector => true,
                     FieldType::Table(nested) => borrows[nested] == Some(true),
                 });
             borrows[index] = Some(borrowing);

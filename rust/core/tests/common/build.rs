@@ -129,6 +129,10 @@ macro_rules! set_field_on {
                             .collect::<Result<Vec<_>, _>>()?;
                         target.set_vector(items)
                     }
+                    Self::StringVector(strings) => {
+                        let strings: Vec<&str> = strings.iter().map(String::as_str).collect();
+                        target.set_str_vector(strings)
+                    }
                 }
             }
         }

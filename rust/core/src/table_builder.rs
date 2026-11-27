@@ -193,6 +193,25 @@ impl<'a> TableBuilder<'a> {
         self.add_field(Field::String(string.into()))
     }
 
+    /// Sets a vector of strings, from a slice of them that the builder
+    /// borrows or a `Vec` that it owns until the table is written. The
+    /// strings follow the end of each, which lets readers find any string
+    /// without reading the others, and take no more bytes each than their
+    /// end, where a vector of tables of one string takes each table's offset
+    /// and the string's length too.
+    ///
+    /// # Errors
+    ///
+    /// [`BuildError::TooManyFields`] if the table holds all its fields
+    /// already, or [`BuildError::TooLong`] if the field would make it too
+    /// long for its offset type.
+    pub fn set_str_vector(
+        &mut self,
+        strings: impl Into<Cow<'a, [&'a str]>>,
+    ) -> Result<(), BuildError> {
+        self.add_field(Field::StrVector(strings.into().into()))
+    }
+
     /// Sets a struct field from its bytes: its scalars, little-endian, one
     /// after another, which are written as they are, without padding. The
     /// builder borrows a slice or owns a `Vec` until the table is written.
@@ -763,6 +782,7 @@ impl<'a> InPlaceTable<'_, 'a> {
         set_struct_array(bytes: impl Into<Cow<'a, [u8]>>, size: usize, alignment: Alignment),
         set_table(table: impl Into<NestedTable<'a>>),
         set_table_aligned(table: impl Into<NestedTable<'a>>, alignment: Alignment),
+        set_str_vector(strings: impl Into<Cow<'a, [&'a str]>>),
     );
 
     /// Sets a vector field as [`TableBuilder::set_vector()`] does
@@ -956,6 +976,35 @@ enum Field<'a> {
     /// A nested table, which starts at a multiple of its alignment
     Table(NestedTable<'a>),
     Vector(Vec<NestedTable<'a>>),
+    StrVector(Strs<'a>),
+}
+
+/// The strings of a vector of strings, borrowed or owned, as a `Cow` of
+/// them holds them. A `Cow` itself would make the builder invariant in its
+/// lifetime, since its owned value is a type of `ToOwned`, so a builder
+/// couldn't be nested by reference in a parent of a shorter lifetime.
+#[derive(Debug)]
+enum Strs<'a> {
+    Borrowed(&'a [&'a str]),
+    Owned(Vec<&'a str>),
+}
+
+impl<'a> Strs<'a> {
+    fn as_slice(&self) -> &[&'a str] {
+        match self {
+            Self::Borrowed(strings) => strings,
+            Self::Owned(strings) => strings,
+        }
+    }
+}
+
+impl<'a> From<Cow<'a, [&'a str]>> for Strs<'a> {
+    fn from(strings: Cow<'a, [&'a str]>) -> Self {
+        match strings {
+            Cow::Borrowed(strings) => Self::Borrowed(strings),
+            Cow::Owned(strings) => Self::Owned(strings),
+        }
+    }
 }
 
 impl Field<'_> {
@@ -965,7 +1014,11 @@ impl Field<'_> {
             Self::Array(array) => array.alignment(),
             Self::StructArray { alignment, .. } => *alignment,
             Self::Table(table) => table.alignment(),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => Alignment::One,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::StrVector(_) => Alignment::One,
         }
     }
 
@@ -977,7 +1030,11 @@ impl Field<'_> {
             Self::Array(array) => array.alignment().padding(offset.wrapping_add(width)),
             Self::StructArray { alignment, .. } => alignment.padding(offset.wrapping_add(width)),
             Self::Table(table) => table.alignment().padding(offset),
-            Self::Scalar(_) | Self::String(_) | Self::Struct(_) | Self::Vector(_) => 0,
+            Self::Scalar(_)
+            | Self::String(_)
+            | Self::Struct(_)
+            | Self::Vector(_)
+            | Self::StrVector(_) => 0,
         }
     }
 
@@ -996,6 +1053,10 @@ impl Field<'_> {
             Self::Table(table) => table.byte_length() as u64,
             Self::Vector(items) => items.iter().fold(width, |length, item| {
                 length.saturating_add(width + item.byte_length() as u64)
+            }),
+            // The count, and an end for each string beside its bytes
+            Self::StrVector(strings) => strings.as_slice().iter().fold(width, |length, string| {
+                length.saturating_add(width + string.len() as u64)
             }),
         }
     }
@@ -1031,6 +1092,7 @@ impl Field<'_> {
                     writer.set_item_end(vector, item);
                 }
             }
+            Self::StrVector(strings) => writer.set_str_vector(index, strings.as_slice()),
         }
     }
 }

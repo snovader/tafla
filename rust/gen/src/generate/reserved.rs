@@ -113,6 +113,7 @@ const RUST: &[&str] = &[
     "Option",
     "Result",
     "Self",
+    "StringVector",
     "TableLayout",
     "TableReader",
     "TableSizer",

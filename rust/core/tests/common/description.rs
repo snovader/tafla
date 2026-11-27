@@ -67,6 +67,9 @@ pub enum Field {
         alignment: Option<Alignment>,
     },
     Vector(Vec<Nested>),
+    /// A vector of strings, each found from its end and the end of the one
+    /// before it
+    StringVector(Vec<String>),
 }
 
 /// A table nested from its builder or from the bytes that its builder
@@ -264,6 +267,7 @@ impl PartialEq for Field {
                 },
             ) => a == b && a_alignment == b_alignment,
             (Self::Vector(a), Self::Vector(b)) => a == b,
+            (Self::StringVector(a), Self::StringVector(b)) => a == b,
             _ => false,
         }
     }

@@ -2,9 +2,12 @@
 //! and numeric columns, on the workloads of the TypeScript comparison, as
 //! README.md describes. `benches/comparison.rs` times them, and the `report`
 //! and `encoding` binaries print the results and the encoded sizes.
+//! `benches/lists.rs` times how tafla-gen's code writes and reads lists of
+//! strings, which `lists` holds.
 
 pub mod check;
 pub mod codec;
 pub mod codecs;
 pub mod item_access;
+pub mod lists;
 pub mod workloads;

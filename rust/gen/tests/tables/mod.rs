@@ -89,6 +89,7 @@ pub enum Value {
     /// The fields of a vector's tables, which the generated code writes in
     /// place, in the default layout
     Vector(Vec<Vec<Value>>),
+    StringVector(Vec<String>),
 }
 
 impl Value {
@@ -110,6 +111,15 @@ impl Value {
 
     pub fn string(value: &str) -> Self {
         Self::String(value.to_owned())
+    }
+
+    pub fn strings<S: AsRef<str>>(values: &[S]) -> Self {
+        Self::StringVector(
+            values
+                .iter()
+                .map(|value| value.as_ref().to_owned())
+                .collect(),
+        )
     }
 }
 
@@ -270,6 +280,9 @@ fn set<'a>(builder: &mut TableBuilder<'a>, value: &'a Value) -> Result<(), Build
                 .map(|values| nested(values))
                 .collect::<Result<Vec<_>, _>>()?;
             builder.set_vector(items)
+        }
+        Value::StringVector(strings) => {
+            builder.set_str_vector(strings.iter().map(String::as_str).collect::<Vec<_>>())
         }
     }
 }

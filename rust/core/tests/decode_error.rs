@@ -68,7 +68,7 @@ proptest! {
         }
 
         for error in errors.into_iter().flatten() {
-            prop_assert!(!matches!(error, ReadError::Get { .. }), "{:?}", error);
+            prop_assert!(!matches!(error, ReadError::Get { .. } | ReadError::Strings), "{:?}", error);
         }
     }
 
@@ -98,7 +98,7 @@ proptest! {
         prop_assert_eq!(&Reads::of(within, &table, position, index, size), &reads);
 
         for error in reads.read_errors() {
-            prop_assert!(!matches!(error, ReadError::Get { .. }), "{:?}", error);
+            prop_assert!(!matches!(error, ReadError::Get { .. } | ReadError::Strings), "{:?}", error);
         }
 
         for error in reads.decode_errors() {

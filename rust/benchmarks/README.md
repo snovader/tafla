@@ -4,7 +4,9 @@
 with other Rust crates that encode small tables and numeric columns, in
 Criterion benchmarks. It runs the workloads of the TypeScript comparison in
 `typescript/benchmarks/`, with the same values, so that the languages' numbers
-compare. Run the commands below from `rust/`.
+compare. Its suite of [lists of strings](#lists-of-strings) times a vector
+of strings against a vector of tables of one string each. Run the commands
+below from `rust/`.
 
 ## Workloads
 
@@ -538,3 +540,55 @@ Only tafla-gen's getter of the vector allocates: 2,400 bytes, a `Vec` of the
   `last()` takes as long as `get()` of the view, 2.1 ns, as the compiler
   reads only the last struct. Every way sums the array in 57 to 60 ns. The
   view adds `get(i)` for any other struct.
+
+## Lists of strings
+
+`cargo bench -p tafla-benchmarks --bench lists` times how the code that
+tafla-gen generates writes and reads lists of 10, 100 and 10,000 distinct
+strings: 16 and 256 characters of ASCII, and 8 characters of 3 bytes in
+UTF-8. Its lists are three kinds of the TypeScript suite's, in
+`typescript/benchmarks/strings/lists/shapes.ts`, from the same generator and
+seeds, which `tests/lists.rs` checks against strings that TypeScript printed.
+tafla-gen generates `src/lists/generated/` from `lists.tafla`, a copy of the
+TypeScript suite's schema, and writes and reads each list in two ways:
+
+- **tafla-gen [string]**, the vector of strings, `StringList`, whose items
+  are the strings' UTF-8. A `TableSizer` and a `TableWriter` write it, its
+  getter's `StringVector::to_vec()` reads every string, checking their run
+  of bytes as UTF-8 at once, and `StringVector::get()` reads the last from
+  its ends. tafla-gen's code writes the bytes that `TableBuilder` writes,
+  which the tests check.
+- **tafla-gen [Name]**, how a schema holds a list of strings without one: a
+  vector of tables of one string each, `NameList`. The generated code
+  converts each `&str` into the fields of its table as it writes it, and
+  reads each string through the generated getters.
+- **tafla-gen [string] A/A**, the vector of strings again, after the vector
+  of tables, an A/A pair that shows the harness's noise.
+
+Each list is serialized, deserialized into a `Vec<&str>` borrowed from the
+bytes, and read for its last string. Before timing, every way must read back
+every string, and the last. The suite times them as the comparison does, in
+Criterion's loops, one after another rather than interleaved, as
+[Method](#method) describes, with the same samples and warm-up. Its results
+go to `target/criterion-lists`, apart from the comparison's, which the
+report reads when given the directory:
+
+```sh
+uptime
+cargo bench -p tafla-benchmarks --bench lists
+cargo run -p tafla-benchmarks --bin report -- target/criterion-lists
+```
+
+The full run of its 81 benchmarks takes about 3 minutes once it's built, and
+a quick run, with the options of the comparison's above, about 30 seconds.
+`cargo test -p tafla-benchmarks --test lists` checks the lists and that
+every way reads them back.
+
+### Results
+
+The suite's results are left for its first full run. The figures in
+`core/src/string_vector.rs` come from shorter runs of its deserialize
+groups on 2026-11-27, of 30 samples over 0.6 s after a warm-up of 0.3 s,
+with a way that read each string with `StringVector::iter()`, which the
+suite doesn't keep: `to_vec()` read lists of ASCII in 0.34–0.92 times its
+time, and lists of 3 bytes in 0.86–0.90 times.

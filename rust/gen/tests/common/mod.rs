@@ -278,6 +278,12 @@ pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
         directory: "python/benchmarks/src/tafla_benchmarks/generated/lists",
         package: None,
     },
+    BenchmarkSchema {
+        target: "rust",
+        schema: "rust/benchmarks/lists.tafla",
+        directory: "rust/benchmarks/src/lists/generated",
+        package: None,
+    },
 ];
 
 impl BenchmarkSchema {
