@@ -227,13 +227,13 @@ func (b *TableBuilder) SetString(value string) error {
 	})
 }
 
-// SetStringVector sets a vector of strings, each of its bytes, which are
-// UTF-8 if it is, after the end of each, which lets readers find any string
-// without reading the others. It takes no more bytes for each string than
-// its end, where a vector of tables of one string takes each table's offset
-// and the string's count too. The builder keeps the slice until the table
-// is written, so neither it nor its strings must change in between. It
-// fails as [TableBuilder.SetInt8] does.
+// SetStringVector sets a vector of strings: the end of each string, which
+// lets readers find any string without reading the others, and then each
+// string's bytes, which are UTF-8 if it is. It takes no more bytes for each
+// string than its end, where a vector of tables of one string takes each
+// table's offset and the string's count too. The builder keeps the slice
+// until the table is written, so neither it nor its strings must change in
+// between. It fails as [TableBuilder.SetInt8] does.
 func (b *TableBuilder) SetStringVector(values []string) error {
 	// Up to a length past any table, which fails
 	length := uint64(0)

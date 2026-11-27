@@ -369,12 +369,17 @@ func TestRejectsAStringThatEndsPastTheBytes(t *testing.T) {
 }
 
 // The ends of a count of 2^32 - 1 strings don't fit in the bytes, which
-// fails before anything allocates for them
+// fails before anything allocates for them: at the ends, or on a 32-bit
+// host, at the count, which an int doesn't hold
 func TestRejectsAnImpossibleCountBeforeAllocatingForIt(t *testing.T) {
 	reader := tafla.NewTableReader([]byte{255, 255, 255, 255}, tafla.TableLayout{})
 
+	expected := &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 4, ByteLength: 4 * 0xffff_ffff, Available: 4}
+	if strconv.IntSize == 32 {
+		expected = &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 0, ByteLength: 0xffff_ffff, Available: 4}
+	}
 	_, err := reader.GetStringVector(0)
-	expectError(t, err, &tafla.DecodeError{Kind: tafla.OutOfRange, Position: 4, ByteLength: 4 * 0xffff_ffff, Available: 4})
+	expectError(t, err, expected)
 }
 
 func TestPanicsForAStringOutOfRangeWithTheIndexAndTheLength(t *testing.T) {
