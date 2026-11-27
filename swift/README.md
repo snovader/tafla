@@ -1,14 +1,15 @@
 # tafla for Swift
 
 `Tafla` is tafla's runtime for Swift, a Swift package in this directory. It
-writes and reads binary tables of scalars, strings, arrays, structs and nested
-tables in tafla's format, which the TypeScript, Python, Java, Rust, Go and C++
-runtimes write and read too. `TableBuilder` writes a table at its exact size,
-copying arrays in bulk, and `TableReader` reads fields back by offset, with
-arrays, structs and vector items as views of the bytes. Every read checks that
-it stays within the bytes it was given. `TableSizer` and `TableWriter` write
-the tables of the code that tafla-gen generates from a schema. It depends only
-on Swift's standard library, without Foundation.
+writes and reads binary tables of scalars, strings, arrays, structs, nested
+tables and vectors of tables and of strings in tafla's format, which the
+TypeScript, Python, Java, Rust, Go and C++ runtimes write and read too.
+`TableBuilder` writes a table at its exact size, copying arrays in bulk, and
+`TableReader` reads fields back by offset, with arrays, structs and vector
+items as views of the bytes. Every read checks that it stays within the bytes
+it was given. `TableSizer` and `TableWriter` write the tables of the code
+that tafla-gen generates from a schema. It depends only on Swift's standard
+library, without Foundation.
 
 It needs Swift 6.2 or later, and runs on macOS 12, iOS 15, tvOS 15, watchOS 9
 and visionOS 1 or later, and on Linux. Each release is tagged `<version>`, and
@@ -87,6 +88,10 @@ then the fields in the order they were set:
   from two ends without reading the others. An item without a header and with
   its parent's offset type is read in place, from the bytes that
   `Vector.itemInPlace(at:)` returns, which run on to the end of its parent's.
+- A vector of strings is a vector whose items are the strings' UTF-8, one
+  after another, without a count or padding of their own, so
+  `StringVector`'s subscript finds any string from two ends without reading
+  the others. Each string must be valid UTF-8 on its own.
 
 The runtime writes the same bytes as the other runtimes for the same fields,
 and reads their tables: `ConformanceTests.swift` reads and rebuilds the
@@ -114,6 +119,9 @@ returns depend on the same bytes, so they can't outlive them either:
   item.
 - **Strings are copied.** `string(at:)` validates the UTF-8 and returns a
   `String` of its own, since a `String` owns its bytes.
+  `stringVector(at:)` returns a `StringVector`, a view of a vector of
+  strings, whose subscript copies one string, and `Array(_:)` every string
+  into an array of their own.
 - **The bytes come from their owner.** `Data.bytes` and `ArraySlice.span.bytes`
   are a `RawSpan` on every system that the package runs on, and
   `Array.span.bytes` from macOS 26 and iOS 26 on, and on Linux, so
@@ -136,12 +144,13 @@ above.
 
 ## Builders
 
-`TableBuilder` is a value. A setter of an array, a string or a struct's bytes
-keeps the array or string, and `setTable()` and `setVector()` keep the nested
-builder or the bytes, until `bytes()` writes the table. Swift shares them
-rather than copies them until either side changes, so changing a value, or a
-nested builder, after it's set changes neither the builder nor its table. A
-table's length is counted when each field is set.
+`TableBuilder` is a value. A setter of an array, a string, a vector of
+strings or a struct's bytes keeps the array or string, and `setTable()` and
+`setVector()` keep the nested builder or the bytes, until `bytes()` writes
+the table. Swift shares them rather than copies them until either side
+changes, so changing a value, or a nested builder, after it's set changes
+neither the builder nor its table. A table's length is counted when each
+field is set.
 
 A builder nested with `setTable(.builder(_:))` or `setVector()` is written
 straight into its parent, in its own layout, so the outermost table allocates
@@ -205,9 +214,10 @@ Each API throws its own error, with typed throws, so a caller catches a
   read checks its range against the bytes the `TableReader` was given, and
   throws `outOfRange` if it would leave them, with the read's position and
   length and the bytes available. Strings must be valid UTF-8, or they throw
-  `invalidUTF8`. A vector item that ends before the one before it throws
-  `itemEndsBeforeStart`. No bytes make a read trap, overflow, or allocate more
-  than they hold.
+  `invalidUTF8`, and so must each string of a vector of strings, on its own.
+  A vector item, or a string of a vector of strings, that ends before the one
+  before it throws `itemEndsBeforeStart`. No bytes make a read trap,
+  overflow, or allocate more than they hold.
 - `TableReader` doesn't compare versions. A reader throws
   `DecodeError.unsupportedVersion` when `version` isn't one it reads, as the
   example does, so that every decoding failure is a `DecodeError`.
@@ -230,9 +240,10 @@ Each API throws its own error, with typed throws, so a caller catches a
 
 A precondition stops the program only for a mistake of the code that calls the
 runtime, which no bytes can cause, as `Array` stops it for an index out of
-range: an index past an `ArrayView`'s or a `Vector`'s count, or negative; a
-negative field index or struct size; `version` of a layout without one; and a
-negative number of fields, or of a vector's items recorded in place.
+range: an index past an `ArrayView`'s, a `Vector`'s or a `StringVector`'s
+count, or negative; a negative field index or struct size; `version` of a
+layout without one; and a negative number of fields, or of a vector's items
+recorded in place.
 
 ## Writing without a builder
 
@@ -240,10 +251,10 @@ negative number of fields, or of a vector's items recorded in place.
 it's written, as the code that tafla-gen generates writes its tables. The
 sizer counts the table's length from its fields, each added with its type's
 method, which takes what decides its length: nothing for a scalar, the count
-of an array, the string itself. `bytes(_:)` then allocates bytes of that
-length, and gives its writer to a closure that sets the same fields, in the
-same order, each by its index, without recording them first as
-`TableBuilder` does:
+of an array, the string itself, or the strings of a vector of strings.
+`bytes(_:)` then allocates bytes of that length, and gives its writer to a
+closure that sets the same fields, in the same order, each by its index,
+without recording them first as `TableBuilder` does:
 
 ```swift
 var sizer = try TableSizer(fields: 2)
@@ -370,6 +381,11 @@ The tests are:
   that `TableBuilder` writes from the same descriptions, whose nested tables
   `Tables/Write.swift` writes in place, and fail as it fails, with examples of
   the writer's own errors and of what stops the program.
+- `StringVectorTests.swift`: reading every string of a vector of strings
+  reads what reading each from its ends reads, and fails where the first
+  string that fails does, in overwritten and arbitrary bytes, with examples
+  of each decode error, of an end that splits a character and of a string
+  that starts within the ends.
 - `UTF8Tests.swift`: the validator of strings on Apple's systems before 2024,
   whose standard library can't validate UTF-8, against the standard library's.
 - `ExampleTests.swift`: the example above.
@@ -408,9 +424,9 @@ them. A trap, a report of AddressSanitizer's, or a read that disagrees with
 
 - `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
   at every position and past the end, in every offset type and header, and
-  reads every array, struct array and vector there. Each read must return
-  the bytes that lie where the format puts them, exactly when they lie
-  within the input, and the decode error otherwise.
+  reads every array, struct array, vector and vector of strings there. Each
+  read must return the bytes that lie where the format puts them, exactly
+  when they lie within the input, and the decode error otherwise.
 - `FuzzConformance` mutates the conformance suite's tables and reads them as
   every valid case's description, as the conformance test reads them. Its
   `Cases.swift`, `Description.swift` and `Read.swift` are links to the test

@@ -20,6 +20,8 @@ enum Field: Sendable {
     /// its count and the ends of its items, whose items follow it among its
     /// parent's fields, each a `table` field followed by its own
     case vectorInPlace(count: Int, length: UInt64)
+    /// A vector of strings, whose UTF-8 is `utf8Count` bytes in all
+    case stringVector([String], utf8Count: UInt64)
 
     /// What a slot of `Fields` without a field holds, which is never
     /// written: a scalar of no size, which stops the program if it is
@@ -32,7 +34,7 @@ enum Field: Sendable {
         case .structArray(_, _, let alignment), .tableBytes(_, let alignment), .table(_, let alignment),
             .sharedTable(_, _, let alignment):
             alignment
-        case .scalar, .string, .structBytes, .vector, .vectorInPlace: .one
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace, .stringVector: .one
         }
     }
 
@@ -43,7 +45,7 @@ enum Field: Sendable {
         switch self {
         case .array, .structArray: alignment.padding(at: offset + width)
         case .tableBytes, .table, .sharedTable: alignment.padding(at: offset)
-        case .scalar, .string, .structBytes, .vector, .vectorInPlace: 0
+        case .scalar, .string, .structBytes, .vector, .vectorInPlace, .stringVector: 0
         }
     }
 
@@ -75,6 +77,10 @@ enum Field: Sendable {
             return length
         case .vectorInPlace(_, let length):
             return length
+        case .stringVector(let strings, let utf8Count):
+            // The count, and the end of each string
+            let slots = saturating(width, plus: Tafla.length(of: strings.count, size: Int(width)))
+            return saturating(slots, plus: utf8Count)
         }
     }
 
@@ -113,6 +119,8 @@ enum Field: Sendable {
             writeVector(items, to: &writer, offsetType: offsetType)
         case .vectorInPlace(let count, _):
             writeVector(count: count, following: fields, from: &next, to: &writer, offsetType: offsetType)
+        case .stringVector(let strings, _):
+            writer.writeStringVector(strings, offsetType: offsetType)
         }
     }
 
@@ -428,6 +436,25 @@ struct ByteWriter {
             precondition(utf8.count == count, "The string's length changed")
             UnsafeMutableRawBufferPointer(rebasing: bytes[start..<start &+ count])
                 .copyMemory(from: UnsafeRawBufferPointer(utf8))
+        }
+    }
+
+    /// Writes a vector of strings: its count, the end of each string, counted
+    /// from the vector's position, and then each string's UTF-8, one after
+    /// another
+    @inlinable
+    mutating func writeStringVector(_ strings: [String], offsetType: OffsetType) {
+        let vector = position
+        let width = offsetType.size
+
+        writeSlot(UInt32(truncatingIfNeeded: strings.count), offsetType: offsetType)
+        let ends = reserve(strings.count &* width)
+
+        for (index, string) in strings.enumerated() {
+            writeUTF8(of: string, count: string.utf8.count)
+
+            let end = UInt32(truncatingIfNeeded: position &- vector)
+            writeSlot(end, at: ends &+ index &* width, offsetType: offsetType)
         }
     }
 }

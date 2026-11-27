@@ -4,7 +4,9 @@
 library of `..`, with other Swift libraries that encode small tables and
 numeric columns. It runs the workloads of the TypeScript comparison in
 `typescript/benchmarks/`, with the same values, so that the languages'
-numbers compare. It's a package of its own, which depends on the runtime's
+numbers compare, and `swift run -c release Lists` how tafla-gen's code
+writes and reads lists of strings, as [Lists of strings](#lists-of-strings)
+describes. It's a package of its own, which depends on the runtime's
 package at `..`, so that the runtime's package depends on none of the
 libraries. Run the commands below from this directory.
 
@@ -245,7 +247,8 @@ would change:
 
 ```sh
 swift format lint --strict --recursive Package.swift Tests Sources/Workloads Sources/Codecs \
-    Sources/Harness Sources/Comparison Sources/Encoding Sources/GeneratedTafla
+    Sources/Harness Sources/Reporting Sources/Comparison Sources/Lists Sources/Encoding \
+    Sources/GeneratedTafla Sources/GeneratedLists
 ```
 
 ## Limitations
@@ -450,3 +453,59 @@ Nothing allocates.
   record. The array of structs didn't change, 184 ns for every struct, nor
   did the remaining gap of every item of the vector, 1.17 against 0.46 µs,
   which lie in the generated views' own code rather than in calls to it.
+
+## Lists of strings
+
+`swift run -c release Lists` times how the code that tafla-gen generates
+writes and reads lists of 10, 100 and 10,000 distinct strings of 16 and 256
+characters of ASCII and of 8 characters of 3 bytes in UTF-8, nine lists in
+all. They're the lists of three of the eight kinds of the TypeScript
+suite's `yarn bench:lists`, with the same strings, which
+`Sources/Workloads/ListShapes.swift` makes with the TypeScript suite's
+generator and seeds, and which `swift test` checks against strings that the
+TypeScript suite printed.
+
+tafla-gen generates the code from `lists.tafla`, a copy of the TypeScript
+suite's schema, into `Sources/GeneratedLists`, and
+`Sources/Codecs/ListCodecs.swift` writes and reads each list in two ways:
+
+- **tafla-gen [string]**, the vector of strings, `StringList`. Its fields
+  struct holds the array of strings, which a `TableSizer` sizes and a
+  `TableWriter` writes, in one allocation, and its getter returns a
+  `StringVector`, whose `Array(_:)` reads every string and whose subscript
+  reads the last from its two ends. The suite checks that it writes the
+  bytes that `TableBuilder.setStringVector(_:)` writes.
+- **tafla-gen [Name]**, a vector of tables of one string each, `NameList`,
+  which is how a schema holds a list of strings without the vector of
+  strings. Its codec creates the generated fields of each table from the
+  input in each call, as the comparison's tafla-gen codec creates its
+  items', and reads each string through the view of its item, in place.
+- **tafla-gen [string] A/A**, the vector of strings again, an A/A pair
+  that shows the harness's noise.
+
+Each list is serialized, deserialized into an array of its strings, and
+read for its last string, and each row's ratios are to the vector of
+strings'. Before timing, every variant must read back every string of
+every list, and its last string, which `swift test -c release` checks too.
+The variants are timed as [Method](#method) describes, interleaved, and
+the suite prints the lists' encoded sizes after its report. The full run
+takes about a minute. `--run`, `--rounds`, `--warmup`, `--sample` and
+`--quick` work as they do for the comparison.
+
+```sh
+uptime
+swift run -c release Lists
+swift run -c release Lists --run '10,000 ×'
+```
+
+What differs from the TypeScript suite:
+
+- Only tafla-gen's code is timed, for three kinds of string: not
+  `TableBuilder` by hand, nor FlatBuffers, protobuf or MessagePack, nor the
+  TypeScript suite's other five kinds.
+- A `String` owns its bytes, so every string that a list reads is a copy,
+  validated as UTF-8 as it's copied, and each of the strings here, of more
+  than the 15 bytes that a `String` holds within itself, is an allocation.
+  TypeScript's `getStringVector()` decodes runs of ASCII strings at once
+  and slices them; Swift's `Array(_:)` reads each string from its ends, as
+  the subscript does.

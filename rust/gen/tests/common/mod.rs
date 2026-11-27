@@ -260,6 +260,12 @@ pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
         directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists",
         package: None,
     },
+    BenchmarkSchema {
+        target: "swift",
+        schema: "swift/benchmarks/lists.tafla",
+        directory: "swift/benchmarks/Sources/GeneratedLists",
+        package: None,
+    },
 ];
 
 impl BenchmarkSchema {

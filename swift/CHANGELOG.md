@@ -63,5 +63,17 @@ The first release.
 - `ArrayElement`'s `init(littleEndianBytes:at:)`, which reads a scalar at a
   fixed offset in bytes, as a struct's scalars lie, and which the generated
   structs read themselves with.
+- Vectors of strings, which tafla-gen's schemas declare as `[string]`: a
+  count, the end of each string and the strings' UTF-8, one after another.
+  `TableBuilder.setStringVector(_:)`, `TableSizer.addStringVector(_:)` and
+  `TableWriter.setStringVector(_:_:)` write one from an array of strings,
+  and `TableReader.stringVector(at:)` returns a `StringVector`, a
+  nonescapable view whose subscript reads one string from its two ends,
+  without reading the others, and whose `Array(_:)` reads every string.
+  Each string is checked as UTF-8 on its own, and throws
+  `DecodeError.invalidUTF8` at its first byte when it isn't valid, so an
+  end that splits a character fails both strings around it. The code that
+  tafla-gen generates returns a `StringVector` from the getter of a
+  `[string]` field.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/swift
