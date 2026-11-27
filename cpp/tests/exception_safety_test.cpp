@@ -137,6 +137,11 @@ const std::vector<Setter> setters{
         parent.set_struct_array(std::move(bytes), 2, Alignment::two);
     },
     [](TableBuilder& parent, const Arm& arm) {
+        std::vector<std::string> strings{"a", std::string(40, 's'), ""};
+        arm();
+        parent.set_string_vector(std::move(strings));
+    },
+    [](TableBuilder& parent, const Arm& arm) {
         auto nested = owning();
         arm();
         parent.set_table(std::move(nested));

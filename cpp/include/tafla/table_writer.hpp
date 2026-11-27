@@ -391,6 +391,12 @@ public:
         add(detail::vector_bytes(count, width()));
     }
 
+    /// Adds a vector of strings: its count, the end of each string, and the
+    /// strings' UTF-8 bytes
+    TAFLA_ALWAYS_INLINE void add_string_vector(std::span<const std::string_view> strings) noexcept {
+        add(detail::string_vector_bytes(strings, width()));
+    }
+
 private:
     template <class T>
     TAFLA_ALWAYS_INLINE void add_elements(std::size_t count) noexcept {
@@ -871,6 +877,35 @@ public:
         const std::size_t slot = vector.position_ + (item + 1) * offset_size(offset_type_);
         const std::size_t end = written() > vector.position_ ? written() - vector.position_ : 0;
         set_slot(slot, end);
+    }
+
+    /// Writes field `index`, a vector of strings: its count, the end of each
+    /// string, counted from the vector's position, and then the strings'
+    /// UTF-8 bytes, one after another, as they are. Each end is written after
+    /// its string, so a string past the table's length leaves no end
+    /// unwritten.
+    TAFLA_ALWAYS_INLINE void set_string_vector(std::size_t index, std::span<const std::string_view> strings) noexcept {
+        set_offset(index);
+
+        // The count, and then the end of each string. Without room for them,
+        // the vector has no strings to end.
+        const std::size_t vector = written();
+        const std::size_t count = strings.size();
+        const std::size_t width = offset_size(offset_type_);
+        if (Checked && count >= room() / width) [[unlikely]] {
+            fail();
+            return;
+        }
+
+        push_slot(count);
+        std::uint8_t* end = cursor_;
+        cursor_ += count * width;
+
+        for (const auto string : strings) {
+            push(string.data(), string.size());
+            store_slot(end, written() - vector);
+            end += width;
+        }
     }
 
     /// Writes a finished table's bytes as they are, in place of the fields
