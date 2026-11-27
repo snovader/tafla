@@ -258,6 +258,16 @@ public final class TableWriter {
     }
 
     /**
+     * Writes an array of bools as a {@code uint8} array, 1 for each true value and 0 for each false
+     * one
+     */
+    public void setBoolArray(int index, boolean[] values) {
+        startArray(index, values.length, Byte.BYTES);
+        Elements.setBool(bytes, position, values);
+        position += values.length * Byte.BYTES;
+    }
+
+    /**
      * Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD. A long string is
      * copied from the bytes that the sizer encoded, if it's the string that the sizer added.
      */

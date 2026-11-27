@@ -50,6 +50,11 @@ repository's first commits, for code built from its source before the release.
   leave the builder as it was if the fill throws or leaves fields unset. The
   benchmarks' vector of 100 nested tables took 3.8 µs so, against 4.3 µs
   from a builder per item, and allocated 13.0 KB rather than 29.1 KB.
+- Arrays of bools, stored as `uint8` arrays of 1 and 0:
+  `TableBuilder.setBoolArray()`, `TableSizer.addBoolArray()`,
+  `TableWriter.setBoolArray()` and `TableReader.getBoolArray()`, which reads
+  a `boolean[]`, true where a byte isn't 0. `getUint8Array()` and
+  `getUint8ArrayView()` read the same bytes.
 
 ### Changed
 

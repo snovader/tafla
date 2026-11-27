@@ -158,14 +158,15 @@ public class FormatTest {
     }
 
     /**
-     * {@return the bytes of a scalar, bool, array, string, struct or array of structs, as the JDK
-     * writes them little-endian}, or nothing for a nested table or vector
+     * {@return the bytes of a scalar, bool, array, array of bools, string, struct or array of
+     * structs, as the JDK writes them little-endian}, or nothing for a nested table or vector
      */
     private static Optional<byte[]> littleEndian(FieldDescription field, int width) {
         return switch (field) {
             case ScalarField scalar -> Optional.of(littleEndian(scalar));
             case BoolField bool -> Optional.of(new byte[] {(byte) bool.uint8()});
             case ArrayField array -> Optional.of(littleEndian(array, width));
+            case BoolArrayField array -> Optional.of(littleEndian(array, width));
             case StringField string -> Optional.of(littleEndian(string, width));
             case StructField struct -> Optional.of(littleEndian(struct));
             case StructArrayField array -> Optional.of(littleEndian(array, width));
@@ -189,6 +190,19 @@ public class FormatTest {
         putUnsigned(view, width, array.values().length);
         for (var value : array.values()) {
             array.type().put(view, value);
+        }
+
+        return bytes;
+    }
+
+    /** {@return an array of bools' count and then a byte of 1 or 0 for each, unpadded} */
+    private static byte[] littleEndian(BoolArrayField array, int width) {
+        var bytes = new byte[width + array.values().length];
+
+        var view = littleEndianView(bytes);
+        putUnsigned(view, width, array.values().length);
+        for (var value : array.values()) {
+            view.put((byte) (value ? 1 : 0));
         }
 
         return bytes;

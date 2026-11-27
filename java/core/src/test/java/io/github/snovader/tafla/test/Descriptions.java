@@ -12,9 +12,9 @@ import java.util.stream.*;
 /**
  * Arbitrary descriptions of tables in the shape of the conformance suite's, of every part of the
  * format: layouts of every offset type, with and without each header slot and with versions that
- * fit, every scalar and array type over its whole range, strings of any code points, structs and
- * arrays of structs of any scalars, and tables nested from builders and bytes, in fields and
- * vectors, down to a bounded depth.
+ * fit, every scalar and array type over its whole range, arrays of bools, strings of any code
+ * points, structs and arrays of structs of any scalars, and tables nested from builders and bytes,
+ * in fields and vectors, down to a bounded depth.
  *
  * <p>Like the suite, they follow the rules that {@code SPEC.md} and {@link TableBuilder} set out:
  * every table fits its offset type, a table nested with {@code setTable()} has no header, so that
@@ -88,13 +88,14 @@ final class Descriptions {
     }
 
     /**
-     * {@return scalars, arrays, strings, structs and arrays of structs: fields that hold values
-     * rather than tables}
+     * {@return scalars, arrays, arrays of bools, strings, structs and arrays of structs: fields that
+     * hold values rather than tables}
      */
     static Arbitrary<FieldDescription> values() {
         return Arbitraries.frequencyOf(
             Tuple.of(4, scalars()),
             Tuple.of(4, arrays()),
+            Tuple.of(1, boolArrayFields()),
             Tuple.of(2, stringFields()),
             Tuple.of(2, structs()),
             Tuple.of(2, structArrays())
@@ -132,6 +133,7 @@ final class Descriptions {
             case ScalarField scalar -> scalar.type().size();
             case BoolField ignored -> Byte.BYTES;
             case ArrayField array -> array.type().size() - 1 + width + (long) array.values().length * array.type().size();
+            case BoolArrayField array -> width + (long) array.values().length;
             case StringField string -> width + (long) string.value().getBytes(StandardCharsets.UTF_8).length;
             case StructField struct -> StructBytes.size(struct.types());
             case StructArrayField array -> StructBytes.alignment(array.fields()) - 1 + width
@@ -278,6 +280,15 @@ final class Descriptions {
     /** {@return arrays of values of the type as {@link ScalarType} holds them, empty too} */
     static Arbitrary<long[]> arrays(ScalarType type) {
         return values(type).array(long[].class).ofMaxSize(MAX_ELEMENTS);
+    }
+
+    private static Arbitrary<FieldDescription> boolArrayFields() {
+        return boolArrays().map(BoolArrayField::new);
+    }
+
+    /** {@return arrays of any bools, empty too} */
+    static Arbitrary<boolean[]> boolArrays() {
+        return Arbitraries.of(false, true).array(boolean[].class).ofMaxSize(MAX_ELEMENTS);
     }
 
     /**

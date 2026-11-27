@@ -215,6 +215,14 @@ public final class TableBuilder {
         addArray(values.length, Double.BYTES, (writer, index) -> writer.setFloat64Array(index, values));
     }
 
+    /**
+     * Sets an array of bools, which is written as a {@code uint8} array, 1 for each true value and 0
+     * for each false one. {@link TableReader#getBoolArray} reads it back.
+     */
+    public void setBoolArray(boolean[] values) {
+        addArray(values.length, Byte.BYTES, (writer, index) -> writer.setBoolArray(index, values));
+    }
+
     /** Writes {@code string} as UTF-8, with lone surrogates replaced by U+FFFD */
     public void setString(String string) {
         // As the sizer adds strings: a short one is counted, and the writer encodes it in place,
@@ -790,6 +798,10 @@ public final class TableBuilder {
 
         public void setFloat64Array(double[] values) {
             TableBuilder.this.setFloat64Array(values);
+        }
+
+        public void setBoolArray(boolean[] values) {
+            TableBuilder.this.setBoolArray(values);
         }
 
         public void setString(String string) {

@@ -5,7 +5,7 @@ import io.github.snovader.tafla.TableLayout;
 import io.github.snovader.tafla.TableReader;
 import io.github.snovader.tafla.TableSizer;
 
-/** An array of every scalar type but bool, which has none */
+/** An array of every scalar type, and of bools, which are bytes of 0 and 1 */
 public final class Arrays {
     private static final TableLayout LAYOUT = TableLayout.DEFAULT;
 
@@ -17,7 +17,7 @@ public final class Arrays {
 
     /** Writes an {@code Arrays} with every field */
     public static byte[] serialize(Fields fields) {
-        var sizer = new TableSizer(10, LAYOUT);
+        var sizer = new TableSizer(11, LAYOUT);
         sizer.addInt8Array(fields.int8().length);
         sizer.addUint8Array(fields.uint8().length);
         sizer.addInt16Array(fields.int16().length);
@@ -28,6 +28,7 @@ public final class Arrays {
         sizer.addUint64Array(fields.uint64().length);
         sizer.addFloat32Array(fields.float32().length);
         sizer.addFloat64Array(fields.float64().length);
+        sizer.addBoolArray(fields.bool().length);
 
         var writer = sizer.writer();
         writer.setInt8Array(0, fields.int8());
@@ -40,6 +41,7 @@ public final class Arrays {
         writer.setUint64Array(7, fields.uint64());
         writer.setFloat32Array(8, fields.float32());
         writer.setFloat64Array(9, fields.float64());
+        writer.setBoolArray(10, fields.bool());
 
         return writer.bytes();
     }
@@ -56,7 +58,7 @@ public final class Arrays {
      *     them is written
      */
     public static int serializeInto(Fields fields, byte[] bytes) {
-        var sizer = new TableSizer(10, LAYOUT);
+        var sizer = new TableSizer(11, LAYOUT);
         sizer.addInt8Array(fields.int8().length);
         sizer.addUint8Array(fields.uint8().length);
         sizer.addInt16Array(fields.int16().length);
@@ -67,6 +69,7 @@ public final class Arrays {
         sizer.addUint64Array(fields.uint64().length);
         sizer.addFloat32Array(fields.float32().length);
         sizer.addFloat64Array(fields.float64().length);
+        sizer.addBoolArray(fields.bool().length);
 
         var writer = sizer.writer(bytes);
         writer.setInt8Array(0, fields.int8());
@@ -79,6 +82,7 @@ public final class Arrays {
         writer.setUint64Array(7, fields.uint64());
         writer.setFloat32Array(8, fields.float32());
         writer.setFloat64Array(9, fields.float64());
+        writer.setBoolArray(10, fields.bool());
 
         return writer.byteLength();
     }
@@ -185,6 +189,19 @@ public final class Arrays {
         return reader.getFloat64ArrayView(reader.rootOffset(9));
     }
 
+    public boolean[] bool() {
+        return reader.getBoolArray(reader.rootOffset(10));
+    }
+
+    /**
+     * Views the elements of {@code bool()} in place, read-only, without copying them
+     *
+     * A byte for each bool, which is true where it isn't 0
+     */
+    public java.nio.ByteBuffer boolView() {
+        return reader.getUint8ArrayView(reader.rootOffset(10));
+    }
+
     /** The fields of an {@code Arrays}, to write */
     @SuppressWarnings("ArrayRecordComponent") // Written, not compared
     public record Fields(
@@ -197,6 +214,7 @@ public final class Arrays {
         long[] int64,
         long[] uint64,
         float[] float32,
-        double[] float64
+        double[] float64,
+        boolean[] bool
     ) {}
 }

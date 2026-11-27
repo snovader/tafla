@@ -998,6 +998,10 @@ fn sizes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
         let value = format!("fields.{}()", identifier(&field.name));
         let (method, arguments) = match field.field_type {
             FieldType::Scalar(scalar) => (format!("add{}", method_name(scalar)), vec![]),
+            FieldType::Array(Scalar::Bool) => (
+                "addBoolArray".to_owned(),
+                vec![text(format!("{value}.length"))],
+            ),
             FieldType::Array(scalar) => (
                 format!("add{}Array", method_name(scalar)),
                 vec![text(format!("{value}.length"))],
@@ -1059,6 +1063,10 @@ fn writes(writer: &mut CodeWriter, schema: &Schema, definition: &Definition) {
                 format!("set{}", method_name(scalar)),
                 vec![position, text(value)],
             ),
+            // Bools, which the writer writes as bytes of 1 and 0
+            FieldType::Array(Scalar::Bool) => {
+                ("setBoolArray".to_owned(), vec![position, text(value)])
+            }
             FieldType::Array(scalar) => (
                 format!("set{}Array", method_name(scalar)),
                 vec![position, text(value)],
@@ -1154,6 +1162,10 @@ fn getters(writer: &mut CodeWriter, schema: &Schema, definition: &Definition, is
                     method_name(scalar)
                 ));
             }
+            // A bool for each byte, true where it isn't 0, whose bytes the view reads in place
+            FieldType::Array(Scalar::Bool) => {
+                writer.line(format!("return reader.getBoolArray({offset});"));
+            }
             FieldType::Array(scalar) => {
                 writer.line(format!(
                     "return reader.get{}Array({offset});",
@@ -1228,7 +1240,8 @@ fn getter_docs(field: &Field, schema: &Schema) -> Vec<String> {
 }
 
 /// Writes the getter of the view of an array of scalars, `<field>View()`,
-/// beside its getter, which copies them
+/// beside its getter, which copies them. An array of bools is viewed as the
+/// bytes of a `uint8` array, which its getter reads into bools.
 fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, offset: &str) {
     let getter = identifier(&field.name);
     let elements = format!("Views the elements of `{getter}()` in place, read-only, without");
@@ -1243,6 +1256,12 @@ fn array_view_getter(writer: &mut CodeWriter, field: &Field, scalar: Scalar, off
             format!("copying them, as `{signed}`s with the same bits"),
         ]),
         None => docs.push(format!("{elements} copying them")),
+    }
+    if scalar == Scalar::Bool {
+        docs.extend([
+            String::new(),
+            "A byte for each bool, which is true where it isn't 0".to_owned(),
+        ]);
     }
 
     // Qualified, so that a schema can declare its own `FloatBuffer`

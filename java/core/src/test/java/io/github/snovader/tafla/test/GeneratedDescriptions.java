@@ -110,6 +110,10 @@ final class GeneratedDescriptions {
         return new ArrayField(ScalarType.FLOAT64, ScalarType.fromDoubles(values));
     }
 
+    static BoolArrayField boolArray(boolean[] values) {
+        return new BoolArrayField(values);
+    }
+
     static StringField string(String value) {
         return new StringField(value);
     }

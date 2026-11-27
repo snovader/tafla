@@ -245,6 +245,11 @@ public final class TableSizer {
         addArray(count, Double.BYTES, Double.BYTES);
     }
 
+    /** Adds an array of {@code count} bools, a byte each, which needs no padding */
+    public void addBoolArray(int count) {
+        addArray(count, Byte.BYTES, Byte.BYTES);
+    }
+
     /**
      * Adds a string, as UTF-8 with lone surrogates replaced by U+FFFD. A long string is encoded
      * here, and its writer copies those bytes when it's given the same string.

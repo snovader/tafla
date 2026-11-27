@@ -479,6 +479,10 @@ public class TableWriterTest {
         assertConverted(TableSizer::addFloat32, writer -> writer.setFloat32(0, (float) 1e300),
             builder -> builder.setFloat32((float) 1e300), 0, 0, 0x80, 0x7f);
 
+        // A bool of an array of bools is written as 1 or 0
+        assertConverted(sizer -> sizer.addBoolArray(3), writer -> writer.setBoolArray(0, new boolean[] {true, false, true}),
+            builder -> builder.setBoolArray(new boolean[] {true, false, true}), 3, 0, 0, 0, 1, 0, 1);
+
         // A lone surrogate is written as U+FFFD
         assertConverted(sizer -> sizer.addString("\ud800"), writer -> writer.setString(0, "\ud800"),
             builder -> builder.setString("\ud800"), 3, 0, 0, 0, 0xef, 0xbf, 0xbd);
