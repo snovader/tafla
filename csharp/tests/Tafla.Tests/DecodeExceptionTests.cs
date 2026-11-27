@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using CsCheck;
 using Tafla.Tests.Tables;
 
@@ -250,6 +251,10 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => new TableReader(bytes).FieldOffset(int.MaxValue, 0));
     }
 
+    /// <summary>
+    /// Invalid UTF-8 throws in a string of any length, short or long, after any valid UTF-8, with the
+    /// BCL's exception within it, which names the bytes that it couldn't decode
+    /// </summary>
     [Fact]
     public void RejectsInvalidUtf8()
     {
@@ -264,13 +269,26 @@ public class DecodeExceptionTests
             [0xff],
         ];
 
+        int[] limits = [128, 129, 1024, 1025];
+
         foreach (var value in strings)
         {
-            byte[] bytes = [(byte)value.Length, 0, 0, 0, .. value];
+            // After some valid bytes, and as the end of a string of exactly as many bytes as the
+            // reader decodes in each of its ways, 128 and 1,024, and of one byte more
+            int[] valids = [0, 1, 127, 300, 1100, .. limits.Select(limit => limit - value.Length)];
 
-            var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
-            Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
-            Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+            foreach (var valid in valids)
+            {
+                var bytes = new byte[sizeof(uint) + valid + value.Length];
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)(valid + value.Length));
+                bytes.AsSpan(sizeof(uint), valid).Fill((byte)'a');
+                value.CopyTo(bytes, sizeof(uint) + valid);
+
+                var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
+                Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
+                Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+                Assert.IsType<DecoderFallbackException>(error.InnerException);
+            }
         }
     }
 

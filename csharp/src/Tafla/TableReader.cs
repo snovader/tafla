@@ -1,7 +1,10 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Unicode;
 
 namespace Tafla;
 
@@ -36,10 +39,34 @@ namespace Tafla;
 public readonly ref struct TableReader
 {
     /// <summary>A UTF-8 decoder that throws for invalid UTF-8, rather than replacing it with U+FFFD</summary>
-    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>The most characters that a <see cref="string"/> holds, which .NET doesn't expose</summary>
     private const int MaxStringLength = 0x3fff_ffdf;
+
+    /// <summary>
+    /// The longest string, in bytes, that <see cref="GetString"/> decodes in one pass, into chars on
+    /// the stack. The runtime zeroes them first, as it doesn't skip locals' initialization, which
+    /// costs more than the second pass for longer ASCII.
+    /// </summary>
+    private const int MaxStackStringLength = 128;
+
+    /// <summary>
+    /// The longest string, in bytes, that <see cref="GetString"/> decodes without counting its chars
+    /// when they don't fit on the stack: ASCII widened into the string, and other UTF-8 decoded into
+    /// <see cref="MediumStringChars"/>. Longer strings keep the BCL's two passes, so that no thread
+    /// holds on to chars as long as the longest string that it read, and as none was timed.
+    /// </summary>
+    private const int MaxMediumStringLength = 1024;
+
+    /// <summary>
+    /// The chars that a string of up to <see cref="MaxMediumStringLength"/> bytes that isn't ASCII
+    /// decodes into on this thread, allocated once for each thread that reads one, and zeroed only
+    /// then. They hold the last such string that the thread read, so only the chars that a decode
+    /// wrote are read.
+    /// </summary>
+    [ThreadStatic]
+    private static char[]? MediumStringChars;
 
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly Header _layout;
@@ -266,25 +293,88 @@ public readonly ref struct TableReader
     /// The string doesn't lie within the bytes, isn't valid UTF-8, or has more characters than a
     /// <see cref="string"/> holds, 1,073,741,791, which only a string of more bytes than that can.
     /// </exception>
+    // Not inlined, so that its callers, such as generated getters, keep their inlining budget for the
+    // reads of offsets, which they lost to it when it was inlined: the comparison suite's record took
+    // 1.05 times as long to read.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public string GetString(int position)
     {
         var bytes = ArrayBytes(position, sizeof(byte));
+        if (bytes.Length > MaxStackStringLength)
+        {
+            return bytes.Length <= MaxMediumStringLength ? DecodeMediumString(bytes, position) : DecodeLongString(bytes, position);
+        }
 
+        // A short string decodes in one pass, into chars on the stack that it copies into the string,
+        // rather than in two, which count its chars and then decode them into the string.
+        // UTF-8 has at most one UTF-16 char per byte: a 4-byte sequence is two
+        Span<char> chars = stackalloc char[bytes.Length];
+        var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
+        if (status != OperationStatus.Done)
+        {
+            throw InvalidUtf8(bytes, position);
+        }
+
+        return new string(chars[..length]);
+    }
+
+    /// <summary>
+    /// Decodes a string of up to <see cref="MaxMediumStringLength"/> bytes. ASCII is Latin-1 too, whose
+    /// chars are its bytes, so the BCL widens it into a string of its length. Other UTF-8 decodes in
+    /// one pass, into the thread's <see cref="MediumStringChars"/>, which it copies into the string.
+    /// </summary>
+    private static string DecodeMediumString(ReadOnlySpan<byte> bytes, int position)
+    {
+        if (Ascii.IsValid(bytes))
+        {
+            return Encoding.Latin1.GetString(bytes);
+        }
+
+        var chars = MediumStringChars ??= new char[MaxMediumStringLength];
+        var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
+
+        return status == OperationStatus.Done ? new string(chars, 0, length) : throw InvalidUtf8(bytes, position);
+    }
+
+    /// <summary>Decodes a string of any length, whose chars the BCL counts and then decodes.</summary>
+    private static string DecodeLongString(ReadOnlySpan<byte> bytes, int position)
+    {
         try
         {
             // UTF-8 has at most one character per byte, so only a string of more bytes than a string
             // holds characters is counted, before anything is allocated for it
-            if (bytes.Length > MaxStringLength && Utf8.GetCharCount(bytes) > MaxStringLength)
+            if (bytes.Length > MaxStringLength && StrictUtf8.GetCharCount(bytes) > MaxStringLength)
             {
                 throw DecodeException.StringTooLong(position, bytes.Length);
             }
 
-            return Utf8.GetString(bytes);
+            return StrictUtf8.GetString(bytes);
         }
         catch (DecoderFallbackException exception)
         {
             throw DecodeException.InvalidUtf8(position, exception);
         }
+    }
+
+    /// <summary>
+    /// The decode error for the string at <paramref name="position"/>, whose <paramref name="bytes"/>
+    /// a one-pass decode found invalid, with the strict decoder's exception within it, as a long
+    /// string's has, which names the bytes that it couldn't decode and where. Only a read that fails
+    /// decodes them again for it.
+    /// </summary>
+    private static DecodeException InvalidUtf8(ReadOnlySpan<byte> bytes, int position)
+    {
+        try
+        {
+            StrictUtf8.GetCharCount(bytes);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            return DecodeException.InvalidUtf8(position, exception);
+        }
+
+        // Utf8.ToUtf16 and the strict decoder accept the same UTF-8, so this is never reached
+        return DecodeException.InvalidUtf8(position);
     }
 
     /// <summary>

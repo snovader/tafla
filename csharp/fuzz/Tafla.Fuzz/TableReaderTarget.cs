@@ -46,8 +46,9 @@ internal static class TableReaderTarget
 
     /// <summary>
     /// What a read that throws may allocate: its <see cref="DecodeException"/>, with its message and
-    /// stack trace, and an invalid string's <see cref="DecoderFallbackException"/> within it. The
-    /// most that one allocated, over 3.4 million inputs of both builds, was 1,672 bytes.
+    /// stack trace, and an invalid string's <see cref="DecoderFallbackException"/> within it, which
+    /// a string decoded in one pass decodes again for. The most that one allocated, over 3.4 million
+    /// inputs of both builds, was 1,672 bytes.
     /// </summary>
     private const long ExceptionAllowance = 4 << 10;
 
@@ -75,7 +76,7 @@ internal static class TableReaderTarget
     /// <summary>
     /// Whether the reads' allocations are checked, which the static constructor sets once the target
     /// has warmed up, since the runtime and .NET allocate some things once, such as the reader's UTF-8
-    /// decoder and an exception's resources
+    /// decoders and an exception's resources
     /// </summary>
     private static readonly bool ChecksAllocations;
 
@@ -87,15 +88,15 @@ internal static class TableReaderTarget
     }
 
     /// <summary>
-    /// Reads that throw, decode an invalid and a valid string, and copy arrays where the runtime
-    /// copies them, unchecked, so that what the runtime and .NET allocate once, such as the reader's
-    /// UTF-8 decoder and an exception's resources, is allocated before the reads that are checked
+    /// Reads that throw, decode invalid and valid strings, and copy arrays where the runtime copies
+    /// them, unchecked, so that what the runtime and .NET allocate once, such as the reader's UTF-8
+    /// decoders, an exception's resources and the chars that the reader decodes strings into on each
+    /// thread, is allocated before the reads that are checked
     /// </summary>
     private static void WarmUp()
     {
         var layout = new TableLayout { OffsetType = OffsetType.UInt8 };
         var invalid = new TableReader(new byte[] { 2, 0xc0, 0x80 }, layout);
-        var valid = new TableReader(new byte[] { 1, (byte)'a' }, layout);
         var empty = new TableReader(new byte[] { 0 }, layout);
 
         try
@@ -110,10 +111,33 @@ internal static class TableReaderTarget
         }
         catch (DecodeException) { }
 
-        _ = valid.GetString(0);
+        // The reader decodes strings of up to 128 bytes, of up to 1,024 and longer ones each in its
+        // own way, and ASCII in another
+        foreach (var length in new[] { 1, 200, 1100 })
+        {
+            WarmUpString(Encoding.ASCII.GetBytes(new string('a', length)));
+            WarmUpString(Encoding.UTF8.GetBytes(new string('é', (length + 1) / 2)));
+            WarmUpString([.. Encoding.ASCII.GetBytes(new string('a', length)), 0xff]);
+        }
+
         _ = empty.GetInt16Array(0).Length + empty.GetUInt16Array(0).Length;
         _ = empty.GetInt32Array(0).Length + empty.GetUInt32Array(0).Length + empty.GetFloat32Array(0).Length;
         _ = empty.GetInt64Array(0).Length + empty.GetUInt64Array(0).Length + empty.GetFloat64Array(0).Length;
+    }
+
+    /// <summary>Reads <paramref name="utf8"/> as the string of a table of uint16 offsets, valid or not</summary>
+    private static void WarmUpString(byte[] utf8)
+    {
+        var bytes = new byte[sizeof(ushort) + utf8.Length];
+        bytes[0] = (byte)utf8.Length;
+        bytes[1] = (byte)(utf8.Length >> 8);
+        utf8.CopyTo(bytes, sizeof(ushort));
+
+        try
+        {
+            _ = new TableReader(bytes, new TableLayout { OffsetType = OffsetType.UInt16 }).GetString(0);
+        }
+        catch (DecodeException) { }
     }
 
     public static void Run(ReadOnlySpan<byte> input)
