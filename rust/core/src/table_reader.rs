@@ -164,6 +164,13 @@ impl<'a, const VERSIONED: bool> TableReader<'a, VERSIONED> {
     ///
     /// [`DecodeError::OutOfRange`] if the string doesn't lie within the
     /// bytes, or [`DecodeError::InvalidUtf8`] if it isn't valid UTF-8.
+    // Inlined into its callers, such as a schema's generated getters: with
+    // several of them, LLVM called it out of line, as it did with
+    // `#[inline]`, and tafla-gen's record read in 6.7 ns rather than 4.9 ns,
+    // and a table of 16 strings of 8 ASCII characters in 76 ns rather than
+    // 51 ns
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn get_str(&self, position: usize) -> Result<&'a str, DecodeError> {
         let bytes = self.array_bytes(position, 1)?;
 

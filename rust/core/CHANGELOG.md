@@ -70,6 +70,12 @@ first commits, for code built from its source before the release.
   A string that's ASCII until near its end is checked twice, up to the first
   other character: 1 KiB of it took 37 ns rather than 29 ns. Its values and
   errors are unchanged.
+- `TableReader::get_str()` is inlined into its callers. With several of
+  them, as a schema's generated getters are, LLVM called it out of line,
+  which `#[inline]` didn't change. tafla-gen's record was read in 4.9 ns
+  rather than 6.7 ns, and its document of 100 rows in 15.3 ns rather than
+  16.5 ns. A table of 16 strings of 8 ASCII characters was read in 51 ns
+  rather than 76 ns. Its values and errors are unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a
