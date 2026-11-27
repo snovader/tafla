@@ -250,6 +250,7 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => new TableReader(bytes).FieldOffset(int.MaxValue, 0));
     }
 
+    /// <summary>Invalid UTF-8 throws in a string of any length, short or long, after any valid UTF-8</summary>
     [Fact]
     public void RejectsInvalidUtf8()
     {
@@ -266,11 +267,17 @@ public class DecodeExceptionTests
 
         foreach (var value in strings)
         {
-            byte[] bytes = [(byte)value.Length, 0, 0, 0, .. value];
+            foreach (var valid in new[] { 0, 1, 127, 300 })
+            {
+                var bytes = new byte[sizeof(uint) + valid + value.Length];
+                BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)(valid + value.Length));
+                bytes.AsSpan(sizeof(uint), valid).Fill((byte)'a');
+                value.CopyTo(bytes, sizeof(uint) + valid);
 
-            var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
-            Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
-            Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+                var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
+                Assert.Equal((DecodeErrorKind.InvalidUtf8, 0L), (error.Kind, error.Position));
+                Assert.Equal("The string at 0 isn't valid UTF-8", error.Message);
+            }
         }
     }
 

@@ -201,6 +201,22 @@ public class RoundTripTests
         Assert.Equal(Value, new TableReader(bytes).GetString(4));
     }
 
+    /// <summary>
+    /// A string of any length, short or long, and of characters of any width in UTF-8, is written as
+    /// its UTF-8 and reads back as it was
+    /// </summary>
+    [Fact]
+    public void RoundTripsStringsOfAnyLength() =>
+        Strategy.String(300).Check(value =>
+        {
+            var builder = new TableBuilder(1);
+            builder.SetString(value);
+            var bytes = builder.ToArray();
+
+            Assert.Equal(Encoding.UTF8.GetBytes(value), bytes[8..]);
+            Assert.Equal(value, new TableReader(bytes).GetString(4));
+        });
+
     /// <summary>UTF-8 can't encode a lone surrogate, which the builder writes as U+FFFD, as Encoding.UTF8 does</summary>
     [Fact]
     public void WritesALoneSurrogateAsTheReplacementCharacter()

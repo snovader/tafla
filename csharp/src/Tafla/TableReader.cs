@@ -1,7 +1,10 @@
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Unicode;
 
 namespace Tafla;
 
@@ -36,10 +39,17 @@ namespace Tafla;
 public readonly ref struct TableReader
 {
     /// <summary>A UTF-8 decoder that throws for invalid UTF-8, rather than replacing it with U+FFFD</summary>
-    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>The most characters that a <see cref="string"/> holds, which .NET doesn't expose</summary>
     private const int MaxStringLength = 0x3fff_ffdf;
+
+    /// <summary>
+    /// The longest string, in bytes, that <see cref="GetString"/> decodes in one pass, into chars on
+    /// the stack. The runtime zeroes them first, as it doesn't skip locals' initialization, which
+    /// costs more than the second pass for longer ASCII.
+    /// </summary>
+    private const int MaxStackStringLength = 128;
 
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly Header _layout;
@@ -266,20 +276,44 @@ public readonly ref struct TableReader
     /// The string doesn't lie within the bytes, isn't valid UTF-8, or has more characters than a
     /// <see cref="string"/> holds, 1,073,741,791, which only a string of more bytes than that can.
     /// </exception>
+    // Not inlined, so that its callers, such as generated getters, keep their inlining budget for the
+    // reads of offsets, which they lost to it when it was inlined: the comparison suite's record took
+    // 1.05 times as long to read.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public string GetString(int position)
     {
         var bytes = ArrayBytes(position, sizeof(byte));
+        if (bytes.Length > MaxStackStringLength)
+        {
+            return DecodeLongString(bytes, position);
+        }
 
+        // A short string decodes in one pass, into chars on the stack that it copies into the string,
+        // rather than in two, which count its chars and then decode them into the string.
+        // UTF-8 has at most one UTF-16 char per byte: a 4-byte sequence is two
+        Span<char> chars = stackalloc char[bytes.Length];
+        var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
+        if (status != OperationStatus.Done)
+        {
+            throw DecodeException.InvalidUtf8(position);
+        }
+
+        return new string(chars[..length]);
+    }
+
+    /// <summary>Decodes a string of any length, whose chars the BCL counts and then decodes.</summary>
+    private static string DecodeLongString(ReadOnlySpan<byte> bytes, int position)
+    {
         try
         {
             // UTF-8 has at most one character per byte, so only a string of more bytes than a string
             // holds characters is counted, before anything is allocated for it
-            if (bytes.Length > MaxStringLength && Utf8.GetCharCount(bytes) > MaxStringLength)
+            if (bytes.Length > MaxStringLength && StrictUtf8.GetCharCount(bytes) > MaxStringLength)
             {
                 throw DecodeException.StringTooLong(position, bytes.Length);
             }
 
-            return Utf8.GetString(bytes);
+            return StrictUtf8.GetString(bytes);
         }
         catch (DecoderFallbackException exception)
         {
