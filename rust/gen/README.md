@@ -1169,6 +1169,7 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+| Rust       | `rust/benchmarks/strings.tafla`, `rust/benchmarks/src/codecs/tafla_gen_strings/`                                         |
 | C++        | `cpp/benchmarks/strings.tafla`, `cpp/benchmarks/generated/strings/`                                                      |
 
 After a change to the generator or the schemas, rewrite the golden files,

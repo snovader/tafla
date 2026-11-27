@@ -22,6 +22,7 @@ use std::borrow::Cow;
 use flatbuffers::{FlatBufferBuilder, Vector};
 
 use crate::codec::{Codec, DocumentWorkload, Error, Workload};
+use crate::string_workloads::{COUNT, Strings, StringsShape};
 use crate::workloads::{
     Document, DocumentShape, Item, List, ListShape, Record, RecordShape, Sample, SampleShape,
     StructsShape, sum_column,
@@ -43,6 +44,10 @@ use crate::workloads::{
 ///
 /// Fields that a table leaves out read as `None`, which is an error here,
 /// since every workload has them.
+///
+/// The strings comparison's table is a vector of strings, written with
+/// `create_string()`. `flatbuffers::root()` verifies that each string lies
+/// within the bytes and ends in its terminator, and that it's UTF-8.
 #[derive(Clone, Copy, Debug)]
 pub struct FlatBuffers;
 
@@ -245,6 +250,37 @@ impl Workload<SampleShape> for FlatBuffers {
             key: sample.key(),
             a: sample.a(),
             b: sample.b(),
+        })
+    }
+}
+
+impl Workload<StringsShape> for FlatBuffers {
+    type Bytes = Finished;
+
+    fn serialize(self, input: &Strings<'_>) -> Result<Finished, Error> {
+        let mut builder = FlatBufferBuilder::new();
+        let strings = input
+            .items
+            .each_ref()
+            .map(|string| builder.create_string(string));
+        let items = builder.create_vector(&strings);
+
+        let args = generated::StringsArgs { items: Some(items) };
+        let table = generated::Strings::create(&mut builder, &args);
+        builder.finish(table, None);
+
+        Ok(collapse(builder))
+    }
+
+    fn deserialize(self, bytes: &[u8]) -> Result<Strings<'_>, Error> {
+        let table = flatbuffers::root::<generated::Strings>(bytes)?;
+        let strings = table.items().ok_or("The table has no strings")?;
+        if strings.len() != COUNT {
+            return Err(format!("The table has {} strings, not {COUNT}", strings.len()).into());
+        }
+
+        Ok(Strings {
+            items: std::array::from_fn(|index| Cow::Borrowed(strings.get(index))),
         })
     }
 }

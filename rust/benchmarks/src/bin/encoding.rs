@@ -1,6 +1,7 @@
 //! Prints what the timings don't show: each codec's encoded size of every
 //! workload, and what it does with a document cut short, as the TypeScript
-//! comparison prints after its timings.
+//! comparison prints after its timings. `--strings` prints each codec's
+//! encoded size of each shape of the strings comparison instead.
 
 use std::panic::{self, AssertUnwindSafe};
 
@@ -8,6 +9,7 @@ use rkyv::util::AlignedVec;
 use tafla_benchmarks::codec::{Codec, Error, Suite, Workload};
 use tafla_benchmarks::codecs::LeBytes;
 use tafla_benchmarks::for_each_codec;
+use tafla_benchmarks::string_workloads::{self, StringWorkload, StringsShape};
 use tafla_benchmarks::workloads::{
     self, DOCUMENT_ROWS, Document, DocumentShape, LIST_ITEMS, List, ListShape, RECORD, RecordShape,
     SAMPLE, SampleShape, Shape, StructsShape,
@@ -16,7 +18,17 @@ use tafla_benchmarks::workloads::{
 const NAME_WIDTH: usize = 16;
 const COLUMN_WIDTH: usize = 12;
 
+/// The width of the strings' shapes' names
+const SHAPE_WIDTH: usize = 30;
+
 fn main() -> Result<(), Error> {
+    if std::env::args()
+        .skip(1)
+        .any(|argument| argument == "--strings")
+    {
+        return print_string_sizes(&string_workloads::string_workloads());
+    }
+
     let documents = DOCUMENT_ROWS.map(workloads::document);
     let list = workloads::list(LIST_ITEMS);
 
@@ -61,6 +73,31 @@ fn sizes<C: Suite>(
 
 fn size<S: Shape, C: Workload<S>>(codec: C, input: &S::Value<'_>) -> Result<String, Error> {
     Ok(codec.serialize(input)?.as_ref().len().to_string())
+}
+
+/// Prints a row of each codec's encoded sizes for each shape of strings
+fn print_string_sizes(workloads: &[StringWorkload]) -> Result<(), Error> {
+    println!("Encoded size of 16 strings (bytes)");
+    print!("  {:SHAPE_WIDTH$}{:>COLUMN_WIDTH$}", "", "each string");
+    for_each_codec!(|codec| print!("{:>COLUMN_WIDTH$}", codec_name(codec)));
+    println!();
+
+    for workload in workloads {
+        let input = workload.input();
+
+        print!(
+            "  {:SHAPE_WIDTH$}{:>COLUMN_WIDTH$}",
+            workload.name,
+            workload.bytes()
+        );
+        for_each_codec!(|codec| print!(
+            "{:>COLUMN_WIDTH$}",
+            size::<StringsShape, _>(codec, &input)?
+        ));
+        println!();
+    }
+
+    Ok(())
 }
 
 fn print_row(name: &str, cells: &[String]) {

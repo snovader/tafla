@@ -28,6 +28,10 @@ bench = false
 name = "comparison"
 harness = false
 
+[[bench]]
+name = "strings"
+harness = false
+
 [dependencies]
 tafla = { path = "../core" }
 flatbuffers = "25.12.19"
