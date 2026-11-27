@@ -1,8 +1,9 @@
 // The comparison's benchmarks: each workload's serialize and deserialize, and
 // a document's column summed per element, through every codec that encodes
 // it, the large document written by tafla-gen into reused bytes, and the
-// ways to read tafla's items. Every codec is checked to read back
-// exactly what it wrote before anything is timed.
+// ways to read tafla's items, and the strings suite's, each shape's
+// serialize and deserialize. Every codec is checked to read back exactly what
+// it wrote before anything is timed.
 
 #ifndef TAFLA_BENCHMARKS_SUITE_HPP
 #define TAFLA_BENCHMARKS_SUITE_HPP
@@ -28,6 +29,7 @@
 #include "codecs/tafla_gen.hpp"
 #include "harness.hpp"
 #include "item_access.hpp"
+#include "string_workloads.hpp"
 #include "workloads.hpp"
 
 namespace tafla::benchmarks {
@@ -202,6 +204,30 @@ inline std::vector<Benchmark> benchmarks(const Inputs& inputs) {
     append(workload<StructsShape>("array of 100 structs", inputs.list));
     append(workload<SampleShape>("fixed-size record", inputs.sample));
     append(item_access(inputs.list));
+    return all;
+}
+
+/// Checks that tafla-gen's code writes the strings that `TableBuilder` writes
+/// by hand, byte for byte
+inline void check_same_tables(const StringsWorkload& workload) {
+    const auto built = Tafla().serialize(StringsShape{}, workload.strings);
+    const auto generated = TaflaGen().serialize(StringsShape{}, workload.strings);
+    if (!std::ranges::equal(bytes_of(built), bytes_of(generated))) {
+        throw std::logic_error("tafla-gen didn't write TableBuilder's " + workload.name);
+    }
+}
+
+/// The strings suite's benchmarks, in the order that results list them: each
+/// shape's serialize and deserialize, with a variant for each codec and
+/// tafla's A/A pair. The workloads must outlive them.
+inline std::vector<Benchmark> string_benchmarks(const std::vector<StringsWorkload>& workloads) {
+    std::vector<Benchmark> all;
+    for (const auto& shape : workloads) {
+        check_same_tables(shape);
+        for (auto& benchmark : workload<StringsShape>("16 × " + shape.name, shape.strings)) {
+            all.push_back(std::move(benchmark));
+        }
+    }
     return all;
 }
 

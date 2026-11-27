@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "lists.hpp"
-#include "report.hpp"
+#include "runner.hpp"
 
 int main(int argc, char** argv) {
     using namespace tafla::benchmarks;
@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     print_load("before");
 
     const auto shapes = lists_of_strings();
-    report(list_benchmarks(shapes), arguments);
+    run(arguments, list_benchmarks(shapes));
 
     std::printf("\nEncoded size (bytes)\n  %-30s%20s%20s\n", "", TaflaGenStrings::name.data(),
                 TaflaGenNames::name.data());

@@ -1,9 +1,10 @@
-// The arguments of a program that times benchmarks, and its report: each
-// benchmark's fastest round per call and its ratio to the first variant's,
-// and the median round. See README.md for the method and options.
+// Runs a program's benchmarks as its arguments select them, their variants
+// interleaved, and prints each one's fastest round per call and its ratio to
+// the first variant's, and the median round. See README.md for the method
+// and options.
 
-#ifndef TAFLA_BENCHMARKS_REPORT_HPP
-#define TAFLA_BENCHMARKS_REPORT_HPP
+#ifndef TAFLA_BENCHMARKS_RUNNER_HPP
+#define TAFLA_BENCHMARKS_RUNNER_HPP
 
 #include <algorithm>
 #include <chrono>
@@ -24,6 +25,7 @@
 
 namespace tafla::benchmarks {
 
+/// Prints the load average, when the system has one
 inline void print_load(const char* when) {
 #if defined(__unix__) || defined(__APPLE__)
     double load[3] = {};
@@ -98,22 +100,18 @@ inline Arguments parse(int argc, char** argv) {
     return arguments;
 }
 
+/// Whether a benchmark's name contains one of the filters, or there are none
 inline bool selected(const Arguments& arguments, const std::string& name) {
     if (arguments.filters.empty()) {
         return true;
     }
-    for (const auto& filter : arguments.filters) {
-        if (name.find(filter) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
+    return std::any_of(arguments.filters.begin(), arguments.filters.end(),
+                       [&name](const std::string& filter) { return name.find(filter) != std::string::npos; });
 }
 
-/// Times the benchmarks that the arguments select, printing each one's
-/// variants as it's timed, and the load average after them, and then a row
-/// of a Markdown table for each when the arguments ask for one
-inline void report(const std::vector<Benchmark>& all, const Arguments& arguments) {
+/// Times the selected benchmarks, printing each one's results as it ends, and
+/// then the load average and, if asked, a row of the README's table for each
+inline void run(const Arguments& arguments, const std::vector<Benchmark>& all) {
     std::vector<std::pair<std::string, std::vector<Measurement>>> results;
     for (const auto& benchmark : all) {
         if (!selected(arguments, benchmark.name)) {

@@ -67,6 +67,13 @@ repository's first commits, for code built from its source before the release.
 
 ### Changed
 
+- `TableBuilder` and `TableSizer` encode a string of 32 `char`s or more with
+  `String.getBytes` and copy it, rather than from 64, and write a shorter one
+  a `char` at a time, in place. In the benchmarks' strings suite on JDK 25, a
+  table of 16 strings of 63 ASCII `char`s took 0.27 µs to write with
+  `TableBuilder` rather than 0.65, and of 32 ASCII `char`s 0.23 rather than
+  0.42; strings of 63 `char`s whose last took 3 bytes took 0.81 µs rather than
+  1.15.
 - A layout holds its table's version, `TableLayout.builder().version(1)`,
   rather than only whether the header has a slot for one, and the builder's
   `versioned()` is gone. `TableBuilder` and `TableSizer` take the version

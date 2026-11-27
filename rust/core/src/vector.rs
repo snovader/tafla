@@ -87,6 +87,11 @@ impl<'a> Vector<'a> {
     /// # Errors
     ///
     /// `Some(Err(_))` as [`Vector::get()`] returns.
+    // Inlined into its callers, as `bounds()` is: with two of them, LLVM
+    // called it out of line, which `#[inline]` didn't change, and a
+    // generated view read the last item in 6.5 ns rather than 3.8 ns
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
     pub fn get_in_place(&self, index: usize) -> Option<Result<&'a [u8], DecodeError>> {
         let bounds = self.bounds(index)?;
 

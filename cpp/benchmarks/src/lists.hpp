@@ -25,6 +25,7 @@
 
 #include "harness.hpp"
 #include "lists/lists.hpp"
+#include "string_workloads.hpp"
 #include "workloads.hpp"
 
 namespace tafla::benchmarks {
@@ -63,18 +64,6 @@ inline constexpr std::size_t kTypeScriptKinds = 8;
 
 namespace detail {
 
-inline constexpr std::string_view kAsciiCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-/// The first of the CJK ideographs, whose characters take 3 bytes in UTF-8
-inline constexpr std::uint32_t kThreeBytes = 0x4e00;
-
-/// Appends the UTF-8 of a character of 3 bytes
-inline void append_three_bytes(std::string& string, std::uint32_t code) {
-    string += static_cast<char>(0xe0 | (code >> 12));
-    string += static_cast<char>(0x80 | ((code >> 6) & 0x3f));
-    string += static_cast<char>(0x80 | (code & 0x3f));
-}
-
 /// A count as `toLocaleString('en-US')` writes it, such as 10,000
 inline std::string count_name(std::size_t count) {
     auto digits = std::to_string(count);
@@ -97,14 +86,7 @@ inline ListOfStrings list_of_strings(std::size_t count, const StringKind& kind, 
     for (std::size_t index = 0; index < count; ++index) {
         std::string string;
         for (std::size_t character = 0; character < kind.length; ++character) {
-            if (kind.three_bytes) {
-                const auto code = detail::kThreeBytes + static_cast<std::uint32_t>(random.next() * 0x5000);
-                detail::append_three_bytes(string, code);
-            } else {
-                const auto at =
-                    static_cast<std::size_t>(random.next() * static_cast<double>(detail::kAsciiCharacters.size()));
-                string += detail::kAsciiCharacters[at];
-            }
+            detail::append_utf8(string, kind.three_bytes ? detail::three_bytes(random) : detail::ascii(random));
         }
         shape.strings.push_back(std::move(string));
     }

@@ -9,16 +9,20 @@ find_package(msgpack-cxx CONFIG REQUIRED)
 set(TAFLA_GENERATED ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${TAFLA_GENERATED})
 
-# flatc's and protoc's code of the workloads, generated at build time, as
-# those libraries' documentation builds it
-add_custom_command(
-    OUTPUT ${TAFLA_GENERATED}/workloads_generated.h
-    COMMAND flatbuffers::flatc --cpp -o ${TAFLA_GENERATED} ${CMAKE_CURRENT_SOURCE_DIR}/schemas/workloads.fbs
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/workloads.fbs
-    COMMENT "Generating FlatBuffers' code of the workloads")
-add_custom_target(tafla_benchmarks_flatbuffers DEPENDS ${TAFLA_GENERATED}/workloads_generated.h)
+# flatc's and protoc's code of the workloads and of the strings suite's
+# table, generated at build time, as those libraries' documentation builds it
+foreach(schema workloads strings)
+    add_custom_command(
+        OUTPUT ${TAFLA_GENERATED}/${schema}_generated.h
+        COMMAND flatbuffers::flatc --cpp -o ${TAFLA_GENERATED} ${CMAKE_CURRENT_SOURCE_DIR}/schemas/${schema}.fbs
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/schemas/${schema}.fbs
+        COMMENT "Generating FlatBuffers' code of ${schema}.fbs")
+endforeach()
+add_custom_target(tafla_benchmarks_flatbuffers DEPENDS ${TAFLA_GENERATED}/workloads_generated.h
+                                                       ${TAFLA_GENERATED}/strings_generated.h)
 
-add_library(tafla_benchmarks_protobuf STATIC ${CMAKE_CURRENT_SOURCE_DIR}/schemas/messages.proto)
+add_library(tafla_benchmarks_protobuf STATIC ${CMAKE_CURRENT_SOURCE_DIR}/schemas/messages.proto
+                                             ${CMAKE_CURRENT_SOURCE_DIR}/schemas/strings.proto)
 target_link_libraries(tafla_benchmarks_protobuf PUBLIC protobuf::libprotobuf)
 target_include_directories(tafla_benchmarks_protobuf PUBLIC ${TAFLA_GENERATED})
 protobuf_generate(TARGET tafla_benchmarks_protobuf IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/schemas
@@ -32,7 +36,7 @@ target_compile_definitions(tafla_benchmarks_common INTERFACE MSGPACK_NO_BOOST)
 target_link_libraries(tafla_benchmarks_common INTERFACE tafla::tafla tafla_warnings tafla_benchmarks_protobuf
                                                         flatbuffers::flatbuffers msgpack-cxx)
 
-foreach(program comparison encoding allocation lists)
+foreach(program comparison strings encoding allocation lists)
     add_executable(tafla_${program} src/${program}.cpp)
     target_link_libraries(tafla_${program} PRIVATE tafla_benchmarks_common)
 endforeach()

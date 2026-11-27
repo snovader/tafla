@@ -86,6 +86,8 @@ jobs:
               - "typescript/benchmarks/comparison/workloads.tafla"
               - "typescript/benchmarks/comparison/generated/tafla/**"
               # The strings suites' schemas and generated code
+              - "cpp/benchmarks/strings.tafla"
+              - "cpp/benchmarks/generated/strings/**"
               - "java/benchmarks/src/main/tafla/strings.tafla"
               - "java/benchmarks/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/**"
               - "typescript/benchmarks/strings/strings.tafla"

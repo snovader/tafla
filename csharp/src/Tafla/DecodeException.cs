@@ -130,7 +130,7 @@ public sealed class DecodeException : Exception
             Available = available,
         };
 
-    internal static DecodeException InvalidUtf8(int position, Exception innerException) =>
+    internal static DecodeException InvalidUtf8(int position, Exception? innerException = null) =>
         new(DecodeErrorKind.InvalidUtf8, $"The string at {position} isn't valid UTF-8", innerException)
         {
             Position = position,

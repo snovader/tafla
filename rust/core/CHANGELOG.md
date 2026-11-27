@@ -88,6 +88,26 @@ first commits, for code built from its source before the release.
   rather than 6.7 ns, and its document of 100 rows in 15.3 ns rather than
   16.5 ns. A table of 16 strings of 8 ASCII characters was read in 51 ns
   rather than 76 ns. Its values and errors are unchanged.
+- `TableReader::root_offset()` and `field_offset()`, and the reads of
+  lengths and offsets that they and the getters share, are inlined into
+  their callers. With several of them, as in a reader written by hand, LLVM
+  called them out of line, which `#[inline]` didn't change, and each read
+  the layout from memory and branched on its offset size. The comparison
+  suite's versioned document of 100 rows, read with `TableReader` by hand,
+  was read in 12.7 ns rather than 27.1 ns, its record in 5.4 ns rather than
+  6.8 ns, and the last table of its vector in 6.3 ns rather than 7.9 ns.
+  tafla-gen's code, whose reads were already inlined, is unchanged. Their
+  values and errors are unchanged.
+- `ArrayView::to_cow()` is inlined into its callers, and only its copy of
+  elements that aren't in place is called out of line. LLVM called the whole
+  of it out of line, with the copy. tafla-gen's document of 100 rows was read
+  in 12.5 ns rather than 15.3 ns, and with `TableReader` by hand in 10.3 ns
+  rather than 12.9 ns. Its values are unchanged.
+- `Vector::get_in_place()` is inlined into its callers. With two of them,
+  LLVM called it out of line, which `#[inline]` didn't change. tafla-gen's
+  view read the last of a vector's 100 tables in 3.8 ns rather than 6.5 ns,
+  and `TableReader` by hand in 4.0 ns rather than 6.4 ns. Its values and
+  errors are unchanged.
 - `TableBuilder` makes room to record at least 8 fields when it starts, its
   own and those of the tables that it records in place, rather than only its
   own. Recording a table in place grew a small table's record by a

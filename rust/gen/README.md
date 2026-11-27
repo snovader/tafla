@@ -1196,6 +1196,7 @@ and `STRINGS_SCHEMAS` lists where:
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ |
 | TypeScript | `typescript/benchmarks/strings/strings.tafla`, `typescript/benchmarks/strings/generated/tafla/`                          |
 | Java       | `java/benchmarks/src/main/tafla/strings.tafla`, `…/src/main/java/io/github/snovader/tafla/benchmarks/generated/strings/` |
+| C++        | `cpp/benchmarks/strings.tafla`, `cpp/benchmarks/generated/strings/`                                                      |
 
 The suites of lists of strings, which compare vectors of strings with
 vectors of tables of one string each, have a schema of their own too, and

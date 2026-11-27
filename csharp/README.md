@@ -133,8 +133,15 @@ which covers the whole format, byte for byte.
   another vector, copy it with `ToArray()`, since a `NestedTable` holds
   memory rather than a span.
 - **Strings are decoded.** `GetString()` checks that the bytes are valid
-  UTF-8 and decodes them into a new `string`, in one pass. So does each read
-  of a string of a vector of strings, which `GetStringVector()` returns as a
+  UTF-8 and decodes them into a new `string`: in one pass for a string of up
+  to 1,024 bytes, and in two for a longer one, which count its characters
+  and then decode them. A string of 129 to 1,024 bytes that isn't ASCII is
+  decoded into 1,024 chars that each thread allocates once, and from them
+  copied into the `string`. They hold the last such string that the thread
+  read until it reads another, or ends, so a secret read as a string may
+  stay in memory after the `string` itself is collected. Each read of a
+  string of a vector of strings checks and decodes it too, in two passes
+  whatever its length. `GetStringVector()` returns the vector as a
   `StringVector`, a `ref struct` over the bytes, as a `Vector` is: its
   indexer decodes one string from its two ends, and `ToArray()` and its
   enumerator decode every string, in order. Each string is checked on its

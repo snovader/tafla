@@ -2,7 +2,7 @@
 // each one's fastest round per call and its ratio to tafla's, and the median
 // round. See README.md for the method and options.
 
-#include "report.hpp"
+#include "runner.hpp"
 #include "suite.hpp"
 
 int main(int argc, char** argv) {
@@ -12,6 +12,6 @@ int main(int argc, char** argv) {
     print_load("before");
 
     const Inputs inputs;
-    report(benchmarks(inputs), arguments);
+    run(arguments, benchmarks(inputs));
     return 0;
 }
