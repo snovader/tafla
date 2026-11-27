@@ -29,6 +29,14 @@
 //! into it would then load the layout's offset type from memory and switch on
 //! it at each field, rather than know it.
 //!
+//! An enum is a `RawRepresentable` struct of its integer, whose values are
+//! inlinable computed static properties, for the same reason, so that a value
+//! is a constant in the code that names it. Its initializer takes any
+//! integer, so a field of the enum reads any integer of its type, named or
+//! not, as the integer, wrapped where it's read and unwrapped where it's
+//! written. An array of an enum is an array of its integer type, which is how
+//! the bytes hold it.
+//!
 //! A field that may be missing, optional or added `since` a version, reads as
 //! `nil`, the views of its bytes too, since `Optional` holds a nonescapable
 //! view and keeps its lifetime, or as a scalar's default, with `has<Field>`.
@@ -39,7 +47,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
 };
 use crate::naming::camel_case;
 
@@ -137,10 +145,16 @@ pub fn generate(
 
     let mut writer = CodeWriter::new(STYLE.indent);
     writer.line(format!("// {header}"));
-    // A schema without definitions imports nothing
+    // A schema without definitions imports nothing, since enums need only the
+    // standard library
     if !schema.definitions.is_empty() {
         writer.blank();
         writer.line(format!("import {runtime}"));
+    }
+
+    for enumeration in &schema.enums {
+        writer.blank();
+        enumeration_struct(&mut writer, enumeration);
     }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
@@ -314,7 +328,7 @@ impl Generator<'_> {
             } else {
                 format!("_reader.fieldOffset({index}, inTableAt: _position)")
             };
-            let (value_type, read) = self.read(field.field_type, &position);
+            let (value_type, read) = self.read(field, &position);
             // Views of the bytes depend on the reader's
             let is_view = matches!(
                 field.field_type,
@@ -327,7 +341,9 @@ impl Generator<'_> {
             // A scalar that may be missing returns its default, and every
             // other field that may be missing `nil`
             let default = match field.field_type {
-                FieldType::Scalar(_) if field.may_be_missing() => field.default.map(swift_literal),
+                FieldType::Scalar(_) if field.may_be_missing() => field
+                    .default
+                    .map(|value| self.scalar_value(field, swift_literal(value))),
                 _ => None,
             };
             let returned = if field.may_be_missing() && default.is_none() {
@@ -367,8 +383,17 @@ impl Generator<'_> {
                 writer.close("}");
             } else {
                 match read {
+                    // On a line of its own where it's too long for the
+                    // getter's, as a field of an enum with a long name is
                     Read::Expression(expression) => {
-                        writer.line(format!("get throws(DecodeError) {{ {expression} }}"));
+                        let getter = format!("get throws(DecodeError) {{ {expression} }}");
+                        if writer.fits(&STYLE, &getter) {
+                            writer.line(getter);
+                        } else {
+                            writer.open("get throws(DecodeError) {");
+                            writer.line(expression);
+                            writer.close("}");
+                        }
                     }
                     Read::FromPosition(statement) => {
                         writer.open("get throws(DecodeError) {");
@@ -411,7 +436,7 @@ impl Generator<'_> {
         // A field that a later version added, but that every table of that
         // version holds, is read as a required field is
         if !checks_offset(definition, field) {
-            match self.read(field.field_type, position).1 {
+            match self.read(field, position).1 {
                 Read::Expression(expression) => writer.line(format!("return {expression}")),
                 Read::FromPosition(statement) => {
                     writer.line(format!("let field = try {position}"));
@@ -430,23 +455,25 @@ impl Generator<'_> {
         writer.close("}");
         writer.blank();
 
-        let (Read::Expression(read) | Read::FromPosition(read)) =
-            self.read(field.field_type, "field").1;
+        let (Read::Expression(read) | Read::FromPosition(read)) = self.read(field, "field").1;
         writer.line(format!("return {read}"));
     }
 
     /// The type that a getter returns, and how it reads its field at
     /// `position`
-    fn read(&self, field_type: FieldType, position: &str) -> (String, Read) {
-        match field_type {
+    fn read(&self, field: &Field, position: &str) -> (String, Read) {
+        match field.field_type {
             FieldType::Scalar(Scalar::Bool) => (
                 "Bool".to_owned(),
                 Read::Expression(format!("try _reader.uint8(at: {position}) != 0")),
             ),
-            FieldType::Scalar(scalar) => (
-                swift_type(scalar).to_owned(),
-                Read::Expression(format!("try _reader.{}(at: {position})", scalar.name())),
-            ),
+            FieldType::Scalar(scalar) => {
+                let integer = format!("_reader.{}(at: {position})", scalar.name());
+                (
+                    self.scalar_type(field, scalar).to_owned(),
+                    Read::Expression(format!("try {}", self.scalar_value(field, integer))),
+                )
+            }
             FieldType::Array(scalar) => (
                 format!("ArrayView<{}>", swift_type(scalar)),
                 Read::Expression(format!(
@@ -737,14 +764,14 @@ impl Generator<'_> {
         for (index, field) in definition.fields.iter().enumerate() {
             let name = identifier(&field.name);
             if !field.optional {
-                self.write(writer, index, field.field_type, &format!("self.{name}"));
+                self.write(writer, index, field, &format!("self.{name}"));
                 continue;
             }
 
             // The local hides no field, which the calls name through `self`,
             // nor any type, whose names are `PascalCase`
             writer.open(format!("if let value = self.{name} {{"));
-            self.write(writer, index, field.field_type, "value");
+            self.write(writer, index, field, "value");
             writer.close("} else {");
             writer.indent();
             writer.line(format!("writer.setAbsent({index})"));
@@ -753,13 +780,19 @@ impl Generator<'_> {
     }
 
     /// Writes field `index` of `value` with `writer`
-    fn write(&self, writer: &mut CodeWriter, index: usize, field_type: FieldType, value: &str) {
-        match field_type {
+    fn write(&self, writer: &mut CodeWriter, index: usize, field: &Field, value: &str) {
+        match field.field_type {
             FieldType::Scalar(Scalar::Bool) => {
                 writer.line(format!("writer.setUInt8({index}, {value} ? 1 : 0)"));
             }
+            // An enum's integer, which the runtime writes
             FieldType::Scalar(scalar) => {
-                writer.line(format!("writer.set{}({index}, {value})", method(scalar)));
+                let integer = if field.enumeration.is_some() {
+                    format!("{value}.rawValue")
+                } else {
+                    value.to_owned()
+                };
+                writer.line(format!("writer.set{}({index}, {integer})", method(scalar)));
             }
             FieldType::Array(scalar) => {
                 writer.line(format!(
@@ -866,10 +899,14 @@ impl Generator<'_> {
                 FieldType::Scalar(Scalar::Bool) => {
                     (format!("UInt8(littleEndianBytes: bytes, at: {at}) != 0"), 1)
                 }
-                FieldType::Scalar(scalar) => (
-                    format!("{}(littleEndianBytes: bytes, at: {at})", swift_type(scalar)),
-                    usize::from(scalar.size()),
-                ),
+                FieldType::Scalar(scalar) => {
+                    let integer =
+                        format!("{}(littleEndianBytes: bytes, at: {at})", swift_type(scalar));
+                    (
+                        self.scalar_value(field, integer),
+                        usize::from(scalar.size()),
+                    )
+                }
                 FieldType::Struct(index) => {
                     let inner = self.schema.definition(index);
                     (
@@ -920,19 +957,20 @@ impl Generator<'_> {
         writer.open("func append(to bytes: inout [UInt8]) {");
         for field in &definition.fields {
             let field_name = identifier(&field.name);
+            let integer = scalar_integer(field);
             writer.line(match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => {
                     format!("bytes.append(self.{field_name} ? 1 : 0)")
                 }
-                FieldType::Scalar(Scalar::Uint8) => format!("bytes.append(self.{field_name})"),
+                FieldType::Scalar(Scalar::Uint8) => format!("bytes.append({integer})"),
                 FieldType::Scalar(Scalar::Int8) => {
-                    format!("bytes.append(UInt8(bitPattern: self.{field_name}))")
+                    format!("bytes.append(UInt8(bitPattern: {integer}))")
                 }
                 FieldType::Scalar(Scalar::Float32 | Scalar::Float64) => format!(
                     "withUnsafeBytes(of: self.{field_name}.bitPattern.littleEndian) {{ bytes.append(contentsOf: $0) }}"
                 ),
                 FieldType::Scalar(_) => format!(
-                    "withUnsafeBytes(of: self.{field_name}.littleEndian) {{ bytes.append(contentsOf: $0) }}"
+                    "withUnsafeBytes(of: {integer}.littleEndian) {{ bytes.append(contentsOf: $0) }}"
                 ),
                 FieldType::Struct(_) => format!("self.{field_name}.append(to: &bytes)"),
                 _ => unreachable!("structs hold scalars and structs only"),
@@ -955,7 +993,7 @@ impl Generator<'_> {
                 FieldType::Scalar(Scalar::Bool) => {
                     format!("writer.writeScalar(UInt8(self.{field_name} ? 1 : 0))")
                 }
-                FieldType::Scalar(_) => format!("writer.writeScalar(self.{field_name})"),
+                FieldType::Scalar(_) => format!("writer.writeScalar({})", scalar_integer(field)),
                 FieldType::Struct(_) => format!("self.{field_name}.write(to: &writer)"),
                 _ => unreachable!("structs hold scalars and structs only"),
             });
@@ -967,7 +1005,7 @@ impl Generator<'_> {
     /// The type of a field's property in a fields struct or a struct, which
     /// is optional when the field is, so that `nil` leaves it out
     fn property_type(&self, field: &Field) -> String {
-        let input = self.input_type(field.field_type);
+        let input = self.input_type(field);
         if field.optional {
             format!("{input}?")
         } else {
@@ -975,10 +1013,10 @@ impl Generator<'_> {
         }
     }
 
-    /// The type of a field's value in a fields struct or a struct
-    fn input_type(&self, field_type: FieldType) -> String {
-        match field_type {
-            FieldType::Scalar(scalar) => swift_type(scalar).to_owned(),
+    /// The type of a field in a fields struct or a struct
+    fn input_type(&self, field: &Field) -> String {
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_type(field, scalar).to_owned(),
             FieldType::Array(scalar) => format!("[{}]", swift_type(scalar)),
             FieldType::String => "String".to_owned(),
             FieldType::Struct(index) => self.schema.definition(index).name.clone(),
@@ -987,6 +1025,87 @@ impl Generator<'_> {
             FieldType::Vector(index) => format!("[{}Fields]", self.schema.definition(index).name),
         }
     }
+
+    /// The type of a scalar field: its enum, or the scalar's own
+    fn scalar_type(&self, field: &Field, scalar: Scalar) -> &str {
+        match field.enumeration {
+            Some(index) => &self.schema.enumeration(index).name,
+            None => swift_type(scalar),
+        }
+    }
+
+    /// The value of a scalar field from `integer`, the expression that reads
+    /// its integer: the value of its enum, which wraps any integer, or the
+    /// integer itself
+    fn scalar_value(&self, field: &Field, integer: String) -> String {
+        match field.enumeration {
+            Some(index) => format!(
+                "{}(rawValue: {integer})",
+                self.schema.enumeration(index).name
+            ),
+            None => integer,
+        }
+    }
+}
+
+/// The integer of a scalar field of `self`, which the runtime writes: an
+/// enum's `rawValue`, or the scalar itself
+fn scalar_integer(field: &Field) -> String {
+    let name = identifier(&field.name);
+    if field.enumeration.is_some() {
+        format!("self.{name}.rawValue")
+    } else {
+        format!("self.{name}")
+    }
+}
+
+/// An enum: a struct of its integer, which it holds as `rawValue`, with a
+/// static property of each value that it names, by its name in `camelCase`,
+/// escaped as a field's is. The initializer wraps any integer, without
+/// failing, since a field of the enum holds any integer of its type, and the
+/// properties are inlinable, so that each is a constant where it's named.
+fn enumeration_struct(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &enumeration.name;
+    let integer = swift_type(enumeration.underlying);
+
+    swift_doc(writer, &enumeration.docs);
+    writer.line("@frozen");
+    writer.open(format!(
+        "public struct {name}: RawRepresentable, Hashable, Sendable {{"
+    ));
+    swift_doc(writer, &["The integer that stores the value"]);
+    writer.line(format!("public let rawValue: {integer}"));
+    writer.blank();
+
+    swift_doc(
+        writer,
+        &[format!(
+            "The value of `rawValue`, which needn't be one that `{name}` names, since a field of it holds any `{integer}`"
+        )],
+    );
+    writer.line("@inlinable");
+    writer.open(format!("public init(rawValue: {integer}) {{"));
+    writer.line("self.rawValue = rawValue");
+    writer.close("}");
+
+    for value in &enumeration.values {
+        let member = identifier(&value.name);
+        let constant = format!("Self(rawValue: {})", value.value);
+
+        writer.blank();
+        swift_doc(writer, &value.docs);
+        writer.line("@inlinable");
+        let property = format!("public static var {member}: Self {{ {constant} }}");
+        // On a line of its own where it's too long for the property's
+        if writer.fits(&STYLE, &property) {
+            writer.line(property);
+        } else {
+            writer.open(format!("public static var {member}: Self {{"));
+            writer.line(constant);
+            writer.close("}");
+        }
+    }
+    writer.close("}");
 }
 
 /// A versioned message's initializer, which checks that the version is
@@ -1297,8 +1416,12 @@ const fn offset_size(offset_type: OffsetType) -> usize {
     }
 }
 
-/// A field's name in `camelCase`, with a `_` after it if it would clash with
-/// a member of the generated code, or in backticks if it's a keyword
+/// A field's or an enum value's name in `camelCase`, with a `_` after it if
+/// it would clash with a member of the generated code, or in backticks if
+/// it's a keyword. A value takes the name that a field of its name would, so
+/// `self` takes a `_`, which also keeps `Level.self` the type's, and
+/// `serialize` does too, though an enum has no `serialize()`. Swift reads
+/// other keywords in backticks as static members, `init` among them.
 fn identifier(name: &str) -> String {
     let name = camel_case(name);
     if MEMBERS.contains(&name.as_str()) {
@@ -1412,6 +1535,32 @@ mod tests {
         // Keywords only where the grammar expects them
         assert_eq!(identifier("get"), "get");
         assert_eq!(identifier("type"), "type");
+    }
+
+    /// A getter of an enum, or a value of one, too long for its line puts
+    /// its expression on a line of its own, as swift-format breaks it
+    #[test]
+    fn test_long_lines_break_within_their_braces() {
+        let value = "a_value_whose_name_takes_a_line_of_its_own_beyond_the_others_values";
+        let source = format!(
+            "message Root {{ nested: Nested; }}\n\
+             table Nested {{ priority: Priority; }}\n\
+             enum Priority: uint64 {{ {value} = 18446744073709551615; }}\n"
+        );
+        let schema = crate::parse(&source).unwrap();
+        let code = &generate(&schema, "long", "header", &Options::default())[0].contents;
+
+        let getter = "\
+        get throws(DecodeError) {
+            try Priority(rawValue: _reader.uint64(at: _reader.fieldOffset(0, inTableAt: _position)))
+        }
+";
+        assert!(code.contains(getter), "{code}");
+        let constant = format!(
+            "    public static var {}: Self {{\n        Self(rawValue: 18446744073709551615)\n    }}\n",
+            camel_case(value)
+        );
+        assert!(code.contains(&constant), "{code}");
     }
 
     #[test]

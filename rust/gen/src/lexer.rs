@@ -19,9 +19,9 @@ pub enum TokenKind {
     Comma,
     /// The `?` after an optional field's type
     Question,
-    /// The `=` before a field's default
+    /// The `=` before a field's default or an enum value's integer
     Equals,
-    /// The sign of a negative default
+    /// The sign of a negative default or enum value
     Minus,
     End,
 }

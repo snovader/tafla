@@ -53,7 +53,7 @@ and is ASCII, as `cases.json` is:
 ```
 
 - `type` is a message or struct of the schema: `Point`, `Document`,
-  `ItemList` or `Sample`.
+  `ItemList`, `Sample` or `Task`.
 - `file` is relative to `shapes.json`.
 - `fields` holds the value of every field of the type by its name in the
   schema, and of a nested table's fields as an object, a vector's tables as an
@@ -61,6 +61,7 @@ and is ASCII, as `cases.json` is:
   as in `cases.json`: 64-bit integers as decimal strings, floats that JSON has
   no number for as `"NaN"`, `"Infinity"`, `"-Infinity"` or `"-0"`, and a
   float32 as the float64 that equals it.
+  An enum is its integer, whether the enum names it or not.
 
 ## Tests
 

@@ -11,15 +11,15 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use shapes::generated::{
     ColumnsFields, Document, DocumentFields, ItemFields, ItemList, ItemListFields, PairFields,
-    Point, PointFields, Sample,
+    Point, PointFields, Priority, Sample, State, Step, Task, TaskFields,
 };
 use shapes::{
     describe_document, describe_item, describe_item_list, describe_point, describe_sample,
-    read_document, read_item, read_item_list, read_point,
+    describe_step, describe_task, read_document, read_item, read_item_list, read_point, read_task,
 };
 use tables::{
     CASES, Header, arbitrary_bytes, arrays, build, check_truncated, expected, float32s, float64s,
-    integers, overwrites, placements, strings, truncations,
+    integers, overwrites, placements, strings, struct_bytes, truncations,
 };
 use tafla::{Alignment, DecodeError, TableLayout};
 
@@ -27,6 +27,7 @@ use tafla::{Alignment, DecodeError, TableLayout};
 const POINT: Header = Header::new(TableLayout::DEFAULT);
 const DOCUMENT: Header = Header::versioned(TableLayout::DEFAULT.sized(), 1);
 const ITEM_LIST: Header = Header::new(TableLayout::DEFAULT);
+const TASK: Header = Header::new(TableLayout::DEFAULT);
 
 /// The values of a `Point`'s fields, which `PointFields` borrows
 #[derive(Clone, Debug)]
@@ -120,6 +121,69 @@ fn samples() -> impl Strategy<Value = Sample> {
     (integers(0, u32::MAX), float32s(), float32s()).prop_map(|(key, a, b)| Sample { key, a, b })
 }
 
+/// The values of a `Task`'s fields, whose array and string `TaskFields`
+/// borrows
+#[derive(Clone, Debug)]
+struct OwnedTask {
+    priority: Priority,
+    history: Vec<u16>,
+    step: Step,
+    name: String,
+}
+
+impl OwnedTask {
+    fn fields(&self) -> TaskFields<'_> {
+        TaskFields {
+            priority: self.priority,
+            history: &self.history,
+            step: self.step,
+            name: &self.name,
+        }
+    }
+}
+
+/// Priorities of any `int8`, most of which `Priority` doesn't name, and
+/// half of the time one that it names
+fn priorities() -> impl Strategy<Value = Priority> {
+    let named = vec![Priority::LOW, Priority::NORMAL, Priority::HIGH];
+
+    prop_oneof![
+        integers(i8::MIN, i8::MAX).prop_map(Priority),
+        prop::sample::select(named),
+    ]
+}
+
+/// States of any `uint16`, as [`priorities()`] draws priorities
+fn states() -> impl Strategy<Value = State> {
+    let named = vec![State::WAITING, State::RUNNING, State::DONE, State::FAILED];
+
+    prop_oneof![
+        integers(0, u16::MAX).prop_map(State),
+        prop::sample::select(named),
+    ]
+}
+
+fn steps() -> impl Strategy<Value = Step> {
+    (states(), priorities(), integers(0, u32::MAX)).prop_map(|(state, priority, seconds)| Step {
+        state,
+        priority,
+        seconds,
+    })
+}
+
+fn tasks() -> impl Strategy<Value = OwnedTask> {
+    let history = arrays(states().prop_map(|state| state.0));
+
+    (priorities(), history, steps(), strings()).prop_map(|(priority, history, step, name)| {
+        OwnedTask {
+            priority,
+            history,
+            step,
+            name,
+        }
+    })
+}
+
 /// Versions other than the `Document`'s, its limits among them
 fn other_versions() -> impl Strategy<Value = u32> {
     integers(0, u32::MAX).prop_filter("the Document's version", |&version| {
@@ -179,6 +243,20 @@ proptest! {
         prop_assert_eq!(read, expected(describe_item_list(&fields)));
     }
 
+    #[test]
+    fn a_task_reads_back_its_enums_named_or_not_wherever_its_bytes_lie(
+        task in tasks(),
+        placement in placements(),
+    ) {
+        let fields = task.fields();
+        let bytes = placement.place(&fields.serialize()?);
+
+        let read = Task::new(bytes.bytes());
+        prop_assert_eq!(read_task(&read), expected(describe_task(&fields)));
+        prop_assert_eq!(read.priority(), Ok(task.priority));
+        prop_assert_eq!(read.step(), Ok(task.step));
+    }
+
     // Tables built by hand
 
     #[test]
@@ -202,6 +280,13 @@ proptest! {
         let fields = ItemListFields { items: &items };
 
         prop_assert_eq!(fields.serialize(), build(ITEM_LIST, &describe_item_list(&fields)));
+    }
+
+    #[test]
+    fn a_task_is_written_as_table_builder_writes_the_integers_of_its_enums(task in tasks()) {
+        let fields = task.fields();
+
+        prop_assert_eq!(fields.serialize(), build(TASK, &describe_task(&fields)));
     }
 
     // Versions
@@ -301,9 +386,28 @@ proptest! {
     }
 
     #[test]
+    fn a_corrupted_task_reads_as_values_or_decode_errors(
+        task in tasks(),
+        overwrite in overwrites(),
+    ) {
+        let fields = task.fields();
+        let bytes = fields.serialize()?;
+        let written = describe_task(&fields);
+
+        for truncated in truncations(&bytes) {
+            check_truncated(Ok(read_task(&Task::new(truncated))), &written)?;
+        }
+
+        // An enum reads any integer of its type, so overwritten bytes read
+        // as values too
+        read_task(&Task::new(&overwrite.apply(&bytes)));
+    }
+
+    #[test]
     fn arbitrary_bytes_read_as_any_message_or_decode_errors(bytes in arbitrary_bytes()) {
         read_point(&Point::new(&bytes));
         read_item_list(&ItemList::new(&bytes));
+        read_task(&Task::new(&bytes));
 
         // As they are, and with the Document's version, so that its getters
         // read them
@@ -312,7 +416,7 @@ proptest! {
         }
     }
 
-    // The struct
+    // The structs
 
     #[test]
     fn a_sample_is_written_in_12_bytes_at_fixed_offsets_and_read_back_wherever_they_lie(
@@ -354,6 +458,29 @@ proptest! {
     ) {
         let read = Sample::read(&bytes);
         prop_assert!(matches!(read, Err(DecodeError::OutOfRange { .. })), "{:?}", read);
+    }
+
+    #[test]
+    fn a_step_is_written_as_the_integers_of_its_enums_in_7_bytes_and_read_back(
+        step in steps(),
+        placement in placements(),
+    ) {
+        let bytes = step.to_bytes();
+        prop_assert_eq!((Step::SIZE, Step::ALIGNMENT), (7, Alignment::Four));
+        prop_assert_eq!(bytes.to_vec(), struct_bytes(&describe_step(step)));
+        prop_assert_eq!(Step::array_to_bytes(&[step, step]), [bytes, bytes].concat());
+
+        prop_assert_eq!(Step::read(placement.place(&bytes).bytes()), Ok(step));
+        prop_assert_eq!(Step::from_bytes(&bytes), step);
+    }
+
+    #[test]
+    fn a_step_reads_any_bytes_of_its_enums_as_their_values(bytes in any::<[u8; Step::SIZE]>()) {
+        let step = Step::from_bytes(&bytes);
+
+        prop_assert_eq!(step.state, State(u16::from_le_bytes([bytes[0], bytes[1]])));
+        prop_assert_eq!(step.priority, Priority(i8::from_le_bytes([bytes[2]])));
+        prop_assert_eq!(step.to_bytes(), bytes);
     }
 }
 

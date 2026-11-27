@@ -1,0 +1,46 @@
+enum color: uint8 {
+    Red = 0;
+    dark__red = 1;
+    green = 2;
+    green = 3;
+    light_blue = 4;
+    light_blue_ = 5;
+    v_1 = 6;
+    v1 = 7;
+}
+
+/// An enum shares its names with the messages, tables and structs
+enum Point: uint8 {
+    origin = 0;
+}
+
+struct Point {
+    x: float32;
+}
+
+enum uint8: uint8 {
+    zero = 0;
+}
+
+/// A name of the generated code, as for any declaration
+enum Option: uint8 {
+    none = 0;
+}
+
+/// The name of the fields that the generated code writes `Row` from
+enum RowFields: uint8 {
+    all = 0;
+}
+
+/// The name of the view of a vector of `Row`
+enum RowVector: uint8 {
+    empty = 0;
+}
+
+table Row {
+    value: uint8;
+}
+
+message Rows {
+    rows: [Row];
+}

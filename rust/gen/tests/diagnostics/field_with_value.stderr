@@ -1,0 +1,5 @@
+error: only a field that may be missing has a default
+ --> field_with_value.tafla:2:18
+  |
+2 |     x: float64 = 0;
+  |                  ^ declare it optional with `?`, or added `since` a version

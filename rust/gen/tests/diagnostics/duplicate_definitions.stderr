@@ -3,3 +3,21 @@ error: `Pair` is declared twice
   |
 5 | message Pair {
   |         ^^^^
+
+error: `Pair` is declared twice
+ --> duplicate_definitions.tafla:9:6
+  |
+9 | enum Pair: uint8 { first = 1; }
+  |      ^^^^
+
+error: `State` is declared twice
+  --> duplicate_definitions.tafla:12:9
+   |
+12 | message State { value: uint8; }
+   |         ^^^^^
+
+error: `State` is declared twice
+  --> duplicate_definitions.tafla:13:6
+   |
+13 | enum State: int8 { busy = 1; }
+   |      ^^^^^

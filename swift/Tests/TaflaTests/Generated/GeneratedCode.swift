@@ -6,11 +6,11 @@ import Testing
 // structs that the tests write and read, and what they compare them with.
 //
 // TableBuilder writes each message from its fields' struct, as the tests'
-// `build()` walks it with `Mirror`: each field by its Swift type, a struct
-// from its scalars' bytes, a nested table from its fields' struct and a
-// vector from an array of them, and an optional field that's `nil` as
-// absent. Values read back compare with those written
-// by their bits, so that -0 and NaN count, and strings by their UTF-8.
+// `build()` walks it with `Mirror`: each field by its Swift type, an enum as
+// its integer, a struct from its scalars' bytes, a nested table from its
+// fields' struct and a vector from an array of them, and an optional field
+// that's `nil` as absent. Values read back compare with those written by
+// their bits, so that -0 and NaN count, and strings by their UTF-8.
 
 /// A message of an example schema, with its generated code
 struct Message: Sendable, CustomTestStringConvertible {
@@ -70,6 +70,15 @@ protocol GeneratedStruct: Sendable {
     func serialize() -> [UInt8]
 
     static func serializeArray(_ items: [Self]) -> [UInt8]
+}
+
+/// An enum that tafla-gen generates, whose initializer takes any integer of
+/// its type, and the values that it names, in the order that the schema
+/// declares them
+protocol GeneratedEnum: RawRepresentable, Hashable, Sendable where RawValue: FixedWidthInteger {
+    init(rawValue: RawValue)
+
+    static var named: [Self] { get }
 }
 
 /// An array of scalars, which a fields' struct holds for an array field
@@ -143,9 +152,9 @@ func builder(of fields: Any, layout: TableLayout, version: UInt32? = nil) throws
 
 extension TableBuilder {
     /// Sets a field of a generated fields' struct, by its type: a bool as
-    /// the `uint8` 0 or 1, a struct of fields as a table nested from its
-    /// builder, which it's padded to the alignment of, as a fields' struct
-    /// is, and an optional field that's `nil` as absent
+    /// the `uint8` 0 or 1, an enum as its integer, a struct of fields as a
+    /// table nested from its builder, which it's padded to the alignment of,
+    /// as a fields' struct is, and an optional field that's `nil` as absent
     mutating func set(value: Any) throws(BuildError) {
         let parts = Mirror(reflecting: value)
         if parts.displayStyle == .optional {
@@ -170,6 +179,7 @@ extension TableBuilder {
         case let value as Float: try setFloat32(value)
         case let value as Double: try setFloat64(value)
         case let value as Bool: try setUInt8(value ? 1 : 0)
+        case let value as any GeneratedEnum: try set(value: value.rawValue)
         // By the array's own type, since an empty array casts to an array of
         // any other type
         case let values as any ScalarArray: try values.set(on: &self)
@@ -190,7 +200,8 @@ extension TableBuilder {
 }
 
 /// The bytes of a struct's scalars, little-endian, one after another, and of
-/// the scalars of the structs within it in their place
+/// the scalars of the structs within it in their place, such as an enum's
+/// integer
 func scalarBytes(of value: Any) -> [UInt8] {
     Mirror(reflecting: value).children.flatMap { child -> [UInt8] in
         switch child.value {
@@ -257,5 +268,20 @@ extension Draw {
 
     mutating func integers<T: FixedWidthInteger>(most: Int) -> [T] {
         array(most: most) { $0.integer() }
+    }
+
+    /// A value of an enum: one that it names, or any integer of its type,
+    /// most of which it doesn't name
+    mutating func value<E: GeneratedEnum>(_ type: E.Type = E.self) -> E {
+        weighted([
+            (1, { $0.element(of: E.named) }),
+            (3, { E(rawValue: $0.integer()) }),
+        ])
+    }
+
+    /// The integers of an array of an enum, which the array holds: those of
+    /// the values that it names, and any others
+    mutating func integers<E: GeneratedEnum>(of type: E.Type, most: Int) -> [E.RawValue] {
+        array(most: most) { $0.value(type).rawValue }
     }
 }

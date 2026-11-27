@@ -3,7 +3,7 @@ import Tafla
 import Testing
 
 // The code generated from schemas/shapes.tafla: how the tests draw and read
-// its messages and its struct, and how a vector's view reads its items in
+// its messages, structs and enums, and how a vector's view reads its items in
 // place, each when it's asked for. GeneratedTests.swift checks the
 // properties of every message and struct of the example schemas.
 
@@ -28,14 +28,33 @@ let shapesMessages = [
         draw: { $0.itemList() },
         read: { bytes throws(DecodeError) in try ItemListFields(reading: ItemList(bytes)) }
     ),
+    Message(
+        "shapes.Task",
+        layout: .default,
+        draw: { $0.task() },
+        read: { bytes throws(DecodeError) in try TaskFields(reading: Task(bytes)) }
+    ),
 ]
 
-let shapesStructs = [StructCase("shapes.Sample", Sample.self, size: 12) { $0.sample() }]
+let shapesStructs = [
+    StructCase("shapes.Sample", Sample.self, size: 12) { $0.sample() },
+    StructCase("shapes.Step", Step.self, size: 7) { $0.step() },
+]
 
 extension PointFields: GeneratedFields {}
 extension DocumentFields: GeneratedFields {}
 extension ItemListFields: GeneratedFields {}
+extension TaskFields: GeneratedFields {}
 extension Sample: GeneratedStruct {}
+extension Step: GeneratedStruct {}
+
+extension Priority: GeneratedEnum {
+    static let named: [Priority] = [.low, .normal, .high]
+}
+
+extension State: GeneratedEnum {
+    static let named: [State] = [.waiting, .running, .done, .failed]
+}
 
 extension Draw {
     mutating func point() -> PointFields {
@@ -60,6 +79,14 @@ extension Draw {
 
     mutating func sample() -> Sample {
         Sample(key: integer(), a: float(), b: float())
+    }
+
+    mutating func task() -> TaskFields {
+        TaskFields(priority: value(), history: integers(of: State.self, most: 6), step: step(), name: string(most: 8))
+    }
+
+    mutating func step() -> Step {
+        Step(state: value(), priority: value(), seconds: integer())
     }
 }
 
@@ -99,6 +126,12 @@ extension ItemFields {
     init(reading item: borrowing Item) throws(DecodeError) {
         let pair = try item.pair
         try self.init(value: item.value, pair: PairFields(first: pair.first, second: pair.second))
+    }
+}
+
+extension TaskFields {
+    init(reading task: borrowing Task) throws(DecodeError) {
+        try self.init(priority: task.priority, history: Array(task.history), step: task.step, name: task.name)
     }
 }
 

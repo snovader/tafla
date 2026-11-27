@@ -483,3 +483,22 @@ fn csharp_renames_first_versions_and_the_properties_that_tell_whether_a_table_ho
         ],
     );
 }
+
+/// C++'s enum values take a `_` after a keyword or a macro, as fields do, but
+/// keep the names of the members that the generated code declares, since an
+/// enum class declares nothing beside its values
+#[test]
+fn cpp_renames_enum_values_named_after_keywords_and_macros_only() {
+    assert_generates(
+        "cpp",
+        "enum Member: uint8 { new = 0; linux = 1; read = 2; size = 3; then = 4; }",
+        &[
+            "enum class Member : std::uint8_t {",
+            "    new_ = 0,",
+            "    linux_ = 1,",
+            "    read = 2,",
+            "    size = 3,",
+            "    then = 4,",
+        ],
+    );
+}

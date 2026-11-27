@@ -2,6 +2,53 @@
 
 import Tafla
 
+/// How soon to do a task
+@frozen
+public struct Priority: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: Int8
+
+    /// The value of `rawValue`, which needn't be one that `Priority` names, since a field of it holds any `Int8`
+    @inlinable
+    public init(rawValue: Int8) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var low: Self { Self(rawValue: -1) }
+
+    @inlinable
+    public static var normal: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var high: Self { Self(rawValue: 1) }
+}
+
+/// What has become of a task
+@frozen
+public struct State: RawRepresentable, Hashable, Sendable {
+    /// The integer that stores the value
+    public let rawValue: UInt16
+
+    /// The value of `rawValue`, which needn't be one that `State` names, since a field of it holds any `UInt16`
+    @inlinable
+    public init(rawValue: UInt16) {
+        self.rawValue = rawValue
+    }
+
+    @inlinable
+    public static var waiting: Self { Self(rawValue: 0) }
+
+    @inlinable
+    public static var running: Self { Self(rawValue: 1) }
+
+    @inlinable
+    public static var done: Self { Self(rawValue: 2) }
+
+    @inlinable
+    public static var failed: Self { Self(rawValue: 1000) }
+}
+
 /// A small table of two coordinates, an identifier and a name
 @frozen
 public struct Point: ~Escapable {
@@ -550,5 +597,156 @@ public struct Sample: Hashable, Sendable {
         writer.writeScalar(self.key)
         writer.writeScalar(self.a)
         writer.writeScalar(self.b)
+    }
+}
+
+/// A task, whose fields are enums, alone, in an array and in a struct
+@frozen
+public struct Task: ~Escapable {
+    /// The layout that a `Task` is written and read in
+    @inlinable
+    public static var layout: TableLayout { TableLayout.default }
+
+    @usableFromInline
+    let _reader: TableReader
+
+    /// Reads a `Task` from `bytes`, which it can't outlive
+    @inlinable
+    @_lifetime(copy bytes)
+    public init(_ bytes: RawSpan) {
+        _reader = TableReader(bytes, layout: Self.layout)
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var priority: Priority {
+        get throws(DecodeError) { try Priority(rawValue: _reader.int8(at: _reader.rootOffset(0))) }
+    }
+
+    /// The states that the task has been in, the oldest first
+    ///
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var history: ArrayView<UInt16> {
+        @_lifetime(copy self)
+        get throws(DecodeError) { try _reader.uint16Array(at: _reader.rootOffset(1)) }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var step: Step {
+        get throws(DecodeError) {
+            let field = try _reader.rootOffset(2)
+            return try Step(_reader.struct(at: field, size: Step.size), at: 0)
+        }
+    }
+
+    /// Throws a `DecodeError` if the field lies outside the bytes.
+    @inlinable
+    public var name: String {
+        get throws(DecodeError) { try _reader.string(at: _reader.rootOffset(3)) }
+    }
+}
+
+/// The fields of a `Task`, to write
+public struct TaskFields: Hashable, Sendable {
+    public var priority: Priority
+    /// The states that the task has been in, the oldest first
+    public var history: [UInt16]
+    public var step: Step
+    public var name: String
+
+    public init(priority: Priority, history: [UInt16], step: Step, name: String) {
+        self.priority = priority
+        self.history = history
+        self.step = step
+        self.name = name
+    }
+
+    /// Writes a `Task` with every field.
+    ///
+    /// Throws a `BuildError` if it's longer than its offset type, `uint32`, addresses.
+    public func serialize() throws(BuildError) -> [UInt8] {
+        var sizer = try TableSizer(fields: 4, layout: Task.layout)
+        sizer.addInt8()
+        sizer.addUInt16Array(count: self.history.count)
+        sizer.addStruct(size: Step.size)
+        sizer.addString(self.name)
+
+        return try sizer.bytes { writer in
+            writer.setInt8(0, self.priority.rawValue)
+            writer.setUInt16Array(1, self.history)
+            writer.setStruct(2)
+            self.step.write(to: &writer)
+            writer.setString(3, self.name)
+        }
+    }
+}
+
+/// A state and how long the task has been in it
+@frozen
+public struct Step: Hashable, Sendable {
+    /// The byte length of a `Step`
+    public static let size = 7
+    /// The alignment of an array of `Step`s: its largest scalar's size
+    public static let alignment: Alignment = .four
+
+    public var state: State
+    public var priority: Priority
+    public var seconds: UInt32
+
+    public init(state: State, priority: Priority, seconds: UInt32) {
+        self.state = state
+        self.priority = priority
+        self.seconds = seconds
+    }
+
+    /// Reads a `Step` from the start of `bytes`.
+    ///
+    /// Throws a `DecodeError` if `bytes` are shorter than `size`.
+    @inlinable
+    public init(_ bytes: RawSpan) throws(DecodeError) {
+        self.init(try TableReader(bytes).struct(at: 0, size: Self.size), at: 0)
+    }
+
+    /// Reads a `Step` at `offset` in `bytes`, which hold its scalars there
+    @inlinable
+    init(_ bytes: RawSpan, at offset: Int) {
+        self.state = State(rawValue: UInt16(littleEndianBytes: bytes, at: offset))
+        self.priority = Priority(rawValue: Int8(littleEndianBytes: bytes, at: offset + 2))
+        self.seconds = UInt32(littleEndianBytes: bytes, at: offset + 3)
+    }
+
+    /// The bytes of a `Step`: its scalars, little-endian, one after another
+    public func serialize() -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(Self.size)
+        self.append(to: &bytes)
+        return bytes
+    }
+
+    /// The bytes of an array of `Step`s, as a table holds them: theirs, one after another
+    public static func serializeArray(_ items: [Self]) -> [UInt8] {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(items.count * Self.size)
+        for item in items {
+            item.append(to: &bytes)
+        }
+        return bytes
+    }
+
+    /// Appends the scalars to `bytes`, little-endian
+    func append(to bytes: inout [UInt8]) {
+        withUnsafeBytes(of: self.state.rawValue.littleEndian) { bytes.append(contentsOf: $0) }
+        bytes.append(UInt8(bitPattern: self.priority.rawValue))
+        withUnsafeBytes(of: self.seconds.littleEndian) { bytes.append(contentsOf: $0) }
+    }
+
+    /// Writes the scalars where `writer` is, little-endian, after the `setStruct(_:)` or the
+    /// `setStructArray(_:count:alignment:)` of the field that holds them
+    public func write(to writer: inout TableWriter) {
+        writer.writeScalar(self.state.rawValue)
+        writer.writeScalar(self.priority.rawValue)
+        writer.writeScalar(self.seconds)
     }
 }

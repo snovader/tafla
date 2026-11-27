@@ -1,0 +1,5 @@
+error: `Nothing` has no values
+ --> empty_enum.tafla:1:6
+  |
+1 | enum Nothing: uint8 {
+  |      ^^^^^^^ enums name at least one value

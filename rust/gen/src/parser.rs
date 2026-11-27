@@ -1,17 +1,22 @@
 //! Parses tokens into declarations, without resolving their types:
 //!
 //! ```text
-//! schema      = declaration*
+//! schema      = (declaration | enum)*
 //! declaration = doc* ("message" | "table" | "struct") NAME attributes? "{" field* "}"
 //! attributes  = "(" (attribute ("," attribute)* ","?)? ")"
 //! attribute   = NAME (":" (INTEGER | NAME))?
 //! field       = doc* NAME ":" type "?"? ("=" literal)? attributes? ";"
 //! type        = NAME | "[" NAME "]"
 //! literal     = "-"? (INTEGER | DECIMAL) | NAME
+//! enum        = doc* "enum" NAME ":" NAME "{" value* "}"
+//! value       = doc* NAME "=" "-"? INTEGER ";"
 //! ```
 
 use crate::diagnostic::{Diagnostic, Span};
 use crate::lexer::{Token, TokenKind, tokenize};
+
+/// The keywords that start a declaration, as an error lists them
+const KEYWORDS: &str = "`message`, `table`, `struct` or `enum`";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Keyword {
@@ -87,7 +92,38 @@ pub enum LiteralKind {
     Name,
 }
 
-pub fn parse(source: &str) -> Result<Vec<Declaration>, Diagnostic> {
+/// An enum, whose values name integers of its underlying type
+#[derive(Debug)]
+pub struct EnumDeclaration {
+    pub name: Name,
+    pub docs: Vec<String>,
+    /// The name after the colon, which the checker resolves to an integer
+    /// type
+    pub underlying: Name,
+    pub values: Vec<ValueDeclaration>,
+}
+
+#[derive(Debug)]
+pub struct ValueDeclaration {
+    pub name: Name,
+    pub docs: Vec<String>,
+    /// The integer, which may be as small as an `int64`'s least and as large
+    /// as a `uint64`'s greatest
+    pub value: i128,
+    /// The span of the integer, with its sign
+    pub span: Span,
+}
+
+/// A schema's declarations, each kind in the order declared. Messages,
+/// tables and structs name each other by their position in `declarations`,
+/// which the enums, in a list of their own, leave as it is.
+#[derive(Debug, Default)]
+pub struct Declarations {
+    pub declarations: Vec<Declaration>,
+    pub enums: Vec<EnumDeclaration>,
+}
+
+pub fn parse(source: &str) -> Result<Declarations, Diagnostic> {
     let tokens = tokenize(source)?;
     let mut parser = Parser {
         source,
@@ -95,12 +131,17 @@ pub fn parse(source: &str) -> Result<Vec<Declaration>, Diagnostic> {
         index: 0,
     };
 
-    let mut declarations = Vec::new();
+    let mut schema = Declarations::default();
     while parser.peek().kind != TokenKind::End {
-        declarations.push(parser.declaration()?);
+        let docs = parser.docs()?;
+        if parser.at_keyword("enum") {
+            schema.enums.push(parser.enumeration(docs)?);
+        } else {
+            schema.declarations.push(parser.declaration(docs)?);
+        }
     }
 
-    Ok(declarations)
+    Ok(schema)
 }
 
 struct Parser<'a> {
@@ -110,17 +151,15 @@ struct Parser<'a> {
 }
 
 impl Parser<'_> {
-    fn declaration(&mut self) -> Result<Declaration, Diagnostic> {
-        let docs = self.docs()?;
-
-        let keyword_token = self.expect(TokenKind::Identifier, "`message`, `table` or `struct`")?;
+    fn declaration(&mut self, docs: Vec<String>) -> Result<Declaration, Diagnostic> {
+        let keyword_token = self.expect(TokenKind::Identifier, KEYWORDS)?;
         let keyword = match self.text(keyword_token) {
             "message" => Keyword::Message,
             "table" => Keyword::Table,
             "struct" => Keyword::Struct,
             other => {
                 return Err(Diagnostic::new(
-                    format!("expected `message`, `table` or `struct`, found `{other}`"),
+                    format!("expected {KEYWORDS}, found `{other}`"),
                     keyword_token.span,
                 ));
             }
@@ -252,8 +291,64 @@ impl Parser<'_> {
         })
     }
 
-    /// Collects the `///` lines before a declaration or field, without the
-    /// slashes and the space after them
+    fn at_keyword(&self, keyword: &str) -> bool {
+        let token = self.peek();
+        token.kind == TokenKind::Identifier && self.text(token) == keyword
+    }
+
+    fn enumeration(&mut self, docs: Vec<String>) -> Result<EnumDeclaration, Diagnostic> {
+        self.expect(TokenKind::Identifier, "`enum`")?;
+        let name = self.name("a name")?;
+        self.expect(TokenKind::Colon, "`:` and the enum's integer type")?;
+        let underlying = self.name("an integer type")?;
+
+        self.expect(TokenKind::LeftBrace, "`{`")?;
+        let mut values = Vec::new();
+        while self.peek().kind != TokenKind::RightBrace {
+            values.push(self.value()?);
+        }
+        self.expect(TokenKind::RightBrace, "`}`")?;
+
+        Ok(EnumDeclaration {
+            name,
+            docs,
+            underlying,
+            values,
+        })
+    }
+
+    fn value(&mut self) -> Result<ValueDeclaration, Diagnostic> {
+        let docs = self.docs()?;
+        let name = self.name("a value's name or `}`")?;
+        self.expect(TokenKind::Equals, "`=` and the value's integer")?;
+
+        let sign = (self.peek().kind == TokenKind::Minus).then(|| self.advance());
+        let token = self.expect(TokenKind::Integer, "an integer")?;
+        let span = Span {
+            start: sign.map_or(token.span.start, |sign| sign.span.start),
+            end: token.span.end,
+        };
+        let magnitude = self
+            .text(token)
+            .parse::<u64>()
+            .map_err(|_| Diagnostic::new("the integer is too large", span))?;
+        let value = if sign.is_some() {
+            -i128::from(magnitude)
+        } else {
+            i128::from(magnitude)
+        };
+        self.expect(TokenKind::Semicolon, "`;`")?;
+
+        Ok(ValueDeclaration {
+            name,
+            docs,
+            value,
+            span,
+        })
+    }
+
+    /// Collects the `///` lines before a declaration, a field or an enum's
+    /// value, without the slashes and the space after them
     fn docs(&mut self) -> Result<Vec<String>, Diagnostic> {
         let mut docs = Vec::new();
         let mut last = None;

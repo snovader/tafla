@@ -1,10 +1,12 @@
 // Names that would clash in the generated C#, which it renames or names
 // without clashing: fields named after the members of the generated types,
 // after their own definition and its fields, and after other declarations
-// of other types, and declarations named after the members of the views
-// that hold them. Its code, generated in the namespace `Names.@event.@global`
-// of keywords, lies in names/, which Tafla.Generated compiles and Tafla.Tests
-// runs, and rust/gen/tests/csharp_schemas.rs keeps it generated.
+// of other types, declarations named after the members of the views that
+// hold them, values of enums named after their enum and the methods of
+// enums, and fields of enums named after other enums. Its code, generated in
+// the namespace `Names.@event.@global` of keywords, lies in names/, which
+// Tafla.Generated compiles and Tafla.Tests runs, and
+// rust/gen/tests/csharp_schemas.rs keeps it generated.
 
 /// Fields named after the members of a message's reader and fields, and of
 /// `object` and records
@@ -86,4 +88,58 @@ struct Point {
 
 table Range {
     start: uint8;
+}
+
+/// Values named after their enum and after the methods of an enum and
+/// `object`, which they hide only where the methods aren't called
+enum Member: uint8 {
+    member = 0;
+    equals = 1;
+    get_hash_code = 2;
+    to_string = 3;
+    get_type = 4;
+    has_flag = 5;
+    compare_to = 6;
+    get_type_code = 7;
+    memberwise_clone = 8;
+    finalize = 9;
+}
+
+enum Color: uint8 {
+    red = 0;
+    green = 1;
+}
+
+enum Shade: uint16 {
+    light = 0;
+    dark = 65535;
+}
+
+enum Lean: int8 {
+    left = -1;
+    right = 1;
+}
+
+/// Enums in fields named after each other's enums, of a message written
+/// whole, of a table that nests whole and of a struct
+message Enums {
+    shade: Color;
+    color: Shade;
+    lean: Lean;
+    member: Member;
+    hue: Hue;
+    tint: Tint;
+    name: string;
+}
+
+table Hue {
+    shade: Color;
+    color: Shade;
+    lean: Lean;
+}
+
+struct Tint {
+    shade: Color;
+    color: Shade;
+    lean: Lean;
 }

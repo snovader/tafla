@@ -8,6 +8,12 @@
 //! theirs, rather than as spans of their own.
 //! Structs are aggregates read and written at fixed offsets.
 //!
+//! An enum is an `enum class` of its integer type, which holds any value of
+//! that type, named or not, so that its fields read any integer. They're
+//! `static_cast` from and to that type as they're read and written. An array
+//! of enums is read and written as an array of their integer type, since a
+//! view or a span of integers can't be read as one of enums without a copy.
+//!
 //! The fields whose sizes the schema fixes, scalars, structs and nested
 //! tables of only such fields, the generated code lays out itself, as Go's
 //! does: a message of only such fields, and a string after them, is written
@@ -35,7 +41,7 @@ use super::prose::indefinite_article;
 use super::writer::{CodeWriter, comment_text, escape_outside_code_spans};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
     strongly_connected_components,
 };
 
@@ -259,8 +265,8 @@ pub fn generate(
 
     let mut writer = CodeWriter::new(INDENT);
     writer.line(format!("// {header}"));
-    // A schema without definitions includes nothing
-    if schema.definitions.is_empty() {
+    // A schema without declarations includes nothing
+    if schema.definitions.is_empty() && schema.enums.is_empty() {
         return vec![GeneratedFile {
             path: format!("{stem}.hpp"),
             contents: writer.finish(),
@@ -273,6 +279,13 @@ pub fn generate(
     generator.includes(&mut writer, runtime);
     writer.blank();
     writer.line(format!("namespace {namespace} {{"));
+
+    // The enums, which depend on nothing, before the definitions that hold
+    // them
+    for enumeration in &schema.enums {
+        writer.blank();
+        enum_class(&mut writer, enumeration);
+    }
 
     let tables: Vec<usize> = nesting_order(schema, |definition| !definition.is_struct());
     let structs: Vec<usize> = nesting_order(schema, Definition::is_struct);
@@ -395,15 +408,23 @@ impl Generator<'_> {
     /// `std::optional` holds an optional field to write and a field that a
     /// getter may find missing, but for a scalar, which reads as its default,
     /// and `std::ranges::size()` counts the items of a generic fields
-    /// struct's views.
+    /// struct's views. A schema of only enums includes only `<cstdint>`, of
+    /// their integer types.
     fn includes(&self, writer: &mut CodeWriter, runtime: &str) {
+        if self.schema.definitions.is_empty() {
+            writer.line("#include <cstdint>");
+            return;
+        }
+
         let copies_strings = self.writes_whole_strings();
         let any_optional = self
             .schema
             .definitions
             .iter()
             .flat_map(|definition| &definition.fields)
-            .any(|field| field.optional || matches!(missing_of(field), Some(Missing::Nullopt)));
+            .any(|field| {
+                field.optional || matches!(self.missing_of(field), Some(Missing::Nullopt))
+            });
         let any_generic = (0..self.schema.definitions.len()).any(|index| self.is_generic(index));
         for include in [
             "cstddef",
@@ -602,8 +623,8 @@ impl Generator<'_> {
     fn getter_declarations(&self, writer: &mut CodeWriter, definition: &Definition) {
         for field in &definition.fields {
             let name = identifier(&field.name);
-            let missing = missing_of(field);
-            let mut docs = field.docs.clone();
+            let missing = self.missing_of(field);
+            let mut docs = self.member_docs(field);
             if !docs.is_empty() {
                 docs.push(String::new());
             }
@@ -683,7 +704,7 @@ impl Generator<'_> {
             writer.indent();
             // A field that may be missing is read once the checks find it in
             // the table; every other field as before
-            if let Some(missing) = missing_of(field) {
+            if let Some(missing) = self.missing_of(field) {
                 let checks = MissingChecks::of(definition, index, field, missing.value());
                 checks.before_reader(writer);
                 writer.line(reader);
@@ -696,7 +717,9 @@ impl Generator<'_> {
             }
             let read = match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => "reader.get_uint8(position) != 0".to_owned(),
-                FieldType::Scalar(scalar) => format!("reader.get_{}(position)", scalar.name()),
+                FieldType::Scalar(scalar) => {
+                    self.as_enum(field, format!("reader.get_{}(position)", scalar.name()))
+                }
                 FieldType::Array(scalar) => format!("reader.get_{}_array(position)", scalar.name()),
                 FieldType::String => "reader.get_string(position)".to_owned(),
                 FieldType::Struct(structure) => {
@@ -714,11 +737,11 @@ impl Generator<'_> {
                     format!("{table}(reader.get_table(position), 0)")
                 }
                 FieldType::Vector(_) => {
-                    let view = self.value_type(field.field_type);
+                    let view = self.value_type(field);
                     format!("{view}(reader.get_vector(position))")
                 }
                 FieldType::StructArray(structure) => {
-                    let view = self.value_type(field.field_type);
+                    let view = self.value_type(field);
                     let structure = &type_name(&self.schema.definition(structure).name);
                     format!("{view}(reader.get_struct_array(position, {structure}::SIZE))")
                 }
@@ -727,7 +750,7 @@ impl Generator<'_> {
             writer.dedent();
             writer.line("}");
 
-            if let Some(Missing::Default(_)) = missing_of(field) {
+            if let Some(Missing::Default(_)) = self.missing_of(field) {
                 let checks = MissingChecks::of(definition, index, field, "false");
                 writer.blank();
                 writer.line(format!(
@@ -756,7 +779,7 @@ impl Generator<'_> {
             cpp_doc(writer, &field.docs);
             writer.line(format!(
                 "{} {}{{}};",
-                self.input_type(field.field_type, false),
+                self.input_type(field, false),
                 identifier(&field.name)
             ));
         }
@@ -815,9 +838,10 @@ impl Generator<'_> {
             let at = at_offset("bytes", offset);
             let read = match field.field_type {
                 FieldType::Scalar(Scalar::Bool) => format!("bytes[{offset}] != 0"),
-                FieldType::Scalar(scalar) => {
-                    format!("::tafla::load_le<{}>({at})", scalar_type(scalar))
-                }
+                FieldType::Scalar(scalar) => self.as_enum(
+                    field,
+                    format!("::tafla::load_le<{}>({at})", scalar_type(scalar)),
+                ),
                 FieldType::Struct(inner) => {
                     format!(
                         "{}::from_bytes({at})",
@@ -859,7 +883,10 @@ impl Generator<'_> {
                         "bytes_[{offset}] = static_cast<std::uint8_t>({name});"
                     ));
                 }
-                FieldType::Scalar(_) => writer.line(format!("::tafla::store_le({at}, {name});")),
+                FieldType::Scalar(scalar) => writer.line(format!(
+                    "::tafla::store_le({at}, {});",
+                    as_integer(field, scalar, &name)
+                )),
                 FieldType::Struct(_) => writer.line(format!("{name}.to_bytes({at});")),
                 _ => unreachable!("structs hold scalars and structs only"),
             }
@@ -941,8 +968,8 @@ impl Generator<'_> {
                     cpp_doc(writer, &docs);
                     generic_field.parameter.clone()
                 } else {
-                    cpp_doc(writer, &field.docs);
-                    self.input_type(field.field_type, in_generic)
+                    cpp_doc(writer, &self.member_docs(field));
+                    self.input_type(field, in_generic)
                 };
             // `std::nullopt` writes an optional field as absent
             let field_type = if field.optional {
@@ -1489,9 +1516,11 @@ impl Generator<'_> {
             FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                 "writer_.set_uint8({position}, static_cast<std::uint8_t>({get}));"
             )),
-            FieldType::Scalar(scalar) => {
-                writer.line(format!("writer_.set_{}({position}, {get});", scalar.name()));
-            }
+            FieldType::Scalar(scalar) => writer.line(format!(
+                "writer_.set_{}({position}, {});",
+                scalar.name(),
+                as_integer(field, scalar, &get)
+            )),
             FieldType::Array(scalar) => writer.line(format!(
                 "writer_.set_{}_array({position}, {get});",
                 scalar.name()
@@ -1565,19 +1594,19 @@ impl Generator<'_> {
     /// `std::optional` of it when the field may be missing, but for a scalar,
     /// which reads as its default
     fn getter_type(&self, field: &Field) -> String {
-        let value = self.value_type(field.field_type);
-        match missing_of(field) {
+        let value = self.value_type(field);
+        match self.missing_of(field) {
             Some(Missing::Nullopt) => format!("std::optional<{value}>"),
             Some(Missing::Default(_)) | None => value,
         }
     }
 
     /// The type that a getter reads
-    fn value_type(&self, field_type: FieldType) -> String {
+    fn value_type(&self, field: &Field) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(Scalar::Uint8) => "std::span<const std::uint8_t>".to_owned(),
             FieldType::Array(scalar) => format!("::tafla::ArrayView<{}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
@@ -1591,7 +1620,7 @@ impl Generator<'_> {
     /// table's fields struct as a generic fields struct does when
     /// `in_generic`. The arrays of structs of a fields struct are generic, and
     /// take their type parameters' names instead.
-    fn input_type(&self, field_type: FieldType, in_generic: bool) -> String {
+    fn input_type(&self, field: &Field, in_generic: bool) -> String {
         let name = |index: usize| type_name(&self.schema.definition(index).name);
         let fields = |index: usize| {
             fields_type(
@@ -1601,8 +1630,8 @@ impl Generator<'_> {
             )
         };
 
-        match field_type {
-            FieldType::Scalar(scalar) => scalar_type(scalar).to_owned(),
+        match field.field_type {
+            FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar),
             FieldType::Array(scalar) => format!("std::span<const {}>", scalar_type(scalar)),
             FieldType::String => "std::string_view".to_owned(),
             FieldType::Struct(index) => name(index),
@@ -1610,6 +1639,71 @@ impl Generator<'_> {
             FieldType::Table(index) => fields(index),
             FieldType::Vector(index) => format!("std::span<const {}>", fields(index)),
         }
+    }
+
+    /// The type of a scalar field: its enum, or its scalar's type
+    fn scalar_field_type(&self, field: &Field, scalar: Scalar) -> String {
+        match field.enumeration {
+            Some(index) => type_name(&self.schema.enumeration(index).name),
+            None => scalar_type(scalar).to_owned(),
+        }
+    }
+
+    /// `read`, an expression of a scalar field's integer, as the field's
+    /// enum, with a `static_cast` that any integer of the type converts
+    /// through unchecked, or as it is for a field of no enum
+    fn as_enum(&self, field: &Field, read: String) -> String {
+        match field.enumeration {
+            Some(index) => format!(
+                "static_cast<{}>({read})",
+                type_name(&self.schema.enumeration(index).name)
+            ),
+            None => read,
+        }
+    }
+
+    /// A field's documentation, as its member and its getter carry it, with
+    /// the enum of an array of enums, whose type names their integer type
+    /// alone
+    /// What the getter of a field returns for a table that doesn't hold it,
+    /// when it may be missing: an optional field, or one that a later version
+    /// or revision added. An enum's default is a value of the enum.
+    fn missing_of(&self, field: &Field) -> Option<Missing> {
+        if !field.may_be_missing() {
+            return None;
+        }
+
+        Some(match field.field_type {
+            FieldType::Scalar(scalar) => {
+                let default = field
+                    .default
+                    .expect("a scalar that may be missing has a default");
+                let literal = cpp_literal(default, scalar);
+                Missing::Default(match field.enumeration {
+                    Some(index) => format!(
+                        "static_cast<{}>({literal})",
+                        type_name(&self.schema.enumeration(index).name)
+                    ),
+                    None => literal,
+                })
+            }
+            _ => Missing::Nullopt,
+        })
+    }
+
+    fn member_docs(&self, field: &Field) -> Vec<String> {
+        let mut docs = field.docs.clone();
+        if let (FieldType::Array(scalar), Some(index)) = (field.field_type, field.enumeration) {
+            if !docs.is_empty() {
+                docs.push(String::new());
+            }
+            docs.push(format!(
+                "`{}`s, as the `{}`s that store them",
+                type_name(&self.schema.enumeration(index).name),
+                scalar_type(scalar)
+            ));
+        }
+        docs
     }
 }
 
@@ -1635,7 +1729,9 @@ fn generic_fields(schema: &Schema, namespace: &str) -> Vec<Vec<Option<GenericFie
     let declared: HashSet<String> = schema
         .definitions
         .iter()
-        .map(|definition| type_name(&definition.name))
+        .map(|definition| &definition.name)
+        .chain(schema.enums.iter().map(|enumeration| &enumeration.name))
+        .map(|name| type_name(name))
         .collect();
 
     schema
@@ -1738,25 +1834,6 @@ impl Missing {
             Self::Default(default) => default,
         }
     }
-}
-
-/// What the getter of a field returns for a table that doesn't hold it,
-/// when it may be missing: an optional field, or one that a later version or
-/// revision added
-fn missing_of(field: &Field) -> Option<Missing> {
-    if !field.may_be_missing() {
-        return None;
-    }
-
-    Some(match field.field_type {
-        FieldType::Scalar(scalar) => {
-            let default = field
-                .default
-                .expect("a scalar that may be missing has a default");
-            Missing::Default(cpp_literal(default, scalar))
-        }
-        _ => Missing::Nullopt,
-    })
 }
 
 /// The name of the method that tells whether a table holds a scalar that may
@@ -2145,12 +2222,70 @@ fn put_fields(writer: &mut CodeWriter, fields: &[Field], positions: &[usize]) {
             FieldType::Scalar(Scalar::Bool) => writer.line(format!(
                 "bytes_[{position}] = static_cast<std::uint8_t>({name});"
             )),
-            FieldType::Scalar(_) => writer.line(format!("::tafla::store_le({at}, {name});")),
+            FieldType::Scalar(scalar) => writer.line(format!(
+                "::tafla::store_le({at}, {});",
+                as_integer(field, scalar, &name)
+            )),
             FieldType::Struct(_) | FieldType::Table(_) => {
                 writer.line(format!("{name}.to_bytes({at});"));
             }
             _ => unreachable!("only fields of fixed size are written whole"),
         }
+    }
+}
+
+/// `value`, a scalar field's member, as the integer that stores it: an
+/// enum's with a `static_cast` to its integer type, which the runtime's
+/// setters and `store_le()` take, or as it is for a field of no enum
+fn as_integer(field: &Field, scalar: Scalar, value: &str) -> String {
+    if field.enumeration.is_some() {
+        format!("static_cast<{}>({value})", scalar_type(scalar))
+    } else {
+        value.to_owned()
+    }
+}
+
+/// An enum, as an `enum class` of its integer type, with the schema's
+/// documentation of it and of each value. An enum class of a fixed type
+/// holds any value of that type, so that a field of the enum reads any
+/// integer, named or not, as its documentation says.
+fn enum_class(writer: &mut CodeWriter, enumeration: &Enum) {
+    let name = &type_name(&enumeration.name);
+    let integer = scalar_type(enumeration.underlying);
+    let mut docs = enumeration.docs.clone();
+    if !docs.is_empty() {
+        docs.push(String::new());
+    }
+    docs.push(format!(
+        "A value of `{name}`: one that it names, or any other `{integer}`"
+    ));
+
+    cpp_doc(writer, &docs);
+    writer.line(format!("enum class {name} : {integer} {{"));
+    writer.indent();
+    for value in &enumeration.values {
+        cpp_doc(writer, &value.docs);
+        writer.line(format!(
+            "{} = {},",
+            enumerator(&value.name),
+            enumerator_value(value.value)
+        ));
+    }
+    writer.dedent();
+    writer.line("};");
+}
+
+/// An enum value's integer as a C++ expression. A literal has no sign, so
+/// `int64`'s least, whose magnitude no `long long` holds, is written as
+/// `INT64_MIN` is, one less than its negated greatest, and an integer beyond
+/// `long long`'s greatest takes a `U`, for an unsigned type that holds it.
+fn enumerator_value(value: i128) -> String {
+    if value == i128::from(i64::MIN) {
+        format!("{} - 1", i64::MIN + 1)
+    } else if value > i128::from(i64::MAX) {
+        format!("{value}U")
+    } else {
+        value.to_string()
     }
 }
 
@@ -2540,6 +2675,17 @@ fn doxygen_text(text: &str) -> String {
 
 fn identifier(name: &str) -> String {
     if KEYWORDS.contains(&name) || MACROS.contains(&name) || MEMBERS.contains(&name) {
+        format!("{name}_")
+    } else {
+        name.to_owned()
+    }
+}
+
+/// An enum's value, with a `_` after a keyword or a macro, as a field's
+/// name takes. An enum class declares nothing beside its values, so they
+/// keep the names of the members that the generated code declares.
+fn enumerator(name: &str) -> String {
+    if KEYWORDS.contains(&name) || MACROS.contains(&name) {
         format!("{name}_")
     } else {
         name.to_owned()

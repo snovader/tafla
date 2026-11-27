@@ -1,0 +1,69 @@
+// Go declares each value as a constant of its package, named after its enum
+
+enum Color: uint8 {
+    /// `ColorRed`, which a struct declares
+    red = 0;
+    green = 1;
+}
+
+struct ColorRed {
+    value: uint8;
+}
+
+/// `NewPoint` reads a `Point` in Go
+enum New: uint8 {
+    point = 0;
+    line = 1;
+}
+
+/// `ReadSample` reads a `Sample` in Go
+enum Read: uint8 {
+    sample = 0;
+}
+
+/// `PointFormatVersion` holds the version of `Point` in Go
+enum PointFormat: uint8 {
+    version = 1;
+}
+
+/// `ABC`, as `c` of `AB` is
+enum A: uint8 {
+    b_c = 0;
+}
+
+enum AB: uint8 {
+    c = 0;
+}
+
+message Point (version: 1) {
+    x: float64;
+}
+
+struct Sample {
+    key: uint32;
+}
+
+/// `EdgeListFields` writes an `EdgeList` in Go, `EdgeItemVector` views a
+/// vector of `EdgeItem`, and `EdgeSampleArray` an array of `EdgeSample`
+enum Edge: uint8 {
+    list_fields = 0;
+    item_vector = 1;
+    sample_array = 2;
+    /// Go declares no `EdgeSampleFields`, since a struct is written from
+    /// itself, nor an `EdgeItemArray`, since no array holds a table
+    sample_fields = 3;
+    item_array = 4;
+}
+
+message EdgeList {
+    items: [EdgeItem];
+    samples: [EdgeSample];
+}
+
+table EdgeItem {
+    length: float32;
+}
+
+struct EdgeSample {
+    key: uint32;
+}

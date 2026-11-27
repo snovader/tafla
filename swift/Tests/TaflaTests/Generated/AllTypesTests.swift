@@ -4,7 +4,8 @@ import Testing
 
 // The code generated from schemas/all_types.tafla, of every type of field:
 // how the tests draw and read its messages and structs, fields named after
-// keywords, and trees of tables that hold vectors of themselves.
+// keywords, trees of tables that hold vectors of themselves, and enums, whose
+// fields hold any integer of their types, named or not.
 // GeneratedTests.swift checks the properties of every message and struct of
 // the example schemas.
 
@@ -39,6 +40,12 @@ let allTypesMessages = [
         draw: { $0.structs() },
         read: { bytes throws(DecodeError) in try StructsFields(reading: Structs(bytes)) }
     ),
+    Message(
+        "all_types.Enums",
+        layout: .default,
+        draw: { $0.enums() },
+        read: { bytes throws(DecodeError) in try EnumsFields(reading: Enums(bytes)) }
+    ),
 ]
 
 let allTypesStructs = [
@@ -46,6 +53,8 @@ let allTypesStructs = [
     StructCase("all_types.Point", Point.self, size: 8) { $0.point() },
     StructCase("all_types.Packed", Packed.self, size: 43) { $0.packed() },
     StructCase("all_types.Documented", Documented.self, size: 7) { $0.documented() },
+    StructCase("all_types.Mark", Mark.self, size: 24) { $0.mark() },
+    StructCase("all_types.Turn", Turn.self, size: 9) { $0.turn() },
 ]
 
 extension ScalarsFields: GeneratedFields {}
@@ -53,10 +62,55 @@ extension ArraysFields: GeneratedFields {}
 extension NestedFields: GeneratedFields {}
 extension ReservedFields: GeneratedFields {}
 extension StructsFields: GeneratedFields {}
+extension EnumsFields: GeneratedFields {}
 extension Segment: GeneratedStruct {}
 extension Point: GeneratedStruct {}
 extension Packed: GeneratedStruct {}
 extension Documented: GeneratedStruct {}
+extension Mark: GeneratedStruct {}
+extension Turn: GeneratedStruct {}
+
+// The values that each enum names, in the order that the schema declares them
+
+extension Level: GeneratedEnum {
+    static let named: [Level] = [.low, .medium, .high]
+}
+
+extension Direction: GeneratedEnum {
+    static let named: [Direction] = [.backward, .none, .forward, .furthestBack]
+}
+
+extension Unit: GeneratedEnum {
+    static let named: [Unit] = [.last, .first, .v2]
+}
+
+extension Change: GeneratedEnum {
+    static let named: [Change] = [.least, .greatest]
+}
+
+extension Status: GeneratedEnum {
+    static let named: [Status] = [.ok, .notFound, .greatest]
+}
+
+extension Sign: GeneratedEnum {
+    static let named: [Sign] = [.least, .greatest]
+}
+
+extension Mask: GeneratedEnum {
+    static let named: [Mask] = [.none, .one, .beyondFloat64, .all]
+}
+
+extension Extent: GeneratedEnum {
+    static let named: [Extent] = [.least, .zero, .greatest]
+}
+
+// Keywords after a dot are members, but for `self`, which names the type,
+// and `init`, which names the initializer, unless it's in backticks
+extension Word: GeneratedEnum {
+    static let named: [Word] = [
+        .class, .default, .in, .match, .self_, .type, .true, .null, .none, .`init`, .new, .name, .value,
+    ]
+}
 
 /// How deep the tests draw trees of children, and read them back: a tree's
 /// children, and theirs. Corrupted bytes can make a tree hold itself, so a
@@ -155,6 +209,43 @@ extension Draw {
 
     fileprivate mutating func documented() -> Documented {
         Documented(one: integer(), two: integer(), undocumented: integer())
+    }
+
+    fileprivate mutating func enums() -> EnumsFields {
+        EnumsFields(
+            level: value(),
+            levels: integers(of: Level.self, most: 6),
+            direction: value(),
+            directions: integers(of: Direction.self, most: 6),
+            unit: value(),
+            units: integers(of: Unit.self, most: 6),
+            change: value(),
+            changes: integers(of: Change.self, most: 6),
+            status: value(),
+            statuses: integers(of: Status.self, most: 6),
+            sign: value(),
+            signs: integers(of: Sign.self, most: 6),
+            mask: value(),
+            masks: integers(of: Mask.self, most: 6),
+            extent: value(),
+            extents: integers(of: Extent.self, most: 6),
+            word: value(),
+            mark: mark(),
+            marks: array(most: 4) { $0.mark() },
+            steps: array(most: 3) { $0.step() }
+        )
+    }
+
+    fileprivate mutating func step() -> StepFields {
+        StepFields(level: value(), mark: mark(), name: string(most: 6))
+    }
+
+    fileprivate mutating func mark() -> Mark {
+        Mark(level: value(), change: value(), weight: float(), extent: value(), turn: turn())
+    }
+
+    fileprivate mutating func turn() -> Turn {
+        Turn(direction: value(), mask: value())
     }
 }
 
@@ -257,6 +348,45 @@ extension StructsFields {
     }
 }
 
+extension EnumsFields {
+    init(reading enums: borrowing Enums) throws(DecodeError) {
+        let view = try enums.steps
+        var steps: [StepFields] = []
+        for index in view.indices {
+            steps.append(try StepFields(reading: view[index]))
+        }
+
+        try self.init(
+            level: enums.level,
+            levels: Array(enums.levels),
+            direction: enums.direction,
+            directions: Array(enums.directions),
+            unit: enums.unit,
+            units: Array(enums.units),
+            change: enums.change,
+            changes: Array(enums.changes),
+            status: enums.status,
+            statuses: Array(enums.statuses),
+            sign: enums.sign,
+            signs: Array(enums.signs),
+            mask: enums.mask,
+            masks: Array(enums.masks),
+            extent: enums.extent,
+            extents: Array(enums.extents),
+            word: enums.word,
+            mark: enums.mark,
+            marks: Array(enums.marks),
+            steps: steps
+        )
+    }
+}
+
+extension StepFields {
+    init(reading step: borrowing Step) throws(DecodeError) {
+        try self.init(level: step.level, mark: step.mark, name: step.name)
+    }
+}
+
 @Suite("Generated all types")
 struct AllTypesTests {
     // A struct's scalars lie in place in its bytes, those of a struct within
@@ -353,6 +483,55 @@ struct AllTypesTests {
             }
         }
     }
+
+    // An enum's static members are the integers that the schema names, the
+    // least and the greatest of each integer type among them
+    @Test func namesTheIntegersThatTheSchemaNames() {
+        #expect(Level.named.map(\.rawValue) == [0, 1, 2])
+        #expect(Direction.named.map(\.rawValue) == [-1, 0, 1, -128])
+        #expect(Unit.named.map(\.rawValue) == [65_535, 0, 2])
+        #expect(Change.named.map(\.rawValue) == [-32_768, 32_767])
+        #expect(Status.named.map(\.rawValue) == [0, 404, 4_294_967_295])
+        #expect(Sign.named.map(\.rawValue) == [-2_147_483_648, 2_147_483_647])
+        #expect(Mask.named.map(\.rawValue) == [0, 1, 9_007_199_254_740_993, 18_446_744_073_709_551_615])
+        #expect(Extent.named.map(\.rawValue) == [-9_223_372_036_854_775_808, 0, 9_223_372_036_854_775_807])
+        #expect(Word.named.map(\.rawValue) == Array(0...12))
+    }
+
+    // A field of an enum holds any integer of its type, which reads as the
+    // enum's value of it, whether the enum names it or not
+    @Test func readsEveryByteOfAFieldOfAnEnumAsAValue() throws {
+        var bytes = try EnumsFields.example.serialize()
+        let level = try withSpan(of: bytes) { bytes throws in try TableReader(bytes).rootOffset(0) }
+
+        for byte in UInt8.min...UInt8.max {
+            bytes[level] = byte
+            let read = try withSpan(of: bytes) { bytes throws in try Enums(bytes).level }
+            #expect(read.rawValue == byte)
+        }
+        #expect(Level(rawValue: 2) == .high)
+        #expect(!Level.named.contains(Level(rawValue: 3)))
+    }
+
+    // A struct writes the integers of its enums, little-endian, as it writes
+    // its other scalars
+    @Test func writesTheValuesThatAnEnumNamesAsTheirIntegers() throws {
+        let mark = Mark(
+            level: .high,
+            change: .least,
+            weight: 0.5,
+            extent: .greatest,
+            turn: Turn(direction: .backward, mask: .beyondFloat64)
+        )
+        let bytes = mark.serialize()
+
+        let integers: [[UInt8]] = [
+            [2], littleEndianBytes(Int16.min), littleEndianBytes(Float(0.5).bitPattern),
+            littleEndianBytes(Int64.max), [0xff], littleEndianBytes(UInt64(9_007_199_254_740_993)),
+        ]
+        #expect(bytes == integers.flatMap { $0 })
+        #expect(try withSpan(of: bytes) { bytes throws in try Mark(bytes) } == mark)
+    }
 }
 
 extension StructsFields {
@@ -375,5 +554,49 @@ extension StructsFields {
         segment: Segment(start: Point(x: 1, y: 2), end: Point(x: 3, y: 4)),
         segments: [],
         path: PathFields(start: Point(x: 5, y: 6), points: [Point(x: 7, y: 8)])
+    )
+}
+
+extension EnumsFields {
+    /// Values of every enum, named and not, and arrays of their integers
+    static let example = EnumsFields(
+        level: .high,
+        levels: [0, 3, 255],
+        direction: .furthestBack,
+        directions: [-1, 100],
+        unit: .last,
+        units: [2, 1_000],
+        change: .least,
+        changes: [],
+        status: .notFound,
+        statuses: [4_294_967_295, 7],
+        sign: Sign(rawValue: 5),
+        signs: [-2_147_483_648],
+        mask: .all,
+        masks: [9_007_199_254_740_993],
+        extent: .least,
+        extents: [0, -5],
+        word: .`init`,
+        mark: Mark(
+            level: .low,
+            change: .greatest,
+            weight: 1.5,
+            extent: .zero,
+            turn: Turn(direction: .none, mask: .one)
+        ),
+        marks: [],
+        steps: [
+            StepFields(
+                level: Level(rawValue: 9),
+                mark: Mark(
+                    level: .medium,
+                    change: Change(rawValue: 0),
+                    weight: 2.5,
+                    extent: Extent(rawValue: 1),
+                    turn: Turn(direction: .forward, mask: Mask(rawValue: 2))
+                ),
+                name: "step"
+            )
+        ]
     )
 }

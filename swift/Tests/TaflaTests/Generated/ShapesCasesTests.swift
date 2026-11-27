@@ -108,9 +108,27 @@ private func messageFields(of type: String, _ json: JSON) throws -> any Sendable
         )
     case "ItemList":
         return try ItemListFields(items: json["items"].array.map(itemFields))
+    case "Task":
+        return try TaskFields(
+            priority: Priority(rawValue: Int8(json["priority"].int)),
+            history: json["history"].array.map { UInt16(try $0.int) },
+            step: step(json["step"]),
+            name: json["name"].string
+        )
     default:
         throw ParseError(description: "shapes.tafla has no message \(type)")
     }
+}
+
+/// A step, whose enums the case holds as their integers
+private func step(_ json: JSON) throws -> Step {
+    let step = try Step(
+        state: State(rawValue: UInt16(json["state"].int)),
+        priority: Priority(rawValue: Int8(json["priority"].int)),
+        seconds: UInt32(json["seconds"].int)
+    )
+    try checkCount(of: json, step)
+    return step
 }
 
 private func itemFields(_ json: JSON) throws -> ItemFields {

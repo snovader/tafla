@@ -8,8 +8,10 @@ namespace Tafla.Tests.Generated;
 
 /// <summary>
 /// The code generated from <c>schemas/shapes.tafla</c>: its messages, which
-/// <see cref="GeneratedMessageTests"/> writes and reads with the others, its document's version, its
-/// vector's items in place, and its struct.
+/// <see cref="GeneratedMessageTests"/> writes and reads with the others, its task's enums with any
+/// integers of their types, its document's version, its vector's items in place, and its struct. Its
+/// <see cref="Shapes.Task"/> is named in full, since the tests' implicit usings import
+/// <see cref="System.Threading.Tasks.Task"/>.
 /// </summary>
 public class ShapesTests
 {
@@ -55,6 +57,21 @@ public class ShapesTests
         (key, a, b) => new Sample { Key = key, A = a, B = b }
     );
 
+    private static readonly Gen<Step> Steps = Gen.Select(
+        UInt16s,
+        Int8s,
+        UInt32s,
+        (state, priority, seconds) => new Step { State = (State)state, Priority = (Priority)priority, Seconds = seconds }
+    );
+
+    public static readonly Gen<TaskFields> Tasks = Gen.Select(
+        Int8s,
+        ArraysOf(UInt16s),
+        Steps,
+        Strings,
+        (priority, history, step, name) => new TaskFields { Priority = (Priority)priority, History = history, Step = step, Name = name }
+    );
+
     public static readonly GeneratedMessage[] Messages =
     [
         new GeneratedMessage<PointFields>(
@@ -80,6 +97,14 @@ public class ShapesTests
             fields => fields.Serialize(),
             (fields, bytes) => fields.SerializeInto(bytes),
             bytes => Describe(new ItemList(bytes))
+        ),
+        new GeneratedMessage<TaskFields>(
+            "shapes.Task",
+            Tasks,
+            Describe,
+            fields => fields.Serialize(),
+            (fields, bytes) => fields.SerializeInto(bytes),
+            bytes => Describe(new Shapes.Task(bytes))
         ),
     ];
 
@@ -277,4 +302,13 @@ public class ShapesTests
     private static TableField DescribeItem(Item item) => Nested(Of(item.Value), Nested(Of(item.Pair.First), Of(item.Pair.Second)));
 
     private static StructField Describe(Sample sample) => Struct(Of(sample.Key), Of(sample.A), Of(sample.B));
+
+    /// <summary>A task's fields, whose enums are the integer types that store them</summary>
+    public static Table Describe(TaskFields fields) =>
+        Message(DefaultLayout, Of((sbyte)fields.Priority), Of(fields.History.Span), Describe(fields.Step), Of(fields.Name));
+
+    public static Table Describe(Shapes.Task task) =>
+        Message(DefaultLayout, Of((sbyte)task.Priority), Of(task.History), Describe(task.Step), Of(task.Name));
+
+    private static StructField Describe(Step step) => Struct(Of((ushort)step.State), Of((sbyte)step.Priority), Of(step.Seconds));
 }

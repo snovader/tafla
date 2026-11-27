@@ -9,6 +9,7 @@ namespace Tafla.Tests.Generated;
 /// The code generated from <c>schemas/all_types.tafla</c>, whose types are named here in full, since
 /// they share names with the tests' model: its messages, which <see cref="GeneratedMessageTests"/>
 /// writes and reads with the others, its bools, and the views of its vectors and arrays of structs.
+/// <see cref="EnumsTests"/> tests its enums and their message.
 /// </summary>
 public class AllTypesTests
 {

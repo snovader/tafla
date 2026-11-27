@@ -7,7 +7,9 @@
 //! `field_values()`, which reads every field's value into a tuple, nested
 //! tables' included, and by `fields()`. A message of only such fields is
 //! written and read without a writer or a reader. Messages, tables and
-//! structs of scalars are also written from tuples of their values.
+//! structs of scalars are also written from tuples of their values. An enum
+//! is an `IntEnum` of the values that it names, and a field of it is an
+//! `int`, as a field of its integer type is, which any integer reads as.
 //!
 //! A field that may be missing, optional or added `since` a version, is read
 //! by its getter after checks that find whether the table holds it, and is
@@ -23,7 +25,7 @@ use super::prose::article;
 use super::writer::{CodeWriter, Expr, Style, call, text};
 use super::{GeneratedFile, Options};
 use crate::model::{
-    Definition, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
+    Definition, Enum, Field, FieldType, Kind, Layout, OffsetType, Scalar, ScalarValue, Schema,
 };
 
 /// The runtime's package, unless [`Options::runtime`] names another
@@ -82,6 +84,11 @@ pub fn generate(
     writer.line(format!("# {header}"));
     writer.blank();
     imports(&mut writer, schema, runtime);
+
+    for enumeration in &schema.enums {
+        writer.blanks(2);
+        int_enum(&mut writer, enumeration);
+    }
 
     for (index, definition) in schema.definitions.iter().enumerate() {
         writer.blanks(2);
@@ -235,6 +242,11 @@ fn imports(writer: &mut CodeWriter, schema: &Schema, runtime: &str) {
     if has_struct {
         writer.line("import builtins as _builtins");
     }
+    // Enums name `enum.IntEnum` through its module, which no declaration can
+    // be named after, rather than import a name that one could take
+    if !schema.enums.is_empty() {
+        writer.line("import enum");
+    }
     for (module, names) in standard {
         if !names.is_empty() {
             from_import(writer, module, &names);
@@ -259,6 +271,32 @@ fn from_import(writer: &mut CodeWriter, module: &str, names: &[&str]) {
         writer.line(format!("{name},"));
     }
     writer.close(")");
+}
+
+/// An enum: an `IntEnum` of the values that the schema names, by their names
+/// in `UPPER_SNAKE_CASE`, which no keyword and no member of `IntEnum` is
+/// written in, so none needs escaping. Each value's documentation follows it,
+/// as an attribute's docstring does.
+///
+/// Fields of the enum stay `int`s: a member is an `int`, so the writers take
+/// it as it is, and a reader returns the integer that it read, which equals
+/// its member if the enum names it. Looking the member up, as `Level(value)`,
+/// would cost every read a call, and raise `ValueError` for an integer that
+/// the enum doesn't name.
+fn int_enum(writer: &mut CodeWriter, enumeration: &Enum) {
+    writer.open(format!("class {}(enum.IntEnum):", enumeration.name));
+    docstring(writer, &enumeration.docs);
+    writer.blank();
+
+    for value in &enumeration.values {
+        writer.line(format!(
+            "{} = {}",
+            value.name.to_ascii_uppercase(),
+            value.value
+        ));
+        docstring(writer, &value.docs);
+    }
+    writer.dedent();
 }
 
 fn message(writer: &mut CodeWriter, schema: &Schema, index: usize, layout: Layout) {
