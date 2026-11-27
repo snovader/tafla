@@ -4,7 +4,7 @@ jmh = "1.37"
 protobuf = "4.36.2"
 
 [libraries]
-agrona = "org.agrona:agrona:2.7.1"
+agrona = "org.agrona:agrona:2.7.2"
 chicory-build-time-compiler = { module = "com.dylibso.chicory:build-time-compiler", version.ref = "chicory" }
 chicory-runtime = { module = "com.dylibso.chicory:runtime", version.ref = "chicory" }
 errorprone-core = "com.google.errorprone:error_prone_core:2.53.0"
