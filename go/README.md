@@ -1,8 +1,8 @@
 # tafla for Go
 
 `github.com/snovader/tafla/go` is tafla's runtime for Go, the package `tafla`.
-It writes and reads binary tables of scalars, strings, arrays, structs and
-nested tables in tafla's format, which the TypeScript, Python, Java and Rust
+It writes and reads binary tables of scalars, strings, vectors of strings,
+arrays, structs and nested tables in tafla's format, which the TypeScript, Python, Java and Rust
 runtimes write and read too. `TableBuilder` writes a table at its exact size,
 copying arrays in bulk, and `TableReader` reads fields back by offset, sharing
 arrays, strings and structs with the bytes. Every read checks that it stays
@@ -86,6 +86,12 @@ and then the fields in the order they were set:
   item from two ends without reading the others. An item without a header and
   with its parent's offset type is read in place, from the bytes that
   `Vector.GetInPlace()` returns, which run on to the end of its parent's.
+- A vector of strings is laid out as a vector is, with its strings' UTF-8 as
+  its items, one after another without padding.
+  `TableReader.GetStringVector()` returns a `StringVector`, whose `Get()`
+  finds any string from two ends without reading the others, and whose
+  `Strings()` reads every string into a `[]string`. Each string must be
+  valid UTF-8 on its own.
 
 The runtime writes the same bytes as the other runtimes for the same fields,
 and reads their tables: `conformance_test.go` reads and rebuilds the
@@ -95,12 +101,14 @@ with the code that tafla-gen generates.
 
 ## Sharing and copying
 
-- **Builders keep their values.** A setter of an array, a string or a
-  struct's bytes keeps the slice or string, and `SetTable()` and
-  `SetVector()` keep the builder or the `TableBytes`, until `Bytes()` writes
-  the table, so their elements must not change in between. A table's length
-  is counted when each field is set, so a value that changed length couldn't
-  be written, but a slice's length can't change.
+- **Builders keep their values.** A setter of an array, a string, a vector
+  of strings or a struct's bytes keeps the slice or string, and `SetTable()`
+  and `SetVector()` keep the builder or the `TableBytes`, until `Bytes()`
+  writes the table, so their elements must not change in between. A table's
+  length is counted when each field is set, so a value that changed length
+  couldn't be written: a slice's length can't change, but a string of the
+  slice that `SetStringVector()` keeps mustn't be replaced by one of another
+  length.
 - **Nest builders rather than bytes.** `SetTable()` and `SetVector()` take a
   `*TableBuilder` or `TableBytes`, and write a builder of the parent's offset
   type and no header straight into its parent, so that the outermost table
@@ -131,7 +139,9 @@ with the code that tafla-gen generates.
 - **Strings share the bytes too.** `GetString()` returns a string of the
   table's bytes rather than a copy, as FlatBuffers' Go runtime does, so the
   bytes must not change while the string is in use, as for `unsafe.String`.
-  `strings.Clone` copies one to keep it past them. Byte arrays, structs and
+  `strings.Clone` copies one to keep it past them. So do the strings that
+  `StringVector.Get()` and `Strings()` return, which take no allocation of
+  their own: `Strings()` allocates the slice alone. Byte arrays, structs and
   vector items are slices of the bytes.
 
 ## Errors and panics
@@ -142,9 +152,13 @@ the bytes can't be read, and `errors.As` finds it:
 - Every read checks its range against the bytes the `TableReader` was given,
   and fails with `OutOfRange` if it would leave them, which gives the read's
   position and length and the bytes available. Strings must be valid UTF-8,
-  or they fail with `InvalidUTF8`. A vector item that ends before the one
-  before it fails with `ItemEndsBeforeStart`. No bytes make a read panic, nor
-  allocate more than they hold.
+  or they fail with `InvalidUTF8`, as each string of a vector of strings
+  does on its own, so an end within a character fails the strings on either
+  side of it. A vector item, or a string of a vector of strings, that ends
+  before the one before it fails with `ItemEndsBeforeStart`.
+  `StringVector.Strings()` returns what `Get()` returns for each string, and
+  the error of the first that fails. No bytes make a read panic, nor
+  allocate out of proportion to what they hold.
 - `TableReader` doesn't compare versions. A reader returns
   `NewUnsupportedVersionError()` when `Version()` isn't one it reads, as the
   example does, so that every decoding failure is a `*DecodeError`.
@@ -177,7 +191,8 @@ write a table, and leaves the builder as it was:
 Functions panic only for mistakes of the code that calls them, which no bytes
 can cause, as Go's standard library panics for an index out of range:
 
-- an index past an `ArrayView`'s or a `Vector`'s length, or negative,
+- an index past an `ArrayView`'s, a `Vector`'s or a `StringVector`'s length,
+  or negative,
 - a negative field index of `RootOffset()` or `FieldOffset()`, or a negative
   struct size of `GetStruct()` or `GetStructArray()`,
 - an offset type or an alignment that isn't one of the constants,
@@ -268,7 +283,8 @@ The tests in `tests/` are:
 
 - `conformance_test.go`: reads and rebuilds the conformance suite.
 - `round_trip_test.go`, `format_test.go`, `decode_error_test.go`,
-  `table_builder_test.go` and `table_writer_test.go`: properties of tables
+  `string_vector_test.go`, `table_builder_test.go` and
+  `table_writer_test.go`: properties of tables
   built from the conformance suite's descriptions, which
   `tests/internal/tables` parses, generates with rapid, builds and reads, as Rust's `tests/common`
   does, and examples of the errors and of every boundary: signed zero, NaN,
@@ -314,7 +330,7 @@ or a read that disagrees with `SPEC.md` is a finding:
 
 - `FuzzTableReader` reads arbitrary bytes with every getter of `TableReader`,
   at every position and past the end, in every offset type and header, and
-  reads every array, struct array and vector there. Each read must return
+  reads every array, struct array, vector and vector of strings there. Each read must return
   the bytes that lie where the format puts them, exactly when they lie
   within the input, and the decode error otherwise.
 - `FuzzConformance` mutates the conformance suite's tables and reads them as

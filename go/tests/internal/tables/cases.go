@@ -228,6 +228,10 @@ func (f *jsonField) field() (Field, error) {
 		var value string
 		err := json.Unmarshal(f.Value, &value)
 		return String(value), err
+	case "string[]":
+		var values []string
+		err := json.Unmarshal(f.Value, &values)
+		return StringVector(values), err
 	case "struct":
 		var fields []jsonField
 		if err := json.Unmarshal(f.Fields, &fields); err != nil {

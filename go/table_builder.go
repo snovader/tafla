@@ -227,6 +227,28 @@ func (b *TableBuilder) SetString(value string) error {
 	})
 }
 
+// SetStringVector sets a vector of strings, each of its bytes, which are
+// UTF-8 if it is, after the end of each, which lets readers find any string
+// without reading the others. It takes no more bytes for each string than
+// its end, where a vector of tables of one string takes each table's offset
+// and the string's count too. The builder keeps the slice until the table
+// is written, so neither it nor its strings must change in between. It
+// fails as [TableBuilder.SetInt8] does.
+func (b *TableBuilder) SetStringVector(values []string) error {
+	// Up to a length past any table, which fails
+	length := uint64(0)
+	for _, value := range values {
+		length = min(length+uint64(len(value)), past)
+	}
+
+	return b.addField(field{
+		data:   unsafe.Pointer(unsafe.SliceData(values)),
+		length: len(values),
+		bits:   length,
+		kind:   stringVectorField,
+	})
+}
+
 // SetStruct sets a struct field from its bytes: its scalars, little-endian,
 // one after another, which are written as they are, without padding. The
 // builder keeps the bytes until the table is written. It fails as
@@ -765,6 +787,9 @@ const (
 	bytesField
 	// data and length hold the items, a []NestedTable
 	vectorField
+	// data and length hold the strings, a []string, and bits the sum of
+	// their byte lengths
+	stringVectorField
 
 	// The tables recorded in place come last, which writeFields tells from
 	// the others in one comparison.
@@ -844,6 +869,9 @@ func (f *field) byteLength(width uint64) uint64 {
 			length += width + nestedLength(item)
 		}
 		return length
+	case stringVectorField:
+		// The count, the end of each string, and the strings
+		return (uint64(f.length)+1)*width + f.bits
 	default:
 		return uint64(f.length)
 	}
@@ -895,6 +923,8 @@ func (f *field) write(writer *TableWriter, index int, offsetType OffsetType) {
 			writeNestedTable(writer, table, offsetType)
 			writer.SetItemEnd(vector, item)
 		}
+	case stringVectorField:
+		writer.SetStringVector(index, unsafe.Slice((*string)(f.data), f.length))
 	case tableInPlaceField, vectorInPlaceField:
 		// Of no fields, when writeValues writes every field
 		f.writeInPlace(writer, index, nil, 0, offsetType)

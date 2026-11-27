@@ -235,7 +235,7 @@ func drawCall(t *rapid.T) call {
 	}
 	alignment := rapid.SampledFrom([]tafla.Alignment{tafla.Align1, tafla.Align2, tafla.Align4, tafla.Align8})
 
-	switch rapid.IntRange(0, 9).Draw(t, "call") {
+	switch rapid.IntRange(0, 10).Draw(t, "call") {
 	case 0:
 		index := small("index")
 		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, _ *[]tafla.VectorPosition) { w.SetUint8(index, 1) }
@@ -283,6 +283,12 @@ func drawCall(t *rapid.T) call {
 		index, count := small("index"), small("count")
 		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, vectors *[]tafla.VectorPosition) {
 			*vectors = append(*vectors, w.SetVector(index, count))
+		}
+	case 9:
+		index := small("index")
+		strings := tables.DrawStringVector(t, 4, 4)
+		return func(w *tafla.TableWriter, _ *[]tafla.WriterParent, _ *[]tafla.VectorPosition) {
+			w.SetStringVector(index, strings)
 		}
 	default:
 		item := small("item")
