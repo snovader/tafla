@@ -42,6 +42,10 @@ ReadOnlySpan<float> values = reader.GetFloat32Array(reader.FieldOffset(table, 1)
 record a nested table, or each item of a vector, in place among its
 parent's fields, rather than from a builder of its own that's then copied.
 
+`SetStringVector()` writes a vector of strings, which
+`TableReader.GetStringVector()` reads as a `StringVector`, whose indexer
+reads any string without reading the others.
+
 `TableSizer` and `TableWriter` write a table whose fields are known in
 advance, as the code that tafla-gen generates does, into bytes of its exact
 length, with nested tables and vector items written in place among their

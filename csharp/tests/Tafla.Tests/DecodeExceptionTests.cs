@@ -146,6 +146,7 @@ public class DecodeExceptionTests
                 reader => reader.RootOffset(index),
                 reader => reader.FieldOffset(position, index),
                 reader => VectorText(reader.GetVector(position)),
+                reader => StringVectorText(reader.GetStringVector(position)),
                 reader => reader.GetSize(),
                 reader => new TableReader(reader.Bytes, layout with { Version = 0 }).GetVersion(),
             };
@@ -207,6 +208,19 @@ public class DecodeExceptionTests
         return string.Join(";", items);
     }
 
+    /// <summary>Every string of a vector of strings, each found from its ends, and all of them at once</summary>
+    private static string StringVectorText(StringVector vector)
+    {
+        var strings = new List<object>();
+        for (var item = 0; item < vector.Count; item++)
+        {
+            strings.Add(Attempt(vector, vector => vector[item]));
+        }
+
+        strings.Add(Attempt(vector, static vector => string.Join(",", vector.ToArray())));
+        return string.Join(";", strings);
+    }
+
     [Fact]
     public void DescribesAReadOutsideTheBytes()
     {
@@ -236,6 +250,7 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStructArray(0, int.MaxValue));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0));
         Assert.Throws<DecodeException>(() => new TableReader(bytes).GetVector(0));
+        Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0));
     }
 
     /// <summary>An offset past the largest int leads past any bytes, and a position can't hold it</summary>
@@ -294,6 +309,28 @@ public class DecodeExceptionTests
         // Invalid UTF-8 in so long a string fails as invalid, since its characters can't be counted
         bytes[^1] = 0xff;
         Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetString(0)).Kind);
+    }
+
+    /// <summary>
+    /// A vector of one string of 1,073,741,792 NULs, as long as the string above, after its count and
+    /// its end, which a 32-bit process can't allocate either
+    /// </summary>
+    [Fact]
+    public void RejectsAStringOfAVectorLongerThanAStringCanBe()
+    {
+        Assert.SkipUnless(Environment.Is64BitProcess, "A 32-bit process can't allocate the string's 1 GiB");
+
+        const int length = 0x3fff_ffe0;
+        var bytes = new byte[2 * sizeof(uint) + length];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(sizeof(uint)), 2 * sizeof(uint) + length);
+
+        var error = Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0)[0]);
+        Assert.Equal((DecodeErrorKind.StringTooLong, 8L, length), (error.Kind, error.Position, error.ByteLength));
+        Assert.Equal(DecodeErrorKind.StringTooLong, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0).ToArray()).Kind);
+
+        bytes[^1] = 0xff;
+        Assert.Equal(DecodeErrorKind.InvalidUtf8, Assert.Throws<DecodeException>(() => new TableReader(bytes).GetStringVector(0)[0]).Kind);
     }
 
     /// <summary>A vector of two items whose second ends before the first does, at 11 rather than 12</summary>
@@ -357,6 +394,7 @@ public class DecodeExceptionTests
         Assert.Throws<DecodeException>(() => default(TableReader).GetString(0));
         Assert.Throws<DecodeException>(() => default(TableReader).GetStruct(0, 1));
         Assert.Throws<DecodeException>(() => default(TableReader).GetVector(0));
+        Assert.Throws<DecodeException>(() => default(TableReader).GetStringVector(0));
 
         var vector = default(Vector);
         var items = 0;

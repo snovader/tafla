@@ -42,6 +42,20 @@ public static class GeneratedDescriptions
 
     public static StringField Of(string value) => new(value);
 
+    public static StringVectorField Of(ReadOnlySpan<string> values) => new(values.ToArray());
+
+    /// <summary>The strings of a view that generated code returns, read through its enumerator.</summary>
+    public static StringVectorField Of(StringVector strings)
+    {
+        var values = new List<string>();
+        foreach (var value in strings)
+        {
+            values.Add(value);
+        }
+
+        return new StringVectorField(values);
+    }
+
     public static ArrayField Of(ReadOnlySpan<sbyte> values) => ArrayOf(ScalarType.Int8, values, Of);
 
     public static ArrayField Of(ReadOnlySpan<byte> values) => ArrayOf(ScalarType.UInt8, values, Of);

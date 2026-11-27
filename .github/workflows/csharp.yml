@@ -96,6 +96,7 @@ jobs:
         run: >-
           dotnet format whitespace --folder --include-generated --verify-no-changes
           --include tests/Tafla.Generated/ tests/names/ benchmarks/Tafla.Benchmarks/Generated/TaflaGen/
+          benchmarks/Tafla.Benchmarks/Generated/Lists/
 
   test:
     name: Test (${{ matrix.os }})
@@ -306,6 +307,9 @@ jobs:
       # checks that the benchmarks work
       - name: Run benchmarks briefly
         run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- --quick
+
+      - name: Run the lists of strings briefly
+        run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- lists --quick
 
       - name: Print the encoded sizes
         run: dotnet run -c Release --no-build --project benchmarks/Tafla.Benchmarks -- encoding

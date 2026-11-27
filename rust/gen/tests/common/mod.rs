@@ -254,6 +254,12 @@ pub const LISTS_SCHEMAS: &[BenchmarkSchema] = &[
         directory: "go/benchmarks/generated/lists",
         package: None,
     },
+    BenchmarkSchema {
+        target: "csharp",
+        schema: "csharp/benchmarks/lists.tafla",
+        directory: "csharp/benchmarks/Tafla.Benchmarks/Generated/Lists",
+        package: None,
+    },
 ];
 
 impl BenchmarkSchema {

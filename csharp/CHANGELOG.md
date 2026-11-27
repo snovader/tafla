@@ -62,5 +62,13 @@ The first release.
   structs that tafla-gen generates, fails as the runtime's reads do.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+- Vectors of strings, which `TableBuilder.SetStringVector()`,
+  `TableSizer.AddStringVector()` and `TableWriter.SetStringVector()` write
+  from a span of strings, and which `TableReader.GetStringVector()` reads as a
+  `StringVector`, a `ref struct` over the bytes, as a `Vector` is, whose
+  indexer reads one string from its two ends without reading the others, and
+  whose `ToArray()` and enumerator read every string, in order. Each string
+  is checked as UTF-8 on its own, so an end that splits a character fails
+  both strings around it.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/csharp

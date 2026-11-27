@@ -34,13 +34,14 @@ public static class Strategy
         Gen.Select(Gen.Bool, Gen.Bool, offsetTypes, (sized, versioned, offsetType) => new Layout(sized, versioned, offsetType));
 
     /// <summary>
-    /// The most fields, array elements, characters, structs in an array and vector items that a table
-    /// holds. A table of uint8 offsets, or nested in one, holds few enough to fit in its 255 bytes
-    /// more often than not, and others hold enough for uint16 lengths and offsets past 255.
+    /// The most fields, array elements, characters, structs in an array, vector items and strings in
+    /// a vector of strings that a table holds. A table of uint8 offsets, or nested in one, holds few
+    /// enough to fit in its 255 bytes more often than not, and others hold enough for uint16 lengths
+    /// and offsets past 255.
     /// </summary>
-    private sealed record Limits(int Fields, int Elements, int Characters, int Structs, int Items);
+    private sealed record Limits(int Fields, int Elements, int Characters, int Structs, int Items, int Strings);
 
-    private static Limits LimitsOf(bool small) => small ? new(5, 6, 6, 2, 2) : new(8, 24, 16, 6, 4);
+    private static Limits LimitsOf(bool small) => small ? new(5, 6, 6, 2, 2, 3) : new(8, 24, 16, 6, 4, 6);
 
     /// <summary>Tables of the layouts whose fields hold tables <paramref name="depth"/> deep, and hold few values when small</summary>
     private static Gen<Table> Table(Gen<Layout> layouts, int depth, bool small) =>
@@ -66,7 +67,7 @@ public static class Strategy
                 (1, Vector(depth - 1, small))
             );
 
-    /// <summary>A scalar, array, string or struct, which hold values rather than tables</summary>
+    /// <summary>A scalar, array, string, vector of strings or struct, which hold values rather than tables</summary>
     private static Gen<Field> Value(Limits limits)
     {
         var choices = new List<(int, IGen<Field>)>();
@@ -78,6 +79,7 @@ public static class Strategy
 
         // Each as likely as three types of number
         choices.Add((3, String(limits.Characters).Select(value => (Field)new StringField(value))));
+        choices.Add((3, StringVector(limits)));
         choices.Add((3, StructTypes.SelectMany(ScalarsOf).Select(scalars => (Field)new StructField(scalars))));
         choices.Add((3, StructArray(limits.Structs)));
 
@@ -162,6 +164,10 @@ public static class Strategy
             .Array[0, most]
             .Select(characters => string.Concat(characters.Select(char.ConvertFromUtf32)));
 
+    /// <summary>A vector of strings, empty too, and of empty strings</summary>
+    private static Gen<Field> StringVector(Limits limits) =>
+        String(limits.Characters).Array[0, limits.Strings].Select(values => (Field)new StringVectorField(values));
+
     /// <summary>The types of the scalars of a struct, of one to four</summary>
     private static readonly Gen<ScalarType[]> StructTypes = Gen.OneOf(Scalars.All).Array[1, 4];
 
@@ -244,6 +250,7 @@ public static class Strategy
             Bool => 1,
             ArrayField array => Array(array.Bits.Count, array.Type.Size()),
             StringField value => width + System.Text.Encoding.UTF8.GetByteCount(value.Value),
+            StringVectorField value => width + value.Values.Sum(item => width + System.Text.Encoding.UTF8.GetByteCount(item)),
             StructField value => Scalars.StructSize(value.Scalars.Select(scalar => scalar.Type)),
             StructArray array => Scalars.StructAlignment(array.Types) - 1 + width + array.Items.Count * (long)Scalars.StructSize(array.Types),
             TableField table => 7 + LongestTable(table.Nested.Table),

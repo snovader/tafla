@@ -239,6 +239,14 @@ public struct TableSizer
     }
 
     /// <summary>
+    /// Adds a vector of strings: its count, the end of each string, and each string's UTF-8, as
+    /// <see cref="TableBuilder.SetStringVector"/> counts it, with each lone surrogate as U+FFFD.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">A string is null.</exception>
+    public void AddStringVector(ReadOnlySpan<string> values) =>
+        _position += (values.Length + 1L) * _layout.OffsetSize + TableBuilder.Utf8Length(values);
+
+    /// <summary>
     /// Returns the byte length of a string's UTF-8, as <see cref="AddString"/> counts it and
     /// <see cref="TableWriter.SetString"/> writes it, with each lone surrogate as U+FFFD. It's counted
     /// in a <see cref="long"/>, so that a string too long for any table counts past the longest, rather
