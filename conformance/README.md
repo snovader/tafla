@@ -277,3 +277,14 @@ The tests follow each implementation's API where it differs:
   test parses `cases.json` with Foundation's `JSONDecoder`, rather than
   `JSONSerialization`, which drops a leading U+FEFF from a string, as the
   `strings` case holds.
+- Go's, C++'s, Swift's and C#'s readers return a `StringVector` of a
+  `string[]`, which holds the count as their `Vector` does, so their tests
+  find each string from its ends with the view's `Get(i)`, `get(i)`,
+  subscript or indexer, rather than with a getter that takes the count.
+  Java's `getStringVectorItem()`, Python's `get_string_vector_item()` and
+  Rust's `TableReader::get_str_vector_item()` take the count, as
+  TypeScript's does, and the Java, Python and Rust tests read each string
+  through a `StringVector` too. Each test also reads every string through
+  its view, in order where the view iterates, and checks that every way
+  returns the same strings, or fails with the same error, that of the first
+  string that fails.
