@@ -42,7 +42,6 @@ from hypothesis.strategies import (
 from tests.tables import (
     ELEMENT_SIZES,
     LONGEST,
-    STRING_VECTORS,
     Description,
     OffsetType,
     from_json,
@@ -258,9 +257,8 @@ def _field_lists(
         STRING_FIELDS,
         STRUCT_FIELDS,
         STRUCT_ARRAY_FIELDS,
+        STRING_VECTOR_FIELDS,
     ]
-    if STRING_VECTORS:
-        kinds.append(STRING_VECTOR_FIELDS)
     if depth > 0:
         kinds += [
             _table_fields(depth - 1, offset_type),

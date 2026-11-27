@@ -569,9 +569,10 @@ of its strings, and read for its last string, by three variants:
 
 - **tafla-gen [string]**: `StringList`, a vector of strings. It's written from
   the list as it is with `serialize_values()`, and read through the getter's
-  `StringVector`: every string with `tolist()`, which decodes a list of ASCII
-  as one run and slices it at each end, and the last string with `[-1]`, from
-  its two ends.
+  `StringVector`: every string with `tolist()`, in one call, and the last
+  string with `[-1]`, from its two ends. The native classes decode each
+  string with CPython, and the pure-Python ones decode a list of ASCII as one
+  run and slice it at each end.
 - **tafla-gen [Name]**: `NameList`, a vector of tables of one string each,
   which is how a schema holds a list of strings without a vector of strings.
   It's written with `serialize_values()` from a tuple of each table's string,
@@ -586,14 +587,14 @@ last string, and `tests/test_lists.py` checks every variant on every list,
 and that `StringList` writes the bytes that `TableBuilder.set_string_vector()`
 writes. The suite runs as the comparison does, as [Method](#method)
 describes, and its options are the comparison's, with `--codec` choosing the
-variants. With `TAFLA_PUREPYTHON` set, the workers time the pure-Python
-classes: until the native classes read and write vectors of strings, the
-suite runs with the pure-Python ones alone.
+variants. It times the native classes, as the comparison does, and with
+`TAFLA_PUREPYTHON` set, which it passes on to its workers, the pure-Python
+ones.
 
 ```sh
 uptime
 for order in "" --reverse; do
-    TAFLA_PUREPYTHON=1 uv run --python 3.14+gil python -m tafla_benchmarks.lists --processes 5 --append lists.json $order
+    uv run --python 3.14+gil python -m tafla_benchmarks.lists --processes 5 --append lists.json $order
 done
 uv run --python 3.14+gil python -m tafla_benchmarks.report --lists lists.json
 ```
@@ -601,10 +602,10 @@ uv run --python 3.14+gil python -m tafla_benchmarks.report --lists lists.json
 The full run takes about 15 to 20 minutes, which the workers of the lists of
 10,000 strings of 256 characters lengthen, since each makes its strings first,
 in about 2 seconds. A quick run of one worker per benchmark checks that every
-benchmark works in about 20 seconds:
+benchmark works in about 20 seconds, which CI runs too:
 
 ```sh
-TAFLA_PUREPYTHON=1 uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
+uv run python -m tafla_benchmarks.lists --debug-single-value --quiet
 ```
 
 ### Results

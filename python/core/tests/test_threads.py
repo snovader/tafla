@@ -10,7 +10,6 @@ from collections.abc import Callable
 
 import tafla
 from tafla import StringVector, TableBuilder, TableLayout, TableReader, TableWriter
-from tests.tables import skip_without_string_vectors
 
 THREADS = 8
 
@@ -78,7 +77,6 @@ class TestThreads(unittest.TestCase):
 
         self.assertEqual(run_together(read), [])
 
-    @skip_without_string_vectors
     @unittest.skipIf(
         FREE_THREADED_MEMORYVIEWS and tafla.IMPLEMENTATION == "python",
         "the pure-Python reader slices the strings' bytes from the buffer's "

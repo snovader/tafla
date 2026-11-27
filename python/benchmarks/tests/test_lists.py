@@ -3,7 +3,6 @@ were printed from, and that every variant reads back what it wrote"""
 
 import unittest
 
-import tafla
 from tafla import TableBuilder
 from tafla_benchmarks.check import RoundTripError
 from tafla_benchmarks.list_shapes import LIST_SHAPES, ListShape
@@ -13,16 +12,6 @@ from tafla_benchmarks.lists import (
     ListCodec,
     check_round_trip,
     list_groups,
-)
-
-# Whether the native classes read and write vectors of strings, which they do
-# once they bind the Rust runtime's. Until then, the suite runs with the
-# pure-Python classes alone: setting this to True runs its tests with both.
-NATIVE_STRING_VECTORS: bool = False
-
-skip_without_string_vectors = unittest.skipUnless(
-    tafla.IMPLEMENTATION == "python" or NATIVE_STRING_VECTORS,
-    "the native classes don't read or write vectors of strings yet",
 )
 
 # Each shape's first 16 characters of its first and last strings, and a 32-bit
@@ -80,7 +69,6 @@ class TestListShapes(unittest.TestCase):
                 self.assertEqual(hash_strings(strings), digest)
 
 
-@skip_without_string_vectors
 class TestListRoundTrips(unittest.TestCase):
     def test_every_variant_reads_back_every_shape(self) -> None:
         for shape in LIST_SHAPES:

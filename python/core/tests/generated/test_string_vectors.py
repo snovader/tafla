@@ -34,7 +34,7 @@ from tests.generated.byte_strategies import (
 )
 from tests.generated.descriptions import layout, message, scalar, string, table, vector
 from tests.generated.expectations import assert_values_or_decode_error
-from tests.tables import Description, build_table, skip_without_string_vectors
+from tests.tables import Description, build_table
 
 STRING_LISTS: SearchStrategy[list[str]] = lists(STRINGS, max_size=6)
 
@@ -105,7 +105,6 @@ def describe_narrow(fields: NarrowStringVectorsFields) -> Description:
     )
 
 
-@skip_without_string_vectors
 class TestStringVectors(unittest.TestCase):
     @SETTINGS
     @given(STRING_VECTORS_FIELDS, slices)

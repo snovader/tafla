@@ -31,7 +31,7 @@ from tafla import (
 )
 from tests.byte_order import big_endian_host
 from tests.descriptions import STRINGS
-from tests.tables import LONGEST, offset_size_of, skip_without_string_vectors
+from tests.tables import LONGEST, offset_size_of
 from tests.test_fixed_fields import Misreported
 
 VECTORS: SearchStrategy[list[str]] = lists(STRINGS, max_size=8)
@@ -94,7 +94,6 @@ def each_string(vector: StringVector) -> list[str]:
     return [vector[index] for index in range(len(vector))]
 
 
-@skip_without_string_vectors
 class TestStringVector(unittest.TestCase):
     @given(VECTORS)
     def test_reads_back_every_string_at_once_and_each_from_its_ends_alone(
@@ -201,7 +200,6 @@ class TestStringVector(unittest.TestCase):
             self.assertEqual(bytes(writer.bytes()), expected)
 
 
-@skip_without_string_vectors
 class TestReadingEveryString(unittest.TestCase):
     @given(ASCII_VECTORS)
     def test_reads_lists_of_ascii_as_each_string_on_its_own(
@@ -313,7 +311,6 @@ class TestReadingEveryString(unittest.TestCase):
         self.assertIsInstance(raised.exception.__cause__, UnicodeDecodeError)
 
 
-@skip_without_string_vectors
 class TestRejectedStringVectors(unittest.TestCase):
     def test_raises_index_error_for_a_string_outside_the_vector(self) -> None:
         vector = view_of(table_of(["a", "b"]))
@@ -334,6 +331,18 @@ class TestRejectedStringVectors(unittest.TestCase):
             reader.get_string_vector(0)
         with self.assertRaises(DecodeError):
             StringVector(reader, 0)
+
+    def test_raises_decode_error_for_a_string_that_a_negative_position_puts_before_the_bytes(
+        self,
+    ) -> None:
+        """String 1 of a vector at -4 is found from the slots at 0 and 4,
+        which both end it at 0, and so before the bytes"""
+        reader = TableReader(bytes(8))
+
+        with self.assertRaisesRegex(
+            DecodeError, "^Read exceeds the supplied buffer: 0 bytes at -4 of 8$"
+        ):
+            reader.get_string_vector_item(-4, 2, 1)
 
     def test_raises_for_the_strings_on_either_side_of_an_end_that_splits_a_character(
         self,
@@ -367,7 +376,6 @@ class TestRejectedStringVectors(unittest.TestCase):
                     view_of(bytes(data))[1]
 
 
-@skip_without_string_vectors
 class TestWritingStringVectors(unittest.TestCase):
     def test_raises_for_a_lone_surrogate_leaving_the_builder_and_writer_as_they_were(
         self,
@@ -393,6 +401,21 @@ class TestWritingStringVectors(unittest.TestCase):
             builder.set_string_vector("abc")
         with self.assertRaises(TypeError):
             writer.set_string_vector(0, "abc")
+
+    def test_raises_the_error_of_the_first_item_that_cant_be_encoded(self) -> None:
+        cases: list[tuple[list[object], type[Exception]]] = [
+            (["a", 5, "\ud800"], TypeError),
+            (["a", "\ud800", 5], UnicodeEncodeError),
+            (["\ud800", 5], UnicodeEncodeError),
+            ([5, "\ud800"], TypeError),
+            (["é", b"b"], TypeError),
+        ]
+        for strings, error in cases:
+            with self.subTest(strings=strings):
+                with self.assertRaises(error):
+                    TableBuilder(1).set_string_vector(strings)  # ty: ignore[invalid-argument-type]
+                with self.assertRaises(error):
+                    TableWriter(1).set_string_vector(0, strings)  # ty: ignore[invalid-argument-type]
 
     def test_takes_strings_that_the_caller_changes_after_setting_them_as_they_were(
         self,
@@ -448,16 +471,14 @@ class TestWritingStringVectors(unittest.TestCase):
                 self.assertEqual(len(writer.bytes()), offset_size_of(offset_type))
 
     def test_raises_for_strings_whose_len_isnt_their_number(self) -> None:
-        for strings in [["a", "b"], ["é", "b"]]:
-            for length in [1, 3]:
-                with (
-                    self.subTest(strings=strings, length=length),
-                    self.assertRaisesRegex(
-                        ValueError,
-                        f"^The items' len\\(\\) is {length}, but iterating them "
-                        "gave 2$",
-                    ),
-                ):
+        cases = [(["a", "b"], 1), (["a", "b"], 3), (["é", "b"], 1), ([], 1)]
+        for strings, length in cases:
+            with self.subTest(strings=strings, length=length):
+                message = (
+                    f"^The items' len\\(\\) is {length}, but iterating them gave "
+                    f"{len(strings)}$"
+                )
+                with self.assertRaisesRegex(ValueError, message):
                     writer = TableWriter(1)
                     try:
                         writer.set_string_vector(0, Misreported(strings, length))

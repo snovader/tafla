@@ -6,7 +6,7 @@ from struct import error as StructError, pack
 from typing import Any, overload, override
 
 from hypothesis import assume, given
-from hypothesis.strategies import binary, integers, sampled_from
+from hypothesis.strategies import SearchStrategy, binary, integers, sampled_from
 
 from tafla import DecodeError, FixedFields, TableLayout, TableReader, TableWriter
 from tests.descriptions import tables
@@ -31,6 +31,30 @@ OFFSET_TYPES: tuple[OffsetType, ...] = ("uint8", "uint16", "uint32")
 CODES = {**FORMATS, "bool": "?"}
 
 type Outcome = bytes | tuple[type[Exception], str]
+
+
+def without_string_vectors(table: Description) -> Description:
+    """The table, and those nested in it, without their vectors of strings"""
+
+    def field(each: Description) -> Description:
+        if each["type"] == "table":
+            return {**each, "table": without_string_vectors(each["table"])}
+        if each["type"] == "vector":
+            items = [
+                {**item, "table": without_string_vectors(item["table"])}
+                for item in each["items"]
+            ]
+            return {**each, "items": items}
+        return each
+
+    fields = [field(each) for each in table["fields"] if each["type"] != "string[]"]
+    return {**table, "fields": fields}
+
+
+# Tables without vectors of strings, which FixedFields describes none of, so
+# that the tests of its leading fields filter out fewer tables: with them,
+# Hypothesis's health check found it filtered out too many
+FIXED_TABLES: SearchStrategy[Description] = tables().map(without_string_vectors)
 
 
 def invalid_values(kind: str) -> list[Any]:
@@ -295,7 +319,7 @@ class TestGetFields(unittest.TestCase):
     # get_fields() returns what the getters read, or None for the getters to
     # read the fields and raise, and never raises itself
 
-    @given(tables(), corruptions)
+    @given(FIXED_TABLES, corruptions)
     def test_reads_what_the_getters_read_or_none_whatever_the_bytes(
         self, table: Description, corruption: Truncation | Overwrite
     ) -> None:
@@ -340,7 +364,7 @@ class TestMessages(unittest.TestCase):
     # set_fields() and bytes() write it, in one call, and read_fields() reads
     # it as get_fields() reads its root, without a TableReader
 
-    @given(tables(), sampled_from([None, *INVALID]), corruptions)
+    @given(FIXED_TABLES, sampled_from([None, *INVALID]), corruptions)
     def test_writes_and_reads_a_message_as_the_writer_and_the_buffer_do(
         self,
         table: Description,
@@ -477,7 +501,7 @@ class TestVectorTables(unittest.TestCase):
     # reads for each item, or None, or raises what get_vector_offsets() raises
 
     @given(
-        tables(),
+        FIXED_TABLES,
         integers(0, 4),
         sampled_from(OFFSET_TYPES),
         sampled_from([None, *INVALID]),

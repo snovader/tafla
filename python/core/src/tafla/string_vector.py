@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from .implementation import TableReader
+from .table_reader import TableReader
 
 
 class StringVector:
@@ -10,8 +10,8 @@ class StringVector:
     when the vector is viewed. The code that tafla-gen generates returns one
     from the getter of a ``[string]`` field.
 
-    It's Python in both implementations, as ``TableBuilder`` is, and reads
-    through the ``TableReader`` that it's given.
+    This is the pure-Python class, which reads through the pure-Python
+    ``TableReader``, as the native one reads through the native reader.
     """
 
     __slots__ = ["__length", "__position", "__reader"]

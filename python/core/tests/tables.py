@@ -13,14 +13,12 @@ ints and floats, and ``comparable_table()`` compares the two forms exactly.
 """
 
 import struct
-import unittest
 from collections.abc import Buffer, Callable, Iterable
 from dataclasses import dataclass
 from math import copysign, isinf, isnan
 from typing import Any, Literal, cast
 
 from tafla import (
-    IMPLEMENTATION,
     OffsetType,
     StringVector,
     TableBuilder,
@@ -72,33 +70,6 @@ LONGEST: dict[OffsetType, int] = {
 
 # The alignment that set_table() gives a table nested as bytes by default
 BYTES_ALIGNMENT: Alignment = 4
-
-# Whether the native classes read and write vectors of strings, which they do
-# once they bind the Rust runtime's. Until then, the tests of vectors of
-# strings run with the pure-Python classes alone, and skip with the native
-# ones: setting this to True runs them with both.
-NATIVE_STRING_VECTORS: bool = False
-
-# Whether the classes that tafla uses read and write vectors of strings
-STRING_VECTORS = IMPLEMENTATION == "python" or NATIVE_STRING_VECTORS
-
-skip_without_string_vectors = unittest.skipUnless(
-    STRING_VECTORS, "the native classes don't read or write vectors of strings yet"
-)
-
-
-def holds_string_vectors(table: Description) -> bool:
-    """Whether a table or a table nested in it holds a vector of strings"""
-
-    def holds(field: Description) -> bool:
-        kind = field["type"]
-        if kind == "table":
-            return holds_string_vectors(field["table"])
-        if kind == "vector":
-            return any(holds_string_vectors(item["table"]) for item in field["items"])
-        return kind == "string[]"
-
-    return any(holds(field) for field in table["fields"])
 
 
 def from_json(kind: str, value: Any) -> Any:
