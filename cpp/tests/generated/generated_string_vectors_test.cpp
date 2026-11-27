@@ -274,7 +274,7 @@ RC_GTEST_PROP(GeneratedStringVectors, CorruptedTablesReadAsValuesOrDecodeErrors,
 
 TEST(GeneratedStringVectors, ATagThatIsntValidUtf8FailsAndTheOthersRead) {
     const std::vector<std::string_view> tags{"ok", "bad"};
-    auto bytes = all_types::StringVectorsFields{.id = 1, .tags = tags}.serialize().to_vector();
+    auto bytes = all_types::StringVectorsFields{.id = 1, .tags = tags, .labels = {}}.serialize().to_vector();
     // The second tag's first byte, after the count, two ends and "ok"
     const auto position = TableReader(bytes, TableLayout()).root_offset(1);
     bytes[position + 3 * 4 + 2] = 0xc0;
