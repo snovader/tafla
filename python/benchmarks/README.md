@@ -569,9 +569,10 @@ of its strings, and read for its last string, by three variants:
 
 - **tafla-gen [string]**: `StringList`, a vector of strings. It's written from
   the list as it is with `serialize_values()`, and read through the getter's
-  `StringVector`: every string with `tolist()`, which decodes a list of ASCII
-  as one run and slices it at each end, and the last string with `[-1]`, from
-  its two ends.
+  `StringVector`: every string with `tolist()`, in one call, and the last
+  string with `[-1]`, from its two ends. The native classes decode each
+  string with CPython, and the pure-Python ones decode a list of ASCII as one
+  run and slice it at each end.
 - **tafla-gen [Name]**: `NameList`, a vector of tables of one string each,
   which is how a schema holds a list of strings without a vector of strings.
   It's written with `serialize_values()` from a tuple of each table's string,

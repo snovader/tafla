@@ -40,7 +40,15 @@ from hypothesis.strategies import (
 )
 
 import tafla
-from tafla import fixed_fields, layout, table_reader, table_writer
+from tafla import (
+    OffsetType,
+    fixed_fields,
+    layout,
+    string_vector,
+    table_builder,
+    table_reader,
+    table_writer,
+)
 from tests.tables import FORMATS
 from tests.test_fixed_fields import Misreported
 
@@ -50,6 +58,7 @@ except ImportError:
     _native = None
 
 OFFSET_TYPES = ("uint8", "uint16", "uint32")
+TABLE_OFFSET_TYPES: tuple[OffsetType, ...] = OFFSET_TYPES
 
 # Integers at the limits of the arguments that the classes take: within an
 # i64, beyond it, and beyond the digits that Python converts to a string.
@@ -212,6 +221,7 @@ class Implementation:
     FixedFields: Any
     TableLayout: Any
     TableWriter: Any
+    StringVector: Any
 
 
 PURE = Implementation(
@@ -220,6 +230,7 @@ PURE = Implementation(
     fixed_fields.FixedFields,
     layout.TableLayout,
     table_writer.TableWriter,
+    string_vector.StringVector,
 )
 
 
@@ -230,6 +241,7 @@ def native_implementation(module: ModuleType) -> Implementation:
         module.FixedFields,
         module.TableLayout,
         module.TableWriter,
+        module.StringVector,
     )
 
 
@@ -360,12 +372,20 @@ class TestImplementations(unittest.TestCase):
         if tafla.IMPLEMENTATION == "native":
             self.assertIs(tafla.TableWriter, self.native.TableWriter)
             self.assertIs(tafla.TableReader, self.native.TableReader)
+            self.assertIs(tafla.StringVector, self.native.StringVector)
         else:
             self.assertIs(tafla.TableWriter, PURE.TableWriter)
             self.assertIs(tafla.TableReader, PURE.TableReader)
+            self.assertIs(tafla.StringVector, PURE.StringVector)
 
     def test_have_the_same_methods_with_the_same_parameters(self) -> None:
-        for name in ["TableReader", "FixedFields", "TableLayout", "TableWriter"]:
+        for name in [
+            "TableReader",
+            "FixedFields",
+            "TableLayout",
+            "TableWriter",
+            "StringVector",
+        ]:
             pure, native = getattr(PURE, name), getattr(self.native, name)
             names = {
                 attribute
@@ -441,6 +461,33 @@ class TestImplementations(unittest.TestCase):
                 for implementation, reader in readers
             ]
             self.assertEqual(outcomes[1], outcomes[0], describe_call(method, args))
+
+    @given(data())
+    def test_view_vectors_of_strings_as_each_other_whatever_the_bytes(
+        self, draw: DataObject
+    ) -> None:
+        """Each implementation's StringVector, of its own reader: its length,
+        its strings by index and every string, or the errors that they
+        raise"""
+        arguments = draw.draw(layout_arguments())
+        content = draw.draw(one_of(binary(max_size=48), STRING_VECTOR_TABLES))
+        position = draw.draw(one_of(integers(0, 8), POSITIONS))
+        indices = draw.draw(lists(one_of(integers(-8, 8), INTEGERS), max_size=4))
+        outcomes = [
+            outcome(
+                partial(
+                    view_strings, implementation, arguments, content, position, indices
+                )
+            )
+            for implementation in (PURE, self.native)
+        ]
+        self.assertEqual(outcomes[1], outcomes[0])
+
+    def test_native_string_vector_rejects_a_pure_python_reader(self) -> None:
+        reader = PURE.TableReader(bytes(8))
+
+        with self.assertRaises(TypeError):
+            self.native.StringVector(reader, 0)
 
     @given(data())
     def test_write_the_same_bytes_and_raise_the_same_errors_whatever_the_calls(
@@ -791,6 +838,49 @@ class TestImplementations(unittest.TestCase):
                     for implementation in (PURE, self.native)
                 ]
                 self.assertEqual(read[1], read[0])
+
+
+def view_strings(
+    implementation: Implementation,
+    arguments: dict[str, Any],
+    content: bytes,
+    position: int,
+    indices: list[int],
+) -> list[object]:
+    """What a view of the vector of strings at ``position`` reads: its
+    length, its strings at ``indices`` and every string, each read's outcome
+    on its own"""
+    reader = implementation.TableReader(content, layout_from(implementation, arguments))
+    vector = implementation.StringVector(reader, position)
+    reads: list[Callable[[], object]] = [
+        partial(len, vector),
+        vector.tolist,
+        partial(list, vector),
+        *(partial(vector.__getitem__, index) for index in indices),
+    ]
+    return [outcome(read) for read in reads]
+
+
+def _string_vector_table(
+    offset_type: OffsetType, strings: list[str], overwrites: list[tuple[int, int]]
+) -> bytes:
+    """A table of a vector of strings, with some of its bytes overwritten"""
+    builder = table_builder.TableBuilder(1, layout.TableLayout(offset_type=offset_type))
+    builder.set_string_vector(strings)
+    data = bytearray(builder.bytes())
+    for at, byte in overwrites:
+        data[at % len(data)] = byte
+    return bytes(data)
+
+
+# Tables of a vector of short strings, which fit any offset type, and some
+# with bytes overwritten
+STRING_VECTOR_TABLES: SearchStrategy[bytes] = builds(
+    _string_vector_table,
+    sampled_from(TABLE_OFFSET_TYPES),
+    lists(text(characters(codec="utf-8"), max_size=4), max_size=5),
+    lists(tuples(integers(0, 100), integers(0, 255)), max_size=2),
+)
 
 
 def _write_message(

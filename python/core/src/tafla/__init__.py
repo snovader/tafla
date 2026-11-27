@@ -114,8 +114,8 @@ Implementations
 ---------------
 
 The classes that the code that tafla-gen generates calls, ``TableLayout``,
-``FixedFields``, ``TableWriter`` and ``TableReader``, have two implementations
-with the same API, conversions and errors: a native one, written in Rust,
+``FixedFields``, ``TableWriter``, ``TableReader`` and ``StringVector``, have two
+implementations with the same API, conversions and errors: a native one, written in Rust,
 which the platform wheels hold, and a pure-Python one, which the pure
 ``py3-none-any`` wheel holds alone. ``tafla`` uses the native classes when
 they're installed, and the pure-Python ones otherwise or when the environment
@@ -124,8 +124,7 @@ is read once, at import. Native classes that are installed but fail to
 import, such as ones built for another Python, warn with ``RuntimeWarning``
 before the pure-Python ones are used. ``IMPLEMENTATION`` says which:
 ``"native"`` or ``"python"``. ``TableBuilder`` is Python in both, and writes through the chosen
-``TableWriter``, so the implementations never mix, and so is ``StringVector``,
-which reads through the ``TableReader`` that it's given.
+``TableWriter``, so the implementations never mix.
 
 A native method does in one call what the pure-Python one does in several
 Python calls, so the tables that generated code writes and reads take about
@@ -155,7 +154,9 @@ The classes are public as ``tafla`` exports them. The submodules that hold
 the pure-Python ones, such as ``tafla.layout`` and ``tafla.table_reader``,
 aren't, and ``tafla._native`` isn't either. The native classes take a
 pure-Python ``TableLayout`` as they take their own, and raise ``TypeError``
-for anything else, so a layout created from ``tafla.layout`` serves both.
+for anything else, so a layout created from ``tafla.layout`` serves both. A
+``StringVector`` reads through a ``TableReader`` of its own implementation,
+and the native one raises ``TypeError`` for another.
 
 Performance
 -----------
@@ -314,11 +315,11 @@ from .errors import DecodeError
 from .implementation import (
     IMPLEMENTATION,
     FixedFields,
+    StringVector,
     TableLayout,
     TableReader,
     TableWriter,
 )
-from .string_vector import StringVector
 from .table_builder import TableBuilder
 from .types import OffsetSize, OffsetType
 

@@ -1,6 +1,7 @@
 //! The native implementation of the classes of tafla's Python runtime that
 //! the code that tafla-gen generates uses: `TableLayout`, `FixedFields`,
-//! `TableWriter` and `TableReader`, with the pure-Python classes' API,
+//! `TableWriter`, `TableReader` and `StringVector`, with the pure-Python
+//! classes' API,
 //! conversions and errors. `tafla` imports them from this module, `_native`,
 //! unless it's missing or `TAFLA_PUREPYTHON` is set, and the pure-Python
 //! classes otherwise.
@@ -15,6 +16,7 @@ mod fixed_fields;
 mod layout;
 mod python;
 mod reader;
+mod string_vector;
 mod values;
 mod writer;
 
@@ -65,6 +67,7 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fixed_fields::FixedFields>()?;
     module.add_class::<writer::TableWriter>()?;
     module.add_class::<reader::TableReader>()?;
+    module.add_class::<string_vector::StringVector>()?;
     #[cfg(feature = "test-hooks")]
     module.add_function(wrap_pyfunction!(
         test_hooks::_set_little_endian_host,

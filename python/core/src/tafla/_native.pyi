@@ -5,6 +5,7 @@ re-exports."""
 
 from .fixed_fields import FixedFields as FixedFields
 from .layout import TableLayout as TableLayout
+from .string_vector import StringVector as StringVector
 from .table_reader import TableReader as TableReader
 from .table_writer import TableWriter as TableWriter
 

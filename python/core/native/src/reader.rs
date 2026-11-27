@@ -72,14 +72,14 @@ impl TableReader {
     }
 
     #[inline]
-    const fn size(&self) -> usize {
+    pub(crate) const fn size(&self) -> usize {
         self.shape.size()
     }
 
     /// The position of a read of `length` bytes, which must be non-negative,
     /// as `struct` reads the scalars
     #[inline]
-    fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
+    pub(crate) fn position(&self, position: &Bound<'_, PyAny>, length: usize) -> PyResult<usize> {
         if let Some(position) = small(position)?
             && let Ok(position) = usize::try_from(position)
         {
@@ -199,7 +199,7 @@ impl TableReader {
     /// starts and ends, as `item_offset()` finds it: within the bytes, but
     /// before them for a negative position, which a caller may pass, as the
     /// pure-Python runtime finds it
-    fn item_bounds<'py>(
+    pub(crate) fn item_bounds<'py>(
         &self,
         py: Python<'py>,
         position: &Int<'py>,
@@ -230,12 +230,42 @@ impl TableReader {
         Ok((position.add(start)?, position.add(end)?))
     }
 
+    /// Reads every string of the vector of strings at `at`, as
+    /// `get_string_vector()` reads them
+    pub(crate) fn strings_at<'py>(
+        &self,
+        py: Python<'py>,
+        at: usize,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let vector = self
+            .core()
+            .get_vector(at)
+            .map_err(|error| core_error(py, &error))?;
+
+        // The list first, since creating it may run the garbage collector,
+        // and with it Python code, which creating the strings doesn't. Each
+        // string is decoded by CPython, which checks it as UTF-8 on its own,
+        // from the bounds that the Rust runtime reads and checks one after
+        // another.
+        let list = unsafe {
+            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(vector.len().cast_signed()))?
+                .cast_into_unchecked::<PyList>()
+        };
+        for (index, item) in vector.iter().enumerate() {
+            let bytes = item.map_err(|error| core_error(py, &error))?;
+            let string = decode_utf8(py, bytes, self.offset_of(bytes))?;
+            list_set(&list, index, string)?;
+        }
+
+        Ok(list)
+    }
+
     /// Decodes the string from `start` to `end` in the bytes, which
     /// `item_bounds()` found, as the pure-Python runtime decodes a string of
     /// a vector of strings. A string that starts before the bytes, at a
     /// negative position, lies outside them.
     #[inline]
-    fn decode_string<'py>(
+    pub(crate) fn decode_string<'py>(
         &self,
         py: Python<'py>,
         start: &Int<'py>,
@@ -673,7 +703,11 @@ impl TableReader {
     /// Raises ``DecodeError`` if the count or the ends after it don't lie
     /// within the buffer. Every item has an end, so a count that the bytes
     /// can't hold fails before anything is allocated for it.
-    fn get_vector_length(&self, py: Python<'_>, position: &Bound<'_, PyAny>) -> PyResult<usize> {
+    pub(crate) fn get_vector_length(
+        &self,
+        py: Python<'_>,
+        position: &Bound<'_, PyAny>,
+    ) -> PyResult<usize> {
         let at = self.position(position, self.size())?;
         let vector = self
             .core()
@@ -875,27 +909,7 @@ impl TableReader {
         position: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyList>> {
         let at = self.position(position, self.size())?;
-        let vector = self
-            .core()
-            .get_vector(at)
-            .map_err(|error| core_error(py, &error))?;
-
-        // The list first, since creating it may run the garbage collector,
-        // and with it Python code, which creating the strings doesn't. Each
-        // string is decoded by CPython, which checks it as UTF-8 on its own,
-        // from the bounds that the Rust runtime reads and checks one after
-        // another.
-        let list = unsafe {
-            Bound::from_owned_ptr_or_err(py, ffi::PyList_New(vector.len().cast_signed()))?
-                .cast_into_unchecked::<PyList>()
-        };
-        for (index, item) in vector.iter().enumerate() {
-            let bytes = item.map_err(|error| core_error(py, &error))?;
-            let string = decode_utf8(py, bytes, self.offset_of(bytes))?;
-            list_set(&list, index, string)?;
-        }
-
-        Ok(list)
+        self.strings_at(py, at)
     }
 
     /// Reads string ``index`` of the vector of strings at ``position``,
