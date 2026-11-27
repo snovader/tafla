@@ -7,7 +7,8 @@ comparison in `typescript/benchmarks/`, with the same values, so that the
 languages' numbers compare. `Tafla.Benchmarks` and its tests,
 `Tafla.Benchmarks.Tests`, are projects of their own, which reference the
 runtime, so that the runtime depends on none of their packages. Run the
-commands below from `csharp/`.
+commands below from `csharp/`. `-- lists` runs the suite of lists of
+strings instead, which [its section](#lists-of-strings) describes.
 
 ## Workloads
 
@@ -494,3 +495,54 @@ Median of the fastest rounds in µs per call, and its ratio to tafla's:
   3.2 ns rather than 6.3 ns, the fixed-size record 1.82 ns rather than
   3.64 ns, every item of the vector 0.42 µs rather than 1.43 µs, and a
   column per getter 85.7 µs rather than 137 µs at 100,000 rows.
+
+## Lists of strings
+
+`dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists`
+compares how the code that tafla-gen generates writes and reads lists of
+10, 100 and 10,000 distinct strings of 16 or 256 characters of ASCII, or of
+8 characters of 3 bytes in UTF-8, the CJK ideographs from U+4E00, which are
+one UTF-16 code unit each. They're three of the eight kinds of strings of
+the TypeScript suite of lists, `typescript/benchmarks/strings/lists/`, with
+its values: `ListShapes.cs` makes them with the comparison's xorshift, from
+the seed that TypeScript gives each shape, as `ListsTests` checks against
+values that the TypeScript suite printed. tafla-gen's code of
+`lists.tafla`, a copy of the TypeScript suite's schema, in
+`Tafla.Benchmarks/Generated/Lists/`, writes each list in two ways:
+
+- **tafla-gen [string]**, the vector of strings, `StringList`: its
+  `…Fields` counts the strings' UTF-8 with a `TableSizer` and encodes each
+  string straight into the table with a `TableWriter`, and its getter
+  returns a `StringVector`, whose `ToArray()` reads every string, each
+  string's end once, and whose indexer reads the last from its two ends.
+  It runs again as **A/A**, a copy whose loop is instantiated with a type
+  of its own, as in the comparison.
+- **tafla-gen [Name]**, a vector of tables of one string each, `NameList`,
+  which is how a schema held a list of strings before the vector of strings:
+  the codec creates the generated fields of each table in each call, as the
+  comparison's tafla-gen codec creates the vector's items, reads every
+  string in order through the view's enumerator, each table's end once,
+  and the last string through its indexer.
+
+Each list is **serialized** into new bytes of its length, **deserialized**
+into an array of its strings, each a new `string`, and its **last string**
+read. Both write the tables that `TableBuilder` writes, which `ListsTests`
+checks, and before timing, every variant must read back every string, as
+the comparison's do. The suite runs with the comparison's harness and
+method, interleaved, the fastest of 30 rounds after 3 warm-up rounds and 4
+tiering passes, and each codec's operation is marked `NoInlining`.
+
+```sh
+uptime
+dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists
+dotnet run -c Release --project benchmarks/Tafla.Benchmarks -- lists --quick
+```
+
+`--run`, `--rounds` and the comparison's other options apply to it too, and
+`--quick` runs each benchmark briefly, to check that it works, as CI does.
+A full run takes about 2 minutes, an estimate from the method's rounds and
+pauses, and the quick run 10 seconds.
+
+### Results
+
+To come, from a full run on a quiet machine.
