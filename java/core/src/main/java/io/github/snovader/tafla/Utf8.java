@@ -11,11 +11,14 @@ final class Utf8 {
     /**
      * Strings of fewer {@code char}s than this are sized and written a {@code char} at a time, in
      * place, without allocating. Longer ones are encoded once, with {@link String#getBytes}, which
-     * the JDK vectorizes, and copied. On JDK 26, writing a {@code Point} whose string had 64 ASCII
-     * {@code char}s took 35 ns a {@code char} at a time and 26 ns encoded once, and 4,096 took
-     * 1,950 ns and 280 ns; 32 took 21 ns and 24 ns, with 200 more bytes allocated.
+     * the JDK vectorizes, and copied. In the benchmarks' strings suite on JDK 25, a table of 16
+     * strings of 32 {@code char}s took 0.41 µs to write a {@code char} at a time and 0.23 µs
+     * encoded once if they were ASCII, and 0.94 and 0.87 µs if each {@code char} took 3 bytes.
+     * Shorter strings with characters of 2 to 4 bytes are faster a {@code char} at a time: 8
+     * {@code char}s with one of 2 bytes took 0.24 and 0.38 µs, and 16 with a surrogate pair 0.48
+     * and 0.53 µs, though 16 of ASCII took 0.27 and 0.19 µs.
      */
-    static final int SHORT_LENGTH = 64;
+    static final int SHORT_LENGTH = 32;
 
     /**
      * Encodes {@code string}, with lone surrogates replaced by U+FFFD, as TypeScript's
