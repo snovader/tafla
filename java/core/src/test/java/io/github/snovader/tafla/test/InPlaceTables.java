@@ -64,6 +64,7 @@ final class InPlaceTables {
             case VectorField vector when recordsInPlace(vector, offsetType) ->
                 setVector(item::setVector, vector.items(), offsetType);
             case VectorField vector -> setVector(item, vector.items());
+            case StringVectorField vector -> item.setStringVector(vector.values());
         }
     }
 

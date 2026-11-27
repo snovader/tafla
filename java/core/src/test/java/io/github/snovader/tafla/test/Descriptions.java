@@ -12,9 +12,9 @@ import java.util.stream.*;
 /**
  * Arbitrary descriptions of tables in the shape of the conformance suite's, of every part of the
  * format: layouts of every offset type, with and without each header slot and with versions that
- * fit, every scalar and array type over its whole range, strings of any code points, structs and
- * arrays of structs of any scalars, and tables nested from builders and bytes, in fields and
- * vectors, down to a bounded depth.
+ * fit, every scalar and array type over its whole range, strings of any code points, alone and in
+ * vectors of strings, structs and arrays of structs of any scalars, and tables nested from builders
+ * and bytes, in fields and vectors, down to a bounded depth.
  *
  * <p>Like the suite, they follow the rules that {@code SPEC.md} and {@link TableBuilder} set out:
  * every table fits its offset type, a table nested with {@code setTable()} has no header, so that
@@ -32,6 +32,8 @@ final class Descriptions {
     static final int MAX_STRUCTS = 4;
     /** How many tables a vector holds at most */
     static final int MAX_ITEMS = 3;
+    /** How many strings a vector of strings holds at most */
+    static final int MAX_STRINGS = 6;
 
     /** Every layout: with and without each header slot, and of every offset type */
     private static final List<LayoutDescription> LAYOUTS = layoutsOf(List.of(false, true), List.of(false, true));
@@ -88,8 +90,8 @@ final class Descriptions {
     }
 
     /**
-     * {@return scalars, arrays, strings, structs and arrays of structs: fields that hold values
-     * rather than tables}
+     * {@return scalars, arrays, strings, structs, arrays of structs and vectors of strings: fields
+     * that hold values rather than tables}
      */
     static Arbitrary<FieldDescription> values() {
         return Arbitraries.frequencyOf(
@@ -97,7 +99,8 @@ final class Descriptions {
             Tuple.of(4, arrays()),
             Tuple.of(2, stringFields()),
             Tuple.of(2, structs()),
-            Tuple.of(2, structArrays())
+            Tuple.of(2, structArrays()),
+            Tuple.of(2, stringVectors())
         );
     }
 
@@ -139,6 +142,9 @@ final class Descriptions {
             case TableField table -> Long.BYTES - 1 + maxLength(table.table());
             case VectorField vector -> width + vector.items().stream()
                 .mapToLong(item -> width + maxLength(item.table()))
+                .sum();
+            case StringVectorField vector -> width + vector.values().stream()
+                .mapToLong(string -> width + (long) string.getBytes(StandardCharsets.UTF_8).length)
                 .sum();
         };
     }
@@ -366,6 +372,20 @@ final class Descriptions {
         codePoints.forEach(string::appendCodePoint);
 
         return string.toString();
+    }
+
+    /** {@return vectors of strings, empty too, and of empty strings} */
+    static Arbitrary<FieldDescription> stringVectors() {
+        return vectorStrings().list().ofMaxSize(MAX_STRINGS).map(StringVectorField::new);
+    }
+
+    /**
+     * {@return the strings of string fields, and sometimes strings of 28 to 72 code points, either
+     * side of the length from which writers encode a string once rather than count its bytes}
+     */
+    static Arbitrary<String> vectorStrings() {
+        var longer = codePoints().list().ofMinSize(28).ofMaxSize(72).map(Descriptions::stringOf);
+        return Arbitraries.frequencyOf(Tuple.of(4, strings()), Tuple.of(1, longer));
     }
 
     /**
