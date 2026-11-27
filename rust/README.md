@@ -39,7 +39,9 @@ node gen/tests/wasm/check.mjs target/wasm32-unknown-unknown/wasm/tafla_gen.wasm
 
 `cargo test` runs the benchmarks' check that every codec reads back what it
 wrote. The benchmarks themselves run with
-`cargo bench -p tafla-benchmarks`, and take several minutes.
+`cargo bench -p tafla-benchmarks`, and take about 3 minutes for the
+comparison and 9 for the strings comparison, as `benchmarks/README.md`
+describes.
 
 Miri runs the runtime's tests to check its `unsafe` code for undefined
 behavior, on the host and on a big-endian target, which reads every array

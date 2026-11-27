@@ -5,7 +5,7 @@
 //! benchmark's fastest sample.
 //!
 //! Each group times every codec, and then tafla's codec again, as an A/A pair
-//! in loops of its own. `STRINGS_REVERSE=1` runs each group's codecs in
+//! of the same code. `STRINGS_REVERSE=1` runs each group's codecs in
 //! reverse order, so that rounds saved with `--save-baseline` alternate it.
 
 use std::env;
@@ -81,8 +81,11 @@ fn shapes(criterion: &mut Criterion) {
     }
 }
 
-/// tafla's codec, timed again in loops of its own: an A/A pair that shows
-/// the harness's noise, and how much the loops' addresses move a time
+/// tafla's codec, timed again: an A/A pair that shows the harness's noise
+/// between two timings of the same code. It delegates to `Tafla`, so the
+/// compiler is free to merge its loops with tafla's, as rustc 1.100 merges
+/// the writes', and the pair doesn't show what a loop's address adds to a
+/// time.
 #[derive(Clone, Copy, Debug)]
 struct TaflaAa;
 

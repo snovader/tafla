@@ -9,7 +9,9 @@
 //! `--save-baseline <name>` saved rather than the last, and with several
 //! names pools their samples, as of rounds that ran the codecs in
 //! alternating order: each benchmark's fastest and median sample over every
-//! round, in the order that the first named round ran them. An argument
+//! round, in the order that the first named round ran them. It's an error
+//! if a benchmark is in some of the named rounds and not in the others, as
+//! after a mistyped name or a round cut short. An argument
 //! other than these is Criterion's directory, which is `$CRITERION_HOME`, or
 //! `criterion` in `$CARGO_TARGET_DIR` or the workspace's `target` by
 //! default.
@@ -82,7 +84,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let groups = read_groups(&directory, &baselines)?;
     if groups.is_empty() {
         return Err(format!(
-            "No results in {}; run `cargo bench` first",
+            "No results of {} in {}; run `cargo bench` first",
+            baselines.join(", "),
             directory.display()
         )
         .into());
@@ -143,15 +146,22 @@ fn read_groups(directory: &Path, runs: &[String]) -> Result<Vec<Group>, Box<dyn 
 }
 
 /// Reads a benchmark's samples of each run that `runs` names, pooled, or
-/// nothing if none of them has the benchmark
+/// nothing if none of them has the benchmark, as another bench's
+///
+/// # Errors
+///
+/// If some of the runs have the benchmark and others don't, since their
+/// pooled samples would pass for those of every run.
 fn read_benchmark(function: &Path, runs: &[String]) -> Result<Option<Benchmark>, Box<dyn Error>> {
     let mut first = None;
+    let mut missing = Vec::new();
     let mut per_call = Vec::new();
 
     for (index, run) in runs.iter().enumerate() {
         let results = function.join(run);
         let path = results.join("sample.json");
         if !path.is_file() {
+            missing.push(run.as_str());
             continue;
         }
 
@@ -174,6 +184,14 @@ fn read_benchmark(function: &Path, runs: &[String]) -> Result<Option<Benchmark>,
     let Some((id, order)) = first else {
         return Ok(None);
     };
+    if !missing.is_empty() {
+        return Err(format!(
+            "{} has no results of {}",
+            function.display(),
+            missing.join(", ")
+        )
+        .into());
+    }
 
     per_call.sort_by(f64::total_cmp);
     let (Some(&fastest), Some(&median)) = (per_call.first(), per_call.get(per_call.len() / 2))

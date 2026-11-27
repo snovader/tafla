@@ -5,8 +5,10 @@
 //! The generator ports the TypeScript strings suite's,
 //! `typescript/benchmarks/strings/shapes.ts`, with its seeds, its alphabets
 //! and its lengths in characters, so that the shapes that both suites have
-//! hold the same strings. `tests/string_workloads.rs` checks every shape
-//! against a hash of the bytes that the TypeScript generator made of it.
+//! hold the same strings. The shapes that the C++ suite has too,
+//! `cpp/benchmarks/src/string_workloads.hpp`, take its seeds, and hold its
+//! strings. `tests/string_workloads.rs` checks every shape against a hash of
+//! the bytes that the TypeScript generator made of it.
 
 use std::borrow::Cow;
 
@@ -79,7 +81,9 @@ impl StringWorkload {
 /// 64 and about 1,024 bytes of characters of 2, 3 and 4 bytes, and 256 and
 /// 1,024 bytes of ASCII with one character of 2 bytes first or last, which
 /// part a check of UTF-8 that skips ASCII from one that checks every
-/// character.
+/// character. A shape that the TypeScript or the C++ suite has takes that
+/// suite's seed, so that it holds that suite's strings. The others, of 22,
+/// 342 and 1,023 characters, which neither has, take seeds of their own.
 pub fn string_workloads() -> Vec<StringWorkload> {
     let none = |_| false;
     let every = |_| true;
@@ -102,22 +106,22 @@ pub fn string_workloads() -> Vec<StringWorkload> {
         shape("15 chars, one of 4 bytes", 15, 5, |i| i == 7, four_bytes),
         shape("8 chars of 3 bytes", 8, 3, every, three_bytes),
         shape("64 chars of ASCII", 64, 7, none, ascii),
-        shape("32 chars of 2 bytes", 32, 20, every, two_bytes),
-        shape("16 chars of 4 bytes", 16, 24, every, four_bytes),
+        shape("32 chars of 2 bytes", 32, 25, every, two_bytes),
+        shape("16 chars of 4 bytes", 16, 27, every, four_bytes),
         shape("22 chars of 3 bytes", 22, 22, every, three_bytes),
         shape("32 chars of 3 bytes", 32, 6, every, three_bytes),
         shape("256 chars of ASCII", 256, 8, none, ascii),
         shape(
             "255 chars, first of 2 bytes",
             255,
-            26,
+            28,
             |i| i == 0,
             two_bytes,
         ),
         shape(
             "255 chars, last of 2 bytes",
             255,
-            27,
+            29,
             |i| i == 254,
             two_bytes,
         ),
@@ -126,19 +130,19 @@ pub fn string_workloads() -> Vec<StringWorkload> {
         shape(
             "1,023 chars, first of 2 bytes",
             1023,
-            28,
+            33,
             |i| i == 0,
             two_bytes,
         ),
         shape(
             "1,023 chars, last of 2 bytes",
             1023,
-            29,
+            34,
             |i| i == 1022,
             two_bytes,
         ),
-        shape("512 chars of 2 bytes", 512, 21, every, two_bytes),
-        shape("256 chars of 4 bytes", 256, 25, every, four_bytes),
+        shape("512 chars of 2 bytes", 512, 30, every, two_bytes),
+        shape("256 chars of 4 bytes", 256, 32, every, four_bytes),
         shape("342 chars of 3 bytes", 342, 23, every, three_bytes),
     ]
 }

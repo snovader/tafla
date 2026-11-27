@@ -374,7 +374,8 @@ Fastest sample in µs per call, and its ratio to tafla's:
 
 The array of 100 structs was added after that run, and timed on the same day
 with the vector of nested tables, in their groups alone:
-`cargo bench -p tafla-benchmarks -- 'structs|nested tables'`. Another session
+`cargo bench -p tafla-benchmarks --bench comparison -- 'structs|nested tables'`.
+Another session
 ran benchmarks meanwhile, which kept the 1-minute load average between 3.2 and
 3.8. The median sample was within 5% of the fastest for 19 of the 20
 benchmarks, and at most 5% above it, and the vector's fastest samples were
@@ -570,8 +571,8 @@ in characters, so that the shapes that both suites have hold the same bytes,
 and `tests/string_workloads.rs` checks every shape against a hash of the
 bytes that the TypeScript generator made of it. The TypeScript suite's shapes
 of 31 to 33 characters sit on V8's limits, and are left out. The shapes that
-Rust adds take seeds of their own, so they aren't the C++ suite's strings of
-the same names.
+the C++ suite has too, such as 512 characters of 2 bytes, take its seeds, and
+hold its strings, and those of 22, 342 and 1,023 characters are Rust's alone.
 
 tafla's `get_str()` checks a string with `is_ascii()`, and then with
 `str::from_utf8()` if it isn't ASCII. On aarch64, `is_ascii()` tests 8 bytes
@@ -617,8 +618,11 @@ the bytes, but prost's, which moves its `String`s out of the message.
 Criterion drops each result within its loop, alike for every codec, and
 nothing reads the strings' characters after a codec returns them. Before
 timing, every codec must read back every string, which `tests/round_trip.rs`
-checks too, and each group times tafla's codec again, in loops of its own, as
-an A/A pair.
+checks too, and each group times tafla's codec again, as an A/A pair that
+shows the harness's noise between two timings of the same code. The compiler
+merges the pair's write loop with tafla's, and both read loops call one
+`deserialize()`, so the pair doesn't show what a loop's address adds to a
+time.
 
 ```sh
 uptime
@@ -633,7 +637,9 @@ Criterion runs one codec's samples after another's, so a round runs each
 group's codecs in the order that the results list them, or in reverse with
 `STRINGS_REVERSE=1`, so that rounds alternate it. `report --baseline` reads
 the rounds that `--save-baseline` saved and pools their samples, in the
-order that the first round named ran them. A round takes about 9 minutes. A
+order that the first round named ran them, and fails if a benchmark is in
+some of the rounds that it names and not in the others. A round takes about
+9 minutes. A
 regular expression selects shapes, such as `-- '× 64 chars'`, and the quick
 run's options above run every benchmark briefly. `allocation --strings`
 counts each call's allocations, and `encoding --strings` prints each crate's
@@ -787,9 +793,10 @@ Writes:
   bytes and 2.29 to 2.45 times at about 1,024.
 - prost copies each string into its message, in 18 allocations, and takes
   1.69 to 2.35 times tafla's time, but 0.47 times for empty strings.
-  rmp-serde takes 1.15 to 1.88 times, in 6 allocations, and flatbuffers 1.99
-  to 6.06 times, as its builder doubles from empty by copying: 65,576 bytes
-  in 15 allocations for strings of 1,024 bytes.
+  rmp-serde takes 1.15 to 1.88 times, in 6 allocations, but 0.58 times for
+  empty strings, and flatbuffers 1.99 to 6.06 times, as its builder doubles
+  from empty by copying: 65,576 bytes in 15 allocations for strings of 1,024
+  bytes.
 - What the strings hold doesn't change a write, and a longer string doesn't
   always take longer: tafla writes 16 strings of 64 bytes in 0.206 µs and of
   16 bytes in 0.222 µs, and tafla-gen in 78 and 87 ns. This wasn't
