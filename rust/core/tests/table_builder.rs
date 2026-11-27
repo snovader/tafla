@@ -261,6 +261,10 @@ enum LongField {
     NestedBytes,
     /// A table of bytes, nested from its builder
     NestedBuilder,
+    /// A vector of one string
+    VectorString,
+    /// A vector of empty strings, each an end of its own
+    EmptyStrings,
 }
 
 fn long_field() -> impl Strategy<Value = LongField> {
@@ -273,6 +277,8 @@ fn long_field() -> impl Strategy<Value = LongField> {
         LongField::Item,
         LongField::NestedBytes,
         LongField::NestedBuilder,
+        LongField::VectorString,
+        LongField::EmptyStrings,
     ])
 }
 
@@ -298,6 +304,8 @@ impl LongField {
                 nested: nested(Source::Builder, bytes()),
                 alignment: None,
             },
+            Self::VectorString => Field::StringVector(vec!["a".repeat(units)]),
+            Self::EmptyStrings => Field::StringVector(vec![String::new(); units]),
         }
     }
 
@@ -306,7 +314,7 @@ impl LongField {
         match self {
             Self::Floats => 8,
             Self::Structs => 3,
-            Self::EmptyItems => width,
+            Self::EmptyItems | Self::EmptyStrings => width,
             _ => 1,
         }
     }
