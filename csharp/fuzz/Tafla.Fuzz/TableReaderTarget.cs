@@ -90,8 +90,8 @@ internal static class TableReaderTarget
     /// <summary>
     /// Reads that throw, decode invalid and valid strings, and copy arrays where the runtime copies
     /// them, unchecked, so that what the runtime and .NET allocate once, such as the reader's UTF-8
-    /// decoders, an exception's resources and the buffers that the reader rents from the shared pool,
-    /// is allocated before the reads that are checked
+    /// decoders, an exception's resources and the chars that the reader decodes strings into on each
+    /// thread, is allocated before the reads that are checked
     /// </summary>
     private static void WarmUp()
     {
@@ -112,9 +112,8 @@ internal static class TableReaderTarget
         catch (DecodeException) { }
 
         // The reader decodes strings of up to 128 bytes, of up to 1,024 and longer ones each in its
-        // own way, ASCII in another, and those of up to 1,024 bytes into buffers of 256, 512 or 1,024
-        // chars from the shared pool
-        foreach (var length in new[] { 1, 200, 400, 1000, 1100 })
+        // own way, and ASCII in another
+        foreach (var length in new[] { 1, 200, 1100 })
         {
             WarmUpString(Encoding.ASCII.GetBytes(new string('a', length)));
             WarmUpString(Encoding.UTF8.GetBytes(new string('é', (length + 1) / 2)));

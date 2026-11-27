@@ -53,12 +53,20 @@ public readonly ref struct TableReader
 
     /// <summary>
     /// The longest string, in bytes, that <see cref="GetString"/> decodes without counting its chars
-    /// when they don't fit on the stack: ASCII widened into the string, and other UTF-8 decoded into a
-    /// buffer from the shared pool, whose chars aren't zeroed. Longer strings keep the BCL's two
-    /// passes, so that the pool doesn't hold on to a buffer as long as the longest string read, and
-    /// as none was timed.
+    /// when they don't fit on the stack: ASCII widened into the string, and other UTF-8 decoded into
+    /// <see cref="MediumStringChars"/>. Longer strings keep the BCL's two passes, so that no thread
+    /// holds on to chars as long as the longest string that it read, and as none was timed.
     /// </summary>
     private const int MaxMediumStringLength = 1024;
+
+    /// <summary>
+    /// The chars that a string of up to <see cref="MaxMediumStringLength"/> bytes that isn't ASCII
+    /// decodes into on this thread, allocated once for each thread that reads one, and zeroed only
+    /// then. They hold the last such string that the thread read, so only the chars that a decode
+    /// wrote are read.
+    /// </summary>
+    [ThreadStatic]
+    private static char[]? MediumStringChars;
 
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly Header _layout;
@@ -313,8 +321,7 @@ public readonly ref struct TableReader
     /// <summary>
     /// Decodes a string of up to <see cref="MaxMediumStringLength"/> bytes. ASCII is Latin-1 too, whose
     /// chars are its bytes, so the BCL widens it into a string of its length. Other UTF-8 decodes in
-    /// one pass, into chars of a buffer from the shared pool that it copies into the string. The
-    /// buffer holds whatever its last user left, so only the chars that the pass wrote are read.
+    /// one pass, into the thread's <see cref="MediumStringChars"/>, which it copies into the string.
     /// </summary>
     private static string DecodeMediumString(ReadOnlySpan<byte> bytes, int position)
     {
@@ -323,13 +330,10 @@ public readonly ref struct TableReader
             return Encoding.Latin1.GetString(bytes);
         }
 
-        var pool = ArrayPool<char>.Shared;
-        var chars = pool.Rent(bytes.Length);
+        var chars = MediumStringChars ??= new char[MaxMediumStringLength];
         var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
-        var value = status == OperationStatus.Done ? new string(chars, 0, length) : null;
-        pool.Return(chars);
 
-        return value ?? throw InvalidUtf8(bytes, position);
+        return status == OperationStatus.Done ? new string(chars, 0, length) : throw InvalidUtf8(bytes, position);
     }
 
     /// <summary>Decodes a string of any length, whose chars the BCL counts and then decodes.</summary>
