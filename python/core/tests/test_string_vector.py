@@ -471,16 +471,14 @@ class TestWritingStringVectors(unittest.TestCase):
                 self.assertEqual(len(writer.bytes()), offset_size_of(offset_type))
 
     def test_raises_for_strings_whose_len_isnt_their_number(self) -> None:
-        for strings in [["a", "b"], ["é", "b"]]:
-            for length in [1, 3]:
-                with (
-                    self.subTest(strings=strings, length=length),
-                    self.assertRaisesRegex(
-                        ValueError,
-                        f"^The items' len\\(\\) is {length}, but iterating them "
-                        "gave 2$",
-                    ),
-                ):
+        cases = [(["a", "b"], 1), (["a", "b"], 3), (["é", "b"], 1), ([], 1)]
+        for strings, length in cases:
+            with self.subTest(strings=strings, length=length):
+                message = (
+                    f"^The items' len\\(\\) is {length}, but iterating them gave "
+                    f"{len(strings)}$"
+                )
+                with self.assertRaisesRegex(ValueError, message):
                     writer = TableWriter(1)
                     try:
                         writer.set_string_vector(0, Misreported(strings, length))
