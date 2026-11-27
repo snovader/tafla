@@ -77,8 +77,12 @@ TypeScript, JavaScript and Java, `bool` in Python, Rust, Go, C++ and C#, and
 
 An array of bools is an array of `uint8` in the format, written as 0 and 1
 and read as true where a byte isn't 0. Its getter returns the bytes, as a
-`[uint8]` field's getter does, so that it reads them in place, and the
-fields that a message is written from and read into hold the language's
+`[uint8]` field's getter does: a `Uint8Array` in TypeScript and JavaScript,
+a `memoryview` in Python, a `&[u8]` in Rust, a `[]byte` in Go, a
+`std::span<const std::uint8_t>` in C++, an `ArrayView<UInt8>` in Swift and a
+`ReadOnlySpan<byte>` in C#. Java's getter copies them into a `boolean[]`, as
+its getters copy arrays, and `<field>View()` views the bytes. The fields that
+a message is written from, and that `fields()` reads, hold the language's
 bools, which the runtime's `setBoolArray()` writes and `getBoolArray()`
 reads, under each language's names.
 
