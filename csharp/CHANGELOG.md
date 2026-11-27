@@ -9,7 +9,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-The first release.
+The first release. Changed lists what changed since the repository's first
+commits, for code built from its source before the release.
 
 ### Added
 
@@ -62,5 +63,17 @@ The first release.
   structs that tafla-gen generates, fails as the runtime's reads do.
 - The runtime reads and rebuilds the golden tables of tafla's conformance
   suite byte for byte, as every implementation of the format does.
+
+### Changed
+
+- `TableReader.GetString()` decodes a string of up to 1,024 bytes without
+  counting its characters first: up to 128 bytes in one pass into characters
+  on the stack, and a longer one, if it's ASCII, widened into the string by
+  `Encoding.Latin1`, or else decoded into a buffer from
+  `ArrayPool<char>.Shared`. Longer strings are counted and then decoded, as
+  before. Tables of 16 strings were read in 0.65 to 0.84 of the time, but
+  for ASCII strings of 8, 42 and 43 bytes, at 0.90 to 1.00, and the
+  benchmarks' record, whose 16-byte name is ASCII, in 23.4 ns rather than
+  24.4 ns. Its values and errors are unchanged.
 
 [Unreleased]: https://github.com/snovader/tafla/commits/main/csharp

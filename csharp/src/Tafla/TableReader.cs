@@ -51,6 +51,15 @@ public readonly ref struct TableReader
     /// </summary>
     private const int MaxStackStringLength = 128;
 
+    /// <summary>
+    /// The longest string, in bytes, that <see cref="GetString"/> decodes without counting its chars
+    /// when they don't fit on the stack: ASCII widened into the string, and other UTF-8 decoded into a
+    /// buffer from the shared pool, whose chars aren't zeroed. Longer strings keep the BCL's two
+    /// passes, so that the pool doesn't hold on to a buffer as long as the longest string read, and
+    /// as none was timed.
+    /// </summary>
+    private const int MaxMediumStringLength = 1024;
+
     private readonly ReadOnlySpan<byte> _bytes;
     private readonly Header _layout;
 
@@ -285,7 +294,7 @@ public readonly ref struct TableReader
         var bytes = ArrayBytes(position, sizeof(byte));
         if (bytes.Length > MaxStackStringLength)
         {
-            return DecodeLongString(bytes, position);
+            return bytes.Length <= MaxMediumStringLength ? DecodeMediumString(bytes, position) : DecodeLongString(bytes, position);
         }
 
         // A short string decodes in one pass, into chars on the stack that it copies into the string,
@@ -299,6 +308,28 @@ public readonly ref struct TableReader
         }
 
         return new string(chars[..length]);
+    }
+
+    /// <summary>
+    /// Decodes a string of up to <see cref="MaxMediumStringLength"/> bytes. ASCII is Latin-1 too, whose
+    /// chars are its bytes, so the BCL widens it into a string of its length. Other UTF-8 decodes in
+    /// one pass, into chars of a buffer from the shared pool that it copies into the string. The
+    /// buffer holds whatever its last user left, so only the chars that the pass wrote are read.
+    /// </summary>
+    private static string DecodeMediumString(ReadOnlySpan<byte> bytes, int position)
+    {
+        if (Ascii.IsValid(bytes))
+        {
+            return Encoding.Latin1.GetString(bytes);
+        }
+
+        var pool = ArrayPool<char>.Shared;
+        var chars = pool.Rent(bytes.Length);
+        var status = Utf8.ToUtf16(bytes, chars, out _, out var length, replaceInvalidSequences: false);
+        var value = status == OperationStatus.Done ? new string(chars, 0, length) : null;
+        pool.Return(chars);
+
+        return value ?? throw DecodeException.InvalidUtf8(position);
     }
 
     /// <summary>Decodes a string of any length, whose chars the BCL counts and then decodes.</summary>

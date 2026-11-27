@@ -206,16 +206,35 @@ public class RoundTripTests
     /// its UTF-8 and reads back as it was
     /// </summary>
     [Fact]
-    public void RoundTripsStringsOfAnyLength() =>
-        Strategy.String(300).Check(value =>
-        {
-            var builder = new TableBuilder(1);
-            builder.SetString(value);
-            var bytes = builder.ToArray();
+    public void RoundTripsStringsOfAnyLength() => Strategy.String(300).Check(AssertRoundTrips);
 
-            Assert.Equal(Encoding.UTF8.GetBytes(value), bytes[8..]);
-            Assert.Equal(value, new TableReader(bytes).GetString(4));
-        });
+    /// <summary>
+    /// ASCII, of any of its 128 characters, reads back at any length, and so does ASCII with one
+    /// character of two, three or four bytes anywhere in it
+    /// </summary>
+    [Fact]
+    public void RoundTripsAsciiStringsOfAnyLength() =>
+        Gen.Select(Gen.Int[0, 0x7f].Array[0, 1100], Gen.OneOf("", "é", "€", "😀"), Gen.Int[0, 1100], AsciiWith)
+            .Check(AssertRoundTrips);
+
+    /// <summary>The ASCII of <paramref name="codes"/>, with <paramref name="other"/> inserted at <paramref name="index"/> or its end</summary>
+    private static string AsciiWith(int[] codes, string other, int index)
+    {
+        var ascii = string.Concat(codes.Select(code => (char)code));
+
+        return ascii.Insert(Math.Min(index, ascii.Length), other);
+    }
+
+    /// <summary>Writes <paramref name="value"/> as a table's string, which it reads back</summary>
+    private static void AssertRoundTrips(string value)
+    {
+        var builder = new TableBuilder(1);
+        builder.SetString(value);
+        var bytes = builder.ToArray();
+
+        Assert.Equal(Encoding.UTF8.GetBytes(value), bytes[8..]);
+        Assert.Equal(value, new TableReader(bytes).GetString(4));
+    }
 
     /// <summary>UTF-8 can't encode a lone surrogate, which the builder writes as U+FFFD, as Encoding.UTF8 does</summary>
     [Fact]

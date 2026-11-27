@@ -267,7 +267,7 @@ public class DecodeExceptionTests
 
         foreach (var value in strings)
         {
-            foreach (var valid in new[] { 0, 1, 127, 300 })
+            foreach (var valid in new[] { 0, 1, 127, 300, 1100 })
             {
                 var bytes = new byte[sizeof(uint) + valid + value.Length];
                 BinaryPrimitives.WriteUInt32LittleEndian(bytes, (uint)(valid + value.Length));
