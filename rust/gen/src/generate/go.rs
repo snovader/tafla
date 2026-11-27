@@ -505,6 +505,8 @@ impl<'a> Generator<'a> {
                     }
                     None => writer.line(format!("return reader.Get{}(position)", method(scalar))),
                 },
+                // An array of bools is read as its bytes, as an array of
+                // uint8s, which `method()` names it by
                 FieldType::Array(scalar) => {
                     writer.line(format!(
                         "return reader.Get{}Array(position)",
@@ -736,8 +738,7 @@ impl<'a> Generator<'a> {
         let fields_type = format!("{name}Fields");
         let zero = format!("{fields_type}{{}}");
 
-        writer.blank();
-        writer.lines(&prose(&[
+        let mut docs = vec![
             format!(
                 "Fields reads every field of {} at once, into the [{fields_type}]",
                 article(name)
@@ -746,8 +747,21 @@ impl<'a> Generator<'a> {
             "and the items of its vectors as their Fields() reads them. Its strings,".to_owned(),
             "and its arrays and arrays of structs as their Slice() returns them,".to_owned(),
             "share the bytes.".to_owned(),
-            format!("It fails with a {DECODE_ERROR} if a field lies outside the bytes."),
-        ]));
+        ];
+        // Whose getters return their bytes
+        if definition
+            .fields
+            .iter()
+            .any(|field| field.field_type == FieldType::Array(Scalar::Bool))
+        {
+            docs.push("Its arrays of bools are new bools, true where a byte isn't 0.".to_owned());
+        }
+        docs.push(format!(
+            "It fails with a {DECODE_ERROR} if a field lies outside the bytes."
+        ));
+
+        writer.blank();
+        writer.lines(&prose(&docs));
         writer.open(format!(
             "func ({READER} {name}) Fields() ({fields_type}, error) {{"
         ));
@@ -818,6 +832,10 @@ impl<'a> Generator<'a> {
             }
             FieldType::Array(Scalar::Uint8) => {
                 assign_read(writer, &member, "reader.GetUint8Array(position)", zero);
+            }
+            // New bools, true where their bytes aren't 0
+            FieldType::Array(Scalar::Bool) => {
+                assign_read(writer, &member, "reader.GetBoolArray(position)", zero);
             }
             FieldType::Array(scalar) => {
                 let local = format!("array{index}");
@@ -1157,6 +1175,9 @@ impl<'a> Generator<'a> {
                 FieldType::Scalar(scalar) => {
                     writer.line(format!("sizer.Add{}()", method(scalar.stored())));
                 }
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("sizer.AddBoolArray(len({value}))"));
+                }
                 FieldType::Array(scalar) => {
                     writer.line(format!("sizer.Add{}Array(len({value}))", method(scalar)));
                 }
@@ -1233,6 +1254,10 @@ impl<'a> Generator<'a> {
                         value
                     };
                     writer.line(format!("writer.Set{}({index}, {value})", method(scalar)));
+                }
+                // Bools, which the writer writes as bytes of 1 and 0
+                FieldType::Array(Scalar::Bool) => {
+                    writer.line(format!("writer.SetBoolArray({index}, {value})"));
                 }
                 FieldType::Array(scalar) => {
                     writer.line(format!(
@@ -1311,11 +1336,12 @@ impl<'a> Generator<'a> {
     }
 
     /// The type that a field's getter returns. An array of enums is a view
-    /// of their integer type, as it lies in the bytes.
+    /// of their integer type, as it lies in the bytes, and an array of bools
+    /// their bytes, which `GetUint8Array()` reads in place.
     fn value_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
-            FieldType::Array(Scalar::Uint8) => "[]byte".to_owned(),
+            FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "[]byte".to_owned(),
             FieldType::Array(scalar) => format!("tafla.ArrayView[{}]", scalar_type(scalar)),
             FieldType::String => "string".to_owned(),
             FieldType::Struct(index) | FieldType::Table(index) => {
@@ -1327,7 +1353,8 @@ impl<'a> Generator<'a> {
     }
 
     /// The type of a field in the struct that writes it. An array of enums
-    /// is a slice of their integer type, which is written in bulk.
+    /// is a slice of their integer type, which is written in bulk, and an
+    /// array of bools a slice of bools.
     fn input_type(&self, field: &Field) -> String {
         match field.field_type {
             FieldType::Scalar(scalar) => self.scalar_field_type(field, scalar).to_owned(),
@@ -1534,6 +1561,12 @@ fn getter_docs(getter: &str, field: &Field) -> Vec<String> {
     };
 
     let mut lines = field.docs.clone();
+    if field.field_type == FieldType::Array(Scalar::Bool) {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push("A byte for each bool, which is true where it isn't 0".to_owned());
+    }
     if !lines.is_empty() {
         lines.push(String::new());
     }
@@ -1934,7 +1967,7 @@ fn zero_value(field_type: FieldType, value_type: &str) -> String {
         FieldType::Scalar(Scalar::Bool) => "false".to_owned(),
         FieldType::Scalar(_) => "0".to_owned(),
         FieldType::String => "\"\"".to_owned(),
-        FieldType::Array(Scalar::Uint8) => "nil".to_owned(),
+        FieldType::Array(Scalar::Uint8 | Scalar::Bool) => "nil".to_owned(),
         FieldType::Array(_)
         | FieldType::Struct(_)
         | FieldType::StructArray(_)
