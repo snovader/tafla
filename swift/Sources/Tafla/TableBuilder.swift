@@ -222,7 +222,7 @@ public struct TableBuilder: Sendable {
         try add(.string(value, utf8Count: value.utf8.count))
     }
 
-    /// Sets a vector of strings, each of its UTF-8, which a `String` always
+    /// Sets a vector of strings, each as its UTF-8, which a `String` always
     /// holds valid, after the end of each, which lets readers find any string
     /// without reading the others. It takes no more bytes for each string
     /// than the end of it, where a vector of tables of one string takes each
